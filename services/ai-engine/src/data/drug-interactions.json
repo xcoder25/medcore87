@@ -1,0 +1,107 @@
+[
+  {
+    "drug_a": "Warfarin", "drug_b": "Aspirin",
+    "severity": "MAJOR",
+    "mechanism": "Additive anticoagulant effect + GI bleeding risk",
+    "effect": "Significantly increased bleeding risk",
+    "management": "Avoid combination. If necessary, use lowest aspirin dose (75mg) with close INR monitoring."
+  },
+  {
+    "drug_a": "Warfarin", "drug_b": "NSAIDs",
+    "severity": "MAJOR",
+    "mechanism": "Displacement from protein binding + GI irritation",
+    "effect": "Increased anticoagulation and bleeding risk",
+    "management": "Avoid. Use paracetamol for pain relief. Monitor INR closely if unavoidable."
+  },
+  {
+    "drug_a": "Metformin", "drug_b": "Alcohol",
+    "severity": "MAJOR",
+    "mechanism": "Inhibition of lactate metabolism",
+    "effect": "Risk of lactic acidosis",
+    "management": "Advise patient to avoid alcohol. Monitor renal function."
+  },
+  {
+    "drug_a": "ACE Inhibitors", "drug_b": "Potassium-sparing diuretics",
+    "severity": "MAJOR",
+    "mechanism": "Additive potassium retention",
+    "effect": "Hyperkalaemia — risk of cardiac arrhythmia",
+    "management": "Monitor serum potassium levels closely. Reduce or avoid combination."
+  },
+  {
+    "drug_a": "Amoxicillin", "drug_b": "Methotrexate",
+    "severity": "MAJOR",
+    "mechanism": "Inhibition of methotrexate renal tubular secretion",
+    "effect": "Methotrexate toxicity — bone marrow suppression, nephrotoxicity",
+    "management": "Avoid combination. Use alternative antibiotic. Monitor FBC and renal function."
+  },
+  {
+    "drug_a": "Ciprofloxacin", "drug_b": "Antacids",
+    "severity": "MODERATE",
+    "mechanism": "Chelation in GI tract reduces ciprofloxacin absorption",
+    "effect": "Reduced antibiotic efficacy",
+    "management": "Separate doses by at least 2 hours (ciprofloxacin first)."
+  },
+  {
+    "drug_a": "Statins", "drug_b": "Erythromycin",
+    "severity": "MODERATE",
+    "mechanism": "CYP3A4 inhibition increases statin plasma levels",
+    "effect": "Risk of myopathy and rhabdomyolysis",
+    "management": "Temporarily suspend statin therapy during macrolide course. Use azithromycin if possible."
+  },
+  {
+    "drug_a": "Gentamicin", "drug_b": "Furosemide",
+    "severity": "MAJOR",
+    "mechanism": "Additive ototoxicity and nephrotoxicity",
+    "effect": "Increased risk of hearing loss and kidney damage",
+    "management": "Avoid combination or use with extreme caution. Monitor renal function and hearing."
+  },
+  {
+    "drug_a": "SSRIs", "drug_b": "Tramadol",
+    "severity": "MAJOR",
+    "mechanism": "Serotonin syndrome via additive serotonergic effect",
+    "effect": "Serotonin syndrome — agitation, hyperthermia, tachycardia, seizures",
+    "management": "Avoid combination. Use alternative analgesic. If combined, monitor closely for serotonin syndrome symptoms."
+  },
+  {
+    "drug_a": "Digoxin", "drug_b": "Amiodarone",
+    "severity": "MAJOR",
+    "mechanism": "Amiodarone inhibits P-glycoprotein and CYP enzyme metabolism of digoxin",
+    "effect": "Digoxin toxicity — nausea, arrhythmia, visual disturbances",
+    "management": "Reduce digoxin dose by 50%. Monitor serum digoxin levels and ECG."
+  },
+  {
+    "drug_a": "Metronidazole", "drug_b": "Alcohol",
+    "severity": "MAJOR",
+    "mechanism": "Inhibition of aldehyde dehydrogenase (disulfiram-like reaction)",
+    "effect": "Flushing, nausea, vomiting, tachycardia",
+    "management": "Avoid alcohol during treatment and for 48 hours after completing metronidazole."
+  },
+  {
+    "drug_a": "Amlodipine", "drug_b": "Simvastatin",
+    "severity": "MODERATE",
+    "mechanism": "CYP3A4 inhibition by amlodipine increases simvastatin exposure",
+    "effect": "Myopathy, rhabdomyolysis risk",
+    "management": "Limit simvastatin dose to 20mg/day. Consider switching to rosuvastatin or pravastatin."
+  },
+  {
+    "drug_a": "Morphine", "drug_b": "Benzodiazepines",
+    "severity": "MAJOR",
+    "mechanism": "Additive CNS and respiratory depression",
+    "effect": "Respiratory depression, sedation, coma, death",
+    "management": "Avoid combination. If necessary, use lowest effective doses with close monitoring and naloxone available."
+  },
+  {
+    "drug_a": "Penicillin", "drug_b": "Probenecid",
+    "severity": "MINOR",
+    "mechanism": "Probenecid blocks renal tubular secretion of penicillin",
+    "effect": "Increased and prolonged penicillin levels",
+    "management": "Can be used intentionally to prolong penicillin effect (e.g., gonorrhoea treatment). Monitor for toxicity."
+  },
+  {
+    "drug_a": "Chloroquine", "drug_b": "Mefloquine",
+    "severity": "MAJOR",
+    "mechanism": "Additive QT prolongation and seizure risk",
+    "effect": "Cardiac arrhythmia, seizures",
+    "management": "Avoid combination. Use artemisinin-based combination therapy (ACT) per NHMIS guidelines."
+  }
+]

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "dx-malaria",
+    "name": "Plasmodium falciparum Malaria",
+    "icd11": "B50",
+    "triggers": ["fever", "chills", "rigors", "headache", "sweating", "vomiting", "nigeria"],
+    "confirmatory": ["positive RDT", "positive blood film", "splenomegaly"],
+    "excludes": ["no travel", "vaccinated"],
+    "baseScore": 85,
+    "epidemiology": "Endemic in Nigeria — high pre-test probability in febrile patients"
+  },
+  {
+    "id": "dx-typhoid",
+    "name": "Typhoid Fever (Enteric Fever)",
+    "icd11": "A01",
+    "triggers": ["prolonged fever", "stepwise fever", "headache", "abdominal pain", "constipation", "diarrhoea", "rose spots"],
+    "confirmatory": ["Widal test positive", "blood culture Salmonella typhi", "leucopenia"],
+    "excludes": [],
+    "baseScore": 72,
+    "epidemiology": "Common in areas with poor sanitation"
+  },
+  {
+    "id": "dx-pneumonia",
+    "name": "Community-Acquired Pneumonia",
+    "icd11": "J18",
+    "triggers": ["cough", "fever", "dyspnoea", "pleuritic chest pain", "productive sputum", "high respiratory rate"],
+    "confirmatory": ["consolidation on CXR", "elevated WBC", "reduced SpO2"],
+    "excludes": ["TB symptoms"],
+    "baseScore": 78,
+    "epidemiology": "Leading cause of adult hospitalisation"
+  },
+  {
+    "id": "dx-hypertensive-crisis",
+    "name": "Hypertensive Emergency",
+    "icd11": "I16",
+    "triggers": ["severe headache", "high BP", "visual disturbance", "epistaxis", "confusion", "chest pain"],
+    "confirmatory": ["SBP > 180 mmHg", "end organ damage", "papilloedema"],
+    "excludes": [],
+    "baseScore": 88,
+    "epidemiology": "Hypertension highly prevalent in Nigeria (30%+)"
+  },
+  {
+    "id": "dx-sepsis",
+    "name": "Sepsis / Septic Shock",
+    "icd11": "A41",
+    "triggers": ["fever", "altered consciousness", "tachycardia", "hypotension", "high respiratory rate", "elevated WBC"],
+    "confirmatory": ["positive blood culture", "elevated lactate", "qSOFA ≥ 2", "NEWS2 ≥ 5"],
+    "excludes": [],
+    "baseScore": 82,
+    "epidemiology": "Time-critical diagnosis — initiate bundle within 1 hour"
+  },
+  {
+    "id": "dx-uti",
+    "name": "Urinary Tract Infection",
+    "icd11": "N39",
+    "triggers": ["dysuria", "frequency", "urgency", "suprapubic pain", "cloudy urine", "haematuria"],
+    "confirmatory": ["positive urine dipstick", "pyuria on MSU", "urine culture positive"],
+    "excludes": [],
+    "baseScore": 80,
+    "epidemiology": "Very common, especially in females"
+  },
+  {
+    "id": "dx-pre-eclampsia",
+    "name": "Pre-Eclampsia",
+    "icd11": "O14",
+    "triggers": ["pregnant", "high BP", "headache", "visual disturbance", "oedema", "epigastric pain"],
+    "confirmatory": ["proteinuria", "SBP > 140 or DBP > 90 in pregnancy", "elevated LFTs"],
+    "excludes": ["not pregnant"],
+    "baseScore": 90,
+    "epidemiology": "Leading cause of maternal mortality in Nigeria"
+  },
+  {
+    "id": "dx-diabetes",
+    "name": "Uncontrolled Type 2 Diabetes Mellitus",
+    "icd11": "E11",
+    "triggers": ["polyuria", "polydipsia", "polyphagia", "weight loss", "fatigue", "recurrent infections", "blurred vision"],
+    "confirmatory": ["FBG > 7.0 mmol/L", "HbA1c > 6.5%", "random glucose > 11.1 mmol/L"],
+    "excludes": [],
+    "baseScore": 77,
+    "epidemiology": "Prevalence rising in Nigeria — often presents late"
+  },
+  {
+    "id": "dx-heart-failure",
+    "name": "Heart Failure (CCF)",
+    "icd11": "I50",
+    "triggers": ["dyspnoea", "orthopnoea", "ankle oedema", "fatigue", "cough", "paroxysmal nocturnal dyspnoea"],
+    "confirmatory": ["raised JVP", "bilateral basal crepitations", "cardiomegaly on CXR", "elevated BNP"],
+    "excludes": [],
+    "baseScore": 76,
+    "epidemiology": "Hypertension and cardiomyopathy are leading causes in Nigeria"
+  },
+  {
+    "id": "dx-tb",
+    "name": "Pulmonary Tuberculosis",
+    "icd11": "A15",
+    "triggers": ["chronic cough", "weight loss", "night sweats", "haemoptysis", "fever", "HIV positive"],
+    "confirmatory": ["AFB sputum positive", "GeneXpert MTB/RIF positive", "cavitary lesion CXR"],
+    "excludes": [],
+    "baseScore": 73,
+    "epidemiology": "Nigeria is a high-burden country. HIV co-infection common."
+  },
+  {
+    "id": "dx-appendicitis",
+    "name": "Acute Appendicitis",
+    "icd11": "K37",
+    "triggers": ["right iliac fossa pain", "nausea", "vomiting", "fever", "migrating pain from umbilicus", "rebound tenderness"],
+    "confirmatory": ["positive Rovsing's sign", "elevated WBC", "CT abdomen confirms"],
+    "excludes": [],
+    "baseScore": 80,
+    "epidemiology": "Requires urgent surgical consultation. Alvarado score recommended."
+  },
+  {
+    "id": "dx-stroke",
+    "name": "Acute Ischaemic Stroke",
+    "icd11": "I63",
+    "triggers": ["sudden facial droop", "arm weakness", "speech difficulty", "headache", "visual loss", "hemiplegia"],
+    "confirmatory": ["FAST positive", "CT head ischaemic changes", "high NIHSS"],
+    "excludes": [],
+    "baseScore": 87,
+    "epidemiology": "Hypertension major risk factor. FAST assessment mandatory."
+  }
+]

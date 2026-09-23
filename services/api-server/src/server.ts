@@ -13,6 +13,10 @@ import securityRoutes from './routes/security.routes';
 import syncRoutes from './routes/sync.routes';
 import adminRoutes from './routes/admin.routes';
 import facilitiesRoutes from './routes/facilities.routes';
+// Phase A — Real-Time Engine
+import vitalsRoutes from './routes/vitals.routes';
+import labRoutes from './routes/lab.routes';
+import theatreRoutes from './routes/theatre.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -42,13 +46,17 @@ app.use('/api/v1/security', securityRoutes);
 app.use('/api/v1/sync', syncRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/facilities', facilitiesRoutes);
+// Phase A — Real-Time Engine
+app.use('/api/v1/vitals', vitalsRoutes);
+app.use('/api/v1/lab', labRoutes);
+app.use('/api/v1/theatre', theatreRoutes);
 
 // Root System Status & Architecture Overview
 app.get('/', (req, res) => {
   res.json({
     platform: 'MedCore Healthcare Ecosystem (Powered by M87 Core)',
     status: 'ONLINE',
-    version: '1.4.0',
+    version: '2.0.0-realtime',
     port: PORT,
     timestamp: new Date().toISOString(),
     endpoints: {
@@ -60,6 +68,10 @@ app.get('/', (req, res) => {
       sync: '/api/v1/sync',
       admin: '/api/v1/admin',
       facilities: '/api/v1/facilities',
+      // Phase A
+      vitals: '/api/v1/vitals',
+      lab: '/api/v1/lab',
+      theatre: '/api/v1/theatre',
       webSocket: `ws://${req.headers.host || 'localhost:' + PORT}/ws`,
     },
     securityStatus: {
