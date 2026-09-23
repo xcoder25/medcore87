@@ -1,0 +1,26 @@
+:root {
+  --care-primary: #0F766E;
+  --care-primary-dark: #115E59;
+  --care-accent: #0284C7;
+  --care-bg: #F8FAFC;
+  --care-surface: #FFFFFF;
+  --care-text: #0F172A;
+  --care-text-muted: #64748B;
+  --care-border: #E2E8F0;
+  --care-radius: 16px;
+  --care-font: 'Inter', sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--care-font);
+  background: var(--care-bg);
+  color: var(--care-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.care-app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}

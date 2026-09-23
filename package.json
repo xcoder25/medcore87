@@ -1,0 +1,43 @@
+{
+    "name":  "medcore-platform",
+    "version":  "1.0.0",
+    "description":  "MedCore Healthcare Platform powered by M87 (Care Mobile, Clinic Mobile, OS Next.js, MOH Admin Next.js)",
+    "private":  true,
+    "workspaces":  [
+                       "apps/*",
+                       "packages/*",
+                       "services/*"
+                   ],
+    "scripts":  {
+                    "dev:care":  "npm --workspace=apps/care run start",
+                    "dev:care:web":  "npm --workspace=apps/care run web",
+                    "dev:clinic":  "npm --workspace=apps/clinic run start",
+                    "dev:clinic:web":  "npm --workspace=apps/clinic run web",
+                    "dev:os":  "npm --workspace=apps/os run dev",
+                    "dev:admin":  "npm --workspace=apps/admin run dev",
+                    "dev:server":  "npm --workspace=services/api-server run dev",
+                    "build":  "npm run build --workspaces",
+                    "lint":  "npm run lint --workspaces",
+                    "typecheck":  "npm run typecheck --workspaces",
+                    "start":  "node services/hospital-gateway/server.js",
+                    "start:os":  "node services/hospital-gateway/server.js"
+                },
+    "keywords":  [
+                     "healthcare",
+                     "hospital-os",
+                     "telehealth",
+                     "medical-tourism",
+                     "clinical-workbench",
+                     "m87"
+                 ],
+    "author":  "MedCore Systems / M87",
+    "license":  "Proprietary",
+    "devDependencies":  {
+                            "path-scurry":  "^2.0.2",
+                            "tsx":  "^4.23.13"
+                        },
+    "dependencies":  {
+                         "cors":  "^2.8.6",
+                         "express":  "^5.2.1"
+                     }
+}

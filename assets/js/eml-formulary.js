@@ -1,0 +1,240 @@
+/**
+ * Akwa Ibom State Essential Medicines List (AKS-EML)
+ * Adults — 3rd Edition 2026 | Children — 1st Edition 2026
+ * Source: Akwa Ibom State Ministry of Health
+ * Structured for Hospital OS prescribing, pharmacy, and MOH compliance.
+ */
+window.AKS_EML = (() => {
+  const meta = {
+    adultEdition: '3rd Edition 2026',
+    childrenEdition: '1st Edition 2026',
+    authority: 'Akwa Ibom State Ministry of Health',
+    commissioner: 'Dr. Ekem Emmanuel John',
+    alignedWith: ['National Essential Medicines List', 'WHO Model List of Essential Medicines', 'Nigeria STG 3rd Edition'],
+  };
+
+  /** @type {Array<{id:string,name:string,category:string,subcategory?:string,forms:string[],strengths:string[],routes:string[],population:'adult'|'children'|'both',aware?:'Access'|'Watch'|'Reserve'|null,notes?:string,restricted?:boolean}>} */
+  const items = [
+    // ── 1. ANAESTHETICS ──
+    { id:'EML-A-001', name:'Halothane', category:'Anaesthetics', subcategory:'Inhalational', forms:['Inhalation (volatile liquid)'], strengths:['250 mL bottle'], routes:['Inhalation'], population:'both' },
+    { id:'EML-A-002', name:'Isoflurane', category:'Anaesthetics', subcategory:'Inhalational', forms:['Inhalation (volatile liquid)'], strengths:['250 mL bottle'], routes:['Inhalation'], population:'both' },
+    { id:'EML-A-003', name:'Nitrous oxide', category:'Anaesthetics', subcategory:'Inhalational', forms:['Medical gas'], strengths:['—'], routes:['Inhalation'], population:'both' },
+    { id:'EML-A-004', name:'Oxygen', category:'Anaesthetics', subcategory:'Medical gases', forms:['Medical gas'], strengths:['—'], routes:['Inhalation'], population:'both', notes:'Hypoxaemia management' },
+    { id:'EML-A-005', name:'Sevoflurane', category:'Anaesthetics', subcategory:'Inhalational', forms:['Inhalation (volatile liquid)'], strengths:['250 mL bottle'], routes:['Inhalation'], population:'both' },
+    { id:'EML-A-006', name:'Ketamine', category:'Anaesthetics', subcategory:'Injectable', forms:['Injection'], strengths:['50 mg/mL'], routes:['IV','IM'], population:'both' },
+    { id:'EML-A-007', name:'Propofol', category:'Anaesthetics', subcategory:'Injectable', forms:['Injection (emulsion)'], strengths:['10 mg/mL'], routes:['IV'], population:'both', notes:'Not for age < 3 years (children)' },
+    { id:'EML-A-008', name:'Thiopental', category:'Anaesthetics', subcategory:'Injectable', forms:['Injection'], strengths:['10 mg/mL','20 mg/mL'], routes:['IV'], population:'both' },
+    { id:'EML-A-009', name:'Bupivacaine', category:'Anaesthetics', subcategory:'Local', forms:['Injection','Spinal'], strengths:['0.25%','0.5%'], routes:['Injection','Spinal'], population:'both', notes:'Not recommended children < 12 years' },
+    { id:'EML-A-010', name:'Lidocaine', category:'Anaesthetics', subcategory:'Local', forms:['Injection','Topical','Cream'], strengths:['1%','2%','5%'], routes:['Injection','Topical'], population:'both' },
+    { id:'EML-A-011', name:'Lidocaine + Epinephrine', category:'Anaesthetics', subcategory:'Local', forms:['Dental cartridge'], strengths:['2% + 1:80,000'], routes:['Injection'], population:'both' },
+    { id:'EML-A-012', name:'Atropine', category:'Anaesthetics', subcategory:'Preoperative', forms:['Injection'], strengths:['500 mcg/mL','600 mcg/mL','1 mg'], routes:['IV','IM'], population:'both' },
+    { id:'EML-A-013', name:'Midazolam', category:'Anaesthetics', subcategory:'Preoperative', forms:['Injection','Oral liquid','Tablet'], strengths:['1 mg/mL','2 mg/mL','7.5 mg','15 mg'], routes:['IV','Oral'], population:'both' },
+    { id:'EML-A-014', name:'Morphine', category:'Anaesthetics', subcategory:'Preoperative / Analgesic', forms:['Injection'], strengths:['10 mg','15 mg','0.5 mg/mL'], routes:['IV','IM','SC'], population:'adult' },
+    { id:'EML-A-015', name:'Promethazine', category:'Anaesthetics', subcategory:'Preoperative', forms:['Injection','Suppository','Oral liquid','Tablet'], strengths:['25 mg/mL','12.5 mg','25 mg','5 mg/mL'], routes:['IV','IM','PR','Oral'], population:'both' },
+
+    // ── 2. ANTIALLERGICS ──
+    { id:'EML-B-001', name:'Dexamethasone', category:'Antiallergics', subcategory:'Anti-anaphylactic', forms:['Injection','Tablet','Oral liquid'], strengths:['4 mg/mL','0.5 mg','4 mg','5 mg/5 mL'], routes:['IV','IM','Oral'], population:'both' },
+    { id:'EML-B-002', name:'Epinephrine (Adrenaline)', category:'Antiallergics', subcategory:'Anti-anaphylactic', forms:['Injection'], strengths:['1 mg/mL'], routes:['IM','IV'], population:'both' },
+    { id:'EML-B-003', name:'Hydrocortisone', category:'Antiallergics', subcategory:'Anti-anaphylactic', forms:['Powder for injection','Injection'], strengths:['100 mg'], routes:['IV','IM'], population:'both' },
+    { id:'EML-B-004', name:'Prednisolone', category:'Antiallergics', subcategory:'Anti-anaphylactic', forms:['Tablet','Oral liquid'], strengths:['5 mg','25 mg','5 mg/mL','15 mg/5 mL'], routes:['Oral'], population:'both' },
+    { id:'EML-B-005', name:'Chlorphenamine', category:'Antiallergics', subcategory:'Anti-histamine', forms:['Injection','Oral liquid','Tablet'], strengths:['10 mg/mL','2 mg/5 mL'], routes:['IV','IM','Oral'], population:'children' },
+    { id:'EML-B-006', name:'Loratadine', category:'Antiallergics', subcategory:'Anti-histamine', forms:['Oral liquid','Tablet'], strengths:['1 mg/mL','10 mg'], routes:['Oral'], population:'children' },
+
+    // ── 3. ANTICONVULSANTS ──
+    { id:'EML-C-001', name:'Carbamazepine', category:'Anticonvulsants', forms:['Tablet','Oral liquid','Chewable'], strengths:['100 mg','200 mg','100 mg/5 mL'], routes:['Oral'], population:'both' },
+    { id:'EML-C-002', name:'Diazepam', category:'Anticonvulsants', forms:['Injection','Tablet','Rectal gel'], strengths:['5 mg/mL','5 mg','2.5 mg','10 mg'], routes:['IV','Oral','PR'], population:'both' },
+    { id:'EML-C-003', name:'Levetiracetam', category:'Anticonvulsants', forms:['Tablet','Oral solution'], strengths:['250 mg','500 mg','750 mg','1000 mg','100 mg/mL'], routes:['Oral'], population:'both' },
+    { id:'EML-C-004', name:'Lorazepam', category:'Anticonvulsants', forms:['Injection'], strengths:['2 mg/mL','4 mg/mL'], routes:['IV','IM'], population:'both' },
+    { id:'EML-C-005', name:'Magnesium sulfate', category:'Anticonvulsants', forms:['Injection'], strengths:['50%','20%','500 mg/mL'], routes:['IV','IM'], population:'both' },
+    { id:'EML-C-006', name:'Phenobarbital', category:'Anticonvulsants', forms:['Injection','Oral liquid','Tablet'], strengths:['30 mg/mL','60 mg/mL','15 mg','30 mg','60 mg'], routes:['IV','Oral'], population:'both' },
+    { id:'EML-C-007', name:'Phenytoin', category:'Anticonvulsants', forms:['Capsule','Injection','Oral liquid','Tablet'], strengths:['25 mg','50 mg','100 mg','300 mg','50 mg/mL','125 mg/5 mL'], routes:['Oral','IV'], population:'both' },
+    { id:'EML-C-008', name:'Sodium valproate', category:'Anticonvulsants', forms:['Oral liquid','Tablet (enteric-coated)','Capsule'], strengths:['200 mg/5 mL','100 mg','200 mg','500 mg'], routes:['Oral'], population:'both' },
+    { id:'EML-C-009', name:'Midazolam (oromucosal)', category:'Anticonvulsants', forms:['Solution for oromucosal admin'], strengths:['5 mg/mL','10 mg/mL'], routes:['Buccal'], population:'both' },
+
+    // ── 4. ANTIDOTES ──
+    { id:'EML-D-001', name:'Charcoal (activated)', category:'Antidotes', subcategory:'Non-specific', forms:['Capsule','Powder'], strengths:['260 mg','5 g'], routes:['Oral'], population:'both' },
+    { id:'EML-D-002', name:'Acetylcysteine', category:'Antidotes', subcategory:'Specific', forms:['Injection','Oral liquid'], strengths:['200 mg/mL','10%','20%'], routes:['IV','Oral'], population:'both' },
+    { id:'EML-D-003', name:'Naloxone', category:'Antidotes', subcategory:'Specific', forms:['Injection'], strengths:['400 mcg'], routes:['IV','IM'], population:'both' },
+    { id:'EML-D-004', name:'Calcium gluconate', category:'Antidotes', subcategory:'Specific', forms:['Injection'], strengths:['100 mg/mL'], routes:['IV'], population:'both' },
+    { id:'EML-D-005', name:'Flumazenil', category:'Antidotes', subcategory:'Specific', forms:['Injection'], strengths:['0.1 mg/mL'], routes:['IV'], population:'both' },
+
+    // ── 5. ANTI-INFECTIVES ──
+    { id:'EML-E-001', name:'Metronidazole', category:'Anti-infectives', subcategory:'Antiamoebic', forms:['Oral liquid','Tablet','Injection'], strengths:['200 mg/5 mL','200 mg','400 mg','500 mg'], routes:['Oral','IV'], population:'both', aware:'Access' },
+    { id:'EML-E-002', name:'Tinidazole', category:'Anti-infectives', subcategory:'Antiamoebic', forms:['Tablet'], strengths:['500 mg'], routes:['Oral'], population:'both' },
+    { id:'EML-E-003', name:'Albendazole', category:'Anti-infectives', subcategory:'Anthelminthic', forms:['Tablet','Oral liquid','Chewable'], strengths:['200 mg','400 mg','100 mg/5 mL'], routes:['Oral'], population:'both' },
+    { id:'EML-E-004', name:'Ivermectin', category:'Anti-infectives', subcategory:'Anthelminthic', forms:['Tablet'], strengths:['3 mg'], routes:['Oral'], population:'both' },
+    { id:'EML-E-005', name:'Mebendazole', category:'Anti-infectives', subcategory:'Anthelminthic', forms:['Tablet','Oral liquid'], strengths:['100 mg','500 mg','100 mg/5 mL'], routes:['Oral'], population:'both' },
+    { id:'EML-E-006', name:'Praziquantel', category:'Anti-infectives', subcategory:'Anthelminthic', forms:['Tablet'], strengths:['600 mg'], routes:['Oral'], population:'both' },
+    { id:'EML-E-007', name:'Amoxicillin', category:'Anti-infectives', subcategory:'Antibacterial Access', forms:['Capsule','Tablet','Powder for oral liquid','Powder for injection'], strengths:['250 mg','500 mg','125 mg/5 mL','250 mg/5 mL'], routes:['Oral','IV'], population:'both', aware:'Access' },
+    { id:'EML-E-008', name:'Amoxicillin + Clavulanic acid', category:'Anti-infectives', subcategory:'Antibacterial Access', forms:['Oral liquid','Tablet','Powder for injection'], strengths:['250/125 mg','500/125 mg','875/125 mg'], routes:['Oral','IV'], population:'both', aware:'Access' },
+    { id:'EML-E-009', name:'Ampicillin', category:'Anti-infectives', subcategory:'Antibacterial Access', forms:['Capsule','Powder for injection'], strengths:['250 mg','500 mg','1 g'], routes:['Oral','IV'], population:'both', aware:'Access' },
+    { id:'EML-E-010', name:'Benzylpenicillin', category:'Anti-infectives', subcategory:'Antibacterial Access', forms:['Powder for injection'], strengths:['600 mg','3 g'], routes:['IV','IM'], population:'both', aware:'Access' },
+    { id:'EML-E-011', name:'Cefalexin', category:'Anti-infectives', subcategory:'Antibacterial Access', forms:['Capsule','Oral suspension'], strengths:['250 mg','500 mg','125 mg/5 mL'], routes:['Oral'], population:'both', aware:'Access' },
+    { id:'EML-E-012', name:'Cloxacillin', category:'Anti-infectives', subcategory:'Antibacterial Access', forms:['Capsule','Powder for injection'], strengths:['250 mg','500 mg'], routes:['Oral','IV'], population:'both', aware:'Access' },
+    { id:'EML-E-013', name:'Doxycycline', category:'Anti-infectives', subcategory:'Antibacterial Access', forms:['Capsule'], strengths:['100 mg'], routes:['Oral'], population:'both', aware:'Access', notes:'Children <8 only if life-threatening' },
+    { id:'EML-E-014', name:'Gentamicin', category:'Anti-infectives', subcategory:'Antibacterial Access', forms:['Injection'], strengths:['40 mg/mL'], routes:['IV','IM'], population:'both', aware:'Access' },
+    { id:'EML-E-015', name:'Nitrofurantoin', category:'Anti-infectives', subcategory:'Antibacterial Access', forms:['Tablet','Suspension'], strengths:['50 mg','100 mg'], routes:['Oral'], population:'both', aware:'Access' },
+    { id:'EML-E-016', name:'Sulfamethoxazole + Trimethoprim', category:'Anti-infectives', subcategory:'Antibacterial Access', forms:['Tablet','Oral liquid','Injection'], strengths:['400/80 mg','800/160 mg','200/40 mg/5 mL'], routes:['Oral','IV'], population:'both', aware:'Access' },
+    { id:'EML-E-017', name:'Azithromycin', category:'Anti-infectives', subcategory:'Antibacterial Watch', forms:['Tablet','Powder for oral liquid'], strengths:['250 mg','500 mg','200 mg/5 mL'], routes:['Oral'], population:'both', aware:'Watch' },
+    { id:'EML-E-018', name:'Ceftriaxone', category:'Anti-infectives', subcategory:'Antibacterial Watch', forms:['Powder for injection'], strengths:['250 mg','500 mg','1 g'], routes:['IV','IM'], population:'both', aware:'Watch' },
+    { id:'EML-E-019', name:'Ciprofloxacin', category:'Anti-infectives', subcategory:'Antibacterial Watch', forms:['Tablet','Injection'], strengths:['250 mg','500 mg','2 mg/mL'], routes:['Oral','IV'], population:'adult', aware:'Watch' },
+    { id:'EML-E-020', name:'Clarithromycin', category:'Anti-infectives', subcategory:'Antibacterial Watch', forms:['Tablet','Suspension'], strengths:['250 mg','500 mg'], routes:['Oral'], population:'both', aware:'Watch' },
+    { id:'EML-E-021', name:'Meropenem', category:'Anti-infectives', subcategory:'Antibacterial Reserve', forms:['Powder for injection'], strengths:['500 mg','1 g'], routes:['IV'], population:'adult', aware:'Reserve' },
+    { id:'EML-E-022', name:'Vancomycin', category:'Anti-infectives', subcategory:'Antibacterial Reserve', forms:['Capsule','Powder for injection'], strengths:['125 mg','250 mg','500 mg','1 g'], routes:['Oral','IV'], population:'both', aware:'Reserve' },
+    { id:'EML-E-023', name:'Linezolid', category:'Anti-infectives', subcategory:'Antibacterial Reserve', forms:['Tablet','Solution for injection','Oral suspension'], strengths:['600 mg','200 mg/100 mL'], routes:['Oral','IV'], population:'both', aware:'Reserve' },
+    { id:'EML-E-024', name:'Fluconazole', category:'Anti-infectives', subcategory:'Antifungal', forms:['Capsule','Injection','Oral liquid'], strengths:['50 mg','100 mg','150 mg','200 mg','2 mg/mL'], routes:['Oral','IV'], population:'both' },
+    { id:'EML-E-025', name:'Nystatin', category:'Anti-infectives', subcategory:'Antifungal', forms:['Oral liquid','Lozenge','Pessary','Tablet'], strengths:['100,000 units/mL'], routes:['Oral','Vaginal'], population:'both' },
+    { id:'EML-E-026', name:'Artemether + Lumefantrine', category:'Anti-infectives', subcategory:'Antimalarial', forms:['Tablet'], strengths:['20/120 mg','40/240 mg','80/480 mg'], routes:['Oral'], population:'both' },
+    { id:'EML-E-027', name:'Artesunate', category:'Anti-infectives', subcategory:'Antimalarial', forms:['Powder for injection','Suppository'], strengths:['60 mg','50 mg','100 mg','200 mg'], routes:['IV','IM','PR'], population:'both' },
+    { id:'EML-E-028', name:'Quinine', category:'Anti-infectives', subcategory:'Antimalarial', forms:['Injection','Tablet'], strengths:['300 mg/mL','300 mg'], routes:['IV','Oral'], population:'both' },
+    { id:'EML-E-029', name:'Isoniazid', category:'Anti-infectives', subcategory:'Antituberculosis', forms:['Tablet','Oral liquid'], strengths:['100 mg','300 mg','50 mg/5 mL'], routes:['Oral'], population:'both' },
+    { id:'EML-E-030', name:'Rifampicin', category:'Anti-infectives', subcategory:'Antituberculosis', forms:['Capsule','Tablet','Oral liquid'], strengths:['150 mg','300 mg','20 mg/mL'], routes:['Oral'], population:'both' },
+    { id:'EML-E-031', name:'Pyrazinamide', category:'Anti-infectives', subcategory:'Antituberculosis', forms:['Tablet'], strengths:['400 mg','500 mg'], routes:['Oral'], population:'both' },
+    { id:'EML-E-032', name:'Ethambutol', category:'Anti-infectives', subcategory:'Antituberculosis', forms:['Tablet','Oral liquid'], strengths:['100 mg','400 mg','25 mg/mL'], routes:['Oral'], population:'both' },
+    { id:'EML-E-033', name:'Aciclovir', category:'Anti-infectives', subcategory:'Antiviral', forms:['Cream','Oral liquid','Tablet','Powder for injection'], strengths:['5%','200 mg','400 mg','800 mg','250 mg'], routes:['Topical','Oral','IV'], population:'both' },
+    { id:'EML-E-034', name:'Dolutegravir', category:'Anti-infectives', subcategory:'Antiretroviral', forms:['Tablet'], strengths:['50 mg','10 mg'], routes:['Oral'], population:'both' },
+    { id:'EML-E-035', name:'Tenofovir + Lamivudine + Dolutegravir', category:'Anti-infectives', subcategory:'Antiretroviral FDC', forms:['Tablet'], strengths:['300/300/50 mg'], routes:['Oral'], population:'adult' },
+    { id:'EML-E-036', name:'Lamivudine + Zidovudine', category:'Anti-infectives', subcategory:'Antiretroviral FDC', forms:['Tablet'], strengths:['30/60 mg','150/300 mg'], routes:['Oral'], population:'both' },
+
+    // ── 6–10 CARDIOVASCULAR & RELATED ──
+    { id:'EML-F-001', name:'Amlodipine', category:'Cardiovascular', subcategory:'Antihypertensive', forms:['Tablet'], strengths:['5 mg','10 mg'], routes:['Oral'], population:'both' },
+    { id:'EML-F-002', name:'Lisinopril', category:'Cardiovascular', subcategory:'Antihypertensive', forms:['Tablet'], strengths:['5 mg','10 mg'], routes:['Oral'], population:'adult' },
+    { id:'EML-F-003', name:'Losartan', category:'Cardiovascular', subcategory:'Antihypertensive', forms:['Tablet'], strengths:['25 mg','50 mg'], routes:['Oral'], population:'adult' },
+    { id:'EML-F-004', name:'Atenolol', category:'Cardiovascular', subcategory:'Anti-arrhythmic / HTN', forms:['Tablet'], strengths:['25 mg','50 mg','100 mg'], routes:['Oral'], population:'adult' },
+    { id:'EML-F-005', name:'Bisoprolol', category:'Cardiovascular', subcategory:'Anti-anginal / HF', forms:['Tablet'], strengths:['1.25 mg','5 mg','12.5 mg'], routes:['Oral'], population:'adult' },
+    { id:'EML-F-006', name:'Carvedilol', category:'Cardiovascular', subcategory:'Heart failure', forms:['Tablet'], strengths:['6.25 mg','12.5 mg','25 mg'], routes:['Oral'], population:'adult' },
+    { id:'EML-F-007', name:'Digoxin', category:'Cardiovascular', subcategory:'Heart failure / Arrhythmia', forms:['Tablet','Injection','Oral liquid'], strengths:['62.5 mcg','125 mcg','250 mcg','50 mcg/mL'], routes:['Oral','IV'], population:'both' },
+    { id:'EML-F-008', name:'Furosemide', category:'Cardiovascular', subcategory:'Diuretic / HF', forms:['Tablet','Injection'], strengths:['20 mg','40 mg','10 mg/mL'], routes:['Oral','IV'], population:'both' },
+    { id:'EML-F-009', name:'Spironolactone', category:'Cardiovascular', subcategory:'Diuretic', forms:['Tablet'], strengths:['25 mg'], routes:['Oral'], population:'both' },
+    { id:'EML-F-010', name:'Hydrochlorothiazide', category:'Cardiovascular', subcategory:'Diuretic', forms:['Tablet'], strengths:['12.5 mg','25 mg'], routes:['Oral'], population:'both' },
+    { id:'EML-F-011', name:'Atorvastatin', category:'Cardiovascular', subcategory:'Lipid-lowering', forms:['Tablet'], strengths:['10 mg','20 mg','40 mg'], routes:['Oral'], population:'adult' },
+    { id:'EML-F-012', name:'Simvastatin', category:'Cardiovascular', subcategory:'Lipid-lowering', forms:['Tablet'], strengths:['10 mg','20 mg','40 mg'], routes:['Oral'], population:'adult' },
+    { id:'EML-F-013', name:'Acetylsalicylic acid', category:'Cardiovascular', subcategory:'Antiplatelet', forms:['Tablet'], strengths:['75 mg','100 mg','300 mg'], routes:['Oral'], population:'adult' },
+    { id:'EML-F-014', name:'Clopidogrel', category:'Cardiovascular', subcategory:'Antiplatelet', forms:['Tablet'], strengths:['75 mg','300 mg'], routes:['Oral'], population:'adult' },
+    { id:'EML-F-015', name:'Enoxaparin', category:'Cardiovascular', subcategory:'Anticoagulant', forms:['Injection'], strengths:['20 mg','40 mg','60 mg','80 mg'], routes:['SC'], population:'adult' },
+    { id:'EML-F-016', name:'Warfarin', category:'Cardiovascular', subcategory:'Anticoagulant', forms:['Tablet'], strengths:['1 mg','2 mg','5 mg'], routes:['Oral'], population:'both' },
+    { id:'EML-F-017', name:'Heparin', category:'Cardiovascular', subcategory:'Anticoagulant', forms:['Injection'], strengths:['1000 units/mL','5000 units/mL'], routes:['IV','SC'], population:'both' },
+    { id:'EML-F-018', name:'Dopamine', category:'Cardiovascular', subcategory:'Heart failure', forms:['Injection'], strengths:['40 mg/mL'], routes:['IV'], population:'both' },
+    { id:'EML-F-019', name:'Dobutamine', category:'Cardiovascular', subcategory:'Heart failure', forms:['Injection'], strengths:['5 mg/mL'], routes:['IV'], population:'adult' },
+    { id:'EML-F-020', name:'Glyceryl trinitrate', category:'Cardiovascular', subcategory:'Anti-anginal', forms:['Tablet (sublingual)','Patch'], strengths:['500 mcg','0.1 mg','0.2 mg','0.4 mg'], routes:['SL','Transdermal'], population:'adult' },
+
+    // ── GI ──
+    { id:'EML-G-001', name:'Omeprazole', category:'Gastrointestinal', subcategory:'Antiulcer', forms:['Capsule','Tablet','Powder for injection'], strengths:['10 mg','20 mg','40 mg'], routes:['Oral','IV'], population:'both' },
+    { id:'EML-G-002', name:'Ranitidine', category:'Gastrointestinal', subcategory:'Antiulcer', forms:['Tablet','Injection','Oral liquid'], strengths:['150 mg','300 mg','25 mg/mL'], routes:['Oral','IV'], population:'both' },
+    { id:'EML-G-003', name:'Metoclopramide', category:'Gastrointestinal', subcategory:'Antiemetic', forms:['Tablet','Injection','Oral liquid'], strengths:['10 mg','5 mg/mL'], routes:['Oral','IV'], population:'both' },
+    { id:'EML-G-004', name:'Ondansetron', category:'Gastrointestinal', subcategory:'Antiemetic', forms:['Tablet','Injection','Oral liquid'], strengths:['4 mg','8 mg','2 mg/mL'], routes:['Oral','IV'], population:'both' },
+    { id:'EML-G-005', name:'Oral rehydration salts', category:'Gastrointestinal', subcategory:'Diarrhoea', forms:['Powder for dilution'], strengths:['WHO formula'], routes:['Oral'], population:'both' },
+    { id:'EML-G-006', name:'Zinc sulfate', category:'Gastrointestinal', subcategory:'Diarrhoea', forms:['Tablet'], strengths:['20 mg'], routes:['Oral'], population:'children' },
+    { id:'EML-G-007', name:'Lactulose', category:'Gastrointestinal', subcategory:'Laxative', forms:['Oral liquid'], strengths:['68%'], routes:['Oral'], population:'adult' },
+    { id:'EML-G-008', name:'Senna', category:'Gastrointestinal', subcategory:'Laxative', forms:['Oral liquid','Tablet'], strengths:['7.5 mg'], routes:['Oral'], population:'both' },
+
+    // ── RESPIRATORY ──
+    { id:'EML-H-001', name:'Salbutamol', category:'Respiratory', subcategory:'Antiasthmatic', forms:['Inhaler','Nebuliser solution','Injection','Tablet'], strengths:['100 mcg/dose','2.5 mg','5 mg','2 mg'], routes:['Inhaled','Nebulised','IV','Oral'], population:'both' },
+    { id:'EML-H-002', name:'Ipratropium bromide', category:'Respiratory', subcategory:'Antiasthmatic', forms:['Metered dose inhaler','Nebuliser'], strengths:['20 mcg/dose','0.02%'], routes:['Inhaled','Nebulised'], population:'both' },
+    { id:'EML-H-003', name:'Budesonide', category:'Respiratory', subcategory:'Antiasthmatic', forms:['Inhalation aerosol'], strengths:['100 mcg','200 mcg'], routes:['Inhaled'], population:'both' },
+    { id:'EML-H-004', name:'Beclomethasone', category:'Respiratory', subcategory:'Antiasthmatic', forms:['Inhaler'], strengths:['100 mcg','200 mcg'], routes:['Inhaled'], population:'adult' },
+    { id:'EML-H-005', name:'Salmeterol + Fluticasone', category:'Respiratory', subcategory:'Antiasthmatic', forms:['Inhalation'], strengths:['25/125 mcg','50/250 mcg'], routes:['Inhaled'], population:'both' },
+
+    // ── ENDOCRINE / DIABETES ──
+    { id:'EML-I-001', name:'Metformin', category:'Endocrine', subcategory:'Oral antidiabetic', forms:['Tablet'], strengths:['500 mg','1 g'], routes:['Oral'], population:'both' },
+    { id:'EML-I-002', name:'Glibenclamide', category:'Endocrine', subcategory:'Oral antidiabetic', forms:['Tablet'], strengths:['5 mg'], routes:['Oral'], population:'adult' },
+    { id:'EML-I-003', name:'Insulin (soluble)', category:'Endocrine', subcategory:'Insulin', forms:['Injection'], strengths:['100 units/mL'], routes:['SC','IV'], population:'both' },
+    { id:'EML-I-004', name:'Insulin glargine', category:'Endocrine', subcategory:'Insulin', forms:['Injection'], strengths:['100 units/mL'], routes:['SC'], population:'adult' },
+    { id:'EML-I-005', name:'Insulin detemir', category:'Endocrine', subcategory:'Insulin', forms:['Injection'], strengths:['100 units/mL'], routes:['SC'], population:'adult' },
+    { id:'EML-I-006', name:'Glucagon', category:'Endocrine', subcategory:'Hypoglycaemia', forms:['Injection'], strengths:['1 mg/mL'], routes:['IM','IV'], population:'both' },
+    { id:'EML-I-007', name:'Levothyroxine', category:'Endocrine', subcategory:'Thyroid', forms:['Tablet'], strengths:['25 mcg','50 mcg','100 mcg'], routes:['Oral'], population:'both' },
+    { id:'EML-I-008', name:'Carbimazole', category:'Endocrine', subcategory:'Antithyroid', forms:['Tablet'], strengths:['5 mg'], routes:['Oral'], population:'both' },
+    { id:'EML-I-009', name:'Oxytocin', category:'Endocrine', subcategory:'Uterotonic', forms:['Injection'], strengths:['10 units/mL'], routes:['IV','IM'], population:'adult' },
+    { id:'EML-I-010', name:'Misoprostol', category:'Endocrine', subcategory:'Uterotonic', forms:['Tablet'], strengths:['200 mcg'], routes:['Oral','PR','PV'], population:'adult' },
+
+    // ── BLOOD / ANAEMIA ──
+    { id:'EML-J-001', name:'Ferrous salt', category:'Blood', subcategory:'Antianaemia', forms:['Tablet','Oral liquid'], strengths:['Equivalent 60 mg iron','25 mg iron/mL'], routes:['Oral'], population:'both' },
+    { id:'EML-J-002', name:'Folic acid', category:'Blood', subcategory:'Antianaemia', forms:['Tablet','Injectable'], strengths:['5 mg','400 mcg','1 mg'], routes:['Oral','IV'], population:'both' },
+    { id:'EML-J-003', name:'Hydroxocobalamin', category:'Blood', subcategory:'Antianaemia', forms:['Injection'], strengths:['1 mg'], routes:['IM'], population:'both' },
+    { id:'EML-J-004', name:'Tranexamic acid', category:'Blood', subcategory:'Haemostatic', forms:['Injection'], strengths:['100 mg/mL'], routes:['IV'], population:'adult' },
+    { id:'EML-J-005', name:'Phytomenadione (Vitamin K1)', category:'Blood', subcategory:'Coagulation', forms:['Injection','Tablet'], strengths:['1 mg/mL','10 mg'], routes:['IV','IM','Oral'], population:'both' },
+
+    // ── PAIN / NSAIDS ──
+    { id:'EML-K-001', name:'Paracetamol', category:'Pain', subcategory:'Analgesic/Antipyretic', forms:['Tablet','Oral liquid','Suppository','Injection'], strengths:['500 mg','1 g','120 mg/5 mL','125 mg','250 mg'], routes:['Oral','PR','IV'], population:'both' },
+    { id:'EML-K-002', name:'Ibuprofen', category:'Pain', subcategory:'NSAID', forms:['Tablet','Oral liquid'], strengths:['200 mg','400 mg','100 mg/5 mL'], routes:['Oral'], population:'both', notes:'Not for children < 3 months' },
+    { id:'EML-K-003', name:'Diclofenac', category:'Pain', subcategory:'NSAID', forms:['Tablet','Injection','Suppository'], strengths:['50 mg','75 mg'], routes:['Oral','IM','PR'], population:'adult' },
+    { id:'EML-K-004', name:'Morphine', category:'Pain', subcategory:'Opioid', forms:['Injection','Tablet','Oral liquid'], strengths:['5 mg','10 mg','15 mg'], routes:['IV','IM','SC','Oral'], population:'adult' },
+    { id:'EML-K-005', name:'Tramadol', category:'Pain', subcategory:'Opioid', forms:['Capsule','Injection'], strengths:['50 mg','100 mg'], routes:['Oral','IV'], population:'adult' },
+
+    // ── DERMATOLOGY (selected) ──
+    { id:'EML-L-001', name:'Clotrimazole', category:'Dermatological', subcategory:'Antifungal', forms:['Cream','Pessary'], strengths:['1%','100 mg','500 mg'], routes:['Topical','Vaginal'], population:'both' },
+    { id:'EML-L-002', name:'Mupirocin', category:'Dermatological', subcategory:'Anti-infective', forms:['Cream','Ointment'], strengths:['2%'], routes:['Topical'], population:'both' },
+    { id:'EML-L-003', name:'Silver sulfadiazine', category:'Dermatological', subcategory:'Anti-infective', forms:['Cream'], strengths:['1%'], routes:['Topical'], population:'both' },
+    { id:'EML-L-004', name:'Betamethasone', category:'Dermatological', subcategory:'Anti-inflammatory', forms:['Cream','Ointment'], strengths:['0.1%'], routes:['Topical'], population:'both' },
+    { id:'EML-L-005', name:'Calamine', category:'Dermatological', subcategory:'Antipruritic', forms:['Lotion'], strengths:['8%','15%'], routes:['Topical'], population:'both' },
+    { id:'EML-L-006', name:'Permethrin', category:'Dermatological', subcategory:'Scabicide', forms:['Cream','Lotion'], strengths:['5%','1%'], routes:['Topical'], population:'both' },
+
+    // ── VACCINES (selected) ──
+    { id:'EML-M-001', name:'BCG vaccine', category:'Immunologicals', subcategory:'Vaccines', forms:['Lyophilized injection'], strengths:['10/20 dose'], routes:['ID'], population:'both' },
+    { id:'EML-M-002', name:'Tetanus vaccine', category:'Immunologicals', subcategory:'Vaccines', forms:['Liquid injection'], strengths:['10-dose vial'], routes:['IM'], population:'both' },
+    { id:'EML-M-003', name:'Hepatitis B vaccine', category:'Immunologicals', subcategory:'Vaccines', forms:['Injection'], strengths:['—'], routes:['IM'], population:'both' },
+    { id:'EML-M-004', name:'Measles vaccine', category:'Immunologicals', subcategory:'Vaccines', forms:['Lyophilized injection'], strengths:['10-dose'], routes:['SC'], population:'both' },
+    { id:'EML-M-005', name:'Yellow fever vaccine', category:'Immunologicals', subcategory:'Vaccines', forms:['Lyophilized injection'], strengths:['10-dose'], routes:['SC'], population:'both' },
+  ];
+
+  function search(query, opts = {}) {
+    const q = (query || '').toLowerCase().trim();
+    const pop = opts.population; // 'adult' | 'children' | undefined
+    let list = items;
+    if (pop === 'adult') list = list.filter(d => d.population === 'adult' || d.population === 'both');
+    if (pop === 'children') list = list.filter(d => d.population === 'children' || d.population === 'both');
+    if (opts.category) list = list.filter(d => d.category === opts.category);
+    if (opts.aware) list = list.filter(d => d.aware === opts.aware);
+    if (!q) return list;
+    return list.filter(d =>
+      d.name.toLowerCase().includes(q) ||
+      d.category.toLowerCase().includes(q) ||
+      (d.subcategory || '').toLowerCase().includes(q) ||
+      d.id.toLowerCase().includes(q)
+    );
+  }
+
+  function getById(id) {
+    return items.find(d => d.id === id) || null;
+  }
+
+  function isOnEML(name, population) {
+    const n = (name || '').toLowerCase();
+    return items.some(d => {
+      if (!(d.name.toLowerCase() === n || d.name.toLowerCase().includes(n) || n.includes(d.name.toLowerCase()))) return false;
+      if (!population) return true;
+      return d.population === population || d.population === 'both';
+    });
+  }
+
+  function categories() {
+    return [...new Set(items.map(d => d.category))].sort();
+  }
+
+  function toLegacyDrugs() {
+    return items.map(d => ({
+      id: d.id,
+      name: d.name,
+      class: d.subcategory || d.category,
+      category: d.category,
+      commonDoses: d.strengths,
+      routes: d.routes,
+      forms: d.forms,
+      population: d.population,
+      aware: d.aware || null,
+      notes: d.notes || '',
+      eml: true,
+    }));
+  }
+
+  return {
+    meta,
+    items,
+    search,
+    getById,
+    isOnEML,
+    categories,
+    toLegacyDrugs,
+    count: items.length,
+  };
+})();

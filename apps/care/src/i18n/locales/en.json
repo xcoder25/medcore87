@@ -1,0 +1,33 @@
+{
+  "appName": "MedCore Care",
+  "tagline": "The digital front door for every patient",
+  "nav": {
+    "home": "Home",
+    "appointments": "Appointments",
+    "records": "My Health Records",
+    "navigation": "Care Navigation",
+    "tourism": "Medical Tourism & Concierge",
+    "messages": "Care Team Messages",
+    "profile": "Health Profile"
+  },
+  "appointments": {
+    "title": "Smart Appointments",
+    "bookNew": "Book New Consultation",
+    "upcoming": "Upcoming Visits",
+    "reschedule": "Reschedule",
+    "reminders": "SMS & Push Reminders Active"
+  },
+  "records": {
+    "title": "Diagnostic Results & Imaging",
+    "labs": "Lab Reports",
+    "imaging": "Radiology & Scans",
+    "downloadPdf": "Download Official PDF"
+  },
+  "tourism": {
+    "title": "International Patient & Concierge Desk",
+    "travel": "Flight & Visa Coordination",
+    "hotel": "Partner Hotel Accommodations",
+    "interpreter": "Certified Medical Interpreter",
+    "contactConcierge": "Contact Personal Medical Concierge"
+  }
+}

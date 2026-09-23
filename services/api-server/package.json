@@ -1,0 +1,25 @@
+{
+  "name": "@medcore/api-server",
+  "version": "1.0.0",
+  "description": "MedCore Central Data Hub & Real-time Event Gateway with Banking and Commissioner Security Core",
+  "main": "src/server.ts",
+  "scripts": {
+    "dev": "node --import=tsx src/server.ts || npx ts-node src/server.ts || node src/server.js",
+    "start": "node dist/server.js",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@medcore/types": "*",
+    "cors": "^2.8.5",
+    "express": "^5.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.7.0"
+  },
+  "private": true
+}

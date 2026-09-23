@@ -1,0 +1,736 @@
+import { BedStatus } from '@medcore/types';
+import { encryptField, decryptField, EncryptedPayload } from '../security/crypto';
+import { auditLedger } from '../security/auditLedger';
+import { syncEventBus } from '../sync/eventBus';
+
+// ─── Facility Types ──────────────────────────────────────────────────────────
+export type FacilityEnrollmentStatus = 'pending' | 'credentials_issued' | 'active';
+
+export type FacilityTier =
+  | 'national_referral'
+  | 'regional_general'
+  | 'district_hospital'
+  | 'cottage_hospital'
+  | 'specialized_center'
+  | 'comprehensive_health_centre';
+
+export interface FacilityRecord {
+  facilityId: string;
+  facilityName: string;
+  location: string;
+  region: string;
+  tier: FacilityTier;
+  enrollmentStatus: FacilityEnrollmentStatus;
+  hospiLogin?: string;
+  hospiTempPassword?: string;
+  credentialsIssuedAt?: string;
+  activatedAt?: string;
+  lastSeenAt?: string;
+  totalBeds?: number;
+  occupiedBeds?: number;
+  icuBedsTotal?: number;
+  icuBedsOccupied?: number;
+  ventilatorsAvailable?: number;
+  staffOnDuty?: number;
+  complianceScore?: number;
+  emergencyStatus?: 'normal' | 'surge_code_yellow' | 'surge_code_red' | 'critical';
+  licenseNumber?: string;
+  licenseExpires?: string;
+  accreditationStatus?: 'accredited' | 'provisional' | 'suspended' | 'pending';
+  createdAt: string;
+}
+
+/** Official list – Secondary Health Care Facilities in Akwa Ibom State */
+const AKS_FACILITIES_RAW: { name: string; location: string }[] = [
+  { name: 'Immanuel General Hospital',           location: 'Eket' },
+  { name: 'General Hospital',                    location: 'Ikot Ekpene' },
+  { name: 'General Hospital',                    location: 'Iquita Oron' },
+  { name: 'Methodist General Hospital',          location: 'Ituk Mbang' },
+  { name: 'General Hospital',                    location: 'Etinan' },
+  { name: 'General Hospital',                    location: 'Ukpom Abak' },
+  { name: 'General Hospital',                    location: 'Awa' },
+  { name: 'General Hospital',                    location: 'Ikot Okoro' },
+  { name: 'General Hospital',                    location: 'Ikono' },
+  { name: 'General Hospital',                    location: 'Amammong, Okobo' },
+  { name: 'Mount Carmel Hospital',               location: 'Akpa Utong' },
+  { name: 'General Hospital',                    location: 'Urue-Offong/Oruko' },
+  { name: 'General Hospital',                    location: 'Ikpe Annang' },
+  { name: 'General Hospital',                    location: 'Ini' },
+  { name: 'General Hospital',                    location: 'Ikot Abasi' },
+  { name: 'General Hospital',                    location: 'Mbioto 2' },
+  { name: 'Mary Slessor General Hospital',       location: 'Itu' },
+  { name: 'General Hospital',                    location: 'Uruk Ata Ikot Ekpor' },
+  { name: 'QIC Leprosy Hospital',                location: 'Ekpene Obom' },
+  { name: 'Infectious Disease Hospital',         location: 'Ikot Ekpene' },
+  { name: 'Psychiatric Hospital',                location: 'Eket' },
+  { name: 'Cottage Hospital',                    location: 'Ukana' },
+  { name: 'Cottage Hospital',                    location: 'Ibeno' },
+  { name: 'Cottage Hospital',                    location: 'Ikot Abia' },
+  { name: 'Cottage Hospital',                    location: 'Ikot Ekpaw' },
+  { name: 'Cottage Hospital',                    location: 'Asong' },
+  { name: 'Cottage Hospital',                    location: 'Ekpene Obo' },
+  { name: 'Cottage Hospital',                    location: 'Ikot Eko Ibon' },
+  { name: 'Cottage Hospital',                    location: 'Eastern Obolo' },
+  { name: 'Cottage Hospital',                    location: 'Ikot Ekpene Udo' },
+  { name: 'Redeemer Cottage Hospital',           location: 'Ibesit' },
+  { name: 'Cottage Hospital',                    location: 'Akai Ubium' },
+  { name: 'Cottage Hospital',                    location: 'Ika' },
+  { name: 'Comprehensive Health Care Centre',    location: 'Nto Edino' },
+  { name: 'Comprehensive Health Care Centre',    location: 'Mbiaya Uruan' },
+];
+
+function _facilityRegion(location: string, name: string): string {
+  const t = `${location} ${name}`.toUpperCase();
+  if (t.includes('UYO') || t.includes('ITU') || t.includes('IBESIT') || t.includes('NTO EDINO') || t.includes('MBIAYA'))
+    return 'Uyo Region';
+  if (t.includes('EKET') || t.includes('ORON') || t.includes('OKOBO') || t.includes('IBENO') || t.includes('EASTERN OBOLO') || t.includes('URUE-OFFONG') || t.includes('ORUKO'))
+    return 'Eket Region';
+  if (t.includes('IKOT EKPENE') || t.includes('ABAK') || t.includes('UKANA') || t.includes('IKPE') || t.includes('EKPENE'))
+    return 'Ikot Ekpene Region';
+  if (t.includes('IKOT ABASI') || t.includes('EASTERN OBOLO') || t.includes('ORUK'))
+    return 'Oruk Anam Region';
+  return 'Other Regions';
+}
+
+function _facilityTier(name: string): FacilityTier {
+  const t = name.toUpperCase();
+  if (t.includes('PSYCHIATRIC') || t.includes('INFECTIOUS') || t.includes('LEPROSY')) return 'specialized_center';
+  if (t.includes('COTTAGE') || t.includes('REDEEMER'))                                 return 'cottage_hospital';
+  if (t.includes('COMPREHENSIVE'))                                                      return 'comprehensive_health_centre';
+  return 'district_hospital';
+}
+
+function buildFacilityRegistry(): FacilityRecord[] {
+  return AKS_FACILITIES_RAW.map((item, idx) => {
+    const sn  = idx + 1;
+    const id  = `AKS-SEC-${String(sn).padStart(3, '0')}`;
+    const displayName = item.name === 'General Hospital'
+      ? `General Hospital, ${item.location}`
+      : `${item.name}, ${item.location}`;
+    return {
+      facilityId:          id,
+      facilityName:        displayName,
+      location:            item.location,
+      region:              _facilityRegion(item.location, item.name),
+      tier:                _facilityTier(item.name),
+      enrollmentStatus:    'pending' as FacilityEnrollmentStatus,
+      accreditationStatus: 'pending' as const,
+      createdAt:           '2026-01-01T00:00:00Z',
+    };
+  });
+}
+
+export interface StoredPatientRecord {
+  id: string;
+  facilityId: string;
+  mrn: string;
+  name: string;
+  dob: string;
+  gender: 'MALE' | 'FEMALE' | 'OTHER';
+  encryptedNationalId: EncryptedPayload;
+  encryptedPhone: EncryptedPayload;
+  encryptedAddress: EncryptedPayload;
+  bloodGroup: string;
+  allergies: string[];
+  chronicConditions: string[];
+  insurancePolicyId: string;
+  insuranceProvider: string;
+  walletId: string;
+  lastVisit: string;
+  createdAt: string;
+}
+
+export interface BedRecord {
+  id: string;
+  bedNumber: string;
+  ward: string;
+  facilityId: string;
+  type: 'GENERAL' | 'ICU' | 'SURGICAL' | 'PEDIATRIC' | 'ISOLATION';
+  status: 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'CLEANING';
+  currentPatientId?: string;
+  currentPatientName?: string;
+  assignedAt?: string;
+}
+
+export interface ClinicalOrder {
+  id: string;
+  patientId: string;
+  encounterId: string;
+  facilityId: string;
+  orderedByDoctorId: string;
+  orderedByDoctorName: string;
+  type: 'LABORATORY' | 'PHARMACY' | 'RADIOLOGY' | 'PROCEDURE';
+  title: string;
+  details: string;
+  priority: 'ROUTINE' | 'URGENT' | 'STAT';
+  status: 'PENDING' | 'SAMPLE_COLLECTED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  billed: boolean;
+  cost: number;
+  timestamp: string;
+}
+
+export interface PrescribedDrug {
+  id: string;
+  name: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  route: 'ORAL' | 'IV' | 'IM' | 'TOPICAL' | 'INHALED' | 'SUBLINGUAL';
+  quantity: number;
+  instructions: string;
+  dispensed: boolean;
+  dispensedAt?: string;
+  dispensedBy?: string;
+}
+
+export interface Prescription {
+  id: string;
+  patientId: string;
+  patientName: string;
+  doctorId: string;
+  doctorName: string;
+  facilityId: string;
+  drugs: PrescribedDrug[];
+  diagnosis: string;
+  status: 'ACTIVE' | 'DISPENSED' | 'PARTIAL' | 'CANCELLED';
+  routedToPharmacyId?: string;
+  routedToPharmacyName?: string;
+  notes?: string;
+  createdAt: string;
+  dispensedAt?: string;
+}
+
+export interface EncounterRecord {
+  id: string;
+  patientId: string;
+  facilityId: string;
+  status: string;
+  admittedAt: string;
+}
+
+export class CentralDataStore {
+  private patients: Map<string, StoredPatientRecord> = new Map();
+  private beds: Map<string, BedRecord> = new Map();
+  private encounters: Map<string, EncounterRecord> = new Map();
+  private orders: Map<string, ClinicalOrder> = new Map();
+  private prescriptions: Map<string, Prescription> = new Map();
+  /** Registry of all 35 official Akwa Ibom secondary health facilities */
+  private facilities: Map<string, FacilityRecord> = new Map();
+
+  constructor() {
+    this.seedStore();
+    this.seedFacilities();
+  }
+
+  private seedStore(): void {
+    // 1. Seed Patients with AES-256-GCM encrypted PII fields
+    const p1: StoredPatientRecord = {
+      id: 'PAT-849201',
+      facilityId: 'FAC-001',
+      mrn: 'MRN-78401',
+      name: 'Amina Bello',
+      dob: '1988-06-14',
+      gender: 'FEMALE',
+      encryptedNationalId: encryptField('NIN-8942-1084-9923'),
+      encryptedPhone: encryptField('+234-803-492-8819'),
+      encryptedAddress: encryptField('14 Victoria Island Boulevard, Lagos'),
+      bloodGroup: 'O+',
+      allergies: ['Penicillin', 'Sulfa Drugs'],
+      chronicConditions: ['Hypertension Type 2', 'Hyperlipidemia'],
+      insurancePolicyId: 'AXA-POL-88219',
+      insuranceProvider: 'AXA Mansard Health',
+      walletId: 'WAL-PAT-001',
+      lastVisit: '2026-02-28',
+      createdAt: '2026-01-10T08:00:00Z',
+    };
+
+    const p2: StoredPatientRecord = {
+      id: 'PAT-620194',
+      facilityId: 'FAC-001',
+      mrn: 'MRN-99201',
+      name: 'Emeka Okafor',
+      dob: '1976-11-03',
+      gender: 'MALE',
+      encryptedNationalId: encryptField('NIN-5519-7712-4401'),
+      encryptedPhone: encryptField('+234-802-119-4820'),
+      encryptedAddress: encryptField('42 Garki II Crescent, Abuja'),
+      bloodGroup: 'A+',
+      allergies: ['NSAIDs', 'Aspirin'],
+      chronicConditions: ['Type 2 Diabetes Mellitus'],
+      insurancePolicyId: 'HYG-POL-39102',
+      insuranceProvider: 'Hygeia HMO',
+      walletId: 'WAL-PAT-002',
+      lastVisit: '2026-03-01',
+      createdAt: '2026-01-12T10:00:00Z',
+    };
+
+    this.patients.set(p1.id, p1);
+    this.patients.set(p2.id, p2);
+
+    // 2. Seed Beds
+    const bedsData: BedRecord[] = [
+      { id: 'BED-101', bedNumber: '101', ward: 'Cardiology Ward A', facilityId: 'FAC-001', type: 'GENERAL', status: 'OCCUPIED', currentPatientId: 'PAT-849201', currentPatientName: 'Amina Bello', assignedAt: '2026-03-02T08:30:00Z' },
+      { id: 'BED-102', bedNumber: '102', ward: 'Cardiology Ward A', facilityId: 'FAC-001', type: 'GENERAL', status: 'AVAILABLE' },
+      { id: 'BED-201', bedNumber: 'ICU-1', ward: 'Critical Care / ICU', facilityId: 'FAC-001', type: 'ICU', status: 'OCCUPIED', currentPatientId: 'PAT-620194', currentPatientName: 'Emeka Okafor', assignedAt: '2026-03-03T01:15:00Z' },
+      { id: 'BED-202', bedNumber: 'ICU-2', ward: 'Critical Care / ICU', facilityId: 'FAC-001', type: 'ICU', status: 'AVAILABLE' },
+      { id: 'BED-301', bedNumber: 'ISO-1', ward: 'Infectious Disease Unit', facilityId: 'FAC-001', type: 'ISOLATION', status: 'AVAILABLE' },
+    ];
+    for (const b of bedsData) this.beds.set(b.id, b);
+
+    // 3. Seed Clinical Orders
+    const order1: ClinicalOrder = {
+      id: 'ORD-LAB-01',
+      patientId: 'PAT-849201',
+      encounterId: 'ENC-9942',
+      facilityId: 'FAC-001',
+      orderedByDoctorId: 'DOC-101',
+      orderedByDoctorName: 'Dr. Fatima Sanusi (Cardiologist)',
+      type: 'LABORATORY',
+      title: 'Full Blood Count + Troponin-T STAT',
+      details: 'Check for acute myocardial infarction indicators',
+      priority: 'STAT',
+      status: 'COMPLETED',
+      billed: true,
+      cost: 65.0,
+      timestamp: new Date(Date.now() - 3600000).toISOString(),
+    };
+    this.orders.set(order1.id, order1);
+
+    // 4. Seed Sample Prescription
+    const rx1: Prescription = {
+      id: 'RX-849201-001',
+      patientId: 'PAT-849201',
+      patientName: 'Amina Bello',
+      doctorId: 'DOC-101',
+      doctorName: 'Dr. Fatima Sanusi',
+      facilityId: 'FAC-001',
+      diagnosis: 'Hypertension Type 2 + Hyperlipidemia',
+      drugs: [
+        {
+          id: 'DRUG-001',
+          name: 'Amlodipine',
+          dosage: '5mg',
+          frequency: 'Once daily',
+          duration: '30 days',
+          route: 'ORAL',
+          quantity: 30,
+          instructions: 'Take in the morning with or without food',
+          dispensed: false,
+        },
+        {
+          id: 'DRUG-002',
+          name: 'Atorvastatin',
+          dosage: '20mg',
+          frequency: 'Once nightly',
+          duration: '30 days',
+          route: 'ORAL',
+          quantity: 30,
+          instructions: 'Take at bedtime',
+          dispensed: false,
+        },
+        {
+          id: 'DRUG-003',
+          name: 'Aspirin',
+          dosage: '75mg',
+          frequency: 'Once daily',
+          duration: '30 days',
+          route: 'ORAL',
+          quantity: 30,
+          instructions: 'Take with food',
+          dispensed: false,
+        },
+      ],
+      status: 'ACTIVE',
+      createdAt: new Date(Date.now() - 7200000).toISOString(),
+    };
+    this.prescriptions.set(rx1.id, rx1);
+  }
+
+  // ─── Facility Registry ──────────────────────────────────────────────────
+  private seedFacilities(): void {
+    for (const f of buildFacilityRegistry()) {
+      this.facilities.set(f.facilityId, f);
+    }
+  }
+
+  /** Return all facilities, optionally filtered by status or region */
+  public getFacilities(params?: {
+    status?: FacilityEnrollmentStatus;
+    region?: string;
+    tier?: FacilityTier;
+  }): FacilityRecord[] {
+    let list = Array.from(this.facilities.values());
+    if (params?.status) list = list.filter(f => f.enrollmentStatus === params.status);
+    if (params?.region) list = list.filter(f => f.region === params.region);
+    if (params?.tier)   list = list.filter(f => f.tier === params.tier);
+    return list;
+  }
+
+  public getFacilityById(id: string): FacilityRecord | undefined {
+    return this.facilities.get(id);
+  }
+
+  /** Issue Hospi OS credentials for a pending facility */
+  public issueFacilityCredentials(facilityId: string, actorId: string, actorName: string): FacilityRecord {
+    const f = this.facilities.get(facilityId);
+    if (!f) throw new Error(`Facility ${facilityId} not found`);
+    if (f.enrollmentStatus !== 'pending') throw new Error(`Credentials already issued for ${facilityId}`);
+
+    const slug = f.location.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 8);
+    const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+    f.hospiLogin         = `HOSPI.${slug}.${facilityId.slice(-3)}`;
+    f.hospiTempPassword  = `AKS-${rand}-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+    f.enrollmentStatus   = 'credentials_issued';
+    f.credentialsIssuedAt = new Date().toISOString();
+
+    auditLedger.logEvent({
+      actorId, actorName,
+      actorRole: 'MOH_COMMISSIONER',
+      facilityId,
+      action: 'CREDENTIALS_ISSUED',
+      resourceType: 'FACILITY',
+      resourceId: facilityId,
+      reason: `Hospi OS credentials issued for ${f.facilityName}`,
+    });
+
+    syncEventBus.broadcast({
+      topic: 'FACILITY_CREDENTIALS_ISSUED',
+      facilityId,
+      emitterApp: 'MEDCORE_ADMIN',
+      payload: { facilityId, facilityName: f.facilityName, hospiLogin: f.hospiLogin },
+    });
+
+    return f;
+  }
+
+  /** Activate facility when it first logs into Hospi OS */
+  public activateFacility(facilityId: string): FacilityRecord {
+    const f = this.facilities.get(facilityId);
+    if (!f) throw new Error(`Facility ${facilityId} not found`);
+
+    const beds = f.tier === 'cottage_hospital'            ? 40 + Math.floor(Math.random() * 40)
+               : f.tier === 'comprehensive_health_centre' ? 60 + Math.floor(Math.random() * 40)
+               : f.tier === 'specialized_center'          ? 80 + Math.floor(Math.random() * 60)
+               :                                            120 + Math.floor(Math.random() * 180);
+
+    const occ      = Math.floor(beds * (0.55 + Math.random() * 0.35));
+    const icuTotal = Math.max(2, Math.floor(beds / 12));
+    const icuOcc   = Math.floor(icuTotal * (0.5 + Math.random() * 0.4));
+
+    Object.assign(f, {
+      enrollmentStatus:    'active',
+      activatedAt:         new Date().toISOString(),
+      lastSeenAt:          new Date().toISOString(),
+      totalBeds:           beds,
+      occupiedBeds:        occ,
+      icuBedsTotal:        icuTotal,
+      icuBedsOccupied:     icuOcc,
+      ventilatorsAvailable: Math.floor(Math.random() * 6) + 1,
+      staffOnDuty:         Math.floor(beds * 0.35) + 20,
+      complianceScore:     Math.round((82 + Math.random() * 16) * 10) / 10,
+      emergencyStatus:     'normal',
+      licenseNumber:       `MOH-LIC-2026-${facilityId.slice(-3)}`,
+      licenseExpires:      '2028-12-31',
+      accreditationStatus: 'provisional',
+    });
+
+    return f;
+  }
+
+  /** Get summary counts for admin dashboard */
+  public getFacilitySummary() {
+    const all = Array.from(this.facilities.values());
+    return {
+      total:              all.length,
+      pending:            all.filter(f => f.enrollmentStatus === 'pending').length,
+      credentials_issued: all.filter(f => f.enrollmentStatus === 'credentials_issued').length,
+      active:             all.filter(f => f.enrollmentStatus === 'active').length,
+      byTier: {
+        district_hospital:          all.filter(f => f.tier === 'district_hospital').length,
+        cottage_hospital:           all.filter(f => f.tier === 'cottage_hospital').length,
+        specialized_center:         all.filter(f => f.tier === 'specialized_center').length,
+        comprehensive_health_centre: all.filter(f => f.tier === 'comprehensive_health_centre').length,
+      },
+      byRegion: {
+        'Uyo Region':        all.filter(f => f.region === 'Uyo Region').length,
+        'Eket Region':       all.filter(f => f.region === 'Eket Region').length,
+        'Ikot Ekpene Region': all.filter(f => f.region === 'Ikot Ekpene Region').length,
+        'Oruk Anam Region':  all.filter(f => f.region === 'Oruk Anam Region').length,
+        'Other Regions':     all.filter(f => f.region === 'Other Regions').length,
+      },
+    };
+  }
+
+  // ─── Patient Methods with Decryption Controls ───
+  public getPatients(decryptPII = false): Array<StoredPatientRecord | (StoredPatientRecord & { nationalId: string; phone: string; address: string })> {
+    const list = Array.from(this.patients.values());
+    if (!decryptPII) return list;
+
+    return list.map((p) => ({
+      ...p,
+      nationalId: decryptField(p.encryptedNationalId),
+      phone: decryptField(p.encryptedPhone),
+      address: decryptField(p.encryptedAddress),
+    }));
+  }
+
+  public getPatientById(id: string, decryptPII = false) {
+    const p = this.patients.get(id);
+    if (!p) return undefined;
+    if (!decryptPII) return p;
+
+    return {
+      ...p,
+      nationalId: decryptField(p.encryptedNationalId),
+      phone: decryptField(p.encryptedPhone),
+      address: decryptField(p.encryptedAddress),
+    };
+  }
+
+  public registerPatient(params: {
+    name: string;
+    dob: string;
+    gender: 'MALE' | 'FEMALE' | 'OTHER';
+    nationalId: string;
+    phone: string;
+    address: string;
+    facilityId: string;
+    bloodGroup: string;
+    allergies: string[];
+    chronicConditions: string[];
+    insurancePolicyId?: string;
+    insuranceProvider?: string;
+    actorId: string;
+    actorName: string;
+  }): StoredPatientRecord {
+    const id = `PAT-${Math.floor(100000 + Math.random() * 900000)}`;
+    const mrn = `MRN-${Math.floor(10000 + Math.random() * 90000)}`;
+    const walletId = `WAL-${id}`;
+
+    const record: StoredPatientRecord = {
+      id,
+      facilityId: params.facilityId,
+      mrn,
+      name: params.name,
+      dob: params.dob,
+      gender: params.gender,
+      encryptedNationalId: encryptField(params.nationalId),
+      encryptedPhone: encryptField(params.phone),
+      encryptedAddress: encryptField(params.address),
+      bloodGroup: params.bloodGroup,
+      allergies: params.allergies,
+      chronicConditions: params.chronicConditions,
+      insurancePolicyId: params.insurancePolicyId || 'SELF-PAY',
+      insuranceProvider: params.insuranceProvider || 'Self Pay',
+      walletId,
+      lastVisit: new Date().toISOString().split('T')[0],
+      createdAt: new Date().toISOString(),
+    };
+
+    this.patients.set(id, record);
+
+    // Cryptographic audit
+    auditLedger.logEvent({
+      actorId: params.actorId,
+      actorName: params.actorName,
+      actorRole: 'NURSE',
+      facilityId: params.facilityId,
+      action: 'WRITE_PHI',
+      resourceType: 'PATIENT',
+      resourceId: id,
+      reason: `New patient registered into Master Patient Index (MRN: ${mrn})`,
+    });
+
+    // Broadcast across event bus
+    syncEventBus.broadcast({
+      topic: 'PATIENT_REGISTERED',
+      facilityId: params.facilityId,
+      emitterApp: 'MEDCORE_OS',
+      payload: { patientId: id, mrn, name: params.name, facilityId: params.facilityId },
+    });
+
+    return record;
+  }
+
+  // ─── Beds ───
+  public getBeds(facilityId?: string): BedRecord[] {
+    const all = Array.from(this.beds.values());
+    if (facilityId) return all.filter((b) => b.facilityId === facilityId);
+    return all;
+  }
+
+  public updateBedStatus(
+    bedId: string,
+    status: BedRecord['status'],
+    patient?: { id: string; name: string }
+  ): BedRecord {
+    const bed = this.beds.get(bedId);
+    if (!bed) throw new Error(`Bed ${bedId} not found`);
+
+    bed.status = status;
+    if (status === 'OCCUPIED' && patient) {
+      bed.currentPatientId = patient.id;
+      bed.currentPatientName = patient.name;
+      bed.assignedAt = new Date().toISOString();
+    } else if (status === 'AVAILABLE' || status === 'CLEANING') {
+      bed.currentPatientId = undefined;
+      bed.currentPatientName = undefined;
+      bed.assignedAt = undefined;
+    }
+
+    syncEventBus.broadcast({
+      topic: status === 'OCCUPIED' ? 'BED_OCCUPIED' : 'BED_VACATED',
+      facilityId: bed.facilityId,
+      emitterApp: 'MEDCORE_OS',
+      payload: { bedId: bed.id, bedNumber: bed.bedNumber, status: bed.status, patientId: bed.currentPatientId },
+    });
+
+    return bed;
+  }
+
+  // ─── Clinical Orders ───
+  public createOrder(params: Omit<ClinicalOrder, 'id' | 'timestamp'>): ClinicalOrder {
+    const id = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`;
+    const order: ClinicalOrder = {
+      ...params,
+      id,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.orders.set(id, order);
+
+    syncEventBus.broadcast({
+      topic: params.type === 'LABORATORY' ? 'LAB_ORDERED' : 'MEDICATION_PRESCRIBED',
+      facilityId: params.facilityId,
+      emitterApp: 'MEDCORE_CLINIC',
+      payload: { orderId: id, patientId: params.patientId, title: params.title, priority: params.priority },
+    });
+
+    return order;
+  }
+
+  public getOrders(patientId?: string): ClinicalOrder[] {
+    const all = Array.from(this.orders.values());
+    if (patientId) return all.filter((o) => o.patientId === patientId);
+    return all;
+  }
+
+  // ─── Prescription / Pharmacy Methods ───
+  public createPrescription(params: {
+    patientId: string;
+    patientName: string;
+    doctorId: string;
+    doctorName: string;
+    facilityId: string;
+    diagnosis: string;
+    drugs: Omit<PrescribedDrug, 'dispensed'>[];
+    routedToPharmacyId?: string;
+    routedToPharmacyName?: string;
+    notes?: string;
+  }): Prescription {
+    const id = `RX-${params.patientId}-${Date.now().toString(36).toUpperCase()}`;
+    const prescription: Prescription = {
+      id,
+      patientId: params.patientId,
+      patientName: params.patientName,
+      doctorId: params.doctorId,
+      doctorName: params.doctorName,
+      facilityId: params.facilityId,
+      diagnosis: params.diagnosis,
+      drugs: params.drugs.map((d) => ({ ...d, dispensed: false })),
+      status: 'ACTIVE',
+      routedToPharmacyId: params.routedToPharmacyId,
+      routedToPharmacyName: params.routedToPharmacyName,
+      notes: params.notes,
+      createdAt: new Date().toISOString(),
+    };
+    this.prescriptions.set(id, prescription);
+
+    syncEventBus.broadcast({
+      topic: 'PRESCRIPTION_CREATED',
+      facilityId: params.facilityId,
+      emitterApp: 'MEDCORE_CLINIC',
+      payload: {
+        rxId: id,
+        patientId: params.patientId,
+        patientName: params.patientName,
+        doctorName: params.doctorName,
+        drugCount: params.drugs.length,
+        routedToPharmacyId: params.routedToPharmacyId,
+        routedToPharmacyName: params.routedToPharmacyName,
+      },
+    });
+
+    return prescription;
+  }
+
+  public getPrescriptionsByPatient(patientId: string): Prescription[] {
+    return Array.from(this.prescriptions.values()).filter((rx) => rx.patientId === patientId);
+  }
+
+  public getPrescriptionById(rxId: string): Prescription | undefined {
+    return this.prescriptions.get(rxId);
+  }
+
+  public getAllPrescriptions(pharmacyId?: string): Prescription[] {
+    const all = Array.from(this.prescriptions.values());
+    if (pharmacyId) return all.filter((rx) => rx.routedToPharmacyId === pharmacyId);
+    return all;
+  }
+
+  public dispenseDrug(
+    rxId: string,
+    drugId: string,
+    dispensedBy: string
+  ): Prescription {
+    const rx = this.prescriptions.get(rxId);
+    if (!rx) throw new Error(`Prescription ${rxId} not found`);
+
+    const drug = rx.drugs.find((d) => d.id === drugId);
+    if (!drug) throw new Error(`Drug ${drugId} not found in prescription ${rxId}`);
+    if (drug.dispensed) throw new Error(`Drug ${drugId} has already been dispensed`);
+
+    drug.dispensed = true;
+    drug.dispensedAt = new Date().toISOString();
+    drug.dispensedBy = dispensedBy;
+
+    // Update overall prescription status
+    const allDispensed = rx.drugs.every((d) => d.dispensed);
+    const anyDispensed = rx.drugs.some((d) => d.dispensed);
+    if (allDispensed) {
+      rx.status = 'DISPENSED';
+      rx.dispensedAt = new Date().toISOString();
+    } else if (anyDispensed) {
+      rx.status = 'PARTIAL';
+    }
+
+    syncEventBus.broadcast({
+      topic: 'PRESCRIPTION_DISPENSED',
+      facilityId: rx.facilityId,
+      emitterApp: 'MEDCORE_OS_PHARMACY',
+      payload: {
+        rxId,
+        patientId: rx.patientId,
+        drugName: drug.name,
+        dispensedBy,
+        status: rx.status,
+      },
+    });
+
+    return rx;
+  }
+
+  public routePrescription(
+    rxId: string,
+    pharmacyId: string,
+    pharmacyName: string
+  ): Prescription {
+    const rx = this.prescriptions.get(rxId);
+    if (!rx) throw new Error(`Prescription ${rxId} not found`);
+    rx.routedToPharmacyId = pharmacyId;
+    rx.routedToPharmacyName = pharmacyName;
+    return rx;
+  }
+}
+
+export const dataStore = new CentralDataStore();

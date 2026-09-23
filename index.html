@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Hospital OS — Multi-Role Clinical Platform. Doctor, Nurse, Pharmacist, Lab, Reception & Admin dashboards with realtime updates.">
+  <meta name="theme-color" content="#0A1929">
+
+  <title>Hospital OS — Multi-Role Clinical Platform</title>
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏥</text></svg>">
+
+  <link rel="stylesheet" href="assets/css/design-system.css">
+  <link rel="stylesheet" href="assets/css/layout.css">
+  <link rel="stylesheet" href="assets/css/components.css">
+  <link rel="stylesheet" href="assets/css/animations.css">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #app { display: flex; height: 100vh; }
+
+    .w-full { width: 100%; }
+    .mb-3 { margin-bottom: 12px; }
+    .mb-4 { margin-bottom: 16px; }
+    .mb-5 { margin-bottom: 20px; }
+    .mb-6 { margin-bottom: 24px; }
+    .mt-2 { margin-top: 8px; }
+    .mt-3 { margin-top: 12px; }
+    .mt-4 { margin-top: 16px; }
+
+    .message-item.selected {
+      background: var(--primary-light);
+      border-left: 3px solid var(--primary);
+    }
+
+    .stagger-children > * {
+      opacity: 0;
+      animation: fadeInUp 400ms ease forwards;
+    }
+
+    .tab-content { animation: none; }
+    .tab-content.active { animation: fadeIn 200ms ease forwards; }
+
+    @media (max-width: 1280px) {
+      .vitals-grid { grid-template-columns: repeat(2, 1fr); }
+      .content-grid-4 { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    #page-root > div {
+      animation: pageEnter 300ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    .schedule-item:last-child { border-bottom: none; }
+    #drug-suggestions { z-index: 200; }
+    #page-root { scrollbar-width: thin; scrollbar-color: var(--border-dark) transparent; }
+    #sidebar { transition: width 250ms ease, min-width 250ms ease; }
+
+    .nav-item.active {
+      background: linear-gradient(135deg, rgba(26,110,181,0.9), rgba(26,110,181,0.6)) !important;
+      color: white !important;
+    }
+
+    /* Extra polish for role dashboards */
+    .content-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); }
+    .content-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-6); }
+    .content-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-5); }
+    @media (max-width: 1100px) {
+      .content-grid-4 { grid-template-columns: repeat(2, 1fr); }
+      .content-grid-3 { grid-template-columns: 1fr 1fr; }
+      .content-grid-2 { grid-template-columns: 1fr; }
+    }
+    .list-row:hover { background: var(--primary-light); }
+    .quick-action-card {
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      padding: 16px 12px; border-radius: var(--radius-md); border: 1px solid var(--border);
+      background: var(--card); transition: all 150ms ease; cursor: pointer;
+    }
+    .quick-action-card:hover { box-shadow: var(--shadow-card-hover); border-color: var(--primary-mid); transform: translateY(-1px); }
+    .quick-action-icon {
+      width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px;
+    }
+    .quick-action-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-align: center; }
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+    .badge-critical { background: var(--critical-light); color: var(--critical); }
+    .badge-warning { background: var(--warning-light); color: var(--warning); }
+    .badge-info { background: var(--info-light); color: var(--info); }
+    .badge-success { background: var(--success-light); color: var(--success); }
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: var(--radius-md); font-size: 13px; font-weight: 600; border: none; cursor: pointer; transition: all 150ms ease; }
+    .btn-sm { padding: 4px 10px; font-size: 11px; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-secondary { background: var(--surface); color: var(--text-primary); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <div id="app">
+    <div style="display:flex;align-items:center;justify-content:center;width:100%;height:100vh;background:var(--sidebar-bg);flex-direction:column;gap:16px;">
+      <div style="font-size:48px;">🏥</div>
+      <div style="font-size:20px;font-weight:700;color:white;">Hospital OS</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.5);">Loading Multi-Role Platform...</div>
+      <div style="width:200px;height:3px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;margin-top:8px;">
+        <div style="height:100%;background:linear-gradient(90deg,var(--primary),var(--accent));width:70%;animation:skeleton-shimmer 1s infinite;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DATA + REALTIME -->
+  <script src="assets/js/eml-formulary.js"></script>
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/realtime.js"></script>
+
+  <!-- ROUTER -->
+  <script src="assets/js/router.js"></script>
+
+  <!-- SHARED COMPONENTS -->
+  <script src="assets/js/components.js"></script>
+
+  <!-- PAGE MODULES -->
+  <script>window.Pages = {};</script>
+  <script src="pages/dashboard.js"></script>
+  <script src="pages/role-dashboards.js"></script>
+  <script src="pages/patients.js"></script>
+  <script src="pages/emr.js"></script>
+  <script src="pages/consultations.js"></script>
+  <script src="pages/ward-rounds.js"></script>
+  <script src="pages/appointments.js"></script>
+  <script src="pages/radiology.js"></script>
+  <script src="pages/referrals.js"></script>
+  <script src="pages/tasks.js"></script>
+
+  <!-- APP BOOTSTRAP (must be last) -->
+  <script src="assets/js/app.js"></script>
+
+</body>
+</html>

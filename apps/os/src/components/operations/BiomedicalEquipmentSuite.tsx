@@ -1,0 +1,129 @@
+'use client';
+
+import React, { useState } from 'react';
+import {
+  Wrench, AlertTriangle, CheckCircle2, ShieldCheck,
+  Search, RefreshCw, Cpu, Activity, Clock
+} from 'lucide-react';
+import type { BiomedicalDevice } from '@medcore/types';
+
+const INITIAL_DEVICES: BiomedicalDevice[] = [
+  { id: 'BIO-01', assetTag: 'ISH-BME-0012', deviceName: 'Siemens Somatom 64-Slice CT Scanner', department: 'Radiology / Imaging', manufacturer: 'Siemens Healthineers', model: 'Somatom go.Top', status: 'operational', lastCalibratedAt: '2026-08-15', nextServiceDue: '2026-11-15' },
+  { id: 'BIO-02', assetTag: 'ISH-BME-0084', deviceName: 'Hamilton-C6 Intensive Care Ventilator #3', department: 'Intensive Care Unit (ICU)', manufacturer: 'Hamilton Medical', model: 'C6 Critical Care', status: 'operational', lastCalibratedAt: '2026-09-01', nextServiceDue: '2026-12-01' },
+  { id: 'BIO-03', assetTag: 'ISH-BME-0119', deviceName: 'Mindray BeneHeart D6 Defibrillator', department: 'Accident & Emergency (A&E)', manufacturer: 'Mindray', model: 'D6 Biphasic', status: 'calibration_due', lastCalibratedAt: '2026-03-10', nextServiceDue: '2026-09-10' },
+  { id: 'BIO-04', assetTag: 'ISH-BME-0205', deviceName: 'Dr�ger Fabius Tiro Anesthesia Workstation', department: 'Operating Theatre 2', manufacturer: 'Dr�ger Medical', model: 'Fabius Tiro', status: 'operational', lastCalibratedAt: '2026-07-20', nextServiceDue: '2026-10-20' },
+  { id: 'BIO-05', assetTag: 'ISH-BME-0342', deviceName: 'Olympus CV-190 Video Endoscopy Tower', department: 'Gastroenterology / Endoscopy', manufacturer: 'Olympus', model: 'Evis Exera III', status: 'under_repair', lastCalibratedAt: '2026-05-12', nextServiceDue: '2026-08-12' },
+];
+
+export const BiomedicalEquipmentSuite: React.FC = () => {
+  const [devices, setDevices] = useState<BiomedicalDevice[]>(INITIAL_DEVICES);
+  const [search, setSearch] = useState('');
+
+  const dueCount = devices.filter(d => d.status === 'calibration_due' || d.status === 'under_repair').length;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Top Telemetry */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
+        <div className="os-card" style={{ borderLeft: '4px solid var(--ak-orange)' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Clinical Assets Registered</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
+            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--ak-orange-light)' }}>1,480</span>
+            <span style={{ fontSize: '0.75rem', color: '#34D399' }}>RFID Tagged</span>
+          </div>
+          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>Asset Registry Compliant</span>
+        </div>
+
+        <div className="os-card" style={{ borderLeft: '4px solid #EF4444' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Service / Calibration Due</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
+            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#EF4444' }}>{dueCount} Devices</span>
+            <span style={{ fontSize: '0.75rem', color: '#F87171' }}>Action Needed</span>
+          </div>
+          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>Biphasic Defibrillator & Endoscope</span>
+        </div>
+
+        <div className="os-card" style={{ borderLeft: '4px solid #10B981' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Equipment Uptime Rate</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
+            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#34D399' }}>99.1%</span>
+            <span style={{ fontSize: '0.75rem', color: '#34D399' }}>Uptime</span>
+          </div>
+          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>Preventive Maintenance SLA Exceeded</span>
+        </div>
+
+        <div className="os-card" style={{ borderLeft: '4px solid #3B82F6' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Biomedical Engineering Crew</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
+            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#60A5FA' }}>6 Engineers</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--os-text-dim)' }}>On Duty</span>
+          </div>
+          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>24/7 Rapid Response Coverage</span>
+        </div>
+      </div>
+
+      {/* Equipment Table */}
+      <div className="os-card" style={{ padding: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--os-text-muted)', textTransform: 'uppercase' }}>
+            Biomedical Asset & Preventive Maintenance Ledger
+          </span>
+          <div className="os-search-wrap">
+            <Search size={14} />
+            <input
+              className="os-search-input"
+              placeholder="Search asset tag, device, department..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="os-table-wrap">
+          <table className="os-table">
+            <thead>
+              <tr>
+                <th>Asset Tag</th>
+                <th>Device Description</th>
+                <th>Department</th>
+                <th>Manufacturer / Model</th>
+                <th>Last Calibration</th>
+                <th>Next Service Due</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {devices.map(device => {
+                const isWarn = device.status === 'calibration_due';
+                const isErr = device.status === 'under_repair';
+                return (
+                  <tr key={device.id}>
+                    <td style={{ fontFamily: 'var(--os-font-mono)', fontSize: '0.74rem', color: 'var(--ak-orange-light)', fontWeight: 700 }}>
+                      {device.assetTag}
+                    </td>
+                    <td style={{ fontWeight: 700, color: '#0A2540' }}>{device.deviceName}</td>
+                    <td>{device.department}</td>
+                    <td style={{ fontSize: '0.78rem', color: 'var(--os-text-muted)' }}>{device.manufacturer} ({device.model})</td>
+                    <td style={{ fontSize: '0.76rem', color: 'var(--os-text-dim)' }}>{device.lastCalibratedAt}</td>
+                    <td style={{ fontSize: '0.76rem', fontWeight: 700, color: isWarn ? '#FBBF24' : isErr ? '#EF4444' : '#FFF' }}>
+                      {device.nextServiceDue}
+                    </td>
+                    <td>
+                      <span style={{
+                        fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                        background: isErr ? 'rgba(239,68,68,0.2)' : isWarn ? 'rgba(234,179,8,0.2)' : 'rgba(5,150,105,0.12)',
+                        color: isErr ? '#F87171' : isWarn ? '#FBBF24' : '#34D399',
+                      }}>
+                        {device.status.replace('_', ' ').toUpperCase()}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};

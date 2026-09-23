@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "MedCore Care",
+    "slug": "medcore-care",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0F766E"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.medcore.care"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0F766E"
+      },
+      "package": "com.medcore.care"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
