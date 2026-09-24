@@ -23,9 +23,14 @@ export interface NotificationItem extends RealtimeEvent {
   receivedAt: string;
 }
 
-const WS_URL =
-  (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_WS_URL) ||
-  'ws://localhost:4000/ws';
+/** Vercel HTTPS sites must use wss:// via NEXT_PUBLIC_WS_URL */
+function resolveWsUrl(): string {
+  if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL;
+  }
+  return 'ws://localhost:4000/ws';
+}
+const WS_URL = resolveWsUrl();
 const RECONNECT_DELAY_MS = 3000;
 const MAX_NOTIFICATIONS = 100;
 
