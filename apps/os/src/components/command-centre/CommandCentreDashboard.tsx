@@ -222,15 +222,14 @@ export const CommandCentreDashboard: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
 
-      {/* ── Top Level Figma KPI Strip ── */}
+      {/* ── Premium KPI Strip — MedCore blue/teal + Arise orange/green ── */}
       <div className="os-metrics-ribbon">
-        {/* KPI 1: Inpatient Beds */}
         <div className="metric-box">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="metric-label">
-              <BedDouble size={14} style={{ color: '#0052D4' }} />
+              <BedDouble size={14} style={{ color: '#0066FF' }} />
               Hospital Bed Occupancy
             </span>
             <span className="figma-chip chip-blue" style={{ fontSize: '0.66rem' }}>
@@ -238,44 +237,39 @@ export const CommandCentreDashboard: React.FC = () => {
             </span>
           </div>
           <span className="metric-val">
-            {totalOccupied} <span style={{ fontSize: '1.15rem', color: '#94A3B8', fontWeight: 500 }}>/ {totalBeds}</span>
+            {totalOccupied} <span style={{ fontSize: '1.05rem', color: '#94A3B8', fontWeight: 500 }}>/ {totalBeds}</span>
           </span>
-          <div style={{ width: '100%', height: 6, background: '#F1F5F9', borderRadius: 9999, overflow: 'hidden', margin: '4px 0 8px' }}>
-            <div style={{
-              width: `${occupancyPct}%`,
-              height: '100%',
-              background: occupancyPct > 90 ? 'linear-gradient(90deg, #EA580C, #DC2626)' : 'linear-gradient(90deg, #0052D4, #00BFA5)',
-              borderRadius: 9999,
-              transition: 'width 0.4s ease'
-            }} />
+          <div className="os-progress-track">
+            <div
+              className={`os-progress-fill${occupancyPct > 90 ? ' danger' : ''}`}
+              style={{ width: `${occupancyPct}%` }}
+            />
           </div>
           <span className="metric-sub">
             <span className="pulse-dot-green" />
-            <strong>{occupancyPct}% Capacity</strong> • {totalBeds - totalOccupied} Beds Available State-wide
+            <strong>{occupancyPct}% Capacity</strong> · {totalBeds - totalOccupied} beds available
           </span>
         </div>
 
-        {/* KPI 2: Emergency Triage */}
         <div className="metric-box alert-yellow">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="metric-label">
-              <Clock size={14} style={{ color: '#D97706' }} />
+              <Clock size={14} style={{ color: '#EA580C' }} />
               A&E Triage Wait Time
             </span>
             <span className="figma-chip chip-amber" style={{ fontSize: '0.66rem' }}>
-              Surge Protocol Active
+              Surge Protocol
             </span>
           </div>
-          <span className="metric-val">28 <span style={{ fontSize: '1.15rem', fontWeight: 500, color: '#94A3B8' }}>mins</span></span>
-          <div style={{ width: '100%', height: 6, background: '#F1F5F9', borderRadius: 9999, overflow: 'hidden', margin: '4px 0 8px' }}>
-            <div style={{ width: '68%', height: '100%', background: '#F59E0B', borderRadius: 9999 }} />
+          <span className="metric-val">28 <span style={{ fontSize: '1.05rem', fontWeight: 500, color: '#94A3B8' }}>mins</span></span>
+          <div className="os-progress-track">
+            <div className="os-progress-fill warn" style={{ width: '68%' }} />
           </div>
           <span className="metric-sub">
-            <Users size={12} /> 14 Patients in Queue • 4 ESI-2 Immediate
+            <Users size={12} /> 14 in queue · 4 ESI-2 immediate
           </span>
         </div>
 
-        {/* KPI 3: Critical Alerts */}
         <div className="metric-box alert-red">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="metric-label">
@@ -283,38 +277,38 @@ export const CommandCentreDashboard: React.FC = () => {
               Active Clinical Alerts
             </span>
             <span className="figma-chip chip-rose" style={{ fontSize: '0.66rem' }}>
-              <span className="pulse-dot-red" /> 1 STAT Alarm
+              <span className="pulse-dot-red" /> 1 STAT
             </span>
           </div>
-          <span className="metric-val">{ACTIVE_ALERTS.length - dismissedAlerts.length} <span style={{ fontSize: '1.15rem', fontWeight: 500, color: '#94A3B8' }}>unresolved</span></span>
-          <div style={{ width: '100%', height: 6, background: '#F1F5F9', borderRadius: 9999, overflow: 'hidden', margin: '4px 0 8px' }}>
-            <div style={{ width: '35%', height: '100%', background: '#EF4444', borderRadius: 9999 }} />
+          <span className="metric-val">{ACTIVE_ALERTS.length - dismissedAlerts.length} <span style={{ fontSize: '1.05rem', fontWeight: 500, color: '#94A3B8' }}>open</span></span>
+          <div className="os-progress-track">
+            <div className="os-progress-fill danger" style={{ width: '35%' }} />
           </div>
           <span className="metric-sub">
-            1 Critical Cardiac • 2 Telemetry Thresholds
+            1 critical cardiac · 2 telemetry thresholds
           </span>
         </div>
 
-        {/* KPI 4: Duty Staff */}
         <div className="metric-box alert-green">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="metric-label">
-              <Users size={14} style={{ color: '#059669' }} />
+              <Users size={14} style={{ color: '#16A34A' }} />
               Hospital Staff on Duty
             </span>
             <span className="figma-chip chip-green" style={{ fontSize: '0.66rem' }}>
               100% Shift Fill
             </span>
           </div>
-          <span className="metric-val">186 <span style={{ fontSize: '1.15rem', fontWeight: 500, color: '#94A3B8' }}>personnel</span></span>
-          <div style={{ width: '100%', height: 6, background: '#F1F5F9', borderRadius: 9999, overflow: 'hidden', margin: '4px 0 8px' }}>
-            <div style={{ width: '92%', height: '100%', background: '#10B981', borderRadius: 9999 }} />
+          <span className="metric-val">186 <span style={{ fontSize: '1.05rem', fontWeight: 500, color: '#94A3B8' }}>staff</span></span>
+          <div className="os-progress-track">
+            <div className="os-progress-fill safe" style={{ width: '92%' }} />
           </div>
           <span className="metric-sub">
-            34 Doctors • 112 Nurses • 40 Support
+            34 doctors · 112 nurses · 40 support
           </span>
         </div>
       </div>
+
 
       {/* ── Main Operations Workspace Grid ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 360px', gap: 24, alignItems: 'start' }}>

@@ -191,19 +191,18 @@ export const CashierRevenue: React.FC = () => {
   const totalOutstanding = bills.filter(b => b.status === 'outstanding').reduce((a, b) => a + b.totalNaira, 0);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Toast Notification */}
+    <div className="os-module-layout">
       {toastMessage && (
         <div style={{
           position: 'fixed',
           top: 24,
           right: 24,
           zIndex: 99999,
-          background: '#0F2236',
-          border: '1px solid #10B981',
-          borderRadius: 10,
+          background: '#0F172A',
+          border: '1px solid #16A34A',
+          borderRadius: 12,
           padding: '14px 20px',
-          boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
           display: 'flex',
           alignItems: 'center',
           gap: 12,
@@ -211,88 +210,81 @@ export const CashierRevenue: React.FC = () => {
           fontSize: '0.88rem',
           fontWeight: 600,
         }}>
-          <CheckCircle2 size={18} color="#10B981" />
+          <CheckCircle2 size={18} color="#4ADE80" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Revenue KPIs */}
       <div className="os-metrics-ribbon">
         <div className="metric-box alert-green">
-          <span className="metric-label"><CheckCircle2 size={13} style={{ display: 'inline', marginRight: 4 }} />Revenue Collected Today</span>
+          <span className="metric-label"><CheckCircle2 size={13} style={{ display: 'inline', marginRight: 4 }} />Revenue Collected</span>
           <span className="metric-val">{formatNaira(totalPaid)}</span>
           <span className="metric-sub">{bills.filter(b => b.status === 'paid').length} bills cleared</span>
         </div>
         <div className="metric-box">
-          <span className="metric-label"><CreditCard size={13} style={{ display: 'inline', marginRight: 4 }} />AKSHIA/NHIA Claims</span>
+          <span className="metric-label"><CreditCard size={13} style={{ display: 'inline', marginRight: 4 }} />AKSHIA / NHIA Claims</span>
           <span className="metric-val">{formatNaira(totalInsurance)}</span>
-          <span className="metric-sub">{bills.filter(b => b.status === 'insurance').length} insurance-covered bills</span>
+          <span className="metric-sub">{bills.filter(b => b.status === 'insurance').length} insurance-covered</span>
         </div>
         <div className="metric-box alert-yellow">
           <span className="metric-label"><Clock size={13} style={{ display: 'inline', marginRight: 4 }} />Pending Payment</span>
           <span className="metric-val">{formatNaira(totalPending)}</span>
-          <span className="metric-sub">{bills.filter(b => b.status === 'pending').length} bills awaiting payment</span>
+          <span className="metric-sub">{bills.filter(b => b.status === 'pending').length} awaiting payment</span>
         </div>
         <div className="metric-box alert-red">
-          <span className="metric-label"><AlertCircle size={13} style={{ display: 'inline', marginRight: 4 }} />Outstanding Debts</span>
+          <span className="metric-label"><AlertCircle size={13} style={{ display: 'inline', marginRight: 4 }} />Outstanding</span>
           <span className="metric-val">{formatNaira(totalOutstanding)}</span>
-          <span className="metric-sub">{bills.filter(b => b.status === 'outstanding').length} uncleared bills</span>
+          <span className="metric-sub">{bills.filter(b => b.status === 'outstanding').length} uncleared</span>
         </div>
       </div>
 
-      {/* Filters & Actions */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div className="os-search-wrap" style={{ flex: 1, minWidth: 260 }}>
+      <div className="os-toolbar">
+        <div className="os-search-wrap" style={{ flex: 1, minWidth: 220 }}>
           <Search size={14} />
           <input
             className="os-search-input"
-            placeholder="Search patient name, MRN or bill ID..."
+            placeholder="Search patient, MRN or bill ID…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {(['all', 'pending', 'paid', 'insurance', 'outstanding', 'waived'] as const).map(st => (
-            <button
-              key={st}
-              onClick={() => setStatusFilter(st)}
-              className="os-ghost-btn"
-              style={{
-                background: statusFilter === st ? 'rgba(217,119,6,0.15)' : undefined,
-                borderColor: statusFilter === st ? '#D97706' : undefined,
-                color: statusFilter === st ? '#D97706' : undefined,
-                fontSize: '0.78rem',
-                fontWeight: 700,
-              }}
-            >
-              {st === 'all' ? 'All' : STATUS_META[st].label}
-            </button>
-          ))}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {(['all', 'pending', 'paid', 'insurance', 'outstanding', 'waived'] as const).map(st => {
+            const active = statusFilter === st;
+            const tone = st === 'all' ? '#0066FF' : STATUS_META[st].color;
+            return (
+              <button
+                key={st}
+                type="button"
+                onClick={() => setStatusFilter(st)}
+                className="os-ghost-btn"
+                style={{
+                  background: active ? `${tone}14` : undefined,
+                  borderColor: active ? tone : undefined,
+                  color: active ? tone : undefined,
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  padding: '7px 12px',
+                }}
+              >
+                {st === 'all' ? 'All' : STATUS_META[st].label}
+              </button>
+            );
+          })}
         </div>
         <button
           type="button"
           className="os-action-btn-primary"
           onClick={() => setShowModal(true)}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '8px 16px',
-            fontSize: '0.82rem',
-            fontWeight: 700,
-            borderRadius: 8,
-            background: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)',
-            boxShadow: '0 4px 12px rgba(217, 119, 6, 0.25)',
-            color: '#FFF',
-            border: 'none',
-            cursor: 'pointer',
+            background: 'linear-gradient(135deg, #EA580C 0%, #F59E0B 100%)',
+            boxShadow: '0 4px 14px rgba(234, 88, 12, 0.28)',
           }}
         >
           <Plus size={16} /> New Bill
         </button>
       </div>
 
-      {/* Bills Table */}
       <div className="os-table-wrap">
         <table className="os-table">
           <thead>
@@ -310,8 +302,8 @@ export const CashierRevenue: React.FC = () => {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: '36px 12px', color: '#94A3B8' }}>
-                  No bills found matching current filter. Click <strong>"New Bill"</strong> to issue a cashier bill.
+                <td colSpan={8} style={{ textAlign: 'center', padding: '40px 12px', color: '#94A3B8' }}>
+                  No bills match this filter. Click <strong>New Bill</strong> to issue one.
                 </td>
               </tr>
             ) : (
@@ -319,36 +311,37 @@ export const CashierRevenue: React.FC = () => {
                 const meta = STATUS_META[bill.status];
                 return (
                   <tr key={bill.id}>
-                    <td style={{ fontFamily: 'var(--os-font-mono)', fontSize: '0.8rem', color: '#D97706', fontWeight: 800 }}>
+                    <td style={{ fontFamily: 'var(--os-font-mono)', fontSize: '0.8rem', color: '#EA580C', fontWeight: 800 }}>
                       {bill.id}
                     </td>
                     <td>
-                      <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.88rem' }}>{bill.patientName}</div>
-                      <div style={{ fontSize: '0.73rem', color: '#64748B', fontFamily: 'monospace' }}>{bill.patientId}</div>
+                      <div style={{ fontWeight: 700, color: '#0F172A', fontSize: '0.88rem' }}>{bill.patientName}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748B', fontFamily: 'var(--os-font-mono)' }}>{bill.patientId}</div>
                     </td>
                     <td style={{ color: '#475569', fontSize: '0.82rem' }}>{bill.date}</td>
                     <td style={{ maxWidth: 220 }}>
-                      <div style={{ fontSize: '0.78rem', color: '#334155', lineHeight: 1.4 }}>
+                      <div style={{ fontSize: '0.78rem', color: '#334155', lineHeight: 1.45 }}>
                         {bill.services.slice(0, 2).join(', ')}
                         {bill.services.length > 2 ? ` +${bill.services.length - 2} more` : ''}
                       </div>
                       {bill.nhia && (
-                        <span style={{ fontSize: '0.68rem', color: '#2563EB', fontWeight: 700, display: 'inline-block', marginTop: 2 }}>
-                          AKSHIA / NHIA Enrollee
+                        <span style={{ fontSize: '0.66rem', color: '#0066FF', fontWeight: 700, display: 'inline-block', marginTop: 3 }}>
+                          AKSHIA / NHIA
                         </span>
                       )}
                     </td>
-                    <td style={{ fontWeight: 800, color: '#0A2540', fontSize: '0.92rem' }}>
+                    <td style={{ fontWeight: 800, color: '#0F172A', fontSize: '0.92rem' }}>
                       {formatNaira(bill.totalNaira)}
                     </td>
                     <td>
                       <span style={{
-                        background: `${meta.color}20`,
+                        background: `${meta.color}18`,
                         color: meta.color,
-                        fontSize: '0.72rem',
+                        fontSize: '0.7rem',
                         fontWeight: 700,
-                        padding: '3px 10px',
+                        padding: '4px 10px',
                         borderRadius: 9999,
+                        border: `1px solid ${meta.color}30`,
                       }}>
                         {meta.label}
                       </span>
@@ -356,7 +349,7 @@ export const CashierRevenue: React.FC = () => {
                     <td style={{ fontSize: '0.78rem', color: '#475569' }}>
                       {bill.paymentMethod && <div style={{ fontWeight: 600 }}>{bill.paymentMethod}</div>}
                       {bill.receiptNo && (
-                        <div style={{ fontFamily: 'var(--os-font-mono)', color: '#059669', fontSize: '0.72rem', fontWeight: 700 }}>
+                        <div style={{ fontFamily: 'var(--os-font-mono)', color: '#16A34A', fontSize: '0.7rem', fontWeight: 700 }}>
                           {bill.receiptNo}
                         </div>
                       )}
@@ -368,7 +361,12 @@ export const CashierRevenue: React.FC = () => {
                           <button
                             type="button"
                             className="os-action-btn-primary"
-                            style={{ fontSize: '0.72rem', padding: '4px 10px', background: '#059669' }}
+                            style={{
+                              fontSize: '0.72rem',
+                              padding: '5px 12px',
+                              background: 'linear-gradient(135deg, #16A34A, #00D4A8)',
+                              boxShadow: '0 2px 8px rgba(22,163,74,0.25)',
+                            }}
                             onClick={() => handleCollectPayment(bill)}
                           >
                             Collect
@@ -377,8 +375,8 @@ export const CashierRevenue: React.FC = () => {
                         <button
                           type="button"
                           className="os-ghost-btn"
-                          style={{ padding: '4px 8px' }}
-                          title="View & Print Official Receipt"
+                          style={{ padding: '5px 10px' }}
+                          title="View & print receipt"
                           onClick={() => setSelectedReceipt(bill)}
                         >
                           <Printer size={13} />
@@ -417,24 +415,24 @@ export const CashierRevenue: React.FC = () => {
             boxShadow: '0 25px 60px rgba(0, 0, 0, 0.25)',
             overflow: 'hidden',
           }}>
-            {/* Header */}
             <div style={{
-              background: 'linear-gradient(135deg, #0A2540 0%, #0D4F8B 100%)',
+              background: 'linear-gradient(135deg, #0A0F1C 0%, #0C1A32 55%, #0A2540 100%)',
               padding: '18px 24px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               color: '#FFF',
+              borderBottom: '1px solid rgba(0, 212, 168, 0.15)',
             }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Receipt size={18} color="#F59E0B" />
-                  <span style={{ fontSize: '1.15rem', fontWeight: 800, fontFamily: 'Outfit, sans-serif' }}>
+                  <Receipt size={18} color="#FB923C" />
+                  <span style={{ fontSize: '1.1rem', fontWeight: 800, fontFamily: 'Outfit, sans-serif' }}>
                     Issue New Cashier Bill
                   </span>
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#94A3B8', marginTop: 3 }}>
-                  Revenue Collection Point • Cashier & POS Terminal Till
+                <div style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: 4 }}>
+                  Revenue · POS / AKSHIA · MedCore OS
                 </div>
               </div>
               <button

@@ -42,9 +42,8 @@ export const PerformanceAnalytics: React.FC = () => {
   const admChange = (((latestAdmissions - prevAdmissions) / prevAdmissions) * 100).toFixed(1);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="os-module-layout">
 
-      {/* KPIs */}
       <div className="os-metrics-ribbon">
         <div className="metric-box">
           <span className="metric-label"><Activity size={13} style={{ display: 'inline', marginRight: 4 }} />Admissions (Sep)</span>

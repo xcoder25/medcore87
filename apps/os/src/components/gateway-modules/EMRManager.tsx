@@ -752,41 +752,59 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
   };
 
   return (
-    <div style={{ display: 'flex', height: '100%', background: '#070D18', color: '#E2E8F0', fontFamily: 'Inter, sans-serif', overflow: 'hidden' }}>
-      
-      {/* ── Toast Notification ────────────────────────────────────────────────────── */}
+    <div style={{
+      display: 'flex',
+      height: '100%',
+      minHeight: 520,
+      background: 'linear-gradient(180deg, #070B14 0%, #0A0F1C 100%)',
+      color: '#E2E8F0',
+      fontFamily: 'var(--os-font, Inter, sans-serif)',
+      overflow: 'hidden',
+      borderRadius: 16,
+      border: '1px solid rgba(148, 163, 184, 0.1)',
+      boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
+    }}>
+
       {toastMessage && (
         <div style={{
           position: 'fixed', top: 22, right: 26, zIndex: 9999,
           background: 'linear-gradient(135deg, #064E3B 0%, #065F46 100%)',
-          color: '#ECFDF5', border: '1px solid #10B981',
+          color: '#ECFDF5', border: '1px solid #16A34A',
           borderRadius: 12, padding: '12px 20px',
-          boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
           display: 'flex', alignItems: 'center', gap: 10,
           fontSize: '0.86rem', fontWeight: 600,
-          animation: 'fadeSlideDown 0.25s ease-out'
         }}>
-          <CheckCircle2 size={18} color="#34D399" />
+          <CheckCircle2 size={18} color="#4ADE80" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* ── COLUMN 1: Ergonomic Patient Directory (Left Pane) ────────────────────── */}
+      {/* Patient directory */}
       <div style={{
-        width: 320, flexShrink: 0, borderRight: '1px solid #1E293B',
-        background: '#0B1322', display: 'flex', flexDirection: 'column',
+        width: 312, flexShrink: 0,
+        borderRight: '1px solid rgba(148,163,184,0.1)',
+        background: 'linear-gradient(180deg, #0C1220 0%, #0A0F1C 100%)',
+        display: 'flex', flexDirection: 'column',
       }}>
-        {/* Directory Search & Filters */}
-        <div style={{ padding: '16px 14px', borderBottom: '1px solid #1E293B', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ padding: '16px 14px', borderBottom: '1px solid rgba(148,163,184,0.1)', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#38BDF8' }} />
-              <span style={{ fontSize: '0.78rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#94A3B8' }}>
-                Active Patient Roster
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'linear-gradient(135deg,#0066FF,#00D4A8)', boxShadow: '0 0 8px rgba(0,212,168,0.5)' }} />
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94A3B8' }}>
+                Patient Roster
               </span>
             </div>
-            <span style={{ fontSize: '0.72rem', background: '#1E293B', color: '#38BDF8', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
-              {filteredPatients.length} Active
+            <span style={{
+              fontSize: '0.68rem',
+              background: 'rgba(0,102,255,0.12)',
+              color: '#5EEAD4',
+              padding: '3px 9px',
+              borderRadius: 999,
+              fontWeight: 700,
+              border: '1px solid rgba(0,212,168,0.2)',
+            }}>
+              {filteredPatients.length} active
             </span>
           </div>
 
@@ -794,14 +812,17 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
             <Search size={14} color="#64748B" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
             <input
               type="text"
-              placeholder="Search by name, MRN, ward..."
+              placeholder="Search name, MRN, ward…"
               value={patientSearch}
               onChange={e => setPatientSearch(e.target.value)}
               style={{
-                width: '100%', background: '#0F172A', border: '1px solid #334155',
-                borderRadius: 8, padding: '8px 10px 8px 32px', color: '#F8FAFC',
-                fontSize: '0.8rem', outline: 'none', boxSizing: 'border-box'
+                width: '100%', background: '#0F172A', border: '1px solid #1E293B',
+                borderRadius: 10, padding: '9px 10px 9px 32px', color: '#F8FAFC',
+                fontSize: '0.8rem', outline: 'none', boxSizing: 'border-box',
+                transition: 'border-color 0.15s',
               }}
+              onFocus={e => { e.currentTarget.style.borderColor = '#0066FF'; }}
+              onBlur={e => { e.currentTarget.style.borderColor = '#1E293B'; }}
             />
           </div>
 
@@ -812,12 +833,15 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                 type="button"
                 onClick={() => setPatientFilter(f)}
                 style={{
-                  flex: 1, padding: '5px 4px', borderRadius: 6, border: 'none',
-                  fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
+                  flex: 1, padding: '6px 4px', borderRadius: 8, border: 'none',
+                  fontSize: '0.66rem', fontWeight: 700, cursor: 'pointer',
                   textTransform: 'capitalize',
-                  background: patientFilter === f ? '#0284C7' : '#1E293B',
+                  background: patientFilter === f
+                    ? 'linear-gradient(135deg, #0066FF, #00A8E8)'
+                    : '#1E293B',
                   color: patientFilter === f ? '#FFFFFF' : '#94A3B8',
-                  transition: 'all 0.15s ease'
+                  transition: 'all 0.15s ease',
+                  boxShadow: patientFilter === f ? '0 2px 8px rgba(0,102,255,0.3)' : 'none',
                 }}
               >
                 {f}
@@ -826,7 +850,6 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
           </div>
         </div>
 
-        {/* Patient Cards List */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
           {filteredPatients.map(p => {
             const isSelected = p.id === selectedPatient.id;
@@ -836,32 +859,41 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                 key={p.id}
                 onClick={() => setSelectedPatientId(p.id)}
                 style={{
-                  padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
-                  border: isSelected ? '1px solid #0284C7' : '1px solid transparent',
-                  background: isSelected ? 'rgba(2, 132, 199, 0.15)' : '#0F172A',
+                  padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
+                  border: isSelected ? '1px solid rgba(0,212,168,0.45)' : '1px solid transparent',
+                  background: isSelected
+                    ? 'linear-gradient(135deg, rgba(0,102,255,0.16), rgba(0,212,168,0.1))'
+                    : '#0F172A',
                   transition: 'all 0.15s ease',
-                  position: 'relative'
+                  position: 'relative',
                 }}
               >
                 {isSelected && (
-                  <div style={{ position: 'absolute', left: 0, top: '15%', height: '70%', width: 3, background: '#38BDF8', borderRadius: '0 4px 4px 0' }} />
+                  <div style={{
+                    position: 'absolute', left: 0, top: '18%', height: '64%', width: 3,
+                    background: 'linear-gradient(180deg,#0066FF,#00D4A8)',
+                    borderRadius: '0 4px 4px 0',
+                  }} />
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{
                       width: 32, height: 32, borderRadius: '50%',
-                      background: isCritical ? 'linear-gradient(135deg, #EF4444, #B91C1C)' : 'linear-gradient(135deg, #0284C7, #0EA5E9)',
+                      background: isCritical
+                        ? 'linear-gradient(135deg, #EF4444, #B91C1C)'
+                        : 'linear-gradient(135deg, #0066FF, #00D4A8)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '0.78rem', fontWeight: 800, color: '#FFF'
+                      fontSize: '0.75rem', fontWeight: 800, color: '#FFF',
+                      boxShadow: isCritical ? '0 2px 8px rgba(239,68,68,0.35)' : '0 2px 8px rgba(0,102,255,0.3)',
                     }}>
                       {p.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                     </div>
                     <div>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: isSelected ? '#38BDF8' : '#F1F5F9' }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: isSelected ? '#5EEAD4' : '#F1F5F9' }}>
                         {p.name}
                       </div>
-                      <div style={{ fontSize: '0.7rem', color: '#64748B', fontFamily: 'monospace' }}>
-                        {p.mrn} • {p.age}y {p.sex}
+                      <div style={{ fontSize: '0.68rem', color: '#64748B', fontFamily: 'var(--os-font-mono, monospace)' }}>
+                        {p.mrn} · {p.age}y {p.sex}
                       </div>
                     </div>
                   </div>
@@ -880,7 +912,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 170 }}>
                     {p.diagnoses[0] || 'Under Clinical Evaluation'}
                   </span>
-                  <span style={{ color: '#38BDF8', fontWeight: 600 }}>
+                  <span style={{ color: '#5EEAD4', fontWeight: 600 }}>
                     Bed {p.bed || 'OPD'}
                   </span>
                 </div>
@@ -892,7 +924,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
         {/* Directory Bottom Status */}
         <div style={{ padding: '10px 14px', borderTop: '1px solid #1E293B', background: '#09101D', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem', color: '#64748B' }}>
           <span>Sync: <strong style={{ color: '#10B981' }}>Live Telemetry</strong></span>
-          <span>Gateway: <strong style={{ color: '#38BDF8' }}>FHIR R4</strong></span>
+          <span>Gateway: <strong style={{ color: '#5EEAD4' }}>FHIR R4</strong></span>
         </div>
       </div>
 
@@ -908,7 +940,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{
               width: 58, height: 58, borderRadius: 16,
-              background: selectedPatient.status === 'critical' ? 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+              background: selectedPatient.status === 'critical' ? 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' : 'linear-gradient(135deg, #0066FF 0%, #0052CC 100%)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontWeight: 800, fontSize: '1.3rem', color: '#FFFFFF',
               boxShadow: '0 4px 16px rgba(0,0,0,0.4)', position: 'relative'
@@ -917,7 +949,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               <span style={{
                 position: 'absolute', bottom: -4, right: -4,
                 background: '#0F172A', border: '1px solid #334155',
-                borderRadius: 6, padding: '1px 5px', fontSize: '0.64rem', fontWeight: 800, color: '#38BDF8'
+                borderRadius: 6, padding: '1px 5px', fontSize: '0.64rem', fontWeight: 800, color: '#5EEAD4'
               }}>
                 {selectedPatient.blood}
               </span>
@@ -928,7 +960,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                 <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#F8FAFC' }}>
                   {selectedPatient.name}
                 </h1>
-                <span style={{ background: '#0284C7', color: '#FFF', padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace' }}>
+                <span style={{ background: '#0066FF', color: '#FFF', padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace' }}>
                   {selectedPatient.mrn}
                 </span>
                 <span style={{
@@ -942,7 +974,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4, fontSize: '0.76rem', color: '#94A3B8', flexWrap: 'wrap' }}>
                 <span><strong>DOB:</strong> {selectedPatient.dob} ({selectedPatient.age} yrs • {selectedPatient.sex === 'M' ? 'Male' : 'Female'})</span>
                 <span>•</span>
-                <span><strong>Ward:</strong> <span style={{ color: '#38BDF8', fontWeight: 600 }}>{selectedPatient.ward} (Bed {selectedPatient.bed || 'OPD'})</span></span>
+                <span><strong>Ward:</strong> <span style={{ color: '#5EEAD4', fontWeight: 600 }}>{selectedPatient.ward} (Bed {selectedPatient.bed || 'OPD'})</span></span>
                 <span>•</span>
                 <span><strong>Attending:</strong> {selectedPatient.attending}</span>
                 <span>•</span>
@@ -958,8 +990,8 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               onClick={() => setFhirPassportOpen(true)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                background: 'rgba(56, 189, 248, 0.12)', color: '#38BDF8',
-                border: '1px solid rgba(56, 189, 248, 0.3)', borderRadius: 8,
+                background: 'rgba(0, 212, 168, 0.12)', color: '#5EEAD4',
+                border: '1px solid rgba(0, 212, 168, 0.3)', borderRadius: 8,
                 padding: '7px 13px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer'
               }}
             >
@@ -984,10 +1016,11 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               onClick={() => onNavigate && onNavigate('consultation', { patientId: selectedPatient.id })}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                background: 'linear-gradient(135deg, #0284C7, #0369A1)', color: '#FFFFFF',
+                background: 'linear-gradient(135deg, #0066FF, #0052CC)', color: '#FFFFFF',
                 border: 'none', borderRadius: 8,
                 padding: '7px 15px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(2, 132, 199, 0.35)'
+                background: 'linear-gradient(135deg, #0066FF 0%, #00D4A8 100%)',
+                boxShadow: '0 4px 14px rgba(0, 102, 255, 0.35)',
               }}
             >
               <Stethoscope size={14} /> Bedside Consult
@@ -1015,19 +1048,19 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
           </div>
         )}
 
-        {/* Navigation Tabs Bar */}
         <div style={{
-          display: 'flex', gap: 6, borderBottom: '1px solid #1E293B',
-          background: '#0B1322', padding: '8px 20px 0 20px'
+          display: 'flex', gap: 4, borderBottom: '1px solid rgba(148,163,184,0.1)',
+          background: 'rgba(12, 18, 32, 0.9)', padding: '8px 16px 0 16px',
+          overflowX: 'auto',
         }}>
           {[
-            { key: 'notes', label: 'Encounters & SOAP Notes', icon: FileText, count: patientNotes.length },
-            { key: 'vitals', label: 'Observation Chart & NEWS2', icon: HeartPulse },
-            { key: 'labs', label: 'Diagnostic Labs & Pathology', icon: FlaskConical, count: 4 },
-            { key: 'meds', label: 'e-MAR & Active Meds', icon: Pill, count: selectedPatient.medications.length },
-            { key: 'imaging', label: 'PACS Radiology & DICOM', icon: Layers, count: 2 },
-            { key: 'timeline', label: 'Longitudinal Timeline', icon: Clock },
-            { key: 'interop', label: 'Interoperability & Exchange', icon: Share2, count: 'FHIR' },
+            { key: 'notes', label: 'Encounters & SOAP', icon: FileText, count: patientNotes.length },
+            { key: 'vitals', label: 'Vitals & NEWS2', icon: HeartPulse },
+            { key: 'labs', label: 'Labs & Pathology', icon: FlaskConical, count: 4 },
+            { key: 'meds', label: 'e-MAR & Meds', icon: Pill, count: selectedPatient.medications.length },
+            { key: 'imaging', label: 'PACS / DICOM', icon: Layers, count: 2 },
+            { key: 'timeline', label: 'Timeline', icon: Clock },
+            { key: 'interop', label: 'Interop', icon: Share2, count: 'FHIR' },
           ].map(tab => {
             const isActive = activeTab === tab.key;
             return (
@@ -1037,22 +1070,22 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                 onClick={() => setActiveTab(tab.key as any)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 7,
-                  padding: '10px 16px', borderRadius: '8px 8px 0 0',
-                  fontSize: '0.78rem', fontWeight: isActive ? 800 : 600,
-                  border: 'none', cursor: 'pointer',
-                  borderBottom: isActive ? '2px solid #38BDF8' : '2px solid transparent',
-                  background: isActive ? '#0F172A' : 'transparent',
-                  color: isActive ? '#38BDF8' : '#94A3B8',
-                  transition: 'all 0.15s ease'
+                  padding: '10px 14px', borderRadius: '10px 10px 0 0',
+                  fontSize: '0.76rem', fontWeight: isActive ? 750 : 600,
+                  border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
+                  borderBottom: isActive ? '2px solid #00D4A8' : '2px solid transparent',
+                  background: isActive ? 'rgba(0,102,255,0.12)' : 'transparent',
+                  color: isActive ? '#5EEAD4' : '#94A3B8',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                <tab.icon size={14} color={isActive ? '#38BDF8' : '#64748B'} />
+                <tab.icon size={14} color={isActive ? '#5EEAD4' : '#64748B'} />
                 <span>{tab.label}</span>
                 {tab.count !== undefined && (
                   <span style={{
-                    fontSize: '0.64rem', padding: '1px 6px', borderRadius: 999,
-                    background: isActive ? 'rgba(56, 189, 248, 0.2)' : '#1E293B',
-                    color: isActive ? '#38BDF8' : '#94A3B8', fontWeight: 700
+                    fontSize: '0.62rem', padding: '2px 6px', borderRadius: 999,
+                    background: isActive ? 'rgba(0, 212, 168, 0.18)' : '#1E293B',
+                    color: isActive ? '#5EEAD4' : '#94A3B8', fontWeight: 700,
                   }}>
                     {tab.count}
                   </span>
@@ -1076,8 +1109,8 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(2, 132, 199, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <FileText size={18} color="#38BDF8" />
+                    <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(0, 102, 255, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <FileText size={18} color="#5EEAD4" />
                     </div>
                     <div>
                       <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#F8FAFC' }}>
@@ -1123,7 +1156,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
                   {/* S - Subjective */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', fontWeight: 700, color: '#38BDF8' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', fontWeight: 700, color: '#5EEAD4' }}>
                       <span>S — SUBJECTIVE (HPI & Patient Symptoms)</span>
                       <span style={{ fontSize: '0.66rem', color: '#64748B' }}>Chief Complaint</span>
                     </div>
@@ -1219,7 +1252,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1E293B', paddingBottom: 10 }}>
                         <div>
-                          <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#38BDF8' }}>{n.title}</div>
+                          <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#5EEAD4' }}>{n.title}</div>
                           <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: 2 }}>
                             {n.type} • {n.date} at {n.time} • Recorded by <strong>{n.author}</strong>
                           </div>
@@ -1234,7 +1267,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
 
                       {n.subjective && (
                         <div style={{ fontSize: '0.8rem', lineHeight: 1.5 }}>
-                          <strong style={{ color: '#38BDF8' }}>Subjective: </strong>
+                          <strong style={{ color: '#5EEAD4' }}>Subjective: </strong>
                           <span style={{ color: '#CBD5E1' }}>{n.subjective}</span>
                         </div>
                       )}
@@ -1312,10 +1345,10 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               {/* Live Vital Sign Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                 {[
-                  { label: 'BLOOD PRESSURE', val: selectedPatient.vitals.bp, unit: 'mmHg', target: '< 130/80', color: '#38BDF8' },
+                  { label: 'BLOOD PRESSURE', val: selectedPatient.vitals.bp, unit: 'mmHg', target: '< 130/80', color: '#5EEAD4' },
                   { label: 'PULSE RATE', val: selectedPatient.vitals.pulse, unit: 'bpm', target: '60 - 90', color: selectedPatient.vitals.pulse > 100 ? '#EF4444' : '#34D399' },
                   { label: 'OXYGEN SATURATION', val: `${selectedPatient.vitals.spo2}%`, unit: 'SpO2 Room Air', target: '>= 95%', color: selectedPatient.vitals.spo2 < 94 ? '#EF4444' : '#34D399' },
-                  { label: 'BODY TEMPERATURE', val: `${selectedPatient.vitals.temp}°C`, unit: 'Axillary', target: '36.5 - 37.5', color: selectedPatient.vitals.temp >= 38 ? '#F59E0B' : '#38BDF8' },
+                  { label: 'BODY TEMPERATURE', val: `${selectedPatient.vitals.temp}°C`, unit: 'Axillary', target: '36.5 - 37.5', color: selectedPatient.vitals.temp >= 38 ? '#F59E0B' : '#5EEAD4' },
                   { label: 'RESPIRATORY RATE', val: `${selectedPatient.vitals.rr}`, unit: 'breaths/min', target: '12 - 20', color: selectedPatient.vitals.rr >= 22 ? '#EF4444' : '#34D399' },
                   { label: 'WEIGHT / HEIGHT', val: `${selectedPatient.vitals.weight} kg`, unit: `${selectedPatient.vitals.height} cm`, target: 'BMI: 26.2', color: '#A78BFA' },
                   { label: 'CONSCIOUSNESS', val: 'Alert (A)', unit: 'AVPU Scale', target: 'Normal', color: '#10B981' },
@@ -1336,7 +1369,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                   <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#F1F5F9' }}>
                     24-Hour Multi-Parametric Trend Correlation (Telemetry Stream)
                   </h4>
-                  <span style={{ fontSize: '0.7rem', color: '#38BDF8' }}>Updated every 15 mins via Bedside IoT</span>
+                  <span style={{ fontSize: '0.7rem', color: '#5EEAD4' }}>Updated every 15 mins via Bedside IoT</span>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1350,7 +1383,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                       background: '#0B1322', border: '1px solid #1E293B', borderRadius: 8, padding: '10px 14px',
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem'
                     }}>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#38BDF8' }}>{obs.time}</span>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#5EEAD4' }}>{obs.time}</span>
                       <span>BP: <strong>{obs.bp}</strong></span>
                       <span>HR: <strong>{obs.pulse}</strong></span>
                       <span>SpO2: <strong style={{ color: '#34D399' }}>{obs.spo2}</strong></span>
@@ -1375,7 +1408,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                   onClick={() => showToast('🔬 STAT Lab requisition dispatched to Laboratory LIS')}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6,
-                    background: '#0284C7', color: '#FFF', border: 'none',
+                    background: '#0066FF', color: '#FFF', border: 'none',
                     borderRadius: 8, padding: '7px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer'
                   }}
                 >
@@ -1409,7 +1442,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                           {lab.status}
                         </span>
                       </div>
-                      <div style={{ fontSize: '0.8rem', color: '#38BDF8', marginTop: 4, fontFamily: 'monospace' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#5EEAD4', marginTop: 4, fontFamily: 'monospace' }}>
                         {lab.result}
                       </div>
                       <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: 2 }}>
@@ -1445,7 +1478,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                   onClick={() => showToast('💊 e-Prescription order routed to MedCore Central Pharmacy')}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6,
-                    background: '#0284C7', color: '#FFF', border: 'none',
+                    background: '#0066FF', color: '#FFF', border: 'none',
                     borderRadius: 8, padding: '7px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer'
                   }}
                 >
@@ -1463,8 +1496,8 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(2, 132, 199, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Pill size={20} color="#38BDF8" />
+                      <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(0, 102, 255, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Pill size={20} color="#5EEAD4" />
                       </div>
                       <div>
                         <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#F8FAFC' }}>{med}</div>
@@ -1507,7 +1540,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                   onClick={() => showToast('📷 Radiology imaging requisition dispatched to Department of Radiology')}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6,
-                    background: '#0284C7', color: '#FFF', border: 'none',
+                    background: '#0066FF', color: '#FFF', border: 'none',
                     borderRadius: 8, padding: '7px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer'
                   }}
                 >
@@ -1526,7 +1559,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ background: '#0284C7', color: '#FFF', padding: '2px 7px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 800 }}>
+                        <span style={{ background: '#0066FF', color: '#FFF', padding: '2px 7px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 800 }}>
                           {study.modality}
                         </span>
                         <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#F8FAFC' }}>{study.title}</span>
@@ -1540,7 +1573,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                       <strong>Findings: </strong>{study.findings}
                     </div>
 
-                    <div style={{ fontSize: '0.78rem', color: '#38BDF8', lineHeight: 1.5, background: 'rgba(2, 132, 199, 0.08)', padding: 10, borderRadius: 8 }}>
+                    <div style={{ fontSize: '0.78rem', color: '#5EEAD4', lineHeight: 1.5, background: 'rgba(0, 102, 255, 0.08)', padding: 10, borderRadius: 8 }}>
                       <strong>Impression: </strong>{study.impression}
                     </div>
 
@@ -1551,7 +1584,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                         onClick={() => setSelectedStudyModal(study)}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 4,
-                          background: '#1E293B', color: '#38BDF8', border: '1px solid #334155',
+                          background: '#1E293B', color: '#5EEAD4', border: '1px solid #334155',
                           borderRadius: 6, padding: '4px 10px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer'
                         }}
                       >
@@ -1583,14 +1616,14 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                   <div key={i} style={{ position: 'relative' }}>
                     <div style={{
                       position: 'absolute', left: -22, top: 4, width: 10, height: 10,
-                      borderRadius: '50%', background: '#38BDF8', border: '2px solid #090F1D'
+                      borderRadius: '50%', background: '#5EEAD4', border: '2px solid #090F1D'
                     }} />
                     <div style={{ background: '#0F172A', border: '1px solid #1E293B', borderRadius: 10, padding: 14 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#F8FAFC' }}>{item.title}</span>
                         <span style={{ fontSize: '0.72rem', color: '#64748B', fontFamily: 'monospace' }}>{item.date}</span>
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#0284C7', fontWeight: 600, marginTop: 2 }}>{item.author}</div>
+                      <div style={{ fontSize: '0.74rem', color: '#0066FF', fontWeight: 600, marginTop: 2 }}>{item.author}</div>
                       <div style={{ fontSize: '0.78rem', color: '#CBD5E1', marginTop: 4 }}>{item.desc}</div>
                     </div>
                   </div>
@@ -1604,13 +1637,13 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {/* Header Banner */}
               <div style={{
-                background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.12) 0%, rgba(16, 185, 129, 0.08) 100%)',
-                border: '1px solid rgba(56, 189, 248, 0.3)', borderRadius: 12, padding: 18,
+                background: 'linear-gradient(135deg, rgba(0, 102, 255, 0.12) 0%, rgba(16, 185, 129, 0.08) 100%)',
+                border: '1px solid rgba(0, 212, 168, 0.3)', borderRadius: 12, padding: 18,
                 display: 'flex', flexDirection: 'column', gap: 10
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: 8, background: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 8, background: '#0066FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Share2 size={18} color="#FFF" />
                     </div>
                     <div>
@@ -1623,7 +1656,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '3px 8px', borderRadius: 999, background: 'rgba(56, 189, 248, 0.2)', color: '#38BDF8', border: '1px solid rgba(56, 189, 248, 0.4)' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '3px 8px', borderRadius: 999, background: 'rgba(0, 212, 168, 0.2)', color: '#5EEAD4', border: '1px solid rgba(0, 212, 168, 0.4)' }}>
                       FHIR R4 RESTful
                     </span>
                     <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '3px 8px', borderRadius: 999, background: 'rgba(16, 185, 129, 0.2)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.4)' }}>
@@ -1655,9 +1688,9 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                         style={{
                           display: 'flex', alignItems: 'center', gap: 6,
                           padding: '6px 14px', borderRadius: 8, fontSize: '0.74rem', fontWeight: 700,
-                          cursor: 'pointer', border: isSubActive ? '1px solid #38BDF8' : '1px solid #334155',
-                          background: isSubActive ? 'rgba(56, 189, 248, 0.2)' : '#0F172A',
-                          color: isSubActive ? '#38BDF8' : '#94A3B8',
+                          cursor: 'pointer', border: isSubActive ? '1px solid #5EEAD4' : '1px solid #334155',
+                          background: isSubActive ? 'rgba(0, 212, 168, 0.2)' : '#0F172A',
+                          color: isSubActive ? '#5EEAD4' : '#94A3B8',
                           transition: 'all 0.15s ease'
                         }}
                       >
@@ -1687,7 +1720,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                           </span>
                         </div>
                         <div style={{ fontSize: '0.7rem', color: '#64748B', fontFamily: 'monospace' }}>{lab.endpoint}</div>
-                        <div style={{ fontSize: '0.72rem', color: '#38BDF8', fontWeight: 600 }}>{lab.type}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#5EEAD4', fontWeight: 600 }}>{lab.type}</div>
                       </div>
                     ))}
                   </div>
@@ -1715,7 +1748,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                       >
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#F8FAFC' }}>Full Blood Count</span>
-                          <span style={{ fontSize: '0.64rem', color: '#38BDF8', fontFamily: 'monospace' }}>LOINC 58410-2</span>
+                          <span style={{ fontSize: '0.64rem', color: '#5EEAD4', fontFamily: 'monospace' }}>LOINC 58410-2</span>
                         </div>
                         <span style={{ fontSize: '0.7rem', color: '#64748B' }}>Route to: Synlab Nigeria</span>
                       </button>
@@ -1731,7 +1764,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                       >
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#F8FAFC' }}>Renal Panel (E/U/Cr)</span>
-                          <span style={{ fontSize: '0.64rem', color: '#38BDF8', fontFamily: 'monospace' }}>LOINC 24362-6</span>
+                          <span style={{ fontSize: '0.64rem', color: '#5EEAD4', fontFamily: 'monospace' }}>LOINC 24362-6</span>
                         </div>
                         <span style={{ fontSize: '0.7rem', color: '#64748B' }}>Route to: Lancet Laboratories</span>
                       </button>
@@ -1812,7 +1845,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                         <div key={r.id} style={{ background: '#1E293B', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ background: '#0284C7', color: '#FFF', padding: '1px 6px', borderRadius: 4, fontSize: '0.66rem', fontWeight: 700 }}>
+                              <span style={{ background: '#0066FF', color: '#FFF', padding: '1px 6px', borderRadius: 4, fontSize: '0.66rem', fontWeight: 700 }}>
                                 LOINC {r.loinc}
                               </span>
                               <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#F8FAFC' }}>{r.title}</span>
@@ -1940,7 +1973,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                           </span>
                         </div>
                         <div style={{ fontSize: '0.7rem', color: '#64748B' }}>Coverage: {ins.policy}</div>
-                        <div style={{ fontSize: '0.72rem', color: '#38BDF8', fontWeight: 600 }}>Adjudication: {ins.turnaround}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#5EEAD4', fontWeight: 600 }}>Adjudication: {ins.turnaround}</div>
                       </div>
                     ))}
                   </div>
@@ -1967,7 +2000,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                         }}
                       >
                         <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#F8FAFC' }}>Outpatient Review & Labs</span>
-                        <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#38BDF8' }}>₦27,500</span>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#5EEAD4' }}>₦27,500</span>
                         <span style={{ fontSize: '0.68rem', color: '#10B981' }}>80% HMO: ₦22,000 • 20% Co-pay: ₦5,500</span>
                       </button>
 
@@ -1981,7 +2014,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                         }}
                       >
                         <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#F8FAFC' }}>3-Day Inpatient Ward Stay</span>
-                        <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#38BDF8' }}>₦48,000</span>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#5EEAD4' }}>₦48,000</span>
                         <span style={{ fontSize: '0.68rem', color: '#10B981' }}>80% HMO: ₦38,400 • 20% Co-pay: ₦9,600</span>
                       </button>
 
@@ -1995,7 +2028,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                         }}
                       >
                         <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#F8FAFC' }}>Specialist Surgery Episode</span>
-                        <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#38BDF8' }}>₦125,000</span>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#5EEAD4' }}>₦125,000</span>
                         <span style={{ fontSize: '0.68rem', color: '#10B981' }}>80% HMO: ₦100,000 • 20% Co-pay: ₦25,000</span>
                       </button>
                     </div>
@@ -2056,7 +2089,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                         onClick={handleFetchFhirBundle}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 6,
-                          background: '#0284C7', color: '#FFF', border: 'none', borderRadius: 6,
+                          background: '#0066FF', color: '#FFF', border: 'none', borderRadius: 6,
                           padding: '6px 14px', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer'
                         }}
                       >
@@ -2085,7 +2118,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
 
                   <div style={{
                     background: '#020617', border: '1px solid #1E293B', borderRadius: 8, padding: 14,
-                    maxHeight: 380, overflowY: 'auto', fontFamily: 'monospace', fontSize: '0.72rem', color: '#38BDF8',
+                    maxHeight: 380, overflowY: 'auto', fontFamily: 'monospace', fontSize: '0.72rem', color: '#5EEAD4',
                     lineHeight: 1.5, whiteSpace: 'pre-wrap'
                   }}>
                     {rawFhirBundle || 'Click "Load FHIR Bundle" to fetch the live International Patient Summary (IPS) FHIR R4 document bundle via RESTful GET /api/v1/fhir/Bundle/:patientId.'}
@@ -2097,7 +2130,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               <div style={{ background: '#0F172A', border: '1px solid #1E293B', borderRadius: 12, padding: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Activity size={15} color="#38BDF8" />
+                    <Activity size={15} color="#5EEAD4" />
                     <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#F1F5F9' }}>
                       Real-time Interoperability Audit Trail & Gateway Telemetry
                     </span>
@@ -2120,7 +2153,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                         <span style={{
                           fontSize: '0.66rem', fontWeight: 800, padding: '2px 8px', borderRadius: 4,
                           background: log.status === 'INGESTED' ? 'rgba(16,185,129,0.2)' : log.status === 'ADJUDICATED' ? 'rgba(245,158,11,0.2)' : 'rgba(56,189,248,0.2)',
-                          color: log.status === 'INGESTED' ? '#34D399' : log.status === 'ADJUDICATED' ? '#FBBF24' : '#38BDF8'
+                          color: log.status === 'INGESTED' ? '#34D399' : log.status === 'ADJUDICATED' ? '#FBBF24' : '#5EEAD4'
                         }}>
                           {log.status}
                         </span>
@@ -2152,7 +2185,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
         {/* Right Pane Header */}
         <div style={{ padding: '16px 18px', borderBottom: '1px solid #1E293B', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, #0284C7, #00BFA5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, #0066FF, #00BFA5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Brain size={16} color="#FFF" />
             </div>
             <div>
@@ -2160,7 +2193,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               <div style={{ fontSize: '0.66rem', color: '#34D399', fontWeight: 600 }}>Active Decision Support</div>
             </div>
           </div>
-          <span style={{ fontSize: '0.64rem', background: 'rgba(2, 132, 199, 0.15)', color: '#38BDF8', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
+          <span style={{ fontSize: '0.64rem', background: 'rgba(0, 102, 255, 0.15)', color: '#5EEAD4', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
             v4.8 Clinical
           </span>
         </div>
@@ -2175,7 +2208,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Sparkles size={15} color="#38BDF8" />
+                <Sparkles size={15} color="#5EEAD4" />
                 <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#F8FAFC' }}>Ambient Voice Scribe</span>
               </div>
               <button
@@ -2192,7 +2225,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                 }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5,
-                  background: isListening ? '#EF4444' : '#0284C7', color: '#FFF',
+                  background: isListening ? '#EF4444' : '#0066FF', color: '#FFF',
                   border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer'
                 }}
               >
@@ -2211,7 +2244,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                   <div
                     key={idx}
                     style={{
-                      width: 4, height: `${lvl}%`, background: '#38BDF8',
+                      width: 4, height: `${lvl}%`, background: '#5EEAD4',
                       borderRadius: 2, transition: 'height 0.15s ease'
                     }}
                   />
@@ -2229,7 +2262,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                 </span>
               ) : (
                 ambientTranscript.map((line, i) => (
-                  <div key={i} style={{ marginBottom: 4, color: line.startsWith('Doctor') ? '#38BDF8' : '#34D399' }}>
+                  <div key={i} style={{ marginBottom: 4, color: line.startsWith('Doctor') ? '#5EEAD4' : '#34D399' }}>
                     {line}
                   </div>
                 ))
@@ -2242,7 +2275,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                 onClick={handleSynthesizeSoap}
                 style={{
                   width: '100%', marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  background: 'linear-gradient(135deg, #0284C7, #00BFA5)', color: '#FFF',
+                  background: 'linear-gradient(135deg, #0066FF, #00BFA5)', color: '#FFF',
                   border: 'none', borderRadius: 6, padding: '7px 0', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer'
                 }}
               >
@@ -2282,8 +2315,8 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                     onClick={() => handleExecuteBundle(bundle)}
                     style={{
                       marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                      background: 'rgba(2, 132, 199, 0.15)', color: '#38BDF8',
-                      border: '1px solid rgba(2, 132, 199, 0.3)', borderRadius: 6, padding: '5px 0',
+                      background: 'rgba(0, 102, 255, 0.15)', color: '#5EEAD4',
+                      border: '1px solid rgba(0, 102, 255, 0.3)', borderRadius: 6, padding: '5px 0',
                       fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer'
                     }}
                   >
@@ -2297,7 +2330,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
           {/* M87 Natural Language Assistant */}
           <div style={{ background: '#0F172A', border: '1px solid #1E293B', borderRadius: 12, padding: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-              <Compass size={15} color="#38BDF8" />
+              <Compass size={15} color="#5EEAD4" />
               <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#F8FAFC' }}>Clinical Inquiries</span>
             </div>
 
@@ -2316,7 +2349,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                     borderRadius: 6, padding: '6px 9px', fontSize: '0.7rem', color: '#94A3B8',
                     cursor: 'pointer', transition: 'all 0.15s ease'
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.color = '#38BDF8')}
+                  onMouseEnter={e => (e.currentTarget.style.color = '#5EEAD4')}
                   onMouseLeave={e => (e.currentTarget.style.color = '#94A3B8')}
                 >
                   💡 {q}
@@ -2325,14 +2358,14 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
             </div>
 
             {aiLoading && (
-              <div style={{ textAlign: 'center', padding: 10, fontSize: '0.72rem', color: '#38BDF8' }}>
+              <div style={{ textAlign: 'center', padding: 10, fontSize: '0.72rem', color: '#5EEAD4' }}>
                 Querying M87 Clinical Intelligence Core...
               </div>
             )}
 
             {aiResponse && !aiLoading && (
               <div style={{
-                background: '#070D18', border: '1px solid #0284C744', borderRadius: 8, padding: 10,
+                background: '#070D18', border: '1px solid #0066FF44', borderRadius: 8, padding: 10,
                 fontSize: '0.72rem', color: '#CBD5E1', lineHeight: 1.5, whiteSpace: 'pre-wrap'
               }}>
                 {aiResponse}
@@ -2355,7 +2388,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <QrCode size={22} color="#38BDF8" />
+                <QrCode size={22} color="#5EEAD4" />
                 <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#FFF' }}>
                   FHIR R4 Digital Patient Health Passport
                 </h3>
@@ -2383,7 +2416,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
 
               <div style={{ flex: 1, fontSize: '0.78rem', color: '#94A3B8', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <div style={{ fontSize: '1rem', fontWeight: 800, color: '#FFF' }}>{selectedPatient.name}</div>
-                <div>MRN: <strong style={{ color: '#38BDF8' }}>{selectedPatient.mrn}</strong></div>
+                <div>MRN: <strong style={{ color: '#5EEAD4' }}>{selectedPatient.mrn}</strong></div>
                 <div>DOB: {selectedPatient.dob} ({selectedPatient.age}y {selectedPatient.sex})</div>
                 <div>Blood: <strong style={{ color: '#F87171' }}>{selectedPatient.blood}</strong></div>
                 <div>Emergency Contact: {selectedPatient.nok}</div>
@@ -2396,7 +2429,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94A3B8' }}>FHIR R4 Resource (Patient/Observation)</span>
               <pre style={{
                 background: '#070D18', border: '1px solid #1E293B', borderRadius: 8, padding: 12,
-                fontSize: '0.68rem', color: '#38BDF8', fontFamily: 'monospace', maxHeight: 150, overflowY: 'auto'
+                fontSize: '0.68rem', color: '#5EEAD4', fontFamily: 'monospace', maxHeight: 150, overflowY: 'auto'
               }}>
 {JSON.stringify({
   resourceType: "Patient",
@@ -2435,7 +2468,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                   showToast('Digital Health Passport exported to PDF');
                 }}
                 style={{
-                  background: '#0284C7', color: '#FFF', border: 'none',
+                  background: '#0066FF', color: '#FFF', border: 'none',
                   borderRadius: 8, padding: '8px 16px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer'
                 }}
               >
@@ -2458,7 +2491,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <span style={{ background: '#0284C7', color: '#FFF', padding: '2px 7px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 800 }}>
+                <span style={{ background: '#0066FF', color: '#FFF', padding: '2px 7px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 800 }}>
                   {selectedStudyModal.modality}
                 </span>
                 <h3 style={{ margin: '4px 0 0 0', fontSize: '1.1rem', fontWeight: 800, color: '#FFF' }}>
@@ -2479,7 +2512,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               height: 280, background: '#000', borderRadius: 10, border: '1px solid #1E293B',
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative'
             }}>
-              <div style={{ position: 'absolute', top: 10, left: 12, fontSize: '0.7rem', color: '#38BDF8', fontFamily: 'monospace' }}>
+              <div style={{ position: 'absolute', top: 10, left: 12, fontSize: '0.7rem', color: '#5EEAD4', fontFamily: 'monospace' }}>
                 PATIENT: {selectedPatient.name} [{selectedPatient.mrn}]<br />
                 STUDY DATE: {selectedStudyModal.date} | SERIES 1/1
               </div>
@@ -2493,7 +2526,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
             </div>
 
             <div style={{ fontSize: '0.78rem', color: '#CBD5E1', lineHeight: 1.5 }}>
-              <strong style={{ color: '#38BDF8' }}>Radiological Impression: </strong>
+              <strong style={{ color: '#5EEAD4' }}>Radiological Impression: </strong>
               {selectedStudyModal.impression}
             </div>
 
@@ -2502,7 +2535,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                 type="button"
                 onClick={() => setSelectedStudyModal(null)}
                 style={{
-                  background: '#0284C7', color: '#FFF', border: 'none',
+                  background: '#0066FF', color: '#FFF', border: 'none',
                   borderRadius: 8, padding: '8px 18px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer'
                 }}
               >

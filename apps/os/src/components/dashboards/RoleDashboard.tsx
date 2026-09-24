@@ -72,10 +72,10 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
         </div>
       )}
 
-      {/* -- Role Banner Header -- */}
+      {/* -- Role Banner Header — MedCore blue/teal + Arise green soft wash -- */}
       <div style={{
-        background: 'linear-gradient(135deg, #FFFFFF 0%, #F0FDF4 50%, #EFF6FF 100%)',
-        border: '1px solid #E2E8F0',
+        background: 'linear-gradient(135deg, #FFFFFF 0%, #ECFDF5 42%, #EFF6FF 100%)',
+        border: '1px solid rgba(226, 232, 240, 0.95)',
         borderRadius: 16,
         padding: '20px 24px',
         display: 'flex',
@@ -83,7 +83,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
         justifyContent: 'space-between',
         flexWrap: 'wrap',
         gap: 16,
-        boxShadow: '0 4px 20px rgba(0, 82, 212, 0.05)',
+        boxShadow: '0 1px 3px rgba(15,23,42,0.04), 0 12px 28px -8px rgba(0, 102, 255, 0.08)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{

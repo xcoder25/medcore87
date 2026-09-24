@@ -17,9 +17,8 @@ import { DigitalPatientCard } from './components/patient-card/DigitalPatientCard
 import { RoleDashboard } from './components/dashboards/RoleDashboard';
 import { EMRManager } from './components/gateway-modules/EMRManager';
 import { AuthScreen, UserSession } from './components/auth/AuthScreen';
+import { RealtimeChrome } from './components/realtime/RealtimeChrome';
 import './styles/os.css';
-
-// ─── Navigation config ─────────────────────────────────────────────────────────
 
 type ModuleKey =
   | 'dashboard' | 'command' | 'ai' | 'emr' | 'beds' | 'patient-flow' | 'staffing'
@@ -28,7 +27,7 @@ type ModuleKey =
 
 type NavSection = {
   label: string;
-  items: { key: ModuleKey; icon: string; label: string; badge?: string; adminOnly?: boolean }[];
+  items: { key: ModuleKey; icon: string; label: string; badge?: string; badgeTone?: 'default' | 'arise'; adminOnly?: boolean }[];
 };
 
 const NAV: NavSection[] = [
@@ -62,7 +61,7 @@ const NAV: NavSection[] = [
       { key: 'auth', icon: '🔐', label: 'Auth & Identity', badge: 'IAM' },
       { key: 'facility', icon: '🏥', label: 'Facility & SaaS', badge: 'SaaS' },
       { key: 'rbac', icon: '🛡', label: 'Access Control' },
-      { key: 'transfer', icon: '🔀', label: 'Staff Transfer', badge: 'Admin', adminOnly: true },
+      { key: 'transfer', icon: '🔀', label: 'Staff Transfer', badge: 'Admin', badgeTone: 'arise', adminOnly: true },
     ],
   },
   {
@@ -76,22 +75,18 @@ const NAV: NavSection[] = [
   },
 ];
 
-// ─── App Shell ─────────────────────────────────────────────────────────────────
-
 export const App: React.FC = () => {
   const [session, setSession] = useState<UserSession | null>(null);
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const now = new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 
-  // ── Auth flow ──────────────────────────────────────────────────────────────
   if (!session) {
     return <AuthScreen onLogin={(s) => { setSession(s); setActiveModule('dashboard'); }} />;
   }
 
   const isAdmin = ['hospital_admin', 'sysadmin', 'medical_director'].includes(session.roleKey);
 
-  // Module renderer
   const renderModule = () => {
     switch (activeModule) {
       case 'dashboard':    return <RoleDashboard session={session} onNavigate={(k) => setActiveModule(k as ModuleKey)} />;
@@ -117,64 +112,53 @@ export const App: React.FC = () => {
 
   const allNavItems = NAV.flatMap(s => s.items);
   const activeItem = allNavItems.find(i => i.key === activeModule);
+  const facilityShort =
+    session.facility.length > 32 ? session.facility.slice(0, 30) + '…' : session.facility;
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: '#090D16', color: '#F9FAFB', fontFamily: 'Inter, sans-serif', overflow: 'hidden' }}>
-
+    <div className="os-shell">
       {/* ── Sidebar ── */}
-      <aside style={{
-        width: sidebarOpen ? 224 : 56, flexShrink: 0,
-        background: '#0B1120', borderRight: '1px solid #1F2937',
-        display: 'flex', flexDirection: 'column',
-        transition: 'width 0.22s ease', overflow: 'hidden',
-      }}>
-        {/* Logo */}
-        <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid #1F2937', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 3, flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
-            <img src="/medcore-logo.png" alt="MedCore" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+      <aside className={`os-sidebar${sidebarOpen ? '' : ' is-collapsed'}`}>
+        <div className="os-sidebar-brand">
+          <div className="os-sidebar-logo-wrap">
+            <img src="/medcore-logo.png" alt="MedCore" />
           </div>
           {sidebarOpen && (
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '0.95rem', lineHeight: 1.2, fontFamily: 'Outfit,sans-serif', color: '#FFFFFF' }}>MedCore</div>
-              <div style={{ fontSize: '0.62rem', color: '#9CA3AF' }}>Powered by M87</div>
+            <div className="os-sidebar-brand-text">
+              <div className="os-sidebar-brand-name">MedCore</div>
+              <div className="os-sidebar-brand-sub">
+                Hospital OS <span className="m87-pill">M87</span>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Nav */}
-        <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        <nav className="os-sidebar-nav">
           {NAV.map(section => (
-            <div key={section.label}>
+            <div key={section.label} className="os-nav-section">
               {sidebarOpen && (
-                <div style={{ padding: '12px 14px 4px', fontSize: '0.62rem', color: '#4B5563', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  {section.label}
-                </div>
+                <div className="os-nav-section-label">{section.label}</div>
               )}
               {section.items
                 .filter(item => !item.adminOnly || isAdmin)
                 .map(item => {
                   const isActive = activeModule === item.key;
                   return (
-                    <button key={item.key} onClick={() => setActiveModule(item.key)}
+                    <button
+                      key={item.key}
+                      type="button"
+                      className={`os-nav-item${isActive ? ' is-active' : ''}`}
+                      onClick={() => setActiveModule(item.key)}
                       title={item.label}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                        padding: sidebarOpen ? '8px 14px' : '8px 0', justifyContent: sidebarOpen ? 'flex-start' : 'center',
-                        background: isActive ? 'rgba(13,148,136,0.15)' : 'transparent',
-                        border: 'none', borderLeft: isActive ? '3px solid #0D9488' : '3px solid transparent',
-                        color: isActive ? '#2DD4BF' : '#9CA3AF', cursor: 'pointer',
-                        fontSize: '0.82rem', fontWeight: isActive ? 700 : 400,
-                        transition: 'all 0.15s',
-                      }}
-                      onMouseEnter={e => { if (!isActive) { e.currentTarget.style.color = '#F9FAFB'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; } }}
-                      onMouseLeave={e => { if (!isActive) { e.currentTarget.style.color = '#9CA3AF'; e.currentTarget.style.background = 'transparent'; } }}
                     >
-                      <span style={{ fontSize: '1rem', flexShrink: 0 }}>{item.icon}</span>
+                      <span className="os-nav-icon">{item.icon}</span>
                       {sidebarOpen && (
                         <>
-                          <span style={{ flex: 1, textAlign: 'left' }}>{item.label}</span>
+                          <span className="os-nav-label">{item.label}</span>
                           {item.badge && (
-                            <span style={{ background: 'rgba(13,148,136,0.15)', color: '#2DD4BF', padding: '1px 6px', borderRadius: 5, fontSize: '0.6rem', fontWeight: 700 }}>{item.badge}</span>
+                            <span className={`os-nav-badge${item.badgeTone === 'arise' ? ' arise' : ''}`}>
+                              {item.badge}
+                            </span>
                           )}
                         </>
                       )}
@@ -185,95 +169,78 @@ export const App: React.FC = () => {
           ))}
         </nav>
 
-        {/* Bottom: user info */}
         {sidebarOpen && (
-          <div style={{ padding: '12px 14px', borderTop: '1px solid #1F2937', fontSize: '0.72rem', color: '#6B7280', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <div style={{
-                width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                background: 'linear-gradient(135deg,#0D9488,#2563EB)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.72rem', fontWeight: 800, color: '#FFF',
-              }}>{session.avatarInitials}</div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: '#E5E7EB', fontSize: '0.78rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{session.name}</div>
-                <div style={{ fontSize: '0.65rem', color: '#4B5563' }}>{session.role}</div>
+          <div className="os-sidebar-footer">
+            <div className="os-sidebar-user">
+              <div className="os-sidebar-avatar">{session.avatarInitials}</div>
+              <div className="os-sidebar-user-meta">
+                <div className="os-sidebar-user-name">{session.name}</div>
+                <div className="os-sidebar-user-role">{session.role}</div>
               </div>
             </div>
-            <div style={{ fontWeight: 600, color: '#9CA3AF', marginBottom: 2, fontSize: '0.7rem' }}>
-              🏥 {session.facility.length > 28 ? session.facility.slice(0, 26) + '…' : session.facility}
-            </div>
-            <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#34D399' }} />
+            <div className="os-sidebar-facility">🏥 {facilityShort}</div>
+            <div className="os-live-row">
+              <span className="os-live-dot" />
               <span>LIVE · {now}</span>
             </div>
-            {/* Logout */}
             <button
+              type="button"
+              className="os-btn-signout"
               onClick={() => { setSession(null); setActiveModule('dashboard'); }}
-              style={{
-                marginTop: 10, width: '100%', padding: '6px 10px',
-                background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-                borderRadius: 7, color: '#F87171', cursor: 'pointer',
-                fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'center',
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.18)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
             >
               ⏏ Sign Out
             </button>
           </div>
         )}
 
-        {/* Collapse toggle */}
-        <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{
-          background: 'none', border: 'none', color: '#6B7280', cursor: 'pointer',
-          padding: '10px', textAlign: 'center', borderTop: '1px solid #1F2937',
-          fontSize: '0.85rem', transition: 'color 0.15s',
-        }}
-          onMouseEnter={e => (e.currentTarget.style.color = '#F9FAFB')}
-          onMouseLeave={e => (e.currentTarget.style.color = '#6B7280')}
+        <button
+          type="button"
+          className="os-sidebar-collapse"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           {sidebarOpen ? '◀' : '▶'}
         </button>
       </aside>
 
-      {/* ── Main content ── */}
-      <main style={{ flex: 1, overflow: 'auto', padding: 24 }}>
-        {/* Top bar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 10 }}>
-          <div>
+      {/* ── Main ── */}
+      <div className="os-main">
+        <header className="os-topbar">
+          <div className="os-topbar-title-block">
             {activeItem && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: '1.4rem' }}>{activeItem.icon}</span>
+              <>
+                <div className="os-topbar-icon">{activeItem.icon}</div>
                 <div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'Outfit,sans-serif' }}>
+                  <div className="os-topbar-heading">
                     {activeModule === 'dashboard' ? `${session.role} Dashboard` : activeItem.label}
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>
+                  <div className="os-topbar-sub">
                     MedCore OS · {session.facility}
                   </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <span style={{ background: 'rgba(52,211,153,0.1)', color: '#34D399', padding: '4px 12px', borderRadius: 9999, fontSize: '0.75rem', fontWeight: 600, border: '1px solid rgba(52,211,153,0.2)' }}>● LIVE</span>
-            <span style={{ background: 'rgba(37,99,235,0.1)', color: '#60A5FA', padding: '4px 12px', borderRadius: 9999, fontSize: '0.75rem', fontWeight: 500, border: '1px solid rgba(37,99,235,0.2)' }}>
+          <div className="os-topbar-actions">
+            <RealtimeChrome
+              facilityId={session.hospitalId || 'AKS-IBOM-SPECIALIST'}
+              app="MEDCORE_OS"
+            />
+            <span className="os-pill os-pill-host">
               {session.hospitalId.toLowerCase()}.medcore.ng
             </span>
-            {/* Avatar */}
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#0D9488,#2563EB)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.78rem', fontWeight: 700 }}>
+            <div className="os-topbar-avatar" title={session.name}>
               {session.avatarInitials}
             </div>
           </div>
-        </div>
+        </header>
 
-        {/* Active module */}
-        <div className="os-grid" style={{ gridTemplateColumns: '1fr' }}>
-          {renderModule()}
-        </div>
-      </main>
+        <main className="os-content">
+          <div className="os-content-inner os-active-module-wrap">
+            {renderModule()}
+          </div>
+        </main>
+      </div>
     </div>
   );
 };

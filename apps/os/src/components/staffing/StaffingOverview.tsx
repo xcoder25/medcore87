@@ -62,9 +62,8 @@ export const StaffingOverview: React.FC = () => {
   const onCallCount = STAFF.filter(s => s.status === 'on-call').length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="os-module-layout">
 
-      {/* KPI Strip */}
       <div className="os-metrics-ribbon">
         <div className="metric-box alert-green">
           <span className="metric-label"><Users size={13} style={{ display: 'inline', marginRight: 4 }} />Total On Duty</span>

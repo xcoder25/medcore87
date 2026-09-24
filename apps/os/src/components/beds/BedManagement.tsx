@@ -162,19 +162,18 @@ export const BedManagement: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Toast Notification */}
+    <div className="os-module-layout">
       {notice && (
         <div style={{
           position: 'fixed',
           top: 24,
           right: 24,
           zIndex: 99999,
-          background: '#0F2236',
-          border: '1px solid #10B981',
-          borderRadius: 10,
+          background: '#0F172A',
+          border: '1px solid #16A34A',
+          borderRadius: 12,
           padding: '14px 20px',
-          boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
           display: 'flex',
           alignItems: 'center',
           gap: 12,
@@ -182,60 +181,60 @@ export const BedManagement: React.FC = () => {
           fontSize: '0.88rem',
           fontWeight: 600,
         }}>
-          <CheckCircle2 size={18} color="#10B981" />
+          <CheckCircle2 size={18} color="#4ADE80" />
           <span>{notice}</span>
         </div>
       )}
 
-      {/* Summary Metrics */}
       <div className="os-metrics-ribbon">
         {(Object.keys(BED_STATUS_META) as BedStatus[]).map(st => (
-          <div key={st} className="metric-box" style={{ cursor: 'pointer', borderColor: filterStatus === st ? BED_STATUS_META[st].color : undefined }} onClick={() => setFilterStatus(filterStatus === st ? 'all' : st)}>
+          <div
+            key={st}
+            className="metric-box"
+            style={{ cursor: 'pointer', borderColor: filterStatus === st ? BED_STATUS_META[st].color : undefined }}
+            onClick={() => setFilterStatus(filterStatus === st ? 'all' : st)}
+          >
             <span className="metric-label">{BED_STATUS_META[st].label} Beds</span>
             <span className="metric-val" style={{ color: BED_STATUS_META[st].color }}>{counts[st]}</span>
-            <span className="metric-sub">{Math.round((counts[st] / bedsList.length) * 100)}% of {bedsList.length} total beds</span>
+            <span className="metric-sub">{Math.round((counts[st] / bedsList.length) * 100)}% of {bedsList.length} total</span>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 320px' : '1fr', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 320px' : '1fr', gap: 18 }}>
         <div>
-          {/* Filters */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-            <div className="os-search-wrap" style={{ flex: 1, minWidth: 240 }}>
+          <div className="os-toolbar">
+            <div className="os-search-wrap" style={{ flex: 1, minWidth: 220 }}>
               <Search size={14} />
               <input className="os-search-input" placeholder="Search bed or patient..." value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-            <select className="os-form-select" style={{ width: 'auto', fontSize: '0.82rem', background: '#FFF', color: '#0A2540' }} value={filterWard} onChange={e => setFilterWard(e.target.value)}>
+            <select className="os-form-select" value={filterWard} onChange={e => setFilterWard(e.target.value)}>
               {wards.map(w => <option key={w}>{w}</option>)}
             </select>
           </div>
 
-          {/* Bed Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
+          <div className="os-bed-grid">
             {filtered.map(bed => {
               const meta = BED_STATUS_META[bed.status];
               const isSelected = selected?.id === bed.id;
               return (
                 <div
                   key={bed.id}
-                  className="os-card"
+                  className="os-card os-bed-tile"
                   onClick={() => setSelected(isSelected ? null : bed)}
                   style={{
-                    cursor: 'pointer',
                     borderColor: isSelected ? meta.color : `${meta.color}40`,
-                    background: isSelected ? `${meta.color}18` : undefined,
-                    padding: '12px 14px',
-                    transition: 'all 0.15s ease',
+                    background: isSelected ? `${meta.color}14` : undefined,
+                    boxShadow: isSelected ? `0 0 0 1px ${meta.color}50` : undefined,
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0A2540', letterSpacing: '0.04em' }}>{bed.bedNo}</span>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', letterSpacing: '0.04em' }}>{bed.bedNo}</span>
                     <span style={{ color: meta.color }}>{meta.icon}</span>
                   </div>
                   <div style={{ fontSize: '0.78rem', color: meta.color, fontWeight: 700 }}>{meta.label}</div>
                   {bed.patient && (
-                    <div style={{ fontSize: '0.72rem', color: '#0A2540', fontWeight: 600, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: '0.72rem', color: '#334155', fontWeight: 600, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {bed.patient}
                     </div>
                   )}

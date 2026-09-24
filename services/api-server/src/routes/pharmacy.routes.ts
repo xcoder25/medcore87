@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { syncEventBus } from '../sync/eventBus';
 import { dataStore } from '../store/database';
 import { auditLedger } from '../security/auditLedger';
 
@@ -100,10 +101,43 @@ router.post('/stock/deplete', (req: Request, res: Response) => {
       actorName,
     });
 
+    const facilityId = (req.body.facilityId as string) || 'FAC-001';
+
+    syncEventBus.broadcast({
+      topic: 'PRESCRIPTION_DISPENSED',
+      facilityId,
+      emitterApp: 'API_SERVER',
+      payload: {
+        itemCode,
+        drugName: updated.genericName,
+        quantity: Number(quantity),
+        remaining: updated.quantityOnHand,
+        referenceId,
+        actorName: actorName || 'Pharmacist',
+        status: updated.status,
+      },
+    });
+
+    if (updated.status === 'CRITICAL' || updated.status === 'OUT_OF_STOCK' || Number(updated.quantityOnHand) <= (updated.reorderLevel || 0)) {
+      syncEventBus.broadcast({
+        topic: 'DRUG_STOCKOUT',
+        facilityId,
+        emitterApp: 'API_SERVER',
+        payload: {
+          itemCode,
+          drugName: updated.genericName,
+          quantityOnHand: updated.quantityOnHand,
+          reorderLevel: updated.reorderLevel,
+          status: updated.status,
+        },
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: `Dispensed ${quantity} units of ${updated.genericName}. Remaining balance: ${updated.quantityOnHand}.`,
       data: updated,
+      eventsPublished: true,
     });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });

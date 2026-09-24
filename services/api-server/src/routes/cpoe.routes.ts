@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { dataStore } from '../store/database';
 import { auditLedger } from '../security/auditLedger';
 import { IbomClinicalPathway } from '@medcore/types';
+import { syncEventBus } from '../sync/eventBus';
 
 const router = Router();
 
@@ -332,6 +333,45 @@ router.post('/order-sets/apply', (req: Request, res: Response) => {
     },
   });
 
+  const fac = facilityId || 'FAC-001';
+
+  // Closed loop: labs / procedures → event bus
+  for (const order of createdOrders) {
+    syncEventBus.broadcast({
+      topic: order.type === 'LABORATORY' ? 'LAB_ORDERED' : order.type === 'RADIOLOGY' ? 'LAB_ORDERED' : 'LAB_ORDERED',
+      facilityId: fac,
+      emitterApp: 'API_SERVER',
+      payload: {
+        orderId: order.id,
+        patientId,
+        patientName: patientName || 'Inpatient',
+        testName: order.title,
+        type: order.type,
+        priority: order.priority,
+        orderedBy: orderedByDoctorName || 'Attending Physician',
+        pathway: pathway.title,
+      },
+    });
+  }
+
+  // Closed loop: Rx → pharmacy screens
+  if (prescription) {
+    syncEventBus.broadcast({
+      topic: 'PRESCRIPTION_CREATED',
+      facilityId: fac,
+      emitterApp: 'API_SERVER',
+      payload: {
+        rxId: prescription.id,
+        patientId,
+        patientName: patientName || 'Inpatient',
+        drugName: prescribedDrugs.map((d: { name: string }) => d.name).join(', '),
+        drugs: prescribedDrugs,
+        orderedBy: orderedByDoctorName || 'Attending Physician',
+        pathway: pathway.title,
+      },
+    });
+  }
+
   res.status(201).json({
     success: true,
     message: `Clinical pathway "${pathway.title}" successfully applied. Dispatched ${createdOrders.length} orders and ${prescribedDrugs.length} prescriptions to Pharmacy & Labs.`,
@@ -339,6 +379,7 @@ router.post('/order-sets/apply', (req: Request, res: Response) => {
       pathwayTitle: pathway.title,
       orders: createdOrders,
       prescription,
+      eventsPublished: true,
     },
   });
 });

@@ -59,10 +59,10 @@ router.post('/results', (req: Request, res: Response) => {
 
   labResults.set(id, result);
 
-  // Broadcast to referring doctor + OS
+  // Broadcast to referring doctor + OS (closed clinical loop)
   syncEventBus.broadcast({
     topic: 'LAB_RESULT_READY',
-    facilityId,
+    facilityId: facilityId || 'FAC-001',
     emitterApp: 'API_SERVER',
     payload: {
       resultId: id,
@@ -75,15 +75,41 @@ router.post('/results', (req: Request, res: Response) => {
       criticalParams: results.filter((r: any) => r.flag === 'CRITICAL').map((r: any) => r.parameter),
       verifiedBy: result.verifiedBy,
       timestamp: result.verifiedAt,
+      priority: hasCriticalValue ? 'CRITICAL' : 'HIGH',
     },
   });
+
+  // Optional patient SMS when phone provided
+  const patientPhone = req.body.patientPhone as string | undefined;
+  let smsQueued: { id: string; status: string } | null = null;
+  if (patientPhone) {
+    smsQueued = {
+      id: `SMS-${Math.floor(10000 + Math.random() * 90000)}`,
+      status: 'QUEUED',
+    };
+    // Fire-and-forget style log — full send via /api/v1/comms/sms/send
+    syncEventBus.broadcast({
+      topic: 'LAB_RESULT_READY',
+      facilityId: facilityId || 'FAC-001',
+      emitterApp: 'API_SERVER',
+      payload: {
+        smsHint: true,
+        phoneNumber: patientPhone,
+        message: `MedCore: Your lab result (${testName}) is ready. Please proceed to the clinic.`,
+        patientId,
+        patientName: result.patientName,
+      },
+    });
+  }
 
   res.status(201).json({
     success: true,
     message: hasCriticalValue
-      ? `🚨 Critical lab value — ${referringDoctorName || 'doctor'} notified immediately`
-      : `✅ Lab result verified and sent to ${referringDoctorName || 'referring doctor'}`,
+      ? `Critical lab value — ${referringDoctorName || 'doctor'} notified on the event bus`
+      : `Lab result verified and pushed live to OS / Clinic`,
     data: result,
+    eventsPublished: true,
+    smsQueued,
   });
 });
 

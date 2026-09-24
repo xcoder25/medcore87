@@ -45,15 +45,14 @@ export const AICommandInsights: React.FC = () => {
   const [selected, setSelected] = useState<typeof INSIGHTS[0] | null>(INSIGHTS[0]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="os-module-layout">
 
-      {/* Header note */}
-      <div style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 12, padding: '12px 18px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-        <Brain size={18} style={{ color: '#60A5FA', flexShrink: 0, marginTop: 2 }} />
+      <div className="os-insight-banner">
+        <Brain size={18} style={{ color: '#0066FF', flexShrink: 0, marginTop: 2 }} />
         <div>
-          <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.88rem', marginBottom: 4 }}>Clinical Decision Support</div>
-          <div style={{ fontSize: '0.8rem', color: '#94A3B8', lineHeight: 1.5 }}>
-            These are computer-assisted clinical suggestions based on current patient vitals, lab results, and medication records. All recommendations must be validated by the responsible clinician before action.
+          <div style={{ fontWeight: 700, color: '#0F172A', fontSize: '0.88rem', marginBottom: 4 }}>Clinical Decision Support · M87</div>
+          <div style={{ fontSize: '0.8rem', color: '#64748B', lineHeight: 1.55 }}>
+            Computer-assisted suggestions from vitals, labs, and meds. Validate every recommendation before acting — HITL required.
           </div>
         </div>
       </div>
@@ -82,66 +81,71 @@ export const AICommandInsights: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 20 }}>
-
-        {/* Alert List */}
+      <div className="os-split-2">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {INSIGHTS.map(ins => {
             const meta = URGENCY_META[ins.urgency];
             const isSelected = selected?.id === ins.id;
             return (
-              <div key={ins.id} className="os-card" onClick={() => setSelected(ins)}
-                style={{ cursor: 'pointer', padding: '14px 16px', borderColor: isSelected ? meta.color : `${meta.color}30`, background: isSelected ? meta.bg : undefined }}>
+              <div
+                key={ins.id}
+                className="os-card"
+                onClick={() => setSelected(ins)}
+                style={{
+                  cursor: 'pointer',
+                  padding: '14px 16px',
+                  borderColor: isSelected ? meta.color : `${meta.color}35`,
+                  background: isSelected ? meta.bg : undefined,
+                  boxShadow: isSelected ? `0 0 0 1px ${meta.color}40` : undefined,
+                }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: meta.color }}>{meta.label}</span>
-                  <span style={{ fontSize: '0.7rem', color: '#64748B' }}>{ins.id}</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: meta.color, letterSpacing: '0.04em' }}>{meta.label}</span>
+                  <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontFamily: 'var(--os-font-mono)' }}>{ins.id}</span>
                 </div>
-                <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.88rem', marginBottom: 4 }}>{ins.category}</div>
-                <div style={{ fontSize: '0.76rem', color: '#94A3B8' }}>{ins.ward}</div>
+                <div style={{ fontWeight: 700, color: '#0F172A', fontSize: '0.88rem', marginBottom: 4 }}>{ins.category}</div>
+                <div style={{ fontSize: '0.76rem', color: '#64748B' }}>{ins.ward}</div>
               </div>
             );
           })}
         </div>
 
-        {/* Detail Panel */}
         {selected && (
-          <div className="os-card" style={{ padding: 24, borderColor: URGENCY_META[selected.urgency].color }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-              <div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                  <span style={{ background: `${URGENCY_META[selected.urgency].color}20`, color: URGENCY_META[selected.urgency].color, fontSize: '0.72rem', fontWeight: 700, padding: '3px 10px', borderRadius: 9999 }}>
-                    {URGENCY_META[selected.urgency].label}
-                  </span>
-                  <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{selected.id}</span>
-                </div>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>{selected.category}</h3>
-                <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#94A3B8' }}>{selected.ward}</p>
+          <div className="os-card" style={{ padding: 24, borderColor: `${URGENCY_META[selected.urgency].color}55` }}>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ background: `${URGENCY_META[selected.urgency].color}18`, color: URGENCY_META[selected.urgency].color, fontSize: '0.7rem', fontWeight: 700, padding: '4px 10px', borderRadius: 9999 }}>
+                  {URGENCY_META[selected.urgency].label}
+                </span>
+                <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontFamily: 'var(--os-font-mono)' }}>{selected.id}</span>
               </div>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0F172A', fontFamily: 'var(--os-font-heading)' }}>{selected.category}</h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748B' }}>{selected.ward}</p>
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: '0.72rem', color: '#64748B', marginBottom: 6, fontWeight: 600 }}>CLINICAL FINDINGS</div>
-              <p style={{ margin: 0, fontSize: '0.9rem', color: '#CBD5E1', lineHeight: 1.6 }}>{selected.summary}</p>
+              <div style={{ fontSize: '0.68rem', color: '#64748B', marginBottom: 6, fontWeight: 700, letterSpacing: '0.06em' }}>CLINICAL FINDINGS</div>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#334155', lineHeight: 1.65 }}>{selected.summary}</p>
             </div>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
               {selected.indicators.map(ind => (
-                <span key={ind} style={{ background: `${URGENCY_META[selected.urgency].color}15`, color: URGENCY_META[selected.urgency].color, fontSize: '0.74rem', fontWeight: 600, padding: '3px 10px', borderRadius: 9999, border: `1px solid ${URGENCY_META[selected.urgency].color}30` }}>
+                <span key={ind} style={{ background: `${URGENCY_META[selected.urgency].color}12`, color: URGENCY_META[selected.urgency].color, fontSize: '0.74rem', fontWeight: 600, padding: '4px 10px', borderRadius: 9999, border: `1px solid ${URGENCY_META[selected.urgency].color}28` }}>
                   {ind}
                 </span>
               ))}
             </div>
 
-            <div style={{ background: 'rgba(21,128,61,0.1)', border: '1px solid rgba(21,128,61,0.25)', borderRadius: 10, padding: 16 }}>
-              <div style={{ fontSize: '0.72rem', color: '#22C55E', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Stethoscope size={14} />CLINICAL RECOMMENDATION
+            <div style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.22)', borderRadius: 12, padding: 16 }}>
+              <div style={{ fontSize: '0.68rem', color: '#16A34A', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, letterSpacing: '0.05em' }}>
+                <Stethoscope size={14} /> CLINICAL RECOMMENDATION
               </div>
-              <p style={{ margin: 0, fontSize: '0.9rem', color: '#0A2540', lineHeight: 1.6 }}>{selected.recommendation}</p>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#0F172A', lineHeight: 1.65 }}>{selected.recommendation}</p>
             </div>
 
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-              <button className="os-action-btn-primary" style={{ flex: 1 }}><CheckCircle2 size={14} /> Mark Reviewed</button>
-              <button className="os-ghost-btn" style={{ flex: 1 }}><FileText size={14} /> Add to Notes</button>
+            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+              <button type="button" className="os-action-btn-primary" style={{ flex: 1 }}><CheckCircle2 size={14} /> Mark Reviewed</button>
+              <button type="button" className="os-ghost-btn" style={{ flex: 1 }}><FileText size={14} /> Add to Notes</button>
             </div>
           </div>
         )}
@@ -149,3 +153,4 @@ export const AICommandInsights: React.FC = () => {
     </div>
   );
 };
+

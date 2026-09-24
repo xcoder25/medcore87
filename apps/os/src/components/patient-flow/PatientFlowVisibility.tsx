@@ -62,15 +62,18 @@ export const PatientFlowVisibility: React.FC = () => {
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="os-module-layout">
 
-      {/* Stage Stats */}
-      <div className="os-metrics-ribbon">
+      <div className="os-metrics-ribbon" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
         {STAGES.map(stage => {
           const count = PATIENTS.filter(p => p.stage === stage.key).length;
           return (
-            <div key={stage.key} className="metric-box" style={{ cursor: 'pointer', borderColor: stageFilter === stage.key ? stage.color : undefined }}
-              onClick={() => setStageFilter(stageFilter === stage.key ? 'all' : stage.key)}>
+            <div
+              key={stage.key}
+              className="metric-box"
+              style={{ cursor: 'pointer', borderColor: stageFilter === stage.key ? stage.color : undefined }}
+              onClick={() => setStageFilter(stageFilter === stage.key ? 'all' : stage.key)}
+            >
               <span className="metric-label">{stage.label}</span>
               <span className="metric-val" style={{ color: stage.color }}>{count}</span>
               <span className="metric-sub">patients</span>
