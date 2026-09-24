@@ -1,13 +1,16 @@
 # MedCore Hospital Platform — START HERE
 
-## One-command start (Hospital OS desktop + API + realtime)
+**Same-day hospital use:** see **[GO_LIVE.md](./GO_LIVE.md)** for the full runbook.
+
+## One-command start (API + WebSocket realtime)
 
 ```bash
-cd medcore
+cd medcore87
 ./start.sh
 ```
 
-Open **http://localhost:4000**
+Open **http://localhost:4000** (API status).  
+Hospital OS UI: `cd apps/os && npm install && npm run dev`
 
 ### Demo logins
 
