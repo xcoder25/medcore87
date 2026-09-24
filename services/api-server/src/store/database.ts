@@ -1,7 +1,8 @@
-import { BedStatus } from '@medcore/types';
+import { BedStatus, PharmacyStockItem, StockTransaction, HmoClaim, EncounterType } from '@medcore/types';
 import { encryptField, decryptField, EncryptedPayload } from '../security/crypto';
 import { auditLedger } from '../security/auditLedger';
 import { syncEventBus } from '../sync/eventBus';
+import { persistenceService } from './persistence';
 
 // ─── Facility Types ──────────────────────────────────────────────────────────
 export type FacilityEnrollmentStatus = 'pending' | 'credentials_issued' | 'active';
@@ -138,6 +139,9 @@ export interface StoredPatientRecord {
   walletId: string;
   lastVisit: string;
   createdAt: string;
+  nin?: string;
+  ninStatus?: 'VERIFIED' | 'UNVERIFIED' | 'PENDING';
+  stateHealthId?: string;
 }
 
 export interface BedRecord {
@@ -203,9 +207,19 @@ export interface Prescription {
 export interface EncounterRecord {
   id: string;
   patientId: string;
+  patientName: string;
   facilityId: string;
-  status: string;
+  type: EncounterType;
+  ward?: string;
+  bed?: string;
+  admittingDoctorId?: string;
+  admittingDoctorName?: string;
+  status: 'ACTIVE' | 'DISCHARGED' | 'TRANSFERRED';
   admittedAt: string;
+  dischargedAt?: string;
+  dischargeDisposition?: string;
+  chiefComplaint?: string;
+  workingDiagnosis?: string;
 }
 
 export class CentralDataStore {
@@ -214,12 +228,19 @@ export class CentralDataStore {
   private encounters: Map<string, EncounterRecord> = new Map();
   private orders: Map<string, ClinicalOrder> = new Map();
   private prescriptions: Map<string, Prescription> = new Map();
-  /** Registry of all 35 official Akwa Ibom secondary health facilities */
   private facilities: Map<string, FacilityRecord> = new Map();
+  private pharmacyStock: Map<string, PharmacyStockItem> = new Map();
+  private stockTransactions: StockTransaction[] = [];
+  private hmoClaims: Map<string, HmoClaim> = new Map();
 
   constructor() {
-    this.seedStore();
-    this.seedFacilities();
+    const loaded = this.loadFromDisk();
+    if (!loaded) {
+      this.seedStore();
+      this.seedFacilities();
+      this.seedPharmacyStock();
+      this.saveToDisk();
+    }
   }
 
   private seedStore(): void {
@@ -500,12 +521,17 @@ export class CentralDataStore {
     chronicConditions: string[];
     insurancePolicyId?: string;
     insuranceProvider?: string;
+    nin?: string;
+    stateHealthId?: string;
     actorId: string;
     actorName: string;
   }): StoredPatientRecord {
     const id = `PAT-${Math.floor(100000 + Math.random() * 900000)}`;
     const mrn = `MRN-${Math.floor(10000 + Math.random() * 90000)}`;
     const walletId = `WAL-${id}`;
+    const nin = params.nin || params.nationalId;
+    const isNinValid = /^\d{11}$/.test(nin.replace(/[^0-9]/g, ''));
+    const stateHealthId = params.stateHealthId || `AKS-HID-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const record: StoredPatientRecord = {
       id,
@@ -525,6 +551,9 @@ export class CentralDataStore {
       walletId,
       lastVisit: new Date().toISOString().split('T')[0],
       createdAt: new Date().toISOString(),
+      nin,
+      ninStatus: isNinValid ? 'VERIFIED' : 'PENDING',
+      stateHealthId,
     };
 
     this.patients.set(id, record);
@@ -538,7 +567,7 @@ export class CentralDataStore {
       action: 'WRITE_PHI',
       resourceType: 'PATIENT',
       resourceId: id,
-      reason: `New patient registered into Master Patient Index (MRN: ${mrn})`,
+      reason: `New patient registered into Master Patient Index (MRN: ${mrn}, HID: ${stateHealthId})`,
     });
 
     // Broadcast across event bus
@@ -546,9 +575,10 @@ export class CentralDataStore {
       topic: 'PATIENT_REGISTERED',
       facilityId: params.facilityId,
       emitterApp: 'MEDCORE_OS',
-      payload: { patientId: id, mrn, name: params.name, facilityId: params.facilityId },
+      payload: { patientId: id, mrn, stateHealthId, name: params.name, facilityId: params.facilityId },
     });
 
+    this.saveToDisk();
     return record;
   }
 
@@ -585,6 +615,7 @@ export class CentralDataStore {
       payload: { bedId: bed.id, bedNumber: bed.bedNumber, status: bed.status, patientId: bed.currentPatientId },
     });
 
+    this.saveToDisk();
     return bed;
   }
 
@@ -606,6 +637,7 @@ export class CentralDataStore {
       payload: { orderId: id, patientId: params.patientId, title: params.title, priority: params.priority },
     });
 
+    this.saveToDisk();
     return order;
   }
 
@@ -661,6 +693,7 @@ export class CentralDataStore {
       },
     });
 
+    this.saveToDisk();
     return prescription;
   }
 
@@ -694,6 +727,23 @@ export class CentralDataStore {
     drug.dispensedAt = new Date().toISOString();
     drug.dispensedBy = dispensedBy;
 
+    // Deplete stock in pharmacy stock ledger
+    const matchingStock = Array.from(this.pharmacyStock.values()).find(
+      (s) => s.genericName.toLowerCase().includes(drug.name.toLowerCase()) || drug.name.toLowerCase().includes(s.genericName.toLowerCase())
+    );
+    if (matchingStock) {
+      try {
+        this.depleteStock({
+          itemCode: matchingStock.itemCode,
+          quantity: drug.quantity || 1,
+          referenceId: rxId,
+          actorName: dispensedBy,
+        });
+      } catch (stockErr) {
+        console.warn(`[Dispense] Stock depletion notice for ${drug.name}:`, stockErr);
+      }
+    }
+
     // Update overall prescription status
     const allDispensed = rx.drugs.every((d) => d.dispensed);
     const anyDispensed = rx.drugs.some((d) => d.dispensed);
@@ -717,6 +767,7 @@ export class CentralDataStore {
       },
     });
 
+    this.saveToDisk();
     return rx;
   }
 
@@ -729,8 +780,530 @@ export class CentralDataStore {
     if (!rx) throw new Error(`Prescription ${rxId} not found`);
     rx.routedToPharmacyId = pharmacyId;
     rx.routedToPharmacyName = pharmacyName;
+    this.saveToDisk();
     return rx;
+  }
+
+  // ─── ADT / Encounter Lifecycle Methods ──────────────────────────────────────
+  public admitPatient(params: {
+    patientId: string;
+    patientName: string;
+    facilityId: string;
+    type: EncounterType;
+    ward: string;
+    bed: string;
+    admittingDoctorId?: string;
+    admittingDoctorName?: string;
+    chiefComplaint?: string;
+    workingDiagnosis?: string;
+  }): EncounterRecord {
+    const encounterId = `ENC-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`;
+    const encounter: EncounterRecord = {
+      id: encounterId,
+      patientId: params.patientId,
+      patientName: params.patientName,
+      facilityId: params.facilityId,
+      type: params.type,
+      ward: params.ward,
+      bed: params.bed,
+      admittingDoctorId: params.admittingDoctorId || 'DOC-DEFAULT',
+      admittingDoctorName: params.admittingDoctorName || 'Attending Physician',
+      status: 'ACTIVE',
+      admittedAt: new Date().toISOString(),
+      chiefComplaint: params.chiefComplaint,
+      workingDiagnosis: params.workingDiagnosis,
+    };
+
+    this.encounters.set(encounterId, encounter);
+
+    // Update bed if exists
+    const bedMatch = Array.from(this.beds.values()).find(
+      (b) => b.ward.toLowerCase() === params.ward.toLowerCase() && b.bedNumber.toLowerCase() === params.bed.toLowerCase()
+    );
+    if (bedMatch) {
+      this.updateBedStatus(bedMatch.id, 'OCCUPIED', { id: params.patientId, name: params.patientName });
+    }
+
+    syncEventBus.broadcast({
+      topic: 'PATIENT_ADMITTED',
+      facilityId: params.facilityId,
+      emitterApp: 'MEDCORE_CLINIC',
+      payload: {
+        encounterId,
+        patientId: params.patientId,
+        patientName: params.patientName,
+        ward: params.ward,
+        bed: params.bed,
+        workingDiagnosis: params.workingDiagnosis,
+      },
+    });
+
+    this.saveToDisk();
+    return encounter;
+  }
+
+  public transferPatient(params: {
+    encounterId: string;
+    targetWard: string;
+    targetBed: string;
+    transferredBy: string;
+    reason: string;
+  }): EncounterRecord {
+    const enc = this.encounters.get(params.encounterId);
+    if (!enc) throw new Error(`Encounter ${params.encounterId} not found`);
+
+    const prevWard = enc.ward;
+    const prevBed = enc.bed;
+    enc.ward = params.targetWard;
+    enc.bed = params.targetBed;
+
+    // Vacate previous bed
+    if (prevWard && prevBed) {
+      const oldBed = Array.from(this.beds.values()).find(
+        (b) => b.ward.toLowerCase() === prevWard.toLowerCase() && b.bedNumber.toLowerCase() === prevBed.toLowerCase()
+      );
+      if (oldBed) this.updateBedStatus(oldBed.id, 'AVAILABLE');
+    }
+
+    // Occupy new bed
+    const newBed = Array.from(this.beds.values()).find(
+      (b) => b.ward.toLowerCase() === params.targetWard.toLowerCase() && b.bedNumber.toLowerCase() === params.targetBed.toLowerCase()
+    );
+    if (newBed) {
+      this.updateBedStatus(newBed.id, 'OCCUPIED', { id: enc.patientId, name: enc.patientName });
+    }
+
+    syncEventBus.broadcast({
+      topic: 'BED_OCCUPIED',
+      facilityId: enc.facilityId,
+      emitterApp: 'MEDCORE_OS',
+      payload: {
+        encounterId: enc.id,
+        patientId: enc.patientId,
+        fromWard: prevWard,
+        fromBed: prevBed,
+        toWard: params.targetWard,
+        toBed: params.targetBed,
+        transferredBy: params.transferredBy,
+        reason: params.reason,
+      },
+    });
+
+    this.saveToDisk();
+    return enc;
+  }
+
+  public dischargePatient(params: {
+    encounterId: string;
+    dischargedBy: string;
+    disposition: 'HOME' | 'REFERRED' | 'DECEASED' | 'AGAINST_MEDICAL_ADVICE';
+    summary?: string;
+  }): EncounterRecord {
+    const enc = this.encounters.get(params.encounterId);
+    if (!enc) throw new Error(`Encounter ${params.encounterId} not found`);
+
+    enc.status = 'DISCHARGED';
+    enc.dischargedAt = new Date().toISOString();
+    enc.dischargeDisposition = params.disposition;
+
+    // Free bed
+    if (enc.ward && enc.bed) {
+      const bed = Array.from(this.beds.values()).find(
+        (b) => b.ward.toLowerCase() === enc.ward?.toLowerCase() && b.bedNumber.toLowerCase() === enc.bed?.toLowerCase()
+      );
+      if (bed) this.updateBedStatus(bed.id, 'AVAILABLE');
+    }
+
+    syncEventBus.broadcast({
+      topic: 'PATIENT_DISCHARGED',
+      facilityId: enc.facilityId,
+      emitterApp: 'MEDCORE_CLINIC',
+      payload: {
+        encounterId: enc.id,
+        patientId: enc.patientId,
+        patientName: enc.patientName,
+        disposition: params.disposition,
+        dischargedBy: params.dischargedBy,
+      },
+    });
+
+    this.saveToDisk();
+    return enc;
+  }
+
+  public getEncounters(patientId?: string): EncounterRecord[] {
+    const all = Array.from(this.encounters.values());
+    if (patientId) return all.filter((e) => e.patientId === patientId);
+    return all;
+  }
+
+  // ─── Pharmacy Stock Ledger & EML Formulary ──────────────────────────────────
+  private seedPharmacyStock(): void {
+    const items: PharmacyStockItem[] = [
+      {
+        id: 'STOCK-001',
+        itemCode: 'MED-CEF-2G',
+        genericName: 'Ceftriaxone Powder for Injection',
+        brandName: 'Rocephin',
+        form: 'INJECTION',
+        strength: '2g',
+        emlTier: 'SECONDARY',
+        isOnStateFormulary: true,
+        batchNumber: 'BATCH-CFX-2026A',
+        expiryDate: '2027-08-31',
+        quantityOnHand: 340,
+        allocatedQuantity: 15,
+        reorderLevel: 100,
+        unitCostNgn: 1400,
+        unitPriceNgn: 1850,
+        locationRack: 'Bay A-04 (Antibiotics Cold)',
+        supplier: 'Chi Pharmaceuticals Lagos',
+        status: 'IN_STOCK',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'STOCK-002',
+        itemCode: 'MED-ACT-80',
+        genericName: 'Artemether + Lumefantrine Dispersible',
+        brandName: 'Coartem',
+        form: 'TABLET',
+        strength: '80/480mg',
+        emlTier: 'PRIMARY',
+        isOnStateFormulary: true,
+        batchNumber: 'BATCH-ACT-9912',
+        expiryDate: '2026-12-15',
+        quantityOnHand: 890,
+        allocatedQuantity: 30,
+        reorderLevel: 250,
+        unitCostNgn: 850,
+        unitPriceNgn: 1200,
+        locationRack: 'Bay M-01 (Antimalarials)',
+        supplier: 'Novartis Nigeria',
+        status: 'IN_STOCK',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'STOCK-003',
+        itemCode: 'MED-ART-60',
+        genericName: 'Artesunate Powder for Injection',
+        brandName: 'Artesun',
+        form: 'INJECTION',
+        strength: '60mg',
+        emlTier: 'SECONDARY',
+        isOnStateFormulary: true,
+        batchNumber: 'BATCH-ART-4421',
+        expiryDate: '2027-11-20',
+        quantityOnHand: 450,
+        allocatedQuantity: 12,
+        reorderLevel: 120,
+        unitCostNgn: 1800,
+        unitPriceNgn: 2400,
+        locationRack: 'Bay M-02 (Severe Malaria)',
+        supplier: 'Fosun Pharma / Guilin',
+        status: 'IN_STOCK',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'STOCK-004',
+        itemCode: 'MED-MGSO4-50',
+        genericName: 'Magnesium Sulfate Injection 50%',
+        brandName: 'Mag-Sulf',
+        form: 'INJECTION',
+        strength: '50% (5g/10mL)',
+        emlTier: 'SECONDARY',
+        isOnStateFormulary: true,
+        batchNumber: 'BATCH-MGS-1092',
+        expiryDate: '2027-04-30',
+        quantityOnHand: 200,
+        allocatedQuantity: 8,
+        reorderLevel: 50,
+        unitCostNgn: 650,
+        unitPriceNgn: 950,
+        locationRack: 'Labour & Delivery Crash Cart / Bay O-01',
+        supplier: 'Juhel Healthcare Awka',
+        status: 'IN_STOCK',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'STOCK-005',
+        itemCode: 'MED-HYD-20',
+        genericName: 'Hydralazine Hydrochloride Injection',
+        brandName: 'Apresoline',
+        form: 'INJECTION',
+        strength: '20mg/mL',
+        emlTier: 'SECONDARY',
+        isOnStateFormulary: true,
+        batchNumber: 'BATCH-HYD-3381',
+        expiryDate: '2026-10-15',
+        quantityOnHand: 110,
+        allocatedQuantity: 4,
+        reorderLevel: 40,
+        unitCostNgn: 1150,
+        unitPriceNgn: 1600,
+        locationRack: 'Bay C-03 (Hypertensive Emergencies)',
+        supplier: 'Emzor Pharmaceuticals Lagos',
+        status: 'IN_STOCK',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'STOCK-006',
+        itemCode: 'MED-TRAM-100',
+        genericName: 'Tramadol Hydrochloride Injection',
+        brandName: 'Tramal',
+        form: 'INJECTION',
+        strength: '50mg/mL',
+        emlTier: 'SECONDARY',
+        isOnStateFormulary: true,
+        batchNumber: 'BATCH-TRM-8802',
+        expiryDate: '2027-09-30',
+        quantityOnHand: 160,
+        allocatedQuantity: 6,
+        reorderLevel: 50,
+        unitCostNgn: 800,
+        unitPriceNgn: 1100,
+        locationRack: 'Controlled Substance Safe (DDA Safe #2)',
+        supplier: 'Fidson Healthcare Lagos',
+        status: 'IN_STOCK',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'STOCK-007',
+        itemCode: 'MED-PAR-1G',
+        genericName: 'Paracetamol IV Infusion 10mg/mL',
+        brandName: 'Perfalgan',
+        form: 'INFUSION',
+        strength: '1000mg/100mL',
+        emlTier: 'PRIMARY',
+        isOnStateFormulary: true,
+        batchNumber: 'BATCH-PAR-2201',
+        expiryDate: '2026-10-01',
+        quantityOnHand: 18,
+        allocatedQuantity: 4,
+        reorderLevel: 60,
+        unitCostNgn: 700,
+        unitPriceNgn: 950,
+        locationRack: 'Bay A-01 (Analgesics)',
+        supplier: 'May & Baker Nigeria',
+        status: 'LOW_STOCK',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'STOCK-008',
+        itemCode: 'MED-OXY-10',
+        genericName: 'Oxytocin Injection 10 IU/mL',
+        brandName: 'Pitocin',
+        form: 'INJECTION',
+        strength: '10 IU/mL',
+        emlTier: 'PRIMARY',
+        isOnStateFormulary: true,
+        batchNumber: 'BATCH-OXY-9011',
+        expiryDate: '2027-05-15',
+        quantityOnHand: 145,
+        allocatedQuantity: 8,
+        reorderLevel: 40,
+        unitCostNgn: 550,
+        unitPriceNgn: 800,
+        locationRack: 'Cold Chain Refrigerator 2-8°C #1',
+        supplier: 'Swiss Pharma Nigeria',
+        status: 'IN_STOCK',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ];
+
+    for (const item of items) {
+      this.pharmacyStock.set(item.itemCode, item);
+    }
+  }
+
+  public getAllStockItems(filter?: { category?: string; lowStockOnly?: boolean }): PharmacyStockItem[] {
+    let items = Array.from(this.pharmacyStock.values());
+    if (filter?.lowStockOnly) {
+      items = items.filter((i) => i.quantityOnHand <= i.reorderLevel);
+    }
+    return items;
+  }
+
+  public getStockItem(code: string): PharmacyStockItem | undefined {
+    return this.pharmacyStock.get(code);
+  }
+
+  public depleteStock(params: {
+    itemCode: string;
+    quantity: number;
+    referenceId: string;
+    actorId?: string;
+    actorName?: string;
+  }): PharmacyStockItem {
+    const item = this.pharmacyStock.get(params.itemCode);
+    if (!item) throw new Error(`Stock item ${params.itemCode} not found`);
+
+    if (item.quantityOnHand < params.quantity) {
+      throw new Error(`Insufficient stock for ${item.genericName}: requested ${params.quantity}, available ${item.quantityOnHand}`);
+    }
+
+    item.quantityOnHand -= params.quantity;
+    if (item.quantityOnHand <= 0) {
+      item.status = 'STOCKOUT';
+    } else if (item.quantityOnHand <= item.reorderLevel) {
+      item.status = 'LOW_STOCK';
+    }
+    item.updatedAt = new Date().toISOString();
+
+    const tx: StockTransaction = {
+      id: `TX-STOCK-${Date.now().toString(36).toUpperCase()}`,
+      itemCode: item.itemCode,
+      genericName: item.genericName,
+      type: 'DISPENSE',
+      quantity: params.quantity,
+      balanceAfter: item.quantityOnHand,
+      referenceId: params.referenceId,
+      actorId: params.actorId || 'PHARM-CLI',
+      actorName: params.actorName || 'Clinical Pharmacist',
+      timestamp: new Date().toISOString(),
+    };
+    this.stockTransactions.push(tx);
+
+    // Auto emit DRUG_STOCKOUT if stock level reaches critical reorder threshold
+    if (item.quantityOnHand <= item.reorderLevel) {
+      syncEventBus.broadcast({
+        topic: 'DRUG_STOCKOUT',
+        facilityId: 'FAC-001',
+        emitterApp: 'MEDCORE_OS_PHARMACY',
+        payload: {
+          itemCode: item.itemCode,
+          genericName: item.genericName,
+          remainingQuantity: item.quantityOnHand,
+          reorderLevel: item.reorderLevel,
+          status: item.status,
+          urgency: item.quantityOnHand === 0 ? 'CRITICAL_DEPLETED' : 'WARNING_LOW',
+        },
+      });
+    }
+
+    this.saveToDisk();
+    return item;
+  }
+
+  public restockItem(params: {
+    itemCode: string;
+    quantity: number;
+    batchNumber: string;
+    expiryDate: string;
+    actorName: string;
+  }): PharmacyStockItem {
+    let item = this.pharmacyStock.get(params.itemCode);
+    if (!item) throw new Error(`Stock item ${params.itemCode} not found in formulary`);
+
+    item.quantityOnHand += params.quantity;
+    item.batchNumber = params.batchNumber;
+    item.expiryDate = params.expiryDate;
+    item.status = item.quantityOnHand <= item.reorderLevel ? 'LOW_STOCK' : 'IN_STOCK';
+    item.updatedAt = new Date().toISOString();
+
+    const tx: StockTransaction = {
+      id: `TX-STOCK-${Date.now().toString(36).toUpperCase()}`,
+      itemCode: item.itemCode,
+      genericName: item.genericName,
+      type: 'RECEIVE',
+      quantity: params.quantity,
+      balanceAfter: item.quantityOnHand,
+      referenceId: `GRN-${Date.now().toString(36).toUpperCase()}`,
+      actorId: 'SUPPLY-CHAIN',
+      actorName: params.actorName,
+      timestamp: new Date().toISOString(),
+    };
+    this.stockTransactions.push(tx);
+
+    this.saveToDisk();
+    return item;
+  }
+
+  public getStockTransactions(itemCode?: string): StockTransaction[] {
+    if (itemCode) return this.stockTransactions.filter((tx) => tx.itemCode === itemCode);
+    return this.stockTransactions.slice().reverse();
+  }
+
+  // ─── HMO / AKSHIA Claims Adjudication ───────────────────────────────────────
+  public createHmoClaim(claim: Omit<HmoClaim, 'id' | 'createdAt' | 'status'>): HmoClaim {
+    const id = `CLM-AKSHIA-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`;
+    const fullClaim: HmoClaim = {
+      ...claim,
+      id,
+      status: 'SUBMITTED',
+      createdAt: new Date().toISOString(),
+    };
+    this.hmoClaims.set(id, fullClaim);
+
+    syncEventBus.broadcast({
+      topic: 'BILL_GENERATED',
+      facilityId: fullClaim.facilityId,
+      emitterApp: 'MEDCORE_OS',
+      payload: {
+        claimId: id,
+        patientId: fullClaim.patientId,
+        scheme: fullClaim.scheme,
+        totalHmoPayableNgn: fullClaim.totalHmoPayableNgn,
+        copayNgn: fullClaim.totalCopayNgn,
+      },
+    });
+
+    this.saveToDisk();
+    return fullClaim;
+  }
+
+  public getHmoClaims(patientId?: string): HmoClaim[] {
+    const all = Array.from(this.hmoClaims.values());
+    if (patientId) return all.filter((c) => c.patientId === patientId);
+    return all.slice().reverse();
+  }
+
+  public getHmoClaimById(id: string): HmoClaim | undefined {
+    return this.hmoClaims.get(id);
+  }
+
+  // ─── Persistence Snapshot (Disk Sync) ───────────────────────────────────────
+  public saveToDisk(): void {
+    try {
+      const snapshotData = {
+        patients: Array.from(this.patients.entries()),
+        beds: Array.from(this.beds.entries()),
+        encounters: Array.from(this.encounters.entries()),
+        orders: Array.from(this.orders.entries()),
+        prescriptions: Array.from(this.prescriptions.entries()),
+        facilities: Array.from(this.facilities.entries()),
+        pharmacyStock: Array.from(this.pharmacyStock.entries()),
+        stockTransactions: this.stockTransactions,
+        hmoClaims: Array.from(this.hmoClaims.entries()),
+      };
+      persistenceService.saveSnapshot(snapshotData);
+    } catch (err) {
+      console.warn('[DataStore] Error saving snapshot to disk:', err);
+    }
+  }
+
+  public loadFromDisk(): boolean {
+    try {
+      const snapshot = persistenceService.loadSnapshot<any>();
+      if (!snapshot || !snapshot.data) return false;
+
+      const d = snapshot.data;
+      if (d.patients) this.patients = new Map(d.patients);
+      if (d.beds) this.beds = new Map(d.beds);
+      if (d.encounters) this.encounters = new Map(d.encounters);
+      if (d.orders) this.orders = new Map(d.orders);
+      if (d.prescriptions) this.prescriptions = new Map(d.prescriptions);
+      if (d.facilities) this.facilities = new Map(d.facilities);
+      if (d.pharmacyStock) this.pharmacyStock = new Map(d.pharmacyStock);
+      if (d.stockTransactions) this.stockTransactions = d.stockTransactions;
+      if (d.hmoClaims) this.hmoClaims = new Map(d.hmoClaims);
+
+      return true;
+    } catch (err) {
+      console.warn('[DataStore] Failed to hydrate snapshot:', err);
+      return false;
+    }
   }
 }
 
 export const dataStore = new CentralDataStore();
+

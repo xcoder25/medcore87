@@ -60,6 +60,43 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   return (
     <aside className="dash-sidebar">
+      {/* MedCore Brand Header */}
+      <div style={{
+        padding: '16px 18px 14px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        borderBottom: '1px solid rgba(226, 232, 240, 0.8)',
+        marginBottom: 8,
+      }}>
+        <div style={{
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          background: '#FFFFFF',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 3,
+          boxShadow: '0 2px 8px rgba(0, 82, 212, 0.12)',
+          flexShrink: 0,
+        }}>
+          <img
+            src="/medcore-logo.png"
+            alt="MedCore Logo"
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0A2540', letterSpacing: '-0.01em' }}>
+            MedCore
+          </span>
+          <span style={{ fontSize: '0.62rem', color: '#0052D4', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Executive Modules
+          </span>
+        </div>
+      </div>
+
       {/* Primary Module Navigation */}
       <div className="dash-sidebar-nav-section">
         {navItems.map((item) => {

@@ -54,7 +54,7 @@ router.get('/icd11/search', (req: Request, res: Response) => {
  * Get ICD-11 entry by code
  */
 router.get('/icd11/:code', (req: Request, res: Response) => {
-  const entry = getICD11ByCode(req.params.code);
+  const entry = getICD11ByCode(String(req.params.code));
   if (!entry) return res.status(404).json({ success: false, error: 'ICD-11 code not found' });
   res.json({ success: true, data: entry });
 });

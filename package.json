@@ -16,6 +16,7 @@
                     "dev:os":  "npm --workspace=apps/os run dev",
                     "dev:admin":  "npm --workspace=apps/admin run dev",
                     "dev:server":  "npm --workspace=services/api-server run dev",
+                    "dev:ai":      "npm --workspace=services/ai-engine run dev",
                     "build":  "npm run build --workspaces",
                     "lint":  "npm run lint --workspaces",
                     "typecheck":  "npm run typecheck --workspaces",

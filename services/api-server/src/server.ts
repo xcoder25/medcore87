@@ -17,6 +17,13 @@ import facilitiesRoutes from './routes/facilities.routes';
 import vitalsRoutes from './routes/vitals.routes';
 import labRoutes from './routes/lab.routes';
 import theatreRoutes from './routes/theatre.routes';
+// Phase B — HL7 FHIR Interoperability Layer
+import fhirRoutes from './routes/fhir.routes';
+// Phase C — Closed Clinical Loop, CPOE, Pharmacy Stock & HMO Engine
+import pharmacyRoutes from './routes/pharmacy.routes';
+import cpoeRoutes from './routes/cpoe.routes';
+import hmoRoutes from './routes/hmo.routes';
+import commsRoutes from './routes/comms.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -50,6 +57,13 @@ app.use('/api/v1/facilities', facilitiesRoutes);
 app.use('/api/v1/vitals', vitalsRoutes);
 app.use('/api/v1/lab', labRoutes);
 app.use('/api/v1/theatre', theatreRoutes);
+// Phase B — HL7 FHIR Interoperability Engine
+app.use('/api/v1/fhir', fhirRoutes);
+// Phase C — Closed Clinical Loop, CPOE, Pharmacy Stock, HMO & Comms
+app.use('/api/v1/pharmacy', pharmacyRoutes);
+app.use('/api/v1/cpoe', cpoeRoutes);
+app.use('/api/v1/hmo', hmoRoutes);
+app.use('/api/v1/comms', commsRoutes);
 
 // Root System Status & Architecture Overview
 app.get('/', (req, res) => {

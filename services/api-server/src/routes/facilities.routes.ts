@@ -32,7 +32,7 @@ router.get('/summary', (_req: Request, res: Response) => {
  * Single facility detail
  */
 router.get('/:id', (req: Request, res: Response) => {
-  const facility = dataStore.getFacilityById(req.params.id);
+  const facility = dataStore.getFacilityById(String(req.params.id));
   if (!facility) return res.status(404).json({ success: false, error: `Facility ${req.params.id} not found` });
   return res.json({ success: true, data: facility });
 });
@@ -45,7 +45,7 @@ router.get('/:id', (req: Request, res: Response) => {
 router.post('/:id/issue-credentials', (req: Request, res: Response) => {
   try {
     const { actorId = 'MOH-COMMISSIONER-01', actorName = 'Commissioner of Health' } = req.body ?? {};
-    const facility = dataStore.issueFacilityCredentials(req.params.id, actorId, actorName);
+    const facility = dataStore.issueFacilityCredentials(String(req.params.id), actorId, actorName);
     return res.json({
       success: true,
       message: `Hospi OS credentials issued for ${facility.facilityName}`,
@@ -68,7 +68,7 @@ router.post('/:id/issue-credentials', (req: Request, res: Response) => {
  */
 router.post('/:id/activate', (req: Request, res: Response) => {
   try {
-    const facility = dataStore.activateFacility(req.params.id);
+    const facility = dataStore.activateFacility(String(req.params.id));
     return res.json({ success: true, message: `${facility.facilityName} is now ACTIVE on Hospi OS`, data: facility });
   } catch (err: any) {
     return res.status(400).json({ success: false, error: err.message });

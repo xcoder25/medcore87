@@ -21,4 +21,35 @@ export interface PatientProfile {
     phone: string;
   };
   isMedicalTourist: boolean;
+  // Enhanced Identity & Master Patient Index
+  nin?: string;
+  ninStatus?: 'VERIFIED' | 'UNVERIFIED' | 'PENDING';
+  stateHealthId?: string; // Akwa Ibom State Health ID: AKS-HID-XXXX
+  insurancePolicyId?: string;
+  insuranceProvider?: string;
+}
+
+export type EncounterType =
+  | 'ADMISSION'
+  | 'DISCHARGE'
+  | 'TRANSFER'
+  | 'EMERGENCY_TRIAGE'
+  | 'OUTPATIENT_CLINIC';
+
+export interface PatientEncounter {
+  id: string;
+  patientId: string;
+  patientName: string;
+  facilityId: string;
+  type: EncounterType;
+  ward?: string;
+  bed?: string;
+  admittingDoctorId?: string;
+  admittingDoctorName?: string;
+  admittedAt: string;
+  dischargedAt?: string;
+  dischargeDisposition?: 'HOME' | 'REFERRED' | 'DECEASED' | 'AGAINST_MEDICAL_ADVICE';
+  status: 'ACTIVE' | 'DISCHARGED' | 'TRANSFERRED';
+  chiefComplaint?: string;
+  workingDiagnosis?: string;
 }

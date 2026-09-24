@@ -65,7 +65,7 @@ router.post('/', (req: Request, res: Response) => {
  * Get vitals history for a patient
  */
 router.get('/:patientId', (req: Request, res: Response) => {
-  const { patientId } = req.params;
+  const patientId = String(req.params.patientId);
   const history = vitalsEngine.getPatientVitalsHistory(patientId);
   const latest  = vitalsEngine.getLatestVitals(patientId);
 
@@ -83,7 +83,7 @@ router.get('/:patientId', (req: Request, res: Response) => {
  * Get most recent vitals + NEWS2 score
  */
 router.get('/:patientId/latest', (req: Request, res: Response) => {
-  const latest = vitalsEngine.getLatestVitals(req.params.patientId);
+  const latest = vitalsEngine.getLatestVitals(String(req.params.patientId));
   if (!latest) return res.status(404).json({ success: false, error: 'No vitals recorded for this patient' });
   res.json({ success: true, data: latest });
 });

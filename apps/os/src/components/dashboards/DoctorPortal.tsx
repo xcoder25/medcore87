@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { UserSession } from '../auth/AuthScreen';
+import { EMRManager } from '../gateway-modules/EMRManager';
+import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import {
   LayoutDashboard, Users, FileText, Stethoscope, Pill, FlaskConical, Layers,
   BedDouble, Calendar, Bell, Settings, ClipboardList, Send, AlertTriangle,
@@ -172,6 +174,7 @@ const StatCard: React.FC<{
 // -- DASHBOARD -----------------------------------------------------------------
 
 const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) => void }> = ({ session, onSubNav }) => {
+  const { notifications, connected } = useRealtimeEvents({ app: 'MEDCORE_OS_DOCTOR' });
   const critical = PATIENTS.filter(p => p.status === 'critical');
   const remaining = APPOINTMENTS.filter(a => a.status !== 'done');
   const pendingTasks = INITIAL_TASKS.filter(t => !t.done);
@@ -236,6 +239,79 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
         <StatCard label="Pending Results" value={5} icon={FlaskConical} color="#F59E0B" sub="3 Lab � 2 Radiology" onClick={() => onSubNav('lab-orders')} />
         <StatCard label="Pending Tasks" value={pendingTasks.length} icon={ClipboardList} color="#10B981" sub={`${urgentTasks.length} urgent or high`} onClick={() => onSubNav('tasks')} pulse={urgentTasks.length > 0} />
         <StatCard label="Messages" value={3} icon={MessageSquare} color="#60A5FA" sub="2 unread clinical msgs" onClick={() => onSubNav('messages')} />
+      </div>
+
+      {/* Closed Clinical Loop Live Telemetry Stream */}
+      <div style={{
+        background: 'linear-gradient(90deg, rgba(15,23,42,0.92) 0%, rgba(2,132,199,0.08) 50%, rgba(15,23,42,0.92) 100%)',
+        border: '1px solid rgba(56,189,248,0.28)',
+        borderRadius: 14,
+        padding: '14px 18px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 12,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            width: 10, height: 10, borderRadius: '50%',
+            background: connected ? '#10B981' : '#F59E0B',
+            boxShadow: connected ? '0 0 10px #10B981' : 'none',
+          }} />
+          <div>
+            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#38BDF8', letterSpacing: '0.04em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Layers size={14} /> Closed Clinical Loop: Real-Time Event Bus
+              <span style={{ fontSize: '0.68rem', color: connected ? '#34D399' : '#FBBF24', background: 'rgba(16,185,129,0.12)', padding: '2px 7px', borderRadius: 999, fontWeight: 700 }}>
+                {connected ? 'CONNECTED (/ws)' : 'RECONNECTING'}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#94A3B8', marginTop: 2 }}>
+              Order → Pharmacy Verify → Dispense → Bedside e-MAR → Lab/PACS Result → Physician Workstation
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => onSubNav('lab-orders')}
+            style={{
+              background: 'rgba(56,189,248,0.12)',
+              border: '1px solid rgba(56,189,248,0.3)',
+              color: '#38BDF8',
+              padding: '6px 12px',
+              borderRadius: 8,
+              fontSize: '0.74rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+            }}
+          >
+            <FlaskConical size={13} /> Live Results Review ({notifications.filter(n => n.topic === 'LAB_RESULT_READY').length || 3})
+          </button>
+          <button
+            type="button"
+            onClick={() => onSubNav('prescriptions')}
+            style={{
+              background: 'rgba(168,85,247,0.12)',
+              border: '1px solid rgba(168,85,247,0.3)',
+              color: '#C084FC',
+              padding: '6px 12px',
+              borderRadius: 8,
+              fontSize: '0.74rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+            }}
+          >
+            <Pill size={13} /> Dispensed e-MAR ({notifications.filter(n => n.topic === 'PRESCRIPTION_DISPENSED').length || 4})
+          </button>
+        </div>
       </div>
 
       {/* Content Grid */}
@@ -1118,7 +1194,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate 
       case 'appointments':     return <AppointmentsView />;
       case 'tasks':            return <TasksView />;
       case 'analytics':        return <AnalyticsView />;
-      case 'emr':              return <Placeholder icon={FileText} label="Electronic Medical Records (EMR)" description="Full longitudinal patient history, SOAP notes, problem lists, immunizations, allergies, and discharge summaries. FHIR R4-compliant." color="#60A5FA" />;
+      case 'emr':              return <EMRManager onNavigate={(m) => onNavigate(m)} />;
       case 'radiology-orders': return <Placeholder icon={Layers} label="Radiology Orders & PACS Viewer" description="Request X-Ray, CT, MRI, Ultrasound. View DICOM images and structured radiology reports inline." color="#F472B6" />;
       case 'referrals':        return <Placeholder icon={Send} label="Referral Management" description="Internal and external referrals, specialist consultations, inter-hospital transfers with clinical summaries and acceptance tracking." color="#10B981" />;
       case 'messages':         return <Placeholder icon={MessageSquare} label="Clinical Messaging" description="Secure clinician-to-clinician messaging, nurse escalations, department broadcasts, and ward-level notifications." color="#60A5FA" />;
@@ -1136,13 +1212,18 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate 
       {/* Portal Sidebar */}
       <div style={{ width: sidebarCollapsed ? 54 : 224, flexShrink: 0, background: 'rgba(6,13,26,0.98)', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', transition: 'width 0.22s ease', overflow: 'hidden' }}>
         {/* Header */}
-        <div style={{ padding: sidebarCollapsed ? '12px 7px' : '12px 14px', borderBottom: '1px solid #FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 7 }}>
-          {!sidebarCollapsed && (
-            <div>
-              <div style={{ fontSize: '0.65rem', color: '#0052D4', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Doctor Portal</div>
-              <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600, marginTop: 1 }}>Clinical Workspace</div>
+        <div style={{ padding: sidebarCollapsed ? '12px 7px' : '12px 14px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 7 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 7, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 2, flexShrink: 0, boxShadow: '0 1px 4px rgba(0,0,0,0.15)' }}>
+              <img src="/medcore-logo.png" alt="MedCore" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             </div>
-          )}
+            {!sidebarCollapsed && (
+              <div>
+                <div style={{ fontSize: '0.82rem', color: '#0A2540', fontWeight: 800, lineHeight: 1.1 }}>MedCore</div>
+                <div style={{ fontSize: '0.64rem', color: '#0052D4', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Doctor Portal</div>
+              </div>
+            )}
+          </div>
           <button type="button" onClick={() => setSidebarCollapsed(c => !c)} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', color: '#64748B', borderRadius: 7, padding: '5px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Menu size={13} />
           </button>

@@ -134,7 +134,7 @@ router.post('/', (req: Request, res: Response) => {
  * Update theatre case status — broadcasts schedule change or case events
  */
 router.patch('/:id/status', (req: Request, res: Response) => {
-  const theatreCase = theatreCases.get(req.params.id);
+  const theatreCase = theatreCases.get(String(req.params.id));
   if (!theatreCase) return res.status(404).json({ success: false, error: 'Theatre case not found' });
 
   const { status, notes } = req.body;
@@ -174,7 +174,7 @@ router.patch('/:id/status', (req: Request, res: Response) => {
  * Mark WHO Surgical Safety Checklist as signed
  */
 router.patch('/:id/who-checklist', (req: Request, res: Response) => {
-  const theatreCase = theatreCases.get(req.params.id);
+  const theatreCase = theatreCases.get(String(req.params.id));
   if (!theatreCase) return res.status(404).json({ success: false, error: 'Theatre case not found' });
 
   theatreCase.whoChecklistSigned = true;
@@ -186,7 +186,7 @@ router.patch('/:id/who-checklist', (req: Request, res: Response) => {
  * GET /api/v1/theatre/:id
  */
 router.get('/:id', (req: Request, res: Response) => {
-  const theatreCase = theatreCases.get(req.params.id);
+  const theatreCase = theatreCases.get(String(req.params.id));
   if (!theatreCase) return res.status(404).json({ success: false, error: 'Theatre case not found' });
   res.json({ success: true, data: theatreCase });
 });

@@ -1,0 +1,1086 @@
+{
+  "version": 1,
+  "savedAt": "2026-09-24T02:49:14.801Z",
+  "data": {
+    "patients": [
+      [
+        "PAT-849201",
+        {
+          "id": "PAT-849201",
+          "facilityId": "FAC-001",
+          "mrn": "MRN-78401",
+          "name": "Amina Bello",
+          "dob": "1988-06-14",
+          "gender": "FEMALE",
+          "encryptedNationalId": {
+            "iv": "7269c50fa6c64aac73a29b44",
+            "tag": "791c720a7ca7e5901363d21a519c21d8",
+            "ciphertext": "8d962e78091dcecda6698102d970e1738461",
+            "keyVersion": "v1-2026",
+            "algorithm": "AES-256-GCM"
+          },
+          "encryptedPhone": {
+            "iv": "f698cb8e407f67199ee5fe7d",
+            "tag": "c3019287e1fd58ef00a0322b82338700",
+            "ciphertext": "1f21d3ab964e099767c03ed081bf343384",
+            "keyVersion": "v1-2026",
+            "algorithm": "AES-256-GCM"
+          },
+          "encryptedAddress": {
+            "iv": "491efa74821639ea63a33fe2",
+            "tag": "6de11b4ce48b26043f4e2eab4fdb2a85",
+            "ciphertext": "b24c514bed7128ccba40376a61cd27242e71758f93efb66140e009fd8d5fb425b14811",
+            "keyVersion": "v1-2026",
+            "algorithm": "AES-256-GCM"
+          },
+          "bloodGroup": "O+",
+          "allergies": [
+            "Penicillin",
+            "Sulfa Drugs"
+          ],
+          "chronicConditions": [
+            "Hypertension Type 2",
+            "Hyperlipidemia"
+          ],
+          "insurancePolicyId": "AXA-POL-88219",
+          "insuranceProvider": "AXA Mansard Health",
+          "walletId": "WAL-PAT-001",
+          "lastVisit": "2026-02-28",
+          "createdAt": "2026-01-10T08:00:00Z"
+        }
+      ],
+      [
+        "PAT-620194",
+        {
+          "id": "PAT-620194",
+          "facilityId": "FAC-001",
+          "mrn": "MRN-99201",
+          "name": "Emeka Okafor",
+          "dob": "1976-11-03",
+          "gender": "MALE",
+          "encryptedNationalId": {
+            "iv": "db9f16d83a89abf899c80d54",
+            "tag": "f93ee476d64cadf7a27b24b9fa6a2914",
+            "ciphertext": "a3b297da7512c15380e3ea0ccbc58b2825db",
+            "keyVersion": "v1-2026",
+            "algorithm": "AES-256-GCM"
+          },
+          "encryptedPhone": {
+            "iv": "57de93760c96cd2b6f54c5ea",
+            "tag": "0f5f3181eac9463f31d0fd33a68f8ea0",
+            "ciphertext": "83787d038681fa59329a07337e59b8f7c7",
+            "keyVersion": "v1-2026",
+            "algorithm": "AES-256-GCM"
+          },
+          "encryptedAddress": {
+            "iv": "8e87f1d0026f20d88b32bc94",
+            "tag": "28bc75aa349a6dbe930675ab71ab9e5b",
+            "ciphertext": "43c82a71724c8fb30c15cffc6182a1fd78289e4da2e244dd42d861",
+            "keyVersion": "v1-2026",
+            "algorithm": "AES-256-GCM"
+          },
+          "bloodGroup": "A+",
+          "allergies": [
+            "NSAIDs",
+            "Aspirin"
+          ],
+          "chronicConditions": [
+            "Type 2 Diabetes Mellitus"
+          ],
+          "insurancePolicyId": "HYG-POL-39102",
+          "insuranceProvider": "Hygeia HMO",
+          "walletId": "WAL-PAT-002",
+          "lastVisit": "2026-03-01",
+          "createdAt": "2026-01-12T10:00:00Z"
+        }
+      ],
+      [
+        "PAT-822265",
+        {
+          "id": "PAT-822265",
+          "facilityId": "FAC-001",
+          "mrn": "MRN-11197",
+          "name": "Ekpedeme Bassey",
+          "dob": "1992-04-18",
+          "gender": "MALE",
+          "encryptedNationalId": {
+            "iv": "378d5354f1423c7f81478512",
+            "tag": "48ba6eb7431cf94d0538089ca4c79d44",
+            "ciphertext": "ac5e8540a5e1196079e415",
+            "keyVersion": "v1-2026",
+            "algorithm": "AES-256-GCM"
+          },
+          "encryptedPhone": {
+            "iv": "d0cbd5bafb5bc642a46cb467",
+            "tag": "a21504e5ac18a96e9f1f9790cef9f2ea",
+            "ciphertext": "ddd359dc9e035185887018dc5f26",
+            "keyVersion": "v1-2026",
+            "algorithm": "AES-256-GCM"
+          },
+          "encryptedAddress": {
+            "iv": "6f27af2dac8c712274366930",
+            "tag": "a6c68cb235c459a8cfae2d30ee42cfc2",
+            "ciphertext": "ce24072fd308ddd93d9d86cbc0dff3ee0f",
+            "keyVersion": "v1-2026",
+            "algorithm": "AES-256-GCM"
+          },
+          "bloodGroup": "B+",
+          "allergies": [
+            "Penicillin"
+          ],
+          "chronicConditions": [],
+          "insurancePolicyId": "SELF-PAY",
+          "insuranceProvider": "Self Pay",
+          "walletId": "WAL-PAT-822265",
+          "lastVisit": "2026-09-24",
+          "createdAt": "2026-09-24T02:49:14.614Z",
+          "nin": "12345678901",
+          "ninStatus": "VERIFIED",
+          "stateHealthId": "AKS-HID-2026-8423"
+        }
+      ]
+    ],
+    "beds": [
+      [
+        "BED-101",
+        {
+          "id": "BED-101",
+          "bedNumber": "101",
+          "ward": "Cardiology Ward A",
+          "facilityId": "FAC-001",
+          "type": "GENERAL",
+          "status": "OCCUPIED",
+          "currentPatientId": "PAT-849201",
+          "currentPatientName": "Amina Bello",
+          "assignedAt": "2026-03-02T08:30:00Z"
+        }
+      ],
+      [
+        "BED-102",
+        {
+          "id": "BED-102",
+          "bedNumber": "102",
+          "ward": "Cardiology Ward A",
+          "facilityId": "FAC-001",
+          "type": "GENERAL",
+          "status": "AVAILABLE"
+        }
+      ],
+      [
+        "BED-201",
+        {
+          "id": "BED-201",
+          "bedNumber": "ICU-1",
+          "ward": "Critical Care / ICU",
+          "facilityId": "FAC-001",
+          "type": "ICU",
+          "status": "OCCUPIED",
+          "currentPatientId": "PAT-620194",
+          "currentPatientName": "Emeka Okafor",
+          "assignedAt": "2026-03-03T01:15:00Z"
+        }
+      ],
+      [
+        "BED-202",
+        {
+          "id": "BED-202",
+          "bedNumber": "ICU-2",
+          "ward": "Critical Care / ICU",
+          "facilityId": "FAC-001",
+          "type": "ICU",
+          "status": "AVAILABLE"
+        }
+      ],
+      [
+        "BED-301",
+        {
+          "id": "BED-301",
+          "bedNumber": "ISO-1",
+          "ward": "Infectious Disease Unit",
+          "facilityId": "FAC-001",
+          "type": "ISOLATION",
+          "status": "AVAILABLE"
+        }
+      ]
+    ],
+    "encounters": [
+      [
+        "ENC-MUEXO0QC-208",
+        {
+          "id": "ENC-MUEXO0QC-208",
+          "patientId": "PAT-822265",
+          "patientName": "Ekpedeme Bassey",
+          "facilityId": "FAC-001",
+          "type": "ADMISSION",
+          "ward": "Ward 4-West",
+          "bed": "4C",
+          "admittingDoctorId": "DOC-DEFAULT",
+          "admittingDoctorName": "Attending Physician",
+          "status": "ACTIVE",
+          "admittedAt": "2026-09-24T02:49:14.676Z",
+          "chiefComplaint": "High-grade fever, rigor, vomiting",
+          "workingDiagnosis": "Severe P. falciparum malaria"
+        }
+      ]
+    ],
+    "orders": [
+      [
+        "ORD-LAB-01",
+        {
+          "id": "ORD-LAB-01",
+          "patientId": "PAT-849201",
+          "encounterId": "ENC-9942",
+          "facilityId": "FAC-001",
+          "orderedByDoctorId": "DOC-101",
+          "orderedByDoctorName": "Dr. Fatima Sanusi (Cardiologist)",
+          "type": "LABORATORY",
+          "title": "Full Blood Count + Troponin-T STAT",
+          "details": "Check for acute myocardial infarction indicators",
+          "priority": "STAT",
+          "status": "COMPLETED",
+          "billed": true,
+          "cost": 65,
+          "timestamp": "2026-09-24T01:49:04.030Z"
+        }
+      ]
+    ],
+    "prescriptions": [
+      [
+        "RX-849201-001",
+        {
+          "id": "RX-849201-001",
+          "patientId": "PAT-849201",
+          "patientName": "Amina Bello",
+          "doctorId": "DOC-101",
+          "doctorName": "Dr. Fatima Sanusi",
+          "facilityId": "FAC-001",
+          "diagnosis": "Hypertension Type 2 + Hyperlipidemia",
+          "drugs": [
+            {
+              "id": "DRUG-001",
+              "name": "Amlodipine",
+              "dosage": "5mg",
+              "frequency": "Once daily",
+              "duration": "30 days",
+              "route": "ORAL",
+              "quantity": 30,
+              "instructions": "Take in the morning with or without food",
+              "dispensed": false
+            },
+            {
+              "id": "DRUG-002",
+              "name": "Atorvastatin",
+              "dosage": "20mg",
+              "frequency": "Once nightly",
+              "duration": "30 days",
+              "route": "ORAL",
+              "quantity": 30,
+              "instructions": "Take at bedtime",
+              "dispensed": false
+            },
+            {
+              "id": "DRUG-003",
+              "name": "Aspirin",
+              "dosage": "75mg",
+              "frequency": "Once daily",
+              "duration": "30 days",
+              "route": "ORAL",
+              "quantity": 30,
+              "instructions": "Take with food",
+              "dispensed": false
+            }
+          ],
+          "status": "ACTIVE",
+          "createdAt": "2026-09-24T00:49:04.047Z"
+        }
+      ],
+      [
+        "RX-PAT-822265-MUEXO0SB",
+        {
+          "id": "RX-PAT-822265-MUEXO0SB",
+          "patientId": "PAT-822265",
+          "patientName": "Ekpedeme Bassey",
+          "doctorId": "DOC-THORNE",
+          "doctorName": "Dr. Julian Thorne, MD",
+          "facilityId": "FAC-001",
+          "diagnosis": "Severe Malaria Clinical Protocol (WHO / AKS-MoH)",
+          "drugs": [
+            {
+              "id": "DRUG-ART-01",
+              "name": "Artesunate Powder for Injection",
+              "dosage": "2.4mg/kg",
+              "frequency": "Stat at 0h, 12h, 24h",
+              "duration": "3 Days",
+              "route": "IV",
+              "quantity": 3,
+              "instructions": "Push slow IV over 2 minutes",
+              "dispensed": true,
+              "dispensedAt": "2026-09-24T02:49:14.777Z",
+              "dispensedBy": "Pharmacist Funmi Adeola"
+            }
+          ],
+          "status": "DISPENSED",
+          "createdAt": "2026-09-24T02:49:14.747Z",
+          "dispensedAt": "2026-09-24T02:49:14.800Z"
+        }
+      ]
+    ],
+    "facilities": [
+      [
+        "AKS-SEC-001",
+        {
+          "facilityId": "AKS-SEC-001",
+          "facilityName": "Immanuel General Hospital, Eket",
+          "location": "Eket",
+          "region": "Eket Region",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-002",
+        {
+          "facilityId": "AKS-SEC-002",
+          "facilityName": "General Hospital, Ikot Ekpene",
+          "location": "Ikot Ekpene",
+          "region": "Ikot Ekpene Region",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-003",
+        {
+          "facilityId": "AKS-SEC-003",
+          "facilityName": "General Hospital, Iquita Oron",
+          "location": "Iquita Oron",
+          "region": "Eket Region",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-004",
+        {
+          "facilityId": "AKS-SEC-004",
+          "facilityName": "Methodist General Hospital, Ituk Mbang",
+          "location": "Ituk Mbang",
+          "region": "Uyo Region",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-005",
+        {
+          "facilityId": "AKS-SEC-005",
+          "facilityName": "General Hospital, Etinan",
+          "location": "Etinan",
+          "region": "Other Regions",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-006",
+        {
+          "facilityId": "AKS-SEC-006",
+          "facilityName": "General Hospital, Ukpom Abak",
+          "location": "Ukpom Abak",
+          "region": "Ikot Ekpene Region",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-007",
+        {
+          "facilityId": "AKS-SEC-007",
+          "facilityName": "General Hospital, Awa",
+          "location": "Awa",
+          "region": "Other Regions",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-008",
+        {
+          "facilityId": "AKS-SEC-008",
+          "facilityName": "General Hospital, Ikot Okoro",
+          "location": "Ikot Okoro",
+          "region": "Other Regions",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-009",
+        {
+          "facilityId": "AKS-SEC-009",
+          "facilityName": "General Hospital, Ikono",
+          "location": "Ikono",
+          "region": "Other Regions",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-010",
+        {
+          "facilityId": "AKS-SEC-010",
+          "facilityName": "General Hospital, Amammong, Okobo",
+          "location": "Amammong, Okobo",
+          "region": "Eket Region",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-011",
+        {
+          "facilityId": "AKS-SEC-011",
+          "facilityName": "Mount Carmel Hospital, Akpa Utong",
+          "location": "Akpa Utong",
+          "region": "Other Regions",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-012",
+        {
+          "facilityId": "AKS-SEC-012",
+          "facilityName": "General Hospital, Urue-Offong/Oruko",
+          "location": "Urue-Offong/Oruko",
+          "region": "Eket Region",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-013",
+        {
+          "facilityId": "AKS-SEC-013",
+          "facilityName": "General Hospital, Ikpe Annang",
+          "location": "Ikpe Annang",
+          "region": "Ikot Ekpene Region",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-014",
+        {
+          "facilityId": "AKS-SEC-014",
+          "facilityName": "General Hospital, Ini",
+          "location": "Ini",
+          "region": "Other Regions",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-015",
+        {
+          "facilityId": "AKS-SEC-015",
+          "facilityName": "General Hospital, Ikot Abasi",
+          "location": "Ikot Abasi",
+          "region": "Oruk Anam Region",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-016",
+        {
+          "facilityId": "AKS-SEC-016",
+          "facilityName": "General Hospital, Mbioto 2",
+          "location": "Mbioto 2",
+          "region": "Other Regions",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-017",
+        {
+          "facilityId": "AKS-SEC-017",
+          "facilityName": "Mary Slessor General Hospital, Itu",
+          "location": "Itu",
+          "region": "Uyo Region",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-018",
+        {
+          "facilityId": "AKS-SEC-018",
+          "facilityName": "General Hospital, Uruk Ata Ikot Ekpor",
+          "location": "Uruk Ata Ikot Ekpor",
+          "region": "Other Regions",
+          "tier": "district_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-019",
+        {
+          "facilityId": "AKS-SEC-019",
+          "facilityName": "QIC Leprosy Hospital, Ekpene Obom",
+          "location": "Ekpene Obom",
+          "region": "Ikot Ekpene Region",
+          "tier": "specialized_center",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-020",
+        {
+          "facilityId": "AKS-SEC-020",
+          "facilityName": "Infectious Disease Hospital, Ikot Ekpene",
+          "location": "Ikot Ekpene",
+          "region": "Ikot Ekpene Region",
+          "tier": "specialized_center",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-021",
+        {
+          "facilityId": "AKS-SEC-021",
+          "facilityName": "Psychiatric Hospital, Eket",
+          "location": "Eket",
+          "region": "Eket Region",
+          "tier": "specialized_center",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-022",
+        {
+          "facilityId": "AKS-SEC-022",
+          "facilityName": "Cottage Hospital, Ukana",
+          "location": "Ukana",
+          "region": "Ikot Ekpene Region",
+          "tier": "cottage_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-023",
+        {
+          "facilityId": "AKS-SEC-023",
+          "facilityName": "Cottage Hospital, Ibeno",
+          "location": "Ibeno",
+          "region": "Eket Region",
+          "tier": "cottage_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-024",
+        {
+          "facilityId": "AKS-SEC-024",
+          "facilityName": "Cottage Hospital, Ikot Abia",
+          "location": "Ikot Abia",
+          "region": "Other Regions",
+          "tier": "cottage_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-025",
+        {
+          "facilityId": "AKS-SEC-025",
+          "facilityName": "Cottage Hospital, Ikot Ekpaw",
+          "location": "Ikot Ekpaw",
+          "region": "Other Regions",
+          "tier": "cottage_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-026",
+        {
+          "facilityId": "AKS-SEC-026",
+          "facilityName": "Cottage Hospital, Asong",
+          "location": "Asong",
+          "region": "Other Regions",
+          "tier": "cottage_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-027",
+        {
+          "facilityId": "AKS-SEC-027",
+          "facilityName": "Cottage Hospital, Ekpene Obo",
+          "location": "Ekpene Obo",
+          "region": "Ikot Ekpene Region",
+          "tier": "cottage_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-028",
+        {
+          "facilityId": "AKS-SEC-028",
+          "facilityName": "Cottage Hospital, Ikot Eko Ibon",
+          "location": "Ikot Eko Ibon",
+          "region": "Other Regions",
+          "tier": "cottage_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-029",
+        {
+          "facilityId": "AKS-SEC-029",
+          "facilityName": "Cottage Hospital, Eastern Obolo",
+          "location": "Eastern Obolo",
+          "region": "Eket Region",
+          "tier": "cottage_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-030",
+        {
+          "facilityId": "AKS-SEC-030",
+          "facilityName": "Cottage Hospital, Ikot Ekpene Udo",
+          "location": "Ikot Ekpene Udo",
+          "region": "Ikot Ekpene Region",
+          "tier": "cottage_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-031",
+        {
+          "facilityId": "AKS-SEC-031",
+          "facilityName": "Redeemer Cottage Hospital, Ibesit",
+          "location": "Ibesit",
+          "region": "Uyo Region",
+          "tier": "cottage_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-032",
+        {
+          "facilityId": "AKS-SEC-032",
+          "facilityName": "Cottage Hospital, Akai Ubium",
+          "location": "Akai Ubium",
+          "region": "Other Regions",
+          "tier": "cottage_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-033",
+        {
+          "facilityId": "AKS-SEC-033",
+          "facilityName": "Cottage Hospital, Ika",
+          "location": "Ika",
+          "region": "Other Regions",
+          "tier": "cottage_hospital",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-034",
+        {
+          "facilityId": "AKS-SEC-034",
+          "facilityName": "Comprehensive Health Care Centre, Nto Edino",
+          "location": "Nto Edino",
+          "region": "Uyo Region",
+          "tier": "comprehensive_health_centre",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "AKS-SEC-035",
+        {
+          "facilityId": "AKS-SEC-035",
+          "facilityName": "Comprehensive Health Care Centre, Mbiaya Uruan",
+          "location": "Mbiaya Uruan",
+          "region": "Uyo Region",
+          "tier": "comprehensive_health_centre",
+          "enrollmentStatus": "pending",
+          "accreditationStatus": "pending",
+          "createdAt": "2026-01-01T00:00:00Z"
+        }
+      ]
+    ],
+    "pharmacyStock": [
+      [
+        "MED-CEF-2G",
+        {
+          "id": "STOCK-001",
+          "itemCode": "MED-CEF-2G",
+          "genericName": "Ceftriaxone Powder for Injection",
+          "brandName": "Rocephin",
+          "form": "INJECTION",
+          "strength": "2g",
+          "emlTier": "SECONDARY",
+          "isOnStateFormulary": true,
+          "batchNumber": "BATCH-CFX-2026A",
+          "expiryDate": "2027-08-31",
+          "quantityOnHand": 340,
+          "allocatedQuantity": 15,
+          "reorderLevel": 100,
+          "unitCostNgn": 1400,
+          "unitPriceNgn": 1850,
+          "locationRack": "Bay A-04 (Antibiotics Cold)",
+          "supplier": "Chi Pharmaceuticals Lagos",
+          "status": "IN_STOCK",
+          "updatedAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "MED-ACT-80",
+        {
+          "id": "STOCK-002",
+          "itemCode": "MED-ACT-80",
+          "genericName": "Artemether + Lumefantrine Dispersible",
+          "brandName": "Coartem",
+          "form": "TABLET",
+          "strength": "80/480mg",
+          "emlTier": "PRIMARY",
+          "isOnStateFormulary": true,
+          "batchNumber": "BATCH-ACT-9912",
+          "expiryDate": "2026-12-15",
+          "quantityOnHand": 890,
+          "allocatedQuantity": 30,
+          "reorderLevel": 250,
+          "unitCostNgn": 850,
+          "unitPriceNgn": 1200,
+          "locationRack": "Bay M-01 (Antimalarials)",
+          "supplier": "Novartis Nigeria",
+          "status": "IN_STOCK",
+          "updatedAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "MED-ART-60",
+        {
+          "id": "STOCK-003",
+          "itemCode": "MED-ART-60",
+          "genericName": "Artesunate Powder for Injection",
+          "brandName": "Artesun",
+          "form": "INJECTION",
+          "strength": "60mg",
+          "emlTier": "SECONDARY",
+          "isOnStateFormulary": true,
+          "batchNumber": "BATCH-ART-4421",
+          "expiryDate": "2027-11-20",
+          "quantityOnHand": 447,
+          "allocatedQuantity": 12,
+          "reorderLevel": 120,
+          "unitCostNgn": 1800,
+          "unitPriceNgn": 2400,
+          "locationRack": "Bay M-02 (Severe Malaria)",
+          "supplier": "Fosun Pharma / Guilin",
+          "status": "IN_STOCK",
+          "updatedAt": "2026-09-24T02:49:14.778Z"
+        }
+      ],
+      [
+        "MED-MGSO4-50",
+        {
+          "id": "STOCK-004",
+          "itemCode": "MED-MGSO4-50",
+          "genericName": "Magnesium Sulfate Injection 50%",
+          "brandName": "Mag-Sulf",
+          "form": "INJECTION",
+          "strength": "50% (5g/10mL)",
+          "emlTier": "SECONDARY",
+          "isOnStateFormulary": true,
+          "batchNumber": "BATCH-MGS-1092",
+          "expiryDate": "2027-04-30",
+          "quantityOnHand": 200,
+          "allocatedQuantity": 8,
+          "reorderLevel": 50,
+          "unitCostNgn": 650,
+          "unitPriceNgn": 950,
+          "locationRack": "Labour & Delivery Crash Cart / Bay O-01",
+          "supplier": "Juhel Healthcare Awka",
+          "status": "IN_STOCK",
+          "updatedAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "MED-HYD-20",
+        {
+          "id": "STOCK-005",
+          "itemCode": "MED-HYD-20",
+          "genericName": "Hydralazine Hydrochloride Injection",
+          "brandName": "Apresoline",
+          "form": "INJECTION",
+          "strength": "20mg/mL",
+          "emlTier": "SECONDARY",
+          "isOnStateFormulary": true,
+          "batchNumber": "BATCH-HYD-3381",
+          "expiryDate": "2026-10-15",
+          "quantityOnHand": 110,
+          "allocatedQuantity": 4,
+          "reorderLevel": 40,
+          "unitCostNgn": 1150,
+          "unitPriceNgn": 1600,
+          "locationRack": "Bay C-03 (Hypertensive Emergencies)",
+          "supplier": "Emzor Pharmaceuticals Lagos",
+          "status": "IN_STOCK",
+          "updatedAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "MED-TRAM-100",
+        {
+          "id": "STOCK-006",
+          "itemCode": "MED-TRAM-100",
+          "genericName": "Tramadol Hydrochloride Injection",
+          "brandName": "Tramal",
+          "form": "INJECTION",
+          "strength": "50mg/mL",
+          "emlTier": "SECONDARY",
+          "isOnStateFormulary": true,
+          "batchNumber": "BATCH-TRM-8802",
+          "expiryDate": "2027-09-30",
+          "quantityOnHand": 160,
+          "allocatedQuantity": 6,
+          "reorderLevel": 50,
+          "unitCostNgn": 800,
+          "unitPriceNgn": 1100,
+          "locationRack": "Controlled Substance Safe (DDA Safe #2)",
+          "supplier": "Fidson Healthcare Lagos",
+          "status": "IN_STOCK",
+          "updatedAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "MED-PAR-1G",
+        {
+          "id": "STOCK-007",
+          "itemCode": "MED-PAR-1G",
+          "genericName": "Paracetamol IV Infusion 10mg/mL",
+          "brandName": "Perfalgan",
+          "form": "INFUSION",
+          "strength": "1000mg/100mL",
+          "emlTier": "PRIMARY",
+          "isOnStateFormulary": true,
+          "batchNumber": "BATCH-PAR-2201",
+          "expiryDate": "2026-10-01",
+          "quantityOnHand": 18,
+          "allocatedQuantity": 4,
+          "reorderLevel": 60,
+          "unitCostNgn": 700,
+          "unitPriceNgn": 950,
+          "locationRack": "Bay A-01 (Analgesics)",
+          "supplier": "May & Baker Nigeria",
+          "status": "LOW_STOCK",
+          "updatedAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      [
+        "MED-OXY-10",
+        {
+          "id": "STOCK-008",
+          "itemCode": "MED-OXY-10",
+          "genericName": "Oxytocin Injection 10 IU/mL",
+          "brandName": "Pitocin",
+          "form": "INJECTION",
+          "strength": "10 IU/mL",
+          "emlTier": "PRIMARY",
+          "isOnStateFormulary": true,
+          "batchNumber": "BATCH-OXY-9011",
+          "expiryDate": "2027-05-15",
+          "quantityOnHand": 145,
+          "allocatedQuantity": 8,
+          "reorderLevel": 40,
+          "unitCostNgn": 550,
+          "unitPriceNgn": 800,
+          "locationRack": "Cold Chain Refrigerator 2-8°C #1",
+          "supplier": "Swiss Pharma Nigeria",
+          "status": "IN_STOCK",
+          "updatedAt": "2026-01-01T00:00:00Z"
+        }
+      ]
+    ],
+    "stockTransactions": [
+      {
+        "id": "TX-STOCK-MUEXO0T6",
+        "itemCode": "MED-ART-60",
+        "genericName": "Artesunate Powder for Injection",
+        "type": "DISPENSE",
+        "quantity": 3,
+        "balanceAfter": 447,
+        "referenceId": "RX-PAT-822265-MUEXO0SB",
+        "actorId": "PHARM-CLI",
+        "actorName": "Pharmacist Funmi Adeola",
+        "timestamp": "2026-09-24T02:49:14.778Z"
+      }
+    ],
+    "hmoClaims": []
+  },
+  "outbox": [
+    {
+      "id": "EVT-MUEXO0OO-215",
+      "envelope": {
+        "eventId": "EVT-MUEXO0OO-215",
+        "topic": "PATIENT_REGISTERED",
+        "facilityId": "FAC-001",
+        "emitterApp": "MEDCORE_OS",
+        "timestamp": "2026-09-24T02:49:14.647Z",
+        "payload": {
+          "patientId": "PAT-822265",
+          "mrn": "MRN-11197",
+          "stateHealthId": "AKS-HID-2026-8423",
+          "name": "Ekpedeme Bassey",
+          "facilityId": "FAC-001"
+        },
+        "traceId": "a09c23a1-91d4-4a37-85e2-e8d520ec45e4"
+      },
+      "status": "DISPATCHED",
+      "retryCount": 0,
+      "createdAt": "2026-09-24T02:49:14.651Z",
+      "lastAttemptAt": "2026-09-24T02:49:14.658Z"
+    },
+    {
+      "id": "EVT-MUEXO0QC-385",
+      "envelope": {
+        "eventId": "EVT-MUEXO0QC-385",
+        "topic": "PATIENT_ADMITTED",
+        "facilityId": "FAC-001",
+        "emitterApp": "MEDCORE_CLINIC",
+        "timestamp": "2026-09-24T02:49:14.676Z",
+        "payload": {
+          "encounterId": "ENC-MUEXO0QC-208",
+          "patientId": "PAT-822265",
+          "patientName": "Ekpedeme Bassey",
+          "ward": "Ward 4-West",
+          "bed": "4C",
+          "workingDiagnosis": "Severe P. falciparum malaria"
+        },
+        "traceId": "fc040347-68fa-4d36-a746-3312213bf98c"
+      },
+      "status": "DISPATCHED",
+      "retryCount": 0,
+      "createdAt": "2026-09-24T02:49:14.676Z",
+      "lastAttemptAt": "2026-09-24T02:49:14.676Z"
+    },
+    {
+      "id": "EVT-MUEXO0SB-937",
+      "envelope": {
+        "eventId": "EVT-MUEXO0SB-937",
+        "topic": "PRESCRIPTION_CREATED",
+        "facilityId": "FAC-001",
+        "emitterApp": "MEDCORE_CLINIC",
+        "timestamp": "2026-09-24T02:49:14.747Z",
+        "payload": {
+          "rxId": "RX-PAT-822265-MUEXO0SB",
+          "patientId": "PAT-822265",
+          "patientName": "Ekpedeme Bassey",
+          "doctorName": "Dr. Julian Thorne, MD",
+          "drugCount": 1
+        },
+        "traceId": "7718d42c-a79a-4dbc-b1e0-476f7f12e06b"
+      },
+      "status": "DISPATCHED",
+      "retryCount": 0,
+      "createdAt": "2026-09-24T02:49:14.747Z",
+      "lastAttemptAt": "2026-09-24T02:49:14.748Z"
+    },
+    {
+      "id": "EVT-MUEXO0TS-511",
+      "envelope": {
+        "eventId": "EVT-MUEXO0TS-511",
+        "topic": "PRESCRIPTION_DISPENSED",
+        "facilityId": "FAC-001",
+        "emitterApp": "MEDCORE_OS_PHARMACY",
+        "timestamp": "2026-09-24T02:49:14.800Z",
+        "payload": {
+          "rxId": "RX-PAT-822265-MUEXO0SB",
+          "patientId": "PAT-822265",
+          "drugName": "Artesunate Powder for Injection",
+          "dispensedBy": "Pharmacist Funmi Adeola",
+          "status": "DISPENSED"
+        },
+        "traceId": "5c1c5982-f0f3-4b60-ac5c-666eabd103cf"
+      },
+      "status": "DISPATCHED",
+      "retryCount": 0,
+      "createdAt": "2026-09-24T02:49:14.800Z",
+      "lastAttemptAt": "2026-09-24T02:49:14.800Z"
+    }
+  ]
+}

@@ -15,13 +15,14 @@ import { FacilityOnboarding } from './components/facility/FacilityOnboarding';
 import { AuthIdentity } from './components/auth/AuthIdentity';
 import { DigitalPatientCard } from './components/patient-card/DigitalPatientCard';
 import { RoleDashboard } from './components/dashboards/RoleDashboard';
+import { EMRManager } from './components/gateway-modules/EMRManager';
 import { AuthScreen, UserSession } from './components/auth/AuthScreen';
 import './styles/os.css';
 
 // ─── Navigation config ─────────────────────────────────────────────────────────
 
 type ModuleKey =
-  | 'dashboard' | 'command' | 'ai' | 'beds' | 'patient-flow' | 'staffing'
+  | 'dashboard' | 'command' | 'ai' | 'emr' | 'beds' | 'patient-flow' | 'staffing'
   | 'transfer' | 'cashier' | 'patient-card' | 'auth' | 'facility'
   | 'data-hub' | 'analytics' | 'rbac' | 'sysadmin' | 'compliance';
 
@@ -50,6 +51,7 @@ const NAV: NavSection[] = [
   {
     label: 'Finance & Records',
     items: [
+      { key: 'emr', icon: '📋', label: 'Intelligent EMR & Records', badge: 'AI' },
       { key: 'cashier', icon: '💰', label: 'Cashier & Revenue' },
       { key: 'patient-card', icon: '🪪', label: 'Digital Patient Card', badge: 'FHIR' },
     ],
@@ -95,6 +97,7 @@ export const App: React.FC = () => {
       case 'dashboard':    return <RoleDashboard session={session} onNavigate={(k) => setActiveModule(k as ModuleKey)} />;
       case 'command':      return <CommandCentreDashboard />;
       case 'ai':           return <AICommandInsights />;
+      case 'emr':          return <EMRManager onNavigate={(k) => setActiveModule(k as ModuleKey)} />;
       case 'beds':         return <BedManagement />;
       case 'patient-flow': return <PatientFlowVisibility />;
       case 'staffing':     return <StaffingOverview />;
@@ -127,10 +130,12 @@ export const App: React.FC = () => {
       }}>
         {/* Logo */}
         <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid #1F2937', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg,#0D9488,#2563EB)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', flexShrink: 0 }}>⚕</div>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 3, flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
+            <img src="/medcore-logo.png" alt="MedCore" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          </div>
           {sidebarOpen && (
             <div>
-              <div style={{ fontWeight: 800, fontSize: '0.9rem', lineHeight: 1.2, fontFamily: 'Outfit,sans-serif' }}>MedCore OS</div>
+              <div style={{ fontWeight: 800, fontSize: '0.95rem', lineHeight: 1.2, fontFamily: 'Outfit,sans-serif', color: '#FFFFFF' }}>MedCore</div>
               <div style={{ fontSize: '0.62rem', color: '#9CA3AF' }}>Powered by M87</div>
             </div>
           )}

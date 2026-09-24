@@ -79,14 +79,16 @@ router.post('/', (req: Request, res: Response) => {
     chronicConditions,
     insurancePolicyId,
     insuranceProvider,
+    nin,
+    stateHealthId,
     actorId,
     actorName,
   } = req.body;
 
-  if (!name || !dob || !gender || !nationalId || !phone) {
+  if (!name || !dob || !gender || (!nationalId && !nin) || !phone) {
     return res.status(400).json({
       success: false,
-      error: 'name, dob, gender, nationalId, and phone are mandatory fields',
+      error: 'name, dob, gender, nationalId (or nin), and phone are mandatory fields',
     });
   }
 
@@ -94,7 +96,7 @@ router.post('/', (req: Request, res: Response) => {
     name,
     dob,
     gender,
-    nationalId,
+    nationalId: nationalId || nin,
     phone,
     address: address || 'Not Provided',
     facilityId: facilityId || 'FAC-001',
@@ -103,15 +105,140 @@ router.post('/', (req: Request, res: Response) => {
     chronicConditions: chronicConditions || [],
     insurancePolicyId,
     insuranceProvider,
+    nin,
+    stateHealthId,
     actorId: actorId || 'STAFF-REG-01',
     actorName: actorName || 'Reception Registrar',
   });
 
   res.status(201).json({
     success: true,
-    message: `Patient ${patient.name} successfully registered. PII encrypted with AES-256-GCM.`,
+    message: `Patient ${patient.name} successfully registered. State Health ID: ${patient.stateHealthId}. PII encrypted with AES-256-GCM.`,
     data: patient,
   });
+});
+
+/**
+ * POST /api/v1/patients/encounters/admit
+ * ADT: Admit patient to ward & bed
+ */
+router.post('/encounters/admit', (req: Request, res: Response) => {
+  const {
+    patientId,
+    patientName,
+    facilityId,
+    type,
+    ward,
+    bed,
+    admittingDoctorId,
+    admittingDoctorName,
+    chiefComplaint,
+    workingDiagnosis,
+  } = req.body;
+
+  if (!patientId || !ward || !bed) {
+    return res.status(400).json({ success: false, error: 'patientId, ward, and bed are required for admission' });
+  }
+
+  try {
+    const encounter = dataStore.admitPatient({
+      patientId,
+      patientName: patientName || 'Inpatient',
+      facilityId: facilityId || 'FAC-001',
+      type: type || 'ADMISSION',
+      ward,
+      bed,
+      admittingDoctorId,
+      admittingDoctorName,
+      chiefComplaint,
+      workingDiagnosis,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Patient ${patientName || patientId} admitted to ${ward}, Bed ${bed}.`,
+      data: encounter,
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/v1/patients/encounters/transfer
+ * ADT: Transfer patient to new ward/bed
+ */
+router.post('/encounters/transfer', (req: Request, res: Response) => {
+  const { encounterId, targetWard, targetBed, transferredBy, reason } = req.body;
+
+  if (!encounterId || !targetWard || !targetBed) {
+    return res.status(400).json({ success: false, error: 'encounterId, targetWard, and targetBed are required' });
+  }
+
+  try {
+    const updated = dataStore.transferPatient({
+      encounterId,
+      targetWard,
+      targetBed,
+      transferredBy: transferredBy || 'Staff Nurse',
+      reason: reason || 'Clinical bed management transfer',
+    });
+
+    res.json({
+      success: true,
+      message: `Patient transferred to ${targetWard}, Bed ${targetBed}.`,
+      data: updated,
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/v1/patients/encounters/discharge
+ * ADT: Discharge patient
+ */
+router.post('/encounters/discharge', (req: Request, res: Response) => {
+  const { encounterId, dischargedBy, disposition, summary } = req.body;
+
+  if (!encounterId) {
+    return res.status(400).json({ success: false, error: 'encounterId is required' });
+  }
+
+  try {
+    const discharged = dataStore.dischargePatient({
+      encounterId,
+      dischargedBy: dischargedBy || 'Attending Physician',
+      disposition: disposition || 'HOME',
+      summary,
+    });
+
+    res.json({
+      success: true,
+      message: `Encounter ${encounterId} discharged. Disposition: ${disposition || 'HOME'}.`,
+      data: discharged,
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/v1/patients/encounters
+ * List all active/past encounters
+ */
+router.get('/encounters', (req: Request, res: Response) => {
+  const { patientId } = req.query;
+  const encounters = dataStore.getEncounters(patientId as string);
+  res.json({ success: true, total: encounters.length, data: encounters });
+});
+
+/**
+ * GET /api/v1/patients/:id/encounters
+ */
+router.get('/:id/encounters', (req: Request, res: Response) => {
+  const encounters = dataStore.getEncounters(req.params.id as string);
+  res.json({ success: true, patientId: req.params.id, total: encounters.length, data: encounters });
 });
 
 export default router;

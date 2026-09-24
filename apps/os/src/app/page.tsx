@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import '../styles/os.css';
 
 // Splash & Auth Components
@@ -50,6 +50,10 @@ import { ProcurementHrSuite } from '../components/finance/ProcurementHrSuite';
 import { FhirHl7GatewaySuite } from '../components/interop/FhirHl7GatewaySuite';
 import { ConnectedDevicesSuite } from '../components/interop/ConnectedDevicesSuite';
 import { ClinicalSafetyBcpSuite } from '../components/interop/ClinicalSafetyBcpSuite';
+import { EMRManager } from '../components/gateway-modules/EMRManager';
+import NotificationBell from '../components/realtime/NotificationBell';
+import AlertBanner from '../components/realtime/AlertBanner';
+import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
 
 // Icons
 import {
@@ -58,7 +62,8 @@ import {
   CreditCard, FileText, Stethoscope, HeartPulse, Database, Brain, Sparkles, Flame,
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Gauge, Trash2, Cpu, FileCode, ShieldCheck,
-  Search, X, LayoutDashboard, Zap, CheckCircle2, Globe, ArrowRight
+  Search, X, LayoutDashboard, Zap, CheckCircle2, Globe, ArrowRight,
+  Command, CornerDownLeft
 } from 'lucide-react';
 
 export type ModuleKey =
@@ -68,7 +73,7 @@ export type ModuleKey =
   // Pillar 1: AI
   | 'm87-ai' | 'ai'
   // Pillar 2: Core
-  | 'emergency' | 'theatre' | 'icu' | 'pharmacy' | 'laboratory' | 'radiology'
+  | 'emr' | 'emergency' | 'theatre' | 'icu' | 'pharmacy' | 'laboratory' | 'radiology'
   | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'patient-card'
   // Pillar 3: Operations
   | 'command' | 'beds' | 'patient-flow' | 'staffing' | 'ambulance'
@@ -112,6 +117,7 @@ const MASTER_PILLARS: NavSection[] = [
   {
     label: '2. Hospital Core Specialty Suites',
     items: [
+      { key: 'emr', icon: FileText, label: 'Intelligent EMR & Records', badge: 'AI' },
       { key: 'emergency', icon: Flame, label: 'Emergency & A&E Triage', badge: 'ESI' },
       { key: 'theatre', icon: Activity, label: 'Operating Theatre & Surgeries', badge: 'OT' },
       { key: 'icu', icon: Wind, label: 'ICU & Critical Care Telemetry', badge: 'ICU' },
@@ -225,6 +231,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Clinical Stations',
           items: [
+            { key: 'emr', icon: FileText, label: 'Intelligent EMR & Records', badge: 'AI' },
             { key: 'emergency', icon: Flame, label: 'Accident & Emergency Triage', badge: 'ESI' },
             { key: 'nursing', icon: FileText, label: 'Inpatient Wards & e-MAR' },
             { key: 'pharmacy', icon: Pill, label: 'e-Prescription & Pharmacy', badge: 'Rx' },
@@ -679,6 +686,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   'doctor-portal': DoctorPortal as any,
   'm87-ai': M87AICopilotSuite,
   ai: AICommandInsights,
+  emr: EMRManager,
   emergency: EmergencyTriageSuite,
   theatre: OperatingTheatreSuite,
   icu: CriticalCareIcuSuite,
@@ -720,6 +728,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
 const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDesc: string }> = {
   dashboard: { level: 2, label: 'L2 All Roles', roleDesc: 'Dedicated Role Command Desk' },
   'doctor-portal': { level: 3, label: 'L3 Clinical', roleDesc: 'Licensed Medical Doctors & Clinical Officers' },
+  emr: { level: 2, label: 'L2 Clinical & Records', roleDesc: 'Physicians, Clinical Officers & Records' },
   'm87-ai': { level: 3, label: 'L3 Clinical', roleDesc: 'Clinical Officers & Nursing Supervisors' },
   ai: { level: 3, label: 'L3 Clinical', roleDesc: 'Clinical Decision Support & Physicians' },
   emergency: { level: 3, label: 'L3 Clinical', roleDesc: 'A&E Triage Officers & Medical Doctors' },
@@ -763,6 +772,7 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
 export default function OSPage() {
   const [appState, setAppState] = useState<'splash' | 'auth' | 'app'>('splash');
   const [userSession, setUserSession] = useState<UserSession | null>(null);
+  const { criticalAlert, dismissCriticalAlert } = useRealtimeEvents({ app: 'MEDCORE_OS', facilityId: userSession?.facility });
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard');
   const [moduleKey, setModuleKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -774,6 +784,8 @@ export default function OSPage() {
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showFullDirectory, setShowFullDirectory] = useState(false);
+  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+  const [cmdSearch, setCmdSearch] = useState('');
   const [wsConnected, setWsConnected] = useState(true);
   const [wsLatency, setWsLatency] = useState(12);
 
@@ -911,9 +923,22 @@ export default function OSPage() {
       setWsLatency(Math.floor(Math.random() * 6) + 9);
     }, 10000);
 
+    // Global keyboard shortcuts (Cmd+K / Ctrl+K and Escape)
+    const handleGlobalKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCmdPaletteOpen(prev => !prev);
+      }
+      if (e.key === 'Escape') {
+        setCmdPaletteOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKey);
+
     return () => {
       clearInterval(interval);
       clearInterval(latencyInterval);
+      window.removeEventListener('keydown', handleGlobalKey);
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (ws) ws.close();
     };
@@ -986,6 +1011,81 @@ export default function OSPage() {
     } catch {}
   };
 
+  // ── Command Palette data (must be before early returns — Rules of Hooks) ──
+  const allPaletteCommands = useMemo(() => {
+    const list: { id: string; label: string; group: string; icon: any; action: () => void; badge?: string }[] = [];
+    
+    // Quick Actions
+    list.push(
+      {
+        id: 'act-switch-role',
+        label: 'Switch Staff Cadre & Permissions (RBAC)',
+        group: 'Quick Actions',
+        icon: ShieldCheck,
+        action: () => { setShowRoleModal(true); setCmdPaletteOpen(false); },
+        badge: 'RBAC'
+      },
+      {
+        id: 'act-copilot',
+        label: 'Open M87 AI Clinical Copilot Drawer',
+        group: 'Quick Actions',
+        icon: Brain,
+        action: () => { setAiDrawerOpen(true); setCmdPaletteOpen(false); },
+        badge: 'M87 AI'
+      },
+      {
+        id: 'act-alert',
+        label: 'Broadcast Hospital Emergency Alert',
+        group: 'Quick Actions',
+        icon: AlertTriangle,
+        action: () => {
+          const code = prompt('Broadcast Clinical Alert: (Type "BLUE", "RED", or "YELLOW")');
+          if (code) setActiveEmergencyCode(`CODE ${code.toUpperCase()}`);
+          setCmdPaletteOpen(false);
+        },
+        badge: 'Emergency'
+      },
+      {
+        id: 'act-lock',
+        label: 'Lock Workstation Terminal Screen',
+        group: 'Quick Actions',
+        icon: Lock,
+        action: () => { handleLockScreen(); setCmdPaletteOpen(false); },
+        badge: 'Security'
+      }
+    );
+
+    // Get all navigation sections from master directory
+    const allSections = getRoleNavSections(null, true);
+    allSections.forEach(sec => {
+      sec.items.forEach(item => {
+        list.push({
+          id: `mod-${item.key}`,
+          label: item.label,
+          group: sec.label,
+          icon: item.icon,
+          badge: item.badge,
+          action: () => {
+            handleModuleChange(item.key as ModuleKey);
+            setCmdPaletteOpen(false);
+          }
+        });
+      });
+    });
+
+    return list;
+  }, []);
+
+  const filteredCommands = useMemo(() => {
+    if (!cmdSearch.trim()) return allPaletteCommands;
+    const q = cmdSearch.toLowerCase();
+    return allPaletteCommands.filter(c => 
+      c.label.toLowerCase().includes(q) || 
+      c.group.toLowerCase().includes(q) ||
+      (c.badge && c.badge.toLowerCase().includes(q))
+    );
+  }, [cmdSearch, allPaletteCommands]);
+
   if (appState === 'splash') {
     return (
       <SplashScreen
@@ -1033,8 +1133,81 @@ export default function OSPage() {
     ),
   })).filter(sec => sec.items.length > 0);
 
+
   return (
     <div className="os-workspace-shell">
+      {/* ── Command Palette (⌘K / Ctrl+K Spotlight Modal) ── */}
+      {cmdPaletteOpen && (
+        <div className="os-cmd-palette-backdrop" onClick={() => setCmdPaletteOpen(false)}>
+          <div className="os-cmd-palette-modal" onClick={e => e.stopPropagation()}>
+            <div className="os-cmd-search-header">
+              <Search size={18} style={{ color: '#0052D4', flexShrink: 0 }} />
+              <input
+                autoFocus
+                className="os-cmd-input"
+                placeholder="Search modules, clinical pathways, patients, or actions..."
+                value={cmdSearch}
+                onChange={e => setCmdSearch(e.target.value)}
+              />
+              <span className="os-cmd-kbd">ESC</span>
+            </div>
+            <div className="os-cmd-results">
+              {filteredCommands.length === 0 ? (
+                <div style={{ padding: '28px 16px', textAlign: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
+                  No matching modules or actions found for "{cmdSearch}"
+                </div>
+              ) : (
+                filteredCommands.map((cmd) => {
+                  const Icon = cmd.icon;
+                  return (
+                    <div
+                      key={cmd.id}
+                      className="os-cmd-item"
+                      onClick={cmd.action}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                        <div style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 8,
+                          background: 'rgba(0, 82, 212, 0.08)',
+                          color: '#0052D4',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          <Icon size={16} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                          <span style={{ fontWeight: 600, color: '#0F172A', fontSize: '0.86rem' }}>{cmd.label}</span>
+                          <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{cmd.group}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                        {cmd.badge && (
+                          <span style={{
+                            fontSize: '0.65rem',
+                            fontWeight: 700,
+                            padding: '2px 7px',
+                            borderRadius: 4,
+                            background: '#F1F5F9',
+                            color: '#475569'
+                          }}>
+                            {cmd.badge}
+                          </span>
+                        )}
+                        <CornerDownLeft size={13} style={{ color: '#94A3B8' }} />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Quick RBAC Switcher Modal ── */}
       {showRoleModal && (
         <div className="os-lock-modal-backdrop" onClick={() => setShowRoleModal(false)}>
@@ -1208,12 +1381,27 @@ export default function OSPage() {
       >
         <div className="os-sidebar-header">
           <div className="os-sidebar-brand">
-            <div className="os-brand-icon" style={{ background: currentRoleTheme.gradient }}>
-              <RoleIcon size={18} color="#FFF" />
+            <div style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: '#FFFFFF',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 4,
+              flexShrink: 0,
+            }}>
+              <img
+                src="/medcore-logo.png"
+                alt="MedCore Logo"
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
             </div>
             {sidebarOpen && (
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span className="os-brand-text">Hospi OS</span>
+                <span className="os-brand-text" style={{ fontSize: '1.05rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#FFFFFF' }}>MedCore</span>
                 <span style={{ fontSize: '0.66rem', color: currentRoleTheme.accent, fontWeight: 800, letterSpacing: '0.05em' }}>
                   {currentRoleTheme.badge}
                 </span>
@@ -1413,6 +1601,9 @@ export default function OSPage() {
 
       {/* ── Main Operations Column (Desktop Fit) ── */}
       <div className="os-main-column">
+        {/* Real-Time Critical Alert Banner */}
+        <AlertBanner alert={criticalAlert} onDismiss={dismissCriticalAlert} />
+
         {/* Top Operations Header */}
         <header className="os-top-hud">
           <div className="os-top-hud-left">
@@ -1449,6 +1640,36 @@ export default function OSPage() {
           </div>
 
           <div className="os-top-hud-right">
+            {/* Quick Command Palette Button */}
+            <button
+              type="button"
+              className="os-hud-btn"
+              onClick={() => setCmdPaletteOpen(true)}
+              title="Quick Search & Command Palette (⌘K)"
+              style={{
+                background: 'rgba(0, 82, 212, 0.05)',
+                borderColor: 'rgba(0, 82, 212, 0.2)',
+                color: '#0052D4',
+              }}
+            >
+              <Search size={14} />
+              <span>Jump to...</span>
+              <span style={{
+                background: '#FFFFFF',
+                border: '1px solid #CBD5E1',
+                borderRadius: 4,
+                padding: '1px 5px',
+                fontSize: '0.65rem',
+                fontFamily: 'var(--os-font-mono)',
+                color: '#64748B',
+                fontWeight: 700,
+                marginLeft: 2,
+              }}>⌘K</span>
+            </button>
+
+            {/* Real-time Notification Bell */}
+            <NotificationBell app="MEDCORE_OS" facilityId={userSession?.facility} />
+
             <div className="os-hud-clock">
               <span>{currentTime || '09:00:00'}</span>
             </div>

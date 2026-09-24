@@ -136,7 +136,7 @@ router.get('/results/patient/:patientId', (req: Request, res: Response) => {
  * GET /api/v1/lab/results/:id
  */
 router.get('/results/:id', (req: Request, res: Response) => {
-  const result = labResults.get(req.params.id);
+  const result = labResults.get(String(req.params.id));
   if (!result) return res.status(404).json({ success: false, error: 'Result not found' });
   res.json({ success: true, data: result });
 });

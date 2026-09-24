@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { WebSocket, WebSocketServer } from 'ws';
 import { SyncTopic, EmitterApp, SyncEnvelope } from '@medcore/types';
 import crypto from 'crypto';
+import { persistenceService } from '../store/persistence';
 
 export interface ConnectedClient {
   id: string;
@@ -130,6 +131,13 @@ export class SyncEventBus extends EventEmitter {
       this.eventHistory.shift();
     }
 
+    // Record in Transactional Outbox for crash recovery
+    try {
+      persistenceService.queueOutboxEvent(envelope as unknown as SyncEnvelope);
+    } catch {
+      // ignore
+    }
+
     // Emit in Node process
     this.emit(params.topic, envelope);
 
@@ -156,6 +164,12 @@ export class SyncEventBus extends EventEmitter {
           // Socket send failed
         }
       }
+    }
+
+    try {
+      persistenceService.markOutboxDispatched(envelope.eventId);
+    } catch {
+      // ignore
     }
 
     return envelope;

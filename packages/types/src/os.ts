@@ -292,7 +292,7 @@ export interface ProcurementOrder {
 // ─── INTEROPERABILITY & CONNECTED IOT ──────────────────────────────────────────
 
 export interface FhirResourceHeader {
-  resourceType: 'Patient' | 'Encounter' | 'Observation' | 'Condition' | 'MedicationRequest';
+  resourceType: 'Patient' | 'Encounter' | 'Observation' | 'Condition' | 'MedicationRequest' | 'DiagnosticReport' | 'Claim' | 'Bundle' | 'Bundle (IPS)';
   id: string;
   fhirVersion: 'R4';
   lastUpdated: string;

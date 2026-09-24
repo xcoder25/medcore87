@@ -7,3 +7,6 @@ export * from './admin';
 export * from './banking';
 export * from './security';
 export * from './sync';
+export * from './cpoe';
+export * from './pharmacy';
+export * from './hmo';
