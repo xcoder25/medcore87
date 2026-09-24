@@ -55,7 +55,11 @@ router.get('/Patient/:id', (req: Request, res: Response) => {
     meta: {
       versionId: '1',
       lastUpdated: new Date().toISOString(),
-      profile: ['http://hl7.org/fhir/StructureDefinition/Patient'],
+      profile: [
+        'http://hl7.org/fhir/StructureDefinition/Patient',
+        'http://fhir.nigeriahealth.gov.ng/StructureDefinition/ng-patient',
+      ],
+      tag: [{ system: 'http://medcore.ng/ndha', code: 'hie-ready-patient' }],
     },
     identifier: [
       { use: 'official', system: 'http://ibomhealth.gov.ng/mrn', value: p.mrn },

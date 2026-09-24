@@ -24,6 +24,10 @@ import pharmacyRoutes from './routes/pharmacy.routes';
 import cpoeRoutes from './routes/cpoe.routes';
 import hmoRoutes from './routes/hmo.routes';
 import commsRoutes from './routes/comms.routes';
+// Phase D — NDHA compliance: DHIS2/NHMIS, HCX eClaim, NDPR
+import dhis2Routes from './routes/dhis2.routes';
+import hcxRoutes from './routes/hcx.routes';
+import ndprRoutes from './routes/ndpr.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -64,15 +68,24 @@ app.use('/api/v1/pharmacy', pharmacyRoutes);
 app.use('/api/v1/cpoe', cpoeRoutes);
 app.use('/api/v1/hmo', hmoRoutes);
 app.use('/api/v1/comms', commsRoutes);
+app.use('/api/v1/dhis2', dhis2Routes);
+app.use('/api/v1/hcx', hcxRoutes);
+app.use('/api/v1/ndpr', ndprRoutes);
 
 // Root System Status & Architecture Overview
 app.get('/', (req, res) => {
   res.json({
     platform: 'MedCore Healthcare Ecosystem (Powered by M87 Core)',
     status: 'ONLINE',
-    version: '2.0.0-realtime',
+    version: '2.1.0-ndha-compliance',
     port: PORT,
     timestamp: new Date().toISOString(),
+    policyAlignment: {
+      ndha: 'FHIR R4 + HCX packager + HIE-oriented profiles',
+      nhmis: '/api/v1/dhis2 (live or simulated)',
+      ndpr: '/api/v1/ndpr',
+      matrix: 'docs/architecture/NDHA_COMPLIANCE.md',
+    },
     endpoints: {
       auth: '/api/v1/auth',
       patients: '/api/v1/patients',
@@ -82,10 +95,17 @@ app.get('/', (req, res) => {
       sync: '/api/v1/sync',
       admin: '/api/v1/admin',
       facilities: '/api/v1/facilities',
-      // Phase A
       vitals: '/api/v1/vitals',
       lab: '/api/v1/lab',
       theatre: '/api/v1/theatre',
+      fhir: '/api/v1/fhir',
+      pharmacy: '/api/v1/pharmacy',
+      cpoe: '/api/v1/cpoe',
+      hmo: '/api/v1/hmo',
+      comms: '/api/v1/comms',
+      dhis2: '/api/v1/dhis2',
+      hcx: '/api/v1/hcx',
+      ndpr: '/api/v1/ndpr',
       webSocket: `ws://${req.headers.host || 'localhost:' + PORT}/ws`,
     },
     securityStatus: {
