@@ -1016,7 +1016,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               onClick={() => onNavigate && onNavigate('consultation', { patientId: selectedPatient.id })}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                background: 'linear-gradient(135deg, #0066FF, #0052CC)', color: '#FFFFFF',
+                color: '#FFFFFF',
                 border: 'none', borderRadius: 8,
                 padding: '7px 15px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer',
                 background: 'linear-gradient(135deg, #0066FF 0%, #00D4A8 100%)',
