@@ -24,6 +24,7 @@ import { EmergencyResponse } from './components/emergency/EmergencyResponse';
 import { PorteringRequest } from './components/portering/PorteringRequest';
 import { StaffAuthScreen, StaffSession } from './components/auth/StaffAuthScreen';
 import { PrescriptionWriter } from './components/pharmacy/PrescriptionWriter';
+import { StaffIdCardScreen } from './components/identity/StaffIdCardScreen';
 
 type TabKey = 'ward' | 'patients' | 'tasks' | 'orders' | 'more';
 
@@ -38,6 +39,17 @@ export default function App() {
   const [selectedTab, setSelectedTab] = useState<TabKey>('ward');
   const [isRecordingAI, setIsRecordingAI] = useState(false);
   const [moreSection, setMoreSection] = useState<string | null>(null);
+  const [staffSession] = useState<StaffSession>({
+    staffId: 'IGH-DOC-001',
+    name: 'Dr. Amara Okafor',
+    role: 'Medical Officer',
+    roleKey: 'doctor',
+    title: 'Medical Officer',
+    facility: 'Immanuel General Hospital, Eket',
+    department: 'Internal Medicine',
+    avatarInitials: 'AO',
+    shift: 'Day',
+  });
   const [patients, setPatients] = useState<Patient[]>(PATIENTS);
 
   useEffect(() => {
@@ -131,6 +143,7 @@ export default function App() {
       assistant: <DoctorAssistant onBack={() => setMoreSection(null)} />,
       activity: <ActivityOverview onBack={() => setMoreSection(null)} />,
       prescription: <PrescriptionWriter onBack={() => setMoreSection(null)} />,
+      'staff-id': <StaffIdCardScreen session={staffSession} onBack={() => setMoreSection(null)} />,
     };
     if (moreSection && map[moreSection]) return map[moreSection];
 
@@ -151,6 +164,7 @@ export default function App() {
       { k: 'alerts', icon: '🔔', title: 'Clinical Alerts', desc: 'Panic values & STAT notifications' },
       { k: 'assistant', icon: '🤖', title: 'Doctor Assistant (M87)', desc: 'SOAP, ICD-10 & discharge drafts' },
       { k: 'activity', icon: '📊', title: 'Activity Overview', desc: 'Caseload & documentation metrics' },
+      { k: 'staff-id', icon: '🪪', title: 'My Staff ID Card', desc: 'Badge linked to OS enrolment & auth' },
     ];
 
     return (

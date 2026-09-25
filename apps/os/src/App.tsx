@@ -4,6 +4,9 @@ import { BedManagement } from './components/beds/BedManagement';
 import { PatientFlowVisibility } from './components/patient-flow/PatientFlowVisibility';
 import { StaffingOverview } from './components/staffing/StaffingOverview';
 import { HospitalStaffTransfer } from './components/staffing/HospitalStaffTransfer';
+import { StaffEnrolment } from './components/staffing/StaffEnrolment';
+import { StaffIdCardView } from './components/staffing/StaffIdCardView';
+import { ensureCardForSession } from './lib/staffCardStore';
 import { IntegratedDataHub } from './components/data-hub/IntegratedDataHub';
 import { PerformanceAnalytics } from './components/analytics/PerformanceAnalytics';
 import { AccessControl } from './components/rbac/AccessControl';
@@ -22,7 +25,7 @@ import './styles/os.css';
 
 type ModuleKey =
   | 'dashboard' | 'command' | 'ai' | 'emr' | 'beds' | 'patient-flow' | 'staffing'
-  | 'transfer' | 'cashier' | 'patient-card' | 'auth' | 'facility'
+  | 'transfer' | 'enrolment' | 'my-card' | 'cashier' | 'patient-card' | 'auth' | 'facility'
   | 'data-hub' | 'analytics' | 'rbac' | 'sysadmin' | 'compliance';
 
 type NavSection = {
@@ -45,6 +48,8 @@ const NAV: NavSection[] = [
       { key: 'beds', icon: '🛏', label: 'Bed Management' },
       { key: 'patient-flow', icon: '🔄', label: 'Patient Flow' },
       { key: 'staffing', icon: '👥', label: 'Staffing' },
+      { key: 'enrolment', icon: '🪪', label: 'Staff Enrolment & ID', badge: 'IAM' },
+      { key: 'my-card', icon: '🎴', label: 'My Staff ID Card' },
     ],
   },
   {
@@ -96,6 +101,25 @@ export const App: React.FC = () => {
       case 'beds':         return <BedManagement />;
       case 'patient-flow': return <PatientFlowVisibility />;
       case 'staffing':     return <StaffingOverview />;
+      case 'enrolment':    return <StaffEnrolment />;
+      case 'my-card': {
+        const card = ensureCardForSession(session);
+        return (
+          <div className="os-module-layout">
+            <div className="os-insight-banner">
+              <div>
+                <div style={{ fontWeight: 700, color: '#0F172A', fontSize: '0.88rem' }}>
+                  My Staff ID — linked to this login
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: 4 }}>
+                  Same badge ID on MedCore Clinic. Status follows RBAC (active / suspended).
+                </div>
+              </div>
+            </div>
+            <StaffIdCardView card={card} />
+          </div>
+        );
+      }
       case 'transfer':     return <HospitalStaffTransfer session={session} />;
       case 'cashier':      return <CashierRevenue />;
       case 'patient-card': return <DigitalPatientCard />;

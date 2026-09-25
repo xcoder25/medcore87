@@ -10,3 +10,5 @@ export * from './sync';
 export * from './cpoe';
 export * from './pharmacy';
 export * from './hmo';
+
+export * from './staffCard';
