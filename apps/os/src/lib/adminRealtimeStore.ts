@@ -5,6 +5,7 @@
  */
 
 import { broadcastLocal, pushFacilityData } from './hospitalSync';
+import { firestoreWriteFacility } from './firebase';
 
 /** Active facility for multi-workstation share (set from session) */
 let activeFacilityId = 'DEFAULT-HOSPITAL';
@@ -84,10 +85,11 @@ function write(key: string, value: unknown) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(key, JSON.stringify(value));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key } }));
-  // Same-hospital share: tabs + LAN API (when available)
+  // Same-hospital share: tabs + LAN API + Firestore (multi-device)
   try {
     broadcastLocal(activeFacilityId, key, value);
     void pushFacilityData(activeFacilityId, { [key]: value });
+    void firestoreWriteFacility(activeFacilityId, { [key]: value });
   } catch {
     /* offline local-only is fine */
   }

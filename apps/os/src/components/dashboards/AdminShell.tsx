@@ -26,6 +26,7 @@ import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import { ensureCleanPilot, setActiveFacilityId, KEYS as ADMIN_KEYS } from '../../lib/adminRealtimeStore';
 import { startFacilitySyncLoop, probeHospitalApi, isHospitalApiKnown } from '../../lib/hospitalSync';
+import { firestoreSubscribeFacility, enableFirestoreOffline } from '../../lib/firebase';
 import { isBrowserOnline } from '../../services/offlineStorage';
 
 type AdminModule =
@@ -110,7 +111,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [clock, setClock] = useState(formatNow);
   const [search, setSearch] = useState('');
   const [online, setOnline] = useState(true);
-  const [hospitalShare, setHospitalShare] = useState<'local' | 'lan' | 'probing'>('probing');
+  const [hospitalShare, setHospitalShare] = useState<'local' | 'lan' | 'cloud' | 'probing'>('probing');
   const { connected } = useRealtimeEvents({ app: 'MEDCORE_OS_ADMIN', facilityId: session.hospitalId });
 
   useEffect(() => {
@@ -133,13 +134,24 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       } catch { /* ignore */ }
     };
     const stopSync = startFacilitySyncLoop(fid, applyKey, 4000);
-    void probeHospitalApi().then((ok) => setHospitalShare(ok ? 'lan' : 'local'));
+    void enableFirestoreOffline();
+    const stopFs = firestoreSubscribeFacility(fid, (data) => {
+      setHospitalShare('cloud');
+      for (const [k, v] of Object.entries(data)) {
+        if (k === 'updatedAt') continue;
+        applyKey(k, v);
+      }
+    });
+    void probeHospitalApi().then((ok) => {
+      setHospitalShare((prev) => (prev === 'cloud' ? 'cloud' : ok ? 'lan' : 'local'));
+    });
 
     return () => {
       clearInterval(id);
       window.removeEventListener('online', onOn);
       window.removeEventListener('offline', onOff);
       stopSync();
+      stopFs();
     };
   }, [session.hospitalId, session.facility]);
 
@@ -254,7 +266,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             </div>
             <div className="admin-shell-online">
               <span className="dot" />
-              {!online ? 'Offline' : hospitalShare === 'lan' ? 'Hospital LAN' : connected ? 'Live' : 'Online'}
+              {!online ? 'Offline' : hospitalShare === 'cloud' ? 'Cloud sync' : hospitalShare === 'lan' ? 'Hospital LAN' : connected ? 'Live' : 'Online'}
             </div>
             <div className="admin-shell-clock">{clock}</div>
           </div>
@@ -294,6 +306,11 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         {hospitalShare === 'lan' && (
           <div className="admin-share-banner is-lan" role="status">
             Hospital share on — staff on this LAN see the same live data (even if the public internet is down).
+          </div>
+        )}
+        {hospitalShare === 'cloud' && (
+          <div className="admin-share-banner is-lan" role="status">
+            Firestore sync on — staff in this hospital share data in real time (works offline on each device, then syncs).
           </div>
         )}
         <main className="admin-shell-content">{body}</main>

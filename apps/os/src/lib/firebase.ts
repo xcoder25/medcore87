@@ -1,6 +1,6 @@
 /**
- * Firebase client — test auth for Hospital OS.
- * Prefer NEXT_PUBLIC_FIREBASE_* env on Vercel; defaults are for local test only.
+ * Firebase client — Auth + Firestore for Hospital OS.
+ * Prefer NEXT_PUBLIC_FIREBASE_* env on Vercel.
  */
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import {
@@ -11,6 +11,15 @@ import {
   type Auth,
   type User,
 } from 'firebase/auth';
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  getDoc,
+  onSnapshot,
+  enableIndexedDbPersistence,
+  type Firestore,
+} from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyAOLWLpM0vzIljUeXOnSQbppzuaHhfmXyI',
@@ -27,6 +36,8 @@ const firebaseConfig = {
 
 let app: FirebaseApp | undefined;
 let auth: Auth | undefined;
+let db: Firestore | undefined;
+let persistenceEnabled = false;
 
 export function getFirebaseApp(): FirebaseApp {
   if (!app) {
@@ -40,6 +51,29 @@ export function getFirebaseAuth(): Auth {
     auth = getAuth(getFirebaseApp());
   }
   return auth;
+}
+
+export function getFirestore(): Firestore {
+  if (!db) {
+    db = getFirestore(getFirebaseApp());
+  }
+  return db;
+}
+
+/** Offline cache on device — reads/writes work offline, sync when online */
+export async function enableFirestoreOffline(): Promise<void> {
+  if (persistenceEnabled || typeof window === 'undefined') return;
+  try {
+    await enableIndexedDbPersistence(getFirestore());
+    persistenceEnabled = true;
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code;
+    // multi-tab or already enabled — safe to ignore
+    if (code !== 'failed-precondition' && code !== 'unimplemented') {
+      console.warn('[Firestore] persistence:', code || err);
+    }
+    persistenceEnabled = true;
+  }
 }
 
 export async function firebaseSignIn(email: string, password: string): Promise<User> {
@@ -59,3 +93,70 @@ export async function firebaseSignOut(): Promise<void> {
 export function isEmailCredential(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
+
+/** Path: facilities/{facilityId}/store/shared */
+export function facilityStoreRef(facilityId: string) {
+  const id = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+  return doc(getFirestore(), 'facilities', id, 'store', 'shared');
+}
+
+export async function firestoreWriteFacility(
+  facilityId: string,
+  partial: Record<string, unknown>
+): Promise<boolean> {
+  try {
+    await enableFirestoreOffline();
+    const ref = facilityStoreRef(facilityId);
+    await setDoc(
+      ref,
+      {
+        ...partial,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    return true;
+  } catch (e) {
+    console.warn('[Firestore] write failed', e);
+    return false;
+  }
+}
+
+export async function firestoreReadFacility(
+  facilityId: string
+): Promise<Record<string, unknown> | null> {
+  try {
+    await enableFirestoreOffline();
+    const snap = await getDoc(facilityStoreRef(facilityId));
+    if (!snap.exists()) return null;
+    return snap.data() as Record<string, unknown>;
+  } catch (e) {
+    console.warn('[Firestore] read failed', e);
+    return null;
+  }
+}
+
+/** Live multi-user listener for the facility document */
+export function firestoreSubscribeFacility(
+  facilityId: string,
+  onData: (data: Record<string, unknown>) => void
+): () => void {
+  let unsub = () => {};
+  void (async () => {
+    try {
+      await enableFirestoreOffline();
+      unsub = onSnapshot(
+        facilityStoreRef(facilityId),
+        (snap) => {
+          if (snap.exists()) onData(snap.data() as Record<string, unknown>);
+        },
+        (err) => console.warn('[Firestore] snapshot', err)
+      );
+    } catch (e) {
+      console.warn('[Firestore] subscribe failed', e);
+    }
+  })();
+  return () => unsub();
+}
+
+export { doc, setDoc, getDoc, onSnapshot };
