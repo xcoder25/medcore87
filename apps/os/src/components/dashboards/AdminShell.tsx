@@ -24,7 +24,8 @@ import { CashierRevenue } from '../cashier/CashierRevenue';
 import { StaffEnrolment } from '../staffing/StaffEnrolment';
 import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
-import { ensureCleanPilot } from '../../lib/adminRealtimeStore';
+import { ensureCleanPilot, setActiveFacilityId, KEYS as ADMIN_KEYS } from '../../lib/adminRealtimeStore';
+import { startFacilitySyncLoop, probeHospitalApi, isHospitalApiKnown } from '../../lib/hospitalSync';
 import { isBrowserOnline } from '../../services/offlineStorage';
 
 type AdminModule =
@@ -109,18 +110,38 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [clock, setClock] = useState(formatNow);
   const [search, setSearch] = useState('');
   const [online, setOnline] = useState(true);
+  const [hospitalShare, setHospitalShare] = useState<'local' | 'lan' | 'probing'>('probing');
   const { connected } = useRealtimeEvents({ app: 'MEDCORE_OS_ADMIN', facilityId: session.hospitalId });
 
   useEffect(() => {
     try { ensureCleanPilot(); } catch {}
+    const fid = session.hospitalId || session.facility || 'DEFAULT-HOSPITAL';
+    setActiveFacilityId(fid);
     setOnline(typeof navigator !== 'undefined' ? navigator.onLine : true);
     const onOn = () => setOnline(true);
     const onOff = () => setOnline(false);
     window.addEventListener('online', onOn);
     window.addEventListener('offline', onOff);
     const id = setInterval(() => setClock(formatNow()), 1000);
-    return () => { clearInterval(id); window.removeEventListener('online', onOn); window.removeEventListener('offline', onOff); };
-  }, []);
+
+    // Same-hospital multi-user: pull shared facility data from LAN API when present
+    const applyKey = (key: string, value: unknown) => {
+      try {
+        if (value === undefined) return;
+        localStorage.setItem(key, JSON.stringify(value));
+        window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key } }));
+      } catch { /* ignore */ }
+    };
+    const stopSync = startFacilitySyncLoop(fid, applyKey, 4000);
+    void probeHospitalApi().then((ok) => setHospitalShare(ok ? 'lan' : 'local'));
+
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('online', onOn);
+      window.removeEventListener('offline', onOff);
+      stopSync();
+    };
+  }, [session.hospitalId, session.facility]);
 
   const facility = session.facility || 'Immanuel General Hospital, Eket';
   const initials = session.avatarInitials || 'HA';
@@ -233,7 +254,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             </div>
             <div className="admin-shell-online">
               <span className="dot" />
-              {!online ? 'Offline' : connected ? 'Live' : 'Online'}
+              {!online ? 'Offline' : hospitalShare === 'lan' ? 'Hospital LAN' : connected ? 'Live' : 'Online'}
             </div>
             <div className="admin-shell-clock">{clock}</div>
           </div>
@@ -262,7 +283,17 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
 
         {!online && (
           <div className="admin-offline-banner" role="status">
-            Working offline — changes are saved on this device and will sync when the network returns.
+            Working offline on this device. For all staff to share data without internet, run the hospital API on your LAN (see hospital share below).
+          </div>
+        )}
+        {online && hospitalShare === 'local' && (
+          <div className="admin-share-banner" role="status">
+            Single-PC mode — data stays on this browser. Start api-server on the hospital network so every workstation shares the same staff, transfers, and bills.
+          </div>
+        )}
+        {hospitalShare === 'lan' && (
+          <div className="admin-share-banner is-lan" role="status">
+            Hospital share on — staff on this LAN see the same live data (even if the public internet is down).
           </div>
         )}
         <main className="admin-shell-content">{body}</main>

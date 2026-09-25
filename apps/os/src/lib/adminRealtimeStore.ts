@@ -4,6 +4,19 @@
  * even when the WebSocket server is offline (hospital pilot / Vercel-only deploy).
  */
 
+import { broadcastLocal, pushFacilityData } from './hospitalSync';
+
+/** Active facility for multi-workstation share (set from session) */
+let activeFacilityId = 'DEFAULT-HOSPITAL';
+
+export function setActiveFacilityId(id: string) {
+  if (id) activeFacilityId = id;
+}
+
+export function getActiveFacilityId() {
+  return activeFacilityId;
+}
+
 export const KEYS = {
   transfers: 'medcore_os_transfers',
   staff: 'medcore_os_staff_registry',
@@ -71,6 +84,13 @@ function write(key: string, value: unknown) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(key, JSON.stringify(value));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key } }));
+  // Same-hospital share: tabs + LAN API (when available)
+  try {
+    broadcastLocal(activeFacilityId, key, value);
+    void pushFacilityData(activeFacilityId, { [key]: value });
+  } catch {
+    /* offline local-only is fine */
+  }
 }
 
 export function ensureAdminDefaults() {

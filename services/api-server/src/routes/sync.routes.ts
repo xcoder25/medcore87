@@ -61,3 +61,59 @@ router.post('/broadcast', (req: Request, res: Response) => {
 });
 
 export default router;
+
+/**
+ * In-memory facility shared store (LAN pilot).
+ * All workstations at the same hospital read/write the same blob via this API.
+ * For production, replace with Postgres/Redis; for offline LAN, one PC runs api-server.
+ */
+const facilityStore = new Map<string, { updatedAt: string; data: Record<string, unknown> }>();
+
+/**
+ * GET /api/v1/sync/facility/:facilityId
+ * Shared hospital snapshot for offline-first multi-workstation sync
+ */
+router.get('/facility/:facilityId', (req: Request, res: Response) => {
+  const facilityId = String(req.params.facilityId || 'default');
+  const row = facilityStore.get(facilityId);
+  if (!row) {
+    return res.json({
+      success: true,
+      data: { facilityId, updatedAt: null, data: {} },
+    });
+  }
+  res.json({
+    success: true,
+    data: { facilityId, updatedAt: row.updatedAt, data: row.data },
+  });
+});
+
+/**
+ * PUT /api/v1/sync/facility/:facilityId
+ * Merge/replace hospital shared keys (staff, transfers, access, activity, cards, bills)
+ */
+router.put('/facility/:facilityId', (req: Request, res: Response) => {
+  const facilityId = String(req.params.facilityId || 'default');
+  const incoming = (req.body && req.body.data) || req.body || {};
+  const prev = facilityStore.get(facilityId)?.data || {};
+  const merged = { ...prev, ...incoming };
+  const updatedAt = new Date().toISOString();
+  facilityStore.set(facilityId, { updatedAt, data: merged });
+
+  // Notify WS clients that facility data changed
+  try {
+    syncEventBus.broadcast({
+      topic: 'FACILITY_DATA_SYNC',
+      facilityId,
+      emitterApp: 'API_SERVER',
+      payload: { keys: Object.keys(incoming), updatedAt },
+    });
+  } catch {
+    /* optional */
+  }
+
+  res.json({
+    success: true,
+    data: { facilityId, updatedAt, keys: Object.keys(merged) },
+  });
+});

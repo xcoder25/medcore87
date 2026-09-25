@@ -4160,3 +4160,18 @@ html, body {
   color: #92400E;
   border-color: #FDE68A;
 }
+
+.admin-share-banner {
+  background: #EFF6FF;
+  color: #1E40AF;
+  border-bottom: 1px solid #BFDBFE;
+  padding: 8px 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+}
+.admin-share-banner.is-lan {
+  background: #ECFDF5;
+  color: #047857;
+  border-bottom-color: #A7F3D0;
+}
