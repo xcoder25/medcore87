@@ -23,6 +23,7 @@ import { FacilityOnboarding } from '../components/facility/FacilityOnboarding';
 import { AuthIdentity } from '../components/auth/AuthIdentity';
 import { DigitalPatientCard } from '../components/patient-card/DigitalPatientCard';
 import { HospitalStaffTransfer } from '../components/staffing/HospitalStaffTransfer';
+import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 
 // Specialty Suites
 import { AdminShell } from '../components/dashboards/AdminShell';
@@ -725,6 +726,8 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   safety: ClinicalSafetyBcpSuite,
   sysadmin: SystemAdministration,
   transfer: HospitalStaffTransfer as any,
+  enrolment: StaffEnrolment as any,
+  'my-card': DigitalPatientCard as any,
 };
 
 const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDesc: string }> = {
@@ -768,7 +771,9 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   compliance: { level: 4, label: 'L4 Senior Clinical', roleDesc: 'Clinical Audit & Legal Compliance' },
   safety: { level: 2, label: 'L2 Support', roleDesc: 'Disaster Recovery & Downtime Officers' },
   sysadmin: { level: 5, label: 'L5 Executive', roleDesc: 'System Administrators & CIO' },
-  transfer: { level: 4, label: 'L4 Operations', roleDesc: 'Hospital Administrators & Medical Directors' },
+  transfer: { level: 4, label: 'L4 Operations', roleDesc: 'Hospital Administrators & Medical Directors' },,
+  enrolment: { level: 4, label: 'Administrator', roleDesc: 'Hospital administrators enrol staff' },
+  'my-card': { level: 2, label: 'All staff', roleDesc: 'Staff identity card' },
 };
 
 export default function OSPage() {
