@@ -771,7 +771,7 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   compliance: { level: 4, label: 'L4 Senior Clinical', roleDesc: 'Clinical Audit & Legal Compliance' },
   safety: { level: 2, label: 'L2 Support', roleDesc: 'Disaster Recovery & Downtime Officers' },
   sysadmin: { level: 5, label: 'L5 Executive', roleDesc: 'System Administrators & CIO' },
-  transfer: { level: 4, label: 'L4 Operations', roleDesc: 'Hospital Administrators & Medical Directors' },,
+  transfer: { level: 4, label: 'L4 Operations', roleDesc: 'Hospital Administrators & Medical Directors' },
   enrolment: { level: 4, label: 'Administrator', roleDesc: 'Hospital administrators enrol staff' },
   'my-card': { level: 2, label: 'All staff', roleDesc: 'Staff identity card' },
 };
