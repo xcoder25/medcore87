@@ -9,11 +9,11 @@ interface SplashScreenProps {
 }
 
 const BOOT_STATUSES = [
-  'Initializing Secure Hospital Gateway...',
-  'Connecting State Health EHR Database...',
-  'Syncing Inpatient Ward Telemetry...',
-  'Verifying Staff IAM & Clearance Levels...',
-  'M87 Clinical Intelligence Ready',
+  'Starting Hospital OS...',
+  'Loading patient records...',
+  'Checking ward status...',
+  'Verifying staff access...',
+  'Ready',
 ];
 
 /** Hard cap: splash finishes in ~1.8s (always under 5s). */

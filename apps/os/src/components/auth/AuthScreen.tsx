@@ -99,71 +99,79 @@ export const HOSPITALS: Hospital[] = [
 
 export const PRESET_STAFF: PresetStaff[] = [
   {
+    badgeId: 'AKS-ADM-001', name: 'Hospital Administrator', role: 'Hospital Administrator', shortRole: 'Admin',
+    title: 'Hospital Administrator', roleKey: 'hospital_admin', clearanceLevel: 5, clearanceLabel: 'Administrator',
+    department: 'Hospital Management', initials: 'HA',
+    permissions: ['dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing', 'enrolment', 'my-card', 'cashier', 'patient-card', 'auth', 'facility', 'data-hub', 'analytics', 'rbac', 'sysadmin', 'compliance', 'transfer', 'ai'],
+    pin: 'AKS-0012442', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#EA580C',
+  },
+
+  {
     badgeId: 'IGH-DOC-001', name: 'Dr. Amara Okafor', role: 'Medical Officer', shortRole: 'Doctor',
-    title: 'Medical Officer', roleKey: 'doctor', clearanceLevel: 4, clearanceLabel: 'L4 Clinical',
+    title: 'Medical Officer', roleKey: 'doctor', clearanceLevel: 4, clearanceLabel: 'Clinical',
     department: 'Internal Medicine', initials: 'AO',
     permissions: ['dashboard', 'doctor-portal', 'emergency', 'beds', 'patient-flow', 'staffing', 'patient-card', 'ai', 'm87-ai'],
     pin: '1234', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#0284C7',
   },
   {
     badgeId: 'GHI-SUR-002', name: 'Dr. Emeka Adeyemi', role: 'Consultant Surgeon', shortRole: 'Surgeon',
-    title: 'Consultant Surgeon', roleKey: 'surgeon', clearanceLevel: 5, clearanceLabel: 'L5 Consultant',
+    title: 'Consultant Surgeon', roleKey: 'surgeon', clearanceLevel: 5, clearanceLabel: 'Consultant',
     department: 'Surgery & Theatre', initials: 'EA',
     permissions: ['dashboard', 'theatre', 'icu', 'doctor-portal', 'emergency', 'ai'],
     pin: '1234', hospitalId: 'GH-IKE', hospitalName: 'General Hospital, Ikot Ekpene', color: '#DC2626',
   },
   {
     badgeId: 'MSG-NUR-003', name: 'Nurse Aisha Bello', role: 'Senior Nursing Officer', shortRole: 'Nurse',
-    title: 'Senior Nursing Officer', roleKey: 'nurse', clearanceLevel: 3, clearanceLabel: 'L3 Nursing',
+    title: 'Senior Nursing Officer', roleKey: 'nurse', clearanceLevel: 3, clearanceLabel: 'Nursing',
     department: 'Female Medical Ward', initials: 'AB',
     permissions: ['dashboard', 'nursing', 'beds', 'patient-flow', 'emergency', 'maternity'],
     pin: '1234', hospitalId: 'MSG-ITU', hospitalName: 'Mary Slessor General Hospital, Itu', color: '#7C3AED',
   },
   {
     badgeId: 'IGH-ADM-004', name: 'Adm. Ngozi Eze', role: 'Hospital Administrator', shortRole: 'Admin',
-    title: 'Hospital Administrator', roleKey: 'hospital_admin', clearanceLevel: 5, clearanceLabel: 'L5 Executive',
+    title: 'Hospital Administrator', roleKey: 'hospital_admin', clearanceLevel: 5, clearanceLabel: 'Administrator',
     department: 'Hospital Administration', initials: 'NE',
     permissions: ['*'],
     pin: '1234', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#D97706',
   },
   {
     badgeId: 'GHE-PHA-005', name: 'Pharm. Chidi Otu', role: 'Chief Pharmacist', shortRole: 'Pharmacist',
-    title: 'Chief Pharmacist', roleKey: 'pharmacist', clearanceLevel: 3, clearanceLabel: 'L3 Pharmacy',
+    title: 'Chief Pharmacist', roleKey: 'pharmacist', clearanceLevel: 3, clearanceLabel: 'Pharmacy',
     department: 'Pharmacy', initials: 'CO',
     permissions: ['dashboard', 'pharmacy', 'inventory'],
     pin: '1234', hospitalId: 'GH-ETN', hospitalName: 'General Hospital, Etinan', color: '#059669',
   },
   {
     badgeId: 'GHI-LAB-006', name: 'Kelechi Obiora', role: 'Senior Lab Scientist', shortRole: 'Lab',
-    title: 'Senior Lab Scientist', roleKey: 'lab', clearanceLevel: 3, clearanceLabel: 'L3 Lab',
+    title: 'Senior Lab Scientist', roleKey: 'lab', clearanceLevel: 3, clearanceLabel: 'Laboratory',
     department: 'Laboratory', initials: 'KO',
     permissions: ['dashboard', 'laboratory', 'blood-bank'],
     pin: '1234', hospitalId: 'GH-IKE', hospitalName: 'General Hospital, Ikot Ekpene', color: '#0891B2',
   },
   {
     badgeId: 'MGH-RAD-007', name: 'Dr. Fatima Al-Hassan', role: 'Radiologist', shortRole: 'Radiology',
-    title: 'Consultant Radiologist', roleKey: 'radiologist', clearanceLevel: 5, clearanceLabel: 'L5 Radiology',
+    title: 'Consultant Radiologist', roleKey: 'radiologist', clearanceLevel: 5, clearanceLabel: 'Radiology',
     department: 'Radiology', initials: 'FA',
     permissions: ['dashboard', 'radiology'],
     pin: '1234', hospitalId: 'MGH-ITM', hospitalName: 'Methodist General Hospital, Ituk Mbang', color: '#6D28D9',
   },
   {
     badgeId: 'GHA-REC-008', name: 'Bisi Adewale', role: 'Records Officer', shortRole: 'Records',
-    title: 'Health Records Officer', roleKey: 'records', clearanceLevel: 2, clearanceLabel: 'L2 Records',
+    title: 'Health Records Officer', roleKey: 'records', clearanceLevel: 2, clearanceLabel: 'Records',
     department: 'Medical Records', initials: 'BA',
     permissions: ['dashboard', 'patient-card', 'command'],
     pin: '1234', hospitalId: 'GH-IAB', hospitalName: 'General Hospital, Ikot Abasi', color: '#0F766E',
   },
   {
     badgeId: 'PSY-ACC-009', name: 'Amaka Oguike', role: 'Accountant', shortRole: 'Accounts',
-    title: 'Finance Officer', roleKey: 'accountant', clearanceLevel: 3, clearanceLabel: 'L3 Finance',
+    title: 'Finance Officer', roleKey: 'accountant', clearanceLevel: 3, clearanceLabel: 'Finance',
     department: 'Finance & Accounts', initials: 'AO',
     permissions: ['dashboard', 'cashier', 'billing', 'claims', 'revenue-cycle'],
     pin: '1234', hospitalId: 'PSY-EKT', hospitalName: 'Psychiatric Hospital, Eket', color: '#B45309',
   },
   {
     badgeId: 'MHQB-ICT-010', name: 'Ola Bankole', role: 'ICT / System Admin', shortRole: 'SysAdmin',
-    title: 'Chief Information Officer', roleKey: 'sysadmin', clearanceLevel: 6, clearanceLabel: 'L6 SysAdmin',
+    title: 'Chief Information Officer', roleKey: 'sysadmin', clearanceLevel: 6, clearanceLabel: 'IT Admin',
     department: 'IT & Infrastructure', initials: 'OB',
     permissions: ['*'],
     pin: '1234', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#374151',
@@ -252,54 +260,83 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     const u = (username || '').trim();
     const pass = (password || '').trim();
     const effectiveHospital = selectedHospital;
+    const adminEmail = PLATFORM_ADMIN.email.toLowerCase();
+    const isPlatformAdmin =
+      u.toLowerCase() === adminEmail ||
+      (u.toLowerCase().includes('xcoder2442') && pass === PLATFORM_ADMIN.password);
 
-    // ── Firebase Auth test path: email + password ──────────────────────────
-    if (u.includes('@')) {
+    // ── Real auth: email → Firebase (required, not demo) ───────────────────
+    if (u.includes('@') || isPlatformAdmin) {
+      const email = u.includes('@') ? u : PLATFORM_ADMIN.email;
       try {
         const { firebaseSignIn, firebaseSignUp, isEmailCredential } = await import('../../lib/firebase');
-        if (!isEmailCredential(u)) {
-          setError('Enter a valid email for Firebase test auth.');
+        if (!isEmailCredential(email)) {
+          setError('Please enter a valid work email address.');
           setLoading(false);
           return;
         }
         if (pass.length < 6) {
-          setError('Firebase password must be at least 6 characters.');
+          setError('Password must be at least 6 characters.');
+          setLoading(false);
+          return;
+        }
+
+        // Platform admin must use the issued password
+        if (email.toLowerCase() === adminEmail && pass !== PLATFORM_ADMIN.password) {
+          setError('Incorrect password for this administrator account.');
           setLoading(false);
           return;
         }
 
         let fbUser;
         try {
-          fbUser = await firebaseSignIn(u, pass);
+          fbUser = await firebaseSignIn(email, pass);
         } catch (signInErr: unknown) {
           const code = (signInErr as { code?: string })?.code || '';
-          // Auto-register on first test so you can create a user from the OS login form
-          if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
-            try {
-              fbUser = await firebaseSignUp(u, pass);
-            } catch (signUpErr: unknown) {
-              const msg =
-                (signUpErr as { message?: string })?.message ||
-                'Firebase sign-up failed. Enable Email/Password in Firebase Console.';
-              setError(msg);
+          if (code === 'auth/user-not-found' || code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
+            // First-time: create only the known platform admin account
+            if (email.toLowerCase() === adminEmail && pass === PLATFORM_ADMIN.password) {
+              try {
+                fbUser = await firebaseSignUp(email, pass);
+              } catch (signUpErr: unknown) {
+                // Already exists with different state — retry sign-in once
+                try {
+                  fbUser = await firebaseSignIn(email, pass);
+                } catch {
+                  const msg =
+                    (signUpErr as { message?: string })?.message ||
+                    'Could not sign in. Enable Email/Password in Firebase Console, then try again.';
+                  setError(msg);
+                  setLoading(false);
+                  return;
+                }
+              }
+            } else {
+              setError('Wrong email or password. Contact your hospital administrator for access.');
               setLoading(false);
               return;
             }
           } else {
-            const msg =
+            setError(
               (signInErr as { message?: string })?.message ||
-              'Firebase sign-in failed. Check Email/Password is enabled in Firebase Console.';
-            setError(msg);
+                'Sign-in failed. Check your internet connection and try again.'
+            );
             setLoading(false);
             return;
           }
         }
 
-        const matchedStaff = detectedStaff || staffRegistry[0];
+        const adminStaff =
+          staffRegistry.find((s) => s.badgeId === PLATFORM_ADMIN.badgeId) || staffRegistry[0];
+        const matchedStaff =
+          email.toLowerCase() === adminEmail
+            ? adminStaff
+            : detectedStaff || adminStaff;
+
         const displayName =
-          fbUser.displayName ||
-          u.split('@')[0] ||
-          matchedStaff.name;
+          email.toLowerCase() === adminEmail
+            ? PLATFORM_ADMIN.name
+            : fbUser.displayName || matchedStaff.name;
         const initials = displayName
           .split(/\s+/)
           .map((p) => p[0])
@@ -321,7 +358,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           clearanceLabel: matchedStaff.clearanceLabel,
           clearanceLevel: matchedStaff.clearanceLevel,
           permissions: matchedStaff.permissions,
-          authMethod: 'Firebase Auth',
+          authMethod: 'Firebase',
           token: await fbUser.getIdToken(),
           loginTime: new Date().toLocaleTimeString('en-GB', {
             hour: '2-digit',
@@ -331,49 +368,53 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
         setSuccess(true);
         setLoading(false);
-        setTimeout(() => triggerLogin(session), 400);
+        setTimeout(() => triggerLogin(session), 300);
         return;
       } catch (err: unknown) {
-        setError((err as { message?: string })?.message || 'Firebase auth error');
+        setError((err as { message?: string })?.message || 'Sign-in error. Please try again.');
         setLoading(false);
         return;
       }
     }
 
-    // ── Legacy demo path: badge ID / name + PIN (offline) ──────────────────
-    setTimeout(() => {
-      let matchedStaff = detectedStaff || staffRegistry[0];
-
-      const session: UserSession = {
-        id: matchedStaff.badgeId,
-        badgeId: matchedStaff.badgeId,
-        name: u
-          ? u.includes('@')
-            ? u.split('@')[0]
-            : matchedStaff.name
-          : matchedStaff.name,
-        role: matchedStaff.role,
-        roleKey: matchedStaff.roleKey,
-        title: matchedStaff.title,
-        facility: effectiveHospital.name,
-        hospitalId: effectiveHospital.id,
-        department: matchedStaff.department,
-        avatarInitials: matchedStaff.initials,
-        clearanceLabel: matchedStaff.clearanceLabel,
-        clearanceLevel: matchedStaff.clearanceLevel,
-        permissions: matchedStaff.permissions,
-        authMethod: 'Password Credential',
-        token: `AUTH-${Date.now().toString(36).toUpperCase()}`,
-        loginTime: new Date().toLocaleTimeString('en-GB', {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      };
-
-      setSuccess(true);
+    // ── Staff badge + PIN (must match enrolled staff — not open demo) ──────
+    const matchedStaff = detectedStaff;
+    if (!matchedStaff) {
+      setError('Staff ID not found. Use your badge ID or work email.');
       setLoading(false);
-      setTimeout(() => triggerLogin(session), 600);
-    }, 400);
+      return;
+    }
+    if (!pass || pass !== matchedStaff.pin) {
+      setError('Incorrect PIN. Try again or contact your administrator.');
+      setLoading(false);
+      return;
+    }
+
+    const session: UserSession = {
+      id: matchedStaff.badgeId,
+      badgeId: matchedStaff.badgeId,
+      name: matchedStaff.name,
+      role: matchedStaff.role,
+      roleKey: matchedStaff.roleKey,
+      title: matchedStaff.title,
+      facility: matchedStaff.hospitalName || effectiveHospital.name,
+      hospitalId: matchedStaff.hospitalId || effectiveHospital.id,
+      department: matchedStaff.department,
+      avatarInitials: matchedStaff.initials,
+      clearanceLabel: matchedStaff.clearanceLabel,
+      clearanceLevel: matchedStaff.clearanceLevel,
+      permissions: matchedStaff.permissions,
+      authMethod: 'Staff PIN',
+      token: `PIN-${Date.now().toString(36).toUpperCase()}`,
+      loginTime: new Date().toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    };
+
+    setSuccess(true);
+    setLoading(false);
+    setTimeout(() => triggerLogin(session), 300);
   };
 
   return (
@@ -582,7 +623,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Email (Firebase) or Staff Badge ID"
+                  placeholder="Work email or staff badge ID"
                   style={{
                     width: '100%',
                     padding: '12px 14px 12px 42px',

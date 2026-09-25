@@ -108,10 +108,10 @@ interface LiveTelemetryEvent {
 // Master 7-Pillar Hospital Blueprint Directory
 const MASTER_PILLARS: NavSection[] = [
   {
-    label: '1. M87 AI Intelligence Hub',
+    label: '1. Clinical tools',
     items: [
-      { key: 'm87-ai', icon: Brain, label: 'M87 AI Clinical Copilot', badge: 'AI' },
-      { key: 'ai', icon: Sparkles, label: 'Predictive Decision Support', badge: 'M87' },
+      { key: 'm87-ai', icon: Brain, label: 'Clinical assistant', badge: 'AI' },
+      { key: 'ai', icon: Sparkles, label: 'Decision support', badge: 'AI' },
     ],
   },
   {
@@ -172,7 +172,7 @@ const MASTER_PILLARS: NavSection[] = [
   {
     label: '7. Governance, Safety & Access',
     items: [
-      { key: 'auth', icon: Shield, label: 'Staff Identity & IAM' },
+      { key: 'auth', icon: Shield, label: 'Staff sign-in & identity' },
       { key: 'facility', icon: Building2, label: 'Hospital Facility Setup' },
       { key: 'rbac', icon: Lock, label: 'Role-Based Access Control' },
       { key: 'compliance', icon: FileText, label: 'Clinical Audit & Quality Logs' },
@@ -224,8 +224,8 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           items: [
             { key: 'doctor-portal', icon: Stethoscope, label: 'Doctor Clinical Portal', badge: 'Live' },
             { key: 'dashboard', icon: LayoutDashboard, label: 'Role Overview Dashboard' },
-            { key: 'm87-ai', icon: Brain, label: 'M87 AI Clinical Copilot', badge: 'AI' },
-            { key: 'ai', icon: Sparkles, label: 'Decision Support & SOAP', badge: 'M87' },
+            { key: 'm87-ai', icon: Brain, label: 'Clinical assistant', badge: 'AI' },
+            { key: 'ai', icon: Sparkles, label: 'Decision Support & SOAP', badge: 'AI' },
           ],
         },
         {
@@ -258,7 +258,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Surgeon Operating Desk', badge: 'Live' },
             { key: 'theatre', icon: Activity, label: 'Operating Theatre & Surgeries', badge: 'OT' },
-            { key: 'm87-ai', icon: Brain, label: 'M87 Surgical Risk AI', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Surgical risk helper', badge: 'AI' },
           ],
         },
         {
@@ -304,7 +304,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Nursing Assist & Duty',
           items: [
-            { key: 'm87-ai', icon: Brain, label: 'M87 Ambient Nurse Assistant', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Nursing assistant', badge: 'AI' },
             { key: 'staffing', icon: Users, label: 'Nursing Duty Rosters' },
             { key: 'iot-devices', icon: Cpu, label: 'Bedside Telemetry Monitors', badge: 'IoT' },
             { key: 'patient-card', icon: FileText, label: 'Digital Health Card', badge: 'FHIR' },
@@ -329,7 +329,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'blood-bank', icon: Droplet, label: 'Obstetric Blood Crossmatch' },
             { key: 'beds', icon: BedDouble, label: 'Maternity Bed Board' },
             { key: 'patient-flow', icon: RefreshCw, label: 'Mother & Neonate Admissions' },
-            { key: 'm87-ai', icon: Brain, label: 'M87 Obstetric AI Copilot', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Maternity assistant', badge: 'AI' },
             { key: 'patient-card', icon: FileText, label: 'Digital Health Card', badge: 'FHIR' },
           ],
         },
@@ -384,7 +384,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Radiology Command Desk', badge: 'Live' },
             { key: 'radiology', icon: Layers, label: 'Radiology & PACS Viewer', badge: 'DICOM' },
-            { key: 'm87-ai', icon: Brain, label: 'M87 AI Radiologic Insights', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Imaging assistant', badge: 'AI' },
           ],
         },
         {
@@ -458,9 +458,9 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Executive Oversight Hub',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Medical Director Command', badge: 'L5' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Medical director home', badge: 'L5' },
             { key: 'command', icon: Activity, label: 'Hospital Operations Hub & Census' },
-            { key: 'm87-ai', icon: Brain, label: 'M87 Strategic Hospital AI', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Hospital insights', badge: 'AI' },
             { key: 'analytics', icon: BarChart3, label: 'Clinical Performance Analytics' },
           ],
         },
@@ -477,11 +477,11 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           ],
         },
         {
-          label: 'Governance, Finance & IAM',
+          label: 'Finance & access',
           items: [
             { key: 'revenue-cycle', icon: BarChart3, label: 'Revenue Cycle & Accounting' },
             { key: 'compliance', icon: FileText, label: 'MoH Compliance & Audit Logs' },
-            { key: 'rbac', icon: Lock, label: 'IAM Access Control & Security' },
+            { key: 'rbac', icon: Lock, label: 'Staff access control' },
             { key: 'sysadmin', icon: Settings, label: 'System Administration' },
           ],
         },
@@ -490,9 +490,9 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'hospital_admin':
       return [
         {
-          label: 'Hospital Administration Command',
+          label: 'Hospital administration',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Administrator Command Desk', badge: 'Live' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Admin home', badge: 'Live' },
             { key: 'transfer', icon: Users, label: 'Hospital Staff Transfer', badge: 'Admin' },
             { key: 'staffing', icon: Users, label: 'Staffing & Rosters' },
           ],
@@ -509,7 +509,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Identity, Security & Finance',
           items: [
-            { key: 'rbac', icon: Lock, label: 'Access Control (RBAC)' },
+            { key: 'rbac', icon: Lock, label: 'Staff access control' },
             { key: 'facility', icon: Building2, label: 'Hospital Facilities' },
             { key: 'compliance', icon: FileText, label: 'Compliance & Audit Logs' },
             { key: 'revenue-cycle', icon: BarChart3, label: 'Revenue Cycle & Cashier' },
@@ -521,18 +521,18 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     default:
       return [
         {
-          label: 'System Administration Hub',
+          label: 'System settings',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Admin Command Desk', badge: 'Live' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Admin home', badge: 'Live' },
             { key: 'transfer', icon: Users, label: 'Hospital Staff Transfer', badge: 'Admin' },
-            { key: 'sysadmin', icon: Settings, label: 'System Administration & Health', badge: 'Core' },
+            { key: 'sysadmin', icon: Settings, label: 'System settings', badge: 'Core' },
           ],
         },
         {
           label: 'Security & IAM Governance',
           items: [
-            { key: 'rbac', icon: Lock, label: 'Role-Based Access Control', badge: 'RBAC' },
-            { key: 'auth', icon: Shield, label: 'Staff Identity & IAM' },
+            { key: 'rbac', icon: Lock, label: 'Role-Based Access Control', badge: 'Admin' },
+            { key: 'auth', icon: Shield, label: 'Staff sign-in & identity' },
             { key: 'facility', icon: Building2, label: 'Hospital Facility Setup' },
           ],
         },
@@ -671,7 +671,7 @@ const ROLE_THEMES: Record<string, RoleThemeConfig> = {
     workspaceTitle: 'Hospital Staff & Operations',
   },
   sysadmin: {
-    label: 'System Administration Hub',
+    label: 'System settings',
     badge: 'SYSTEM ARCHITECT DESK',
     accent: '#38BDF8',
     gradient: 'linear-gradient(135deg, #0F172A 0%, #334155 100%)',
@@ -997,7 +997,7 @@ export default function OSPage() {
       hospitalId: staff.hospitalId || userSession?.hospitalId || 'LIGH',
       department: staff.department,
       avatarInitials: staff.initials,
-      authMethod: 'RBAC Switch',
+      authMethod: 'Admin switch',
       token: `AUTH-${Date.now().toString(36).toUpperCase()}`,
       loginTime: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
       permissions: staff.permissions,
@@ -1019,23 +1019,23 @@ export default function OSPage() {
     list.push(
       {
         id: 'act-switch-role',
-        label: 'Switch Staff Cadre & Permissions (RBAC)',
+        label: 'View as another staff (admin only)',
         group: 'Quick Actions',
         icon: ShieldCheck,
         action: () => { setShowRoleModal(true); setCmdPaletteOpen(false); },
-        badge: 'RBAC'
+        badge: 'Admin'
       },
       {
         id: 'act-copilot',
-        label: 'Open M87 AI Clinical Copilot Drawer',
+        label: 'Open clinical assistant',
         group: 'Quick Actions',
         icon: Brain,
         action: () => { setAiDrawerOpen(true); setCmdPaletteOpen(false); },
-        badge: 'M87 AI'
+        badge: 'AI'
       },
       {
         id: 'act-alert',
-        label: 'Broadcast Hospital Emergency Alert',
+        label: 'Send hospital alert',
         group: 'Quick Actions',
         icon: AlertTriangle,
         action: () => {
@@ -1219,7 +1219,7 @@ export default function OSPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#F8FAFC', fontFamily: 'var(--os-font-heading)' }}>
-                  Switch Staff Cadre (RBAC Mode)
+                  Switch staff account (admin)
                 </h3>
                 <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: '#94A3B8' }}>
                   Select a clinical or operational role to test its dedicated dashboard and personalized sidebar navigation.
@@ -1568,7 +1568,7 @@ export default function OSPage() {
                 onClick={() => setShowFullDirectory(!showFullDirectory)}
               >
                 <Globe size={13} />
-                <span>{showFullDirectory ? 'Switch to My Role View' : 'All 7 Hospital Pillars'}</span>
+                <span>{showFullDirectory ? 'Show my menu only' : 'Show all menus'}</span>
               </button>
             </div>
           )}
@@ -1585,15 +1585,7 @@ export default function OSPage() {
                 <span className="os-user-mini-name">{userSession.name}</span>
                 <span className="os-user-mini-role">{userSession.role.split('/')[0]}</span>
               </div>
-              <span style={{
-                fontSize: '0.62rem', fontWeight: 800,
-                background: 'rgba(0,82,212,0.12)',
-                color: '#0052D4',
-                border: '1px solid rgba(0,82,212,0.25)',
-                borderRadius: 5,
-                padding: '2px 5px',
-                flexShrink: 0,
-              }}>L{userSession.clearanceLevel}</span>
+              {/* access level chip removed — keep header simple for staff */}
             </div>
           </div>
         )}
@@ -1613,26 +1605,14 @@ export default function OSPage() {
             </div>
             <div className="os-hud-live-pill">
               <span className="os-status-dot pulse-green" />
-              <span>LIVE · Hospital Network Online</span>
+              <span>Online</span>
             </div>
             {userSession && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem' }}>
-                <span
-                  style={{
-                    background: userSession.clearanceLevel >= 5 ? '#EA580C' : userSession.clearanceLevel >= 4 ? '#0284C7' : userSession.clearanceLevel >= 3 ? '#16A34A' : '#2563EB',
-                    color: '#FFFFFF',
-                    borderRadius: 6,
-                    padding: '2px 8px',
-                    fontSize: '0.66rem',
-                    fontWeight: 800,
-                    letterSpacing: '0.04em',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {userSession.clearanceLabel || `L${userSession.clearanceLevel} Clearance`}
-                </span>
-                <span style={{ color: '#0A2540', fontWeight: 600 }}>{userSession.name}</span>
-                <span style={{ background: '#F1F5F9', color: '#64748B', borderRadius: 4, padding: '1px 6px', fontSize: '0.65rem', fontWeight: 600 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem' }}>
+                <span style={{ color: '#0A2540', fontWeight: 700 }}>{userSession.name}</span>
+                <span style={{ color: '#94A3B8' }}>·</span>
+                <span style={{ color: '#475569', fontWeight: 600 }}>{userSession.role.split('/')[0]}</span>
+                <span style={{ background: '#F1F5F9', color: '#64748B', borderRadius: 6, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 600 }}>
                   {userSession.department.split('&')[0].trim()}
                 </span>
               </div>
@@ -1640,12 +1620,11 @@ export default function OSPage() {
           </div>
 
           <div className="os-top-hud-right">
-            {/* Quick Command Palette Button */}
             <button
               type="button"
               className="os-hud-btn"
               onClick={() => setCmdPaletteOpen(true)}
-              title="Quick Search & Command Palette (⌘K)"
+              title="Search modules"
               style={{
                 background: 'rgba(0, 82, 212, 0.05)',
                 borderColor: 'rgba(0, 82, 212, 0.2)',
@@ -1653,89 +1632,58 @@ export default function OSPage() {
               }}
             >
               <Search size={14} />
-              <span>Jump to...</span>
-              <span style={{
-                background: '#FFFFFF',
-                border: '1px solid #CBD5E1',
-                borderRadius: 4,
-                padding: '1px 5px',
-                fontSize: '0.65rem',
-                fontFamily: 'var(--os-font-mono)',
-                color: '#64748B',
-                fontWeight: 700,
-                marginLeft: 2,
-              }}>⌘K</span>
+              <span>Search</span>
             </button>
 
-            {/* Real-time Notification Bell */}
             <NotificationBell app="MEDCORE_OS" facilityId={userSession?.facility} />
 
             <div className="os-hud-clock">
               <span>{currentTime || '09:00:00'}</span>
             </div>
 
-            {/* Quick RBAC Role Switcher */}
-            <button
-              type="button"
-              className="os-hud-btn"
-              onClick={() => setShowRoleModal(true)}
-              title="Switch RBAC staff account"
-              style={{
-                borderColor: 'rgba(0, 82, 212, 0.3)',
-                color: '#0052D4',
-              }}
-            >
-              <ShieldCheck size={14} />
-              <span>Switch Role (RBAC)</span>
-            </button>
-
-            {/* Slide-Over M87 AI Copilot Button */}
             <button
               type="button"
               className="os-hud-btn"
               style={{
-                background: 'rgba(124,58,237,0.08)',
-                borderColor: 'rgba(124,58,237,0.25)',
-                color: '#7C3AED',
-                fontWeight: 700,
+                background: 'rgba(0, 102, 255, 0.06)',
+                borderColor: 'rgba(0, 102, 255, 0.2)',
+                color: '#0066FF',
+                fontWeight: 600,
               }}
               onClick={() => setAiDrawerOpen(!aiDrawerOpen)}
-              title="Toggle M87 AI Copilot Drawer"
+              title="Open clinical assistant"
             >
-              <Brain size={14} style={{ color: '#A78BFA' }} />
-              <span>M87 Copilot</span>
+              <Brain size={14} />
+              <span>Assistant</span>
             </button>
 
-            {/* Clinical Alert Code */}
             <button
               type="button"
               className="os-hud-btn os-hud-btn-alert"
               onClick={() => {
-                const code = prompt('Broadcast Clinical Alert: (Type "BLUE" for Cardiac Arrest, "RED" for Fire/Disaster, or "YELLOW" for Emergency Surge)');
+                const code = prompt('Send hospital alert (e.g. BLUE for cardiac arrest, RED for fire, YELLOW for surge):');
                 if (code) setActiveEmergencyCode(`CODE ${code.toUpperCase()}`);
               }}
             >
               <AlertTriangle size={14} />
-              <span>Clinical Alert</span>
+              <span>Alert</span>
             </button>
 
-            {/* Screen Lock */}
             <button
               type="button"
               className="os-hud-btn"
               onClick={handleLockScreen}
-              title="Lock terminal screen"
+              title="Lock screen"
             >
               <Lock size={14} />
               <span>Lock</span>
             </button>
 
-            {/* Logout */}
             <button
               type="button"
               className="os-hud-btn"
               onClick={handleLogout}
-              title="Sign out of hospital portal"
+              title="Sign out"
             >
               <LogOut size={14} />
               <span>Sign Out</span>
@@ -1743,11 +1691,11 @@ export default function OSPage() {
           </div>
         </header>
 
-        {/* ── Real-Time Hospital Telemetry Activity Ticker ── */}
+        {/* Activity strip — plain language */}
         <div className="os-realtime-ticker">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, fontWeight: 700, color: '#38BDF8' }}>
             <span className="os-status-dot pulse-green" />
-            <span>REAL-TIME TELEMETRY</span>
+            <span>LIVE UPDATES</span>
           </div>
           <div className="os-ticker-track">
             {realtimeEvents.map((evt) => (
@@ -1762,7 +1710,7 @@ export default function OSPage() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, color: '#34D399', fontWeight: 600, fontSize: '0.7rem' }}>
             <Zap size={12} />
-            <span>{wsLatency}ms · {wsConnected ? 'Live Sync' : 'Reconnecting...'}</span>
+            <span>{wsLatency}ms · {wsConnected ? 'Connected' : 'Connecting...'}</span>
           </div>
         </div>
 
@@ -1875,7 +1823,7 @@ export default function OSPage() {
                     marginBottom: 10,
                   }}
                 >
-                  Access Restricted • RBAC Security Enforcement
+                  Access restricted — you need permission for this area
                 </div>
 
                 <h2 style={{ margin: '0 0 8px 0', fontSize: '1.5rem', color: '#0A2540', fontFamily: 'var(--os-font-heading)' }}>
@@ -1901,14 +1849,14 @@ export default function OSPage() {
                   }}
                 >
                   <div style={{ fontWeight: 700, color: '#0A2540', marginBottom: 4 }}>
-                    Hospital Information Security Policy (HIS-SEC-04):
+                    Access note:
                   </div>
                   <div>
-                    Clinical patient records, surgical control, and administrative settings are guarded by zero-trust role-based access control. All clearance elevation attempts are cryptographically logged in the State Health Immutable Audit Ledger.
+                    Patient records and admin settings are limited by your job role. Access attempts are recorded for security.
                   </div>
                 </div>
 
-                {/* Quick Switch Role Buttons for Testing */}
+                {/* Sign in as another role (testing) */}
                 <div style={{ width: '100%' }}>
                   <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94A3B8', marginBottom: 10 }}>
                     Switch to an authorized staff role to access this suite:

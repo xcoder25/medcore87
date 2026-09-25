@@ -44,11 +44,11 @@ const NAV: NavSection[] = [
     label: 'Operations',
     items: [
       { key: 'command', icon: '🖥', label: 'Command Centre' },
-      { key: 'ai', icon: '🤖', label: 'AI Insights', badge: 'M87' },
+      { key: 'ai', icon: '🤖', label: 'AI Insights', badge: 'AI' },
       { key: 'beds', icon: '🛏', label: 'Bed Management' },
       { key: 'patient-flow', icon: '🔄', label: 'Patient Flow' },
       { key: 'staffing', icon: '👥', label: 'Staffing' },
-      { key: 'enrolment', icon: '🪪', label: 'Staff Enrolment & ID', badge: 'IAM' },
+      { key: 'enrolment', icon: '🪪', label: 'Staff Enrolment & ID', badge: 'Staff' },
       { key: 'my-card', icon: '🎴', label: 'My Staff ID Card' },
     ],
   },
@@ -63,14 +63,14 @@ const NAV: NavSection[] = [
   {
     label: 'Identity & Access',
     items: [
-      { key: 'auth', icon: '🔐', label: 'Auth & Identity', badge: 'IAM' },
+      { key: 'auth', icon: '🔐', label: 'Auth & Identity', badge: 'Staff' },
       { key: 'facility', icon: '🏥', label: 'Facility & SaaS', badge: 'SaaS' },
       { key: 'rbac', icon: '🛡', label: 'Access Control' },
       { key: 'transfer', icon: '🔀', label: 'Staff Transfer', badge: 'Admin', badgeTone: 'arise', adminOnly: true },
     ],
   },
   {
-    label: 'Intelligence',
+    label: 'Clinical tools',
     items: [
       { key: 'data-hub', icon: '🔗', label: 'Data Hub' },
       { key: 'analytics', icon: '📊', label: 'Analytics' },
@@ -112,7 +112,7 @@ export const App: React.FC = () => {
                   My Staff ID — linked to this login
                 </div>
                 <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: 4 }}>
-                  Same badge ID on MedCore Clinic. Status follows RBAC (active / suspended).
+                  Same badge ID on MedCore Clinic. Status follows staff access (active or suspended).
                 </div>
               </div>
             </div>
@@ -151,7 +151,7 @@ export const App: React.FC = () => {
             <div className="os-sidebar-brand-text">
               <div className="os-sidebar-brand-name">MedCore</div>
               <div className="os-sidebar-brand-sub">
-                Hospital OS <span className="m87-pill">M87</span>
+                Hospital OS
               </div>
             </div>
           )}
@@ -205,7 +205,7 @@ export const App: React.FC = () => {
             <div className="os-sidebar-facility">🏥 {facilityShort}</div>
             <div className="os-live-row">
               <span className="os-live-dot" />
-              <span>LIVE · {now}</span>
+              <span>Online · {now}</span>
             </div>
             <button
               type="button"
