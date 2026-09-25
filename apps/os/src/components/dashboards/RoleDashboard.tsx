@@ -46,6 +46,27 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
       : roleTitle.includes('ict') ? 'sysadmin'
       : 'doctor');
 
+
+  // Administrator gets dedicated premium workspace (no clinical banner)
+  if (roleKey === 'hospital_admin') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {actionNotice && (
+          <div style={{
+            position: 'fixed', top: 20, right: 20, zIndex: 9999,
+            background: '#FFFFFF', color: '#15803d', border: '1px solid #bbf7d0',
+            borderRadius: 10, padding: '12px 18px', boxShadow: '0 10px 25px rgba(0,0,0,0.12)',
+            display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.85rem', fontWeight: 600,
+          }}>
+            <CheckCircle2 size={16} color="#16A34A" />
+            <span>{actionNotice}</span>
+          </div>
+        )}
+        <AdminWorkspace session={session} onNavigate={(k) => onNavigate(k)} />
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* -- Notification Toast -- */}

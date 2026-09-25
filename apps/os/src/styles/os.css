@@ -3759,3 +3759,37 @@ html, body {
   .admin-grid-2 { grid-template-columns: 1fr; }
   .admin-hero { flex-direction: column; align-items: flex-start; }
 }
+
+.admin-bar-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 140px;
+  padding: 8px 4px 0;
+}
+.admin-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.admin-bar-val {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #0F172A;
+}
+.admin-bar-stem {
+  width: 100%;
+  max-width: 36px;
+  border-radius: 8px 8px 4px 4px;
+  min-height: 12px;
+}
+.admin-bar-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #64748B;
+  text-align: center;
+  line-height: 1.2;
+}

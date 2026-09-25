@@ -281,8 +281,35 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
         </div>
       </section>
 
-      {/* Compliance + Activity */}
-      <section className="admin-grid-2">
+      {/* Staff by Department | Compliance | Activity */}
+      <section className="admin-grid-3">
+        <div className="admin-card">
+          <div className="admin-card-head">
+            <div className="admin-card-title">
+              <Users size={15} /> Staff by Department
+            </div>
+            <button type="button" className="admin-link" onClick={() => onNavigate('staffing')}>
+              View details <ChevronRight size={14} />
+            </button>
+          </div>
+          <div className="admin-bar-chart" role="img" aria-label="Staff counts by department">
+            {[
+              { name: 'Nursing', n: 34, color: '#3B82F6' },
+              { name: 'Internal Med.', n: 14, color: '#14B8A6' },
+              { name: 'Radiology', n: 11, color: '#6366F1' },
+              { name: 'Surgery', n: 9, color: '#8B5CF6' },
+              { name: 'Pharmacy', n: 6, color: '#22C55E' },
+              { name: 'Others', n: 13, color: '#38BDF8' },
+            ].map((d) => (
+              <div key={d.name} className="admin-bar-col">
+                <div className="admin-bar-val">{d.n}</div>
+                <div className="admin-bar-stem" style={{ height: `${Math.max(12, d.n * 2.2)}px`, background: d.color }} />
+                <div className="admin-bar-label">{d.name}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="admin-card">
           <div className="admin-card-head">
             <div className="admin-card-title">

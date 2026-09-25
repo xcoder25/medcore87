@@ -490,11 +490,12 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'hospital_admin':
       return [
         {
-          label: 'Hospital administration',
+          label: '',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Admin home', badge: 'Live' },
-            { key: 'transfer', icon: Users, label: 'Hospital Staff Transfer', badge: 'Admin' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+            { key: 'transfer', icon: Users, label: 'Hospital Staff Transfer' },
             { key: 'staffing', icon: Users, label: 'Staffing & Rosters' },
+            { key: 'facility', icon: Building2, label: 'Hospital Management' },
           ],
         },
         {
@@ -509,10 +510,10 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Identity, Security & Finance',
           items: [
-            { key: 'rbac', icon: Lock, label: 'Staff access control' },
-            { key: 'facility', icon: Building2, label: 'Hospital Facilities' },
-            { key: 'compliance', icon: FileText, label: 'Compliance & Audit Logs' },
-            { key: 'revenue-cycle', icon: BarChart3, label: 'Revenue Cycle & Cashier' },
+            { key: 'rbac', icon: Lock, label: 'Staff Access Control' },
+            { key: 'enrolment', icon: Users, label: 'Staff Enrolment & ID' },
+            { key: 'compliance', icon: FileText, label: 'Compliance & Audit' },
+            { key: 'cashier', icon: BarChart3, label: 'Revenue & Cashier' },
           ],
         },
       ];
