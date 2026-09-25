@@ -244,22 +244,114 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     ) || null;
   }, [username, staffRegistry]);
 
-  const handleSignIn = (e?: React.FormEvent) => {
+  const handleSignIn = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setLoading(true);
     setError(null);
 
-    setTimeout(() => {
-      const u = (username || '').trim().toLowerCase();
-      let matchedStaff = detectedStaff || staffRegistry[0];
+    const u = (username || '').trim();
+    const pass = (password || '').trim();
+    const effectiveHospital = selectedHospital;
 
-      // Auto-assign to staff's assigned hospital if defined, or selectedHospital
-      const effectiveHospital = selectedHospital;
+    // ── Firebase Auth test path: email + password ──────────────────────────
+    if (u.includes('@')) {
+      try {
+        const { firebaseSignIn, firebaseSignUp, isEmailCredential } = await import('../../lib/firebase');
+        if (!isEmailCredential(u)) {
+          setError('Enter a valid email for Firebase test auth.');
+          setLoading(false);
+          return;
+        }
+        if (pass.length < 6) {
+          setError('Firebase password must be at least 6 characters.');
+          setLoading(false);
+          return;
+        }
+
+        let fbUser;
+        try {
+          fbUser = await firebaseSignIn(u, pass);
+        } catch (signInErr: unknown) {
+          const code = (signInErr as { code?: string })?.code || '';
+          // Auto-register on first test so you can create a user from the OS login form
+          if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
+            try {
+              fbUser = await firebaseSignUp(u, pass);
+            } catch (signUpErr: unknown) {
+              const msg =
+                (signUpErr as { message?: string })?.message ||
+                'Firebase sign-up failed. Enable Email/Password in Firebase Console.';
+              setError(msg);
+              setLoading(false);
+              return;
+            }
+          } else {
+            const msg =
+              (signInErr as { message?: string })?.message ||
+              'Firebase sign-in failed. Check Email/Password is enabled in Firebase Console.';
+            setError(msg);
+            setLoading(false);
+            return;
+          }
+        }
+
+        const matchedStaff = detectedStaff || staffRegistry[0];
+        const displayName =
+          fbUser.displayName ||
+          u.split('@')[0] ||
+          matchedStaff.name;
+        const initials = displayName
+          .split(/\s+/)
+          .map((p) => p[0])
+          .join('')
+          .slice(0, 2)
+          .toUpperCase();
+
+        const session: UserSession = {
+          id: fbUser.uid,
+          badgeId: matchedStaff.badgeId,
+          name: displayName,
+          role: matchedStaff.role,
+          roleKey: matchedStaff.roleKey,
+          title: matchedStaff.title,
+          facility: effectiveHospital.name,
+          hospitalId: effectiveHospital.id,
+          department: matchedStaff.department,
+          avatarInitials: initials || matchedStaff.initials,
+          clearanceLabel: matchedStaff.clearanceLabel,
+          clearanceLevel: matchedStaff.clearanceLevel,
+          permissions: matchedStaff.permissions,
+          authMethod: 'Firebase Auth',
+          token: await fbUser.getIdToken(),
+          loginTime: new Date().toLocaleTimeString('en-GB', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        };
+
+        setSuccess(true);
+        setLoading(false);
+        setTimeout(() => triggerLogin(session), 400);
+        return;
+      } catch (err: unknown) {
+        setError((err as { message?: string })?.message || 'Firebase auth error');
+        setLoading(false);
+        return;
+      }
+    }
+
+    // ── Legacy demo path: badge ID / name + PIN (offline) ──────────────────
+    setTimeout(() => {
+      let matchedStaff = detectedStaff || staffRegistry[0];
 
       const session: UserSession = {
         id: matchedStaff.badgeId,
         badgeId: matchedStaff.badgeId,
-        name: username.trim() ? (username.includes('@') ? username.split('@')[0] : (u.length > 2 ? matchedStaff.name : matchedStaff.name)) : matchedStaff.name,
+        name: u
+          ? u.includes('@')
+            ? u.split('@')[0]
+            : matchedStaff.name
+          : matchedStaff.name,
         role: matchedStaff.role,
         roleKey: matchedStaff.roleKey,
         title: matchedStaff.title,
@@ -272,12 +364,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         permissions: matchedStaff.permissions,
         authMethod: 'Password Credential',
         token: `AUTH-${Date.now().toString(36).toUpperCase()}`,
-        loginTime: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+        loginTime: new Date().toLocaleTimeString('en-GB', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
       };
 
       setSuccess(true);
+      setLoading(false);
       setTimeout(() => triggerLogin(session), 600);
-    }, 700);
+    }, 400);
   };
 
   return (
@@ -486,7 +582,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Username, Cadre or Staff Badge"
+                  placeholder="Email (Firebase) or Staff Badge ID"
                   style={{
                     width: '100%',
                     padding: '12px 14px 12px 42px',
