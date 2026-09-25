@@ -3977,9 +3977,15 @@ html, body {
 .admin-shell-main {
   flex: 1;
   min-width: 0;
+  margin-left: 260px;
   display: flex;
   flex-direction: column;
   background: #F8FAFC;
+  transition: margin-left 0.2s ease;
+  min-height: 100vh;
+}
+.admin-shell:has(.admin-shell-sidebar.is-collapsed) .admin-shell-main {
+  margin-left: 72px;
 }
 .admin-shell-top {
   display: flex;
