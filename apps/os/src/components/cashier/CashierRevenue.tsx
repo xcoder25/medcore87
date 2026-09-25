@@ -23,16 +23,7 @@ interface BillRecord {
 
 const STORAGE_KEY = 'ibom_os_cashier_bills';
 
-const INITIAL_BILLS: BillRecord[] = [
-  { id: 'BL-8831', patientId: 'PT-4881', patientName: 'Uduak Essen', date: '16 Sep 2026', services: ['A&E Consultation', 'ECG', 'Troponin Test', 'Observation Bed (6h)'], totalNaira: 24500, status: 'pending', nhia: true },
-  { id: 'BL-8830', patientId: 'PT-4880', patientName: 'Chidi Okonkwo', date: '16 Sep 2026', services: ['A&E Consultation', 'Malaria RDT', 'IV Medications (Artesunate)'], totalNaira: 11200, status: 'paid', paymentMethod: 'POS Terminal (Till 2)', receiptNo: 'RCP-20260916-4880', nhia: false },
-  { id: 'BL-8829', patientId: 'PT-4879', patientName: 'Akpan Sunday', date: '15 Sep 2026', services: ['Inpatient Bed (3 days)', 'H. pylori Test', 'Omeprazole IV'], totalNaira: 35000, status: 'insurance', nhia: true, receiptNo: 'NHIA-2026-44182' },
-  { id: 'BL-8828', patientId: 'PT-4878', patientName: 'Grace Udoh', date: '15 Sep 2026', services: ['Obstetric Admission', 'Antenatal Monitoring', 'Delivery Package'], totalNaira: 42000, status: 'paid', paymentMethod: 'Bank Transfer', receiptNo: 'RCP-20260915-4878', nhia: false },
-  { id: 'BL-8827', patientId: 'PT-4877', patientName: 'James Effiong', date: '14 Sep 2026', services: ['Paediatric Consultation', 'Blood Transfusion', 'Inpatient Bed (2 days)'], totalNaira: 28750, status: 'outstanding', nhia: false },
-  { id: 'BL-8826', patientId: 'PT-4876', patientName: 'Blessing Ime', date: '14 Sep 2026', services: ['A&E Sickle Cell Protocol', 'Morphine IV', 'Observation (12h)'], totalNaira: 19800, status: 'waived', nhia: true },
-  { id: 'BL-8825', patientId: 'PT-4875', patientName: 'Obong Udofia', date: '13 Sep 2026', services: ['ICU Bed (2 days)', 'Cardiac Monitoring', 'Antihypertensive IV'], totalNaira: 76500, status: 'pending', nhia: false },
-  { id: 'BL-8824', patientId: 'PT-4874', patientName: 'Akon Effiong', date: '13 Sep 2026', services: ['Appendicectomy — Theatre', 'Anaesthesia', 'Post-op Inpatient (2 days)'], totalNaira: 115000, status: 'paid', paymentMethod: 'POS Terminal (Till 1)', receiptNo: 'RCP-20260913-4874', nhia: false },
-];
+const INITIAL_BILLS: BillRecord[] = [];
 
 const STATUS_META: Record<BillStatus, { label: string; color: string }> = {
   pending: { label: 'Pending', color: '#F59E0B' },

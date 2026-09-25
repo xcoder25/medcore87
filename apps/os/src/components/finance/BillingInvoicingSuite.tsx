@@ -103,7 +103,7 @@ const INITIAL_INVOICES: ExtendedInvoice[] = [
 ];
 
 export const BillingInvoicingSuite: React.FC = () => {
-  const [invoices, setInvoices] = useState<ExtendedInvoice[]>(INITIAL_INVOICES);
+  const [invoices, setInvoices] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'settled' | 'pending_payment' | 'hmo_dispute'>('all');
 

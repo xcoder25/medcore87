@@ -27,6 +27,7 @@ import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 
 // Specialty Suites
 import { AdminShell } from '../components/dashboards/AdminShell';
+import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { RoleDashboard } from '../components/dashboards/RoleDashboard';
 import { DoctorPortal } from '../components/dashboards/DoctorPortal';
 import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
@@ -777,6 +778,15 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
 };
 
 export default function OSPage() {
+  // One-time clean pilot data (wipes old demo seeds)
+  useEffect(() => {
+    try {
+      ensureCleanPilot();
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const [appState, setAppState] = useState<'splash' | 'auth' | 'app'>('splash');
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const { criticalAlert, dismissCriticalAlert } = useRealtimeEvents({ app: 'MEDCORE_OS', facilityId: userSession?.facility });

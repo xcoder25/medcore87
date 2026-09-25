@@ -300,22 +300,24 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
               View details <ChevronRight size={14} />
             </button>
           </div>
+          {snap.depts.length === 0 ? (
+            <div style={{ padding: '28px 12px', textAlign: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
+              No staff enrolled yet.<br />
+              <button type="button" className="admin-link" style={{ marginTop: 8 }} onClick={() => onNavigate('enrolment')}>
+                Enrol first staff member →
+              </button>
+            </div>
+          ) : (
           <div className="admin-bar-chart" role="img" aria-label="Staff counts by department">
-            {[
-              { name: 'Nursing', n: 34, color: '#3B82F6' },
-              { name: 'Internal Med.', n: 14, color: '#14B8A6' },
-              { name: 'Radiology', n: 11, color: '#6366F1' },
-              { name: 'Surgery', n: 9, color: '#8B5CF6' },
-              { name: 'Pharmacy', n: 6, color: '#22C55E' },
-              { name: 'Others', n: 13, color: '#38BDF8' },
-            ].map((d) => (
+            {snap.depts.map((d) => (
               <div key={d.name} className="admin-bar-col">
-                <div className="admin-bar-val">{d.n}</div>
-                <div className="admin-bar-stem" style={{ height: `${Math.max(12, d.n * 2.2)}px`, background: d.color }} />
+                <div className="admin-bar-val">{d.count}</div>
+                <div className="admin-bar-stem" style={{ height: `${Math.max(12, d.count * 2.2)}px`, background: d.color }} />
                 <div className="admin-bar-label">{d.name}</div>
               </div>
             ))}
           </div>
+          )}
         </div>
 
         <div className="admin-card">
@@ -386,12 +388,16 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
                 </tr>
               </thead>
               <tbody>
-                {(snap.transfers.length
-                  ? snap.transfers
-                  : [
-                      { staffName: 'Dr. Fatima Al-Hassan', fromHospitalName: 'LUTH', toHospitalName: 'UCH', effectiveDate: '2026-10-01', status: 'pending' },
-                      { staffName: 'Dr. Amara Okafor', fromHospitalName: 'AKTH', toHospitalName: 'LIGH', effectiveDate: '2026-09-01', status: 'completed' },
-                    ]
+                {snap.transfers.length === 0 && (
+                  <tr>
+                    <td colSpan={4} style={{ textAlign: 'center', color: '#94A3B8', padding: 20 }}>
+                      No transfers yet — create one from Staff Transfer.
+                    </td>
+                  </tr>
+                )}
+                {(snap.transfers.length === 0
+                  ? []
+                  : snap.transfers
                 ).map((r: any, i: number) => (
                   <tr key={r.id || i}>
                     <td>{r.staffName || r.staff}</td>

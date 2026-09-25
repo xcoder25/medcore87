@@ -46,79 +46,12 @@ const DEFAULT_ACCESS: AccessRecord[] = [
     department: 'Hospital Management',
     clearance: 5,
     status: 'active',
-    lastLogin: 'Just now',
-    permissions: ['All modules'],
-  },
-  {
-    id: 'ISH-EXEC-001',
-    name: 'Dr. Evelyn Vance',
-    role: 'Medical Director',
-    department: 'Hospital Administration',
-    clearance: 5,
-    status: 'active',
-    lastLogin: '2 mins ago',
-    permissions: ['All Clinical', 'Finance', 'Staff'],
-  },
-  {
-    id: 'ISH-HR-002',
-    name: 'Sarah Johnson',
-    role: 'HR Manager',
-    department: 'Human Resources',
-    clearance: 4,
-    status: 'active',
-    lastLogin: '12 mins ago',
-    permissions: ['Staff', 'Transfers', 'Rosters'],
-  },
-  {
-    id: 'ISH-IT-003',
-    name: 'Michael Okafor',
-    role: 'IT Support',
-    department: 'ICT',
-    clearance: 4,
-    status: 'active',
-    lastLogin: '1 hour ago',
-    permissions: ['System', 'Access control'],
-  },
-  {
-    id: 'ISH-FIN-004',
-    name: 'Amina Bello',
-    role: 'Finance Officer',
-    department: 'Finance',
-    clearance: 3,
-    status: 'active',
-    lastLogin: '3 hours ago',
-    permissions: ['Billing', 'Claims'],
-  },
-  {
-    id: 'ISH-ADM-044',
-    name: 'Nnamdi Obi',
-    role: 'Records Officer',
-    department: 'Medical Records',
-    clearance: 2,
-    status: 'pending',
     lastLogin: 'Never',
-    permissions: [],
-  },
-  {
-    id: 'ISH-PHAR-007',
-    name: 'Funmi Adeola',
-    role: 'Pharmacist',
-    department: 'Pharmacy',
-    clearance: 3,
-    status: 'suspended',
-    lastLogin: '3 days ago',
-    permissions: ['Pharmacy'],
+    permissions: ['All modules'],
   },
 ];
 
-const DEFAULT_COMPLIANCE: ComplianceItem[] = [
-  { id: 'c1', title: 'NHIA facility registration', status: 'expiring', due: '2026-10-05' },
-  { id: 'c2', title: 'Fire safety certificate', status: 'expiring', due: '2026-10-12' },
-  { id: 'c3', title: 'Waste disposal audit', status: 'overdue', due: '2026-09-20' },
-  { id: 'c4', title: 'NDPR data protection review', status: 'overdue', due: '2026-09-15' },
-  { id: 'c5', title: 'Quarterly clinical audit', status: 'pending_audit' },
-  { id: 'c6', title: 'Staff license verification', status: 'ok' },
-];
+const DEFAULT_COMPLIANCE: ComplianceItem[] = [];
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
@@ -145,7 +78,7 @@ export function ensureAdminDefaults() {
   if (!localStorage.getItem(KEYS.access)) write(KEYS.access, DEFAULT_ACCESS);
   if (!localStorage.getItem(KEYS.compliance)) write(KEYS.compliance, DEFAULT_COMPLIANCE);
   if (!localStorage.getItem(KEYS.activity)) write(KEYS.activity, []);
-  if (!localStorage.getItem(KEYS.positions)) write(KEYS.positions, { open: 12 });
+  if (!localStorage.getItem(KEYS.positions)) write(KEYS.positions, { open: 0 });
 }
 
 export function getAccessRecords(): AccessRecord[] {
@@ -287,10 +220,9 @@ export function buildAdminSnapshot(): AdminSnapshot {
   const activeStaff =
     staff.length > 0
       ? staff.filter((s: any) => s.status !== 'on-leave').length
-      : Math.max(access.filter((a) => a.status === 'active').length, 87);
-  const onLeave =
-    staff.filter((s: any) => s.status === 'on-leave').length || 8;
-  const staffLoggedIn = Math.min(activeStaff, Math.max(1, Math.floor(activeStaff * 0.74)));
+      : access.filter((a) => a.status === 'active').length;
+  const onLeave = staff.filter((s: any) => s.status === 'on-leave').length;
+  const staffLoggedIn = 0; // session-based in production; pilot starts at 0
 
   const accessPending = access.filter((a) => a.status === 'pending').length;
   const accessSuspended = access.filter((a) => a.status === 'suspended').length;
@@ -358,13 +290,7 @@ export function buildAdminSnapshot(): AdminSnapshot {
     });
   }
 
-  const depts = [
-    { name: 'Nursing', count: 34, pct: 92, color: '#6366F1' },
-    { name: 'Internal Medicine', count: 14, pct: 78, color: '#0EA5E9' },
-    { name: 'Radiology', count: 11, pct: 76, color: '#14B8A6' },
-    { name: 'Surgery', count: 9, pct: 71, color: '#A855F7' },
-    { name: 'Pharmacy', count: 6, pct: 68, color: '#22C55E' },
-  ];
+  const depts: AdminSnapshot['depts'] = [];
 
   return {
     activeStaff,
@@ -387,7 +313,7 @@ export function buildAdminSnapshot(): AdminSnapshot {
           {
             id: 'seed',
             time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-            text: 'Admin workspace online — live updates enabled',
+            text: 'Hospital OS ready — no data yet. Enrol staff to begin.',
             at: new Date().toISOString(),
           },
         ],
@@ -396,4 +322,72 @@ export function buildAdminSnapshot(): AdminSnapshot {
     perms: access.slice(0, 6),
     updatedAt: new Date().toISOString(),
   };
+}
+
+
+/** All browser keys used by Hospital OS pilot data */
+export const ALL_PILOT_KEYS = [
+  KEYS.transfers,
+  KEYS.staff,
+  KEYS.access,
+  KEYS.activity,
+  KEYS.compliance,
+  KEYS.positions,
+  'medcore_os_session',
+  'medcore_staff_id_cards',
+  'medcore_os_staff_registry',
+  'medcore_os_transfers',
+  'ibom_os_cashier_bills',
+  'ibom_os_billing_invoices',
+  'medcore_os_offline_actions_v1',
+  'medcore_os_patient_cache_v1',
+  'medcore_os_staff_cards',
+];
+
+export const PILOT_DATA_VERSION = 'pilot-clean-v1';
+
+/** Wipe demo data and seed a clean pilot (admin account only). */
+export function resetAllPilotData(): void {
+  if (typeof window === 'undefined') return;
+  for (const k of ALL_PILOT_KEYS) {
+    try {
+      localStorage.removeItem(k);
+    } catch {
+      /* ignore */
+    }
+  }
+  write(KEYS.access, DEFAULT_ACCESS);
+  write(KEYS.compliance, []);
+  write(KEYS.activity, [
+    {
+      id: 'boot',
+      time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      text: 'Clean pilot started — enrol staff and create transfers to populate the OS.',
+      at: new Date().toISOString(),
+    },
+  ]);
+  write(KEYS.positions, { open: 0 });
+  write(KEYS.transfers, []);
+  write(KEYS.staff, []);
+  try {
+    localStorage.setItem('medcore_pilot_version', PILOT_DATA_VERSION);
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'reset' } }));
+}
+
+/** Run once per browser when pilot version changes. */
+export function ensureCleanPilot(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const v = localStorage.getItem('medcore_pilot_version');
+    if (v !== PILOT_DATA_VERSION) {
+      resetAllPilotData();
+    } else {
+      ensureAdminDefaults();
+    }
+  } catch {
+    ensureAdminDefaults();
+  }
 }

@@ -43,41 +43,9 @@ interface TransferRecord {
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 
-const INITIAL_STAFF: StaffMember[] = [
-  { id: 'LIGH-DOC-001', name: 'Dr. Amara Okafor',      role: 'Medical Officer',         roleKey: 'doctor',       department: 'Internal Medicine',  hospitalId: 'ISH-001', hospitalName: 'Ibom Specialist Hospital, Uyo',   status: 'active',   joinDate: '2024-03-01', avatarInitials: 'AO', accentColor: '#0284C7' },
-  { id: 'LUTH-SUR-002', name: 'Dr. Emeka Adeyemi',     role: 'Consultant Surgeon',      roleKey: 'surgeon',      department: 'Surgery',            hospitalId: 'UUTH-002', hospitalName: 'University of Uyo Teaching Hospital (UUTH)', status: 'active',   joinDate: '2022-06-15', avatarInitials: 'EA', accentColor: '#DC2626' },
-  { id: 'UCH-NUR-003',  name: 'Nurse Aisha Bello',     role: 'Senior Nursing Officer',  roleKey: 'nurse',        department: 'Female Medical Ward', hospitalId: 'GHI-003',  hospitalName: 'General Hospital, Ikot Ekpene',        status: 'active',   joinDate: '2023-01-10', avatarInitials: 'AB', accentColor: '#7C3AED' },
-  { id: 'LIGH-ADM-004', name: 'Adm. Ngozi Eze',        role: 'Hospital Administrator',  roleKey: 'hospital_admin', department: 'Administration',    hospitalId: 'ISH-001', hospitalName: 'Ibom Specialist Hospital, Uyo',   status: 'active',   joinDate: '2021-09-20', avatarInitials: 'NE', accentColor: '#D97706' },
-  { id: 'AKTH-PHA-005', name: 'Pharm. Chidi Otu',      role: 'Chief Pharmacist',        roleKey: 'pharmacist',   department: 'Pharmacy',           hospitalId: 'GHE-004', hospitalName: 'General Hospital, Eket',       status: 'active',   joinDate: '2023-07-05', avatarInitials: 'CO', accentColor: '#059669' },
-  { id: 'LIGH-LAB-006', name: 'Kelechi Obiora',        role: 'Senior Lab Scientist',    roleKey: 'lab',          department: 'Laboratory',         hospitalId: 'ISH-001', hospitalName: 'Ibom Specialist Hospital, Uyo',   status: 'active',   joinDate: '2024-01-15', avatarInitials: 'KO', accentColor: '#0891B2' },
-  { id: 'LUTH-RAD-007', name: 'Dr. Fatima Al-Hassan',  role: 'Consultant Radiologist',  roleKey: 'radiologist',  department: 'Radiology',          hospitalId: 'UUTH-002', hospitalName: 'University of Uyo Teaching Hospital (UUTH)', status: 'on-leave', joinDate: '2022-11-01', avatarInitials: 'FA', accentColor: '#6D28D9' },
-  { id: 'UCH-REC-008',  name: 'Bisi Adewale',          role: 'Health Records Officer',  roleKey: 'records',      department: 'Medical Records',    hospitalId: 'ISH-001',  hospitalName: 'Ibom Specialist Hospital, Uyo',        status: 'active',   joinDate: '2023-05-22', avatarInitials: 'BA', accentColor: '#0F766E' },
-  { id: 'LIGH-ACC-009', name: 'Amaka Oguike',          role: 'Finance Officer',         roleKey: 'accountant',   department: 'Finance & Accounts', hospitalId: 'ISH-001', hospitalName: 'Ibom Specialist Hospital, Uyo',   status: 'active',   joinDate: '2023-02-14', avatarInitials: 'AO', accentColor: '#B45309' },
-  { id: 'MHQB-ICT-010', name: 'Ola Bankole',           role: 'Chief Information Officer', roleKey: 'sysadmin',   department: 'IT & Infrastructure', hospitalId: 'MHQB', hospitalName: 'MedCore HQ — Operations',         status: 'active',   joinDate: '2020-08-01', avatarInitials: 'OB', accentColor: '#374151' },
-  { id: 'ISTH-NUR-011', name: 'Nurse Chioma Eze',      role: 'Staff Nurse',             roleKey: 'nurse',        department: 'Surgical Ward',      hospitalId: 'ISTH', hospitalName: 'Irrua Specialist Teaching Hospital',  status: 'active',   joinDate: '2025-01-10', avatarInitials: 'CE', accentColor: '#7C3AED' },
-  { id: 'UCH-DOC-012',  name: 'Dr. Biodun Salami',     role: 'Senior Registrar',        roleKey: 'doctor',       department: 'Paediatrics',        hospitalId: 'UCH',  hospitalName: 'University College Hospital',        status: 'active',   joinDate: '2024-06-01', avatarInitials: 'BS', accentColor: '#0284C7' },
-];
+const INITIAL_STAFF: StaffMember[] = [];
 
-const INITIAL_TRANSFERS: TransferRecord[] = [
-  {
-    id: 'TRF-0091', staffId: 'LUTH-RAD-007', staffName: 'Dr. Fatima Al-Hassan', role: 'Consultant Radiologist',
-    fromHospitalId: 'UUTH-002', fromHospitalName: 'University of Uyo Teaching Hospital (UUTH)', toHospitalId: 'UCH', toHospitalName: 'University College Hospital',
-    effectiveDate: '2026-10-01', requestedBy: 'Adm. Ngozi Eze', status: 'pending',
-    reason: 'UCH Radiology dept critically understaffed', requestedAt: '2026-09-20',
-  },
-  {
-    id: 'TRF-0088', staffId: 'LIGH-DOC-001', staffName: 'Dr. Amara Okafor', role: 'Medical Officer',
-    fromHospitalId: 'AKTH', fromHospitalName: 'Aminu Kano Teaching Hospital', toHospitalId: 'ISH-001', toHospitalName: 'Ibom Specialist Hospital, Uyo',
-    effectiveDate: '2026-09-01', requestedBy: 'MOH Director', status: 'completed',
-    reason: 'Zonal rotation — national redeployment programme', requestedAt: '2026-08-12',
-  },
-  {
-    id: 'TRF-0085', staffId: 'ISTH-NUR-011', staffName: 'Nurse Chioma Eze', role: 'Staff Nurse',
-    fromHospitalId: 'ISH-001', fromHospitalName: 'Ibom Specialist Hospital, Uyo', toHospitalId: 'ISTH', toHospitalName: 'Irrua Specialist Teaching Hospital',
-    effectiveDate: '2026-08-15', requestedBy: 'Adm. Ngozi Eze', status: 'completed',
-    reason: 'Specialist support for new surgical ward opening', requestedAt: '2026-08-01',
-  },
-];
+const INITIAL_TRANSFERS: TransferRecord[] = [];
 
 const TRANSFER_REASONS = [
   'Understaffing at destination hospital',
@@ -108,8 +76,8 @@ interface Props {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
-  const [staff, setStaff] = useState<StaffMember[]>(INITIAL_STAFF);
-  const [transfers, setTransfers] = useState<TransferRecord[]>(INITIAL_TRANSFERS);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [transfers, setTransfers] = useState<TransferRecord[]>([]);
   const [activeTab, setActiveTab] = useState<'roster' | 'pending' | 'history'>('roster');
   const [search, setSearch] = useState('');
   const [filterHospital, setFilterHospital] = useState('all');

@@ -24,6 +24,7 @@ import { CashierRevenue } from '../cashier/CashierRevenue';
 import { StaffEnrolment } from '../staffing/StaffEnrolment';
 import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
+import { ensureCleanPilot } from '../../lib/adminRealtimeStore';
 
 type AdminModule =
   | 'dashboard'
@@ -109,6 +110,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const { connected } = useRealtimeEvents({ app: 'MEDCORE_OS_ADMIN', facilityId: session.hospitalId });
 
   useEffect(() => {
+    try { ensureCleanPilot(); } catch {}
     const id = setInterval(() => setClock(formatNow()), 1000);
     return () => clearInterval(id);
   }, []);
