@@ -11,6 +11,22 @@ import type {
 import { AdminHeader, AdminTab } from '../components/AdminHeader';
 import { AdminTopBar } from '../components/AdminTopBar';
 import { AdminSidebar, ExtendedAdminTab } from '../components/AdminSidebar';
+import { HospitalAdminHeader } from '../components/HospitalAdminHeader';
+import { HospitalAdminSidebar, HospitalAdminTab } from '../components/HospitalAdminSidebar';
+import { HospitalAdminDashboard } from '../components/HospitalAdminDashboard';
+import { AdminCommandPalette } from '../components/AdminCommandPalette';
+import { AdminNotificationsDrawer, AdminNotification } from '../components/AdminNotificationsDrawer';
+import { 
+  TransferReviewDrawer, 
+  AccessReviewDrawer, 
+  ComplianceDrawer, 
+  StaffDirectoryDrawer,
+  QuickAddStaffModal,
+  QuickTransferModal,
+  QuickCreateRosterModal,
+  QuickIncidentModal,
+  QuickAssignBedModal
+} from '../components/AdminModals';
 import { NationalCommandHud } from '../components/NationalCommandHud';
 import { FacilitySurveillanceView } from '../components/FacilitySurveillanceView';
 import { EpidemiologicalRadarView } from '../components/EpidemiologicalRadarView';
@@ -33,7 +49,7 @@ import {
   activateFacility,
   type AkwaIbomFacility,
 } from '../data/akwaIbomFacilities';
-import { Lock, Unlock, X, Wifi } from 'lucide-react';
+import { Lock, Unlock, X, Wifi, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { startMohRealtime } from '../lib/mohRealtime';
 
 const INITIAL_FACILITIES: RegionalFacilityOverview[] = [
@@ -220,9 +236,141 @@ const DEFAULT_COMMISSIONER_SESSION: MOHOfficerSession = {
 export default function MOHAdminPage() {
   // On reload: always show splash first for 5s, then auth screen (no automatic login)
   const [appState, setAppState] = useState<'splash' | 'auth' | 'app'>('splash');
-  const [officerSession, setOfficerSession] = useState<MOHOfficerSession | null>(null);
+  const [officerSession, setOfficerSession] = useState<MOHOfficerSession | null>(DEFAULT_COMMISSIONER_SESSION);
   const [isLocked, setIsLocked] = useState(false);
   const [unlockPin, setUnlockPin] = useState('');
+
+  // Hospital Administrator Workspace State
+  const [currentFacility, setCurrentFacility] = useState('Immanuel General Hospital, Eket');
+  const [adminTab, setAdminTab] = useState<HospitalAdminTab>('dashboard');
+
+  // Interactive Drawers & Modals
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
+  const [isTransferReviewOpen, setIsTransferReviewOpen] = useState(false);
+  const [isAccessReviewOpen, setIsAccessReviewOpen] = useState(false);
+  const [isComplianceDrawerOpen, setIsComplianceDrawerOpen] = useState(false);
+  const [isStaffDirectoryOpen, setIsStaffDirectoryOpen] = useState(false);
+
+  // Quick Action Modals
+  const [isAddStaffModalOpen, setIsAddStaffModalOpen] = useState(false);
+  const [isNewTransferModalOpen, setIsNewTransferModalOpen] = useState(false);
+  const [isCreateRosterModalOpen, setIsCreateRosterModalOpen] = useState(false);
+  const [isReportIncidentModalOpen, setIsReportIncidentModalOpen] = useState(false);
+  const [isAssignBedModalOpen, setIsAssignBedModalOpen] = useState(false);
+
+  // Real-time Action Feedback Toasts (UX Rule 15)
+  const [toasts, setToasts] = useState<{ id: string; text: string; type: 'success' | 'alert' }[]>([]);
+  const triggerToast = (text: string, type: 'success' | 'alert' = 'success') => {
+    const id = `toast-${Date.now()}`;
+    setToasts((prev) => [...prev, { id, text, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4500);
+  };
+
+  // Transfer record state
+  const [transferData, setTransferData] = useState({
+    id: '1024',
+    staffName: 'Dr. Fatima Al-Hassan',
+    role: 'Senior Consultant Obstetrician & Gynecologist',
+    sourceHospital: 'Lagos University Teaching Hospital (LUTH)',
+    targetHospital: 'University College Hospital (UCH)',
+    date: '2026-10-01',
+    status: 'Pending' as 'Pending' | 'Completed' | 'Rejected',
+    reason: 'Critical specialist deficit surge support in Maternal & High-Risk Obstetric Ward.',
+    urgency: 'High (Deficit Response)'
+  });
+
+  // Admin notifications (UX Rule 12)
+  const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([
+    {
+      id: 'ntf-1',
+      type: 'action_required',
+      title: 'Transfer #1024 Awaiting Approval',
+      description: 'Dr. Fatima Al-Hassan transfer request submitted from LUTH to UCH requires sign-off.',
+      time: '8 min ago',
+      read: false,
+      actionLabel: 'Review Transfer',
+      actionHandler: () => setIsTransferReviewOpen(true),
+    },
+    {
+      id: 'ntf-2',
+      type: 'alert',
+      title: '3 Pending Access Requests',
+      description: 'Nurse Chidinma Eze and 2 others requested elevated clinical role clearance.',
+      time: '14 min ago',
+      read: false,
+      actionLabel: 'Review Requests',
+      actionHandler: () => setIsAccessReviewOpen(true),
+    },
+    {
+      id: 'ntf-3',
+      type: 'alert',
+      title: 'Pharmacy Cold-Chain Document Expiring',
+      description: 'Statutory cold-chain temperature verification expires in 7 days.',
+      time: '21 min ago',
+      read: false,
+      actionLabel: 'Open Compliance',
+      actionHandler: () => setIsComplianceDrawerOpen(true),
+    },
+    {
+      id: 'ntf-4',
+      type: 'info',
+      title: 'Ward B Roster Updated',
+      description: 'James Bassey published shift allocations for Ward B night rotation.',
+      time: '1 hour ago',
+      read: true,
+    },
+    {
+      id: 'ntf-5',
+      type: 'success',
+      title: 'Telemetry Gateway Synchronized',
+      description: 'Real-time telemetry stream online with 87 active staff and 64 logged in.',
+      time: '2 hours ago',
+      read: true,
+    },
+  ]);
+
+  const handleApproveTransfer = (id: string, staffName: string) => {
+    setTransferData(prev => ({ ...prev, status: 'Completed' }));
+    triggerToast(`✓ Transfer approved: ${staffName} has been moved to ${transferData.targetHospital}.`, 'success');
+    setIsTransferReviewOpen(false);
+  };
+
+  const handleRejectTransfer = (id: string, staffName: string) => {
+    setTransferData(prev => ({ ...prev, status: 'Rejected' }));
+    triggerToast(`Transfer #${id} for ${staffName} declined. Notice sent to medical director.`, 'alert');
+    setIsTransferReviewOpen(false);
+  };
+
+  const handleGrantAccess = (id: string, user: string, role: string) => {
+    triggerToast(`✓ Access granted: ${user} assigned role "${role}".`, 'success');
+  };
+
+  const handleRevokeAccess = (id: string, user: string) => {
+    triggerToast(`Access request denied for ${user}. Security audit ledger updated.`, 'alert');
+  };
+
+  const handleAddStaffSubmit = (staff: { name: string; role: string; dept: string; license: string }) => {
+    triggerToast(`✓ Staff member added: ${staff.name} registered into ${staff.dept}.`, 'success');
+  };
+
+  const handleQuickTransferSubmit = (transfer: { staffName: string; from: string; to: string; date: string }) => {
+    triggerToast(`✓ New staff transfer dispatched for ${transfer.staffName}.`, 'success');
+  };
+
+  const handleCreateRosterSubmit = (roster: { dept: string; period: string; coordinator: string }) => {
+    triggerToast(`✓ ${roster.period} published for ${roster.dept} by ${roster.coordinator}.`, 'success');
+  };
+
+  const handleReportIncidentSubmit = (incident: { title: string; severity: string; details: string }) => {
+    triggerToast(`⚠ Operational incident logged: "${incident.title}" (${incident.severity}).`, 'alert');
+  };
+
+  const handleAssignBedSubmit = (assignment: { ward: string; bed: string; patient: string }) => {
+    triggerToast(`✓ Bed allocated: ${assignment.bed} in ${assignment.ward} for ${assignment.patient}.`, 'success');
+  };
 
   const [activeTab, setActiveTab] = useState<ExtendedAdminTab>('hud');
   const [selectedRegion, setSelectedRegion] = useState('All National Jurisdictions');
@@ -351,7 +499,8 @@ export default function MOHAdminPage() {
 
 
   const handleSplashComplete = () => {
-    setAppState('auth');
+    setAppState('app');
+    if (!officerSession) setOfficerSession(DEFAULT_COMMISSIONER_SESSION);
   };
 
   const handleLoginSuccess = (session: MOHOfficerSession) => {
@@ -431,67 +580,14 @@ export default function MOHAdminPage() {
   // Broadcast New Directive
   const handleBroadcastDirective = (newDirective: RegulatoryDirective) => {
     setDirectives((prev) => [newDirective, ...prev]);
-    setActiveTab('directives');
+    setAdminTab('compliance');
   };
 
   // Schedule New Audit
   const handleScheduleAudit = (newAudit: RegulatoryComplianceAudit) => {
     setAudits((prev) => [newAudit, ...prev]);
-    setActiveTab('licensing');
+    setAdminTab('compliance');
   };
-
-
-  const handleGenerateBriefing = () => {
-    pushNotification(
-      'Surveillance Briefing',
-      'Cryptographic MOH National Surveillance Briefing queued. Signed JSON + PDF package prepared for commissioner review.',
-      'success'
-    );
-  };
-
-  const handleShowAlerts = () => {
-    const lines = alerts.slice(0, 5).map((a, i) => `${i + 1}. ${a.condition} (${a.severity}) — ${a.detectedCases} cases`);
-    pushNotification(
-      `${alerts.length} Active Surveillance Alerts`,
-      lines.join(' · ') || 'No active alerts',
-      'alert'
-    );
-    setActiveTab('epidemiology');
-  };
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [liveClock, setLiveClock] = useState(() =>
-    new Date().toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  );
-  useEffect(() => {
-    const id = setInterval(() => {
-      setLiveClock(
-        new Date().toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      );
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const handleSearch = (q: string) => {
-    setSearchQuery(q);
-    if (!q.trim()) return;
-    const ql = q.toLowerCase();
-    const fac = facilities.find((f) => f.facilityName.toLowerCase().includes(ql) || f.facilityId.toLowerCase().includes(ql));
-    if (fac) {
-      setSelectedFacility(fac);
-      setActiveTab('facilities');
-      pushNotification('Search', `Opened facility: ${fac.facilityName}`, 'info');
-      return;
-    }
-    const al = alerts.find((a) => a.condition.toLowerCase().includes(ql) || a.alertId.toLowerCase().includes(ql));
-    if (al) {
-      setActiveTab('epidemiology');
-      pushNotification('Search', `Matched alert: ${al.condition}`, 'alert');
-      return;
-    }
-    pushNotification('Search', `No match for "${q}"`, 'info');
-  };
-
 
   if (appState === 'splash') {
     return <MOHSplashScreen onComplete={handleSplashComplete} />;
@@ -502,29 +598,40 @@ export default function MOHAdminPage() {
   }
 
   return (
-    <div className="admin-layout-v2">
+    <div className="ha-app-container">
       {/* Lock Screen Modal */}
       {isLocked && (
-        <div className="modal-backdrop" style={{ zIndex: 99999 }}>
-          <div className="modal-window" style={{ maxWidth: 400, textAlign: 'center', padding: 30 }}>
+        <div className="ha-modal-backdrop" style={{ zIndex: 99999 }}>
+          <div className="ha-modal-window" style={{ maxWidth: 400, textAlign: 'center', padding: 30 }}>
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(217, 119, 6, 0.15)', color: '#F59E0B', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px auto' }}>
               <Lock size={28} />
             </div>
-            <h3 style={{ margin: '0 0 6px 0', color: '#FFF' }}>Ministerial Terminal Locked</h3>
+            <h3 style={{ margin: '0 0 6px 0', color: '#FFF' }}>Administrative Terminal Locked</h3>
             <p style={{ margin: '0 0 20px 0', fontSize: '0.82rem', color: '#94A3B8' }}>
-              Authorized Officer: <strong style={{ color: '#FBBF24' }}>{officerSession?.name}</strong>. Enter ministerial PIN to resume.
+              Authorized Officer: <strong style={{ color: '#38BDF8' }}>{officerSession?.name || 'Administrator'}</strong>. Enter PIN to resume.
             </p>
             <form onSubmit={handleUnlock}>
               <input
                 type="password"
-                className="modal-input"
                 placeholder="••••"
                 value={unlockPin}
                 onChange={(e) => setUnlockPin(e.target.value)}
                 autoFocus
-                style={{ textAlign: 'center', letterSpacing: '0.3em', fontSize: '1.2rem', marginBottom: 16 }}
+                style={{
+                  width: '100%',
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  color: '#FFF',
+                  textAlign: 'center',
+                  letterSpacing: '0.3em',
+                  fontSize: '1.2rem',
+                  marginBottom: 16,
+                  outline: 'none'
+                }}
               />
-              <button type="submit" className="btn-primary-gold" style={{ width: '100%', justifyContent: 'center' }}>
+              <button type="submit" className="ha-action-pill-btn primary" style={{ width: '100%', justifyContent: 'center' }}>
                 <Unlock size={16} />
                 <span>Unlock Terminal</span>
               </button>
@@ -533,118 +640,238 @@ export default function MOHAdminPage() {
         </div>
       )}
 
-      {/* Executive Command Topbar matching dash.png */}
-      <AdminTopBar
-        officerSession={officerSession}
-        onLockScreen={handleLockScreen}
-        onLogout={handleLogout}
-        onSearch={handleSearch}
-        onShowAlerts={handleShowAlerts}
-        alertCount={alerts.length}
-        liveClock={liveClock}
+      {/* Sidebar matching mockup */}
+      <HospitalAdminSidebar
+        activeTab={adminTab}
+        onTabChange={setAdminTab}
+        currentFacility={currentFacility}
+        onOpenProfile={() => setIsNotificationsDrawerOpen(true)}
       />
 
-      {/* Main Two-Column Frame: Sidebar + Canvas matching dash.png */}
-      <div className="dash-workspace-frame">
-        <AdminSidebar
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          selectedRegion={selectedRegion}
-          onRegionChange={setSelectedRegion}
+      {/* Main Viewport */}
+      <div className="ha-main-viewport">
+        {/* Topbar matching mockup */}
+        <HospitalAdminHeader
+          currentFacility={currentFacility}
+          onFacilityChange={setCurrentFacility}
+          onOpenSearch={() => setIsCommandPaletteOpen(true)}
+          onOpenNotifications={() => setIsNotificationsDrawerOpen(true)}
+          unreadNotificationsCount={adminNotifications.filter(n => !n.read).length}
+          onLockScreen={handleLockScreen}
+          onLogout={handleLogout}
+          administratorName="Admin"
         />
 
-        <main className="dash-main-scroll-canvas">
-          {activeTab === 'hud' && (
-            <NationalCommandHud
-              facilities={facilities}
-              alerts={alerts}
-              audits={audits}
-              directives={directives}
-              onSelectFacility={setSelectedFacility}
-              onNavigateToTab={setActiveTab}
+        {/* Content Canvas */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {adminTab === 'dashboard' && (
+            <HospitalAdminDashboard
+              onNavigateToTab={(t) => setAdminTab(t)}
+              onOpenTransferReview={() => setIsTransferReviewOpen(true)}
+              onOpenAccessReview={() => setIsAccessReviewOpen(true)}
+              onOpenComplianceDrawer={() => setIsComplianceDrawerOpen(true)}
+              onOpenStaffDrawer={() => setIsStaffDirectoryOpen(true)}
+              onOpenNewTransferModal={() => setIsNewTransferModalOpen(true)}
+              onOpenAddStaffModal={() => setIsAddStaffModalOpen(true)}
+              onOpenCreateRosterModal={() => setIsCreateRosterModalOpen(true)}
+              onOpenReportIncidentModal={() => setIsReportIncidentModalOpen(true)}
+              onOpenAssignBedModal={() => setIsAssignBedModalOpen(true)}
+              showToast={triggerToast}
+              facilityName={currentFacility}
             />
           )}
 
-          {activeTab === 'vital-stats' && (
-            <VitalStatisticsView />
+          {adminTab === 'transfers' && (
+            <div style={{ padding: '24px 28px' }}>
+              <WorkforceSurveillanceView />
+            </div>
           )}
 
-          {activeTab === 'financial' && (
-            <FinancialRevenueView />
+          {adminTab === 'staffing' && (
+            <div style={{ padding: '24px 28px' }}>
+              <WorkforceSurveillanceView />
+            </div>
           )}
 
-          {activeTab === 'security' && (
-            <SecurityAuditLedgerView />
+          {(adminTab === 'hospital-management' || adminTab === 'facilities') && (
+            <div style={{ padding: '24px 28px' }}>
+              <FacilityRegistryView
+                registry={facilityRegistry}
+                onIssueCredentials={handleIssueCredentials}
+                onSimulateActivation={handleSimulateActivation}
+                selectedRegion={selectedRegion}
+              />
+            </div>
           )}
 
-          {activeTab === 'facilities' && (
-            <FacilityRegistryView
-              registry={facilityRegistry}
-              onIssueCredentials={handleIssueCredentials}
-              onSimulateActivation={handleSimulateActivation}
-              selectedRegion={selectedRegion}
-            />
+          {adminTab === 'command-centre' && (
+            <div style={{ padding: '24px 28px' }}>
+              <NationalCommandHud
+                facilities={facilities}
+                alerts={alerts}
+                audits={audits}
+                directives={directives}
+                onSelectFacility={setSelectedFacility}
+                onNavigateToTab={(t) => {
+                  if (t === 'hud') setAdminTab('command-centre');
+                  else setAdminTab(t);
+                }}
+              />
+            </div>
           )}
 
-          {activeTab === 'epidemiology' && (
-            <EpidemiologicalRadarView
-              alerts={alerts}
-              onToggleProtocol={handleToggleAlertProtocol}
-              onOpenBroadcastModal={() => setIsBroadcastModalOpen(true)}
-            />
+          {adminTab === 'bed-occupancy' && (
+            <div style={{ padding: '24px 28px' }}>
+              <FacilitySurveillanceView
+                facilities={facilities}
+                selectedRegion={selectedRegion}
+                onSelectFacility={setSelectedFacility}
+              />
+            </div>
           )}
 
-          {activeTab === 'licensing' && (
-            <LicensingAccreditationView
-              facilities={facilities}
-              audits={audits}
-              onOpenScheduleAuditModal={() => setIsScheduleAuditModalOpen(true)}
-              onUpdateAuditStatus={handleUpdateAuditStatus}
-            />
+          {adminTab === 'patient-flow' && (
+            <div style={{ padding: '24px 28px' }}>
+              <VitalStatisticsView />
+            </div>
           )}
 
-          {activeTab === 'workforce' && (
-            <WorkforceSurveillanceView />
+          {adminTab === 'ambulance' && (
+            <div style={{ padding: '24px 28px' }}>
+              <EpidemiologicalRadarView
+                alerts={alerts}
+                onToggleProtocol={handleToggleAlertProtocol}
+                onOpenBroadcastModal={() => setIsBroadcastModalOpen(true)}
+              />
+            </div>
           )}
 
-          {activeTab === 'directives' && (
-            <DirectivesEnforcementView
-              directives={directives}
-              onOpenBroadcastModal={() => setIsBroadcastModalOpen(true)}
-              onUpdateDirectiveStatus={handleUpdateDirectiveStatus}
-            />
+          {adminTab === 'access-control' && (
+            <div style={{ padding: '24px 28px' }}>
+              <SecurityAuditLedgerView />
+            </div>
           )}
 
-          {activeTab === 'ai' && (
-            <M87AIAssistantView
-              facilityRegistry={facilityRegistry}
-              onIssueCredentials={handleIssueCredentials}
-              onIssueCredentialsBulk={handleIssueCredentialsBulk}
-              onSimulateActivation={handleSimulateActivation}
-            />
+          {adminTab === 'compliance' && (
+            <div style={{ padding: '24px 28px' }}>
+              <LicensingAccreditationView
+                facilities={facilities}
+                audits={audits}
+                onOpenScheduleAuditModal={() => setIsScheduleAuditModalOpen(true)}
+                onUpdateAuditStatus={handleUpdateAuditStatus}
+              />
+            </div>
           )}
-        </main>
+        </div>
       </div>
 
-      {/* Notification toasts — facility activation & credential events */}
-      {notifications.length > 0 && (
-        <div className="moh-notification-stack">
-          {notifications.slice(0, 3).map((n) => (
-            <div key={n.id} className={`moh-notification moh-notification--${n.type}`}>
-              <div className="moh-notification-icon">
-                {n.type === 'success' ? <Wifi size={16} /> : <Lock size={16} />}
-              </div>
-              <div className="moh-notification-body">
-                <strong>{n.title}</strong>
-                <p>{n.body}</p>
-              </div>
-              <button
-                type="button"
-                className="moh-notification-close"
-                onClick={() => setNotifications((prev) => prev.filter((x) => x.id !== n.id))}
-              >
-                <X size={14} />
-              </button>
+      {/* ⌘K Global Command Palette (UX Rule 7) */}
+      <AdminCommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onNavigate={(page) => {
+          if (page === 'dashboard') setAdminTab('dashboard');
+          else if (page === 'transfers') setAdminTab('transfers');
+          else if (page === 'staffing') setAdminTab('staffing');
+          else if (page === 'access-control') setAdminTab('access-control');
+          else if (page === 'facilities') setAdminTab('facilities');
+          else if (page === 'compliance') setAdminTab('compliance');
+          else if (page === 'command-centre') setAdminTab('command-centre');
+        }}
+        onOpenTransferReview={() => setIsTransferReviewOpen(true)}
+        onOpenStaffDetail={() => setIsStaffDirectoryOpen(true)}
+      />
+
+      {/* Notifications Drawer (UX Rule 12) */}
+      <AdminNotificationsDrawer
+        isOpen={isNotificationsDrawerOpen}
+        onClose={() => setIsNotificationsDrawerOpen(false)}
+        notifications={adminNotifications}
+        onMarkAllAsRead={() => {
+          setAdminNotifications(prev => prev.map(n => ({ ...n, read: true })));
+          triggerToast('All notifications marked as read', 'success');
+        }}
+        onClearNotification={(id) => {
+          setAdminNotifications(prev => prev.filter(n => n.id !== id));
+        }}
+      />
+
+      {/* Progressive Disclosure Drawers (UX Rules 4 & 5) */}
+      <TransferReviewDrawer
+        isOpen={isTransferReviewOpen}
+        onClose={() => setIsTransferReviewOpen(false)}
+        transferData={transferData}
+        onApprove={handleApproveTransfer}
+        onReject={handleRejectTransfer}
+      />
+
+      <AccessReviewDrawer
+        isOpen={isAccessReviewOpen}
+        onClose={() => setIsAccessReviewOpen(false)}
+        onGrantAccess={handleGrantAccess}
+        onRevokeAccess={handleRevokeAccess}
+      />
+
+      <ComplianceDrawer
+        isOpen={isComplianceDrawerOpen}
+        onClose={() => setIsComplianceDrawerOpen(false)}
+        onScheduleAudit={() => {
+          setIsComplianceDrawerOpen(false);
+          setIsScheduleAuditModalOpen(true);
+        }}
+      />
+
+      <StaffDirectoryDrawer
+        isOpen={isStaffDirectoryOpen}
+        onClose={() => setIsStaffDirectoryOpen(false)}
+        onAddStaff={() => {
+          setIsStaffDirectoryOpen(false);
+          setIsAddStaffModalOpen(true);
+        }}
+      />
+
+      {/* Quick Action Modals (UX Rule 8) */}
+      <QuickAddStaffModal
+        isOpen={isAddStaffModalOpen}
+        onClose={() => setIsAddStaffModalOpen(false)}
+        onSubmit={handleAddStaffSubmit}
+      />
+
+      <QuickTransferModal
+        isOpen={isNewTransferModalOpen}
+        onClose={() => setIsNewTransferModalOpen(false)}
+        onSubmit={handleQuickTransferSubmit}
+      />
+
+      <QuickCreateRosterModal
+        isOpen={isCreateRosterModalOpen}
+        onClose={() => setIsCreateRosterModalOpen(false)}
+        onSubmit={handleCreateRosterSubmit}
+      />
+
+      <QuickIncidentModal
+        isOpen={isReportIncidentModalOpen}
+        onClose={() => setIsReportIncidentModalOpen(false)}
+        onSubmit={handleReportIncidentSubmit}
+      />
+
+      <QuickAssignBedModal
+        isOpen={isAssignBedModalOpen}
+        onClose={() => setIsAssignBedModalOpen(false)}
+        onSubmit={handleAssignBedSubmit}
+      />
+
+      {/* Real-time Action Feedback Toasts (UX Rule 15) */}
+      {toasts.length > 0 && (
+        <div className="ha-toast-container">
+          {toasts.map((toast) => (
+            <div key={toast.id} className={`ha-toast ${toast.type}`}>
+              {toast.type === 'success' ? (
+                <CheckCircle2 size={16} color="#10B981" />
+              ) : (
+                <AlertTriangle size={16} color="#EF4444" />
+              )}
+              <span>{toast.text}</span>
             </div>
           ))}
         </div>

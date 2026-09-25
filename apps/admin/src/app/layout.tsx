@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import '../styles/admin.css';
 import '../styles/command-centre.css';
+import '../styles/hospital-admin.css';
 
 export const metadata: Metadata = {
   title: 'Ministry of Health • National Health Operations & Regulatory Oversight',

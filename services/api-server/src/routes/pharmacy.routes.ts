@@ -118,7 +118,7 @@ router.post('/stock/deplete', (req: Request, res: Response) => {
       },
     });
 
-    if (updated.status === 'CRITICAL' || updated.status === 'OUT_OF_STOCK' || Number(updated.quantityOnHand) <= (updated.reorderLevel || 0)) {
+    if (updated.status === 'STOCKOUT' || updated.status === 'LOW_STOCK' || Number(updated.quantityOnHand) <= (updated.reorderLevel || 0)) {
       syncEventBus.broadcast({
         topic: 'DRUG_STOCKOUT',
         facilityId,

@@ -150,7 +150,7 @@ router.post('/consent', (req: Request, res: Response) => {
   auditLedger.logEvent({
     actorId: record.capturedBy,
     actorName: record.capturedBy,
-    actorRole: 'RECEPTIONIST',
+    actorRole: 'HOSPITAL_ADMIN',
     facilityId: record.facilityId,
     action: 'WRITE_PHI',
     resourceType: 'PATIENT',
@@ -212,7 +212,7 @@ router.post('/breach', (req: Request, res: Response) => {
   auditLedger.logEvent({
     actorId: 'DPO',
     actorName: 'Data Protection Officer',
-    actorRole: 'ADMIN',
+    actorRole: 'HOSPITAL_ADMIN',
     facilityId: 'FAC-001',
     action: 'WRITE_PHI',
     resourceType: 'FACILITY',

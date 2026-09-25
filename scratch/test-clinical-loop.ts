@@ -3,7 +3,7 @@ import { persistenceService } from '../services/api-server/src/store/persistence
 import { IBOM_CLINICAL_PATHWAYS } from '../services/api-server/src/routes/cpoe.routes';
 
 async function runTest() {
-  console.log('🧪 Starting MedCore Clinical Loop Verification Test...');
+  console.log(' Starting MedCore Clinical Loop Verification Test...');
 
   // 1. Check Identity & ADT
   const patient = dataStore.registerPatient({
@@ -75,11 +75,11 @@ async function runTest() {
 
   // Verify Outbox
   const outbox = persistenceService.getAllOutbox();
-  console.log(`\n📦 Persistent Event Outbox Count: ${outbox.length} events logged to disk.`);
-  console.log('🎉 Closed Clinical Loop Verification Complete: SUCCESS!');
+  console.log(`\n Persistent Event Outbox Count: ${outbox.length} events logged to disk.`);
+  console.log('Closed Clinical Loop Verification Complete: SUCCESS!');
 }
 
 runTest().catch((err) => {
-  console.error('❌ Test failed:', err);
+  console.error('Test failed:', err);
   process.exit(1);
 });

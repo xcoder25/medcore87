@@ -171,7 +171,7 @@ export const OrderEntryReview: React.FC = () => {
       setActiveOrders((prev) => [...newItems, ...prev]);
       setSuccessBanner(
         res.queued
-          ? `⚡ Offline Mode: "${pathway.title}" queued locally. Will auto-sync when online.`
+          ? `Offline Mode: "${pathway.title}" queued locally. Will auto-sync when online.`
           : `✅ Authorized & Dispatched "${pathway.title}" (${pathway.items.length} orders routed to Pharmacy & Lab).`
       );
       setActiveTab('tracker');
@@ -277,7 +277,7 @@ export const OrderEntryReview: React.FC = () => {
           {[
             { key: 'pathways', label: '⚡ Ibom Pathways', icon: '⚡' },
             { key: 'custom', label: '➕ Custom Order', icon: '➕' },
-            { key: 'tracker', label: `📋 Tracker (${activeOrders.length})`, icon: '📋' },
+            { key: 'tracker', label: `Tracker (${activeOrders.length})`, icon: '📋' },
           ].map((t) => (
             <TouchableOpacity
               key={t.key}
@@ -451,10 +451,10 @@ export const OrderEntryReview: React.FC = () => {
               ord.status === 'RESULT_READY'
                 ? '#10B981'
                 : ord.status === 'DISPENSED'
-                ? '#38BDF8'
-                : ord.status === 'VERIFIED'
-                ? '#F59E0B'
-                : '#64748B';
+                  ? '#38BDF8'
+                  : ord.status === 'VERIFIED'
+                    ? '#F59E0B'
+                    : '#64748B';
 
             return (
               <View key={ord.id} style={styles.orderCard}>
