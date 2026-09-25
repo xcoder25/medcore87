@@ -364,7 +364,7 @@ export const ALL_PILOT_KEYS = [
   'medcore_os_staff_cards',
 ];
 
-export const PILOT_DATA_VERSION = 'pilot-clean-v1';
+export const PILOT_DATA_VERSION = 'pilot-clean-v2';
 
 /** Wipe demo data and seed a clean pilot (admin account only). */
 export function resetAllPilotData(): void {

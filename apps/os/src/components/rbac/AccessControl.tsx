@@ -21,43 +21,7 @@ interface StaffAccess {
   permissions: string[];
 }
 
-const SEED_STAFF_ACCESS: StaffAccess[] = [
-  {
-    id: 'ISH-EXEC-001', name: 'Dr. Evelyn Vance', role: 'Medical Director', department: 'Hospital Administration',
-    clearance: 5, status: 'active', lastLogin: '16 Sep 2026 09:02',
-    permissions: ['All Clinical', 'Finance & Billing', 'Staff Management', 'Audit Logs', 'System Admin'],
-  },
-  {
-    id: 'ISH-SURG-042', name: 'Dr. Emeka Adeyemi', role: 'Consultant Surgeon', department: 'Surgical Ward',
-    clearance: 4, status: 'active', lastLogin: '16 Sep 2026 07:05',
-    permissions: ['Patient Records', 'Ward Operations', 'Drug Prescriptions', 'Theatre Booking'],
-  },
-  {
-    id: 'ISH-NUR-118', name: 'Nurse Aisha Bello', role: 'Charge Nurse', department: 'Female Medical',
-    clearance: 3, status: 'active', lastLogin: '16 Sep 2026 07:10',
-    permissions: ['Patient Records (View)', 'Ward Operations', 'Nursing Notes', 'Bed Management'],
-  },
-  {
-    id: 'ISH-REV-009', name: 'Amaka Oguike', role: 'Revenue Officer', department: 'Billing & Finance',
-    clearance: 2, status: 'active', lastLogin: '16 Sep 2026 08:30',
-    permissions: ['Billing & Invoicing', 'AKSHIA Claims', 'Revenue Reports'],
-  },
-  {
-    id: 'ISH-LAB-023', name: 'Kelechi Obiora', role: 'Lab Technician', department: 'Medical Laboratory',
-    clearance: 2, status: 'active', lastLogin: '15 Sep 2026 16:42',
-    permissions: ['Lab Results Entry', 'Specimen Tracking'],
-  },
-  {
-    id: 'ISH-PHAR-007', name: 'Funmi Adeola', role: 'Pharmacist', department: 'Pharmacy',
-    clearance: 3, status: 'suspended', lastLogin: '12 Sep 2026 11:08',
-    permissions: ['Pharmacy Dispensing', 'Drug Inventory'],
-  },
-  {
-    id: 'ISH-ADM-044', name: 'Nnamdi Obi', role: 'Records Officer', department: 'Medical Records',
-    clearance: 2, status: 'pending', lastLogin: 'Never',
-    permissions: [],
-  },
-];
+const SEED_STAFF_ACCESS: StaffAccess[] = [];
 
 const CLEARANCE_LABELS: Record<number, { label: string; color: string }> = {
   5: { label: 'L5 — Executive', color: '#EA580C' },

@@ -38,38 +38,9 @@ interface LivePrescription {
 }
 
 // --- Legacy Mock Prescriptions Queue -----------------------------------------
-const INITIAL_PRESCRIPTIONS: PrescriptionOrder[] = [
-  {
-    id: 'RX-2026-8801', patientId: 'PAT-AK-4421', patientName: 'Idongesit Aniefiok Udo',
-    medication: 'IV Ceftriaxone', dosage: '2g', frequency: 'Once Daily (OD)', route: 'Intravenous',
-    duration: '5 Days', prescribingDoctor: 'Dr. Emeka Adeyemi (Surgeon)', status: 'pending',
-    orderedAt: '09:15', interactionAlert: 'High protein-binding: Verify co-administration with IV Calcium salts.',
-  },
-  {
-    id: 'RX-2026-8802', patientId: 'PAT-AK-3109', patientName: 'Ekaette Nsikak Peters',
-    medication: 'Artemether + Lumefantrine (Coartem)', dosage: '80/480mg', frequency: 'BD (twice daily with meals)',
-    route: 'Oral', duration: '3 Days', prescribingDoctor: 'Dr. Evelyn Vance (Internal Med)', status: 'verified', orderedAt: '09:22',
-  },
-  {
-    id: 'RX-2026-8803', patientId: 'PAT-AK-1102', patientName: 'Mfoniso Uwem Akpabio',
-    medication: 'Enoxaparin (Clexane)', dosage: '40mg (4000 IU)', frequency: 'OD Subcutaneous', route: 'Subcutaneous',
-    duration: '7 Days', prescribingDoctor: 'Dr. Kufre Etim (Orthopaedics)', status: 'pending', orderedAt: '09:30',
-  },
-  {
-    id: 'RX-2026-8804', patientId: 'PAT-AK-9043', patientName: 'Godwin Archibong',
-    medication: 'Metformin HCl', dosage: '500mg', frequency: 'TDS (Three times daily)', route: 'Oral',
-    duration: '30 Days', prescribingDoctor: 'Dr. S. Okoro (Endocrinology)', status: 'dispensed', orderedAt: '08:10',
-  },
-];
+const INITIAL_PRESCRIPTIONS: PrescriptionOrder[] = [];
 
-const INITIAL_FORMULARY: FormularyItem[] = [
-  { id: 'FORM-01', code: 'MED-CEF-2G', name: 'Ceftriaxone Powder for Injection', category: 'Antibiotics', stockOnHand: 340, unit: 'Vials', minimumThreshold: 100, expiryDate: '2027-08-31', unitPriceNgn: 1850 },
-  { id: 'FORM-02', code: 'MED-ACT-80', name: 'Artemether/Lumefantrine Dispersible', category: 'Antimalarials', stockOnHand: 890, unit: 'Packs', minimumThreshold: 250, expiryDate: '2026-12-15', unitPriceNgn: 1200 },
-  { id: 'FORM-03', code: 'MED-ENOX-40', name: 'Enoxaparin Sodium Prefilled Syringe', category: 'Anticoagulants', stockOnHand: 42, unit: 'Syringes', minimumThreshold: 50, expiryDate: '2026-11-30', unitPriceNgn: 4500 },
-  { id: 'FORM-04', code: 'MED-MET-500', name: 'Metformin HCl 500mg Tablets', category: 'Antidiabetics', stockOnHand: 2400, unit: 'Tablets', minimumThreshold: 600, expiryDate: '2028-03-31', unitPriceNgn: 45 },
-  { id: 'FORM-05', code: 'MED-PAR-1G', name: 'Paracetamol IV Infusion 10mg/mL', category: 'Analgesics', stockOnHand: 18, unit: 'Bottles', minimumThreshold: 60, expiryDate: '2026-10-01', unitPriceNgn: 950 },
-  { id: 'FORM-06', code: 'MED-OXY-10', name: 'Oxytocin Injection 10 IU/mL', category: 'O&G Labour', stockOnHand: 145, unit: 'Ampoules', minimumThreshold: 40, expiryDate: '2027-05-15', unitPriceNgn: 800 },
-];
+const INITIAL_FORMULARY: FormularyItem[] = [];
 
 const API = 'http://localhost:4000/api/v1/clinical';
 

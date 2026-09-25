@@ -7,13 +7,7 @@ import {
 } from 'lucide-react';
 import type { InventoryItem } from '@medcore/types';
 
-const INITIAL_INVENTORY: InventoryItem[] = [
-  { id: 'INV-01', sku: 'CMS-SURG-GLV-75', itemName: 'Sterile Surgical Gloves (Size 7.5)', category: 'Surgical Consumables', stockOnHand: 450, reorderPoint: 500, unitCostNgn: 450, supplier: 'MedEquip West Africa Ltd', leadTimeDays: 3 },
-  { id: 'INV-02', sku: 'CMS-IV-CANN-18', itemName: 'IV Cannula with Injection Port 18G Green', category: 'Surgical Consumables', stockOnHand: 1800, reorderPoint: 800, unitCostNgn: 220, supplier: 'B. Braun Medical Nigeria', leadTimeDays: 4 },
-  { id: 'INV-03', sku: 'CMS-PPE-N95', itemName: 'N95 Particulate Respirator Masks (Box of 20)', category: 'PPE & Linen', stockOnHand: 85, reorderPoint: 150, unitCostNgn: 6500, supplier: '3M Nigeria Healthcare', leadTimeDays: 7 },
-  { id: 'INV-04', sku: 'CMS-DRUG-ARTESUN', itemName: 'Artesunate 60mg Powder for Injection', category: 'Pharmaceuticals', stockOnHand: 920, reorderPoint: 400, unitCostNgn: 1400, supplier: 'Emzor Pharmaceuticals', leadTimeDays: 2 },
-  { id: 'INV-05', sku: 'CMS-LAB-REAG-CBC', itemName: 'Sysmex Cellpack DCL Diluent (20L)', category: 'Lab Reagents', stockOnHand: 6, reorderPoint: 10, unitCostNgn: 48000, supplier: 'Sysmex West Africa', leadTimeDays: 5 },
-];
+const INITIAL_INVENTORY: InventoryItem[] = [];
 
 export const SupplyChainInventorySuite: React.FC = () => {
   const [items, setItems] = useState<InventoryItem[]>(INITIAL_INVENTORY);

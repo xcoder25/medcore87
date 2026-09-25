@@ -14,44 +14,11 @@ interface ExtendedLabourPatient extends LabourWardPatient {
   apgarScore?: string;
 }
 
-const INITIAL_MOTHERS: ExtendedLabourPatient[] = [
-  {
-    id: 'MAT-2026-041',
-    patientName: 'Ekaette Nsikak Peters',
-    gravidaPara: 'G3 P2+0 (38 Weeks)',
-    cervicalDilationCm: 7,
-    fetalHeartRateBpm: 138,
-    contractionsPer10Min: 4,
-    romTime: '06:30 (Clear Liquor)',
-    riskStatus: 'low_risk',
-    midwifeOnDuty: 'Senior Midwife Mfoniso Akpan',
-  },
-  {
-    id: 'MAT-2026-042',
-    patientName: 'Blessing Effiong Udo',
-    gravidaPara: 'G1 P0+0 (39 Weeks)',
-    cervicalDilationCm: 4,
-    fetalHeartRateBpm: 168,
-    contractionsPer10Min: 5,
-    romTime: '08:15 (Meconium Stained)',
-    riskStatus: 'emergency_csection',
-    midwifeOnDuty: 'Midwife Inemesit Udoh',
-  },
-  {
-    id: 'MAT-2026-043',
-    patientName: 'Emem Anietie Bassey',
-    gravidaPara: 'G2 P1+0 (37 Weeks)',
-    cervicalDilationCm: 2,
-    fetalHeartRateBpm: 142,
-    contractionsPer10Min: 2,
-    riskStatus: 'moderate_risk',
-    midwifeOnDuty: 'Senior Midwife Mfoniso Akpan',
-  },
-];
+const INITIAL_MOTHERS: ExtendedLabourPatient[] = [];
 
 export const MaternityOgSuite: React.FC = () => {
   const [mothers, setMothers] = useState<ExtendedLabourPatient[]>(INITIAL_MOTHERS);
-  const [selectedId, setSelectedId] = useState<string>(INITIAL_MOTHERS[0].id);
+  const [selectedId, setSelectedId] = useState<string>('');
   const [notice, setNotice] = useState<string | null>(null);
 
   // Modal States

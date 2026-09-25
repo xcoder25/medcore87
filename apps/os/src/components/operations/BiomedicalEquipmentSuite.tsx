@@ -7,13 +7,7 @@ import {
 } from 'lucide-react';
 import type { BiomedicalDevice } from '@medcore/types';
 
-const INITIAL_DEVICES: BiomedicalDevice[] = [
-  { id: 'BIO-01', assetTag: 'ISH-BME-0012', deviceName: 'Siemens Somatom 64-Slice CT Scanner', department: 'Radiology / Imaging', manufacturer: 'Siemens Healthineers', model: 'Somatom go.Top', status: 'operational', lastCalibratedAt: '2026-08-15', nextServiceDue: '2026-11-15' },
-  { id: 'BIO-02', assetTag: 'ISH-BME-0084', deviceName: 'Hamilton-C6 Intensive Care Ventilator #3', department: 'Intensive Care Unit (ICU)', manufacturer: 'Hamilton Medical', model: 'C6 Critical Care', status: 'operational', lastCalibratedAt: '2026-09-01', nextServiceDue: '2026-12-01' },
-  { id: 'BIO-03', assetTag: 'ISH-BME-0119', deviceName: 'Mindray BeneHeart D6 Defibrillator', department: 'Accident & Emergency (A&E)', manufacturer: 'Mindray', model: 'D6 Biphasic', status: 'calibration_due', lastCalibratedAt: '2026-03-10', nextServiceDue: '2026-09-10' },
-  { id: 'BIO-04', assetTag: 'ISH-BME-0205', deviceName: 'Dr�ger Fabius Tiro Anesthesia Workstation', department: 'Operating Theatre 2', manufacturer: 'Dr�ger Medical', model: 'Fabius Tiro', status: 'operational', lastCalibratedAt: '2026-07-20', nextServiceDue: '2026-10-20' },
-  { id: 'BIO-05', assetTag: 'ISH-BME-0342', deviceName: 'Olympus CV-190 Video Endoscopy Tower', department: 'Gastroenterology / Endoscopy', manufacturer: 'Olympus', model: 'Evis Exera III', status: 'under_repair', lastCalibratedAt: '2026-05-12', nextServiceDue: '2026-08-12' },
-];
+const INITIAL_DEVICES: BiomedicalDevice[] = [];
 
 export const BiomedicalEquipmentSuite: React.FC = () => {
   const [devices, setDevices] = useState<BiomedicalDevice[]>(INITIAL_DEVICES);

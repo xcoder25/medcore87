@@ -7,11 +7,7 @@ import {
 } from 'lucide-react';
 import type { ProcurementOrder } from '@medcore/types';
 
-const INITIAL_POS: ProcurementOrder[] = [
-  { id: 'PO-01', poNumber: 'PO-2026-081', vendorName: 'MedEquip West Africa Ltd', itemSummary: 'Surgical Sutures & Gloves Restock', totalAmountNgn: 4500000, orderedAt: '2026-09-14', deliveryStatus: 'in_transit' },
-  { id: 'PO-02', poNumber: 'PO-2026-082', vendorName: 'B. Braun Medical Nigeria', itemSummary: 'IV Cannulas & Infusion Giving Sets', totalAmountNgn: 2800000, orderedAt: '2026-09-15', deliveryStatus: 'approved' },
-  { id: 'PO-03', poNumber: 'PO-2026-083', vendorName: 'Emzor Pharmaceuticals', itemSummary: 'IV Artesunate & Essential Antibiotics Batch', totalAmountNgn: 8200000, orderedAt: '2026-09-12', deliveryStatus: 'received_inspected' },
-];
+const INITIAL_POS: ProcurementOrder[] = [];
 
 export const ProcurementHrSuite: React.FC = () => {
   const [pos, setPos] = useState<ProcurementOrder[]>(INITIAL_POS);

@@ -7,12 +7,7 @@ import {
 } from 'lucide-react';
 import type { ConnectedMonitorFeed } from '@medcore/types';
 
-const INITIAL_MONITORS: ConnectedMonitorFeed[] = [
-  { deviceId: 'MON-ICU-01', bedId: 'ICU Bay 1', patientName: 'Bassey Okon Udoh', heartRateBpm: 124, spo2Percent: 91, respiratoryRate: 26, nibpSysDia: '85/55', connectionState: 'online', lastPing: 'Just now' },
-  { deviceId: 'MON-ICU-02', bedId: 'ICU Bay 2', patientName: 'Edidiong Sunday Udosen', heartRateBpm: 78, spo2Percent: 98, respiratoryRate: 16, nibpSysDia: '128/76', connectionState: 'online', lastPing: 'Just now' },
-  { deviceId: 'MON-OR-01', bedId: 'Theatre 1 Suite', patientName: 'Kufre Daniel Etim', heartRateBpm: 82, spo2Percent: 99, respiratoryRate: 14, nibpSysDia: '115/72', connectionState: 'online', lastPing: 'Just now' },
-  { deviceId: 'MON-A&E-01', bedId: 'Resus Bay 1', patientName: 'Emergency Trauma Intake', heartRateBpm: 110, spo2Percent: 95, respiratoryRate: 22, nibpSysDia: '100/65', connectionState: 'online', lastPing: 'Just now' },
-];
+const INITIAL_MONITORS: ConnectedMonitorFeed[] = [];
 
 export const ConnectedDevicesSuite: React.FC = () => {
   const [monitors, setMonitors] = useState<ConnectedMonitorFeed[]>(INITIAL_MONITORS);

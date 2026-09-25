@@ -7,68 +7,11 @@ import {
 } from 'lucide-react';
 import type { ICUStation } from '@medcore/types';
 
-const INITIAL_STATIONS: ICUStation[] = [
-  {
-    id: 'ICU-BED-01',
-    stationNumber: 'ICU Bay 1 (Isolation / Negative Pressure)',
-    patientName: 'Bassey Okon Udoh',
-    diagnosis: 'Severe Septic Shock & ARDS secondary to Perforated Viscus',
-    ventilatorMode: 'PRVC (Pressure Regulated Volume Control)',
-    peep: 12,
-    fio2: 65,
-    arterialPressure: '82/48 (MAP 59)',
-    gcsScore: 8,
-    sofaScore: 11,
-    nurseOnDuty: 'Nurse Aisha Bello (Charge Nurse)',
-    alertStatus: 'critical',
-  },
-  {
-    id: 'ICU-BED-02',
-    stationNumber: 'ICU Bay 2',
-    patientName: 'Edidiong Sunday Udosen',
-    diagnosis: 'Severe Traumatic Brain Injury (TBI) / Post-craniotomy',
-    ventilatorMode: 'SIMV + PS',
-    peep: 8,
-    fio2: 40,
-    arterialPressure: '128/76 (MAP 93)',
-    gcsScore: 7,
-    sofaScore: 8,
-    nurseOnDuty: 'Nurse E. Akpan',
-    alertStatus: 'warning',
-  },
-  {
-    id: 'ICU-BED-03',
-    stationNumber: 'ICU Bay 3',
-    patientName: 'Kufre Daniel Etim',
-    diagnosis: 'Post-op Massive Polytrauma / Ongoing blood product resuscitation',
-    ventilatorMode: 'CPAP / Pressure Support (Weaning)',
-    peep: 5,
-    fio2: 35,
-    arterialPressure: '115/72 (MAP 86)',
-    gcsScore: 14,
-    sofaScore: 4,
-    nurseOnDuty: 'Nurse C. Okon',
-    alertStatus: 'stable',
-  },
-  {
-    id: 'ICU-BED-04',
-    stationNumber: 'ICU Bay 4',
-    patientName: 'Comfort Aniefiok Ekanem',
-    diagnosis: 'Acute Kidney Injury on CKD / Hyperkalemic arrest post-ROSC',
-    ventilatorMode: 'AC / Volume Control',
-    peep: 10,
-    fio2: 50,
-    arterialPressure: '98/62 (MAP 74)',
-    gcsScore: 10,
-    sofaScore: 9,
-    nurseOnDuty: 'Nurse Aisha Bello',
-    alertStatus: 'warning',
-  },
-];
+const INITIAL_STATIONS: ICUStation[] = [];
 
 export const CriticalCareIcuSuite: React.FC = () => {
   const [stations, setStations] = useState<ICUStation[]>(INITIAL_STATIONS);
-  const [selectedId, setSelectedId] = useState<string>(INITIAL_STATIONS[0].id);
+  const [selectedId, setSelectedId] = useState<string>('');
 
   const selectedStation = stations.find(s => s.id === selectedId) || stations[0];
 

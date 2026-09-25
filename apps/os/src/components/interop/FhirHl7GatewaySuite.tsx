@@ -46,33 +46,11 @@ interface ApiTestResult {
 }
 
 // ── Static Data ────────────────────────────────────────────────────────────────
-const INITIAL_RESOURCES: FhirResourceHeader[] = [
-  { resourceType: 'Patient', id: 'fhir-pat-4421', fhirVersion: 'R4', lastUpdated: '2026-09-23T08:30:00Z', identifierSystem: 'http://ibomhealth.gov.ng/mrn', identifierValue: 'ISH-MRN-4421' },
-  { resourceType: 'Observation', id: 'fhir-obs-1142', fhirVersion: 'R4', lastUpdated: '2026-09-23T08:50:00Z', identifierSystem: 'http://loinc.org', identifierValue: '8867-4 (Heart Rate)' },
-  { resourceType: 'DiagnosticReport', id: 'diag-fbc-0923', fhirVersion: 'R4', lastUpdated: '2026-09-23T09:05:00Z', identifierSystem: 'http://loinc.org', identifierValue: '58410-2 (CBC Panel)' },
-  { resourceType: 'MedicationRequest', id: 'fhir-med-8801', fhirVersion: 'R4', lastUpdated: '2026-09-23T09:15:00Z', identifierSystem: 'http://www.nlm.nih.gov/research/umls/rxnorm', identifierValue: 'RxNorm-17767 (Amlodipine 5mg)' },
-  { resourceType: 'Claim', id: 'claim-aks-0891', fhirVersion: 'R4', lastUpdated: '2026-09-23T09:30:00Z', identifierSystem: 'http://ibomhealth.gov.ng/akshia', identifierValue: 'AKSHIA-CLM-2026-0891' },
-  { resourceType: 'Bundle (IPS)', id: 'ips-bundle-4421', fhirVersion: 'R4', lastUpdated: '2026-09-23T09:45:00Z', identifierSystem: 'http://hl7.org/fhir/uv/ips', identifierValue: 'IPS-Complete-Patient-Record' },
-];
+const INITIAL_RESOURCES: FhirResourceHeader[] = [];
 
-const INITIAL_GATEWAYS: GatewayStatus[] = [
-  { id: 'gw-synlab', name: 'Synlab Nigeria Reference Lab', category: 'Lab', url: 'https://lis.synlab.ng/fhir/r4', standard: 'FHIR R4 / LOINC', status: 'ONLINE', latency: 42, uptime: '99.94%', lastPing: 'Just now', color: '#38BDF8' },
-  { id: 'gw-lancet', name: 'Lancet Laboratories Lagos', category: 'Lab', url: 'https://gateway.lancet.ng/api/fhir', standard: 'FHIR R4 / LOINC', status: 'ONLINE', latency: 58, uptime: '99.87%', lastPing: 'Just now', color: '#38BDF8' },
-  { id: 'gw-medcore-lab', name: 'MedCore Central MOH Lab', category: 'Lab', url: 'http://localhost:4000/api/v1/fhir', standard: 'FHIR R4 (Internal)', status: 'ONLINE', latency: 16, uptime: '100%', lastPing: 'Just now', color: '#34D399' },
-  { id: 'gw-medplus', name: 'MedPlus Pharmacy Network', category: 'Pharmacy', url: 'https://rx.medplus.ng/script/fhir', standard: 'NCPDP SCRIPT / RxNorm', status: 'ONLINE', latency: 35, uptime: '99.92%', lastPing: '14s ago', color: '#A855F7' },
-  { id: 'gw-healthplus', name: 'HealthPlus Nigeria Switch', category: 'Pharmacy', url: 'https://api.healthplus.ng/fhir', standard: 'NCPDP SCRIPT / RxNorm', status: 'ONLINE', latency: 48, uptime: '99.78%', lastPing: '22s ago', color: '#A855F7' },
-  { id: 'gw-akshia', name: 'AKSHIA Clearinghouse', category: 'Billing', url: 'https://claims.akshia.gov.ng/fhir', standard: 'FHIR R4 Claim / ClaimResponse', status: 'ONLINE', latency: 27, uptime: '99.99%', lastPing: 'Just now', color: '#FBBF24' },
-  { id: 'gw-nhia', name: 'NHIA Federal Clearinghouse', category: 'Billing', url: 'https://api.nhia.gov.ng/fhir/v2', standard: 'FHIR R4 Claim / ClaimResponse', status: 'ONLINE', latency: 71, uptime: '99.85%', lastPing: '38s ago', color: '#FBBF24' },
-  { id: 'gw-nafdac', name: 'NAFDAC Drug Registry', category: 'Government', url: 'https://api.nafdac.gov.ng/fhir', standard: 'FHIR R4 / NDC Codes', status: 'DEGRADED', latency: 290, uptime: '97.12%', lastPing: '4m ago', color: '#EF4444' },
-];
+const INITIAL_GATEWAYS: GatewayStatus[] = [];
 
-const INITIAL_TXN_LOGS: TransactionLog[] = [
-  { id: 'txn-001', timestamp: '09:45:12', direction: 'OUTBOUND', resourceType: 'DiagnosticReport', method: 'POST', endpoint: '/api/v1/fhir/DiagnosticReport', statusCode: 201, duration: '44ms', peer: 'Synlab Nigeria', standard: 'LOINC 58410-2', summary: 'CBC Panel requisition dispatched to Synlab external LIS.' },
-  { id: 'txn-002', timestamp: '09:33:07', direction: 'INBOUND', resourceType: 'DiagnosticReport', method: 'POST', endpoint: '/api/v1/fhir/DiagnosticReport', statusCode: 201, duration: '52ms', peer: 'Synlab Nigeria', standard: 'LOINC 24362-6', summary: 'Verified Renal Panel ingested from Synlab. WebSocket broadcast fired.' },
-  { id: 'txn-003', timestamp: '09:22:44', direction: 'OUTBOUND', resourceType: 'MedicationRequest', method: 'POST', endpoint: '/api/v1/fhir/MedicationRequest', statusCode: 201, duration: '38ms', peer: 'MedPlus Pharmacy', standard: 'RxNorm 17767', summary: 'Amlodipine 5mg e-Rx dispatched via NCPDP SCRIPT / FHIR R4. ACK received.' },
-  { id: 'txn-004', timestamp: '09:11:29', direction: 'OUTBOUND', resourceType: 'Claim', method: 'POST', endpoint: '/api/v1/fhir/Claim', statusCode: 201, duration: '63ms', peer: 'AKSHIA Clearinghouse', standard: 'FHIR R4 Claim', summary: 'Claim adjudicated: 80% HMO benefit / 20% co-pay (AKSHIA Civil Service Plan).' },
-  { id: 'txn-005', timestamp: '08:58:03', direction: 'INBOUND', resourceType: 'Patient', method: 'GET', endpoint: '/api/v1/fhir/Patient/PAT-001', statusCode: 200, duration: '21ms', peer: 'NHIA Portal', standard: 'FHIR R4', summary: 'Patient demographic FHIR record read by NHIA verification agent.' },
-];
+const INITIAL_TXN_LOGS: TransactionLog[] = [];
 
 const PRESET_ENDPOINTS = [
   { label: 'GET Patient (FHIR R4)', method: 'GET' as const, endpoint: 'http://localhost:4000/api/v1/fhir/Patient/PAT-001', body: '' },

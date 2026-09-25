@@ -7,15 +7,7 @@ import {
 } from 'lucide-react';
 import type { FacilityTelemetry } from '@medcore/types';
 
-const INITIAL_UTILITIES: FacilityTelemetry = {
-  oxygenManifoldPsi: 58.4,
-  oxygenStatus: 'NORMAL',
-  backupGeneratorKw: 1250,
-  generatorFuelPercent: 88,
-  medicalVacuumBar: -0.82,
-  waterSupplyLiters: 145000,
-  hvacHepaPressurePa: 42,
-};
+const INITIAL_UTILITIES: FacilityTelemetry = {} as FacilityTelemetry;
 
 export const FacilitiesUtilitiesSuite: React.FC = () => {
   const [telemetry, setTelemetry] = useState<FacilityTelemetry>(INITIAL_UTILITIES);

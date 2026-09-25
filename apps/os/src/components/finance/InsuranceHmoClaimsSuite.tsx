@@ -7,12 +7,7 @@ import {
 } from 'lucide-react';
 import type { HmoInsuranceClaim } from '@medcore/types';
 
-const INITIAL_CLAIMS: HmoInsuranceClaim[] = [
-  { id: 'CLM-01', claimNumber: 'AKSHIA-CLM-2026-114', hmoProvider: 'AKSHIA (State Scheme)', patientNhiaId: 'AK/UYO/448102', amountNgn: 147600, submittedDate: '2026-09-15', status: 'paid' },
-  { id: 'CLM-02', claimNumber: 'HYG-CLM-2026-884', hmoProvider: 'Hygeia HMO', patientNhiaId: 'HYG/CORP/00914', amountNgn: 396000, submittedDate: '2026-09-16', status: 'preauthorized' },
-  { id: 'CLM-03', claimNumber: 'REL-CLM-2026-302', hmoProvider: 'Reliance HMO', patientNhiaId: 'REL/IND/77210', amountNgn: 192000, submittedDate: '2026-09-16', status: 'submitted' },
-  { id: 'CLM-04', claimNumber: 'AXA-CLM-2026-042', hmoProvider: 'AXA Mansard', patientNhiaId: 'AXA/PRV/11824', amountNgn: 256000, submittedDate: '2026-09-14', status: 'denied', denialReason: 'Pre-authorization code missing for MRI study.' },
-];
+const INITIAL_CLAIMS: HmoInsuranceClaim[] = [];
 
 export const InsuranceHmoClaimsSuite: React.FC = () => {
   const [claims, setClaims] = useState<HmoInsuranceClaim[]>(INITIAL_CLAIMS);

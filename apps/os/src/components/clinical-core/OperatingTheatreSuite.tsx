@@ -14,72 +14,11 @@ interface ExtendedSurgicalCase extends SurgicalCase {
   signOutDone?: boolean;
 }
 
-const INITIAL_CASES: ExtendedSurgicalCase[] = [
-  {
-    id: 'OR-2026-4401',
-    patientName: 'Kufre Daniel Etim',
-    theatreNumber: 'Theatre 1 (Main Surgical Suite)',
-    procedure: 'Open Reduction & Internal Fixation (ORIF) - Left Femur',
-    leadSurgeon: 'Dr. Emeka Adeyemi (Consultant Orthopaedic Surgeon)',
-    anesthetist: 'Dr. Patricia Umo (Consultant Anesthesiologist)',
-    scheduledTime: '08:30 - 11:00',
-    status: 'in_surgery',
-    whoChecklistCompleted: true,
-    bloodUnitsCrossmatched: 2,
-    signInDone: true,
-    timeOutDone: true,
-    signOutDone: false,
-  },
-  {
-    id: 'OR-2026-4402',
-    patientName: 'Blessing Effiong',
-    theatreNumber: 'Theatre 2 (Emergency Laparoscopy)',
-    procedure: 'Emergency Appendectomy (Laparoscopic)',
-    leadSurgeon: 'Dr. S. Okoro (General Surgery)',
-    anesthetist: 'Dr. M. Danladi',
-    scheduledTime: '10:00 - 11:30',
-    status: 'pre_op',
-    whoChecklistCompleted: false,
-    bloodUnitsCrossmatched: 1,
-    signInDone: true,
-    timeOutDone: false,
-    signOutDone: false,
-  },
-  {
-    id: 'OR-2026-4403',
-    patientName: 'Ekaette Nsikak Peters',
-    theatreNumber: 'Theatre 3 (Maternity Obstetric Suite)',
-    procedure: 'Elective Repeat Caesarean Section (ERCS) + Tubal Ligation',
-    leadSurgeon: 'Dr. Evelyn Vance (Senior Obstetrician)',
-    anesthetist: 'Dr. Patricia Umo',
-    scheduledTime: '11:45 - 13:15',
-    status: 'pre_op',
-    whoChecklistCompleted: false,
-    bloodUnitsCrossmatched: 2,
-    signInDone: false,
-    timeOutDone: false,
-    signOutDone: false,
-  },
-  {
-    id: 'OR-2026-4404',
-    patientName: 'Bassey Okon Udoh',
-    theatreNumber: 'Cath Lab / Interventional Suite',
-    procedure: 'Emergency Percutaneous Coronary Intervention (PCI)',
-    leadSurgeon: 'Dr. A. Bello (Interventional Cardiologist)',
-    anesthetist: 'Dr. K. Nwachukwu',
-    scheduledTime: '07:15 - 08:45',
-    status: 'pacu',
-    whoChecklistCompleted: true,
-    bloodUnitsCrossmatched: 0,
-    signInDone: true,
-    timeOutDone: true,
-    signOutDone: true,
-  },
-];
+const INITIAL_CASES: ExtendedSurgicalCase[] = [];
 
 export const OperatingTheatreSuite: React.FC = () => {
   const [cases, setCases] = useState<ExtendedSurgicalCase[]>(INITIAL_CASES);
-  const [selectedId, setSelectedId] = useState<string>(INITIAL_CASES[0].id);
+  const [selectedId, setSelectedId] = useState<string>('');
   const [notice, setNotice] = useState<string | null>(null);
 
   // New Surgery Modal State

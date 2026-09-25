@@ -8,68 +8,7 @@ import {
 } from 'lucide-react';
 import type { LabOrder } from '@medcore/types';
 
-const INITIAL_LAB_ORDERS: LabOrder[] = [
-  {
-    id: 'LAB-2026-5510',
-    patientId: 'PAT-AK-1029',
-    patientName: 'Edidiong Sunday Udosen',
-    testName: 'Full Blood Count (FBC + Diff)',
-    specimenType: 'Blood',
-    barcode: 'BC-889104',
-    status: 'critical',
-    orderedAt: '08:45',
-    result: 'Hb: 5.4 g/dL (CRITICAL LOW), WBC: 22.4k/µL, Plt: 88k',
-    referenceRange: 'Hb: 12.0–16.0 g/dL, WBC: 4.0–11.0k',
-    isPanicValue: true,
-  },
-  {
-    id: 'LAB-2026-5511',
-    patientId: 'PAT-AK-3392',
-    patientName: 'Comfort Aniefiok Ekanem',
-    testName: 'Serum Electrolytes, Urea & Creatinine (E/U/Cr)',
-    specimenType: 'Blood',
-    barcode: 'BC-889105',
-    status: 'analyzing',
-    orderedAt: '09:00',
-    result: 'Potassium: 6.2 mmol/L (HIGH), Creatinine: 2.1 mg/dL',
-    referenceRange: 'K+: 3.5–5.0 mmol/L, Cr: 0.6–1.2 mg/dL',
-    isPanicValue: true,
-  },
-  {
-    id: 'LAB-2026-5512',
-    patientId: 'PAT-AK-4421',
-    patientName: 'Idongesit Aniefiok Udo',
-    testName: 'Blood Culture & Sensitivity (Aerobic/Anaerobic)',
-    specimenType: 'Blood',
-    barcode: 'BC-889106',
-    status: 'analyzing',
-    orderedAt: '09:10',
-    result: 'Bactec Automated Incubator: Flagged Positive at 4.2 hrs',
-    referenceRange: 'Negative at 7 days',
-  },
-  {
-    id: 'LAB-2026-5513',
-    patientId: 'PAT-AK-8874',
-    patientName: 'Nsikak Monday Inyang',
-    testName: 'Urinalysis (Microscopy & Culture)',
-    specimenType: 'Urine',
-    barcode: 'BC-889107',
-    status: 'completed',
-    orderedAt: '08:15',
-    result: 'Protein 1+, Leucocyte esterase ++, Nitrites Positive',
-    referenceRange: 'Normal dipstick negative',
-  },
-  {
-    id: 'LAB-2026-5514',
-    patientId: 'PAT-AK-9921',
-    patientName: 'Iniobong Victor',
-    testName: 'Coagulation Profile (PT / INR / aPTT)',
-    specimenType: 'Blood',
-    barcode: 'BC-889108',
-    status: 'ordered',
-    orderedAt: '09:35',
-  },
-];
+const INITIAL_LAB_ORDERS: LabOrder[] = [];
 
 const ANALYZER_FEEDS = [
   { name: 'Sysmex XN-1000 (Automated Hematology)', status: 'ONLINE', sampleThroughput: '100 tests/hr', lastCalibrated: 'Today 06:00' },
@@ -80,7 +19,7 @@ const ANALYZER_FEEDS = [
 
 export const LaboratorySuite: React.FC = () => {
   const [orders, setOrders] = useState<LabOrder[]>(INITIAL_LAB_ORDERS);
-  const [selectedId, setSelectedId] = useState<string>(INITIAL_LAB_ORDERS[0].id);
+  const [selectedId, setSelectedId] = useState<string>('');
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
 

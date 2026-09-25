@@ -13,7 +13,7 @@ interface RadiologyPacsManagerProps {
 
 export const RadiologyPacsManager: React.FC<RadiologyPacsManagerProps> = ({ onNavigate }) => {
   const [studies, setStudies] = useState<RadiologyStudy[]>(INITIAL_RADIOLOGY);
-  const [selectedStudyId, setSelectedStudyId] = useState<string>(INITIAL_RADIOLOGY[0].id);
+  const [selectedStudyId, setSelectedStudyId] = useState<string>('');
   const [zoom, setZoom] = useState(1);
   const [invert, setInvert] = useState(false);
   const [contrast, setContrast] = useState(100);

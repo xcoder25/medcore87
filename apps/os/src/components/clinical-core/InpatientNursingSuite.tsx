@@ -7,13 +7,7 @@ import {
 } from 'lucide-react';
 import type { NursingCareItem } from '@medcore/types';
 
-const INITIAL_NURSING_ITEMS: NursingCareItem[] = [
-  { id: 'NUR-01', bedNumber: 'Surg Bed 12', patientName: 'Kufre Daniel Etim', careActivity: 'Wound Dressing & Drain Output Measurement', frequency: 'Q8H', nextScheduledTime: '10:00', status: 'pending', assignedNurse: 'Nurse Aisha Bello' },
-  { id: 'NUR-02', bedNumber: 'Med Bed 04', patientName: 'Idongesit Aniefiok Udo', careActivity: 'IV Ceftriaxone 2g Administration (MAR Check)', frequency: 'OD', nextScheduledTime: '09:30', status: 'completed', assignedNurse: 'Nurse E. Akpan' },
-  { id: 'NUR-03', bedNumber: 'ICU Bed 01', patientName: 'Bassey Okon Udoh', careActivity: 'Endotracheal Suctioning & Repositioning', frequency: 'Q2H', nextScheduledTime: '10:15', status: 'pending', assignedNurse: 'Nurse Aisha Bello' },
-  { id: 'NUR-04', bedNumber: 'Maternity Bed 02', patientName: 'Ekaette Nsikak Peters', careActivity: 'Post-CS Lochia & Uterine Tone Assessment', frequency: 'Q4H', nextScheduledTime: '08:00', status: 'overdue', assignedNurse: 'Midwife Inemesit Udoh' },
-  { id: 'NUR-05', bedNumber: 'Paed Bed 07', patientName: 'Miss Emediong Bassey', careActivity: 'Blood Glucose Monitoring & IV Artesunate Dose 2', frequency: 'Q12H', nextScheduledTime: '11:00', status: 'pending', assignedNurse: 'Nurse C. Okon' },
-];
+const INITIAL_NURSING_ITEMS: NursingCareItem[] = [];
 
 export const InpatientNursingSuite: React.FC = () => {
   const [items, setItems] = useState<NursingCareItem[]>(INITIAL_NURSING_ITEMS);

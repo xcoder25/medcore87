@@ -15,28 +15,7 @@ interface ChatMessage {
   category?: 'clinical' | 'operational' | 'financial';
 }
 
-const INITIAL_MESSAGES: ChatMessage[] = [
-  {
-    id: 'msg-1',
-    sender: 'm87',
-    text: 'Greetings Doctor. I am the M87 Clinical & Hospital Operations Intelligence Core. I am continuously monitoring patient vitals, bed capacity, pharmacy formulary, and hospital revenue. How can I assist you with clinical decision support or hospital telemetry?',
-    timestamp: '09:00',
-    category: 'clinical',
-  },
-  {
-    id: 'msg-2',
-    sender: 'user',
-    text: 'Provide risk assessment and antibiotic recommendation for patient in Bed 7 with rising lactate.',
-    timestamp: '09:02',
-  },
-  {
-    id: 'msg-3',
-    sender: 'm87',
-    text: 'Patient Bassey Okon Udoh (ICU Bed 1): Lactate has risen from 1.8 to 2.8 mmol/L in 4 hours, accompanied by HR 124 bpm and WBC 22.4k/�L. This satisfies Sepsis-3 criteria (SOFA score: 11). RECOMMENDATION: Initiate Sepsis Bundle immediately. Administer IV Piperacillin/Tazobactam 4.5g + IV Vancomycin 1g loading dose post blood cultures. Fluid resuscitate with 30 mL/kg balanced crystalloids.',
-    timestamp: '09:02',
-    category: 'clinical',
-  },
-];
+const INITIAL_MESSAGES: ChatMessage[] = [];
 
 export const M87AICopilotSuite: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);

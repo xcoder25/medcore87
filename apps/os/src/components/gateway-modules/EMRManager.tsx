@@ -125,7 +125,7 @@ const MOCK_PACS_STUDIES: Record<string, PacsRecord[]> = {
 
 export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavigate }) => {
   const [patients] = useState<HospitalPatient[]>(INITIAL_PATIENTS);
-  const [selectedPatientId, setSelectedPatientId] = useState<string>(initialPatientId || INITIAL_PATIENTS[0].id);
+  const [selectedPatientId, setSelectedPatientId] = useState<string>(initialPatientId || INITIAL_PATIENTS[0]?.id || '');
   const [activeTab, setActiveTab] = useState<'notes' | 'vitals' | 'labs' | 'meds' | 'imaging' | 'timeline' | 'interop'>('notes');
   const [patientSearch, setPatientSearch] = useState('');
   const [patientFilter, setPatientFilter] = useState<'all' | 'inpatient' | 'critical' | 'outpatient'>('all');

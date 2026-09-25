@@ -7,68 +7,7 @@ import {
 } from 'lucide-react';
 import type { EmergencyTriagePatient } from '@medcore/types';
 
-const INITIAL_PATIENTS: EmergencyTriagePatient[] = [
-  {
-    id: 'ER-2026-101',
-    patientName: 'Bassey Okon Udoh',
-    age: 44,
-    gender: 'M',
-    esiLevel: 1,
-    chiefComplaint: 'Acute Myocardial Infarction / Severe substernal chest pain & diaphoresis',
-    vitals: { bp: '85/55', pulse: 128, spo2: 89, temp: 36.4, rr: 28 },
-    arrivalTime: '08:42',
-    bayAssigned: 'Resuscitation Bay 1',
-    status: 'resuscitation',
-  },
-  {
-    id: 'ER-2026-102',
-    patientName: 'Grace Emmanuel Akpan',
-    age: 28,
-    gender: 'F',
-    esiLevel: 2,
-    chiefComplaint: 'Major polytrauma from vehicular collision / bilateral femur deformity',
-    vitals: { bp: '100/65', pulse: 110, spo2: 95, temp: 37.1, rr: 22 },
-    arrivalTime: '08:55',
-    bayAssigned: 'Trauma Bay 2',
-    status: 'trauma_bay',
-  },
-  {
-    id: 'ER-2026-103',
-    patientName: 'Anietie Joseph Bassey',
-    age: 62,
-    gender: 'M',
-    esiLevel: 3,
-    chiefComplaint: 'Acute asthmatic exacerbation / Wheezing unresponsive to salbutamol',
-    vitals: { bp: '135/88', pulse: 98, spo2: 92, temp: 37.4, rr: 24 },
-    arrivalTime: '09:05',
-    bayAssigned: 'Acute Bay 4',
-    status: 'awaiting_bed',
-  },
-  {
-    id: 'ER-2026-104',
-    patientName: 'Blessing Effiong',
-    age: 5,
-    gender: 'F',
-    esiLevel: 2,
-    chiefComplaint: 'Febrile convulsion / Temperature 39.8�C with post-ictal drowsiness',
-    vitals: { bp: '95/60', pulse: 142, spo2: 96, temp: 39.8, rr: 32 },
-    arrivalTime: '09:12',
-    bayAssigned: 'Paediatric Resus',
-    status: 'resuscitation',
-  },
-  {
-    id: 'ER-2026-105',
-    patientName: 'Kufre Daniel Etim',
-    age: 33,
-    gender: 'M',
-    esiLevel: 4,
-    chiefComplaint: 'Deep forearm laceration with active bleeding (pressure dressing applied)',
-    vitals: { bp: '122/78', pulse: 76, spo2: 99, temp: 36.8, rr: 16 },
-    arrivalTime: '09:20',
-    bayAssigned: 'Minor Treatment 1',
-    status: 'triage',
-  },
-];
+const INITIAL_PATIENTS: EmergencyTriagePatient[] = [];
 
 const ESI_BADGE: Record<number, { label: string; color: string; bg: string }> = {
   1: { label: 'ESI 1: IMMEDIATE / RESUS', color: '#EF4444', bg: 'rgba(239,68,68,0.15)' },
@@ -80,7 +19,7 @@ const ESI_BADGE: Record<number, { label: string; color: string; bg: string }> = 
 
 export const EmergencyTriageSuite: React.FC = () => {
   const [patients, setPatients] = useState<EmergencyTriagePatient[]>(INITIAL_PATIENTS);
-  const [selectedId, setSelectedId] = useState<string>(INITIAL_PATIENTS[0].id);
+  const [selectedId, setSelectedId] = useState<string>('');
   const [search, setSearch] = useState('');
   const [esiFilter, setEsiFilter] = useState<number | 'ALL'>('ALL');
 

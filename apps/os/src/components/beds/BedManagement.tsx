@@ -15,47 +15,8 @@ interface Bed {
   diagnosis?: string;
 }
 
-const generateBeds = (): Bed[] => {
-  const wards = [
-    { name: 'Male Medical', prefix: 'MMW', count: 12 },
-    { name: 'Female Medical', prefix: 'FMW', count: 12 },
-    { name: 'Surgical', prefix: 'SRG', count: 10 },
-    { name: 'Paediatric', prefix: 'PED', count: 10 },
-    { name: 'O&G', prefix: 'OBG', count: 10 },
-    { name: 'ICU', prefix: 'ICU', count: 8 },
-  ];
-
-  const patients = [
-    ['Emeka Nwosu', 'Dr. Okafor', 'Typhoid Fever', '12 Sep'],
-    ['Nneka Obi', 'Dr. Bassey', 'Hypertension + DM2', '13 Sep'],
-    ['Akpan Sunday', 'Dr. Ekpo', 'Peptic Ulcer Disease', '14 Sep'],
-    ['Grace Udoh', 'Dr. Nwachukwu', 'Pre-Eclampsia', '15 Sep'],
-    ['James Effiong', 'Dr. Okafor', 'Malaria + Anaemia', '10 Sep'],
-    ['Blessing Ime', 'Dr. Bassey', 'Sickle Cell Crisis', '11 Sep'],
-  ];
-
-  const statuses: BedStatus[] = ['occupied', 'occupied', 'occupied', 'available', 'occupied', 'maintenance', 'occupied', 'occupied', 'available', 'isolation'];
-  const beds: Bed[] = [];
-
-  wards.forEach(ward => {
-    for (let i = 1; i <= ward.count; i++) {
-      const statusIdx = (i - 1) % statuses.length;
-      const status = statuses[statusIdx];
-      const patIdx = (i - 1) % patients.length;
-      beds.push({
-        id: `${ward.prefix}-${String(i).padStart(2, '0')}`,
-        ward: ward.name,
-        bedNo: `${ward.prefix}-${String(i).padStart(2, '0')}`,
-        status,
-        patient: status === 'occupied' ? patients[patIdx][0] : undefined,
-        doctor: status === 'occupied' ? patients[patIdx][1] : undefined,
-        diagnosis: status === 'occupied' ? patients[patIdx][2] : undefined,
-        admitDate: status === 'occupied' ? patients[patIdx][3] : undefined,
-      });
-    }
-  });
-  return beds;
-};
+/** Start with empty board — admit patients to fill beds */
+const generateBeds = (): Bed[] => [];
 
 const BED_STATUS_META: Record<BedStatus, { label: string; color: string; icon: React.ReactNode }> = {
   occupied: { label: 'Occupied', color: '#EA580C', icon: <BedDouble size={14} /> },

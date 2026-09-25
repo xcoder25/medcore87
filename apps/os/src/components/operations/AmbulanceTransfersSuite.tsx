@@ -7,46 +7,7 @@ import {
 } from 'lucide-react';
 import type { AmbulanceUnit } from '@medcore/types';
 
-const INITIAL_FLEET: AmbulanceUnit[] = [
-  {
-    id: 'AMB-01',
-    callSign: 'Ibom Medic 1 (ALS)',
-    vehicleType: 'Type C Advanced Life Support',
-    status: 'patient_onboard',
-    crew: ['Paramedic Bassey', 'EMT Okon', 'Dr. Inyang'],
-    currentLocation: 'Oron Road Flyover, Uyo',
-    etaMinutes: 6,
-    destination: 'Ibom Specialist Hospital (A&E Bay 1)',
-  },
-  {
-    id: 'AMB-02',
-    callSign: 'Ibom Medic 2 (BLS)',
-    vehicleType: 'Type B Basic Life Support',
-    status: 'en_route_scene',
-    crew: ['EMT Uwem', 'Driver Daniel'],
-    currentLocation: 'Ikot Ekpene Road, Plaza junction',
-    etaMinutes: 11,
-    destination: 'Accident Scene (Mbiabong)',
-  },
-  {
-    id: 'AMB-03',
-    callSign: 'Ibom Neo-Trans (NICU)',
-    vehicleType: 'Neonatal Transport',
-    status: 'available',
-    crew: ['Neonatal Nurse Aisha', 'EMT Udoh'],
-    currentLocation: 'Hospital Ambulance Bay',
-    destination: 'Standby for Inter-Facility Transfer',
-  },
-  {
-    id: 'AMB-04',
-    callSign: 'Ibom Medic 4 (ALS)',
-    vehicleType: 'Type C Advanced Life Support',
-    status: 'available',
-    crew: ['Paramedic Edet', 'Driver Nsikak'],
-    currentLocation: 'Hospital Ambulance Bay',
-    destination: 'Ready for Dispatch',
-  },
-];
+const INITIAL_FLEET: AmbulanceUnit[] = [];
 
 export const AmbulanceTransfersSuite: React.FC = () => {
   const [fleet, setFleet] = useState<AmbulanceUnit[]>(INITIAL_FLEET);

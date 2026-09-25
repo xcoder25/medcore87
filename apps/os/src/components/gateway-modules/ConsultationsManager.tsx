@@ -24,7 +24,7 @@ interface PrescriptionEntry {
 
 export const ConsultationsManager: React.FC<ConsultationsManagerProps> = ({ initialPatientId, onNavigate }) => {
   const [patients] = useState<HospitalPatient[]>(INITIAL_PATIENTS);
-  const [selectedPatientId, setSelectedPatientId] = useState<string>(initialPatientId || INITIAL_PATIENTS[0].id);
+  const [selectedPatientId, setSelectedPatientId] = useState<string>(initialPatientId || INITIAL_PATIENTS[0]?.id || '');
   const [patientSearch, setPatientSearch] = useState('');
   const [noteType, setNoteType] = useState('SOAP Note');
   const [soapTab, setSoapTab] = useState<'s' | 'o' | 'a' | 'p'>('s');

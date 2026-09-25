@@ -7,17 +7,9 @@ import {
 } from 'lucide-react';
 import type { PaediatricPatient, NicuIncubator } from '@medcore/types';
 
-const INITIAL_PAEDS: PaediatricPatient[] = [
-  { id: 'PAED-01', patientName: 'Master Kufre Inyang', ageMonths: 14, weightKg: 9.2, heightCm: 76, diagnosis: 'Severe Pneumonia + SAM (Severe Acute Malnutrition)', immunizationStatus: 'up_to_date', wardBed: 'Paed Bed 4' },
-  { id: 'PAED-02', patientName: 'Miss Emediong Bassey', ageMonths: 36, weightKg: 13.5, heightCm: 94, diagnosis: 'Complicated Plasmodium Falciparum Malaria (Cerebral)', immunizationStatus: 'up_to_date', wardBed: 'Paed Bed 7' },
-  { id: 'PAED-03', patientName: 'Master Utibe Joseph', ageMonths: 8, weightKg: 7.1, heightCm: 68, diagnosis: 'Acute Watery Diarrhoea with Moderate Dehydration (Plan B)', immunizationStatus: 'delayed', wardBed: 'Paed Bed 9' },
-];
+const INITIAL_PAEDS: PaediatricPatient[] = [];
 
-const INITIAL_NICU: NicuIncubator[] = [
-  { id: 'NICU-01', unitNumber: 'Incubator Alpha (Isolette C2000)', babyName: 'Baby of Ekaette Peters', gestationalWeeks: 31, birthWeightGrams: 1420, tempCelsius: 36.8, phototherapyActive: true, oxygenLpm: 0.5, apgar10Min: 8 },
-  { id: 'NICU-02', unitNumber: 'Incubator Beta', babyName: 'Baby of Blessing Effiong', gestationalWeeks: 34, birthWeightGrams: 1850, tempCelsius: 36.9, phototherapyActive: false, oxygenLpm: 0.25, apgar10Min: 9 },
-  { id: 'NICU-03', unitNumber: 'Resuscitaire Radiant Warmer', babyName: 'Baby of Grace Emmanuel', gestationalWeeks: 28, birthWeightGrams: 980, tempCelsius: 36.5, phototherapyActive: true, oxygenLpm: 1.0, apgar10Min: 6 },
-];
+const INITIAL_NICU: NicuIncubator[] = [];
 
 export const PaediatricsNicuSuite: React.FC = () => {
   const [activeView, setActiveView] = useState<'paeds' | 'nicu'>('nicu');

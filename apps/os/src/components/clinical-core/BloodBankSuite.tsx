@@ -7,16 +7,7 @@ import {
 } from 'lucide-react';
 import type { BloodStockUnit } from '@medcore/types';
 
-const INITIAL_BLOOD_STOCK: BloodStockUnit[] = [
-  { id: 'BLD-01', bloodGroup: 'O-', component: 'Packed RBC', unitsAvailable: 3, criticalThreshold: 6, nearestExpiry: '2026-10-12', testingStatus: 'cleared_hiv_hep_syphilis' },
-  { id: 'BLD-02', bloodGroup: 'O+', component: 'Packed RBC', unitsAvailable: 24, criticalThreshold: 15, nearestExpiry: '2026-10-25', testingStatus: 'cleared_hiv_hep_syphilis' },
-  { id: 'BLD-03', bloodGroup: 'A+', component: 'Packed RBC', unitsAvailable: 16, criticalThreshold: 10, nearestExpiry: '2026-10-18', testingStatus: 'cleared_hiv_hep_syphilis' },
-  { id: 'BLD-04', bloodGroup: 'A-', component: 'Packed RBC', unitsAvailable: 2, criticalThreshold: 4, nearestExpiry: '2026-10-09', testingStatus: 'cleared_hiv_hep_syphilis' },
-  { id: 'BLD-05', bloodGroup: 'B+', component: 'Packed RBC', unitsAvailable: 14, criticalThreshold: 8, nearestExpiry: '2026-10-22', testingStatus: 'cleared_hiv_hep_syphilis' },
-  { id: 'BLD-06', bloodGroup: 'B-', component: 'Packed RBC', unitsAvailable: 1, criticalThreshold: 4, nearestExpiry: '2026-10-05', testingStatus: 'cleared_hiv_hep_syphilis' },
-  { id: 'BLD-07', bloodGroup: 'AB+', component: 'Fresh Frozen Plasma', unitsAvailable: 18, criticalThreshold: 8, nearestExpiry: '2026-12-31', testingStatus: 'cleared_hiv_hep_syphilis' },
-  { id: 'BLD-08', bloodGroup: 'O+', component: 'Platelets', unitsAvailable: 8, criticalThreshold: 5, nearestExpiry: '2026-09-22', testingStatus: 'cleared_hiv_hep_syphilis' },
-];
+const INITIAL_BLOOD_STOCK: BloodStockUnit[] = [];
 
 export const BloodBankSuite: React.FC = () => {
   const [stock, setStock] = useState<BloodStockUnit[]>(INITIAL_BLOOD_STOCK);

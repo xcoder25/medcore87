@@ -98,14 +98,7 @@ const APPOINTMENTS: Appointment[] = [
   { id: 'A-08', patientName: 'Bello Usman', patientId: 'MRN-004020', time: '14:45', type: 'Referral Follow-Up', status: 'scheduled' },
 ];
 
-const INITIAL_TASKS: Task[] = [
-  { id: 'T-01', title: 'Review Echo report for Emeka Eze (ICU-03)', patient: 'MRN-005103', priority: 'urgent', due: 'Now', done: false, type: 'review' },
-  { id: 'T-02', title: 'Sign discharge summary � Grace Afolabi', patient: 'MRN-007284', priority: 'high', due: '11:00', done: false, type: 'admin' },
-  { id: 'T-03', title: 'Order physio for Ibrahim Salisu (Post-Op)', patient: 'MRN-002931', priority: 'normal', due: '12:00', done: false, type: 'clinical' },
-  { id: 'T-04', title: 'Respond to nurse query � Adaobi Nwosu BGL management', patient: 'MRN-004821', priority: 'high', due: '10:30', done: false, type: 'clinical' },
-  { id: 'T-05', title: 'Complete M&M review form (Case #4812)', priority: 'normal', due: 'End of day', done: false, type: 'admin' },
-  { id: 'T-06', title: 'Fatima Al-Hassan � await USS, write treatment plan', patient: 'MRN-003990', priority: 'high', due: '14:00', done: false, type: 'review' },
-];
+const INITIAL_TASKS: Task[] = [];
 
 // -- Shared UI Primitives -------------------------------------------------------
 

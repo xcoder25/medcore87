@@ -7,12 +7,7 @@ import {
 } from 'lucide-react';
 import type { SafetyIncidentReport } from '@medcore/types';
 
-const INITIAL_INCIDENTS: SafetyIncidentReport[] = [
-  { id: 'INC-2026-014', incidentType: 'Needlestick', department: 'Accident & Emergency (Triage)', severity: 'Moderate', reportedAt: 'Today 07:15', reporterRole: 'Nurse Intern', status: 'containment_active' },
-  { id: 'INC-2026-015', incidentType: 'Chemical Spill', department: 'Central Pathology Laboratory', severity: 'Minor', reportedAt: 'Yesterday 16:40', reporterRole: 'Lab Scientist', status: 'resolved' },
-  { id: 'INC-2026-016', incidentType: 'Patient Fall', department: 'Geriatric / Female Medical Ward', severity: 'Minor', reportedAt: 'Yesterday 21:10', reporterRole: 'Staff Nurse', status: 'resolved' },
-  { id: 'INC-2026-017', incidentType: 'Equipment Failure', department: 'Operating Theatre 1', severity: 'Near Miss', reportedAt: 'Today 08:05', reporterRole: 'Scrub Nurse', status: 'open_investigation' },
-];
+const INITIAL_INCIDENTS: SafetyIncidentReport[] = [];
 
 export const EnvironmentalSafetySuite: React.FC = () => {
   const [incidents, setIncidents] = useState<SafetyIncidentReport[]>(INITIAL_INCIDENTS);

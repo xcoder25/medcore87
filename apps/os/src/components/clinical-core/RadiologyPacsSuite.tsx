@@ -8,58 +8,11 @@ import {
 } from 'lucide-react';
 import type { RadiologyStudy } from '@medcore/types';
 
-const INITIAL_STUDIES: RadiologyStudy[] = [
-  {
-    id: 'RAD-2026-091',
-    patientId: 'PAT-AK-4421',
-    patientName: 'Idongesit Aniefiok Udo',
-    modality: 'XR',
-    bodyPart: 'Chest PA View',
-    reason: 'Fever, cough & suspected right lower lobe consolidation',
-    status: 'reported',
-    orderedAt: 'Today 08:30',
-    radiologist: 'Dr. Bassey Ntuen (Consultant Radiologist)',
-    findings: 'Right lower lobe airspace opacity consistent with community-acquired pneumonia. Costophrenic angles sharp. Heart size within normal limits.',
-  },
-  {
-    id: 'RAD-2026-092',
-    patientId: 'PAT-AK-1029',
-    patientName: 'Edidiong Sunday Udosen',
-    modality: 'CT',
-    bodyPart: 'Brain (Non-contrast)',
-    reason: 'Sudden onset left-sided hemiparesis & facial droop',
-    status: 'acquired',
-    orderedAt: 'Today 09:10',
-    radiologist: 'Pending Radiologist Reading',
-    findings: 'Preliminary AI Detection: Hypodensity noted in right middle cerebral artery (MCA) territory. No acute intracranial hemorrhage.',
-  },
-  {
-    id: 'RAD-2026-093',
-    patientId: 'PAT-AK-3109',
-    patientName: 'Ekaette Nsikak Peters',
-    modality: 'US',
-    bodyPart: 'Obstetric 3rd Trimester',
-    reason: '34 weeks gestation / Routine fetal biometry & placental localization',
-    status: 'reported',
-    orderedAt: 'Today 07:50',
-    radiologist: 'Dr. Emem Akpan (Sonologist)',
-    findings: 'Single live intrauterine fetus in cephalic presentation. Estimated fetal weight 2.4kg. Placenta posterior, high-lying. Amniotic fluid index normal.',
-  },
-  {
-    id: 'RAD-2026-094',
-    patientId: 'PAT-AK-7721',
-    patientName: 'Aniefiok Ekong',
-    modality: 'XR',
-    bodyPart: 'Left Femur AP & Lateral',
-    reason: 'Post-reduction orthopedic trauma assessment',
-    status: 'scheduled',
-    orderedAt: 'Today 09:40',
-  },
-];
+const INITIAL_STUDIES: RadiologyStudy[] = [];
 
 export const RadiologyPacsSuite: React.FC = () => {
   const [studies, setStudies] = useState<RadiologyStudy[]>(INITIAL_STUDIES);
-  const [selectedId, setSelectedId] = useState<string>(INITIAL_STUDIES[0].id);
+  const [selectedId, setSelectedId] = useState<string>('');
   const [zoomLevel, setZoomLevel] = useState(100);
   const [windowPreset, setWindowPreset] = useState<'lung' | 'bone' | 'soft_tissue'>('lung');
   const [search, setSearch] = useState('');
