@@ -1,4 +1,5 @@
 'use client';
+import { pushActivity, setOpenPositions, getOpenPositions } from '../../lib/adminRealtimeStore';
 
 /**
  * Staff enrolment — creates auth identity + issues Staff ID card in one step.

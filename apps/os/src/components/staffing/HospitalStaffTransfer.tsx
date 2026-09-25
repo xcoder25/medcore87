@@ -1,4 +1,5 @@
 'use client';
+import { pushActivity } from '../../lib/adminRealtimeStore';
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -229,6 +230,7 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
     setTransfers(updatedTransfers);
     setStaff(updatedStaff);
     persistData(updatedStaff, updatedTransfers);
+    pushActivity(`Transfer approved: ${targetTransfer.staffName}`);
     showToast(`Transfer ${transferId} approved — ${targetTransfer.staffName} is now assigned to ${targetTransfer.toHospitalName}. Staff can now sign in.`);
   };
 

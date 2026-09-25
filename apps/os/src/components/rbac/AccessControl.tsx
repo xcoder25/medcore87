@@ -1,5 +1,13 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  getAccessRecords,
+  approveAccess,
+  suspendAccess,
+  reactivateAccess,
+  subscribeAdminSync,
+  type AccessRecord,
+} from '../../lib/adminRealtimeStore';
 import { Shield, Plus, Search, Eye, Edit2, CheckCircle2, XCircle, Lock } from 'lucide-react';
 
 interface StaffAccess {
@@ -13,7 +21,7 @@ interface StaffAccess {
   permissions: string[];
 }
 
-const STAFF_ACCESS: StaffAccess[] = [
+const SEED_STAFF_ACCESS: StaffAccess[] = [
   {
     id: 'ISH-EXEC-001', name: 'Dr. Evelyn Vance', role: 'Medical Director', department: 'Hospital Administration',
     clearance: 5, status: 'active', lastLogin: '16 Sep 2026 09:02',
@@ -66,10 +74,19 @@ const STATUS_META = {
 };
 
 export const AccessControl: React.FC = () => {
+  const [records, setRecords] = useState<AccessRecord[]>([]);
+  const reload = useCallback(() => {
+    setRecords(getAccessRecords() as AccessRecord[]);
+  }, []);
+  useEffect(() => {
+    reload();
+    return subscribeAdminSync(reload);
+  }, [reload]);
+
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<StaffAccess | null>(null);
 
-  const filtered = STAFF_ACCESS.filter(s =>
+  const filtered = records.filter(s =>
     !search ||
     s.name.toLowerCase().includes(search.toLowerCase()) ||
     s.role.toLowerCase().includes(search.toLowerCase()) ||
@@ -93,23 +110,23 @@ export const AccessControl: React.FC = () => {
       <div className="os-metrics-ribbon">
         <div className="metric-box alert-green">
           <span className="metric-label"><CheckCircle2 size={13} style={{ display: 'inline', marginRight: 4 }} />Active accounts</span>
-          <span className="metric-val">{STAFF_ACCESS.filter(s => s.status === 'active').length}</span>
+          <span className="metric-val">{records.filter(s => s.status === 'active').length}</span>
           <span className="metric-sub">Across all departments</span>
         </div>
         <div className="metric-box alert-red">
           <span className="metric-label"><XCircle size={13} style={{ display: 'inline', marginRight: 4 }} />Suspended</span>
-          <span className="metric-val">{STAFF_ACCESS.filter(s => s.status === 'suspended').length}</span>
+          <span className="metric-val">{records.filter(s => s.status === 'suspended').length}</span>
           <span className="metric-sub">Pending review</span>
         </div>
         <div className="metric-box alert-yellow">
           <span className="metric-label">Pending activation</span>
-          <span className="metric-val">{STAFF_ACCESS.filter(s => s.status === 'pending').length}</span>
+          <span className="metric-val">{records.filter(s => s.status === 'pending').length}</span>
           <span className="metric-sub">Awaiting admin approval</span>
         </div>
         <div className="metric-box">
           <span className="metric-label"><Lock size={13} style={{ display: 'inline', marginRight: 4 }} />Permissions granted</span>
           <span className="metric-val">{STAFF_ACCESS.flatMap(s => s.permissions).length}</span>
-          <span className="metric-sub">Across {STAFF_ACCESS.length} staff</span>
+          <span className="metric-sub">Across {records.length} staff</span>
         </div>
       </div>
 
@@ -283,11 +300,18 @@ export const AccessControl: React.FC = () => {
                   Edit permissions
                 </button>
                 {selected.status === 'active' ? (
-                  <button type="button" className="os-ghost-btn" style={{ flex: 1, fontSize: '0.78rem', color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)' }}>
+                  <button type="button" className="os-ghost-btn" style={{ flex: 1, fontSize: '0.78rem', color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)' }}
+                    onClick={() => { suspendAccess(selected.id); setSelected(null); reload(); }}>
                     Suspend
                   </button>
+                ) : selected.status === 'pending' ? (
+                  <button type="button" className="os-ghost-btn" style={{ flex: 1, fontSize: '0.78rem', color: '#16A34A', borderColor: 'rgba(22,163,74,0.3)' }}
+                    onClick={() => { approveAccess(selected.id); setSelected(null); reload(); }}>
+                    Approve access
+                  </button>
                 ) : (
-                  <button type="button" className="os-ghost-btn" style={{ flex: 1, fontSize: '0.78rem', color: '#16A34A', borderColor: 'rgba(22,163,74,0.3)' }}>
+                  <button type="button" className="os-ghost-btn" style={{ flex: 1, fontSize: '0.78rem', color: '#16A34A', borderColor: 'rgba(22,163,74,0.3)' }}
+                    onClick={() => { reactivateAccess(selected.id); setSelected(null); reload(); }}>
                     Activate
                   </button>
                 )}

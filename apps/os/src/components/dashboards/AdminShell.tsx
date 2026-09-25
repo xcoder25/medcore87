@@ -22,6 +22,8 @@ import { AccessControl } from '../rbac/AccessControl';
 import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
 import { CashierRevenue } from '../cashier/CashierRevenue';
 import { StaffEnrolment } from '../staffing/StaffEnrolment';
+import { NotificationBell } from '../realtime/NotificationBell';
+import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 
 type AdminModule =
   | 'dashboard'
@@ -104,6 +106,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [clock, setClock] = useState(formatNow);
   const [search, setSearch] = useState('');
+  const { connected } = useRealtimeEvents({ app: 'MEDCORE_OS_ADMIN', facilityId: session.hospitalId });
 
   useEffect(() => {
     const id = setInterval(() => setClock(formatNow()), 1000);
@@ -221,7 +224,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             </div>
             <div className="admin-shell-online">
               <span className="dot" />
-              Online
+              {connected ? 'Live' : 'Online'}
             </div>
             <div className="admin-shell-clock">{clock}</div>
           </div>
@@ -237,10 +240,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
               />
               <kbd>⌘K</kbd>
             </div>
-            <button type="button" className="admin-shell-icon-btn" aria-label="Notifications">
-              <Bell size={16} />
-              <span className="badge">3</span>
-            </button>
+            <NotificationBell app="MEDCORE_OS_ADMIN" facilityId={session.facility} />
             <div className="admin-shell-profile">
               <div className="admin-shell-avatar sm">{initials}</div>
               <span>Admin</span>
