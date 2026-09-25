@@ -86,7 +86,7 @@ export type ModuleKey =
   // Pillar 6: Connected IoT
   | 'iot-devices'
   // Pillar 7: Security & Governance
-  | 'auth' | 'facility' | 'rbac' | 'compliance' | 'safety' | 'sysadmin' | 'transfer';
+  | 'auth' | 'facility' | 'rbac' | 'compliance' | 'safety' | 'sysadmin' | 'transfer' | 'enrolment' | 'my-card';
 
 export type NavSection = {
   label: string;
