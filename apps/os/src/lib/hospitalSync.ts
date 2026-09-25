@@ -1,5 +1,11 @@
 /**
  * Same-hospital shared data (offline-first on the hospital LAN).
+
+ * Recommended production path:
+ *   Staff PC → localStorage (instant)
+ *           → Hospital hub PC on UPS (LAN api-server)  ← primary on-site copy
+ *           → Firestore cloud when internet is up      ← off-site backup / multi-hospital
+ *
  *
  * How multi-user works without the public internet:
  * 1. Always write to localStorage (works offline on each PC).

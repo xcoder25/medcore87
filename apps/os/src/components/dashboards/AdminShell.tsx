@@ -312,7 +312,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         )}
         {hospitalShare === 'lan' && (
           <div className="admin-share-banner is-lan" role="status">
-            Hospital share on — staff on this LAN see the same live data (even if the public internet is down).
+            Hospital hub on — all saves go to the UPS hub on this LAN first, then to the cloud when the internet is up.
           </div>
         )}
         {pendingSync > 0 && (
@@ -326,7 +326,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         )}
         {hospitalShare === 'cloud' && (
           <div className="admin-share-banner is-lan" role="status">
-            Firestore sync on — staff in this hospital share data in real time (works offline on each device, then syncs).
+            Cloud backup on — Firestore is receiving data. Prefer a hospital hub + UPS for blackouts so every PC shares one on-site copy.
           </div>
         )}
         <main className="admin-shell-content">{body}</main>
