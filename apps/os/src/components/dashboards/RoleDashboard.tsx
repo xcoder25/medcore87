@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { UserSession } from '../auth/AuthScreen';
+import { AdminWorkspace } from './AdminWorkspace';
 import {
   Stethoscope, Activity, Flame, Wind, Pill, FlaskConical, Layers, Baby, Droplet,
   FileText, BedDouble, Users, Clock, ShieldCheck, AlertTriangle, CheckCircle2,
@@ -234,7 +235,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
       )}
 
       {roleKey === 'hospital_admin' && (
-        <HospitalAdminDashboardBody onNavigate={onNavigate} triggerAction={triggerAction} activeTab={activeTab} session={session} />
+        <AdminWorkspace session={session} onNavigate={(k) => onNavigate(k)} />
       )}
     </div>
   );
