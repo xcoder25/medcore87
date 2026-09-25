@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface SplashScreenProps {
   onComplete: () => void;
@@ -16,39 +16,52 @@ const BOOT_STATUSES = [
   'M87 Clinical Intelligence Ready',
 ];
 
+/** Hard cap: splash finishes in ~1.8s (always under 5s). */
+const SPLASH_MS = 1800;
+
 export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState(BOOT_STATUSES[0]);
+  const doneRef = useRef(false);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   useEffect(() => {
+    doneRef.current = false;
     const startTime = Date.now();
-    const duration = 3000; // Exactly 3 seconds total boot
+
+    const finish = () => {
+      if (doneRef.current) return;
+      doneRef.current = true;
+      setProgress(100);
+      setStatusText(BOOT_STATUSES[4]);
+      onCompleteRef.current();
+    };
 
     const timer = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      const pct = Math.min(Math.round((elapsed / duration) * 100), 100);
+      const pct = Math.min(Math.round((elapsed / SPLASH_MS) * 100), 100);
       setProgress(pct);
 
-      if (pct < 25) {
-        setStatusText(BOOT_STATUSES[0]);
-      } else if (pct < 50) {
-        setStatusText(BOOT_STATUSES[1]);
-      } else if (pct < 75) {
-        setStatusText(BOOT_STATUSES[2]);
-      } else if (pct < 95) {
-        setStatusText(BOOT_STATUSES[3]);
-      } else {
-        setStatusText(BOOT_STATUSES[4]);
-      }
+      if (pct < 25) setStatusText(BOOT_STATUSES[0]);
+      else if (pct < 50) setStatusText(BOOT_STATUSES[1]);
+      else if (pct < 75) setStatusText(BOOT_STATUSES[2]);
+      else if (pct < 95) setStatusText(BOOT_STATUSES[3]);
+      else setStatusText(BOOT_STATUSES[4]);
 
-      if (elapsed >= duration) {
+      if (elapsed >= SPLASH_MS) {
         clearInterval(timer);
-        onComplete();
+        finish();
       }
-    }, 30);
+    }, 32);
 
-    return () => clearInterval(timer);
-  }, [onComplete]);
+    const hardCap = setTimeout(finish, 5000);
+
+    return () => {
+      clearInterval(timer);
+      clearTimeout(hardCap);
+    };
+  }, []);
 
   return (
     <div
@@ -65,8 +78,6 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         fontFamily: "'Inter', -apple-system, sans-serif",
       }}
     >
-      {/* ── SUBTLE BACKGROUND MEDICAL CROSSES & AMBIENCE (matching hosos.png) ── */}
-      {/* Top-left soft cross */}
       <div
         style={{
           position: 'absolute',
@@ -83,7 +94,6 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         </svg>
       </div>
 
-      {/* Bottom-right soft cross */}
       <div
         style={{
           position: 'absolute',
@@ -100,7 +110,6 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         </svg>
       </div>
 
-      {/* ── CENTER BRANDING & PROGRESS CONTAINER ── */}
       <div
         style={{
           display: 'flex',
@@ -108,17 +117,20 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           alignItems: 'center',
           zIndex: 10,
           padding: '0 24px',
-          animation: 'fadeUp 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >
-        {/* Brand Logo & Typography (Proportionate, not too big) */}
-        <div style={{ marginBottom: 32, display: 'flex', justifyContent: 'center' }}>
+        <div style={{ marginBottom: 28, display: 'flex', justifyContent: 'center' }}>
           <img
             src="/hospital-os-main-brand.png"
             alt="Hospital OS - ARISE"
+            width={480}
+            height={160}
+            decoding="async"
+            
+            fetchPriority="high"
             style={{
               width: '100%',
-              maxWidth: 'min(480px, 85vw)',
+              maxWidth: 'min(420px, 82vw)',
               height: 'auto',
               objectFit: 'contain',
               filter: 'drop-shadow(0 6px 20px rgba(15, 41, 69, 0.06))',
@@ -127,16 +139,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           />
         </div>
 
-        {/* Dynamic Animated Pill Progress Bar */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 12,
-          }}
-        >
-          {/* Pill Track */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
           <div
             style={{
               width: 'clamp(200px, 25vw, 240px)',
@@ -148,34 +151,24 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
               boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.08)',
             }}
           >
-            {/* Animated Gradient Fill */}
             <div
               style={{
                 height: '100%',
                 width: `${progress}%`,
                 background: 'linear-gradient(90deg, #0052D4 0%, #0099FF 50%, #00C9A7 100%)',
                 borderRadius: 9999,
-                transition: 'width 0.06s linear',
-                boxShadow: '0 0 12px rgba(0, 153, 255, 0.6)',
+                transition: 'width 0.05s linear',
+                boxShadow: '0 0 12px rgba(0, 153, 255, 0.55)',
               }}
             />
           </div>
 
-          {/* Dynamic Status Text */}
-          <span
-            style={{
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              color: '#334D6E',
-              letterSpacing: '0.015em',
-            }}
-          >
+          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334D6E', letterSpacing: '0.015em' }}>
             {statusText}
           </span>
         </div>
       </div>
 
-      {/* ── SWOOPING BOTTOM WAVES (Matching hosos.png exact geometry) ── */}
       <div
         style={{
           position: 'absolute',
@@ -194,34 +187,25 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           style={{ width: '100%', height: 'auto', display: 'block' }}
         >
           <defs>
-            {/* Blue to Cyan Gradient */}
             <linearGradient id="waveGrad1" x1="0%" y1="50%" x2="100%" y2="50%">
               <stop offset="0%" stopColor="#0052D4" stopOpacity="0.95" />
               <stop offset="45%" stopColor="#0084FF" stopOpacity="0.9" />
               <stop offset="100%" stopColor="#00C9A7" stopOpacity="0.95" />
             </linearGradient>
-
-            {/* Back Wave Gradient */}
             <linearGradient id="waveGrad2" x1="0%" y1="50%" x2="100%" y2="50%">
               <stop offset="0%" stopColor="#003E99" stopOpacity="0.8" />
               <stop offset="60%" stopColor="#00A896" stopOpacity="0.75" />
               <stop offset="100%" stopColor="#02C39A" stopOpacity="0.85" />
             </linearGradient>
           </defs>
-
-          {/* Back Wave */}
           <path
             d="M0,130 C320,50 620,180 1020,100 C1240,55 1360,90 1440,110 L1440,220 L0,220 Z"
             fill="url(#waveGrad2)"
           />
-
-          {/* Front Dynamic Wave */}
           <path
             d="M0,170 C280,100 580,210 960,135 C1180,95 1340,130 1440,140 L1440,220 L0,220 Z"
             fill="url(#waveGrad1)"
           />
-
-          {/* Subtle Accent Glow Line on Crest */}
           <path
             d="M0,170 C280,100 580,210 960,135 C1180,95 1340,130 1440,140"
             stroke="rgba(255, 255, 255, 0.4)"

@@ -289,23 +289,40 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
       background: '#FFFFFF',
     }}>
-      {/* -- Left Hero Section (Exact visual match to authos.png) -- */}
+      {/* -- Left Hero Section — portrait art cropped to fill panel -- */}
       <div style={{
-        flex: '1 1 54%',
+        flex: '1 1 52%',
         position: 'relative',
         height: '100%',
+        minHeight: 0,
         overflow: 'hidden',
-        background: '#F0F9FF',
+        background: 'linear-gradient(160deg, #E0F2FE 0%, #F0F9FF 50%, #ECFDF5 100%)',
       }}>
         <img
           src="/authos-hero.png"
           alt="Hospital OS - Efficient Health Management for a Healthier Tomorrow"
+          decoding="async"
           style={{
+            position: 'absolute',
+            inset: 0,
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            objectPosition: 'center left',
+            /* Portrait source (844×1024): keep faces/headline near upper-center */
+            objectPosition: 'center 22%',
             display: 'block',
+          }}
+        />
+        {/* Soft edge so crop meets the form panel cleanly */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: 48,
+            background: 'linear-gradient(90deg, transparent, rgba(248,250,252,0.55))',
+            pointerEvents: 'none',
           }}
         />
       </div>
