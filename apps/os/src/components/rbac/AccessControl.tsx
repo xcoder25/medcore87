@@ -125,7 +125,7 @@ export const AccessControl: React.FC = () => {
         </div>
         <div className="metric-box">
           <span className="metric-label"><Lock size={13} style={{ display: 'inline', marginRight: 4 }} />Permissions granted</span>
-          <span className="metric-val">{STAFF_ACCESS.flatMap(s => s.permissions).length}</span>
+          <span className="metric-val">{records.flatMap(s => s.permissions).length}</span>
           <span className="metric-sub">Across {records.length} staff</span>
         </div>
       </div>
