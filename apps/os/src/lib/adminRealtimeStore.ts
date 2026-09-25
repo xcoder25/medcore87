@@ -4,8 +4,8 @@
  * even when the WebSocket server is offline (hospital pilot / Vercel-only deploy).
  */
 
-import { broadcastLocal, pushFacilityData } from './hospitalSync';
-import { firestoreWriteFacility } from './firebase';
+import { broadcastLocal } from './hospitalSync';
+import { enqueueFacilitySync } from './durableOutbox';
 
 /** Active facility for multi-workstation share (set from session) */
 let activeFacilityId = 'DEFAULT-HOSPITAL';
@@ -83,15 +83,20 @@ function read<T>(key: string, fallback: T): T {
 
 function write(key: string, value: unknown) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(value));
+  // 1) Durable local write FIRST (survives power loss if browser profile intact)
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.error('[MedCore] local save failed — storage full?', e);
+    throw e;
+  }
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key } }));
-  // Same-hospital share: tabs + LAN API + Firestore (multi-device)
+  // 2) Outbox → Firestore/LAN when online (retries after outage)
   try {
     broadcastLocal(activeFacilityId, key, value);
-    void pushFacilityData(activeFacilityId, { [key]: value });
-    void firestoreWriteFacility(activeFacilityId, { [key]: value });
+    enqueueFacilitySync(activeFacilityId, key, value);
   } catch {
-    /* offline local-only is fine */
+    /* still safe locally */
   }
 }
 

@@ -28,6 +28,8 @@ import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 // Specialty Suites
 import { AdminShell } from '../components/dashboards/AdminShell';
 import { ensureCleanPilot } from '../lib/adminRealtimeStore';
+import { startOutboxAutoFlush } from '../lib/durableOutbox';
+import { enableFirestoreOffline } from '../lib/firebase';
 import { RoleDashboard } from '../components/dashboards/RoleDashboard';
 import { DoctorPortal } from '../components/dashboards/DoctorPortal';
 import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
@@ -785,6 +787,9 @@ export default function OSPage() {
     } catch {
       /* ignore */
     }
+    void enableFirestoreOffline();
+    const stopOutbox = startOutboxAutoFlush(12000);
+    return () => stopOutbox();
   }, []);
 
   const [appState, setAppState] = useState<'splash' | 'auth' | 'app'>('splash');

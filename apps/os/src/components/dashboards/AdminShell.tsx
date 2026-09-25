@@ -27,6 +27,7 @@ import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import { ensureCleanPilot, setActiveFacilityId, KEYS as ADMIN_KEYS } from '../../lib/adminRealtimeStore';
 import { startFacilitySyncLoop, probeHospitalApi, isHospitalApiKnown } from '../../lib/hospitalSync';
 import { firestoreSubscribeFacility, enableFirestoreOffline } from '../../lib/firebase';
+import { getOutboxPendingCount, startOutboxAutoFlush, flushOutbox } from '../../lib/durableOutbox';
 import { isBrowserOnline } from '../../services/offlineStorage';
 
 type AdminModule =
@@ -112,6 +113,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [search, setSearch] = useState('');
   const [online, setOnline] = useState(true);
   const [hospitalShare, setHospitalShare] = useState<'local' | 'lan' | 'cloud' | 'probing'>('probing');
+  const [pendingSync, setPendingSync] = useState(0);
   const { connected } = useRealtimeEvents({ app: 'MEDCORE_OS_ADMIN', facilityId: session.hospitalId });
 
   useEffect(() => {
@@ -135,6 +137,9 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
     };
     const stopSync = startFacilitySyncLoop(fid, applyKey, 4000);
     void enableFirestoreOffline();
+    const stopOutbox = startOutboxAutoFlush(12000);
+    const pendingIv = setInterval(() => setPendingSync(getOutboxPendingCount()), 3000);
+    setPendingSync(getOutboxPendingCount());
     const stopFs = firestoreSubscribeFacility(fid, (data) => {
       setHospitalShare('cloud');
       for (const [k, v] of Object.entries(data)) {
@@ -152,6 +157,8 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       window.removeEventListener('offline', onOff);
       stopSync();
       stopFs();
+      stopOutbox();
+      clearInterval(pendingIv);
     };
   }, [session.hospitalId, session.facility]);
 
@@ -306,6 +313,15 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         {hospitalShare === 'lan' && (
           <div className="admin-share-banner is-lan" role="status">
             Hospital share on — staff on this LAN see the same live data (even if the public internet is down).
+          </div>
+        )}
+        {pendingSync > 0 && (
+          <div className="admin-offline-banner" role="status">
+            {pendingSync} change{pendingSync === 1 ? '' : 's'} saved on this PC — waiting to sync to cloud
+            {' · '}
+            <button type="button" className="admin-link" onClick={() => void flushOutbox().then(() => setPendingSync(getOutboxPendingCount()))}>
+              Sync now
+            </button>
           </div>
         )}
         {hospitalShare === 'cloud' && (
