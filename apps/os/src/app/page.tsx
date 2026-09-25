@@ -25,6 +25,7 @@ import { DigitalPatientCard } from '../components/patient-card/DigitalPatientCar
 import { HospitalStaffTransfer } from '../components/staffing/HospitalStaffTransfer';
 
 // Specialty Suites
+import { AdminShell } from '../components/dashboards/AdminShell';
 import { RoleDashboard } from '../components/dashboards/RoleDashboard';
 import { DoctorPortal } from '../components/dashboards/DoctorPortal';
 import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
@@ -1124,6 +1125,17 @@ export default function OSPage() {
 
   // Dynamically load tailored RBAC sidebar content
   const roleNavSections = getRoleNavSections(userSession, showFullDirectory);
+
+  // Full admin chrome replaces the clinical OS shell
+  if (userSession && (activeRoleKey === 'hospital_admin' || userSession.roleKey === 'hospital_admin')) {
+    return (
+      <AdminShell
+        session={userSession}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
 
   // Filtered Nav items based on search
   const filteredSections = roleNavSections.map(sec => ({
