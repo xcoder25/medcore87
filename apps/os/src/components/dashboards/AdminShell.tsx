@@ -155,7 +155,9 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       {/* ── Dark sidebar (mockup) ── */}
       <aside className={`admin-shell-sidebar${collapsed ? ' is-collapsed' : ''}`}>
         <div className="admin-shell-brand">
-          <div className="admin-shell-logo">M</div>
+          <div className="admin-shell-logo">
+            <img src="/medcore-logo.png" alt="MedCore" />
+          </div>
           {!collapsed && (
             <div className="admin-shell-brand-text">
               <span className="name">MedCore</span>
