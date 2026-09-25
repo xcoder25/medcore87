@@ -25,6 +25,7 @@ import { StaffEnrolment } from '../staffing/StaffEnrolment';
 import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import { ensureCleanPilot } from '../../lib/adminRealtimeStore';
+import { isBrowserOnline } from '../../services/offlineStorage';
 
 type AdminModule =
   | 'dashboard'
@@ -107,12 +108,18 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [clock, setClock] = useState(formatNow);
   const [search, setSearch] = useState('');
+  const [online, setOnline] = useState(true);
   const { connected } = useRealtimeEvents({ app: 'MEDCORE_OS_ADMIN', facilityId: session.hospitalId });
 
   useEffect(() => {
     try { ensureCleanPilot(); } catch {}
+    setOnline(typeof navigator !== 'undefined' ? navigator.onLine : true);
+    const onOn = () => setOnline(true);
+    const onOff = () => setOnline(false);
+    window.addEventListener('online', onOn);
+    window.addEventListener('offline', onOff);
     const id = setInterval(() => setClock(formatNow()), 1000);
-    return () => clearInterval(id);
+    return () => { clearInterval(id); window.removeEventListener('online', onOn); window.removeEventListener('offline', onOff); };
   }, []);
 
   const facility = session.facility || 'Immanuel General Hospital, Eket';
@@ -226,7 +233,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             </div>
             <div className="admin-shell-online">
               <span className="dot" />
-              {connected ? 'Live' : 'Online'}
+              {!online ? 'Offline' : connected ? 'Live' : 'Online'}
             </div>
             <div className="admin-shell-clock">{clock}</div>
           </div>
@@ -253,6 +260,11 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
           </div>
         </header>
 
+        {!online && (
+          <div className="admin-offline-banner" role="status">
+            Working offline — changes are saved on this device and will sync when the network returns.
+          </div>
+        )}
         <main className="admin-shell-content">{body}</main>
       </div>
     </div>

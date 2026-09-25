@@ -118,3 +118,9 @@ class OfflineStorageService {
 }
 
 export const offlineStorage = new OfflineStorageService();
+
+
+export function isBrowserOnline(): boolean {
+  if (typeof navigator === 'undefined') return true;
+  return navigator.onLine;
+}

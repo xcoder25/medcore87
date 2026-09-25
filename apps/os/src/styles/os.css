@@ -4145,3 +4145,18 @@ html, body {
   .admin-shell-search { min-width: 140px; }
   .admin-shell-search kbd { display: none; }
 }
+
+.admin-offline-banner {
+  background: #FFFBEB;
+  color: #92400E;
+  border-bottom: 1px solid #FDE68A;
+  padding: 10px 20px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: center;
+}
+.admin-shell-online.is-offline {
+  background: #FEF3C7;
+  color: #92400E;
+  border-color: #FDE68A;
+}
