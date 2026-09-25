@@ -97,6 +97,15 @@ export const HOSPITALS: Hospital[] = [
   { id: 'CHC-MBU', name: 'Comprehensive Health Care Centre, Mbiaya Uruan', location: 'Mbiaya Uruan, Akwa Ibom',     type: 'Health Care Centre',  domain: 'chc-mbiayauruan.medcore.ng'  },
 ];
 
+/** Platform admin — Firebase email + password */
+export const PLATFORM_ADMIN = {
+  email: 'xcoder2442@gmail.com',
+  password: 'AKS-0012442',
+  badgeId: 'AKS-ADM-001',
+  name: 'Hospital Administrator',
+  roleKey: 'hospital_admin' as const,
+};
+
 export const PRESET_STAFF: PresetStaff[] = [
   {
     badgeId: 'AKS-ADM-001', name: 'Hospital Administrator', role: 'Hospital Administrator', shortRole: 'Admin',
