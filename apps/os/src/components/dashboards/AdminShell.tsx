@@ -22,7 +22,7 @@ import { AccessControl } from '../rbac/AccessControl';
 import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
 import { CashierRevenue } from '../cashier/CashierRevenue';
 import { StaffEnrolment } from '../staffing/StaffEnrolment';
-import { NotificationBell } from '../realtime/NotificationBell';
+import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 
 type AdminModule =
