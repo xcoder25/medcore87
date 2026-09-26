@@ -6,6 +6,7 @@ import '../styles/os.css';
 // Splash & Auth Components
 import { SplashScreen } from '../components/splash/SplashScreen';
 import { AuthScreen, UserSession, PRESET_STAFF } from '../components/auth/AuthScreen';
+import { AdminOnboarding, isAdminOnboardingComplete } from '../components/auth/AdminOnboarding';
 
 // Core & Existing Modules
 import { CommandCentreDashboard } from '../components/command-centre/CommandCentreDashboard';
@@ -794,6 +795,7 @@ export default function OSPage() {
 
   const [appState, setAppState] = useState<'splash' | 'auth' | 'app'>('splash');
   const [userSession, setUserSession] = useState<UserSession | null>(null);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const { criticalAlert, dismissCriticalAlert } = useRealtimeEvents({ app: 'MEDCORE_OS', facilityId: userSession?.facility });
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard');
   const [moduleKey, setModuleKey] = useState(0);
@@ -864,8 +866,13 @@ export default function OSPage() {
     try {
       const saved = localStorage.getItem('medcore_os_session');
       if (saved) {
-        setUserSession(JSON.parse(saved));
-        setActiveModule('dashboard');
+        const sess = JSON.parse(saved) as UserSession;
+        setUserSession(sess);
+        if (sess.roleKey === 'hospital_admin' && !isAdminOnboardingComplete()) {
+          setNeedsOnboarding(true);
+        } else {
+          setActiveModule('dashboard');
+        }
       }
     } catch {
       // ignore
@@ -976,6 +983,23 @@ export default function OSPage() {
 
   const handleLoginSuccess = (session: UserSession) => {
     setUserSession(session);
+    try {
+      localStorage.setItem('medcore_os_session', JSON.stringify(session));
+    } catch { /* ignore */ }
+    const mustOnboard =
+      session.roleKey === 'hospital_admin' && !isAdminOnboardingComplete();
+    setNeedsOnboarding(mustOnboard);
+    if (mustOnboard) {
+      setAppState('app');
+      return;
+    }
+    setActiveModule('dashboard');
+    setAppState('app');
+  };
+
+  const handleOnboardingComplete = (updated: UserSession) => {
+    setUserSession(updated);
+    setNeedsOnboarding(false);
     setActiveModule('dashboard');
     setAppState('app');
   };
@@ -987,6 +1011,7 @@ export default function OSPage() {
       // ignore
     }
     setUserSession(null);
+    setNeedsOnboarding(false);
     setAppState('auth');
   };
 
@@ -1147,6 +1172,16 @@ export default function OSPage() {
   const roleNavSections = getRoleNavSections(userSession, showFullDirectory);
 
   // Full admin chrome replaces the clinical OS shell
+  
+  if (userSession && needsOnboarding) {
+    return (
+      <AdminOnboarding
+        session={userSession}
+        onComplete={(updated) => handleOnboardingComplete(updated)}
+      />
+    );
+  }
+
   if (userSession && (activeRoleKey === 'hospital_admin' || userSession.roleKey === 'hospital_admin')) {
     return (
       <AdminShell

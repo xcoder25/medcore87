@@ -97,6 +97,16 @@ export const HOSPITALS: Hospital[] = [
   { id: 'CHC-MBU', name: 'Comprehensive Health Care Centre, Mbiaya Uruan', location: 'Mbiaya Uruan, Akwa Ibom',     type: 'Health Care Centre',  domain: 'chc-mbiayauruan.medcore.ng'  },
 ];
 
+/** True until admin finishes onboarding */
+export function isFreshInstall(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    return localStorage.getItem('medcore_admin_onboarding_complete') !== '1';
+  } catch {
+    return true;
+  }
+}
+
 /** Platform admin — Firebase email + password */
 export const PLATFORM_ADMIN = {
   email: 'xcoder2442@gmail.com',
@@ -107,83 +117,16 @@ export const PLATFORM_ADMIN = {
 };
 
 export const PRESET_STAFF: PresetStaff[] = [
+  /**
+   * Bootstrap only — no demo clinical staff.
+   * First login: Hospital Administrator only.
+   */
   {
     badgeId: 'AKS-ADM-001', name: 'Hospital Administrator', role: 'Hospital Administrator', shortRole: 'Admin',
     title: 'Hospital Administrator', roleKey: 'hospital_admin', clearanceLevel: 5, clearanceLabel: 'Administrator',
     department: 'Hospital Management', initials: 'HA',
-    permissions: ['dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing', 'enrolment', 'my-card', 'cashier', 'patient-card', 'auth', 'facility', 'data-hub', 'analytics', 'rbac', 'sysadmin', 'compliance', 'transfer', 'ai'],
+    permissions: ['dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing', 'enrolment', 'my-card', 'cashier', 'patient-card', 'auth', 'facility', 'data-hub', 'analytics', 'rbac', 'sysadmin', 'compliance', 'transfer', 'ai', 'm87-ai'],
     pin: 'AKS-0012442', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#EA580C',
-  },
-
-  {
-    badgeId: 'IGH-DOC-001', name: 'Dr. Amara Okafor', role: 'Medical Officer', shortRole: 'Doctor',
-    title: 'Medical Officer', roleKey: 'doctor', clearanceLevel: 4, clearanceLabel: 'Clinical',
-    department: 'Internal Medicine', initials: 'AO',
-    permissions: ['dashboard', 'doctor-portal', 'emergency', 'beds', 'patient-flow', 'staffing', 'patient-card', 'ai', 'm87-ai'],
-    pin: '1234', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#0284C7',
-  },
-  {
-    badgeId: 'GHI-SUR-002', name: 'Dr. Emeka Adeyemi', role: 'Consultant Surgeon', shortRole: 'Surgeon',
-    title: 'Consultant Surgeon', roleKey: 'surgeon', clearanceLevel: 5, clearanceLabel: 'Consultant',
-    department: 'Surgery & Theatre', initials: 'EA',
-    permissions: ['dashboard', 'theatre', 'icu', 'doctor-portal', 'emergency', 'ai'],
-    pin: '1234', hospitalId: 'GH-IKE', hospitalName: 'General Hospital, Ikot Ekpene', color: '#DC2626',
-  },
-  {
-    badgeId: 'MSG-NUR-003', name: 'Nurse Aisha Bello', role: 'Senior Nursing Officer', shortRole: 'Nurse',
-    title: 'Senior Nursing Officer', roleKey: 'nurse', clearanceLevel: 3, clearanceLabel: 'Nursing',
-    department: 'Female Medical Ward', initials: 'AB',
-    permissions: ['dashboard', 'nursing', 'beds', 'patient-flow', 'emergency', 'maternity'],
-    pin: '1234', hospitalId: 'MSG-ITU', hospitalName: 'Mary Slessor General Hospital, Itu', color: '#7C3AED',
-  },
-  {
-    badgeId: 'IGH-ADM-004', name: 'Adm. Ngozi Eze', role: 'Hospital Administrator', shortRole: 'Admin',
-    title: 'Hospital Administrator', roleKey: 'hospital_admin', clearanceLevel: 5, clearanceLabel: 'Administrator',
-    department: 'Hospital Administration', initials: 'NE',
-    permissions: ['*'],
-    pin: '1234', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#D97706',
-  },
-  {
-    badgeId: 'GHE-PHA-005', name: 'Pharm. Chidi Otu', role: 'Chief Pharmacist', shortRole: 'Pharmacist',
-    title: 'Chief Pharmacist', roleKey: 'pharmacist', clearanceLevel: 3, clearanceLabel: 'Pharmacy',
-    department: 'Pharmacy', initials: 'CO',
-    permissions: ['dashboard', 'pharmacy', 'inventory'],
-    pin: '1234', hospitalId: 'GH-ETN', hospitalName: 'General Hospital, Etinan', color: '#059669',
-  },
-  {
-    badgeId: 'GHI-LAB-006', name: 'Kelechi Obiora', role: 'Senior Lab Scientist', shortRole: 'Lab',
-    title: 'Senior Lab Scientist', roleKey: 'lab', clearanceLevel: 3, clearanceLabel: 'Laboratory',
-    department: 'Laboratory', initials: 'KO',
-    permissions: ['dashboard', 'laboratory', 'blood-bank'],
-    pin: '1234', hospitalId: 'GH-IKE', hospitalName: 'General Hospital, Ikot Ekpene', color: '#0891B2',
-  },
-  {
-    badgeId: 'MGH-RAD-007', name: 'Dr. Fatima Al-Hassan', role: 'Radiologist', shortRole: 'Radiology',
-    title: 'Consultant Radiologist', roleKey: 'radiologist', clearanceLevel: 5, clearanceLabel: 'Radiology',
-    department: 'Radiology', initials: 'FA',
-    permissions: ['dashboard', 'radiology'],
-    pin: '1234', hospitalId: 'MGH-ITM', hospitalName: 'Methodist General Hospital, Ituk Mbang', color: '#6D28D9',
-  },
-  {
-    badgeId: 'GHA-REC-008', name: 'Bisi Adewale', role: 'Records Officer', shortRole: 'Records',
-    title: 'Health Records Officer', roleKey: 'records', clearanceLevel: 2, clearanceLabel: 'Records',
-    department: 'Medical Records', initials: 'BA',
-    permissions: ['dashboard', 'patient-card', 'command'],
-    pin: '1234', hospitalId: 'GH-IAB', hospitalName: 'General Hospital, Ikot Abasi', color: '#0F766E',
-  },
-  {
-    badgeId: 'PSY-ACC-009', name: 'Amaka Oguike', role: 'Accountant', shortRole: 'Accounts',
-    title: 'Finance Officer', roleKey: 'accountant', clearanceLevel: 3, clearanceLabel: 'Finance',
-    department: 'Finance & Accounts', initials: 'AO',
-    permissions: ['dashboard', 'cashier', 'billing', 'claims', 'revenue-cycle'],
-    pin: '1234', hospitalId: 'PSY-EKT', hospitalName: 'Psychiatric Hospital, Eket', color: '#B45309',
-  },
-  {
-    badgeId: 'MHQB-ICT-010', name: 'Ola Bankole', role: 'ICT / System Admin', shortRole: 'SysAdmin',
-    title: 'Chief Information Officer', roleKey: 'sysadmin', clearanceLevel: 6, clearanceLabel: 'IT Admin',
-    department: 'IT & Infrastructure', initials: 'OB',
-    permissions: ['*'],
-    pin: '1234', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#374151',
   },
 ];
 
@@ -207,20 +150,36 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
   useEffect(() => {
     try {
       const saved = localStorage.getItem('medcore_os_staff_registry');
+      const enrolled: PresetStaff[] = [];
       if (saved) {
         const parsed: any[] = JSON.parse(saved);
-        setStaffRegistry(PRESET_STAFF.map(ps => {
-          const match = parsed.find(p => p.id === ps.badgeId || p.name.toLowerCase() === ps.name.toLowerCase());
-          if (match && match.hospitalId) {
-            return {
-              ...ps,
-              hospitalId: match.hospitalId,
-              hospitalName: match.hospitalName,
-            };
+        if (Array.isArray(parsed)) {
+          for (const p of parsed) {
+            if (!p?.badgeId || !p?.roleKey) continue;
+            enrolled.push({
+              badgeId: p.badgeId,
+              name: p.name || 'Staff',
+              role: p.role || p.title || 'Staff',
+              shortRole: p.shortRole || p.role || 'Staff',
+              title: p.title || p.role || 'Staff',
+              roleKey: p.roleKey,
+              clearanceLevel: p.clearanceLevel ?? 2,
+              clearanceLabel: p.clearanceLabel || 'Staff',
+              department: p.department || 'General',
+              initials: p.initials || 'ST',
+              permissions: p.permissions || ['dashboard'],
+              pin: p.pin || '1234',
+              hospitalId: p.hospitalId,
+              hospitalName: p.hospitalName,
+            });
           }
-          return ps;
-        }));
+        }
       }
+      const byBadge = new Map<string, PresetStaff>();
+      for (const s of [...PRESET_STAFF, ...enrolled]) {
+        byBadge.set(s.badgeId, s);
+      }
+      setStaffRegistry(Array.from(byBadge.values()));
     } catch (e) {
       console.error(e);
     }
@@ -236,28 +195,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     const u = (username || '').trim().toLowerCase();
     if (!u) return null;
     return staffRegistry.find(s =>
+      s.badgeId.toLowerCase() === u ||
       s.badgeId.toLowerCase().includes(u) ||
+      s.name.toLowerCase() === u ||
       s.name.toLowerCase().includes(u) ||
       (u.includes('admin') && s.roleKey === 'hospital_admin') ||
-      (u.includes('ngozi') && s.roleKey === 'hospital_admin') ||
-      (u.includes('surgeon') && s.roleKey === 'surgeon') ||
-      (u.includes('emeka') && s.roleKey === 'surgeon') ||
-      (u.includes('nurse') && s.roleKey === 'nurse') ||
-      (u.includes('aisha') && s.roleKey === 'nurse') ||
-      (u.includes('pharm') && s.roleKey === 'pharmacist') ||
-      (u.includes('chidi') && s.roleKey === 'pharmacist') ||
-      (u.includes('lab') && s.roleKey === 'lab') ||
-      (u.includes('kelechi') && s.roleKey === 'lab') ||
-      (u.includes('rad') && s.roleKey === 'radiologist') ||
-      (u.includes('fatima') && s.roleKey === 'radiologist') ||
-      (u.includes('record') && s.roleKey === 'records') ||
-      (u.includes('bisi') && s.roleKey === 'records') ||
-      (u.includes('account') && s.roleKey === 'accountant') ||
-      (u.includes('amaka') && s.roleKey === 'accountant') ||
-      (u.includes('sys') && s.roleKey === 'sysadmin') ||
-      (u.includes('ola') && s.roleKey === 'sysadmin') ||
-      (u.includes('doc') && s.roleKey === 'doctor') ||
-      (u.includes('amara') && s.roleKey === 'doctor')
+      (u === PLATFORM_ADMIN.email.toLowerCase() && s.roleKey === 'hospital_admin')
     ) || null;
   }, [username, staffRegistry]);
 
@@ -389,7 +332,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     // ── Staff badge + PIN (must match enrolled staff — not open demo) ──────
     const matchedStaff = detectedStaff;
     if (!matchedStaff) {
-      setError('Staff ID not found. Use your badge ID or work email.');
+      setError(
+        isFreshInstall()
+          ? 'First-time setup: only the Hospital Administrator can sign in. Complete admin onboarding first.'
+          : 'Staff ID not found. Ask your Hospital Administrator to enrol you and issue a staff card.'
+      );
+      setLoading(false);
+      return;
+    }
+
+    if (isFreshInstall() && matchedStaff.roleKey !== 'hospital_admin') {
+      setError('System is in first-time setup. Only the Hospital Administrator may sign in until onboarding is complete.');
       setLoading(false);
       return;
     }
