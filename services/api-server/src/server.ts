@@ -28,6 +28,9 @@ import commsRoutes from './routes/comms.routes';
 import dhis2Routes from './routes/dhis2.routes';
 import hcxRoutes from './routes/hcx.routes';
 import ndprRoutes from './routes/ndpr.routes';
+import hieRoutes from './routes/hie.routes';
+import connectathonRoutes from './routes/connectathon.routes';
+import aiRoutes from './routes/ai.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -71,6 +74,9 @@ app.use('/api/v1/comms', commsRoutes);
 app.use('/api/v1/dhis2', dhis2Routes);
 app.use('/api/v1/hcx', hcxRoutes);
 app.use('/api/v1/ndpr', ndprRoutes);
+app.use('/api/v1/hie', hieRoutes);
+app.use('/api/v1/connectathon', connectathonRoutes);
+app.use('/api/v1/ai', aiRoutes);
 
 // Root System Status & Architecture Overview
 app.get('/', (req, res) => {
@@ -99,6 +105,9 @@ app.get('/', (req, res) => {
       lab: '/api/v1/lab',
       theatre: '/api/v1/theatre',
       fhir: '/api/v1/fhir',
+      hie: '/api/v1/hie',
+      connectathon: '/api/v1/connectathon',
+      ai: '/api/v1/ai',
       pharmacy: '/api/v1/pharmacy',
       cpoe: '/api/v1/cpoe',
       hmo: '/api/v1/hmo',

@@ -931,6 +931,92 @@ export class CentralDataStore {
     return enc;
   }
 
+
+  // ─── Phase 3: Statewide MPI / State Health ID ───────────────────────────────
+
+  /** Lookup by State Health ID (cross-facility longitudinal key) */
+  public findByStateHealthId(stateHealthId: string, decryptPII = false) {
+    const id = (stateHealthId || '').trim().toUpperCase();
+    if (!id) return [];
+    return this.getPatients(decryptPII).filter(
+      (p: any) => (p.stateHealthId || '').toUpperCase() === id
+    );
+  }
+
+  /** Lookup by NIN (11 digits) */
+  public findByNin(nin: string, decryptPII = false) {
+    const n = (nin || '').replace(/\D/g, '');
+    if (n.length < 8) return [];
+    return Array.from(this.patients.values())
+      .filter((p) => (p.nin || '').replace(/\D/g, '') === n || decryptField(p.encryptedNationalId).replace(/\D/g, '') === n)
+      .map((p) => (decryptPII ? this.getPatientById(p.id, true) : p));
+  }
+
+  /** Search MPI across facilities */
+  public searchMpi(q: string, facilityId?: string, decryptPII = false) {
+    const term = (q || '').trim().toLowerCase();
+    if (!term) return [];
+    let list = this.getPatients(decryptPII) as any[];
+    if (facilityId) list = list.filter((p) => p.facilityId === facilityId);
+    return list.filter(
+      (p) =>
+        (p.name || '').toLowerCase().includes(term) ||
+        (p.mrn || '').toLowerCase().includes(term) ||
+        (p.stateHealthId || '').toLowerCase().includes(term) ||
+        (p.id || '').toLowerCase().includes(term) ||
+        (p.nin || '').includes(term)
+    );
+  }
+
+  /**
+   * Longitudinal shared health record view for a State Health ID
+   * (all facility registrations + encounters + orders linked to matching patients)
+   */
+  public getLongitudinalRecord(stateHealthId: string) {
+    const matches = this.findByStateHealthId(stateHealthId, true) as any[];
+    if (!matches.length) return null;
+    const patientIds = new Set(matches.map((m) => m.id));
+    const encounters = this.getEncounters().filter((e) => patientIds.has(e.patientId));
+    const orders = Array.from(this.clinicalOrders?.values?.() || this.getAllClinicalOrders?.() || []);
+    // clinicalOrders may be private Map
+    return {
+      stateHealthId: stateHealthId.toUpperCase(),
+      identities: matches.map((m) => ({
+        patientId: m.id,
+        mrn: m.mrn,
+        facilityId: m.facilityId,
+        name: m.name,
+        nin: m.nin,
+        registeredAt: m.createdAt,
+      })),
+      encounters,
+      profile: matches[0],
+      generatedAt: new Date().toISOString(),
+      profileMeta: {
+        resourceType: 'SharedHealthRecord',
+        standard: 'NDHA-FHIR-R4',
+        jurisdiction: 'NG-AK',
+      },
+    };
+  }
+
+  public getStatewideCensus() {
+    const patients = Array.from(this.patients.values());
+    const byFacility: Record<string, number> = {};
+    for (const p of patients) {
+      byFacility[p.facilityId] = (byFacility[p.facilityId] || 0) + 1;
+    }
+    const openEncounters = this.getEncounters().filter((e) => e.status === 'IN_PROGRESS' || e.status === 'ARRIVED' || (e as any).status === 'ACTIVE');
+    return {
+      totalPatients: patients.length,
+      totalEncounters: this.encounters.size,
+      activeEncounters: openEncounters.length,
+      byFacility,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+
   public getEncounters(patientId?: string): EncounterRecord[] {
     const all = Array.from(this.encounters.values());
     if (patientId) return all.filter((e) => e.patientId === patientId);

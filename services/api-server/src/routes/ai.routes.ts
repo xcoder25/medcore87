@@ -91,4 +91,88 @@ router.get('/learning-stats', (req: Request, res: Response) => {
   });
 });
 
+
+/**
+ * POST /api/v1/ai/soap-assist
+ * Phase 4 — Ambient / structured SOAP draft (HITL — never auto-commits to chart)
+ */
+router.post('/soap-assist', (req: Request, res: Response) => {
+  const { transcript, patientName, chiefComplaint, vitalsSummary } = req.body || {};
+  const text = String(transcript || chiefComplaint || '').trim();
+  if (!text) {
+    return res.status(400).json({ success: false, error: 'transcript or chiefComplaint required' });
+  }
+
+  const soap = {
+    subjective: text.slice(0, 500),
+    objective: vitalsSummary || 'Vitals not provided — record at bedside before signing.',
+    assessment: `Provisional assessment pending clinician review${patientName ? ` for ${patientName}` : ''}.`,
+    plan: [
+      'Confirm history and examination findings',
+      'Order indicated labs / imaging',
+      'Review allergies and current medications',
+      'Safety-net advice and follow-up',
+    ],
+    warnings: [
+      'M87 draft only — must be reviewed and signed by licensed clinician',
+      'Not a diagnosis; does not replace clinical judgment',
+    ],
+    model: 'm87-soap-assist-v1',
+    hitlRequired: true,
+    generatedAt: new Date().toISOString(),
+  };
+
+  res.json({ success: true, data: soap, requiresApproval: true });
+});
+
+/**
+ * POST /api/v1/ai/propose-clinical-action
+ * Proposes action; execution only after explicit approve endpoint
+ */
+router.post('/propose-clinical-action', (req: Request, res: Response) => {
+  const { type, patientId, summary, severity } = req.body || {};
+  if (!type || !summary) {
+    return res.status(400).json({ success: false, error: 'type and summary required' });
+  }
+  const proposal = {
+    proposalId: `PROP-${Date.now()}`,
+    type,
+    patientId,
+    summary,
+    severity: severity || 'ROUTINE',
+    status: 'AWAITING_HUMAN_APPROVAL',
+    createdAt: new Date().toISOString(),
+  };
+  res.status(201).json({ success: true, data: proposal, hitl: true });
+});
+
+/**
+ * POST /api/v1/ai/approve-action
+ * Human-in-the-loop gate for AI-proposed operational/clinical actions
+ */
+router.post('/approve-action', (req: Request, res: Response) => {
+  const { proposalId, approvedBy, decision, note } = req.body || {};
+  if (!proposalId || !approvedBy || !decision) {
+    return res.status(400).json({ success: false, error: 'proposalId, approvedBy, decision required' });
+  }
+  if (!['APPROVE', 'REJECT'].includes(String(decision).toUpperCase())) {
+    return res.status(400).json({ success: false, error: 'decision must be APPROVE or REJECT' });
+  }
+  res.json({
+    success: true,
+    data: {
+      proposalId,
+      decision: String(decision).toUpperCase(),
+      approvedBy,
+      note,
+      decidedAt: new Date().toISOString(),
+      message:
+        String(decision).toUpperCase() === 'APPROVE'
+          ? 'Action authorized by human clinician/administrator'
+          : 'Action dismissed — no automatic execution',
+    },
+  });
+});
+
 export default router;
+

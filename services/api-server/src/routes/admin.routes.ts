@@ -1,3 +1,4 @@
+import { dataStore } from '../store/database';
 import { Router, Request, Response } from 'express';
 import { commissionerSurveillance } from '../admin/commissionerSurveillance';
 import { auditLedger } from '../security/auditLedger';
@@ -57,4 +58,31 @@ router.get('/financial-surveillance', (req: Request, res: Response) => {
   res.json({ success: true, data: financial });
 });
 
+
+/** Phase 3 — Statewide operational census for MOH Admin */
+router.get('/statewide-census', (_req: Request, res: Response) => {
+  const census = dataStore.getStatewideCensus();
+  res.json({ success: true, data: census, scope: 'STATE_NETWORK' });
+});
+
+/** Phase 3 — Facility activity rollup */
+router.get('/facility-activity', (_req: Request, res: Response) => {
+  const census = dataStore.getStatewideCensus();
+  const facilities = Object.entries(census.byFacility).map(([facilityId, patients]) => ({
+    facilityId,
+    registeredPatients: patients,
+  }));
+  res.json({
+    success: true,
+    data: {
+      facilities,
+      totalPatients: census.totalPatients,
+      totalEncounters: census.totalEncounters,
+      activeEncounters: census.activeEncounters,
+      generatedAt: census.generatedAt,
+    },
+  });
+});
+
 export default router;
+

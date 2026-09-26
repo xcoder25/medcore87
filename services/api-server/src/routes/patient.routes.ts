@@ -241,4 +241,27 @@ router.get('/:id/encounters', (req: Request, res: Response) => {
   res.json({ success: true, patientId: req.params.id, total: encounters.length, data: encounters });
 });
 
+
+/** GET /api/v1/patients/mpi/search?q= */
+router.get('/mpi/search', (req: Request, res: Response) => {
+  const q = String(req.query.q || '');
+  const facilityId = req.query.facilityId ? String(req.query.facilityId) : undefined;
+  const data = dataStore.searchMpi(q, facilityId, true);
+  res.json({ success: true, total: data.length, data });
+});
+
+/** GET /api/v1/patients/by-state-health-id/:hid */
+router.get('/by-state-health-id/:hid', (req: Request, res: Response) => {
+  const data = dataStore.findByStateHealthId(String(req.params.hid), true);
+  res.json({ success: true, total: data.length, data });
+});
+
+/** GET /api/v1/patients/longitudinal/:hid */
+router.get('/longitudinal/:hid', (req: Request, res: Response) => {
+  const record = dataStore.getLongitudinalRecord(String(req.params.hid));
+  if (!record) return res.status(404).json({ success: false, error: 'Not found' });
+  res.json({ success: true, data: record });
+});
+
 export default router;
+

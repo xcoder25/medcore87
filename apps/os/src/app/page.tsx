@@ -34,6 +34,7 @@ import { enableFirestoreOffline } from '../lib/firebase';
 import { RoleDashboard } from '../components/dashboards/RoleDashboard';
 import { DoctorPortal } from '../components/dashboards/DoctorPortal';
 import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
+import { StatewideHiePanel } from '../components/interop/StatewideHiePanel';
 import { EmergencyTriageSuite } from '../components/clinical-core/EmergencyTriageSuite';
 import { PharmacyDispensingSuite } from '../components/clinical-core/PharmacyDispensingSuite';
 import { LaboratorySuite } from '../components/clinical-core/LaboratorySuite';
@@ -69,7 +70,7 @@ import {
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Gauge, Trash2, Cpu, FileCode, ShieldCheck,
   Search, X, LayoutDashboard, Zap, CheckCircle2, Globe, ArrowRight,
-  Command, CornerDownLeft
+  Command, CornerDownLeft, Network
 } from 'lucide-react';
 
 export type ModuleKey =
@@ -87,7 +88,7 @@ export type ModuleKey =
   // Pillar 4: Finance
   | 'billing' | 'cashier' | 'claims' | 'revenue-cycle' | 'procurement'
   // Pillar 5: Data & Interop
-  | 'data-hub' | 'fhir' | 'analytics'
+  | 'data-hub' | 'fhir' | 'statewide-hie' | 'analytics'
   // Pillar 6: Connected IoT
   | 'iot-devices'
   // Pillar 7: Security & Governance
@@ -166,6 +167,7 @@ const MASTER_PILLARS: NavSection[] = [
     items: [
       { key: 'data-hub', icon: Database, label: 'Central Telemetry Data Hub' },
       { key: 'fhir', icon: FileCode, label: 'FHIR R4 & HL7 Message Gateway', badge: 'R4' },
+      { key: 'statewide-hie', icon: Network, label: 'Statewide HIE & MPI', badge: 'NDHA' },
       { key: 'analytics', icon: BarChart3, label: 'Clinical Performance Analytics' },
     ],
   },
@@ -720,6 +722,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   'revenue-cycle': RevenueCycleAccountingSuite,
   procurement: ProcurementHrSuite,
   'data-hub': IntegratedDataHub,
+  'statewide-hie': StatewideHiePanel,
   fhir: FhirHl7GatewaySuite,
   analytics: PerformanceAnalytics,
   'iot-devices': ConnectedDevicesSuite,
@@ -735,6 +738,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
 };
 
 const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDesc: string }> = {
+  'statewide-hie': { level: 3, label: 'Statewide HIE', roleDesc: 'MPI and Shared Health Record' },
   dashboard: { level: 2, label: 'L2 All Roles', roleDesc: 'Dedicated Role Command Desk' },
   'doctor-portal': { level: 3, label: 'L3 Clinical', roleDesc: 'Licensed Medical Doctors & Clinical Officers' },
   emr: { level: 2, label: 'L2 Clinical & Records', roleDesc: 'Physicians, Clinical Officers & Records' },
