@@ -31,6 +31,7 @@ import ndprRoutes from './routes/ndpr.routes';
 import hieRoutes from './routes/hie.routes';
 import connectathonRoutes from './routes/connectathon.routes';
 import aiRoutes from './routes/ai.routes';
+import attendanceRoutes from './routes/attendance.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -77,6 +78,7 @@ app.use('/api/v1/ndpr', ndprRoutes);
 app.use('/api/v1/hie', hieRoutes);
 app.use('/api/v1/connectathon', connectathonRoutes);
 app.use('/api/v1/ai', aiRoutes);
+app.use('/api/v1/attendance', attendanceRoutes);
 
 // Root System Status & Architecture Overview
 app.get('/', (req, res) => {
@@ -90,6 +92,7 @@ app.get('/', (req, res) => {
       ndha: 'FHIR R4 + HCX packager + HIE-oriented profiles',
       nhmis: '/api/v1/dhis2 (live or simulated)',
       ndpr: '/api/v1/ndpr',
+      attendance: '/api/v1/attendance',
       matrix: 'docs/architecture/NDHA_COMPLIANCE.md',
     },
     endpoints: {

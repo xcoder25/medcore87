@@ -1,0 +1,35 @@
+# MedCore local/staging — Postgres durable store (API still migrates fully over time)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: medcore-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: medcore
+      POSTGRES_PASSWORD: medcore_dev_change_me
+      POSTGRES_DB: medcore
+    ports:
+      - "5432:5432"
+    volumes:
+      - medcore_pg_data:/var/lib/postgresql/data
+      - ./services/api-server/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medcore -d medcore"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Optional: run API against host network after npm install in api-server
+  # api:
+  #   build: ./services/api-server
+  #   environment:
+  #     DATABASE_URL: postgresql://medcore:medcore_dev_change_me@postgres:5432/medcore
+  #     PORT: 4000
+  #   ports:
+  #     - "4000:4000"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+volumes:
+  medcore_pg_data:
