@@ -12,7 +12,7 @@ import {
   type User,
 } from 'firebase/auth';
 import {
-  getFirestore,
+  getFirestore as getFirestoreSdk,
   doc,
   setDoc,
   getDoc,
@@ -55,7 +55,7 @@ export function getFirebaseAuth(): Auth {
 
 export function getFirestore(): Firestore {
   if (!db) {
-    db = getFirestore(getFirebaseApp());
+    db = getFirestoreSdk(getFirebaseApp());
   }
   return db;
 }
