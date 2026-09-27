@@ -21,6 +21,7 @@ import { PatientFlowVisibility } from '../patient-flow/PatientFlowVisibility';
 import { AccessControl } from '../rbac/AccessControl';
 import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
 import { CashierRevenue } from '../cashier/CashierRevenue';
+import { AmbulanceTransfersSuite } from '../operations/AmbulanceTransfersSuite';
 import { StaffEnrolment } from '../staffing/StaffEnrolment';
 import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
@@ -182,13 +183,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'patient-flow':
         return <PatientFlowVisibility />;
       case 'ambulance':
-        return (
-          <div className="admin-placeholder">
-            <PhoneCall size={28} />
-            <h2>Ambulance &amp; Dispatch</h2>
-            <p>Fleet tracking and dispatch will appear here.</p>
-          </div>
-        );
+        return <AmbulanceTransfersSuite />;
       case 'rbac':
         return <AccessControl />;
       case 'enrolment':

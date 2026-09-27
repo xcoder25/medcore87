@@ -59,6 +59,7 @@ import { ConnectedDevicesSuite } from '../components/interop/ConnectedDevicesSui
 import { ClinicalSafetyBcpSuite } from '../components/interop/ClinicalSafetyBcpSuite';
 import { EMRManager } from '../components/gateway-modules/EMRManager';
 import NotificationBell from '../components/realtime/NotificationBell';
+import { LiveActionToaster } from '../components/realtime/LiveActionToaster';
 import AlertBanner from '../components/realtime/AlertBanner';
 import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
 
@@ -1666,6 +1667,7 @@ export default function OSPage() {
       {/* ── Main Operations Column (Desktop Fit) ── */}
       <div className="os-main-column">
         {/* Real-Time Critical Alert Banner */}
+        <LiveActionToaster />
         <AlertBanner alert={criticalAlert} onDismiss={dismissCriticalAlert} />
 
         {/* Top Operations Header */}

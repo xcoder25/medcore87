@@ -1,7 +1,7 @@
 {
-  "name": "@medcore/clinic",
+  "name": "@medcore/mobile",
   "version": "1.0.0",
-  "description": "MedCore Clinic - Clinician & Staff Mobile Application (React Native / Expo)",
+  "description": "MedCore Mobile \u2014 unified Patient + Staff app with RBAC (merged Care + Clinic)",
   "main": "index.js",
   "scripts": {
     "start": "expo start",
