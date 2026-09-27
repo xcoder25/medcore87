@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { UserSession } from '../auth/AuthScreen';
+import { emitLiveAction } from '../../lib/liveActions';
 import { AdminWorkspace } from './AdminWorkspace';
 import {
   Stethoscope, Activity, Flame, Wind, Pill, FlaskConical, Layers, Baby, Droplet,
@@ -20,13 +21,14 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
   const [activeTab, setActiveTab] = useState<'overview' | 'queue' | 'alerts'>('overview');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
-  const triggerAction = (msg: string, navKey?: string) => {
+  const triggerAction = useCallback((msg: string, navKey?: string) => {
     setActionNotice(msg);
-    setTimeout(() => setActionNotice(null), 3500);
+    emitLiveAction(msg, { role: session?.role, navKey, module: 'role-dashboard' });
+    setTimeout(() => setActionNotice(null), 3600);
     if (navKey) {
-      setTimeout(() => onNavigate(navKey), 600);
+      setTimeout(() => onNavigate(navKey), 500);
     }
-  };
+  }, [onNavigate, session?.role]);
 
   // Determine role key from session role or session.roleKey or title
   const roleTitle = (session.role || session.title || '').toLowerCase();
@@ -68,7 +70,10 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="role-dash-shell" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <span className="role-live-pill">Realtime ready</span>
+      </div>
       {/* -- Notification Toast -- */}
       {actionNotice && (
         <div style={{
