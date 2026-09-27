@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "MedCore Clinic",
-    "slug": "medcore-clinic",
+    "name": "MedCore Mobile",
+    "slug": "medcore-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
