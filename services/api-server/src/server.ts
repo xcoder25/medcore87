@@ -3,6 +3,8 @@ import http from 'http';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { syncEventBus } from './sync/eventBus';
+import { isPostgresEnabled, pingPostgres, getPool } from './store/postgres';
+import { facilityScope } from './middleware/facilityScope';
 
 // Import route modules
 import authRoutes from './routes/auth.routes';
@@ -37,8 +39,23 @@ const app = express();
 const server = http.createServer(app);
 
 // ─── Middleware ─────────────────────────────────────────────────────────────
-app.use(cors({ origin: '*', credentials: true }));
+const corsOrigins = (process.env.CORS_ORIGINS || '*')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+app.use(
+  cors({
+    origin: corsOrigins.includes('*')
+      ? true
+      : (origin, cb) => {
+          if (!origin || corsOrigins.includes(origin)) cb(null, true);
+          else cb(new Error('CORS blocked: ' + origin));
+        },
+    credentials: true,
+  })
+);
 app.use(express.json());
+app.use(facilityScope);
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -148,6 +165,10 @@ const PORT = process.env.PORT || 4000;
 
 if (process.env.NODE_ENV !== 'test') {
   server.listen(PORT, () => {
+    getPool(); // init optional Postgres
+    void pingPostgres().then((r) => {
+      console.log(r.ok ? '🗄️  Postgres: connected' : `🗄️  Postgres: ${r.error || 'not configured'}`);
+    });
     console.log(`=============================================================`);
     console.log(`🚀 MedCore Central Data Hub & Real-time Event Bus (M87 Core)`);
     console.log(`📡 HTTP Server running on: http://localhost:${PORT}`);

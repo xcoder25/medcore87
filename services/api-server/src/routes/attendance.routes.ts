@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express';
 import { auditLedger } from '../security/auditLedger';
 import { syncEventBus } from '../sync/eventBus';
+import { insertAttendanceEvent, listAttendanceEvents, isPostgresEnabled } from '../store/postgres';
 
 const router = Router();
 
@@ -84,6 +85,22 @@ router.post('/punch', (req: Request, res: Response) => {
 
   pushEvent(event);
 
+  // Durable write when DATABASE_URL is configured (AWS RDS / docker Postgres)
+  if (isPostgresEnabled()) {
+    void insertAttendanceEvent({
+      facilityId: event.facilityId,
+      staffId: event.staffId,
+      badgeId: event.badgeId,
+      staffName: event.staffName,
+      direction: event.direction,
+      punchedAt: event.punchedAt,
+      source: event.source,
+      cameraId: event.cameraId,
+      confidence: event.confidence,
+      note: event.note,
+    }).catch((err) => console.error('[attendance] pg insert failed', err?.message || err));
+  }
+
   auditLedger.logEvent({
     actorId: event.badgeId || event.staffId || 'ATTENDANCE-AI',
     actorName: event.staffName || 'Attendance',
@@ -110,12 +127,22 @@ router.post('/punch', (req: Request, res: Response) => {
 /**
  * GET /api/v1/attendance/events?facilityId=&limit=
  */
-router.get('/events', (req: Request, res: Response) => {
-  const facilityId = req.query.facilityId ? String(req.query.facilityId) : null;
+router.get('/events', async (req: Request, res: Response) => {
+  const facilityId = req.query.facilityId ? String(req.query.facilityId) : undefined;
   const limit = Math.min(500, parseInt(String(req.query.limit || '100'), 10) || 100);
+  if (isPostgresEnabled()) {
+    try {
+      const pg = await listAttendanceEvents(facilityId, limit);
+      if (pg) {
+        return res.json({ success: true, total: pg.rowCount, data: pg.rows, source: 'postgres' });
+      }
+    } catch (e: any) {
+      console.error('[attendance] pg list failed', e?.message);
+    }
+  }
   let list = [...events].reverse();
   if (facilityId) list = list.filter((e) => e.facilityId === facilityId);
-  res.json({ success: true, total: list.length, data: list.slice(0, limit) });
+  res.json({ success: true, total: list.length, data: list.slice(0, limit), source: 'memory' });
 });
 
 /**
