@@ -11,9 +11,13 @@ export interface EncryptedPayload {
 export type AuditAction =
   | 'READ_PHI'
   | 'WRITE_PHI'
+  | 'WRITE'
   | 'EXPORT_RECORD'
   | 'DECRYPT_PAYLOAD'
   | 'BREAK_GLASS_ACCESS'
+  | 'EMERGENCY_OVERRIDE'
+  | 'ATTENDANCE_PUNCH'
+  | 'CONSENT_GRANT'
   | 'FINANCIAL_TRANSACT'
   | 'FACILITY_LOGIN'
   | 'SURVEILLANCE_EXPORT'
@@ -23,7 +27,9 @@ export type AuditAction =
 
 export type UserRole =
   | 'PATIENT'
+  | 'PATIENT_OR_PROXY'
   | 'DOCTOR'
+  | 'CLINICIAN'
   | 'SURGEON'
   | 'NURSE'
   | 'CASHIER'
@@ -34,6 +40,7 @@ export type UserRole =
   | 'HOSPITAL_ADMIN'
   | 'MOH_COMMISSIONER'
   | 'REGULATORY_AUDITOR'
+  | 'SYSTEM'
   | 'SYSTEM_DAEMON';
 
 export interface AuditBlock {
@@ -44,7 +51,7 @@ export interface AuditBlock {
   actorRole: UserRole;
   facilityId: string;
   action: AuditAction;
-  resourceType: 'PATIENT' | 'ENCOUNTER' | 'BILL' | 'WALLET' | 'PRESCRIPTION' | 'LAB_RESULT' | 'FACILITY';
+  resourceType: 'PATIENT' | 'ENCOUNTER' | 'BILL' | 'WALLET' | 'PRESCRIPTION' | 'LAB_RESULT' | 'FACILITY' | 'ATTENDANCE' | 'MPI' | 'SHR';
   resourceId: string;
   reason: string;
   ipAddress: string;

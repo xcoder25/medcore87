@@ -12,3 +12,6 @@ export * from './pharmacy';
 export * from './hmo';
 
 export * from './staffCard';
+export * from './cds';
+export * from './emar';
+export * from './news2';

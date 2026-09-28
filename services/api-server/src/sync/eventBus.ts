@@ -126,6 +126,21 @@ export class SyncEventBus extends EventEmitter {
   /**
    * Broadcasts a real-time event across the ecosystem to connected applications
    */
+  public publish<T>(
+    topicOrParams: SyncTopic | string | { topic: SyncTopic | string; facilityId?: string; emitterApp: EmitterApp | string; payload: T },
+    maybePayload?: T
+  ): SyncEnvelope<T> {
+    if (typeof topicOrParams === 'string') {
+      return this.broadcast({
+        topic: topicOrParams as any,
+        facilityId: (maybePayload as any)?.facilityId || 'FAC-001',
+        emitterApp: 'API_SERVER',
+        payload: maybePayload as T,
+      });
+    }
+    return this.broadcast(topicOrParams as any);
+  }
+
   public broadcast<T>(params: {
     topic: SyncTopic;
     facilityId?: string;

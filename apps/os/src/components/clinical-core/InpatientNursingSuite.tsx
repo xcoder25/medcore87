@@ -3,13 +3,15 @@
 import React, { useState } from 'react';
 import {
   Heart, Activity, CheckCircle2, Clock, Pill,
-  FileText, Search, User, ShieldCheck, AlertTriangle, Plus, X
+  FileText, Search, User, ShieldCheck, AlertTriangle, Plus, X, QrCode
 } from 'lucide-react';
 import type { NursingCareItem } from '@medcore/types';
+import { BedsideEmarSuite } from './BedsideEmarSuite';
 
 const INITIAL_NURSING_ITEMS: NursingCareItem[] = [];
 
 export const InpatientNursingSuite: React.FC = () => {
+  const [activeSubTab, setActiveSubTab] = useState<'kardex' | 'emar'>('emar');
   const [items, setItems] = useState<NursingCareItem[]>(INITIAL_NURSING_ITEMS);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newBed, setNewBed] = useState('Med Bed 08');
@@ -107,24 +109,60 @@ export const InpatientNursingSuite: React.FC = () => {
         </div>
       </div>
 
-      {/* Nursing Task Table */}
-      <div className="os-card" style={{ padding: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
-          <div>
-            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0A2540', textTransform: 'uppercase' }}>
-              Electronic Medication Administration Record (e-MAR) & Ward Care Kardex
-            </span>
-            <div style={{ fontSize: '0.74rem', color: 'var(--os-text-dim)', marginTop: 2 }}>Shift 08:00 – 16:00 • Inpatient Medication Checklist</div>
+      {/* Tab Switcher */}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('emar')}
+          style={{
+            padding: '10px 18px', borderRadius: 8, fontSize: '0.84rem', fontWeight: 700,
+            display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+            background: activeSubTab === 'emar' ? 'var(--ak-navy, #0A2540)' : 'transparent',
+            color: activeSubTab === 'emar' ? '#FFF' : 'var(--os-text-dim)',
+            border: activeSubTab === 'emar' ? '1px solid #38BDF8' : '1px solid var(--os-border)',
+          }}
+        >
+          <QrCode size={16} color={activeSubTab === 'emar' ? '#38BDF8' : 'currentColor'} />
+          Bedside e-MAR & BCMA (Barcode Admin)
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('kardex')}
+          style={{
+            padding: '10px 18px', borderRadius: 8, fontSize: '0.84rem', fontWeight: 700,
+            display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+            background: activeSubTab === 'kardex' ? 'var(--ak-navy, #0A2540)' : 'transparent',
+            color: activeSubTab === 'kardex' ? '#FFF' : 'var(--os-text-dim)',
+            border: activeSubTab === 'kardex' ? '1px solid #10B981' : '1px solid var(--os-border)',
+          }}
+        >
+          <FileText size={16} color={activeSubTab === 'kardex' ? '#10B981' : 'currentColor'} />
+          Ward Kardex & General Care Tasks
+        </button>
+      </div>
+
+      {activeSubTab === 'emar' ? (
+        <BedsideEmarSuite />
+      ) : (
+        /* Nursing Task Table */
+        <div className="os-card" style={{ padding: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+            <div>
+              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0A2540', textTransform: 'uppercase' }}>
+                Ward Care Kardex & Shift Checklist
+              </span>
+              <div style={{ fontSize: '0.74rem', color: 'var(--os-text-dim)', marginTop: 2 }}>Shift 08:00 – 16:00 • Inpatient Care Tasks</div>
+            </div>
+            <button
+              type="button"
+              className="os-action-btn-primary"
+              onClick={() => setShowAddModal(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', padding: '7px 14px' }}
+            >
+              <Plus size={14} /> Add Nursing Task
+            </button>
           </div>
-          <button
-            type="button"
-            className="os-action-btn-primary"
-            onClick={() => setShowAddModal(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', padding: '7px 14px' }}
-          >
-            <Plus size={14} /> Add Nursing Task
-          </button>
-        </div>
 
         <div className="os-table-wrap">
           <table className="os-table">

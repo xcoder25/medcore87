@@ -29,8 +29,8 @@ export function getPool(): Pool | null {
       connectionTimeoutMillis: 8_000,
       ssl: process.env.PG_SSL === 'true' ? { rejectUnauthorized: process.env.PG_SSL_REJECT_UNAUTHORIZED !== 'false' } : undefined,
     });
-    pool.on('error', (err) => {
-      console.error('[postgres] pool error', err.message);
+    pool.on('error', (err: any) => {
+      console.error('[postgres] pool error', err?.message || err);
     });
     console.log('[postgres] pool configured (DATABASE_URL set)');
     return pool;

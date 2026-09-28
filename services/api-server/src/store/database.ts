@@ -977,8 +977,7 @@ export class CentralDataStore {
     if (!matches.length) return null;
     const patientIds = new Set(matches.map((m) => m.id));
     const encounters = this.getEncounters().filter((e) => patientIds.has(e.patientId));
-    const orders = Array.from(this.clinicalOrders?.values?.() || this.getAllClinicalOrders?.() || []);
-    // clinicalOrders may be private Map
+    const orders = Array.from(this.orders.values());
     return {
       stateHealthId: stateHealthId.toUpperCase(),
       identities: matches.map((m) => ({
@@ -1006,7 +1005,7 @@ export class CentralDataStore {
     for (const p of patients) {
       byFacility[p.facilityId] = (byFacility[p.facilityId] || 0) + 1;
     }
-    const openEncounters = this.getEncounters().filter((e) => e.status === 'IN_PROGRESS' || e.status === 'ARRIVED' || (e as any).status === 'ACTIVE');
+    const openEncounters = this.getEncounters().filter((e) => (e.status as any) === 'IN_PROGRESS' || (e.status as any) === 'ARRIVED' || e.status === 'ACTIVE');
     return {
       totalPatients: patients.length,
       totalEncounters: this.encounters.size,

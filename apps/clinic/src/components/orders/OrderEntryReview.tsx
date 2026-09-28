@@ -134,7 +134,76 @@ export const OrderEntryReview: React.FC = () => {
     },
   ]);
 
-  const applyPathway = async (pathway: typeof IBOM_PATHWAYS[0]) => {
+  // ─── Clinical Decision Support (CDS) Safety Engine ────────────────────────
+  const [cdsAlerts, setCdsAlerts] = useState<any[]>([]);
+  const [showCdsModal, setShowCdsModal] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
+  const [pendingCallback, setPendingCallback] = useState<(() => Promise<void>) | null>(null);
+
+  const evaluateCdsSafety = (itemsToCheck: string[]): any[] => {
+    const alerts: any[] = [];
+    const patientAllergies = (selectedPatient.allergies || '').toLowerCase();
+
+    for (const item of itemsToCheck) {
+      const lower = item.toLowerCase();
+      // 1. Penicillin Class vs Allergy
+      if (patientAllergies.includes('penicillin') || patientAllergies.includes('amox')) {
+        if (['penicillin', 'amoxicillin', 'ampicillin', 'augmentin', 'co-amoxiclav', 'cloxacillin', 'cefazolin'].some(d => lower.includes(d))) {
+          alerts.push({
+            id: `CDS-ALG-PEN-${Date.now()}`,
+            type: 'DRUG_ALLERGY',
+            severity: 'HARD_STOP',
+            title: '🛑 Severe Allergy Conflict: Penicillin Anaphylaxis Risk',
+            trigger: item,
+            conflict: `Documented Allergy: "${selectedPatient.allergies}"`,
+            evidence: 'Severe IgE-mediated anaphylactic shock or Stevens-Johnson syndrome reported with Beta-lactam re-exposure.',
+            recommended: 'Switch to Azithromycin 500mg IV/PO, Ciprofloxacin, or Vancomycin.',
+          });
+        }
+      }
+      // 2. Sulfa Class vs Allergy
+      if (patientAllergies.includes('sulfa')) {
+        if (['sulfa', 'septrin', 'bactrim', 'cotrimoxazole', 'fansidar', 'sulfadoxine'].some(d => lower.includes(d))) {
+          alerts.push({
+            id: `CDS-ALG-SULFA-${Date.now()}`,
+            type: 'DRUG_ALLERGY',
+            severity: 'HARD_STOP',
+            title: '🛑 Severe Allergy Conflict: Sulfonamide Hypersensitivity',
+            trigger: item,
+            conflict: `Documented Allergy: "${selectedPatient.allergies}"`,
+            evidence: 'Risk of toxic epidermal necrolysis (TEN) and severe hypersensitivity.',
+            recommended: 'Select an alternative non-sulfonamide antimicrobial class.',
+          });
+        }
+      }
+      // 3. Dangerous Drug Interactions
+      if (lower.includes('lisinopril') && lower.includes('losartan')) {
+        alerts.push({
+          id: `CDS-DDI-${Date.now()}`,
+          type: 'DRUG_DRUG_INTERACTION',
+          severity: 'HARD_STOP',
+          title: '⚠️ Dual RAS Blockade (ACE-Inhibitor + ARB)',
+          trigger: item,
+          conflict: 'Concurrent ACEI + ARB',
+          evidence: 'Excessive risk of hyperkalemia, acute kidney injury, and profound hypotension.',
+          recommended: 'Prescribe single agent only. Add CCB or thiazide diuretic if needed.',
+        });
+      }
+    }
+    return alerts;
+  };
+
+  const applyPathway = async (pathway: typeof IBOM_PATHWAYS[0], isOverridden = false) => {
+    if (!isOverridden) {
+      const alerts = evaluateCdsSafety(pathway.items);
+      if (alerts.length > 0) {
+        setCdsAlerts(alerts);
+        setPendingCallback(() => () => applyPathway(pathway, true));
+        setShowCdsModal(true);
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     setSuccessBanner(null);
 
@@ -165,7 +234,7 @@ export const OrderEntryReview: React.FC = () => {
         urgency: item.includes('STAT') ? 'STAT' : item.includes('URGENT') ? 'URGENT' : 'ROUTINE',
         status: 'PENDING',
         orderedAt: 'Just now',
-        details: `From ${pathway.title}`,
+        details: isOverridden ? `[OVERRIDDEN: ${overrideReason}] From ${pathway.title}` : `From ${pathway.title}`,
       }));
 
       setActiveOrders((prev) => [...newItems, ...prev]);
@@ -180,13 +249,25 @@ export const OrderEntryReview: React.FC = () => {
       setActiveTab('tracker');
     } finally {
       setIsSubmitting(false);
+      setShowCdsModal(false);
+      setOverrideReason('');
     }
   };
 
-  const submitCustomOrder = async () => {
+  const submitCustomOrder = async (isOverridden = false) => {
     if (!orderTitle.trim()) {
       alert('Please enter an order title or test name.');
       return;
+    }
+
+    if (!isOverridden && orderCategory === 'MED') {
+      const alerts = evaluateCdsSafety([orderTitle]);
+      if (alerts.length > 0) {
+        setCdsAlerts(alerts);
+        setPendingCallback(() => () => submitCustomOrder(true));
+        setShowCdsModal(true);
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -199,7 +280,7 @@ export const OrderEntryReview: React.FC = () => {
       urgency: orderUrgency,
       status: 'PENDING',
       orderedAt: 'Just now',
-      details: orderInstructions || 'Routine order',
+      details: isOverridden ? `[CDS OVERRIDDEN: ${overrideReason}] ${orderInstructions || 'Routine order'}` : (orderInstructions || 'Routine order'),
     };
 
     try {
@@ -226,6 +307,8 @@ export const OrderEntryReview: React.FC = () => {
       setActiveTab('tracker');
     } finally {
       setIsSubmitting(false);
+      setShowCdsModal(false);
+      setOverrideReason('');
     }
   };
 
@@ -479,6 +562,72 @@ export const OrderEntryReview: React.FC = () => {
               </View>
             );
           })}
+        </View>
+      )}
+
+      {/* ─── Clinical Decision Support (CDS) Pre-Flight Warning Modal ──────── */}
+      {showCdsModal && (
+        <View style={styles.cdsModalOverlay}>
+          <View style={styles.cdsModalCard}>
+            <View style={styles.cdsModalHeader}>
+              <Text style={styles.cdsModalIcon}>⚠️</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cdsModalTitle}>CLINICAL DECISION SUPPORT ALERT</Text>
+                <Text style={styles.cdsModalSub}>Safety Contraindication Pre-Flight Stop</Text>
+              </View>
+            </View>
+
+            <ScrollView style={{ maxHeight: 220 }}>
+              {cdsAlerts.map((alert, idx) => (
+                <View key={alert.id || idx} style={styles.cdsAlertBox}>
+                  <Text style={styles.cdsAlertHeading}>{alert.title}</Text>
+                  <Text style={styles.cdsAlertItem}>Trigger: <Text style={{ color: '#F8FAFC', fontWeight: '700' }}>{alert.trigger}</Text></Text>
+                  {alert.conflict && <Text style={styles.cdsAlertConflict}>{alert.conflict}</Text>}
+                  <Text style={styles.cdsAlertEvidence}>{alert.evidence}</Text>
+                  <View style={styles.cdsRecBox}>
+                    <Text style={styles.cdsRecLabel}>Recommended Alternative:</Text>
+                    <Text style={styles.cdsRecText}>{alert.recommended}</Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={{ marginTop: 12 }}>
+              <Text style={styles.overrideLabel}>Mandatory Clinical Override Reason:</Text>
+              <TextInput
+                style={styles.overrideInput}
+                placeholder="e.g. Benefits outweigh risk, patient desensitized, alternative unavailable"
+                placeholderTextColor="#64748B"
+                value={overrideReason}
+                onChangeText={setOverrideReason}
+              />
+            </View>
+
+            <View style={styles.cdsBtnRow}>
+              <TouchableOpacity
+                style={styles.cdsCancelBtn}
+                onPress={() => {
+                  setShowCdsModal(false);
+                  setCdsAlerts([]);
+                  setOverrideReason('');
+                }}
+              >
+                <Text style={styles.cdsCancelBtnText}>Cancel Order</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.cdsOverrideBtn, !overrideReason.trim() && { opacity: 0.5 }]}
+                disabled={!overrideReason.trim()}
+                onPress={() => {
+                  if (pendingCallback) {
+                    pendingCallback();
+                  }
+                }}
+              >
+                <Text style={styles.cdsOverrideBtnText}>Sign & Override Alert</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       )}
     </ScrollView>
@@ -847,5 +996,144 @@ const styles = StyleSheet.create({
     color: '#34D399',
     marginTop: 4,
     fontStyle: 'italic',
+  },
+  // CDS Modal Styles
+  cdsModalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.88)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+    zIndex: 9999,
+  },
+  cdsModalCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#EF4444',
+    padding: 18,
+    width: '100%',
+    maxWidth: 520,
+    shadowColor: '#EF4444',
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  cdsModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cdsModalIcon: {
+    fontSize: 26,
+    marginRight: 10,
+  },
+  cdsModalTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#EF4444',
+    letterSpacing: 0.5,
+  },
+  cdsModalSub: {
+    fontSize: 11,
+    color: '#F87171',
+  },
+  cdsAlertBox: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#EF4444',
+    padding: 12,
+    marginBottom: 10,
+  },
+  cdsAlertHeading: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FCA5A5',
+    marginBottom: 4,
+  },
+  cdsAlertItem: {
+    fontSize: 11,
+    color: '#CBD5E1',
+  },
+  cdsAlertConflict: {
+    fontSize: 11,
+    color: '#F87171',
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  cdsAlertEvidence: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 4,
+    lineHeight: 15,
+  },
+  cdsRecBox: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderRadius: 6,
+    padding: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  cdsRecLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#34D399',
+    textTransform: 'uppercase',
+  },
+  cdsRecText: {
+    fontSize: 11,
+    color: '#F1F5F9',
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  overrideLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#E2E8F0',
+    marginBottom: 6,
+  },
+  overrideInput: {
+    backgroundColor: '#1E293B',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    color: '#F8FAFC',
+    fontSize: 12,
+  },
+  cdsBtnRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 14,
+  },
+  cdsCancelBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 6,
+    backgroundColor: '#334155',
+  },
+  cdsCancelBtnText: {
+    color: '#F8FAFC',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  cdsOverrideBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    backgroundColor: '#EF4444',
+  },
+  cdsOverrideBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
   },
 });

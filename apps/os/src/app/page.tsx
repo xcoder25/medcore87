@@ -62,6 +62,7 @@ import NotificationBell from '../components/realtime/NotificationBell';
 import { LiveActionToaster } from '../components/realtime/LiveActionToaster';
 import AlertBanner from '../components/realtime/AlertBanner';
 import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
+import { BreakGlassModal } from '../components/security/BreakGlassModal';
 
 // Icons
 import {
@@ -810,6 +811,7 @@ export default function OSPage() {
   const [unlockPin, setUnlockPin] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [activeEmergencyCode, setActiveEmergencyCode] = useState<string | null>(null);
+  const [breakGlassOpen, setBreakGlassOpen] = useState(false);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showFullDirectory, setShowFullDirectory] = useState(false);
@@ -1746,6 +1748,22 @@ export default function OSPage() {
             <button
               type="button"
               className="os-hud-btn"
+              style={{
+                background: 'rgba(239, 68, 68, 0.15)',
+                borderColor: '#EF4444',
+                color: '#EF4444',
+                fontWeight: 700,
+              }}
+              onClick={() => setBreakGlassOpen(true)}
+              title="Emergency Break-Glass Access & Care-First Bypass"
+            >
+              <Flame size={14} color="#EF4444" />
+              <span>Break-Glass</span>
+            </button>
+
+            <button
+              type="button"
+              className="os-hud-btn"
               onClick={handleLockScreen}
               title="Lock screen"
             >
@@ -1962,6 +1980,19 @@ export default function OSPage() {
           </div>
         </main>
       </div>
+
+      {/* Emergency Break-Glass Override Modal */}
+      <BreakGlassModal
+        isOpen={breakGlassOpen}
+        onClose={() => setBreakGlassOpen(false)}
+        patientName="Emergency Admission / Unconscious ER Trauma"
+        patientMrn="MRN-EMERG-TRAUMA"
+        facilityId={userSession?.facility || 'FAC-001'}
+        onAccessGranted={(justification) => {
+          setActiveEmergencyCode('CODE BREAK-GLASS ACTIVE');
+          alert(`✓ Emergency Break-Glass Authorized.\nJustification: ${justification}\nCare-First bypass unlocked.`);
+        }}
+      />
     </div>
   );
 }

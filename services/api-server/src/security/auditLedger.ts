@@ -64,7 +64,7 @@ export class AuditLedgerService {
     actorRole: UserRole;
     facilityId: string;
     action: AuditAction;
-    resourceType: 'PATIENT' | 'ENCOUNTER' | 'BILL' | 'WALLET' | 'PRESCRIPTION' | 'LAB_RESULT' | 'FACILITY';
+    resourceType: AuditBlock['resourceType'];
     resourceId: string;
     reason: string;
     ipAddress?: string;

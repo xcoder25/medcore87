@@ -38,10 +38,15 @@ export type SyncTopic =
   | 'TILL_SHIFT_CLOSED'
   | 'HMO_PREAUTH_APPROVED'
   | 'HMO_PREAUTH_REJECTED'
-  // ── Facilities ───────────────────────────────
+  // ── Facilities & Sync ────────────────────────
   | 'FACILITY_CREDENTIALS_ISSUED'
-  // ── Security ─────────────────────────────────
+  | 'FACILITY_DATA_SYNC'
+  | 'ATTENDANCE_PUNCHED'
+  | 'HIE_CONSENT_GRANTED'
+  | 'CONNECTATHON_EVENT'
+  // ── Security & Escalations ───────────────────
   | 'BREAK_GLASS_TRIGGERED'
+  | 'RAPID_RESPONSE_ESCALATION'
   | 'EPIDEMIC_SURGE_ALERT'
   // ── DHIS2 / Reporting ────────────────────────
   | 'DHIS2_SYNC_COMPLETE'
@@ -53,11 +58,13 @@ export type SyncTopic =
 export type EmitterApp =
   | 'MEDCORE_CARE'
   | 'MEDCORE_CLINIC'
+  | 'MEDCORE_CLINICAL_CORE'
   | 'MEDCORE_OS'
   | 'MEDCORE_OS_PHARMACY'
   | 'MEDCORE_ADMIN'
   | 'API_SERVER'
   | 'AI_ENGINE'
+  | 'LAB_ANALYZER_GATEWAY'
   | 'DHIS2_BRIDGE';
 
 export interface SyncEnvelope<T = unknown> {

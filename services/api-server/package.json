@@ -12,16 +12,16 @@
     "@medcore/types": "*",
     "cors": "^2.8.5",
     "express": "^5.0.0",
-    "ws": "^8.18.0",
-    "pg": "^8.13.0"
+    "pg": "^8.23.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
     "@types/ws": "^8.5.10",
-    "typescript": "^5.7.0",
-    "@types/pg": "^8.11.0"
+    "typescript": "^5.7.0"
   },
   "private": true
 }
