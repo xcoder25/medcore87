@@ -1,8 +1,17 @@
-﻿'use client';
-import React, { useState } from 'react';
-import { Building2, CheckCircle2, Clock, AlertCircle, Plus, Edit2, MapPin, Phone, Globe } from 'lucide-react';
+'use client';
 
-interface Facility {
+/**
+ * Hospital profile for the logged-in hospital admin only.
+ * One admin ↔ one facility — no multi-hospital registry on this screen.
+ */
+import React, { useEffect, useState } from 'react';
+import {
+  Building2, CheckCircle2, MapPin, Phone, Globe, Edit2, Save, X, Shield,
+} from 'lucide-react';
+import type { UserSession } from '../auth/AuthScreen';
+import { emitLiveAction } from '../../lib/liveActions';
+
+export interface HospitalProfile {
   id: string;
   name: string;
   type: string;
@@ -18,166 +27,287 @@ interface Facility {
   medicalDirector: string;
 }
 
-const FACILITIES_KEY = 'medcore_os_facilities';
+function profileKey(hospitalId: string) {
+  return `medcore_hospital_profile_${hospitalId}`;
+}
 
-const DEMO_FACILITY_IDS = new Set(['ISH-001', 'UUTH-002', 'GHI-003', 'GHE-004']);
-const DEMO_FACILITY_NAMES = [
-  'Ibom Specialist Hospital',
-  'University of Uyo Teaching Hospital',
-  'General Hospital, Ikot Ekpene',
-  'General Hospital, Eket',
-];
-
-function loadFacilities(): Facility[] {
-  if (typeof window === 'undefined') return [];
+function loadProfile(session?: UserSession): HospitalProfile {
+  const id = session?.hospitalId || 'UNKNOWN';
+  const name = session?.facility || session?.hospitalName || 'My Hospital';
+  const blank: HospitalProfile = {
+    id,
+    name,
+    type: 'General Hospital',
+    lga: '',
+    address: '',
+    beds: 0,
+    phone: '',
+    email: '',
+    licenseNo: '',
+    licenseExpiry: '',
+    status: 'active',
+    tier: 'Secondary Care',
+    medicalDirector: session?.name || '',
+  };
+  if (typeof window === 'undefined') return blank;
   try {
-    const raw = localStorage.getItem(FACILITIES_KEY);
-    if (!raw) return [];
-    const list = JSON.parse(raw) as Facility[];
-    // Strip legacy demo rows from older builds
-    const clean = list.filter(
-      (f) =>
-        !DEMO_FACILITY_IDS.has(f.id) &&
-        !DEMO_FACILITY_NAMES.some((n) => (f.name || '').trim() === n)
-    );
-    if (clean.length !== list.length) {
-      localStorage.setItem(FACILITIES_KEY, JSON.stringify(clean));
+    const raw = localStorage.getItem(profileKey(id));
+    if (raw) {
+      const parsed = JSON.parse(raw) as HospitalProfile;
+      return { ...blank, ...parsed, id, name: parsed.name || name };
     }
-    return clean;
   } catch {
-    return [];
+    /* ignore */
+  }
+  return blank;
+}
+
+function saveProfile(p: HospitalProfile) {
+  try {
+    localStorage.setItem(profileKey(p.id), JSON.stringify(p));
+  } catch {
+    /* ignore */
   }
 }
 
-function saveFacilities(list: Facility[]) {
-  try {
-    localStorage.setItem(FACILITIES_KEY, JSON.stringify(list));
-  } catch { /* ignore */ }
+interface Props {
+  session?: UserSession;
 }
 
-const STATUS_META = {
-  active: { label: 'Active', color: '#22C55E' },
-  pending: { label: 'Pending Renewal', color: '#F59E0B' },
-  suspended: { label: 'Suspended', color: '#EF4444' },
-};
+export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
+  const [profile, setProfile] = useState<HospitalProfile>(() => loadProfile(session));
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<HospitalProfile>(profile);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
 
-export const FacilityOnboarding: React.FC = () => {
-  const [facilities, setFacilities] = useState<Facility[]>(() => loadFacilities());
-  const [selected, setSelected] = useState<Facility | null>(null);
+  useEffect(() => {
+    const p = loadProfile(session);
+    setProfile(p);
+    setDraft(p);
+  }, [session?.hospitalId, session?.facility]);
+
+  const startEdit = () => {
+    setDraft(profile);
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setDraft(profile);
+    setEditing(false);
+  };
+
+  const save = () => {
+    const next = { ...draft, id: profile.id };
+    setProfile(next);
+    saveProfile(next);
+    setEditing(false);
+    setSavedAt(new Date().toLocaleTimeString());
+    emitLiveAction(`Hospital profile saved · ${next.name}`, { module: 'hospital-profile' });
+  };
+
+  const field = (
+    label: string,
+    key: keyof HospitalProfile,
+    opts?: { type?: string; readOnly?: boolean }
+  ) => {
+    const value = String(draft[key] ?? '');
+    return (
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
+        {label}
+        <input
+          type={opts?.type || 'text'}
+          value={value}
+          readOnly={!editing || opts?.readOnly}
+          onChange={(e) =>
+            setDraft((d) => ({
+              ...d,
+              [key]: key === 'beds' ? Number(e.target.value) || 0 : e.target.value,
+            }))
+          }
+          style={{
+            padding: '10px 12px',
+            borderRadius: 10,
+            border: '1px solid #E2E8F0',
+            fontSize: '0.9rem',
+            fontWeight: 500,
+            color: '#0A2540',
+            background: editing && !opts?.readOnly ? '#fff' : '#F8FAFC',
+          }}
+        />
+      </label>
+    );
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-      {/* KPIs */}
-      <div className="os-metrics-ribbon">
-        <div className="metric-box alert-green">
-          <span className="metric-label"><CheckCircle2 size={13} style={{ display: 'inline', marginRight: 4 }} />Active Facilities</span>
-          <span className="metric-val">{facilities.filter(f => f.status === 'active').length}</span>
-          <span className="metric-sub">Fully licensed and operational</span>
-        </div>
-        <div className="metric-box alert-yellow">
-          <span className="metric-label"><Clock size={13} style={{ display: 'inline', marginRight: 4 }} />Pending Renewal</span>
-          <span className="metric-val">{facilities.filter(f => f.status === 'pending').length}</span>
-          <span className="metric-sub">Licenses expiring soon</span>
-        </div>
-        <div className="metric-box">
-          <span className="metric-label"><Building2 size={13} style={{ display: 'inline', marginRight: 4 }} />Total Registered Beds</span>
-          <span className="metric-val">{facilities.reduce((a, f) => a + f.beds, 0).toLocaleString()}</span>
-          <span className="metric-sub">Across {facilities.length} registered facilities</span>
-        </div>
-        <div className="metric-box">
-          <span className="metric-label">LGAs Covered</span>
-          <span className="metric-val">{new Set(facilities.map(f => f.lga)).size}</span>
-          <span className="metric-sub">of 31 Local Government Areas</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 920 }}>
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #E0F2FE 0%, #ECFDF5 100%)',
+          borderRadius: 16,
+          padding: 20,
+          border: '1px solid #BAE6FD',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <Building2 size={22} color="#0052D4" />
+          <div style={{ flex: 1 }}>
+            <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0A2540' }}>
+              My hospital
+            </h2>
+            <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: '#475569' }}>
+              You administer <strong>one facility only</strong>. This profile is for{' '}
+              <strong>{profile.name}</strong> ({profile.id}) — not a statewide hospital list.
+            </p>
+          </div>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              borderRadius: 999,
+              background: 'rgba(5, 150, 105, 0.12)',
+              color: '#047857',
+              fontSize: '0.75rem',
+              fontWeight: 800,
+            }}
+          >
+            <Shield size={13} /> 1 admin · 1 hospital
+          </span>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 20 }}>
+      <div className="os-metrics-ribbon">
+        <div className="metric-box alert-green">
+          <span className="metric-label">
+            <CheckCircle2 size={13} style={{ display: 'inline', marginRight: 4 }} /> Status
+          </span>
+          <span className="metric-val" style={{ fontSize: '1.1rem', textTransform: 'capitalize' }}>
+            {profile.status}
+          </span>
+          <span className="metric-sub">This facility only</span>
+        </div>
+        <div className="metric-box">
+          <span className="metric-label">Registered beds</span>
+          <span className="metric-val">{profile.beds || '—'}</span>
+          <span className="metric-sub">{profile.tier || '—'}</span>
+        </div>
+        <div className="metric-box">
+          <span className="metric-label">LGA</span>
+          <span className="metric-val" style={{ fontSize: '1.05rem' }}>
+            {profile.lga || '—'}
+          </span>
+          <span className="metric-sub">Local Government Area</span>
+        </div>
+        <div className="metric-box">
+          <span className="metric-label">License</span>
+          <span className="metric-val" style={{ fontSize: '0.95rem' }}>
+            {profile.licenseNo || '—'}
+          </span>
+          <span className="metric-sub">Exp. {profile.licenseExpiry || '—'}</span>
+        </div>
+      </div>
 
-        {/* Facility List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-            <span className="os-section-title">Registered Facilities</span>
-            <button className="os-action-btn-primary" style={{ fontSize: '0.76rem', padding: '6px 12px' }}><Plus size={13} /> Add Facility</button>
-          </div>
-          {facilities.length === 0 && (
-            <div className="os-card" style={{ padding: 20, color: '#64748B', fontSize: '0.88rem', textAlign: 'center' }}>
-              No facilities registered yet. Use Add Facility to begin.
-            </div>
+      <div className="os-card" style={{ padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <h3 style={{ margin: 0, flex: 1, fontSize: '1rem', fontWeight: 800, color: '#0A2540' }}>
+            Facility details
+          </h3>
+          {!editing ? (
+            <button type="button" className="os-ghost-btn" onClick={startEdit}>
+              <Edit2 size={14} /> Edit profile
+            </button>
+          ) : (
+            <>
+              <button type="button" className="os-ghost-btn" onClick={cancelEdit}>
+                <X size={14} /> Cancel
+              </button>
+              <button type="button" className="os-primary-btn" onClick={save}>
+                <Save size={14} /> Save
+              </button>
+            </>
           )}
-          {facilities.map(f => {
-            const meta = STATUS_META[f.status];
-            const isSelected = selected?.id === f.id;
-            return (
-              <div key={f.id} className="os-card" onClick={() => setSelected(f)}
-                style={{ cursor: 'pointer', padding: '14px 16px', borderColor: isSelected ? '#EA580C' : undefined, background: isSelected ? 'rgba(234,88,12,0.07)' : undefined }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.9rem' }}>{f.name}</span>
-                  <span style={{ background: `${meta.color}20`, color: meta.color, fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 9999 }}>{meta.label}</span>
-                </div>
-                <div style={{ fontSize: '0.76rem', color: '#64748B' }}>{f.type} • {f.lga} LGA</div>
-                <div style={{ fontSize: '0.76rem', color: '#94A3B8', marginTop: 4 }}>{f.beds} beds • {f.tier}</div>
-              </div>
-            );
-          })}
         </div>
 
-        {/* Detail Panel */}
-        {selected && (
-          <div className="os-card" style={{ padding: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-              <div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                  <span style={{ background: `${STATUS_META[selected.status].color}20`, color: STATUS_META[selected.status].color, fontSize: '0.72rem', fontWeight: 700, padding: '3px 10px', borderRadius: 9999 }}>
-                    {STATUS_META[selected.status].label}
-                  </span>
-                  <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{selected.id}</span>
-                </div>
-                <h3 style={{ margin: '0 0 4px 0', fontSize: '1.3rem', fontWeight: 800 }}>{selected.name}</h3>
-                <p style={{ margin: 0, color: '#94A3B8', fontSize: '0.85rem' }}>{selected.type} • {selected.tier}</p>
-              </div>
-              <button className="os-ghost-btn"><Edit2 size={14} /> Edit</button>
-            </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 14,
+          }}
+        >
+          {field('Hospital name', 'name')}
+          {field('Facility ID', 'id', { readOnly: true })}
+          {field('Type', 'type')}
+          {field('Tier', 'tier')}
+          {field('LGA', 'lga')}
+          {field('Total beds', 'beds', { type: 'number' })}
+          {field('Medical director', 'medicalDirector')}
+          {field('License number', 'licenseNo')}
+          {field('License expiry', 'licenseExpiry')}
+          {field('Phone', 'phone')}
+          {field('Email', 'email')}
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.78rem', fontWeight: 700, color: '#334155', gridColumn: '1 / -1' }}>
+            Address
+            <input
+              value={draft.address}
+              readOnly={!editing}
+              onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))}
+              style={{
+                padding: '10px 12px',
+                borderRadius: 10,
+                border: '1px solid #E2E8F0',
+                fontSize: '0.9rem',
+                background: editing ? '#fff' : '#F8FAFC',
+              }}
+            />
+          </label>
+          {editing && (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
+              Status
+              <select
+                value={draft.status}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, status: e.target.value as HospitalProfile['status'] }))
+                }
+                style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid #E2E8F0', fontSize: '0.9rem' }}
+              >
+                <option value="active">Active</option>
+                <option value="pending">Pending renewal</option>
+                <option value="suspended">Suspended</option>
+              </select>
+            </label>
+          )}
+        </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              {[
-                { label: 'LGA', value: selected.lga },
-                { label: 'Total Beds', value: selected.beds.toString() },
-                { label: 'Medical Director', value: selected.medicalDirector },
-                { label: 'License Number', value: selected.licenseNo },
-                { label: 'License Expiry', value: selected.licenseExpiry },
-                { label: 'Phone', value: selected.phone },
-              ].map(item => (
-                <div key={item.label}>
-                  <div style={{ fontSize: '0.7rem', color: '#64748B', marginBottom: 3 }}>{item.label}</div>
-                  <div style={{ fontSize: '0.88rem', color: '#0A2540', fontWeight: item.label === 'Medical Director' ? 600 : 400 }}>{item.value}</div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div>
-                <div style={{ fontSize: '0.7rem', color: '#64748B', marginBottom: 3 }}>ADDRESS</div>
-                <div style={{ fontSize: '0.85rem', color: '#CBD5E1', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                  <MapPin size={14} style={{ color: '#EA580C', marginTop: 2, flexShrink: 0 }} />
-                  {selected.address}
-                </div>
+        {!editing && (
+          <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.88rem', color: '#475569' }}>
+            {profile.address && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <MapPin size={15} color="#0052D4" /> {profile.address}
               </div>
-              <div>
-                <div style={{ fontSize: '0.7rem', color: '#64748B', marginBottom: 3 }}>EMAIL</div>
-                <div style={{ fontSize: '0.85rem', color: '#60A5FA', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Globe size={13} />{selected.email}
-                </div>
+            )}
+            {profile.phone && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Phone size={15} color="#0052D4" /> {profile.phone}
               </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-              <button className="os-action-btn-primary" style={{ flex: 1 }}>View Full Profile</button>
-              <button className="os-ghost-btn" style={{ flex: 1 }}>Renew License</button>
-            </div>
+            )}
+            {profile.email && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Globe size={15} color="#0052D4" /> {profile.email}
+              </div>
+            )}
           </div>
+        )}
+
+        {savedAt && (
+          <p style={{ margin: '14px 0 0', fontSize: '0.78rem', color: '#059669', fontWeight: 600 }}>
+            Saved at {savedAt}
+          </p>
         )}
       </div>
     </div>
   );
 };
+
+export default FacilityOnboarding;

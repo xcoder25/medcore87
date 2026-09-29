@@ -5,12 +5,13 @@ import { pushActivity, setOpenPositions, getOpenPositions } from '../../lib/admi
  * Staff enrolment — creates auth identity + issues Staff ID card in one step.
  * Card is readable on Hospital OS and MedCore Clinic (same badgeId).
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { UserPlus, IdCard, CheckCircle2 } from 'lucide-react';
 import { HOSPITALS } from '../auth/AuthScreen';
 import { enrolStaffAndIssueCard, listStaffCards, getStaffCard } from '../../lib/staffCardStore';
 import { StaffIdCardView } from './StaffIdCardView';
 import type { StaffCardRecord } from '@medcore/types';
+import type { UserSession } from '../auth/AuthScreen';
 
 const ROLE_OPTIONS = [
   { roleKey: 'doctor', role: 'Medical Officer', title: 'Medical Officer', shortRole: 'Doctor', clearanceLevel: 4, clearanceLabel: 'L4 Clinical', department: 'Internal Medicine' },
@@ -25,10 +26,15 @@ const ROLE_OPTIONS = [
   { roleKey: 'sysadmin', role: 'ICT / System Admin', title: 'System Administrator', shortRole: 'SysAdmin', clearanceLevel: 6, clearanceLabel: 'L6 SysAdmin', department: 'ICT' },
 ];
 
-export const StaffEnrolment: React.FC = () => {
+interface Props {
+  session?: UserSession;
+}
+
+export const StaffEnrolment: React.FC<Props> = ({ session }) => {
   const [fullName, setFullName] = useState('');
   const [roleKey, setRoleKey] = useState('doctor');
-  const [facilityId, setFacilityId] = useState(HOSPITALS[0]?.id || 'IGH-EKT');
+  const lockedFacilityId = session?.hospitalId || HOSPITALS[0]?.id || 'IGH-EKT';
+  const [facilityId, setFacilityId] = useState(lockedFacilityId);
   const [pin, setPin] = useState('1234');
   const [issued, setIssued] = useState<StaffCardRecord | null>(null);
   const [error, setError] = useState('');
@@ -36,11 +42,19 @@ export const StaffEnrolment: React.FC = () => {
     typeof window !== 'undefined' ? listStaffCards() : []
   );
 
+  useEffect(() => {
+    if (session?.hospitalId) setFacilityId(session.hospitalId);
+  }, [session?.hospitalId]);
+
   const roleMeta = useMemo(
     () => ROLE_OPTIONS.find((r) => r.roleKey === roleKey) || ROLE_OPTIONS[0],
     [roleKey]
   );
-  const facility = HOSPITALS.find((h) => h.id === facilityId) || HOSPITALS[0];
+  const facility =
+    HOSPITALS.find((h) => h.id === facilityId) ||
+    (session?.hospitalId
+      ? { id: session.hospitalId, name: session.facility || session.hospitalName || session.hospitalId }
+      : HOSPITALS[0]);
 
   const handleEnrol = (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +62,20 @@ export const StaffEnrolment: React.FC = () => {
     if (!fullName.trim()) {
       setError('Enter staff full name.');
       return;
+    }
+    // One hospital admin per facility only
+    if (roleMeta.roleKey === 'hospital_admin') {
+      const existing = listStaffCards().filter(
+        (c) =>
+          c.facilityId === facility.id &&
+          (c.roleKey === 'hospital_admin' || (c.role || '').toLowerCase().includes('administrator'))
+      );
+      if (existing.length > 0) {
+        setError(
+          `This hospital already has an administrator (${existing[0].fullName || existing[0].badgeId}). One admin per facility only.`
+        );
+        return;
+      }
     }
     const { card } = enrolStaffAndIssueCard({
       fullName: fullName.trim(),
@@ -118,18 +146,27 @@ export const StaffEnrolment: React.FC = () => {
             </label>
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
               Facility
-              <select
-                className="os-form-select"
-                style={{ display: 'block', width: '100%', marginTop: 6 }}
-                value={facilityId}
-                onChange={(e) => setFacilityId(e.target.value)}
-              >
-                {HOSPITALS.map((h) => (
-                  <option key={h.id} value={h.id}>
-                    {h.name}
-                  </option>
-                ))}
-              </select>
+              {session?.hospitalId ? (
+                <div
+                  className="os-form-select"
+                  style={{ display: 'block', width: '100%', marginTop: 6, padding: '10px 12px', background: '#F8FAFC', boxSizing: 'border-box' }}
+                >
+                  {facility?.name || session.facility} · your hospital only
+                </div>
+              ) : (
+                <select
+                  className="os-form-select"
+                  style={{ display: 'block', width: '100%', marginTop: 6 }}
+                  value={facilityId}
+                  onChange={(e) => setFacilityId(e.target.value)}
+                >
+                  {HOSPITALS.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </label>
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
               Initial PIN (auth)

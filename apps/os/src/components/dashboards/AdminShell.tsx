@@ -61,7 +61,7 @@ const NAV: NavSection[] = [
       { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { key: 'transfer', label: 'Hospital Staff Transfer', icon: Users },
       { key: 'staffing', label: 'Staffing & Rosters', icon: Users },
-      { key: 'facility', label: 'Hospital Management', icon: Building2 },
+      { key: 'facility', label: 'My Hospital', icon: Building2 },
     ],
   },
   {
@@ -174,7 +174,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'staffing':
         return <StaffingOverview />;
       case 'facility':
-        return <FacilityOnboarding />;
+        return <FacilityOnboarding session={session} />;
       case 'command':
         return <CommandCentreDashboard />;
       case 'beds':
@@ -192,7 +192,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'rbac':
         return <AccessControl />;
       case 'enrolment':
-        return <StaffEnrolment />;
+        return <StaffEnrolment session={session} />;
       case 'compliance':
         return <ComplianceAuditLogs />;
       case 'cashier':
