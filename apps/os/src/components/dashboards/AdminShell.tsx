@@ -8,7 +8,7 @@ import type { UserSession } from '../auth/AuthScreen';
 import { AdminWorkspace } from './AdminWorkspace';
 import {
   LayoutDashboard, Users, Building2, Activity, BedDouble, RefreshCw, PhoneCall,
-  Lock, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus,
+  Lock, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus, Camera,
 } from 'lucide-react';
 
 // Lazy module map — same keys as page.tsx
@@ -23,6 +23,7 @@ import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
 import { CashierRevenue } from '../cashier/CashierRevenue';
 import { AmbulanceTransfersSuite } from '../operations/AmbulanceTransfersSuite';
 import { StaffEnrolment } from '../staffing/StaffEnrolment';
+import { AttendanceCameras } from '../staffing/AttendanceCameras';
 import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import { ensureCleanPilot, setActiveFacilityId, KEYS as ADMIN_KEYS } from '../../lib/adminRealtimeStore';
@@ -43,7 +44,8 @@ type AdminModule =
   | 'rbac'
   | 'enrolment'
   | 'compliance'
-  | 'cashier';
+  | 'cashier'
+  | 'cameras';
 
 interface NavItem {
   key: AdminModule;
@@ -79,6 +81,7 @@ const NAV: NavSection[] = [
     items: [
       { key: 'rbac', label: 'Staff Access Control', icon: Lock },
       { key: 'enrolment', label: 'Staff Enrolment & ID', icon: UserPlus },
+      { key: 'cameras', label: 'Attendance Cameras', icon: Camera },
       { key: 'compliance', label: 'Compliance & Audit', icon: FileText },
       { key: 'cashier', label: 'Revenue & Cashier', icon: BarChart3 },
     ],
@@ -192,6 +195,8 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         return <ComplianceAuditLogs />;
       case 'cashier':
         return <CashierRevenue />;
+      case 'cameras':
+        return <AttendanceCameras session={session} />;
       default:
         return <AdminWorkspace session={session} onNavigate={(k) => setModule(k as AdminModule)} />;
     }
@@ -298,11 +303,6 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         {!online && (
           <div className="admin-offline-banner" role="status">
             Working offline on this device. For all staff to share data without internet, run the hospital API on your LAN (see hospital share below).
-          </div>
-        )}
-        {online && hospitalShare === 'local' && (
-          <div className="admin-share-banner" role="status">
-            Single-PC mode — data stays on this browser. Start api-server on the hospital network so every workstation shares the same staff, transfers, and bills.
           </div>
         )}
         {hospitalShare === 'lan' && (
