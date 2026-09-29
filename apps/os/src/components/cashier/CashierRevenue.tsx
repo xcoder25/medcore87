@@ -23,7 +23,7 @@ interface BillRecord {
 
 const STORAGE_KEY = 'ibom_os_cashier_bills';
 
-const INITIAL_BILLS: BillRecord[] = [];
+const INITIAL_BILLS: any[] = [];
 
 const STATUS_META: Record<BillStatus, { label: string; color: string }> = {
   pending: { label: 'Pending', color: '#F59E0B' },

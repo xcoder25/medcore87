@@ -3,22 +3,9 @@ import React, { useState } from 'react';
 import { resetAllPilotData } from '../../lib/adminRealtimeStore';
 import { Settings, Server, Database, Wifi, Shield, RefreshCw, CheckCircle2, AlertCircle, HardDrive, Clock } from 'lucide-react';
 
-const SYSTEM_SERVICES = [
-  { name: 'Primary Database (PostgreSQL)', version: '15.4', status: 'running', cpu: '18%', memory: '4.2 GB / 16 GB', uptime: '14d 6h 32m' },
-  { name: 'Application Server (Node.js)', version: '20.x LTS', status: 'running', cpu: '8%', memory: '1.1 GB / 8 GB', uptime: '14d 6h 31m' },
-  { name: 'API Gateway (Express)', version: '4.19', status: 'running', cpu: '4%', memory: '512 MB / 4 GB', uptime: '14d 6h 31m' },
-  { name: 'Backup Service', version: '3.2.1', status: 'running', cpu: '1%', memory: '256 MB / 2 GB', uptime: '14d 6h 30m' },
-  { name: 'Health Insurance Connector (AKSHIA)', version: '2.1.0', status: 'running', cpu: '2%', memory: '384 MB / 2 GB', uptime: '12d 3h 10m' },
-  { name: 'SMS Notification Service', version: '1.4.0', status: 'warning', cpu: '3%', memory: '180 MB / 1 GB', uptime: '0d 4h 12m' },
-];
+const SYSTEM_SERVICES: any[] = [];
 
-const BACKUP_HISTORY = [
-  { id: 'BKP-2026-0916-0300', time: '03:00 Today', type: 'Full', size: '48.2 GB', status: 'success', duration: '12 min 44 sec' },
-  { id: 'BKP-2026-0915-2100', time: '21:00 Yesterday', type: 'Incremental', size: '1.8 GB', status: 'success', duration: '1 min 20 sec' },
-  { id: 'BKP-2026-0915-1500', time: '15:00 Yesterday', type: 'Incremental', size: '2.1 GB', status: 'success', duration: '1 min 35 sec' },
-  { id: 'BKP-2026-0915-0300', time: '03:00 Yesterday', type: 'Full', size: '47.9 GB', status: 'success', duration: '12 min 11 sec' },
-  { id: 'BKP-2026-0914-2100', time: '21:00 14 Sep', type: 'Incremental', size: '0.9 GB', status: 'failed', duration: 'N/A' },
-];
+const BACKUP_HISTORY: any[] = [];
 
 const STATUS_META = {
   running: { label: 'Running', color: '#22C55E' },

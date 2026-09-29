@@ -14,22 +14,7 @@ interface StaffMember {
   phone: string;
 }
 
-const STAFF: StaffMember[] = [
-  { id: 'DOC-042', name: 'Dr. Emeka Adeyemi', role: 'doctor', specialty: 'General Surgery', ward: 'Surgical Ward', shift: 'morning', status: 'on-duty', since: '07:00', phone: '0803-XXX-1042' },
-  { id: 'DOC-019', name: 'Dr. Nkechi Bassey', role: 'doctor', specialty: 'Internal Medicine', ward: 'Male Medical', shift: 'morning', status: 'on-duty', since: '07:00', phone: '0805-XXX-1019' },
-  { id: 'DOC-033', name: 'Dr. Abosede Okafor', role: 'doctor', specialty: 'Paediatrics', ward: 'Paediatric Ward', shift: 'morning', status: 'on-duty', since: '07:30', phone: '0808-XXX-1033' },
-  { id: 'DOC-055', name: 'Dr. Uche Ekpo', role: 'doctor', specialty: 'Obstetrics & Gynaecology', ward: 'O&G Ward', shift: 'morning', status: 'on-duty', since: '07:00', phone: '0701-XXX-1055' },
-  { id: 'DOC-012', name: 'Dr. Chukwuma Nwachukwu', role: 'doctor', specialty: 'Emergency Medicine', ward: 'A&E', shift: 'morning', status: 'on-duty', since: '08:00', phone: '0806-XXX-1012' },
-  { id: 'DOC-028', name: 'Dr. Iniobong Edem', role: 'doctor', specialty: 'Intensive Care (ICU)', ward: 'ICU', shift: 'morning', status: 'on-call', since: '07:00', phone: '0812-XXX-1028' },
-  { id: 'DOC-041', name: 'Dr. Femi Lawal', role: 'doctor', specialty: 'Orthopaedics', ward: 'Orthopaedic Ward', shift: 'afternoon', status: 'off-duty', since: '15:00', phone: '0703-XXX-1041' },
-  { id: 'DOC-009', name: 'Dr. Chiamaka Ogbu', role: 'doctor', specialty: 'Ophthalmology', ward: 'Outpatient Clinic', shift: 'morning', status: 'leave', since: '—', phone: '0802-XXX-1009' },
-  { id: 'NUR-118', name: 'Nurse Aisha Bello', role: 'nurse', specialty: 'Ward Charge Nurse', ward: 'Female Medical', shift: 'morning', status: 'on-duty', since: '07:00', phone: '0805-XXX-2118' },
-  { id: 'NUR-204', name: 'Nurse Efua Mensah', role: 'nurse', specialty: 'ICU Critical Care', ward: 'ICU', shift: 'morning', status: 'on-duty', since: '07:00', phone: '0703-XXX-2204' },
-  { id: 'NUR-087', name: 'Nurse Grace Obi', role: 'nurse', specialty: 'Neonatal Nursing', ward: 'NICU', shift: 'morning', status: 'on-duty', since: '07:00', phone: '0806-XXX-2087' },
-  { id: 'NUR-156', name: 'Nurse Blessing Udoh', role: 'nurse', specialty: 'Theatre / Scrub Nurse', ward: 'Operating Theatre', shift: 'morning', status: 'on-duty', since: '07:30', phone: '0812-XXX-2156' },
-  { id: 'SPT-301', name: 'Amara Onyekwere', role: 'support', specialty: 'Medical Lab Technician', ward: 'Laboratory', shift: 'morning', status: 'on-duty', since: '08:00', phone: '0701-XXX-3301' },
-  { id: 'SPT-302', name: 'Kelechi Obiora', role: 'support', specialty: 'Radiology Technician', ward: 'Radiology / X-Ray', shift: 'morning', status: 'on-duty', since: '08:00', phone: '0802-XXX-3302' },
-];
+const STAFF: StaffMember[] = [];
 
 const STATUS_META = {
   'on-duty': { label: 'On Duty', color: '#22C55E' },

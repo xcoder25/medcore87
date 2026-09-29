@@ -18,32 +18,24 @@ interface Facility {
   medicalDirector: string;
 }
 
-const FACILITIES: Facility[] = [
-  {
-    id: 'ISH-001', name: 'Ibom Specialist Hospital', type: 'Specialist/Tertiary', lga: 'Uyo',
-    address: '1 Ikot Ekpene Road, Uyo, Akwa Ibom State', beds: 520, phone: '083-XXX-4001',
-    email: 'info@ibomspecialist.gov.ng', licenseNo: 'AKSHB-LIC-2024-0001', licenseExpiry: '31 Dec 2027',
-    status: 'active', tier: 'Tertiary Referral', medicalDirector: 'Dr. Evelyn Vance',
-  },
-  {
-    id: 'UUTH-002', name: 'University of Uyo Teaching Hospital', type: 'Teaching Hospital', lga: 'Uyo',
-    address: 'PMB 1136, Uyo, Akwa Ibom State', beds: 680, phone: '083-XXX-4002',
-    email: 'info@uuth.gov.ng', licenseNo: 'AKSHB-LIC-2024-0002', licenseExpiry: '31 Dec 2027',
-    status: 'active', tier: 'Federal Teaching Hospital', medicalDirector: 'Prof. Ndinya Achike',
-  },
-  {
-    id: 'GHI-003', name: 'General Hospital, Ikot Ekpene', type: 'General Hospital', lga: 'Ikot Ekpene',
-    address: 'Hospital Road, Ikot Ekpene', beds: 220, phone: '083-XXX-4003',
-    email: 'gh.ikotekpene@aksgov.ng', licenseNo: 'AKSHB-LIC-2023-0043', licenseExpiry: '30 Nov 2026',
-    status: 'active', tier: 'Secondary Care', medicalDirector: 'Dr. Asuquo Ekpo',
-  },
-  {
-    id: 'GHE-004', name: 'General Hospital, Eket', type: 'General Hospital', lga: 'Eket',
-    address: 'Eket Road, Eket', beds: 180, phone: '083-XXX-4004',
-    email: 'gh.eket@aksgov.ng', licenseNo: 'AKSHB-LIC-2022-0081', licenseExpiry: '14 Oct 2026',
-    status: 'pending', tier: 'Secondary Care', medicalDirector: 'Dr. Okon Ndibbiye',
-  },
-];
+const FACILITIES_KEY = 'medcore_os_facilities';
+
+function loadFacilities(): Facility[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(FACILITIES_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as Facility[];
+  } catch {
+    return [];
+  }
+}
+
+function saveFacilities(list: Facility[]) {
+  try {
+    localStorage.setItem(FACILITIES_KEY, JSON.stringify(list));
+  } catch { /* ignore */ }
+}
 
 const STATUS_META = {
   active: { label: 'Active', color: '#22C55E' },
@@ -52,7 +44,8 @@ const STATUS_META = {
 };
 
 export const FacilityOnboarding: React.FC = () => {
-  const [selected, setSelected] = useState<Facility | null>(FACILITIES[0]);
+  const [facilities, setFacilities] = useState<Facility[]>(() => loadFacilities());
+  const [selected, setSelected] = useState<Facility | null>(null);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -61,22 +54,22 @@ export const FacilityOnboarding: React.FC = () => {
       <div className="os-metrics-ribbon">
         <div className="metric-box alert-green">
           <span className="metric-label"><CheckCircle2 size={13} style={{ display: 'inline', marginRight: 4 }} />Active Facilities</span>
-          <span className="metric-val">{FACILITIES.filter(f => f.status === 'active').length}</span>
+          <span className="metric-val">{facilities.filter(f => f.status === 'active').length}</span>
           <span className="metric-sub">Fully licensed and operational</span>
         </div>
         <div className="metric-box alert-yellow">
           <span className="metric-label"><Clock size={13} style={{ display: 'inline', marginRight: 4 }} />Pending Renewal</span>
-          <span className="metric-val">{FACILITIES.filter(f => f.status === 'pending').length}</span>
+          <span className="metric-val">{facilities.filter(f => f.status === 'pending').length}</span>
           <span className="metric-sub">Licenses expiring soon</span>
         </div>
         <div className="metric-box">
           <span className="metric-label"><Building2 size={13} style={{ display: 'inline', marginRight: 4 }} />Total Registered Beds</span>
-          <span className="metric-val">{FACILITIES.reduce((a, f) => a + f.beds, 0).toLocaleString()}</span>
-          <span className="metric-sub">Across {FACILITIES.length} registered facilities</span>
+          <span className="metric-val">{facilities.reduce((a, f) => a + f.beds, 0).toLocaleString()}</span>
+          <span className="metric-sub">Across {facilities.length} registered facilities</span>
         </div>
         <div className="metric-box">
           <span className="metric-label">LGAs Covered</span>
-          <span className="metric-val">{new Set(FACILITIES.map(f => f.lga)).size}</span>
+          <span className="metric-val">{new Set(facilities.map(f => f.lga)).size}</span>
           <span className="metric-sub">of 31 Local Government Areas</span>
         </div>
       </div>
@@ -89,7 +82,12 @@ export const FacilityOnboarding: React.FC = () => {
             <span className="os-section-title">Registered Facilities</span>
             <button className="os-action-btn-primary" style={{ fontSize: '0.76rem', padding: '6px 12px' }}><Plus size={13} /> Add Facility</button>
           </div>
-          {FACILITIES.map(f => {
+          {facilities.length === 0 && (
+            <div className="os-card" style={{ padding: 20, color: '#64748B', fontSize: '0.88rem', textAlign: 'center' }}>
+              No facilities registered yet. Use Add Facility to begin.
+            </div>
+          )}
+          {facilities.map(f => {
             const meta = STATUS_META[f.status];
             const isSelected = selected?.id === f.id;
             return (

@@ -17,16 +17,7 @@ interface AuditEntry {
   patientId?: string;
 }
 
-const AUDIT_LOG: AuditEntry[] = [
-  { id: 'AUD-9901', timestamp: '16 Sep 09:14', category: 'clinical', action: 'Patient Record Viewed', performedBy: 'Dr. Nkechi Bassey', badgeId: 'ISH-MED-019', ward: 'Male Medical', detail: 'Viewed full treatment history for patient PT-4880 (Chidi Okonkwo)', severity: 'normal', patientId: 'PT-4880' },
-  { id: 'AUD-9900', timestamp: '16 Sep 09:08', category: 'access', action: 'Permission Override Used', performedBy: 'Dr. Evelyn Vance', badgeId: 'ISH-EXEC-001', ward: 'Administration', detail: 'Executive override to access restricted audit log AUD-0081 (Finance review)', severity: 'notable' },
-  { id: 'AUD-9899', timestamp: '16 Sep 08:55', category: 'access', action: 'Failed Login (Lockout)', performedBy: 'Unknown', badgeId: 'ISH-ADM-044', ward: 'Records Office', detail: '3 consecutive failed login attempts — account in pending status', severity: 'critical' },
-  { id: 'AUD-9898', timestamp: '16 Sep 08:30', category: 'financial', action: 'Bill Payment Collected', performedBy: 'Amaka Oguike', badgeId: 'ISH-REV-009', ward: 'Billing Office', detail: '₦42,000 collected for BL-8828 (Grace Udoh) — POS Payment', severity: 'normal', patientId: 'PT-4878' },
-  { id: 'AUD-9897', timestamp: '16 Sep 08:22', category: 'pharmacy', action: 'Drug Dispensed', performedBy: 'Funmi Adeola', badgeId: 'ISH-PHAR-007', ward: 'Pharmacy', detail: 'IV Artesunate 3mg/kg dispensed for patient PT-4888 (Ekpenyong Sunday, Paediatric)', severity: 'normal', patientId: 'PT-4888' },
-  { id: 'AUD-9896', timestamp: '16 Sep 08:05', category: 'clinical', action: 'Discharge Processed', performedBy: 'Dr. Emeka Adeyemi', badgeId: 'ISH-SURG-042', ward: 'Surgical Ward', detail: 'Patient PT-4874 (Akon Effiong) discharged post-appendicectomy — reviewed and signed', severity: 'normal', patientId: 'PT-4874' },
-  { id: 'AUD-9895', timestamp: '16 Sep 07:50', category: 'records', action: 'Record Modified', performedBy: 'Nurse Aisha Bello', badgeId: 'ISH-NUR-118', ward: 'Female Medical', detail: 'Nursing notes updated for PT-4880 — added vital signs 07:45 reading', severity: 'normal', patientId: 'PT-4880' },
-  { id: 'AUD-9894', timestamp: '16 Sep 07:30', category: 'pharmacy', action: 'Stock Level Alert', performedBy: 'System', badgeId: 'SYS-AUTO', ward: 'Pharmacy', detail: 'Insulin stock dropped below 20% threshold — automated procurement alert raised', severity: 'notable' },
-];
+const AUDIT_LOG: AuditEntry[] = [];
 
 const CATEGORY_META: Record<AuditCategory, { label: string; color: string }> = {
   clinical: { label: 'Clinical', color: '#22C55E' },

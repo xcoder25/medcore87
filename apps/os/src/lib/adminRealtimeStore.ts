@@ -52,18 +52,7 @@ export type ComplianceItem = {
   due?: string;
 };
 
-const DEFAULT_ACCESS: AccessRecord[] = [
-  {
-    id: 'AKS-ADM-001',
-    name: 'Hospital Administrator',
-    role: 'Administrator',
-    department: 'Hospital Management',
-    clearance: 5,
-    status: 'active',
-    lastLogin: 'Never',
-    permissions: ['All modules'],
-  },
-];
+const DEFAULT_ACCESS: AccessRecord[] = [];
 
 const DEFAULT_COMPLIANCE: ComplianceItem[] = [];
 
@@ -263,7 +252,7 @@ export function buildAdminSnapshot(): AdminSnapshot {
   const compliancePct =
     compliance.length === 0
       ? 100
-      : Math.round((ok / compliance.length) * 100) || 92;
+      : Math.round((ok / compliance.length) * 100);
 
   const attention: AdminSnapshot['attention'] = [];
   if (pendingTransfers > 0) {
@@ -375,10 +364,11 @@ export const ALL_PILOT_KEYS = [
   'medcore_admin_onboarding_done',
   'medcore_os_onboarding',
   'medcore_facility_profile',
+  'medcore_os_facilities',
 ];
 
 /** Bump this to force a one-time full wipe on every browser that opens the OS. */
-export const PILOT_DATA_VERSION = 'pilot-clean-v3';
+export const PILOT_DATA_VERSION = 'pilot-clean-v4';
 
 const WIPE_PREFIXES = ['medcore_', 'ibom_', 'medcore-'];
 
