@@ -4160,6 +4160,28 @@ html, body {
   color: #92400E;
   border-color: #FDE68A;
 }
+.admin-shell-online.is-offline .dot {
+  background: #F59E0B;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25);
+}
+.admin-shell-online.is-cloud {
+  background: #EFF6FF;
+  color: #1D4ED8;
+  border-color: #BFDBFE;
+}
+.admin-shell-online.is-cloud .dot {
+  background: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+.admin-shell-online.is-lan-hub {
+  background: #ECFDF5;
+  color: #047857;
+  border-color: #A7F3D0;
+}
+.admin-shell-online.is-lan-hub .dot {
+  background: #10B981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25);
+}
 
 .admin-share-banner {
   background: #EFF6FF;

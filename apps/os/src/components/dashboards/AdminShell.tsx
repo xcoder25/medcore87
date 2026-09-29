@@ -271,9 +271,36 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
               <Building2 size={14} />
               <span>{facility}</span>
             </div>
-            <div className="admin-shell-online">
+            <div
+              className={`admin-shell-online${
+                !online ? ' is-offline' : hospitalShare === 'cloud' ? ' is-cloud' : hospitalShare === 'lan' ? ' is-lan-hub' : ''
+              }`}
+              title={
+                !online
+                  ? 'Device offline'
+                  : hospitalShare === 'cloud'
+                    ? 'Cloud backup active'
+                    : hospitalShare === 'lan'
+                      ? 'Hospital LAN hub active'
+                      : hospitalShare === 'local'
+                        ? 'Local browser session'
+                        : connected
+                          ? 'Realtime WebSocket connected'
+                          : 'Online'
+              }
+            >
               <span className="dot" />
-              {!online ? 'Offline' : hospitalShare === 'cloud' ? 'Cloud sync' : hospitalShare === 'lan' ? 'Hospital LAN' : connected ? 'Live' : 'Online'}
+              {!online
+                ? 'Offline'
+                : hospitalShare === 'cloud'
+                  ? 'Cloud'
+                  : hospitalShare === 'lan'
+                    ? 'LAN hub'
+                    : hospitalShare === 'local'
+                      ? 'Local'
+                      : connected
+                        ? 'Live'
+                        : 'Online'}
             </div>
             <div className="admin-shell-clock">{clock}</div>
           </div>
@@ -317,11 +344,6 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             <button type="button" className="admin-link" onClick={() => void flushOutbox().then(() => setPendingSync(getOutboxPendingCount()))}>
               Sync now
             </button>
-          </div>
-        )}
-        {hospitalShare === 'cloud' && (
-          <div className="admin-share-banner is-lan" role="status">
-            Cloud backup on — Firestore is receiving data. Prefer a hospital hub + UPS for blackouts so every PC shares one on-site copy.
           </div>
         )}
         <main className="admin-shell-content">{body}</main>
