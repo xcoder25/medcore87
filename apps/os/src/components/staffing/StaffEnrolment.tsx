@@ -53,7 +53,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
   const facility =
     HOSPITALS.find((h) => h.id === facilityId) ||
     (session?.hospitalId
-      ? { id: session.hospitalId, name: session.facility || session.hospitalName || session.hospitalId }
+      ? { id: session.hospitalId, name: session.facility || session.hospitalId }
       : HOSPITALS[0]);
 
   const handleEnrol = (e: React.FormEvent) => {

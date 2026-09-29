@@ -33,7 +33,7 @@ function profileKey(hospitalId: string) {
 
 function loadProfile(session?: UserSession): HospitalProfile {
   const id = session?.hospitalId || 'UNKNOWN';
-  const name = session?.facility || session?.hospitalName || 'My Hospital';
+  const name = session?.facility || 'My Hospital';
   const blank: HospitalProfile = {
     id,
     name,
