@@ -97,7 +97,7 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
     { key: 'staff', label: 'Active Staff', value: String(snap.activeStaff), trend: 'Live roster', tone: 'blue', icon: Users, nav: 'staffing' },
     { key: 'open', label: 'Open Positions', value: String(snap.openPositions), trend: 'Recruitment', tone: 'sky', icon: UserPlus, nav: 'enrolment' },
     { key: 'transfer', label: 'Pending Transfer', value: String(snap.pendingTransfers), trend: snap.pendingTransfers ? 'Needs review' : 'Clear', tone: 'amber', icon: ArrowRightLeft, nav: 'transfer' },
-    { key: 'logged', label: 'Staff Logged In', value: String(snap.staffLoggedIn), trend: connected ? 'Live' : 'Local sync', tone: 'teal', icon: UserCheck, nav: 'staffing' },
+    { key: 'logged', label: 'Staff Logged In', value: String(snap.staffLoggedIn), trend: connected ? 'Live' : 'Active', tone: 'teal', icon: UserCheck, nav: 'staffing' },
     { key: 'leave', label: 'On Leave', value: String(snap.onLeave), trend: 'Roster', tone: 'violet', icon: CalendarDays, nav: 'staffing' },
     { key: 'access', label: 'Access Issues', value: String(snap.accessIssues), trend: snap.accessIssues ? 'Needs review' : 'Clear', tone: 'rose', icon: Shield, nav: 'rbac' },
   ];
@@ -128,15 +128,6 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
           <p>
             Here&apos;s what&apos;s happening at <strong>{facility}</strong> today.
           </p>
-        </div>
-        <div className="admin-hero-status">
-          <span className="admin-status-dot" />
-          <div>
-            <div className="admin-status-title">{connected ? 'Live connection' : 'Local realtime'}</div>
-            <div className="admin-status-sub">
-              {connected ? 'Event bus online' : 'Synced in this browser · updates every few seconds'}
-            </div>
-          </div>
         </div>
       </section>
 
