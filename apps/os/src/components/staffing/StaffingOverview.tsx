@@ -1,95 +1,151 @@
-﻿'use client';
-import React, { useState } from 'react';
-import { Users, Clock, Calendar, Search, CheckCircle2, AlertCircle, Plus, Phone } from 'lucide-react';
+'use client';
+
+/**
+ * Staffing & Rosters — live from enrolled staff registry only (no mock roster).
+ */
+import React, { useCallback, useEffect, useState } from 'react';
+import { Users, Clock, Calendar, Search, Plus, Phone } from 'lucide-react';
+import { getStaffRegistry, subscribeAdminSync } from '../../lib/adminRealtimeStore';
 
 interface StaffMember {
   id: string;
   name: string;
-  role: 'doctor' | 'nurse' | 'support';
+  role: 'doctor' | 'nurse' | 'support' | string;
   specialty: string;
   ward: string;
-  shift: 'morning' | 'afternoon' | 'night';
-  status: 'on-duty' | 'off-duty' | 'on-call' | 'leave';
+  shift: 'morning' | 'afternoon' | 'night' | string;
+  status: 'on-duty' | 'off-duty' | 'on-call' | 'leave' | 'active' | string;
   since: string;
   phone: string;
 }
 
-const STAFF: StaffMember[] = [];
-
-const STATUS_META = {
+const STATUS_META: Record<string, { label: string; color: string }> = {
   'on-duty': { label: 'On Duty', color: '#22C55E' },
+  active: { label: 'Active', color: '#22C55E' },
   'off-duty': { label: 'Off Duty', color: '#64748B' },
   'on-call': { label: 'On Call', color: '#F59E0B' },
   leave: { label: 'On Leave', color: '#A855F7' },
 };
 
-const ROLE_META = {
+const ROLE_META: Record<string, { label: string; color: string }> = {
   doctor: { label: 'Doctor', color: '#EA580C' },
   nurse: { label: 'Nurse', color: '#3B82F6' },
   support: { label: 'Support', color: '#22C55E' },
+  reception: { label: 'Reception', color: '#0D9488' },
+  pharmacist: { label: 'Pharmacy', color: '#7C3AED' },
+  lab: { label: 'Lab', color: '#0891B2' },
 };
 
-export const StaffingOverview: React.FC = () => {
-  const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'doctor' | 'nurse' | 'support'>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'on-duty' | 'off-duty' | 'on-call' | 'leave'>('all');
+function mapRegistry(): StaffMember[] {
+  const reg = getStaffRegistry() as any[];
+  if (!Array.isArray(reg) || reg.length === 0) return [];
+  return reg.map((s) => ({
+    id: s.badgeId || s.id || '—',
+    name: s.name || s.fullName || 'Staff',
+    role: (s.roleKey || s.role || 'support').toLowerCase().includes('doctor')
+      ? 'doctor'
+      : (s.roleKey || s.role || '').toLowerCase().includes('nurse')
+        ? 'nurse'
+        : (s.roleKey || s.role || 'support').toLowerCase(),
+    specialty: s.specialty || s.department || s.role || '—',
+    ward: s.ward || s.department || '—',
+    shift: s.shift || '—',
+    status: s.status === 'active' || !s.status ? 'on-duty' : s.status,
+    since: s.since || s.lastLogin || '—',
+    phone: s.phone || '—',
+  }));
+}
 
-  const filtered = STAFF.filter(s => {
+export const StaffingOverview: React.FC = () => {
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | string>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | string>('all');
+
+  const reload = useCallback(() => setStaff(mapRegistry()), []);
+
+  useEffect(() => {
+    reload();
+    return subscribeAdminSync(reload);
+  }, [reload]);
+
+  const filtered = staff.filter((s) => {
     if (roleFilter !== 'all' && s.role !== roleFilter) return false;
     if (statusFilter !== 'all' && s.status !== statusFilter) return false;
-    if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !s.ward.toLowerCase().includes(search.toLowerCase())) return false;
+    if (
+      search &&
+      !s.name.toLowerCase().includes(search.toLowerCase()) &&
+      !s.ward.toLowerCase().includes(search.toLowerCase())
+    )
+      return false;
     return true;
   });
 
-  const onDutyCount = STAFF.filter(s => s.status === 'on-duty').length;
-  const doctorsOnDuty = STAFF.filter(s => s.status === 'on-duty' && s.role === 'doctor').length;
-  const nursesOnDuty = STAFF.filter(s => s.status === 'on-duty' && s.role === 'nurse').length;
-  const onCallCount = STAFF.filter(s => s.status === 'on-call').length;
+  const onDutyCount = staff.filter((s) => s.status === 'on-duty' || s.status === 'active').length;
+  const doctorsOnDuty = staff.filter(
+    (s) => (s.status === 'on-duty' || s.status === 'active') && s.role === 'doctor'
+  ).length;
+  const nursesOnDuty = staff.filter(
+    (s) => (s.status === 'on-duty' || s.status === 'active') && s.role === 'nurse'
+  ).length;
+  const onCallCount = staff.filter((s) => s.status === 'on-call').length;
 
   return (
-    <div className="os-module-layout">
-
+    <div className="os-module-layout" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div className="os-metrics-ribbon">
         <div className="metric-box alert-green">
-          <span className="metric-label"><Users size={13} style={{ display: 'inline', marginRight: 4 }} />Total On Duty</span>
+          <span className="metric-label">
+            <Users size={13} style={{ display: 'inline', marginRight: 4 }} /> Total on duty
+          </span>
           <span className="metric-val">{onDutyCount}</span>
-          <span className="metric-sub">Active staff across all wards</span>
+          <span className="metric-sub">From enrolled staff only</span>
         </div>
         <div className="metric-box">
-          <span className="metric-label">Doctors On Duty</span>
+          <span className="metric-label">Doctors on duty</span>
           <span className="metric-val">{doctorsOnDuty}</span>
-          <span className="metric-sub">Including residents & consultants</span>
+          <span className="metric-sub">Enrolled doctors</span>
         </div>
         <div className="metric-box">
-          <span className="metric-label">Nurses On Duty</span>
+          <span className="metric-label">Nurses on duty</span>
           <span className="metric-val">{nursesOnDuty}</span>
-          <span className="metric-sub">Ward & ICU nursing staff</span>
+          <span className="metric-sub">Enrolled nurses</span>
         </div>
-        <div className="metric-box alert-yellow">
-          <span className="metric-label"><AlertCircle size={13} style={{ display: 'inline', marginRight: 4 }} />On Call</span>
+        <div className="metric-box">
+          <span className="metric-label">
+            <Clock size={13} style={{ display: 'inline', marginRight: 4 }} /> On call
+          </span>
           <span className="metric-val">{onCallCount}</span>
           <span className="metric-sub">Available if needed</span>
         </div>
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <div className="os-search-wrap" style={{ flex: 1 }}>
-          <Search size={14} />
-          <input className="os-search-input" placeholder="Search staff name or ward..." value={search} onChange={e => setSearch(e.target.value)} />
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ flex: 1, minWidth: 200, display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 999, padding: '8px 14px' }}>
+          <Search size={15} color="#94A3B8" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search staff name or ward..."
+            style={{ border: 'none', outline: 'none', flex: 1, fontSize: '0.88rem' }}
+          />
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {(['all', 'doctor', 'nurse', 'support'] as const).map(r => (
-            <button key={r} onClick={() => setRoleFilter(r)} className="os-ghost-btn"
-              style={{ background: roleFilter === r ? 'rgba(234,88,12,0.15)' : undefined, borderColor: roleFilter === r ? '#EA580C' : undefined, color: roleFilter === r ? '#FB923C' : undefined }}>
-              {r === 'all' ? 'All Roles' : ROLE_META[r].label}
-            </button>
-          ))}
-        </div>
-        <button className="os-action-btn-primary"><Plus size={14} /> Add Staff</button>
+        {(['all', 'doctor', 'nurse', 'support'] as const).map((r) => (
+          <button
+            key={r}
+            type="button"
+            className="os-ghost-btn"
+            onClick={() => setRoleFilter(r)}
+            style={{
+              borderColor: roleFilter === r ? '#0052D4' : undefined,
+              color: roleFilter === r ? '#0052D4' : undefined,
+              background: roleFilter === r ? 'rgba(0,82,212,0.08)' : undefined,
+            }}
+          >
+            {r === 'all' ? 'All roles' : r.charAt(0).toUpperCase() + r.slice(1)}
+          </button>
+        ))}
       </div>
 
-      {/* Staff Table */}
       <div className="os-table-wrap">
         <table className="os-table">
           <thead>
@@ -98,35 +154,43 @@ export const StaffingOverview: React.FC = () => {
               <th>Name</th>
               <th>Role</th>
               <th>Specialty</th>
-              <th>Ward / Unit</th>
+              <th>Ward / unit</th>
               <th>Shift</th>
               <th>Status</th>
-              <th>On Since</th>
+              <th>On since</th>
               <th>Contact</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map(s => {
-              const stMeta = STATUS_META[s.status];
-              const roleMeta = ROLE_META[s.role];
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={9} style={{ textAlign: 'center', padding: 36, color: '#64748B' }}>
+                  No staff on roster yet. Enrol staff under <strong>Staff Enrolment &amp; ID</strong> — this list stays empty until then (no demo data).
+                </td>
+              </tr>
+            )}
+            {filtered.map((s) => {
+              const st = STATUS_META[s.status] || { label: s.status, color: '#64748B' };
+              const rl = ROLE_META[s.role] || { label: s.role, color: '#64748B' };
               return (
                 <tr key={s.id}>
-                  <td style={{ fontFamily: 'var(--os-font-mono)', fontSize: '0.8rem', color: '#64748B' }}>{s.id}</td>
+                  <td style={{ fontFamily: 'var(--os-font-mono)', fontSize: '0.78rem' }}>{s.id}</td>
+                  <td style={{ fontWeight: 600 }}>{s.name}</td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: `${roleMeta.color}25`, color: roleMeta.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, flexShrink: 0 }}>
-                        {s.name.split(' ').slice(-2).map(n => n[0]).join('')}
-                      </div>
-                      <span style={{ fontWeight: 600, color: '#0A2540', fontSize: '0.88rem' }}>{s.name}</span>
-                    </div>
+                    <span style={{ color: rl.color, fontWeight: 700, fontSize: '0.78rem' }}>{rl.label}</span>
                   </td>
-                  <td><span style={{ background: `${roleMeta.color}20`, color: roleMeta.color, fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 9999 }}>{roleMeta.label}</span></td>
-                  <td style={{ color: '#94A3B8', fontSize: '0.83rem' }}>{s.specialty}</td>
-                  <td style={{ color: '#CBD5E1', fontSize: '0.83rem' }}>{s.ward}</td>
-                  <td style={{ color: '#64748B', fontSize: '0.8rem', textTransform: 'capitalize' }}>{s.shift}</td>
-                  <td><span style={{ background: `${stMeta.color}20`, color: stMeta.color, fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 9999 }}>{stMeta.label}</span></td>
-                  <td style={{ fontFamily: 'var(--os-font-mono)', fontSize: '0.8rem', color: '#64748B' }}>{s.since}</td>
-                  <td><a href={`tel:${s.phone}`} style={{ color: '#FB923C', fontSize: '0.78rem', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}><Phone size={12} />{s.phone}</a></td>
+                  <td>{s.specialty}</td>
+                  <td>{s.ward}</td>
+                  <td>{s.shift}</td>
+                  <td>
+                    <span style={{ color: st.color, fontWeight: 700, fontSize: '0.78rem' }}>{st.label}</span>
+                  </td>
+                  <td>{s.since}</td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Phone size={12} /> {s.phone}
+                    </span>
+                  </td>
                 </tr>
               );
             })}
@@ -136,3 +200,5 @@ export const StaffingOverview: React.FC = () => {
     </div>
   );
 };
+
+export default StaffingOverview;

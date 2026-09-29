@@ -20,12 +20,30 @@ interface Facility {
 
 const FACILITIES_KEY = 'medcore_os_facilities';
 
+const DEMO_FACILITY_IDS = new Set(['ISH-001', 'UUTH-002', 'GHI-003', 'GHE-004']);
+const DEMO_FACILITY_NAMES = [
+  'Ibom Specialist Hospital',
+  'University of Uyo Teaching Hospital',
+  'General Hospital, Ikot Ekpene',
+  'General Hospital, Eket',
+];
+
 function loadFacilities(): Facility[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(FACILITIES_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as Facility[];
+    const list = JSON.parse(raw) as Facility[];
+    // Strip legacy demo rows from older builds
+    const clean = list.filter(
+      (f) =>
+        !DEMO_FACILITY_IDS.has(f.id) &&
+        !DEMO_FACILITY_NAMES.some((n) => (f.name || '').trim() === n)
+    );
+    if (clean.length !== list.length) {
+      localStorage.setItem(FACILITIES_KEY, JSON.stringify(clean));
+    }
+    return clean;
   } catch {
     return [];
   }
