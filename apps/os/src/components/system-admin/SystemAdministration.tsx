@@ -1,5 +1,6 @@
 ﻿'use client';
 import React, { useState } from 'react';
+import { resetAllPilotData } from '../../lib/adminRealtimeStore';
 import { Settings, Server, Database, Wifi, Shield, RefreshCw, CheckCircle2, AlertCircle, HardDrive, Clock } from 'lucide-react';
 
 const SYSTEM_SERVICES = [
@@ -65,7 +66,20 @@ export const SystemAdministration: React.FC = () => {
             {t === 'services' ? 'System Services' : 'Backup History'}
           </button>
         ))}
-        <button className="os-ghost-btn" style={{ marginLeft: 'auto' }}><RefreshCw size={13} /> Refresh Status</button>
+        <button type="button" className="os-ghost-btn" style={{ marginLeft: 'auto' }}><RefreshCw size={13} /> Refresh Status</button>
+        <button
+          type="button"
+          className="os-ghost-btn"
+          style={{ borderColor: '#FECACA', color: '#B91C1C' }}
+          onClick={() => {
+            if (typeof window !== 'undefined' && window.confirm('Reset ALL local hospital data on this browser? Staff, transfers, bills, cameras, and session will be cleared. You will need to sign in again.')) {
+              resetAllPilotData();
+              window.location.reload();
+            }
+          }}
+        >
+          Reset all data
+        </button>
       </div>
 
       {tab === 'services' && (

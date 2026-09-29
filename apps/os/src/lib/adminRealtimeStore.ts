@@ -352,7 +352,7 @@ export function buildAdminSnapshot(): AdminSnapshot {
 }
 
 
-/** All browser keys used by Hospital OS pilot data */
+/** Known browser keys used by Hospital OS (also wiped by prefix scan). */
 export const ALL_PILOT_KEYS = [
   KEYS.transfers,
   KEYS.staff,
@@ -369,27 +369,62 @@ export const ALL_PILOT_KEYS = [
   'medcore_os_offline_actions_v1',
   'medcore_os_patient_cache_v1',
   'medcore_os_staff_cards',
+  'medcore_os_sync_outbox_v1',
+  'medcore_attendance_cameras',
+  'medcore_attendance_cam_settings',
+  'medcore_admin_onboarding_done',
+  'medcore_os_onboarding',
+  'medcore_facility_profile',
 ];
 
-export const PILOT_DATA_VERSION = 'pilot-clean-v2';
+/** Bump this to force a one-time full wipe on every browser that opens the OS. */
+export const PILOT_DATA_VERSION = 'pilot-clean-v3';
 
-/** Wipe demo data and seed a clean pilot (admin account only). */
+const WIPE_PREFIXES = ['medcore_', 'ibom_', 'medcore-'];
+
+/** Wipe all pilot / demo / local OS data and reseed empty defaults. */
 export function resetAllPilotData(): void {
   if (typeof window === 'undefined') return;
-  for (const k of ALL_PILOT_KEYS) {
-    try {
-      localStorage.removeItem(k);
-    } catch {
-      /* ignore */
+
+  try {
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (ALL_PILOT_KEYS.includes(k as any) || WIPE_PREFIXES.some((p) => k.startsWith(p))) {
+        toRemove.push(k);
+      }
+    }
+    for (const k of toRemove) {
+      try {
+        localStorage.removeItem(k);
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    for (const k of ALL_PILOT_KEYS) {
+      try {
+        localStorage.removeItem(k);
+      } catch {
+        /* ignore */
+      }
     }
   }
+
+  try {
+    sessionStorage.clear();
+  } catch {
+    /* ignore */
+  }
+
   write(KEYS.access, DEFAULT_ACCESS);
   write(KEYS.compliance, []);
   write(KEYS.activity, [
     {
       id: 'boot',
       time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-      text: 'Clean pilot started — enrol staff and create transfers to populate the OS.',
+      text: 'All data reset — clean hospital OS. Enrol staff to begin.',
       at: new Date().toISOString(),
     },
   ]);
@@ -402,6 +437,7 @@ export function resetAllPilotData(): void {
     /* ignore */
   }
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'reset' } }));
+  window.dispatchEvent(new CustomEvent('medcore-data-reset', { detail: { at: new Date().toISOString() } }));
 }
 
 /** Run once per browser when pilot version changes. */
