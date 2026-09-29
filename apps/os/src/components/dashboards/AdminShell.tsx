@@ -271,9 +271,40 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
               <Building2 size={14} />
               <span>{facility}</span>
             </div>
-            <div className="admin-shell-online">
+            <div
+              className={`admin-shell-online${
+                !online
+                  ? ' is-offline'
+                  : hospitalShare === 'cloud'
+                    ? ' is-cloud'
+                    : hospitalShare === 'lan'
+                      ? ' is-lan-hub'
+                      : ''
+              }`}
+              title={
+                !online
+                  ? 'Offline'
+                  : hospitalShare === 'cloud'
+                    ? 'Cloud sync active'
+                    : hospitalShare === 'lan'
+                      ? 'Hospital LAN hub active'
+                      : hospitalShare === 'local'
+                        ? 'Local session'
+                        : connected
+                          ? 'Realtime connected'
+                          : 'Online'
+              }
+            >
               <span className="dot" />
-              {!online ? 'Offline' : hospitalShare === 'cloud' ? 'Cloud sync' : hospitalShare === 'lan' ? 'Hospital LAN' : connected ? 'Live' : 'Online'}
+              {!online
+                ? 'Offline'
+                : hospitalShare === 'cloud'
+                  ? 'Cloud'
+                  : hospitalShare === 'lan'
+                    ? 'LAN hub'
+                    : connected
+                      ? 'Live'
+                      : 'Online'}
             </div>
             <div className="admin-shell-clock">{clock}</div>
           </div>
@@ -299,36 +330,6 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             </button>
           </div>
         </header>
-
-        {!online && (
-          <div className="admin-offline-banner" role="status">
-            Working offline on this device. For all staff to share data without internet, run the hospital API on your LAN (see hospital share below).
-          </div>
-        )}
-        {online && hospitalShare === 'local' && (
-          <div className="admin-share-banner" role="status">
-            Single-PC mode — data stays on this browser. Start api-server on the hospital network so every workstation shares the same staff, transfers, and bills.
-          </div>
-        )}
-        {hospitalShare === 'lan' && (
-          <div className="admin-share-banner is-lan" role="status">
-            Hospital hub on — all saves go to the UPS hub on this LAN first, then to the cloud when the internet is up.
-          </div>
-        )}
-        {pendingSync > 0 && (
-          <div className="admin-offline-banner" role="status">
-            {pendingSync} change{pendingSync === 1 ? '' : 's'} saved on this PC — waiting to sync to cloud
-            {' · '}
-            <button type="button" className="admin-link" onClick={() => void flushOutbox().then(() => setPendingSync(getOutboxPendingCount()))}>
-              Sync now
-            </button>
-          </div>
-        )}
-        {hospitalShare === 'cloud' && (
-          <div className="admin-share-banner is-lan" role="status">
-            Cloud backup on — Firestore is receiving data. Prefer a hospital hub + UPS for blackouts so every PC shares one on-site copy.
-          </div>
-        )}
         <main className="admin-shell-content">{body}</main>
       </div>
     </div>
