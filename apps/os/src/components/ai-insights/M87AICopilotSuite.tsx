@@ -1,6 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
+import type { UserSession } from '../auth/AuthScreen';
+import {
+  parseStaffAutomationIntent,
+  createStaffAccountWithCard,
+  bulkCreateStaff,
+} from '../../lib/staffAutomation';
+import { emitLiveAction } from '../../lib/liveActions';
 import {
   Brain, Send, Sparkles, AlertTriangle, TrendingUp,
   ShieldCheck, Activity, DollarSign, Stethoscope, RefreshCw,
@@ -17,15 +24,19 @@ interface ChatMessage {
 
 const INITIAL_MESSAGES: ChatMessage[] = [];
 
-export const M87AICopilotSuite: React.FC = () => {
+interface Props {
+  session?: UserSession;
+}
+
+export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputPrompt, setInputPrompt] = useState('');
   const [activeAITab, setActiveAITab] = useState<'copilot' | 'forecasting' | 'anomalies' | 'orchestrator'>('copilot');
   const [isThinking, setIsThinking] = useState(false);
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputPrompt.trim()) return;
+    if (!inputPrompt.trim() || isThinking) return;
 
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -34,39 +45,74 @@ export const M87AICopilotSuite: React.FC = () => {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages(prev => [...prev, userMsg]);
+    setMessages((prev) => [...prev, userMsg]);
     const query = inputPrompt;
     setInputPrompt('');
     setIsThinking(true);
 
-    setTimeout(() => {
-      let reply = 'M87 Analysis: Telemetry verified across hospital EHR and central laboratory databases. No immediate contraindications identified. Parameters remain within regulatory and clinical safety tolerances.';
-      let cat: ChatMessage['category'] = 'clinical';
+    const facilityId = session?.hospitalId || 'IGH-EKT';
+    const facilityName = session?.facility || 'Hospital';
 
-      const lower = query.toLowerCase();
-      if (lower.includes('bed') || lower.includes('surge') || lower.includes('capacity')) {
-        reply = 'Operational Forecasting: Inpatient bed occupancy is at 92.6% (482/520 beds). Based on current emergency admission velocity (2.8 patients/hr), surgical wards will reach 100% capacity within 4.5 hours unless 6 anticipated discharges in Male Medical are expedited.';
-        cat = 'operational';
-      } else if (lower.includes('money') || lower.includes('revenue') || lower.includes('hmo') || lower.includes('billing')) {
-        reply = 'Financial Intelligence: Hospital collections are tracking at ?842.6M MTD. HMO claim adjudication approval stands at 94.2%. One billing dispute detected on AXA Mansard claim (?256,000) due to missing MRI pre-authorization code.';
-        cat = 'financial';
-      } else if (lower.includes('drug') || lower.includes('antibiotic') || lower.includes('dosage')) {
-        reply = 'Clinical Pharmacovigilance: Verify renal clearance (CrCl) before administering aminoglycosides. No CYP450 drug-drug interactions detected on current medication chart.';
-        cat = 'clinical';
+    const staffIntent = parseStaffAutomationIntent(query, facilityId, facilityName);
+    if (staffIntent.handled) {
+      let reply = staffIntent.replyIfEmpty || '';
+      let cat: ChatMessage['category'] = 'operational';
+      try {
+        if (staffIntent.jobs.length === 1) {
+          const r = await createStaffAccountWithCard(staffIntent.jobs[0]);
+          reply = r.ok
+            ? `M87 Access Automation: Account created and ID card issued.\n\n• Name: ${staffIntent.jobs[0].fullName}\n• Badge: ${r.badgeId}\n• Role: ${staffIntent.jobs[0].roleKey}\n• PIN: (as specified / default 123456)\n\nStaff can Sign in with ID No. using badge + PIN. Open Staff Access Control to view the card.`
+            : `M87 could not create account: ${r.error || 'unknown error'}`;
+          if (r.ok) emitLiveAction(`M87 enrolled ${r.badgeId}`, { module: 'ai-access' });
+        } else if (staffIntent.jobs.length > 1) {
+          const { summary } = await bulkCreateStaff(staffIntent.jobs);
+          reply = `M87 Bulk Access Automation\n\n${summary}\n\nAll successful accounts have ID cards and badge login. Review under Staff Access Control.`;
+          emitLiveAction(`M87 bulk enrol ×${staffIntent.jobs.length}`, { module: 'ai-access' });
+        }
+      } catch (err: unknown) {
+        reply = `M87 automation error: ${(err as Error)?.message || 'failed'}`;
       }
-
-      const m87Msg: ChatMessage = {
-        id: `msg-${Date.now() + 1}`,
+      const aiMsg: ChatMessage = {
+        id: `msg-${Date.now()}-ai`,
         sender: 'm87',
         text: reply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         category: cat,
       };
-
-      setMessages(prev => [...prev, m87Msg]);
+      setMessages((prev) => [...prev, aiMsg]);
       setIsThinking(false);
-    }, 900);
+      return;
+    }
+
+    // Default advisory replies (non-mutating)
+    let reply =
+      'M87: I can automate hospital admin tasks. Try:\n• enrol nurse Ada Okon pin 123456\n• bulk enrol: Emeka doctor; Chioma reception; Amaka nurse\n• create 5 nurses\n\nOr ask about beds, revenue, or clinical topics.';
+    let cat: ChatMessage['category'] = 'clinical';
+    const lower = query.toLowerCase();
+    if (lower.includes('bed') || lower.includes('surge') || lower.includes('capacity')) {
+      reply =
+        'Operational Forecasting: Review Bed & Ward Occupancy for live counts. I can enrol ward staff in bulk if you need more nurses on duty.';
+      cat = 'operational';
+    } else if (lower.includes('money') || lower.includes('revenue') || lower.includes('hmo') || lower.includes('billing')) {
+      reply = 'Financial Intelligence: Open Revenue & Cashier for live tills. I automate staff access accounts, not payment posting.';
+      cat = 'financial';
+    } else if (lower.includes('access') || lower.includes('id card') || lower.includes('badge')) {
+      reply =
+        'Access Control: Say “enrol doctor Full Name pin 123456” or “bulk enrol: Name role; Name role” and I will create accounts + ID cards automatically.';
+      cat = 'operational';
+    }
+
+    const aiMsg: ChatMessage = {
+      id: `msg-${Date.now()}-ai`,
+      sender: 'm87',
+      text: reply,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      category: cat,
+    };
+    setMessages((prev) => [...prev, aiMsg]);
+    setIsThinking(false);
   };
+
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

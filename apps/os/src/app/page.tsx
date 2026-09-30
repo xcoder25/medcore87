@@ -1402,7 +1402,7 @@ export default function OSPage() {
             </button>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-            <M87AICopilotSuite />
+            <M87AICopilotSuite session={userSession ?? undefined} />
           </div>
         </div>
       )}
