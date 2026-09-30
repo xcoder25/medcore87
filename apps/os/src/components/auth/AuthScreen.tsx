@@ -203,6 +203,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [staffRegistry, setStaffRegistry] = useState<PresetStaff[]>(PRESET_STAFF);
+  /** email = work email form; badge = Staff ID No. + PIN */
+  const [authMode, setAuthMode] = useState<'email' | 'badge'>('email');
 
   // Load enrolled staff (local) + live Firebase facility directory
   useEffect(() => {
@@ -285,34 +287,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     if (onLoginSuccess) onLoginSuccess(session);
   };
 
-  // Detected staff based on username/badge
+  // Strict staff match by badge ID only (no fuzzy / demo name shortcuts)
   const detectedStaff = useMemo(() => {
     const u = (username || '').trim().toLowerCase();
     if (!u) return null;
-    return staffRegistry.find(s =>
-      s.badgeId.toLowerCase().includes(u) ||
-      s.name.toLowerCase().includes(u) ||
-      (u.includes('admin') && s.roleKey === 'hospital_admin') ||
-      (u.includes('ngozi') && s.roleKey === 'hospital_admin') ||
-      (u.includes('surgeon') && s.roleKey === 'surgeon') ||
-      (u.includes('emeka') && s.roleKey === 'surgeon') ||
-      (u.includes('nurse') && s.roleKey === 'nurse') ||
-      (u.includes('aisha') && s.roleKey === 'nurse') ||
-      (u.includes('pharm') && s.roleKey === 'pharmacist') ||
-      (u.includes('chidi') && s.roleKey === 'pharmacist') ||
-      (u.includes('lab') && s.roleKey === 'lab') ||
-      (u.includes('kelechi') && s.roleKey === 'lab') ||
-      (u.includes('rad') && s.roleKey === 'radiologist') ||
-      (u.includes('fatima') && s.roleKey === 'radiologist') ||
-      (u.includes('record') && s.roleKey === 'records') ||
-      (u.includes('bisi') && s.roleKey === 'records') ||
-      (u.includes('account') && s.roleKey === 'accountant') ||
-      (u.includes('amaka') && s.roleKey === 'accountant') ||
-      (u.includes('sys') && s.roleKey === 'sysadmin') ||
-      (u.includes('ola') && s.roleKey === 'sysadmin') ||
-      (u.includes('doc') && s.roleKey === 'doctor') ||
-      (u.includes('amara') && s.roleKey === 'doctor')
-    ) || null;
+    const exact = staffRegistry.find((s) => s.badgeId.toLowerCase() === u);
+    if (exact) return exact;
+    // Allow partial only if a single badge starts with the typed id (min 4 chars)
+    if (u.length >= 4) {
+      const starts = staffRegistry.filter((s) => s.badgeId.toLowerCase().startsWith(u));
+      if (starts.length === 1) return starts[0];
+    }
+    return null;
   }, [username, staffRegistry]);
 
   const handleSignIn = async (e?: React.FormEvent) => {
@@ -325,10 +311,58 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     const effectiveHospital = selectedHospital;
     const adminEmail = PLATFORM_ADMIN.email.toLowerCase();
     const isPlatformAdmin =
-      u.toLowerCase() === adminEmail ||
-      (u.toLowerCase().includes('xcoder2442') && pass === PLATFORM_ADMIN.password);
+      authMode === 'email' &&
+      (u.toLowerCase() === adminEmail ||
+        (u.toLowerCase().includes('xcoder2442') && pass === PLATFORM_ADMIN.password));
 
-    // ── Real auth: email → Firebase (required, not demo) ───────────────────
+    // ── Badge + PIN mode: never use Firebase / admin fallback ─────────────
+    if (authMode === 'badge') {
+      const matchedStaff = staffRegistry.find(
+        (s) => s.badgeId.toLowerCase() === u.toLowerCase()
+      ) || (u.length >= 4
+        ? staffRegistry.find((s) => s.badgeId.toLowerCase().startsWith(u.toLowerCase()) &&
+            staffRegistry.filter((x) => x.badgeId.toLowerCase().startsWith(u.toLowerCase())).length === 1)
+        : undefined);
+      if (!matchedStaff) {
+        setError('Staff ID not found. Check the badge number from your staff card.');
+        setLoading(false);
+        return;
+      }
+      if (!pass || pass !== matchedStaff.pin) {
+        setError('Incorrect PIN. Try again or contact your administrator.');
+        setLoading(false);
+        return;
+      }
+      if (matchedStaff.hospitalId && matchedStaff.hospitalId !== effectiveHospital.id) {
+        // Still allow login but bind session to staff's hospital
+      }
+      const session: UserSession = {
+        id: matchedStaff.badgeId,
+        badgeId: matchedStaff.badgeId,
+        name: matchedStaff.name,
+        role: matchedStaff.role,
+        roleKey: matchedStaff.roleKey,
+        title: matchedStaff.title,
+        facility: matchedStaff.hospitalName || effectiveHospital.name,
+        hospitalId: matchedStaff.hospitalId || effectiveHospital.id,
+        department: matchedStaff.department,
+        avatarInitials: matchedStaff.initials,
+        clearanceLabel: matchedStaff.clearanceLabel,
+        clearanceLevel: matchedStaff.clearanceLevel,
+        permissions: matchedStaff.permissions,
+        authMethod: 'Staff ID',
+        loginTime: new Date().toLocaleTimeString('en-GB', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      };
+      setSuccess(true);
+      setLoading(false);
+      setTimeout(() => triggerLogin(session), 300);
+      return;
+    }
+
+    // ── Email mode → Firebase (platform admin or staff email) ─────────────
     if (u.includes('@') || isPlatformAdmin) {
       const email = u.includes('@') ? u : PLATFORM_ADMIN.email;
       try {
@@ -389,12 +423,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           }
         }
 
-        const adminStaff =
-          staffRegistry.find((s) => s.badgeId === PLATFORM_ADMIN.badgeId) || staffRegistry[0];
+        const adminStaff = staffRegistry.find((s) => s.badgeId === PLATFORM_ADMIN.badgeId);
+        // Never default a non-admin email to the hospital admin session
         const matchedStaff =
           email.toLowerCase() === adminEmail
             ? adminStaff
-            : detectedStaff || adminStaff;
+            : detectedStaff;
+        if (!matchedStaff) {
+          setError(
+            email.toLowerCase() === adminEmail
+              ? 'Admin profile missing. Contact support.'
+              : 'No staff profile linked to this email. Sign in with ID No. (badge + PIN) or ask admin to enrol you.'
+          );
+          setLoading(false);
+          return;
+        }
 
         const displayName =
           email.toLowerCase() === adminEmail
@@ -606,7 +649,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             textAlign: 'center',
             margin: '0 0 22px',
           }}>
-            Sign in to your account to continue
+            {authMode === 'badge' ? 'Enter your staff badge number and PIN' : 'Sign in with work email or switch to ID No.'}
           </p>
 
           {/* Error Message */}
@@ -686,7 +729,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Work email or staff badge ID"
+                  placeholder={authMode === 'badge' ? 'Staff badge / ID number' : 'Work email'}
                   style={{
                     width: '100%',
                     padding: '12px 14px 12px 42px',
@@ -760,7 +803,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
+                placeholder={authMode === 'badge' ? 'PIN' : 'Password'}
                 style={{
                   width: '100%',
                   padding: '12px 42px 12px 42px',
@@ -896,17 +939,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             <div style={{ flex: 1, height: 1, background: '#E2E8F0' }} />
           </div>
 
-          {/* Sign in with ID No. */}
+          {/* Toggle email ↔ badge + PIN */}
           <button
             type="button"
-            onClick={() => handleSignIn()}
+            onClick={() => {
+              setError(null);
+              setSuccess(false);
+              setUsername('');
+              setPassword('');
+              setAuthMode((m) => (m === 'badge' ? 'email' : 'badge'));
+            }}
             style={{
               width: '100%',
               height: 44,
               borderRadius: 10,
-              background: '#FFFFFF',
-              border: '1px solid #E2E8F0',
-              color: '#334155',
+              background: authMode === 'badge' ? 'rgba(0, 82, 212, 0.06)' : '#FFFFFF',
+              border: authMode === 'badge' ? '1px solid rgba(0, 82, 212, 0.35)' : '1px solid #E2E8F0',
+              color: authMode === 'badge' ? '#0052D4' : '#334155',
               fontWeight: 600,
               fontSize: '0.88rem',
               display: 'flex',
@@ -914,18 +963,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               justifyContent: 'center',
               gap: 10,
               cursor: 'pointer',
-              transition: 'background 0.15s ease',
+              transition: 'background 0.15s ease, border-color 0.15s ease',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#F8FAFC')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = '#FFFFFF')}
+            onMouseEnter={(e) => {
+              if (authMode !== 'badge') e.currentTarget.style.background = '#F8FAFC';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = authMode === 'badge' ? 'rgba(0, 82, 212, 0.06)' : '#FFFFFF';
+            }}
           >
-            {/* ID Card Icon */}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0D4F8B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="5" width="20" height="14" rx="2" />
               <circle cx="8" cy="12" r="2" />
               <path d="M14 9h4M14 12h4M14 15h2" />
             </svg>
-            <span>Sign in with ID No.</span>
+            <span>{authMode === 'badge' ? 'Sign in with email instead' : 'Sign in with ID No.'}</span>
           </button>
 
           {/* Footer */}
