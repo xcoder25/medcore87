@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { UserSession } from '../auth/AuthScreen';
 import { inferRoleKey } from '../../lib/staffCardStore';
 import { AdminWorkspace } from './AdminWorkspace';
+import { ReceptionWorkspace } from './ReceptionWorkspace';
 import {
   Stethoscope, Activity, Flame, Wind, Pill, FlaskConical, Layers, Baby, Droplet,
   FileText, BedDouble, Users, Clock, ShieldCheck, AlertTriangle, CheckCircle2,
@@ -32,6 +33,26 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
   const roleKey = inferRoleKey(session.roleKey || session.role || session.title, session.badgeId);
 
 
+
+  // Reception: full front-desk workspace (no generic Staff Dashboard chrome)
+  if (roleKey === 'reception') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {actionNotice && (
+          <div style={{
+            position: 'fixed', top: 20, right: 20, zIndex: 9999,
+            background: '#FFFFFF', color: '#0284C7', border: '1px solid #BAE6FD',
+            borderRadius: 10, padding: '12px 18px', boxShadow: '0 10px 25px rgba(0,0,0,0.12)',
+            display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.85rem', fontWeight: 600,
+          }}>
+            <CheckCircle2 size={16} color="#0284C7" />
+            <span>{actionNotice}</span>
+          </div>
+        )}
+        <ReceptionWorkspace session={session} onNavigate={(k) => onNavigate(k)} />
+      </div>
+    );
+  }
 
   // Administrator gets dedicated premium workspace (no clinical banner)
   if (roleKey === 'hospital_admin') {

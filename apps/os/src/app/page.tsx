@@ -66,7 +66,7 @@ import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
 import {
   Activity, Shield, Lock, Unlock, LogOut, ChevronLeft, ChevronRight,
   AlertTriangle, Building2, Users, BedDouble, RefreshCw, BarChart3, Settings,
-  CreditCard, FileText, Stethoscope, HeartPulse, Database, Brain, Sparkles, Flame,
+  CreditCard, FileText, Stethoscope, Calendar, HeartPulse, Database, Brain, Sparkles, Flame,
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Gauge, Trash2, Cpu, FileCode, ShieldCheck,
   Search, X, LayoutDashboard, Zap, CheckCircle2, Globe, ArrowRight,
@@ -438,17 +438,23 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Front desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Reception desk', badge: 'Live' },
-            { key: 'patient-card', icon: FileText, label: 'Register / patient card', badge: 'New' },
-            { key: 'patient-flow', icon: Activity, label: 'Patient flow & queue' },
-            { key: 'emr', icon: FileText, label: 'Find existing record' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Reception dashboard', badge: 'Live' },
+            { key: 'patient-card', icon: FileText, label: 'Register / find patient', badge: 'MPI' },
+            { key: 'patient-flow', icon: Activity, label: 'Check-in & live queue' },
           ],
         },
         {
-          label: 'Billing handoff',
+          label: 'Appointments & walk-ins',
           items: [
-            { key: 'cashier', icon: CreditCard, label: 'Cashier / POS' },
-            { key: 'billing', icon: CreditCard, label: 'Billing office' },
+            { key: 'patient-card', icon: Calendar, label: 'Book / manage appointments' },
+            { key: 'patient-flow', icon: Users, label: 'Walk-in registration' },
+          ],
+        },
+        {
+          label: 'Billing & HMO',
+          items: [
+            { key: 'cashier', icon: CreditCard, label: 'Collect payment / POS' },
+            { key: 'billing', icon: CreditCard, label: 'Invoices & outstanding' },
           ],
         },
       ];
@@ -640,6 +646,15 @@ const ROLE_THEMES: Record<string, RoleThemeConfig> = {
     icon: Layers,
     workspaceTitle: 'Radiology & PACS Viewer',
   },
+  reception: {
+    label: 'Front Desk Command',
+    badge: 'RECEPTION WORKSPACE',
+    accent: '#0284C7',
+    gradient: 'linear-gradient(135deg, #0284C7 0%, #00BFA5 100%)',
+    activeBg: 'linear-gradient(90deg, rgba(2, 132, 199, 0.28) 0%, rgba(0, 191, 165, 0.12) 100%)',
+    icon: Users,
+    workspaceTitle: 'Patient Reception & Registration',
+  },
   accountant: {
     label: 'Revenue & Finance Desk',
     badge: 'FINANCE COMMAND DESK',
@@ -758,10 +773,10 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   paediatrics: { level: 3, label: 'L3 Clinical', roleDesc: 'Paediatricians & NICU Nurses' },
   'blood-bank': { level: 2, label: 'L2 Support', roleDesc: 'Hematology Technicians & Blood Bank Officers' },
   nursing: { level: 3, label: 'L3 Clinical', roleDesc: 'Inpatient Ward Nurses & Sisters' },
-  'patient-card': { level: 2, label: 'L2 Support', roleDesc: 'Records & Front Desk Officers' },
+  'patient-card': { level: 1, label: 'L2 Support', roleDesc: 'Records & Front Desk Officers' },
   command: { level: 2, label: 'L2 Support', roleDesc: 'General Hospital Staff & Floor Duty' },
   beds: { level: 3, label: 'L3 Clinical', roleDesc: 'Bed Managers & Ward Supervisors' },
-  'patient-flow': { level: 3, label: 'L3 Clinical', roleDesc: 'Patient Flow Coordinators' },
+  'patient-flow': { level: 1, label: 'L3 Clinical', roleDesc: 'Patient Flow Coordinators' },
   staffing: { level: 3, label: 'L3 Clinical', roleDesc: 'Duty Roster Officers & Matrons' },
   ambulance: { level: 2, label: 'L2 Support', roleDesc: 'EMS Dispatchers & Paramedics' },
   inventory: { level: 2, label: 'L2 Support', roleDesc: 'Procurement & Inventory Managers' },
