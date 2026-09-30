@@ -89,6 +89,8 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     firebaseAuth: 'ok' | 'fail' | 'skipped';
     firestore: 'ok' | 'fail';
     emailAuth?: 'ok' | 'fail' | 'skipped';
+    accessRow: AccessRecord;
+    listed: boolean;
   } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -198,9 +200,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         lastLogin: 'Never',
         permissions: ['dashboard', roleMeta.roleKey],
       };
-      const nextAccess = [accessRow, ...getAccessRecords().filter((r) => r.id !== card.badgeId)];
-      setAccessRecords(nextAccess);
-      setRecords(nextAccess);
+      // Do NOT list in table yet — confirmation screen first
 
       try {
         const fsOk = await firestoreUpsertStaffMember(facilityId, {
@@ -250,10 +250,17 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         firebaseAuth,
         firestore: firestoreStatus,
         emailAuth,
+        accessRow,
+        listed: false,
       });
+      setSelectedId(null); // list not yet — focus confirmation
       setFullName('');
       setEmail('');
       setShowCreate(false);
+      // Scroll confirmation into view
+      setTimeout(() => {
+        document.getElementById('staff-create-confirm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
     } finally {
       setBusy(false);
     }
@@ -479,11 +486,14 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
       {confirmInfo && (
         <div
+          id="staff-create-confirm"
           className="os-card"
           style={{
             padding: 20,
-            border: '1px solid #86EFAC',
+            border: '2px solid #16A34A',
             background: 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 50%, #F0F9FF 100%)',
+            boxShadow: '0 12px 40px rgba(22, 163, 74, 0.15)',
+            order: -1,
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
@@ -533,14 +543,46 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                   </div>
                 )}
               </div>
-              <button
-                type="button"
-                className="os-ghost-btn"
-                style={{ marginTop: 14, fontSize: 12 }}
-                onClick={() => setConfirmInfo(null)}
-              >
-                Dismiss
-              </button>
+              <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {!confirmInfo.listed ? (
+                  <button
+                    type="button"
+                    className="os-primary-btn"
+                    onClick={() => {
+                      const row = confirmInfo.accessRow;
+                      const nextAccess = [row, ...getAccessRecords().filter((r) => r.id !== row.id)];
+                      setAccessRecords(nextAccess);
+                      setRecords(nextAccess);
+                      setSelectedId(row.id);
+                      setConfirmInfo({ ...confirmInfo, listed: true });
+                      pushActivity(`Listed in access control · ${row.name} · ${row.id}`);
+                    }}
+                  >
+                    <CheckCircle2 size={16} /> Confirm — add to staff list
+                  </button>
+                ) : (
+                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#047857' }}>
+                    ✓ Added to staff list below
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="os-ghost-btn"
+                  style={{ fontSize: 12 }}
+                  onClick={() => {
+                    // If never confirmed list, still persist access so badge login works from access store
+                    if (confirmInfo && !confirmInfo.listed) {
+                      const row = confirmInfo.accessRow;
+                      const nextAccess = [row, ...getAccessRecords().filter((r) => r.id !== row.id)];
+                      setAccessRecords(nextAccess);
+                      setRecords(nextAccess);
+                    }
+                    setConfirmInfo(null);
+                  }}
+                >
+                  {confirmInfo.listed ? 'Close' : 'Close (also add to list)'}
+                </button>
+              </div>
             </div>
             {issued && (
               <div>
@@ -552,7 +594,16 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(260px, 320px)', gap: 16 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) minmax(260px, 320px)',
+          gap: 16,
+          opacity: confirmInfo && !confirmInfo.listed ? 0.45 : 1,
+          pointerEvents: confirmInfo && !confirmInfo.listed ? 'none' : undefined,
+          transition: 'opacity 0.2s ease',
+        }}
+      >
         <div className="os-table-wrap">
           <table className="os-table">
             <thead>
