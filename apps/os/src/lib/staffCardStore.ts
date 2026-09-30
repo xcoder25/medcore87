@@ -85,12 +85,11 @@ export function enrolStaffAndIssueCard(
       ? [entry, ...reg.filter((r: { id?: string; badgeId?: string }) => r.id !== id && r.badgeId !== id)]
       : [entry];
     localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(next));
-    // Also mirror into admin realtime staff key (Staffing & Rosters)
     try {
       localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
-      // keep admin staffing key in sync
-      localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
       window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } }));
+      window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: next }));
+      window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: cards }));
     } catch {
       /* ignore */
     }

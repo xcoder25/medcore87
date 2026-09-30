@@ -43,6 +43,12 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [issued, setIssued] = useState<StaffCardRecord | null>(null);
+  /** Card created but not yet confirmed into the roster list */
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    card: StaffCardRecord;
+    pin: string;
+    hospitalName: string;
+  } | null>(null);
   const [error, setError] = useState('');
   const [cards, setCards] = useState<StaffCardRecord[]>(() =>
     typeof window !== 'undefined' ? listStaffCards() : []
@@ -173,13 +179,24 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
       } catch { /* ignore */ }
       emitLiveAction(`Staff enrolled · ${card.badgeId}`, { module: 'enrolment' });
 
+      // Confirmation screen BEFORE roster list updates
+      setPendingConfirm({
+        card,
+        pin: pin || '1234',
+        hospitalName: facility.name,
+      });
       setIssued(card);
-      setCards(listStaffCards());
       setFullName('');
       setEmail('');
     } finally {
       setBusy(false);
     }
+  };
+
+  const confirmEnrolment = () => {
+    if (!pendingConfirm) return;
+    setCards(listStaffCards());
+    setPendingConfirm(null);
   };
 
   return (
@@ -286,7 +303,68 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         </form>
 
         <div>
-          {issued ? (
+          {pendingConfirm ? (
+            <div
+              className="os-panel"
+              style={{
+                border: '2px solid #16A34A',
+                boxShadow: '0 8px 28px rgba(22,163,74,0.15)',
+                padding: 0,
+                overflow: 'hidden',
+              }}
+            >
+              <div style={{ background: 'linear-gradient(135deg,#16A34A,#0D9488)', padding: '16px 18px', color: '#fff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: '1rem' }}>
+                  <CheckCircle2 size={20} /> Staff created successfully
+                </div>
+                <div style={{ fontSize: '0.82rem', opacity: 0.95, marginTop: 4 }}>
+                  Confirm below before this person appears on the roster.
+                </div>
+              </div>
+              <div style={{ padding: 18 }}>
+                <StaffIdCardView card={pendingConfirm.card} />
+                <div
+                  style={{
+                    marginTop: 16,
+                    background: '#F0FDF4',
+                    border: '1px solid #BBF7D0',
+                    borderRadius: 12,
+                    padding: 14,
+                  }}
+                >
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#166534', letterSpacing: '0.04em' }}>
+                    SIGN-IN DETAILS (share with staff)
+                  </div>
+                  <div style={{ marginTop: 10, fontSize: '0.9rem', color: '#0F172A', lineHeight: 1.7 }}>
+                    <div>
+                      <strong>Staff ID / Badge:</strong>{' '}
+                      <code style={{ fontSize: '1rem', fontWeight: 800, color: '#0052D4' }}>
+                        {pendingConfirm.card.badgeId}
+                      </code>
+                    </div>
+                    <div>
+                      <strong>PIN:</strong>{' '}
+                      <code style={{ fontWeight: 800 }}>{pendingConfirm.pin}</code>
+                    </div>
+                    <div>
+                      <strong>Hospital:</strong> {pendingConfirm.hospitalName}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: 6 }}>
+                      On the login screen choose <strong>Staff ID No.</strong>, enter this badge and PIN.
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="os-action-btn-primary"
+                  style={{ width: '100%', marginTop: 16, justifyContent: 'center' }}
+                  onClick={confirmEnrolment}
+                >
+                  <CheckCircle2 size={16} /> Confirm — add to staff list
+                </button>
+              </div>
+            </div>
+          ) : issued ? (
             <div>
               <div
                 style={{
@@ -299,12 +377,12 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
                   fontSize: '0.88rem',
                 }}
               >
-                <CheckCircle2 size={18} /> Card issued — use badge ID to sign in on OS & Clinic
+                <CheckCircle2 size={18} /> Card on file — ready for Staff ID login
               </div>
               <StaffIdCardView card={issued} />
               <p style={{ fontSize: '0.78rem', color: '#64748B', marginTop: 12, lineHeight: 1.5 }}>
-                Login: badge <strong style={{ fontFamily: 'monospace' }}>{issued.badgeId}</strong> · PIN set at
-                enrolment. Clinic app shows the same card under <strong>My Staff ID</strong>.
+                Login: badge <strong style={{ fontFamily: 'monospace' }}>{issued.badgeId}</strong> · PIN from
+                enrolment. Use <strong>Staff ID No.</strong> mode on the sign-in screen.
               </p>
             </div>
           ) : (

@@ -252,6 +252,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     mergeLocal();
     const onCards = () => mergeLocal();
     window.addEventListener('medcore-staff-cards-updated', onCards);
+    window.addEventListener('medcore-staff-registry-updated', onCards);
     window.addEventListener('medcore-admin-sync', onCards);
 
     let unsubDir = () => {};
@@ -271,13 +272,36 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         unsubDir = firestoreSubscribeStaffDirectory(selectedHospital.id, (data) => {
           if (data.staffRegistry && Array.isArray(data.staffRegistry)) {
             try {
-              localStorage.setItem('medcore_os_staff_registry', JSON.stringify(data.staffRegistry));
+              const localRaw = localStorage.getItem('medcore_os_staff_registry');
+              const localArr: any[] = localRaw ? JSON.parse(localRaw) : [];
+              const byBadge = new Map<string, any>();
+              for (const s of Array.isArray(localArr) ? localArr : []) {
+                const b = String(s.badgeId || s.id || '').toUpperCase();
+                if (b) byBadge.set(b, s);
+              }
+              for (const s of data.staffRegistry as any[]) {
+                const b = String(s.badgeId || s.id || '').toUpperCase();
+                if (!b) continue;
+                const prev = byBadge.get(b);
+                byBadge.set(b, { ...prev, ...s, badgeId: b, pin: s.pin || prev?.pin || '1234' });
+              }
+              localStorage.setItem('medcore_os_staff_registry', JSON.stringify(Array.from(byBadge.values())));
             } catch { /* ignore */ }
             mergeLocal();
           }
           if (data.staffCards && Array.isArray(data.staffCards)) {
             try {
-              localStorage.setItem('medcore_staff_id_cards', JSON.stringify(data.staffCards));
+              const localCards = JSON.parse(localStorage.getItem('medcore_staff_id_cards') || '[]');
+              const byId = new Map<string, any>();
+              for (const c of Array.isArray(localCards) ? localCards : []) {
+                const b = String(c.badgeId || '').toUpperCase();
+                if (b) byId.set(b, c);
+              }
+              for (const c of data.staffCards as any[]) {
+                const b = String(c.badgeId || '').toUpperCase();
+                if (b) byId.set(b, { ...byId.get(b), ...c, badgeId: b });
+              }
+              localStorage.setItem('medcore_staff_id_cards', JSON.stringify(Array.from(byId.values())));
             } catch { /* ignore */ }
           }
         });
@@ -288,7 +312,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           try {
             const mapped = rows.map((r) => ({
               id: r.badgeId || r.id,
-              badgeId: r.badgeId || r.id,
+              badgeId: String(r.badgeId || r.id || '').toUpperCase(),
               name: r.name || r.fullName,
               fullName: r.name || r.fullName,
               role: r.role,
@@ -305,7 +329,27 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               hospitalName: r.hospitalName || r.facilityName || selectedHospital.name,
               status: r.status || 'active',
             }));
-            localStorage.setItem('medcore_os_staff_registry', JSON.stringify(mapped));
+            // MERGE with local — never wipe enrolments that are not yet on cloud
+            const localRaw = localStorage.getItem('medcore_os_staff_registry');
+            const localArr: any[] = localRaw ? JSON.parse(localRaw) : [];
+            const byBadge = new Map<string, any>();
+            for (const s of Array.isArray(localArr) ? localArr : []) {
+              const b = String(s.badgeId || s.id || '').toUpperCase();
+              if (b) byBadge.set(b, s);
+            }
+            for (const s of mapped) {
+              const b = String(s.badgeId || '').toUpperCase();
+              if (!b) continue;
+              const prev = byBadge.get(b);
+              // Keep local PIN if remote missing
+              byBadge.set(b, {
+                ...prev,
+                ...s,
+                pin: s.pin || prev?.pin || '1234',
+              });
+            }
+            const merged = Array.from(byBadge.values());
+            localStorage.setItem('medcore_os_staff_registry', JSON.stringify(merged));
             mergeLocal();
           } catch (e) {
             console.warn('[auth] map staff collection', e);
@@ -326,6 +370,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
     return () => {
       window.removeEventListener('medcore-staff-cards-updated', onCards);
+      window.removeEventListener('medcore-staff-registry-updated', onCards);
       window.removeEventListener('medcore-admin-sync', onCards);
       unsubDir();
       unsubCol();
@@ -368,7 +413,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
     // ── Badge + PIN mode: never use Firebase / admin fallback ─────────────
     if (authMode === 'badge') {
-      const badgeQuery = u.trim().toUpperCase();
+      const badgeQuery = u.trim().toUpperCase().replace(/\s+/g, '');
       const pinQuery = pass.trim();
       if (!badgeQuery) {
         setError('Enter your staff badge / ID number.');
@@ -379,6 +424,67 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         setError('Enter your PIN.');
         setLoading(false);
         return;
+      }
+
+      // Always re-read registry + cards from disk (enrol may have just happened)
+      let registryForLookup: PresetStaff[] = staffRegistry;
+      try {
+        const saved = localStorage.getItem('medcore_os_staff_registry');
+        const parsed: any[] = saved ? JSON.parse(saved) : [];
+        const byBadge = new Map<string, PresetStaff>();
+        const admin = PRESET_STAFF.find((x) => x.badgeId === PLATFORM_ADMIN.badgeId);
+        if (admin) byBadge.set(admin.badgeId.toUpperCase().replace(/\s+/g, ''), admin);
+        for (const p of Array.isArray(parsed) ? parsed : []) {
+          const bid = String(p.badgeId || p.id || '').toUpperCase().replace(/\s+/g, '');
+          if (!bid) continue;
+          byBadge.set(bid, {
+            badgeId: bid,
+            name: p.name || p.fullName || 'Staff',
+            role: p.role || 'Staff',
+            shortRole: p.shortRole || p.role || 'Staff',
+            title: p.title || p.role || 'Staff',
+            roleKey: p.roleKey || 'doctor',
+            clearanceLevel: p.clearanceLevel ?? 2,
+            clearanceLabel: p.clearanceLabel || 'L2',
+            department: p.department || '',
+            initials: p.initials || 'ST',
+            permissions: p.permissions || ['dashboard'],
+            pin: String(p.pin || '1234'),
+            hospitalId: p.hospitalId || p.facilityId || effectiveHospital.id,
+            hospitalName: p.hospitalName || p.facilityName || effectiveHospital.name,
+            color: p.color || '#0052D4',
+          });
+        }
+        try {
+          const cardsRaw = localStorage.getItem('medcore_staff_id_cards');
+          const cards: any[] = cardsRaw ? JSON.parse(cardsRaw) : [];
+          for (const c of Array.isArray(cards) ? cards : []) {
+            const bid = String(c.badgeId || '').toUpperCase().replace(/\s+/g, '');
+            if (!bid) continue;
+            const prev = byBadge.get(bid);
+            if (prev) continue;
+            byBadge.set(bid, {
+              badgeId: bid,
+              name: c.fullName || c.name || 'Staff',
+              role: c.role || 'Staff',
+              shortRole: c.role || 'Staff',
+              title: c.title || c.role || 'Staff',
+              roleKey: c.roleKey || 'doctor',
+              clearanceLevel: c.clearanceLevel ?? 2,
+              clearanceLabel: c.clearanceLabel || 'L2',
+              department: c.department || '',
+              initials: c.initials || 'ST',
+              permissions: ['dashboard'],
+              pin: String(prev?.pin || '1234'),
+              hospitalId: c.facilityId || effectiveHospital.id,
+              hospitalName: c.facilityName || effectiveHospital.name,
+              color: '#0052D4',
+            });
+          }
+        } catch { /* ignore */ }
+        registryForLookup = Array.from(byBadge.values());
+        setStaffRegistry(registryForLookup);
+      } catch { /* ignore */ }
       }
 
       const mapProfile = (raw: Record<string, unknown> | PresetStaff): PresetStaff => {
@@ -402,9 +508,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         };
       };
 
-      // Load profile from local + Firestore (sync)
-      let profile: PresetStaff | undefined = staffRegistry.find(
-        (s) => s.badgeId.toUpperCase() === badgeQuery
+      // Load profile from local (fresh disk) + Firestore
+      let profile: PresetStaff | undefined = registryForLookup.find(
+        (s) => s.badgeId.toUpperCase().replace(/\s+/g, '') === badgeQuery
       );
 
       try {
@@ -435,6 +541,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               (c) => (c.badgeId || '').toUpperCase() === badgeQuery
             );
             if (card) {
+              let cardPin = '1234';
+              try {
+                const reg = JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]');
+                const hit = Array.isArray(reg)
+                  ? reg.find((r: any) => String(r.badgeId || r.id || '').toUpperCase().replace(/\s+/g, '') === badgeQuery)
+                  : null;
+                if (hit?.pin) cardPin = String(hit.pin);
+              } catch { /* ignore */ }
               profile = mapProfile({
                 badgeId: card.badgeId,
                 name: card.fullName,
@@ -447,7 +561,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 initials: card.initials,
                 hospitalId: card.facilityId,
                 hospitalName: card.facilityName,
-                pin: pinQuery,
+                pin: cardPin,
               });
             }
           } catch { /* ignore */ }
@@ -492,6 +606,37 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             setLoading(false);
             return;
           } else {
+            // Offline / network: still allow local PIN session if enrolled on this device
+            const localPinOk2 =
+              String(profile.pin || '') === pinQuery ||
+              String(profile.pin || '') === pinNorm;
+            if (localPinOk2 && (code === 'auth/network-request-failed' || code === 'auth/internal-error' || !code)) {
+              const session: UserSession = {
+                id: profile.badgeId,
+                badgeId: profile.badgeId,
+                name: profile.name,
+                role: profile.role,
+                roleKey: profile.roleKey,
+                title: profile.title,
+                facility: profile.hospitalName || effectiveHospital.name,
+                hospitalId: profile.hospitalId || effectiveHospital.id,
+                department: profile.department,
+                avatarInitials: profile.initials,
+                clearanceLabel: profile.clearanceLabel,
+                clearanceLevel: profile.clearanceLevel,
+                permissions: profile.permissions,
+                authMethod: 'Staff PIN · Offline',
+                token: `LOCAL-${Date.now().toString(36).toUpperCase()}`,
+                loginTime: new Date().toLocaleTimeString('en-GB', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+              };
+              setSuccess(true);
+              setLoading(false);
+              setTimeout(() => triggerLogin(session), 300);
+              return;
+            }
             setError(
               (authErr as { message?: string })?.message ||
                 'Badge sign-in failed. Check PIN and Firebase Auth settings.'
