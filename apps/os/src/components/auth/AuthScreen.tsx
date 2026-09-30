@@ -370,110 +370,52 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     if (authMode === 'badge') {
       const badgeQuery = u.trim().toUpperCase();
       const pinQuery = pass.trim();
-
-      const mapRemote = (remote: Record<string, unknown>, fallbackPin?: string): PresetStaff => ({
-        badgeId: String(remote.badgeId || remote.id || badgeQuery).toUpperCase(),
-        name: String(remote.name || remote.fullName || 'Staff'),
-        role: String(remote.role || 'Staff'),
-        shortRole: String(remote.shortRole || remote.role || 'Staff'),
-        title: String(remote.title || remote.role || 'Staff'),
-        roleKey: String(remote.roleKey || 'doctor'),
-        clearanceLevel: Number(remote.clearanceLevel ?? 2),
-        clearanceLabel: String(remote.clearanceLabel || 'L2'),
-        department: String(remote.department || ''),
-        initials: String(remote.initials || 'ST'),
-        permissions: (remote.permissions as string[]) || ['dashboard'],
-        pin: String(remote.pin || fallbackPin || ''),
-        hospitalId: String(remote.hospitalId || remote.facilityId || effectiveHospital.id),
-        hospitalName: String(remote.hospitalName || remote.facilityName || effectiveHospital.name),
-        color: '#0052D4',
-      });
-
-      // 1) Local registry (same browser as enrolment)
-      let matchedStaff: PresetStaff | undefined =
-        staffRegistry.find((s) => s.badgeId.toUpperCase() === badgeQuery) ||
-        staffRegistry.find(
-          (s) =>
-            badgeQuery.length >= 4 &&
-            s.badgeId.toUpperCase().startsWith(badgeQuery) &&
-            staffRegistry.filter((x) => x.badgeId.toUpperCase().startsWith(badgeQuery)).length === 1
-        );
-
-      // 2) Local staff cards + registry PIN (PIN lives on registry, not card template)
-      if (!matchedStaff) {
-        try {
-          const { listStaffCards } = await import('../../lib/staffCardStore');
-          const cards = listStaffCards();
-          const card =
-            cards.find((c) => (c.badgeId || '').toUpperCase() === badgeQuery) ||
-            cards.find(
-              (c) =>
-                badgeQuery.length >= 4 &&
-                (c.badgeId || '').toUpperCase().startsWith(badgeQuery) &&
-                cards.filter((x) => (x.badgeId || '').toUpperCase().startsWith(badgeQuery)).length === 1
-            );
-          let regPin = '1234';
-          let regPerms: string[] = ['dashboard'];
-          try {
-            const regRaw = localStorage.getItem('medcore_os_staff_registry');
-            const reg = regRaw ? JSON.parse(regRaw) : [];
-            const regHit = Array.isArray(reg)
-              ? reg.find(
-                  (r: any) =>
-                    String(r.badgeId || r.id || '').toUpperCase() === (card?.badgeId || badgeQuery).toUpperCase()
-                )
-              : null;
-            if (regHit) {
-              regPin = String(regHit.pin || '1234');
-              regPerms = regHit.permissions || regPerms;
-              if (!card && regHit) {
-                matchedStaff = {
-                  badgeId: String(regHit.badgeId || regHit.id).toUpperCase(),
-                  name: regHit.name || regHit.fullName || 'Staff',
-                  role: regHit.role || 'Staff',
-                  shortRole: regHit.shortRole || regHit.role || 'Staff',
-                  title: regHit.title || regHit.role || 'Staff',
-                  roleKey: regHit.roleKey || 'doctor',
-                  clearanceLevel: regHit.clearanceLevel ?? 2,
-                  clearanceLabel: regHit.clearanceLabel || 'L2',
-                  department: regHit.department || '',
-                  initials: regHit.initials || 'ST',
-                  permissions: regPerms,
-                  pin: regPin,
-                  hospitalId: regHit.hospitalId || regHit.facilityId || effectiveHospital.id,
-                  hospitalName: regHit.hospitalName || regHit.facilityName || effectiveHospital.name,
-                  color: '#0052D4',
-                };
-              }
-            }
-          } catch { /* ignore */ }
-          if (card && !matchedStaff) {
-            matchedStaff = {
-              badgeId: card.badgeId.toUpperCase(),
-              name: card.fullName || 'Staff',
-              role: card.role || 'Staff',
-              shortRole: card.role || 'Staff',
-              title: card.title || card.role || 'Staff',
-              roleKey: card.roleKey || 'doctor',
-              clearanceLevel: card.clearanceLevel ?? 2,
-              clearanceLabel: card.clearanceLabel || 'L2',
-              department: card.department || '',
-              initials: card.initials || 'ST',
-              permissions: regPerms,
-              pin: regPin,
-              hospitalId: card.facilityId || effectiveHospital.id,
-              hospitalName: card.facilityName || effectiveHospital.name,
-              color: '#0052D4',
-            };
-          }
-        } catch (e) {
-          console.warn('[auth] local cards', e);
-        }
+      if (!badgeQuery) {
+        setError('Enter your staff badge / ID number.');
+        setLoading(false);
+        return;
+      }
+      if (!pinQuery) {
+        setError('Enter your PIN.');
+        setLoading(false);
+        return;
       }
 
-      // 3) Firestore — selected hospital, then all hospitals if needed
+      const mapProfile = (raw: Record<string, unknown> | PresetStaff): PresetStaff => {
+        const r = raw as Record<string, unknown>;
+        return {
+          badgeId: String(r.badgeId || r.id || badgeQuery).toUpperCase(),
+          name: String(r.name || r.fullName || 'Staff'),
+          role: String(r.role || 'Staff'),
+          shortRole: String(r.shortRole || r.role || 'Staff'),
+          title: String(r.title || r.role || 'Staff'),
+          roleKey: String(r.roleKey || 'doctor'),
+          clearanceLevel: Number(r.clearanceLevel ?? 2),
+          clearanceLabel: String(r.clearanceLabel || 'L2'),
+          department: String(r.department || ''),
+          initials: String(r.initials || 'ST'),
+          permissions: (r.permissions as string[]) || ['dashboard'],
+          pin: String(r.pin || pinQuery),
+          hospitalId: String(r.hospitalId || r.facilityId || effectiveHospital.id),
+          hospitalName: String(r.hospitalName || r.facilityName || effectiveHospital.name),
+          color: '#0052D4',
+        };
+      };
+
+      // Load profile from local + Firestore (sync)
+      let profile: PresetStaff | undefined = staffRegistry.find(
+        (s) => s.badgeId.toUpperCase() === badgeQuery
+      );
+
       try {
-        const { firestoreGetStaffByBadge, firestoreRecordLogin } = await import('../../lib/firebase');
+        const {
+          firestoreGetStaffByBadge,
+          firestoreRecordLogin,
+          firebaseSignInWithBadge,
+          firebaseEnsureBadgeAccount,
+          normalizeStaffPin,
+        } = await import('../../lib/firebase');
+
         let remote = await firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery);
         if (!remote) {
           for (const h of HOSPITALS) {
@@ -483,55 +425,117 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           }
         }
         if (remote && (remote.badgeId || remote.id)) {
-          matchedStaff = mapRemote(remote, matchedStaff?.pin);
+          profile = mapProfile(remote);
         }
-        if (matchedStaff && pinQuery && pinQuery === matchedStaff.pin) {
-          void firestoreRecordLogin(matchedStaff.hospitalId || effectiveHospital.id, matchedStaff.badgeId, {
-            method: 'badge_pin',
-            hospitalId: effectiveHospital.id,
-          });
-        }
-      } catch (e) {
-        console.warn('[auth] firestore badge lookup', e);
-      }
 
-      if (!matchedStaff) {
-        setError(
-          'Staff ID not found. Use the exact badge on the card (e.g. IGH-DOC-XXXX). Re-enrol if this PC never synced.'
-        );
+        if (!profile) {
+          try {
+            const { listStaffCards } = await import('../../lib/staffCardStore');
+            const card = listStaffCards().find(
+              (c) => (c.badgeId || '').toUpperCase() === badgeQuery
+            );
+            if (card) {
+              profile = mapProfile({
+                badgeId: card.badgeId,
+                name: card.fullName,
+                role: card.role,
+                roleKey: card.roleKey,
+                title: card.title,
+                department: card.department,
+                clearanceLevel: card.clearanceLevel,
+                clearanceLabel: card.clearanceLabel,
+                initials: card.initials,
+                hospitalId: card.facilityId,
+                hospitalName: card.facilityName,
+                pin: pinQuery,
+              });
+            }
+          } catch { /* ignore */ }
+        }
+
+        if (!profile) {
+          setError('Staff ID not found. Confirm enrolment completed and hospital is correct.');
+          setLoading(false);
+          return;
+        }
+
+        // Firebase Auth with badge + PIN (same as email/password path)
+        const pinNorm = normalizeStaffPin(pinQuery);
+        let fbUser;
+        try {
+          fbUser = await firebaseSignInWithBadge(profile.badgeId, pinNorm);
+        } catch (authErr: unknown) {
+          const code = (authErr as { code?: string })?.code || '';
+          // Migrate older cards: local/Firestore PIN matches → create Auth account once
+          const localPinOk =
+            normalizeStaffPin(String(profile.pin || '')) === pinNorm ||
+            String(profile.pin || '') === pinQuery;
+          if (
+            localPinOk &&
+            (code === 'auth/user-not-found' ||
+              code === 'auth/invalid-credential' ||
+              code === 'auth/invalid-email' ||
+              code === 'auth/wrong-password')
+          ) {
+            try {
+              fbUser = await firebaseEnsureBadgeAccount(profile.badgeId, pinNorm);
+            } catch (e2: unknown) {
+              setError(
+                (e2 as { message?: string })?.message ||
+                  'Could not create Firebase login for this badge. Enable Email/Password in Firebase Console.'
+              );
+              setLoading(false);
+              return;
+            }
+          } else if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+            setError('Incorrect PIN.');
+            setLoading(false);
+            return;
+          } else {
+            setError(
+              (authErr as { message?: string })?.message ||
+                'Badge sign-in failed. Check PIN and Firebase Auth settings.'
+            );
+            setLoading(false);
+            return;
+          }
+        }
+
+        void firestoreRecordLogin(profile.hospitalId || effectiveHospital.id, profile.badgeId, {
+          method: 'badge_pin_firebase',
+          uid: fbUser.uid,
+        });
+
+        const session: UserSession = {
+          id: fbUser.uid,
+          badgeId: profile.badgeId,
+          name: profile.name,
+          role: profile.role,
+          roleKey: profile.roleKey,
+          title: profile.title,
+          facility: profile.hospitalName || effectiveHospital.name,
+          hospitalId: profile.hospitalId || effectiveHospital.id,
+          department: profile.department,
+          avatarInitials: profile.initials,
+          clearanceLabel: profile.clearanceLabel,
+          clearanceLevel: profile.clearanceLevel,
+          permissions: profile.permissions,
+          authMethod: 'Firebase · Staff ID',
+          token: await fbUser.getIdToken(),
+          loginTime: new Date().toLocaleTimeString('en-GB', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        };
+        setSuccess(true);
+        setLoading(false);
+        setTimeout(() => triggerLogin(session), 300);
+        return;
+      } catch (e: unknown) {
+        setError((e as { message?: string })?.message || 'Badge authentication error.');
         setLoading(false);
         return;
       }
-      if (!pinQuery || pinQuery !== String(matchedStaff.pin)) {
-        setError('Incorrect PIN. Use the PIN set when the staff was enrolled.');
-        setLoading(false);
-        return;
-      }
-
-      const session: UserSession = {
-        id: matchedStaff.badgeId,
-        badgeId: matchedStaff.badgeId,
-        name: matchedStaff.name,
-        role: matchedStaff.role,
-        roleKey: matchedStaff.roleKey,
-        title: matchedStaff.title,
-        facility: matchedStaff.hospitalName || effectiveHospital.name,
-        hospitalId: matchedStaff.hospitalId || effectiveHospital.id,
-        department: matchedStaff.department,
-        avatarInitials: matchedStaff.initials,
-        clearanceLabel: matchedStaff.clearanceLabel,
-        clearanceLevel: matchedStaff.clearanceLevel,
-        permissions: matchedStaff.permissions,
-        authMethod: 'Staff ID · Firebase',
-        loginTime: new Date().toLocaleTimeString('en-GB', {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      };
-      setSuccess(true);
-      setLoading(false);
-      setTimeout(() => triggerLogin(session), 300);
-      return;
     }
 
     // ── Email mode → Firebase (platform admin or staff email) ─────────────

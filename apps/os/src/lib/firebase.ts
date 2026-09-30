@@ -97,6 +97,61 @@ export function isEmailCredential(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+/** Deterministic Firebase Auth email for staff badge + PIN (same project as email login). */
+export function badgeAuthEmail(badgeId: string): string {
+  const id = (badgeId || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `badge.${id}@staff.naija-bites-1s3y1.firebaseapp.com`;
+}
+
+/** Firebase requires password length >= 6 */
+export function normalizeStaffPin(pin: string): string {
+  const p = (pin || '').trim();
+  if (p.length >= 6) return p;
+  return (p + '000000').slice(0, 6);
+}
+
+/** Create or reuse Firebase Auth account bound to badge ID */
+export async function firebaseEnsureBadgeAccount(
+  badgeId: string,
+  pin: string
+): Promise<User> {
+  const email = badgeAuthEmail(badgeId);
+  const password = normalizeStaffPin(pin);
+  try {
+    return await firebaseSignUp(email, password);
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code || '';
+    if (code === 'auth/email-already-in-use') {
+      return await firebaseSignIn(email, password);
+    }
+    throw err;
+  }
+}
+
+/** Sign in with badge ID + PIN via Firebase Auth (parity with email/password) */
+export async function firebaseSignInWithBadge(
+  badgeId: string,
+  pin: string
+): Promise<User> {
+  const email = badgeAuthEmail(badgeId);
+  const password = normalizeStaffPin(pin);
+  try {
+    return await firebaseSignIn(email, password);
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code || '';
+    // First login after enrol on another device — try create then sign-in is enrol's job;
+    // if account missing, surface clear error
+    if (code === 'auth/user-not-found' || code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
+      throw err;
+    }
+    throw err;
+  }
+}
+
 /** Path: facilities/{facilityId}/store/shared */
 export function facilityStoreRef(facilityId: string) {
   const id = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');

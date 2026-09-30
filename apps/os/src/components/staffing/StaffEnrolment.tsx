@@ -10,7 +10,7 @@ import { UserPlus, IdCard, CheckCircle2 } from 'lucide-react';
 import { LogoProgressBar } from '../realtime/LogoProgressBar';
 import { HOSPITALS } from '../auth/AuthScreen';
 import { enrolStaffAndIssueCard, listStaffCards, getStaffCard } from '../../lib/staffCardStore';
-import { firebaseSignUp, isEmailCredential, firestoreUpsertStaffMember, firestorePushStaffDirectory } from '../../lib/firebase';
+import { firebaseSignUp, isEmailCredential, firestoreUpsertStaffMember, firestorePushStaffDirectory, firebaseEnsureBadgeAccount, badgeAuthEmail, normalizeStaffPin } from '../../lib/firebase';
 import { emitLiveAction } from '../../lib/liveActions';
 import { StaffIdCardView } from './StaffIdCardView';
 import type { StaffCardRecord } from '@medcore/types';
@@ -100,20 +100,50 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         permissions: ['dashboard'],
       });
 
+      // Firebase Auth account for badge + PIN (same system as email/password)
+      const pinNorm = normalizeStaffPin(pin);
+      try {
+        await firebaseEnsureBadgeAccount(card.badgeId, pinNorm);
+      } catch (err: any) {
+        console.warn('[enrol] badge Firebase Auth', err);
+        setError(
+          `Card issued, but Firebase login setup failed: ${err?.message || err?.code || 'check Email/Password provider'}. Try sign-in after enabling Auth.`
+        );
+      }
+
       // Ensure Firestore has this staff before they try to sign in on another device
       try {
         const regRaw = localStorage.getItem('medcore_os_staff_registry');
         const reg = regRaw ? JSON.parse(regRaw) : [];
-        await firestorePushStaffDirectory(facility.id, {
-          staffCards: JSON.parse(localStorage.getItem('medcore_staff_id_cards') || '[]'),
-          staffRegistry: reg,
-        });
         const entry = Array.isArray(reg)
           ? reg.find((r: any) => String(r.badgeId || '').toUpperCase() === card.badgeId.toUpperCase())
           : null;
-        if (entry) {
-          await firestoreUpsertStaffMember(facility.id, { ...entry, badgeId: card.badgeId.toUpperCase() });
-        }
+        const enriched = entry
+          ? {
+              ...entry,
+              badgeId: card.badgeId.toUpperCase(),
+              pin: pinNorm,
+              authEmail: badgeAuthEmail(card.badgeId),
+            }
+          : {
+              badgeId: card.badgeId.toUpperCase(),
+              name: fullName.trim(),
+              pin: pinNorm,
+              authEmail: badgeAuthEmail(card.badgeId),
+              roleKey: roleMeta.roleKey,
+              role: roleMeta.role,
+              hospitalId: facility.id,
+              hospitalName: facility.name,
+            };
+        await firestoreUpsertStaffMember(facility.id, enriched);
+        await firestorePushStaffDirectory(facility.id, {
+          staffCards: JSON.parse(localStorage.getItem('medcore_staff_id_cards') || '[]'),
+          staffRegistry: Array.isArray(reg)
+            ? reg.map((r: any) =>
+                String(r.badgeId || '').toUpperCase() === card.badgeId.toUpperCase() ? enriched : r
+              )
+            : [enriched],
+        });
       } catch (err) {
         console.warn('[enrol] firestore ensure', err);
       }
@@ -236,7 +266,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
               />
             </label>
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
-              Initial PIN (auth)
+              Initial PIN (min 6 characters)
               <input
                 className="os-search-input"
                 style={{ display: 'block', width: '100%', marginTop: 6, padding: '10px 12px' }}
