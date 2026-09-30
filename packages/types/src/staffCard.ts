@@ -47,6 +47,8 @@ export interface StaffEnrolmentInput {
   pin?: string;
   shortRole?: string;
   permissions?: string[];
+  /** Staff photo as data URL or remote URL */
+  photoUrl?: string;
 }
 
 /** Pick visual template from role / clearance */
@@ -123,6 +125,7 @@ export function issueStaffCardFromEnrolment(
     issuedAt,
     expiresAt,
     initials,
+    photoUrl: input.photoUrl || undefined,
   };
 
   return {

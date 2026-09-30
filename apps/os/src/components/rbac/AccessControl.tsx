@@ -99,6 +99,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const [roleKey, setRoleKey] = useState('doctor');
   const [pin, setPin] = useState('123456');
   const [email, setEmail] = useState('');
+  const [photoUrl, setPhotoUrl] = useState<string>('');
 
   const facilityId = session?.hospitalId || HOSPITALS[0]?.id || 'IGH-EKT';
   const facilityName = session?.facility || HOSPITALS.find((h) => h.id === facilityId)?.name || 'Hospital';
@@ -138,6 +139,51 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
   const selected = records.find((r) => r.id === selectedId) || null;
   const selectedCard = selectedId ? getStaffCard(selectedId) : undefined;
+
+  const readPhotoFile = (file: File | null) => {
+    if (!file) {
+      setPhotoUrl('');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      setError('Photo must be an image (JPG or PNG).');
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setError('Photo must be under 4 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const data = String(reader.result || '');
+      // Compress via canvas for storage size
+      const img = new Image();
+      img.onload = () => {
+        const max = 480;
+        let w = img.width;
+        let h = img.height;
+        if (w > max || h > max) {
+          const scale = max / Math.max(w, h);
+          w = Math.round(w * scale);
+          h = Math.round(h * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          setPhotoUrl(data);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        setPhotoUrl(canvas.toDataURL('image/jpeg', 0.82));
+        setError('');
+      };
+      img.onerror = () => setPhotoUrl(data);
+      img.src = data;
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -199,6 +245,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         pin: pinNorm,
         shortRole: roleMeta.shortRole,
         permissions: ['dashboard'],
+        photoUrl: photoUrl || undefined,
       });
       card = issued.card;
 
@@ -308,6 +355,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         });
         setFullName('');
         setEmail('');
+        setPhotoUrl('');
         setSelectedId(null);
         // IMPORTANT: do not setRecords / setAccessRecords here — wait for Confirm button
         setTimeout(() => {
@@ -513,6 +561,68 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="staff@hospital.gov.ng"
               />
+            </label>
+
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B', gridColumn: '1 / -1' }}>
+              Staff photo (for ID card)
+              <div
+                style={{
+                  marginTop: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
+                  flexWrap: 'wrap',
+                  padding: 12,
+                  borderRadius: 12,
+                  border: '1px dashed #CBD5E1',
+                  background: '#F8FAFC',
+                }}
+              >
+                <div
+                  style={{
+                    width: 72,
+                    height: 72,
+                    borderRadius: 14,
+                    overflow: 'hidden',
+                    background: 'linear-gradient(145deg, #E0F2FE, #ECFDF5)',
+                    border: '2px solid #0052D4',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  {photoUrl ? (
+                    <img src={photoUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <span style={{ fontSize: 11, color: '#64748B', fontWeight: 600, textAlign: 'center', padding: 4 }}>
+                      No photo
+                    </span>
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    capture="environment"
+                    onChange={(e) => readPhotoFile(e.target.files?.[0] || null)}
+                    style={{ fontSize: 13, width: '100%' }}
+                  />
+                  <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6 }}>
+                    Clear headshot · JPG/PNG · used on the vertical staff ID card
+                  </div>
+                  {photoUrl && (
+                    <button
+                      type="button"
+                      className="os-ghost-btn"
+                      style={{ fontSize: 11, marginTop: 6 }}
+                      onClick={() => setPhotoUrl('')}
+                    >
+                      Remove photo
+                    </button>
+                  )}
+                </div>
+              </div>
             </label>
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
               PIN (min 6 characters)
