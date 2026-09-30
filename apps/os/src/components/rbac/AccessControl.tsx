@@ -19,6 +19,7 @@ import {
   enrolStaffAndIssueCard,
   listStaffCards,
   getStaffCard,
+  deleteStaffMember,
 } from '../../lib/staffCardStore';
 import {
   firebaseSignUp,
@@ -36,7 +37,7 @@ import type { StaffCardRecord } from '@medcore/types';
 import type { UserSession } from '../auth/AuthScreen';
 import { HOSPITALS } from '../auth/AuthScreen';
 import {
-  Shield, Plus, Search, CheckCircle2, XCircle, Lock, UserPlus, IdCard,
+  Shield, Plus, Search, CheckCircle2, XCircle, Lock, UserPlus, IdCard, Trash2,
 } from 'lucide-react';
 
 const ROLE_OPTIONS = [
@@ -255,6 +256,49 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       setFullName('');
       setEmail('');
       setShowCreate(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (badgeId: string, name: string) => {
+    const id = String(badgeId || '').toUpperCase();
+    if (id === 'AKS-ADM-001' || id.includes('ADM-001')) {
+      setError('Cannot delete the platform administrator bootstrap account.');
+      return;
+    }
+    const ok = window.confirm(
+      `Delete staff account permanently?\n\n${name}\nBadge: ${id}\n\nThis removes access, ID card, and Firestore profile. They will not be able to sign in.`
+    );
+    if (!ok) return;
+
+    setBusy(true);
+    setError('');
+    try {
+      deleteStaffMember(id);
+      const next = getAccessRecords().filter((r) => String(r.id).toUpperCase() !== id);
+      setAccessRecords(next);
+      setRecords(next);
+      if (selectedId && String(selectedId).toUpperCase() === id) {
+        setSelectedId(null);
+        setIssued(null);
+      }
+      if (confirmInfo?.badgeId?.toUpperCase() === id) setConfirmInfo(null);
+
+      // Extra firestore delete with session facility
+      try {
+        const { firestoreDeleteStaffMember, firestorePushStaffDirectory } = await import('../../lib/firebase');
+        await firestoreDeleteStaffMember(facilityId, id);
+        await firestorePushStaffDirectory(facilityId, {
+          staffCards: listStaffCards(),
+          staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
+        });
+      } catch (e) {
+        console.warn('[access] delete cloud', e);
+      }
+
+      pushActivity(`Account deleted · ${name} · ${id}`);
+      emitLiveAction(`Deleted staff ${id}`, { module: 'access' });
     } finally {
       setBusy(false);
     }
@@ -515,19 +559,30 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                       <span style={{ color: st.color, fontWeight: 700, fontSize: '0.78rem' }}>{st.label}</span>
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
-                      {r.status === 'suspended' ? (
-                        <button type="button" className="os-ghost-btn" style={{ fontSize: 12 }} onClick={() => { reactivateAccess(r.id); reload(); }}>
-                          <CheckCircle2 size={12} /> Reactivate
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {r.status === 'suspended' ? (
+                          <button type="button" className="os-ghost-btn" style={{ fontSize: 12 }} onClick={() => { reactivateAccess(r.id); reload(); }}>
+                            <CheckCircle2 size={12} /> Reactivate
+                          </button>
+                        ) : r.status === 'pending' ? (
+                          <button type="button" className="os-ghost-btn" style={{ fontSize: 12 }} onClick={() => { approveAccess(r.id); reload(); }}>
+                            Approve
+                          </button>
+                        ) : (
+                          <button type="button" className="os-ghost-btn" style={{ fontSize: 12, color: '#B91C1C' }} onClick={() => { suspendAccess(r.id); reload(); }}>
+                            <XCircle size={12} /> Suspend
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="os-ghost-btn"
+                          style={{ fontSize: 12, color: '#991B1B', borderColor: 'rgba(185,28,28,0.35)' }}
+                          disabled={busy}
+                          onClick={() => handleDelete(r.id, r.name)}
+                        >
+                          <Trash2 size={12} /> Delete
                         </button>
-                      ) : r.status === 'pending' ? (
-                        <button type="button" className="os-ghost-btn" style={{ fontSize: 12 }} onClick={() => { approveAccess(r.id); reload(); }}>
-                          Approve
-                        </button>
-                      ) : (
-                        <button type="button" className="os-ghost-btn" style={{ fontSize: 12, color: '#B91C1C' }} onClick={() => { suspendAccess(r.id); reload(); }}>
-                          <XCircle size={12} /> Suspend
-                        </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -559,6 +614,15 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
               ) : (
                 <div style={{ fontSize: '0.8rem', color: '#94A3B8' }}>No ID card on file for this account.</div>
               )}
+              <button
+                type="button"
+                className="os-ghost-btn"
+                style={{ marginTop: 14, width: '100%', color: '#991B1B', borderColor: 'rgba(185,28,28,0.4)', fontSize: 13 }}
+                disabled={busy}
+                onClick={() => handleDelete(selected.id, selected.name)}
+              >
+                <Trash2 size={14} /> Delete account permanently
+              </button>
             </>
           )}
         </div>
