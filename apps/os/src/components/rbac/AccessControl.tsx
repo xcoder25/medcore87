@@ -109,13 +109,24 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   );
 
   const reload = useCallback(() => {
+    // Never refresh list over a pending confirmation (keeps "confirm first" UX)
     setRecords(getAccessRecords());
   }, []);
 
   useEffect(() => {
     reload();
-    return subscribeAdminSync(reload);
+    return subscribeAdminSync(() => {
+      // Skip live reload while creating or while confirmation awaits "add to list"
+      // (prevents row appearing before confirmation)
+    });
   }, [reload]);
+
+  // Refresh list only when not in confirmation-pending state
+  useEffect(() => {
+    if (busy) return;
+    if (confirmInfo && !confirmInfo.listed) return;
+    reload();
+  }, [busy, confirmInfo, reload]);
 
   const filtered = records.filter(
     (s) =>
@@ -147,16 +158,35 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       }
     }
 
+    const withTimeout = async <T,>(p: Promise<T>, ms: number, label: string): Promise<T> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          p,
+          new Promise<T>((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+          }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    };
+
     setBusy(true);
     setConfirmInfo(null);
+    setError('');
+
     let firebaseAuth: 'ok' | 'fail' | 'skipped' = 'skipped';
     let firestoreStatus: 'ok' | 'fail' = 'fail';
     let emailAuth: 'ok' | 'fail' | 'skipped' = 'skipped';
+    let card: StaffCardRecord | null = null;
+    let accessRow: AccessRecord | null = null;
+    const pinNorm = normalizeStaffPin(pin);
+    const nameSnap = fullName.trim();
+    const mail = email.trim();
+
     try {
-      const pinNorm = normalizeStaffPin(pin);
-      const nameSnap = fullName.trim();
-      const mail = email.trim();
-      const { card } = enrolStaffAndIssueCard({
+      const issued = enrolStaffAndIssueCard({
         fullName: nameSnap,
         role: roleMeta.role,
         roleKey: roleMeta.roleKey,
@@ -170,27 +200,9 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         shortRole: roleMeta.shortRole,
         permissions: ['dashboard'],
       });
+      card = issued.card;
 
-      try {
-        const authRes = await firebaseEnsureBadgeAccount(card.badgeId, pinNorm);
-        firebaseAuth = authRes?.email ? 'ok' : 'fail';
-      } catch (err: any) {
-        console.warn('[access] badge auth', err);
-        firebaseAuth = 'fail';
-        // Still keep local + Firestore so badge PIN login can migrate on first sign-in
-      }
-
-      if (mail && isEmailCredential(mail)) {
-        try {
-          await firebaseEnsureEmailAccount(mail, pinNorm);
-          emailAuth = 'ok';
-        } catch (err: any) {
-          console.warn('[access] email auth', err);
-          emailAuth = 'fail';
-        }
-      }
-
-      const accessRow: AccessRecord = {
+      accessRow = {
         id: card.badgeId,
         name: nameSnap,
         role: roleMeta.role,
@@ -200,37 +212,71 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         lastLogin: 'Never',
         permissions: ['dashboard', roleMeta.roleKey],
       };
-      // Do NOT list in table yet — confirmation screen first
 
+      // Firebase Auth (secondary app) — hard timeout so UI never sticks on Creating…
       try {
-        const fsOk = await firestoreUpsertStaffMember(facilityId, {
-          badgeId: card.badgeId,
-          name: nameSnap,
-          role: roleMeta.role,
-          roleKey: roleMeta.roleKey,
-          title: roleMeta.title,
-          department: roleMeta.department,
-          pin: pinNorm,
-          authEmail: badgeAuthEmail(card.badgeId),
-          hospitalId: facilityId,
-          hospitalName: facilityName,
-          clearanceLevel: roleMeta.clearanceLevel,
-          clearanceLabel: roleMeta.clearanceLabel,
-          permissions: accessRow.permissions,
-          status: 'active',
-        });
-        const dirOk = await firestorePushStaffDirectory(facilityId, {
-          staffCards: listStaffCards(),
-          staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
-        });
-        firestoreStatus = fsOk && dirOk !== false ? 'ok' : fsOk ? 'ok' : 'fail';
-        // Verify read-back from Firestore
+        const authRes = await withTimeout(
+          firebaseEnsureBadgeAccount(card.badgeId, pinNorm),
+          12000,
+          'Firebase badge Auth'
+        );
+        firebaseAuth = authRes?.email ? 'ok' : 'fail';
+      } catch (err: any) {
+        console.warn('[access] badge auth', err);
+        firebaseAuth = 'fail';
+      }
+
+      if (mail && isEmailCredential(mail)) {
+        try {
+          await withTimeout(firebaseEnsureEmailAccount(mail, pinNorm), 12000, 'Firebase email Auth');
+          emailAuth = 'ok';
+        } catch (err: any) {
+          console.warn('[access] email auth', err);
+          emailAuth = 'fail';
+        }
+      }
+
+      // Firestore — timeout; do not block confirmation
+      try {
+        const fsOk = await withTimeout(
+          firestoreUpsertStaffMember(facilityId, {
+            badgeId: card.badgeId,
+            name: nameSnap,
+            role: roleMeta.role,
+            roleKey: roleMeta.roleKey,
+            title: roleMeta.title,
+            department: roleMeta.department,
+            pin: pinNorm,
+            authEmail: badgeAuthEmail(card.badgeId),
+            hospitalId: facilityId,
+            hospitalName: facilityName,
+            clearanceLevel: roleMeta.clearanceLevel,
+            clearanceLabel: roleMeta.clearanceLabel,
+            permissions: accessRow.permissions,
+            status: 'active',
+          }),
+          10000,
+          'Firestore upsert'
+        );
+        await withTimeout(
+          firestorePushStaffDirectory(facilityId, {
+            staffCards: listStaffCards(),
+            staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
+          }),
+          10000,
+          'Firestore directory'
+        );
+        firestoreStatus = fsOk ? 'ok' : 'fail';
         try {
           const { firestoreGetStaffByBadge } = await import('../../lib/firebase');
-          const remote = await firestoreGetStaffByBadge(facilityId, card.badgeId);
-          firestoreStatus = remote && remote.badgeId ? 'ok' : 'fail';
+          const remote = await withTimeout(
+            firestoreGetStaffByBadge(facilityId, card.badgeId),
+            8000,
+            'Firestore verify'
+          );
+          if (remote && remote.badgeId) firestoreStatus = 'ok';
         } catch {
-          firestoreStatus = fsOk ? 'ok' : 'fail';
+          /* keep fsOk status */
         }
       } catch (err) {
         console.warn('[access] firestore', err);
@@ -239,30 +285,35 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
       pushActivity(`Account created · ${nameSnap} · ${card.badgeId} · ID card issued`);
       emitLiveAction(`Account + ID card · ${card.badgeId}`, { module: 'access' });
-      setIssued(card);
-      setSelectedId(card.badgeId);
-      setConfirmInfo({
-        badgeId: card.badgeId,
-        name: nameSnap,
-        role: roleMeta.role,
-        pin: pinNorm,
-        email: mail || undefined,
-        firebaseAuth,
-        firestore: firestoreStatus,
-        emailAuth,
-        accessRow,
-        listed: false,
-      });
-      setSelectedId(null); // list not yet — focus confirmation
-      setFullName('');
-      setEmail('');
-      setShowCreate(false);
-      // Scroll confirmation into view
-      setTimeout(() => {
-        document.getElementById('staff-create-confirm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 50);
+    } catch (err: any) {
+      console.error('[access] create failed', err);
+      setError(err?.message || 'Account creation failed.');
     } finally {
       setBusy(false);
+      // Always show confirmation when we have a card — before listing in table
+      if (card && accessRow) {
+        setIssued(card);
+        setShowCreate(false);
+        setConfirmInfo({
+          badgeId: card.badgeId,
+          name: nameSnap,
+          role: roleMeta.role,
+          pin: pinNorm,
+          email: mail || undefined,
+          firebaseAuth,
+          firestore: firestoreStatus,
+          emailAuth,
+          accessRow,
+          listed: false,
+        });
+        setFullName('');
+        setEmail('');
+        setSelectedId(null);
+        // IMPORTANT: do not setRecords / setAccessRecords here — wait for Confirm button
+        setTimeout(() => {
+          document.getElementById('staff-create-confirm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 80);
+      }
     }
   };
 
