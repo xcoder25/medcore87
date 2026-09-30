@@ -8,7 +8,7 @@ import {
   STAFF_REGISTRY_STORAGE_KEY,
   issueStaffCardFromEnrolment,
 } from '@medcore/types';
-import { firestorePushStaffDirectory, firestoreUpsertStaffMember } from './firebase';
+import { firestorePushStaffDirectory, firestoreUpsertStaffMember, firestoreDeleteStaffMember } from './firebase';
 
 function readCards(): StaffCardRecord[] {
   if (typeof window === 'undefined') return [];
@@ -104,6 +104,58 @@ export function enrolStaffAndIssueCard(
   }
 
   return { card, badgeId: id };
+}
+
+
+/** Admin: permanently remove staff from cards, registry, and cloud */
+export function deleteStaffMember(badgeId: string): boolean {
+  const id = String(badgeId || '').toUpperCase().replace(/\s+/g, '');
+  if (!id) return false;
+
+  let facilityId = '';
+  try {
+    const cards = readCards().filter((c) => {
+      if (c.badgeId.toUpperCase().replace(/\s+/g, '') === id) {
+        facilityId = c.facilityId || facilityId;
+        return false;
+      }
+      return true;
+    });
+    writeCards(cards);
+
+    const regRaw = localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY);
+    const reg = regRaw ? JSON.parse(regRaw) : [];
+    const next = Array.isArray(reg)
+      ? reg.filter(
+          (r: { badgeId?: string; id?: string; hospitalId?: string; facilityId?: string }) => {
+            const b = String(r.badgeId || r.id || '').toUpperCase().replace(/\s+/g, '');
+            if (b === id) {
+              facilityId = r.hospitalId || r.facilityId || facilityId;
+              return false;
+            }
+            return true;
+          }
+        )
+      : [];
+    localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
+
+    window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } }));
+    window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: next }));
+    window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: cards }));
+
+    if (facilityId) {
+      void firestorePushStaffDirectory(facilityId, {
+        staffCards: cards,
+        staffRegistry: next,
+      });
+      void firestoreDeleteStaffMember(facilityId, id);
+    }
+    return true;
+  } catch (e) {
+    console.warn('[staff] delete failed', e);
+    return false;
+  }
 }
 
 export function setStaffCardStatus(

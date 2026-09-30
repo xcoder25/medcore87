@@ -21,6 +21,7 @@ import {
   collection,
   onSnapshot,
   enableIndexedDbPersistence,
+  deleteDoc,
   type Firestore,
 } from 'firebase/firestore';
 
@@ -270,6 +271,23 @@ export async function firestoreUpsertStaffMember(
     return true;
   } catch (e) {
     console.warn('[Firestore] upsert staff', e);
+    return false;
+  }
+}
+
+
+export async function firestoreDeleteStaffMember(
+  facilityId: string,
+  badgeId: string
+): Promise<boolean> {
+  try {
+    await enableFirestoreOffline();
+    const bid = String(badgeId || '').toUpperCase().replace(/\s+/g, '');
+    if (!facilityId || !bid) return false;
+    await deleteDoc(staffMemberRef(facilityId, bid));
+    return true;
+  } catch (e) {
+    console.warn('[Firestore] delete staff', e);
     return false;
   }
 }

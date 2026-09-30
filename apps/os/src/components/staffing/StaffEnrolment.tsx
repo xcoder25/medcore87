@@ -6,10 +6,10 @@ import { pushActivity, setOpenPositions, getOpenPositions } from '../../lib/admi
  * Card is readable on Hospital OS and MedCore Clinic (same badgeId).
  */
 import React, { useMemo, useState, useEffect } from 'react';
-import { UserPlus, IdCard, CheckCircle2 } from 'lucide-react';
+import { UserPlus, IdCard, CheckCircle2, Trash2 } from 'lucide-react';
 import { LogoProgressBar } from '../realtime/LogoProgressBar';
 import { HOSPITALS } from '../auth/AuthScreen';
-import { enrolStaffAndIssueCard, listStaffCards, getStaffCard } from '../../lib/staffCardStore';
+import { enrolStaffAndIssueCard, listStaffCards, getStaffCard, deleteStaffMember } from '../../lib/staffCardStore';
 import { firebaseSignUp, isEmailCredential, firestoreUpsertStaffMember, firestorePushStaffDirectory, firebaseEnsureBadgeAccount, badgeAuthEmail, normalizeStaffPin } from '../../lib/firebase';
 import { emitLiveAction } from '../../lib/liveActions';
 import { StaffIdCardView } from './StaffIdCardView';
@@ -53,6 +53,15 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
   const [cards, setCards] = useState<StaffCardRecord[]>(() =>
     typeof window !== 'undefined' ? listStaffCards() : []
   );
+  const canDeleteStaff =
+    !session || // enrolment module is admin-facing
+    session.roleKey === 'hospital_admin' ||
+    session.roleKey === 'sysadmin' ||
+    (session.clearanceLevel ?? 0) >= 5 ||
+    (session.permissions || []).some((p) =>
+      ['admin', 'enrolment', 'rbac', 'staff'].includes(String(p).toLowerCase())
+    );
+
 
   useEffect(() => {
     if (session?.hospitalId) setFacilityId(session.hospitalId);
@@ -400,8 +409,56 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
           </div>
           <div className="os-panel-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
             {cards.map((c) => (
-              <div key={c.badgeId} onClick={() => setIssued(getStaffCard(c.badgeId) || c)} style={{ cursor: 'pointer' }}>
-                <StaffIdCardView card={c} compact />
+              <div key={c.badgeId} style={{ position: 'relative' }}>
+                <div
+                  onClick={() => setIssued(getStaffCard(c.badgeId) || c)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <StaffIdCardView card={c} compact />
+                </div>
+                {canDeleteStaff && (
+                  <button
+                    type="button"
+                    title="Delete staff user"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      const ok = window.confirm(
+                        `Delete staff ${c.fullName || c.badgeId}?\n\nBadge: ${c.badgeId}\n\nThey will no longer be able to sign in. This cannot be undone.`
+                      );
+                      if (!ok) return;
+                      const done = deleteStaffMember(c.badgeId);
+                      if (done) {
+                        setCards(listStaffCards());
+                        if (issued?.badgeId === c.badgeId) setIssued(null);
+                        if (pendingConfirm?.card.badgeId === c.badgeId) setPendingConfirm(null);
+                        try {
+                          pushActivity(`Deleted staff · ${c.badgeId} · ${c.fullName || ''}`);
+                        } catch { /* ignore */ }
+                      } else {
+                        window.alert('Could not delete this staff member. Try again.');
+                      }
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      zIndex: 2,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '6px 10px',
+                      borderRadius: 8,
+                      border: '1px solid #FECACA',
+                      background: '#FEF2F2',
+                      color: '#B91C1C',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Trash2 size={14} /> Delete
+                  </button>
+                )}
               </div>
             ))}
           </div>
