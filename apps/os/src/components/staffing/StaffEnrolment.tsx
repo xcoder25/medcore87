@@ -9,6 +9,8 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { UserPlus, IdCard, CheckCircle2 } from 'lucide-react';
 import { HOSPITALS } from '../auth/AuthScreen';
 import { enrolStaffAndIssueCard, listStaffCards, getStaffCard } from '../../lib/staffCardStore';
+import { firebaseSignUp, isEmailCredential } from '../../lib/firebase';
+import { emitLiveAction } from '../../lib/liveActions';
 import { StaffIdCardView } from './StaffIdCardView';
 import type { StaffCardRecord } from '@medcore/types';
 import type { UserSession } from '../auth/AuthScreen';
@@ -36,6 +38,8 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
   const lockedFacilityId = session?.hospitalId || HOSPITALS[0]?.id || 'IGH-EKT';
   const [facilityId, setFacilityId] = useState(lockedFacilityId);
   const [pin, setPin] = useState('1234');
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
   const [issued, setIssued] = useState<StaffCardRecord | null>(null);
   const [error, setError] = useState('');
   const [cards, setCards] = useState<StaffCardRecord[]>(() =>
@@ -56,7 +60,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
       ? { id: session.hospitalId, name: session.facility || session.hospitalId }
       : HOSPITALS[0]);
 
-  const handleEnrol = (e: React.FormEvent) => {
+  const handleEnrol = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!fullName.trim()) {
@@ -77,23 +81,55 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         return;
       }
     }
-    const { card } = enrolStaffAndIssueCard({
-      fullName: fullName.trim(),
-      role: roleMeta.role,
-      roleKey: roleMeta.roleKey,
-      title: roleMeta.title,
-      department: roleMeta.department,
-      facilityId: facility.id,
-      facilityName: facility.name,
-      clearanceLevel: roleMeta.clearanceLevel,
-      clearanceLabel: roleMeta.clearanceLabel,
-      pin,
-      shortRole: roleMeta.shortRole,
-      permissions: ['dashboard'],
-    });
-    setIssued(card);
-    setCards(listStaffCards());
-    setFullName('');
+    setBusy(true);
+    try {
+      const { card } = enrolStaffAndIssueCard({
+        fullName: fullName.trim(),
+        role: roleMeta.role,
+        roleKey: roleMeta.roleKey,
+        title: roleMeta.title,
+        department: roleMeta.department,
+        facilityId: facility.id,
+        facilityName: facility.name,
+        clearanceLevel: roleMeta.clearanceLevel,
+        clearanceLabel: roleMeta.clearanceLabel,
+        pin,
+        shortRole: roleMeta.shortRole,
+        permissions: ['dashboard'],
+      });
+
+      // Optional Firebase Auth account (email + PIN as password) for cloud login
+      const mail = email.trim();
+      if (mail) {
+        if (!isEmailCredential(mail)) {
+          setError('Invalid email — card was issued; fix email to create Firebase login.');
+        } else {
+          try {
+            await firebaseSignUp(mail, pin || '123456');
+          } catch (err: any) {
+            const code = err?.code || '';
+            if (code !== 'auth/email-already-in-use') {
+              console.warn('[enrol] firebaseSignUp', err);
+              setError(
+                `Card issued. Firebase account note: ${err?.message || code || 'could not create account'}`
+              );
+            }
+          }
+        }
+      }
+
+      try {
+        pushActivity(`Enrolled ${fullName.trim()} · ${roleMeta.shortRole} · ${card.badgeId}`);
+      } catch { /* ignore */ }
+      emitLiveAction(`Staff enrolled · ${card.badgeId}`, { module: 'enrolment' });
+
+      setIssued(card);
+      setCards(listStaffCards());
+      setFullName('');
+      setEmail('');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -169,6 +205,17 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
               )}
             </label>
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
+              Email (optional · Firebase login)
+              <input
+                className="os-search-input"
+                style={{ display: 'block', width: '100%', marginTop: 6, padding: '10px 12px' }}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="staff@hospital.gov.ng"
+              />
+            </label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
               Initial PIN (auth)
               <input
                 className="os-search-input"
@@ -181,7 +228,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
             {error && (
               <div style={{ color: '#EF4444', fontSize: '0.8rem', fontWeight: 600 }}>{error}</div>
             )}
-            <button type="submit" className="os-action-btn-primary" style={{ marginTop: 4 }}>
+            <button type="submit" disabled={busy} className="os-action-btn-primary" style={{ marginTop: 4 }}>
               <UserPlus size={16} /> Enrol & issue staff ID card
             </button>
           </div>

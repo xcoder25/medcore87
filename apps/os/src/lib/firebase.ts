@@ -160,3 +160,27 @@ export function firestoreSubscribeFacility(
 }
 
 export { doc, setDoc, getDoc, onSnapshot };
+
+/** Staff directory on the facility shared doc (realtime for all workstations). */
+export async function firestorePushStaffDirectory(
+  facilityId: string,
+  payload: { staffCards?: unknown[]; staffRegistry?: unknown[] }
+): Promise<boolean> {
+  return firestoreWriteFacility(facilityId, {
+    staffCards: payload.staffCards ?? [],
+    staffRegistry: payload.staffRegistry ?? [],
+    staffUpdatedAt: new Date().toISOString(),
+  });
+}
+
+export function firestoreSubscribeStaffDirectory(
+  facilityId: string,
+  onData: (data: { staffCards?: unknown[]; staffRegistry?: unknown[] }) => void
+): () => void {
+  return firestoreSubscribeFacility(facilityId, (data) => {
+    onData({
+      staffCards: Array.isArray(data.staffCards) ? data.staffCards : undefined,
+      staffRegistry: Array.isArray(data.staffRegistry) ? data.staffRegistry : undefined,
+    });
+  });
+}

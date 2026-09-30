@@ -203,28 +203,81 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
   const [error, setError] = useState<string | null>(null);
   const [staffRegistry, setStaffRegistry] = useState<PresetStaff[]>(PRESET_STAFF);
 
-  // Dynamic reload from localStorage to capture any admin transfers
+  // Load enrolled staff (local) + live Firebase facility directory
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('medcore_os_staff_registry');
-      if (saved) {
-        const parsed: any[] = JSON.parse(saved);
-        setStaffRegistry(PRESET_STAFF.map(ps => {
-          const match = parsed.find(p => p.id === ps.badgeId || p.name.toLowerCase() === ps.name.toLowerCase());
-          if (match && match.hospitalId) {
-            return {
-              ...ps,
-              hospitalId: match.hospitalId,
-              hospitalName: match.hospitalName,
-            };
-          }
-          return ps;
-        }));
+    const mapEntry = (p: any): PresetStaff => ({
+      badgeId: p.badgeId || p.id,
+      name: p.name || p.fullName || 'Staff',
+      role: p.role || 'Staff',
+      shortRole: p.shortRole || p.role || 'Staff',
+      title: p.title || p.role || 'Staff',
+      roleKey: p.roleKey || 'doctor',
+      clearanceLevel: p.clearanceLevel ?? 2,
+      clearanceLabel: p.clearanceLabel || 'L2',
+      department: p.department || '',
+      initials: p.initials || String(p.name || 'S').slice(0, 2).toUpperCase(),
+      permissions: p.permissions || ['dashboard'],
+      pin: p.pin || '1234',
+      hospitalId: p.hospitalId || p.facilityId || selectedHospital.id,
+      hospitalName: p.hospitalName || p.facilityName || selectedHospital.name,
+      color: p.color || '#0052D4',
+    });
+
+    const mergeLocal = () => {
+      try {
+        const saved = localStorage.getItem('medcore_os_staff_registry');
+        const parsed: any[] = saved ? JSON.parse(saved) : [];
+        const enrolled = Array.isArray(parsed) ? parsed.map(mapEntry) : [];
+        // Bootstrap admin always available; enrolled staff appended (dedupe by badge)
+        const byBadge = new Map<string, PresetStaff>();
+        for (const s of PRESET_STAFF.filter((x) => x.roleKey === 'hospital_admin' || x.badgeId === PLATFORM_ADMIN.badgeId)) {
+          byBadge.set(s.badgeId, s);
+        }
+        // Prefer only PLATFORM_ADMIN from presets if present
+        const admin = PRESET_STAFF.find((x) => x.badgeId === PLATFORM_ADMIN.badgeId);
+        if (admin) byBadge.set(admin.badgeId, admin);
+        for (const s of enrolled) {
+          if (s.badgeId) byBadge.set(s.badgeId, s);
+        }
+        setStaffRegistry(Array.from(byBadge.values()));
+      } catch (e) {
+        console.error(e);
       }
-    } catch (e) {
-      console.error(e);
-    }
-  }, []);
+    };
+
+    mergeLocal();
+    const onCards = () => mergeLocal();
+    window.addEventListener('medcore-staff-cards-updated', onCards);
+    window.addEventListener('medcore-admin-sync', onCards);
+
+    let unsub = () => {};
+    void (async () => {
+      try {
+        const { firestoreSubscribeStaffDirectory } = await import('../../lib/firebase');
+        unsub = firestoreSubscribeStaffDirectory(selectedHospital.id, (data) => {
+          if (data.staffRegistry && Array.isArray(data.staffRegistry)) {
+            try {
+              localStorage.setItem('medcore_os_staff_registry', JSON.stringify(data.staffRegistry));
+            } catch { /* ignore */ }
+            mergeLocal();
+          }
+          if (data.staffCards && Array.isArray(data.staffCards)) {
+            try {
+              localStorage.setItem('medcore_staff_id_cards', JSON.stringify(data.staffCards));
+            } catch { /* ignore */ }
+          }
+        });
+      } catch (e) {
+        console.warn('[auth] firestore staff subscribe', e);
+      }
+    })();
+
+    return () => {
+      window.removeEventListener('medcore-staff-cards-updated', onCards);
+      window.removeEventListener('medcore-admin-sync', onCards);
+      unsub();
+    };
+  }, [selectedHospital.id]);
 
   const triggerLogin = (session: UserSession) => {
     if (onLogin) onLogin(session);
