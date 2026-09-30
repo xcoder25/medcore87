@@ -426,7 +426,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         return;
       }
 
-      const { resolveStaffByBadge, normalizeBadgeId } = await import('../../lib/staffCardStore');
+      const { resolveStaffByBadge, normalizeBadgeId, inferRoleKey } = await import('../../lib/staffCardStore');
       const {
         firestoreGetStaffByBadge,
         firestoreRecordLogin,
@@ -441,7 +441,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         role: String(raw.role || 'Staff'),
         shortRole: String(raw.shortRole || raw.role || 'Staff'),
         title: String(raw.title || raw.role || 'Staff'),
-        roleKey: String(raw.roleKey || 'doctor'),
+        roleKey: inferRoleKey(String(raw.roleKey || raw.role || ''), String(raw.badgeId || raw.id || badgeQuery)),
         clearanceLevel: Number(raw.clearanceLevel ?? 2),
         clearanceLabel: String(raw.clearanceLabel || 'L2'),
         department: String(raw.department || ''),
@@ -496,7 +496,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             badgeId: badgeQuery,
             name: badgeQuery,
             role: 'Staff',
-            roleKey: 'doctor',
+            roleKey: inferRoleKey('', badgeQuery),
             pin: pinNorm,
             hospitalId: effectiveHospital.id,
             hospitalName: effectiveHospital.name,

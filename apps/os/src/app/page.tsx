@@ -34,6 +34,7 @@ import { RoleDashboard } from '../components/dashboards/RoleDashboard';
 import { DoctorPortal } from '../components/dashboards/DoctorPortal';
 import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
 import { roleCanAccessModule } from '../lib/rolePermissionsStore';
+import { inferRoleKey } from '../lib/staffCardStore';
 import { EmergencyTriageSuite } from '../components/clinical-core/EmergencyTriageSuite';
 import { PharmacyDispensingSuite } from '../components/clinical-core/PharmacyDispensingSuite';
 import { LaboratorySuite } from '../components/clinical-core/LaboratorySuite';
@@ -207,23 +208,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     ];
   }
 
-  const roleTitle = (session.role || session.title || '').toLowerCase();
-  // Prefer explicit roleKey from enrolment / session (do not mis-route staff)
-  const roleKey = session.roleKey ||
-    (roleTitle.includes('surgeon') ? 'surgeon'
-      : roleTitle.includes('nurse') ? 'nurse'
-      : roleTitle.includes('midwife') ? 'midwife'
-      : roleTitle.includes('pharmacist') ? 'pharmacist'
-      : roleTitle.includes('lab') ? 'lab'
-      : roleTitle.includes('radiolog') ? 'radiologist'
-      : roleTitle.includes('reception') || roleTitle.includes('front desk') ? 'reception'
-      : roleTitle.includes('account') || roleTitle.includes('cashier') || roleTitle.includes('finance') ? 'accountant'
-      : roleTitle.includes('record') ? 'records'
-      : roleTitle.includes('biomedical') ? 'biomedical'
-      : roleTitle.includes('director') || roleTitle.includes('superintendent') ? 'medical_director'
-      : roleTitle.includes('hospital_admin') || (roleTitle.includes('administrator') && !roleTitle.includes('system')) ? 'hospital_admin'
-      : roleTitle.includes('sysadmin') || roleTitle.includes('ict') || roleTitle.includes('system admin') ? 'sysadmin'
-      : 'doctor');
+  const roleKey = inferRoleKey(session.roleKey || session.role || session.title, session.badgeId);
 
   switch (roleKey) {
     case 'doctor':
@@ -1152,23 +1137,9 @@ export default function OSPage() {
   const ActiveComponent = MODULE_COMPONENTS[activeModule] || CommandCentreDashboard;
 
   // Resolve active role theme
-  const roleTitle = (userSession?.role || userSession?.title || '').toLowerCase();
-  const activeRoleKey = userSession?.roleKey ||
-    (roleTitle.includes('surgeon') ? 'surgeon'
-      : roleTitle.includes('nurse') ? 'nurse'
-      : roleTitle.includes('midwife') ? 'midwife'
-      : roleTitle.includes('pharmacist') ? 'pharmacist'
-      : roleTitle.includes('lab') ? 'lab'
-      : roleTitle.includes('radiolog') ? 'radiologist'
-      : roleTitle.includes('reception') || roleTitle.includes('front desk') ? 'reception'
-      : roleTitle.includes('account') || roleTitle.includes('cashier') || roleTitle.includes('finance') ? 'accountant'
-      : roleTitle.includes('record') ? 'records'
-      : roleTitle.includes('biomedical') ? 'biomedical'
-      : roleTitle.includes('director') || roleTitle.includes('superintendent') ? 'medical_director'
-      : roleTitle.includes('hospital_admin') || (roleTitle.includes('administrator') && !roleTitle.includes('system')) ? 'hospital_admin'
-      : roleTitle.includes('sysadmin') || roleTitle.includes('ict') || roleTitle.includes('system admin') ? 'sysadmin'
-      : roleTitle.includes('doctor') || roleTitle.includes('medical officer') || roleTitle.includes('physician') ? 'doctor'
-      : 'doctor');
+  const activeRoleKey = userSession
+    ? inferRoleKey(userSession.roleKey || userSession.role || userSession.title, userSession.badgeId)
+    : 'doctor';
 
   const currentRoleTheme = ROLE_THEMES[activeRoleKey] || ROLE_THEMES.doctor;
   const RoleIcon = currentRoleTheme.icon;

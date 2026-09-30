@@ -204,6 +204,41 @@ export function ensureCardForSession(session: {
   return card;
 }
 
+/** Map role labels / badge middle segment → canonical roleKey */
+export function inferRoleKey(raw?: string, badgeId?: string): string {
+  const s = String(raw || '').toLowerCase().trim();
+  if (s === 'doctor' || s === 'surgeon' || s === 'nurse' || s === 'midwife' ||
+      s === 'pharmacist' || s === 'lab' || s === 'radiologist' || s === 'reception' ||
+      s === 'records' || s === 'accountant' || s === 'sysadmin' || s === 'hospital_admin' ||
+      s === 'biomedical' || s === 'medical_director') return s;
+  if (s.includes('surgeon')) return 'surgeon';
+  if (s.includes('nurse')) return 'nurse';
+  if (s.includes('midwife')) return 'midwife';
+  if (s.includes('pharm')) return 'pharmacist';
+  if (s.includes('lab')) return 'lab';
+  if (s.includes('radio')) return 'radiologist';
+  if (s.includes('reception') || s.includes('front desk')) return 'reception';
+  if (s.includes('record')) return 'records';
+  if (s.includes('account') || s.includes('finance') || s.includes('cashier')) return 'accountant';
+  if (s.includes('biomed')) return 'biomedical';
+  if (s.includes('director') || s.includes('superintendent')) return 'medical_director';
+  if (s.includes('hospital_admin') || (s.includes('administrator') && !s.includes('system'))) return 'hospital_admin';
+  if (s.includes('sysadmin') || s.includes('ict') || s.includes('system admin')) return 'sysadmin';
+  if (s.includes('doctor') || s.includes('medical officer') || s.includes('physician') || s.includes('clinician')) return 'doctor';
+  // Badge pattern: IGH-REC-XXXX → middle token
+  const parts = String(badgeId || '').toUpperCase().split('-');
+  if (parts.length >= 2) {
+    const mid = parts[1];
+    const map: Record<string, string> = {
+      DOC: 'doctor', SUR: 'surgeon', NUR: 'nurse', MID: 'midwife', PHA: 'pharmacist',
+      LAB: 'lab', RAD: 'radiologist', REC: 'reception', REO: 'records', ACC: 'accountant',
+      SYS: 'sysadmin', ADM: 'hospital_admin', BIO: 'biomedical', DIR: 'medical_director',
+    };
+    if (map[mid]) return map[mid];
+  }
+  return 'doctor';
+}
+
 /** Normalize badge for comparison */
 export function normalizeBadgeId(badgeId: string): string {
   return String(badgeId || '').trim().toUpperCase().replace(/\s+/g, '');
@@ -245,7 +280,7 @@ export function resolveStaffByBadge(badgeId: string): {
           badgeId: normalizeBadgeId(hit.badgeId || hit.id),
           name: hit.name || hit.fullName || 'Staff',
           role: hit.role || 'Staff',
-          roleKey: hit.roleKey || 'doctor',
+          roleKey: inferRoleKey(hit.roleKey || hit.role, hit.badgeId || hit.id),
           title: hit.title || hit.role || 'Staff',
           department: hit.department || '',
           clearanceLevel: hit.clearanceLevel ?? 2,
@@ -278,7 +313,7 @@ export function resolveStaffByBadge(badgeId: string): {
         badgeId: normalizeBadgeId(card.badgeId),
         name: card.fullName,
         role: card.role,
-        roleKey: card.roleKey,
+        roleKey: inferRoleKey(card.roleKey || card.role, card.badgeId),
         title: card.title,
         department: card.department,
         clearanceLevel: card.clearanceLevel,
@@ -303,7 +338,7 @@ export function resolveStaffByBadge(badgeId: string): {
           badgeId: normalizeBadgeId(hit.id),
           name: hit.name || 'Staff',
           role: hit.role || 'Staff',
-          roleKey: 'doctor',
+          roleKey: inferRoleKey(hit.role, hit.id),
           title: hit.role || 'Staff',
           department: hit.department || '',
           clearanceLevel: hit.clearance ?? 2,

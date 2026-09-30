@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { UserSession } from '../auth/AuthScreen';
+import { inferRoleKey } from '../../lib/staffCardStore';
 import { AdminWorkspace } from './AdminWorkspace';
 import {
   Stethoscope, Activity, Flame, Wind, Pill, FlaskConical, Layers, Baby, Droplet,
@@ -28,24 +29,8 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
     }
   };
 
-  // Prefer enrolment roleKey so every staff in the same role shares this dashboard
-  const roleTitle = (session.role || session.title || '').toLowerCase();
-  const roleKey =
-    session.roleKey ||
-    (roleTitle.includes('surgeon') ? 'surgeon'
-      : roleTitle.includes('nurse') ? 'nurse'
-      : roleTitle.includes('midwife') ? 'midwife'
-      : roleTitle.includes('pharmacist') ? 'pharmacist'
-      : roleTitle.includes('lab') ? 'lab'
-      : roleTitle.includes('radiolog') ? 'radiologist'
-      : roleTitle.includes('reception') || roleTitle.includes('front desk') || roleTitle.includes('front-desk') ? 'reception'
-      : roleTitle.includes('account') || roleTitle.includes('finance') || roleTitle.includes('cashier') ? 'accountant'
-      : roleTitle.includes('record') ? 'records'
-      : roleTitle.includes('biomedical') ? 'biomedical'
-      : roleTitle.includes('director') || roleTitle.includes('superintendent') ? 'medical_director'
-      : roleTitle.includes('hospital_admin') || (roleTitle.includes('administrator') && !roleTitle.includes('system')) ? 'hospital_admin'
-      : roleTitle.includes('sysadmin') || roleTitle.includes('ict') || roleTitle.includes('system admin') ? 'sysadmin'
-      : 'doctor');
+  const roleKey = inferRoleKey(session.roleKey || session.role || session.title, session.badgeId);
+
 
 
   // Administrator gets dedicated premium workspace (no clinical banner)
