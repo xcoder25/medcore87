@@ -1,29 +1,60 @@
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+
+/**
+ * Staff Access Control — create accounts (issues ID card + Firebase auth) and manage access.
+ * Enrolment is merged here: creating an account auto-generates the staff ID card.
+ */
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getAccessRecords,
+  setAccessRecords,
   approveAccess,
   suspendAccess,
   reactivateAccess,
   subscribeAdminSync,
+  pushActivity,
   type AccessRecord,
 } from '../../lib/adminRealtimeStore';
-import { Shield, Plus, Search, Eye, Edit2, CheckCircle2, XCircle, Lock } from 'lucide-react';
+import {
+  enrolStaffAndIssueCard,
+  listStaffCards,
+  getStaffCard,
+} from '../../lib/staffCardStore';
+import {
+  firebaseSignUp,
+  isEmailCredential,
+  firestoreUpsertStaffMember,
+  firestorePushStaffDirectory,
+  firebaseEnsureBadgeAccount,
+  badgeAuthEmail,
+  normalizeStaffPin,
+} from '../../lib/firebase';
+import { emitLiveAction } from '../../lib/liveActions';
+import { StaffIdCardView } from '../staffing/StaffIdCardView';
+import { LogoProgressBar } from '../realtime/LogoProgressBar';
+import type { StaffCardRecord } from '@medcore/types';
+import type { UserSession } from '../auth/AuthScreen';
+import { HOSPITALS } from '../auth/AuthScreen';
+import {
+  Shield, Plus, Search, CheckCircle2, XCircle, Lock, UserPlus, IdCard,
+} from 'lucide-react';
 
-interface StaffAccess {
-  id: string;
-  name: string;
-  role: string;
-  department: string;
-  clearance: number;
-  status: 'active' | 'suspended' | 'pending';
-  lastLogin: string;
-  permissions: string[];
-}
-
-const SEED_STAFF_ACCESS: StaffAccess[] = [];
+const ROLE_OPTIONS = [
+  { roleKey: 'doctor', role: 'Medical Officer', title: 'Medical Officer', shortRole: 'Doctor', clearanceLevel: 4, clearanceLabel: 'L4 Clinical', department: 'Internal Medicine' },
+  { roleKey: 'nurse', role: 'Nursing Officer', title: 'Senior Nursing Officer', shortRole: 'Nurse', clearanceLevel: 3, clearanceLabel: 'L3 Nursing', department: 'Inpatient Wards' },
+  { roleKey: 'surgeon', role: 'Consultant Surgeon', title: 'Consultant Surgeon', shortRole: 'Surgeon', clearanceLevel: 5, clearanceLabel: 'L5 Consultant', department: 'Surgery & Theatre' },
+  { roleKey: 'pharmacist', role: 'Pharmacist', title: 'Pharmacist', shortRole: 'Pharmacist', clearanceLevel: 3, clearanceLabel: 'L3 Pharmacy', department: 'Pharmacy' },
+  { roleKey: 'lab', role: 'Lab Scientist', title: 'Lab Scientist', shortRole: 'Lab', clearanceLevel: 3, clearanceLabel: 'L3 Lab', department: 'Pathology' },
+  { roleKey: 'radiologist', role: 'Radiologist', title: 'Consultant Radiologist', shortRole: 'Radiology', clearanceLevel: 5, clearanceLabel: 'L5 Radiology', department: 'Radiology' },
+  { roleKey: 'records', role: 'Records Officer', title: 'Health Records Officer', shortRole: 'Records', clearanceLevel: 2, clearanceLabel: 'L2 Records', department: 'Medical Records' },
+  { roleKey: 'accountant', role: 'Finance Officer', title: 'Finance Officer', shortRole: 'Accounts', clearanceLevel: 3, clearanceLabel: 'L3 Finance', department: 'Billing & Finance' },
+  { roleKey: 'reception', role: 'Reception / Front Desk', title: 'Reception Officer', shortRole: 'Reception', clearanceLevel: 2, clearanceLabel: 'L2 Front Desk', department: 'Patient Reception' },
+  { roleKey: 'hospital_admin', role: 'Hospital Administrator', title: 'Hospital Administrator', shortRole: 'Admin', clearanceLevel: 5, clearanceLabel: 'L5 Executive', department: 'Administration' },
+  { roleKey: 'sysadmin', role: 'ICT / System Admin', title: 'System Administrator', shortRole: 'SysAdmin', clearanceLevel: 6, clearanceLabel: 'L6 SysAdmin', department: 'ICT' },
+];
 
 const CLEARANCE_LABELS: Record<number, { label: string; color: string }> = {
+  6: { label: 'L6 — SysAdmin', color: '#0F172A' },
   5: { label: 'L5 — Executive', color: '#EA580C' },
   4: { label: 'L4 — Senior Clinical', color: '#F59E0B' },
   3: { label: 'L3 — Clinical', color: '#16A34A' },
@@ -37,143 +68,361 @@ const STATUS_META = {
   pending: { label: 'Pending', color: '#EA580C' },
 };
 
-export const AccessControl: React.FC = () => {
+interface Props {
+  session?: UserSession;
+}
+
+export const AccessControl: React.FC<Props> = ({ session }) => {
   const [records, setRecords] = useState<AccessRecord[]>([]);
+  const [search, setSearch] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [issued, setIssued] = useState<StaffCardRecord | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const [fullName, setFullName] = useState('');
+  const [roleKey, setRoleKey] = useState('doctor');
+  const [pin, setPin] = useState('123456');
+  const [email, setEmail] = useState('');
+
+  const facilityId = session?.hospitalId || HOSPITALS[0]?.id || 'IGH-EKT';
+  const facilityName = session?.facility || HOSPITALS.find((h) => h.id === facilityId)?.name || 'Hospital';
+
+  const roleMeta = useMemo(
+    () => ROLE_OPTIONS.find((r) => r.roleKey === roleKey) || ROLE_OPTIONS[0],
+    [roleKey]
+  );
+
   const reload = useCallback(() => {
-    setRecords(getAccessRecords() as AccessRecord[]);
+    setRecords(getAccessRecords());
   }, []);
+
   useEffect(() => {
     reload();
     return subscribeAdminSync(reload);
   }, [reload]);
 
-  const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<StaffAccess | null>(null);
-
-  const filtered = records.filter(s =>
-    !search ||
-    s.name.toLowerCase().includes(search.toLowerCase()) ||
-    s.role.toLowerCase().includes(search.toLowerCase()) ||
-    s.id.toLowerCase().includes(search.toLowerCase())
+  const filtered = records.filter(
+    (s) =>
+      !search ||
+      s.name.toLowerCase().includes(search.toLowerCase()) ||
+      s.role.toLowerCase().includes(search.toLowerCase()) ||
+      s.id.toLowerCase().includes(search.toLowerCase())
   );
 
+  const selected = records.find((r) => r.id === selectedId) || null;
+  const selectedCard = selectedId ? getStaffCard(selectedId) : undefined;
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!fullName.trim()) {
+      setError('Enter staff full name.');
+      return;
+    }
+    if (roleMeta.roleKey === 'hospital_admin') {
+      const existing = listStaffCards().filter(
+        (c) =>
+          c.facilityId === facilityId &&
+          (c.roleKey === 'hospital_admin' || (c.role || '').toLowerCase().includes('administrator'))
+      );
+      if (existing.length > 0) {
+        setError(`This hospital already has an administrator (${existing[0].fullName || existing[0].badgeId}).`);
+        return;
+      }
+    }
+
+    setBusy(true);
+    try {
+      const pinNorm = normalizeStaffPin(pin);
+      const { card } = enrolStaffAndIssueCard({
+        fullName: fullName.trim(),
+        role: roleMeta.role,
+        roleKey: roleMeta.roleKey,
+        title: roleMeta.title,
+        department: roleMeta.department,
+        facilityId,
+        facilityName,
+        clearanceLevel: roleMeta.clearanceLevel,
+        clearanceLabel: roleMeta.clearanceLabel,
+        pin: pinNorm,
+        shortRole: roleMeta.shortRole,
+        permissions: ['dashboard'],
+      });
+
+      try {
+        await firebaseEnsureBadgeAccount(card.badgeId, pinNorm);
+      } catch (err: any) {
+        console.warn('[access] badge auth', err);
+      }
+
+      const mail = email.trim();
+      if (mail && isEmailCredential(mail)) {
+        try {
+          await firebaseSignUp(mail, pinNorm);
+        } catch (err: any) {
+          if (err?.code !== 'auth/email-already-in-use') {
+            console.warn('[access] email auth', err);
+          }
+        }
+      }
+
+      const accessRow: AccessRecord = {
+        id: card.badgeId,
+        name: fullName.trim(),
+        role: roleMeta.role,
+        department: roleMeta.department,
+        clearance: roleMeta.clearanceLevel,
+        status: 'active',
+        lastLogin: 'Never',
+        permissions: ['dashboard', roleMeta.roleKey],
+      };
+      const nextAccess = [accessRow, ...getAccessRecords().filter((r) => r.id !== card.badgeId)];
+      setAccessRecords(nextAccess);
+      setRecords(nextAccess);
+
+      try {
+        await firestoreUpsertStaffMember(facilityId, {
+          badgeId: card.badgeId,
+          name: fullName.trim(),
+          role: roleMeta.role,
+          roleKey: roleMeta.roleKey,
+          title: roleMeta.title,
+          department: roleMeta.department,
+          pin: pinNorm,
+          authEmail: badgeAuthEmail(card.badgeId),
+          hospitalId: facilityId,
+          hospitalName: facilityName,
+          clearanceLevel: roleMeta.clearanceLevel,
+          clearanceLabel: roleMeta.clearanceLabel,
+          permissions: accessRow.permissions,
+          status: 'active',
+        });
+        await firestorePushStaffDirectory(facilityId, {
+          staffCards: listStaffCards(),
+          staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
+        });
+      } catch (err) {
+        console.warn('[access] firestore', err);
+      }
+
+      pushActivity(`Account created · ${fullName.trim()} · ${card.badgeId} · ID card issued`);
+      emitLiveAction(`Account + ID card · ${card.badgeId}`, { module: 'access' });
+      setIssued(card);
+      setSelectedId(card.badgeId);
+      setFullName('');
+      setEmail('');
+      setShowCreate(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div className="os-module-layout">
+    <div className="os-module-layout" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div className="os-insight-banner">
         <Shield size={18} style={{ color: '#0066FF', flexShrink: 0, marginTop: 2 }} />
         <div>
           <div style={{ fontWeight: 700, color: '#0F172A', fontSize: '0.88rem', marginBottom: 4 }}>
-            Access control · Zero-trust IAM
+            Staff Access Control · Accounts & ID cards
           </div>
           <div style={{ fontSize: '0.8rem', color: '#64748B', lineHeight: 1.55 }}>
-            Role and clearance govern clinical APIs, AI actions, and audit visibility. Suspended accounts cannot reach the event bus.
+            Create a staff account here to grant access and <strong>automatically issue</strong> their vertical staff ID card
+            (badge + PIN for Firebase login). Suspend or reactivate accounts without a separate enrolment screen.
           </div>
         </div>
       </div>
 
       <div className="os-metrics-ribbon">
         <div className="metric-box alert-green">
-          <span className="metric-label"><CheckCircle2 size={13} style={{ display: 'inline', marginRight: 4 }} />Active accounts</span>
-          <span className="metric-val">{records.filter(s => s.status === 'active').length}</span>
-          <span className="metric-sub">Across all departments</span>
-        </div>
-        <div className="metric-box alert-red">
-          <span className="metric-label"><XCircle size={13} style={{ display: 'inline', marginRight: 4 }} />Suspended</span>
-          <span className="metric-val">{records.filter(s => s.status === 'suspended').length}</span>
-          <span className="metric-sub">Pending review</span>
-        </div>
-        <div className="metric-box alert-yellow">
-          <span className="metric-label">Pending activation</span>
-          <span className="metric-val">{records.filter(s => s.status === 'pending').length}</span>
-          <span className="metric-sub">Awaiting admin approval</span>
+          <span className="metric-label">Active</span>
+          <span className="metric-val">{records.filter((r) => r.status === 'active').length}</span>
+          <span className="metric-sub">Can sign in</span>
         </div>
         <div className="metric-box">
-          <span className="metric-label"><Lock size={13} style={{ display: 'inline', marginRight: 4 }} />Permissions granted</span>
-          <span className="metric-val">{records.flatMap(s => s.permissions).length}</span>
-          <span className="metric-sub">Across {records.length} staff</span>
+          <span className="metric-label">Suspended</span>
+          <span className="metric-val">{records.filter((r) => r.status === 'suspended').length}</span>
+          <span className="metric-sub">Blocked</span>
+        </div>
+        <div className="metric-box">
+          <span className="metric-label">ID cards</span>
+          <span className="metric-val">{listStaffCards().length}</span>
+          <span className="metric-sub">Issued with accounts</span>
         </div>
       </div>
 
-      <div className="os-toolbar">
-        <div className="os-search-wrap" style={{ flex: 1, minWidth: 220 }}>
-          <Search size={14} />
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 180,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            background: '#fff',
+            border: '1px solid #E2E8F0',
+            borderRadius: 999,
+            padding: '8px 14px',
+          }}
+        >
+          <Search size={15} color="#94A3B8" />
           <input
-            className="os-search-input"
-            placeholder="Search name, role or staff ID…"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name, role, or badge ID…"
+            style={{ border: 'none', outline: 'none', flex: 1, fontSize: '0.88rem' }}
           />
         </div>
-        <button type="button" className="os-action-btn-primary">
-          <Plus size={14} /> Create account
+        <button
+          type="button"
+          className="os-primary-btn"
+          onClick={() => {
+            setShowCreate((v) => !v);
+            setError('');
+            setIssued(null);
+          }}
+        >
+          <UserPlus size={16} /> {showCreate ? 'Close form' : 'Create staff account'}
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 340px' : '1fr', gap: 18 }}>
+      {showCreate && (
+        <form className="os-panel" onSubmit={handleCreate} style={{ padding: 18 }}>
+          <div style={{ fontWeight: 800, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <IdCard size={18} color="#0052D4" /> New account · ID card auto-generated
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
+              Full name
+              <input
+                className="os-search-input"
+                style={{ display: 'block', width: '100%', marginTop: 6, padding: '10px 12px' }}
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="e.g. Dr. Uduak Essien"
+              />
+            </label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
+              Role
+              <select
+                className="os-form-select"
+                style={{ display: 'block', width: '100%', marginTop: 6 }}
+                value={roleKey}
+                onChange={(e) => setRoleKey(e.target.value)}
+              >
+                {ROLE_OPTIONS.map((r) => (
+                  <option key={r.roleKey} value={r.roleKey}>
+                    {r.title} ({r.clearanceLabel})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
+              Facility
+              <div
+                className="os-form-select"
+                style={{ marginTop: 6, padding: '10px 12px', background: '#F8FAFC' }}
+              >
+                {facilityName} · locked
+              </div>
+            </label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
+              Email
+              <input
+                className="os-search-input"
+                style={{ display: 'block', width: '100%', marginTop: 6, padding: '10px 12px' }}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="staff@hospital.gov.ng"
+              />
+            </label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
+              PIN (min 6 characters)
+              <input
+                className="os-search-input"
+                style={{ display: 'block', width: '100%', marginTop: 6, padding: '10px 12px' }}
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                maxLength={12}
+              />
+            </label>
+          </div>
+          {error && (
+            <div style={{ marginTop: 12, color: '#B91C1C', fontSize: '0.84rem', fontWeight: 600 }}>{error}</div>
+          )}
+          <button type="submit" disabled={busy} className="os-action-btn-primary" style={{ marginTop: 14 }}>
+            <Plus size={16} /> {busy ? 'Creating…' : 'Create account & issue ID card'}
+          </button>
+          <LogoProgressBar active={busy} label="Creating account, Firebase login & ID card…" />
+        </form>
+      )}
+
+      {issued && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 8, color: '#047857', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <CheckCircle2 size={16} /> Account ready · Badge {issued.badgeId}
+            </div>
+            <StaffIdCardView card={issued} />
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(260px, 320px)', gap: 16 }}>
         <div className="os-table-wrap">
           <table className="os-table">
             <thead>
               <tr>
-                <th>Staff ID</th>
+                <th>Badge ID</th>
                 <th>Name</th>
                 <th>Role</th>
-                <th>Department</th>
                 <th>Clearance</th>
                 <th>Status</th>
-                <th>Last login</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(s => {
-                const clr = CLEARANCE_LABELS[s.clearance];
-                const stMeta = STATUS_META[s.status];
-                const isSel = selected?.id === s.id;
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: 28, color: '#64748B' }}>
+                    No staff accounts yet. Use <strong>Create staff account</strong> — ID card is issued automatically.
+                  </td>
+                </tr>
+              )}
+              {filtered.map((r) => {
+                const st = STATUS_META[r.status] || STATUS_META.pending;
+                const cl = CLEARANCE_LABELS[r.clearance] || CLEARANCE_LABELS[2];
                 return (
                   <tr
-                    key={s.id}
-                    style={{
-                      cursor: 'pointer',
-                      background: isSel ? 'rgba(0,102,255,0.04)' : undefined,
-                    }}
-                    onClick={() => setSelected(s)}
+                    key={r.id}
+                    onClick={() => setSelectedId(r.id)}
+                    style={{ cursor: 'pointer', background: selectedId === r.id ? 'rgba(0,82,212,0.06)' : undefined }}
                   >
-                    <td style={{ fontFamily: 'var(--os-font-mono)', fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>{s.id}</td>
-                    <td style={{ fontWeight: 700, color: '#0F172A' }}>{s.name}</td>
-                    <td style={{ color: '#475569', fontSize: '0.83rem' }}>{s.role}</td>
-                    <td style={{ color: '#64748B', fontSize: '0.82rem' }}>{s.department}</td>
+                    <td style={{ fontFamily: 'var(--os-font-mono)', fontSize: '0.78rem' }}>{r.id}</td>
+                    <td style={{ fontWeight: 600 }}>{r.name}</td>
+                    <td>{r.role}</td>
                     <td>
-                      <span style={{
-                        background: `${clr.color}14`,
-                        color: clr.color,
-                        fontSize: '0.68rem',
-                        fontWeight: 700,
-                        padding: '3px 9px',
-                        borderRadius: 9999,
-                        border: `1px solid ${clr.color}28`,
-                      }}>
-                        {clr.label}
-                      </span>
+                      <span style={{ color: cl.color, fontWeight: 700, fontSize: '0.78rem' }}>{cl.label}</span>
                     </td>
                     <td>
-                      <span style={{
-                        background: `${stMeta.color}14`,
-                        color: stMeta.color,
-                        fontSize: '0.68rem',
-                        fontWeight: 700,
-                        padding: '3px 9px',
-                        borderRadius: 9999,
-                        border: `1px solid ${stMeta.color}28`,
-                      }}>
-                        {stMeta.label}
-                      </span>
+                      <span style={{ color: st.color, fontWeight: 700, fontSize: '0.78rem' }}>{st.label}</span>
                     </td>
-                    <td style={{ fontFamily: 'var(--os-font-mono)', fontSize: '0.72rem', color: '#64748B' }}>{s.lastLogin}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-                        <button type="button" className="os-ghost-btn" style={{ padding: '5px 8px' }} title="Edit"><Edit2 size={13} /></button>
-                        <button type="button" className="os-ghost-btn" style={{ padding: '5px 8px' }} title="View" onClick={() => setSelected(s)}><Eye size={13} /></button>
-                      </div>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {r.status === 'suspended' ? (
+                        <button type="button" className="os-ghost-btn" style={{ fontSize: 12 }} onClick={() => { reactivateAccess(r.id); reload(); }}>
+                          <CheckCircle2 size={12} /> Reactivate
+                        </button>
+                      ) : r.status === 'pending' ? (
+                        <button type="button" className="os-ghost-btn" style={{ fontSize: 12 }} onClick={() => { approveAccess(r.id); reload(); }}>
+                          Approve
+                        </button>
+                      ) : (
+                        <button type="button" className="os-ghost-btn" style={{ fontSize: 12, color: '#B91C1C' }} onClick={() => { suspendAccess(r.id); reload(); }}>
+                          <XCircle size={12} /> Suspend
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -182,108 +431,35 @@ export const AccessControl: React.FC = () => {
           </table>
         </div>
 
-        {selected && (
-          <div className="os-card" style={{ padding: 20, alignSelf: 'flex-start', borderColor: 'rgba(0,102,255,0.2)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' }}>
-              <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 750, color: '#0F172A', fontFamily: 'var(--os-font-heading)' }}>
-                Access profile
-              </h4>
-              <button type="button" className="os-ghost-btn" style={{ padding: '4px 10px' }} onClick={() => setSelected(null)}>✕</button>
+        <div className="os-card" style={{ padding: 16 }}>
+          {!selected ? (
+            <div style={{ color: '#64748B', fontSize: '0.88rem', textAlign: 'center', padding: 24 }}>
+              Select a staff row to view access details and ID card.
             </div>
-
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
-              <div style={{
-                width: 46,
-                height: 46,
-                borderRadius: 12,
-                background: 'linear-gradient(135deg, #0066FF, #00D4A8)',
-                color: '#FFF',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '0.95rem',
-                fontWeight: 800,
-                boxShadow: '0 4px 12px rgba(0,102,255,0.3)',
-              }}>
-                {selected.name.split(' ').slice(-2).map(n => n[0]).join('')}
+          ) : (
+            <>
+              <div style={{ fontWeight: 800, marginBottom: 10 }}>{selected.name}</div>
+              <div style={{ fontSize: '0.8rem', color: '#64748B', marginBottom: 12 }}>
+                {selected.role} · {selected.department}
               </div>
-              <div>
-                <div style={{ fontWeight: 700, color: '#0F172A' }}>{selected.name}</div>
-                <div style={{ fontSize: '0.78rem', color: '#64748B' }}>{selected.role}</div>
+              <div style={{ fontSize: '0.78rem', marginBottom: 8 }}>
+                <strong>Badge:</strong>{' '}
+                <span style={{ fontFamily: 'var(--os-font-mono)' }}>{selected.id}</span>
               </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {[
-                { label: 'Badge ID', value: selected.id },
-                { label: 'Department', value: selected.department },
-                { label: 'Clearance', value: CLEARANCE_LABELS[selected.clearance].label },
-                { label: 'Last login', value: selected.lastLogin },
-              ].map(item => (
-                <div key={item.label}>
-                  <div style={{ fontSize: '0.68rem', color: '#64748B', marginBottom: 2, fontWeight: 600, letterSpacing: '0.04em' }}>{item.label}</div>
-                  <div style={{
-                    fontSize: '0.84rem',
-                    color: '#0F172A',
-                    fontFamily: item.label === 'Badge ID' ? 'var(--os-font-mono)' : undefined,
-                    fontWeight: item.label === 'Badge ID' ? 600 : 500,
-                  }}>
-                    {item.value}
-                  </div>
-                </div>
-              ))}
-
-              <div>
-                <div style={{ fontSize: '0.68rem', color: '#64748B', marginBottom: 8, fontWeight: 700, letterSpacing: '0.05em' }}>
-                  GRANTED PERMISSIONS
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {selected.permissions.length > 0
-                    ? selected.permissions.map(p => (
-                      <span
-                        key={p}
-                        style={{
-                          background: 'rgba(22,163,74,0.1)',
-                          color: '#16A34A',
-                          fontSize: '0.7rem',
-                          padding: '4px 10px',
-                          borderRadius: 9999,
-                          fontWeight: 600,
-                          border: '1px solid rgba(22,163,74,0.22)',
-                        }}
-                      >
-                        {p}
-                      </span>
-                    ))
-                    : <span style={{ color: '#94A3B8', fontSize: '0.8rem' }}>No permissions assigned</span>}
-                </div>
+              <div style={{ fontSize: '0.78rem', marginBottom: 12 }}>
+                <strong>Last login:</strong> {selected.lastLogin}
               </div>
-
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <button type="button" className="os-action-btn-primary" style={{ flex: 1, fontSize: '0.78rem' }}>
-                  Edit permissions
-                </button>
-                {selected.status === 'active' ? (
-                  <button type="button" className="os-ghost-btn" style={{ flex: 1, fontSize: '0.78rem', color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)' }}
-                    onClick={() => { suspendAccess(selected.id); setSelected(null); reload(); }}>
-                    Suspend
-                  </button>
-                ) : selected.status === 'pending' ? (
-                  <button type="button" className="os-ghost-btn" style={{ flex: 1, fontSize: '0.78rem', color: '#16A34A', borderColor: 'rgba(22,163,74,0.3)' }}
-                    onClick={() => { approveAccess(selected.id); setSelected(null); reload(); }}>
-                    Approve access
-                  </button>
-                ) : (
-                  <button type="button" className="os-ghost-btn" style={{ flex: 1, fontSize: '0.78rem', color: '#16A34A', borderColor: 'rgba(22,163,74,0.3)' }}
-                    onClick={() => { reactivateAccess(selected.id); setSelected(null); reload(); }}>
-                    Activate
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+              {selectedCard ? (
+                <StaffIdCardView card={selectedCard} compact />
+              ) : (
+                <div style={{ fontSize: '0.8rem', color: '#94A3B8' }}>No ID card on file for this account.</div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 };
+
+export default AccessControl;

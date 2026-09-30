@@ -21,7 +21,6 @@ import { PatientFlowVisibility } from '../patient-flow/PatientFlowVisibility';
 import { AccessControl } from '../rbac/AccessControl';
 import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
 import { CashierRevenue } from '../cashier/CashierRevenue';
-import { StaffEnrolment } from '../staffing/StaffEnrolment';
 import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import { ensureCleanPilot, setActiveFacilityId, KEYS as ADMIN_KEYS } from '../../lib/adminRealtimeStore';
@@ -77,7 +76,6 @@ const NAV: NavSection[] = [
     label: 'Identity, Security & Finance',
     items: [
       { key: 'rbac', label: 'Staff Access Control', icon: Lock },
-      { key: 'enrolment', label: 'Staff Enrolment & ID', icon: UserPlus },
       { key: 'compliance', label: 'Compliance & Audit', icon: FileText },
       { key: 'cashier', label: 'Revenue & Cashier', icon: BarChart3 },
     ],
@@ -190,9 +188,9 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
           </div>
         );
       case 'rbac':
-        return <AccessControl />;
+        return <AccessControl session={session} />;
       case 'enrolment':
-        return <StaffEnrolment session={session} />;
+        return <AccessControl session={session} />;
       case 'compliance':
         return <ComplianceAuditLogs />;
       case 'cashier':

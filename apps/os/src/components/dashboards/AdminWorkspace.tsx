@@ -95,7 +95,7 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
 
   const kpis = [
     { key: 'staff', label: 'Active Staff', value: String(snap.activeStaff), trend: 'Live roster', tone: 'blue', icon: Users, nav: 'staffing' },
-    { key: 'open', label: 'Open Positions', value: String(snap.openPositions), trend: 'Recruitment', tone: 'sky', icon: UserPlus, nav: 'enrolment' },
+    { key: 'open', label: 'Open Positions', value: String(snap.openPositions), trend: 'Recruitment', tone: 'sky', icon: UserPlus, nav: 'rbac' },
     { key: 'transfer', label: 'Pending Transfer', value: String(snap.pendingTransfers), trend: snap.pendingTransfers ? 'Needs review' : 'Clear', tone: 'amber', icon: ArrowRightLeft, nav: 'transfer' },
     { key: 'logged', label: 'Staff Logged In', value: String(snap.staffLoggedIn), trend: connected ? 'Live' : 'Active', tone: 'teal', icon: UserCheck, nav: 'staffing' },
     { key: 'leave', label: 'On Leave', value: String(snap.onLeave), trend: 'Roster', tone: 'violet', icon: CalendarDays, nav: 'staffing' },
@@ -163,7 +163,7 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
           <button type="button" className="admin-qa primary" onClick={() => onNavigate('transfer')}>
             <ArrowRightLeft size={14} /> New Staff Transfer
           </button>
-          <button type="button" className="admin-qa" onClick={() => onNavigate('enrolment')}>
+          <button type="button" className="admin-qa" onClick={() => onNavigate('rbac')}>
             <UserPlus size={14} /> Add Staff
           </button>
           <button type="button" className="admin-qa" onClick={() => notify('Open staffing to edit rosters', 'staffing')}>
@@ -294,7 +294,7 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
           {snap.depts.length === 0 ? (
             <div style={{ padding: '28px 12px', textAlign: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
               No staff enrolled yet.<br />
-              <button type="button" className="admin-link" style={{ marginTop: 8 }} onClick={() => onNavigate('enrolment')}>
+              <button type="button" className="admin-link" style={{ marginTop: 8 }} onClick={() => onNavigate('rbac')}>
                 Enrol first staff member →
               </button>
             </div>
