@@ -8,14 +8,17 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
+  onAuthStateChanged,
   type Auth,
   type User,
+  type Unsubscribe as AuthUnsubscribe,
 } from 'firebase/auth';
 import {
   getFirestore as getFirestoreSdk,
   doc,
   setDoc,
   getDoc,
+  collection,
   onSnapshot,
   enableIndexedDbPersistence,
   type Firestore,
@@ -183,4 +186,100 @@ export function firestoreSubscribeStaffDirectory(
       staffRegistry: Array.isArray(data.staffRegistry) ? data.staffRegistry : undefined,
     });
   });
+}
+
+/** Per-staff doc: facilities/{facilityId}/staff/{badgeId} */
+export function staffMemberRef(facilityId: string, badgeId: string) {
+  const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+  const bid = (badgeId || 'UNKNOWN').replace(/[\/#?]/g, '_');
+  return doc(getFirestore(), 'facilities', fid, 'staff', bid);
+}
+
+export async function firestoreUpsertStaffMember(
+  facilityId: string,
+  staff: Record<string, unknown> & { badgeId: string }
+): Promise<boolean> {
+  try {
+    await enableFirestoreOffline();
+    const badgeId = String(staff.badgeId);
+    await setDoc(
+      staffMemberRef(facilityId, badgeId),
+      {
+        ...staff,
+        badgeId,
+        facilityId,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    return true;
+  } catch (e) {
+    console.warn('[Firestore] upsert staff', e);
+    return false;
+  }
+}
+
+export async function firestoreGetStaffByBadge(
+  facilityId: string,
+  badgeId: string
+): Promise<Record<string, unknown> | null> {
+  try {
+    await enableFirestoreOffline();
+    const snap = await getDoc(staffMemberRef(facilityId, badgeId));
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() };
+  } catch (e) {
+    console.warn('[Firestore] get staff', e);
+    return null;
+  }
+}
+
+/** Live list of all staff for a facility (realtime enrolment → auth) */
+export function firestoreSubscribeStaffCollection(
+  facilityId: string,
+  onData: (staff: Record<string, unknown>[]) => void
+): () => void {
+  let unsub = () => {};
+  void (async () => {
+    try {
+      await enableFirestoreOffline();
+      const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+      const col = collection(getFirestore(), 'facilities', fid, 'staff');
+      unsub = onSnapshot(
+        col,
+        (snap) => {
+          const rows = snap.docs.map((d) => ({ badgeId: d.id, ...d.data() }));
+          onData(rows);
+        },
+        (err) => console.warn('[Firestore] staff collection', err)
+      );
+    } catch (e) {
+      console.warn('[Firestore] staff subscribe', e);
+    }
+  })();
+  return () => unsub();
+}
+
+export async function firestoreRecordLogin(
+  facilityId: string,
+  badgeId: string,
+  meta?: Record<string, unknown>
+): Promise<void> {
+  try {
+    await enableFirestoreOffline();
+    await setDoc(
+      staffMemberRef(facilityId, badgeId),
+      {
+        lastLoginAt: new Date().toISOString(),
+        lastLoginMeta: meta || {},
+      },
+      { merge: true }
+    );
+  } catch (e) {
+    console.warn('[Firestore] record login', e);
+  }
+}
+
+export function subscribeFirebaseAuth(cb: (user: User | null) => void): AuthUnsubscribe {
+  return onAuthStateChanged(getFirebaseAuth(), cb);
 }

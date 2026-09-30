@@ -8,7 +8,7 @@ import {
   STAFF_REGISTRY_STORAGE_KEY,
   issueStaffCardFromEnrolment,
 } from '@medcore/types';
-import { firestorePushStaffDirectory } from './firebase';
+import { firestorePushStaffDirectory, firestoreUpsertStaffMember } from './firebase';
 
 function readCards(): StaffCardRecord[] {
   if (typeof window === 'undefined') return [];
@@ -98,6 +98,7 @@ export function enrolStaffAndIssueCard(
       staffCards: cards,
       staffRegistry: next,
     });
+    void firestoreUpsertStaffMember(input.facilityId, entry);
   } catch {
     /* ignore */
   }

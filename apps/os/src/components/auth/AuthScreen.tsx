@@ -205,6 +205,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
   const [staffRegistry, setStaffRegistry] = useState<PresetStaff[]>(PRESET_STAFF);
   /** email = work email form; badge = Staff ID No. + PIN */
   const [authMode, setAuthMode] = useState<'email' | 'badge'>('email');
+  const [firebaseLive, setFirebaseLive] = useState(false);
 
   // Load enrolled staff (local) + live Firebase facility directory
   useEffect(() => {
@@ -253,11 +254,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     window.addEventListener('medcore-staff-cards-updated', onCards);
     window.addEventListener('medcore-admin-sync', onCards);
 
-    let unsub = () => {};
+    let unsubDir = () => {};
+    let unsubCol = () => {};
+    let unsubAuth = () => {};
     void (async () => {
       try {
-        const { firestoreSubscribeStaffDirectory } = await import('../../lib/firebase');
-        unsub = firestoreSubscribeStaffDirectory(selectedHospital.id, (data) => {
+        const {
+          firestoreSubscribeStaffDirectory,
+          firestoreSubscribeStaffCollection,
+          subscribeFirebaseAuth,
+          enableFirestoreOffline,
+        } = await import('../../lib/firebase');
+        await enableFirestoreOffline();
+        setFirebaseLive(true);
+
+        unsubDir = firestoreSubscribeStaffDirectory(selectedHospital.id, (data) => {
           if (data.staffRegistry && Array.isArray(data.staffRegistry)) {
             try {
               localStorage.setItem('medcore_os_staff_registry', JSON.stringify(data.staffRegistry));
@@ -270,15 +281,55 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             } catch { /* ignore */ }
           }
         });
+
+        // Live staff docs (enrolment on any PC appears here immediately)
+        unsubCol = firestoreSubscribeStaffCollection(selectedHospital.id, (rows) => {
+          if (!rows.length) return;
+          try {
+            const mapped = rows.map((r) => ({
+              id: r.badgeId || r.id,
+              badgeId: r.badgeId || r.id,
+              name: r.name || r.fullName,
+              fullName: r.name || r.fullName,
+              role: r.role,
+              shortRole: r.shortRole || r.role,
+              title: r.title || r.role,
+              roleKey: r.roleKey || 'doctor',
+              clearanceLevel: r.clearanceLevel ?? 2,
+              clearanceLabel: r.clearanceLabel || 'L2',
+              department: r.department || '',
+              initials: r.initials,
+              permissions: r.permissions || ['dashboard'],
+              pin: r.pin || '1234',
+              hospitalId: r.hospitalId || r.facilityId || selectedHospital.id,
+              hospitalName: r.hospitalName || r.facilityName || selectedHospital.name,
+              status: r.status || 'active',
+            }));
+            localStorage.setItem('medcore_os_staff_registry', JSON.stringify(mapped));
+            mergeLocal();
+          } catch (e) {
+            console.warn('[auth] map staff collection', e);
+          }
+        });
+
+        unsubAuth = subscribeFirebaseAuth((user) => {
+          setFirebaseLive(true);
+          if (user) {
+            /* session restore handled on explicit sign-in for now */
+          }
+        });
       } catch (e) {
         console.warn('[auth] firestore staff subscribe', e);
+        setFirebaseLive(false);
       }
     })();
 
     return () => {
       window.removeEventListener('medcore-staff-cards-updated', onCards);
       window.removeEventListener('medcore-admin-sync', onCards);
-      unsub();
+      unsubDir();
+      unsubCol();
+      unsubAuth();
     };
   }, [selectedHospital.id]);
 
@@ -317,14 +368,51 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
     // ── Badge + PIN mode: never use Firebase / admin fallback ─────────────
     if (authMode === 'badge') {
-      const matchedStaff = staffRegistry.find(
-        (s) => s.badgeId.toLowerCase() === u.toLowerCase()
-      ) || (u.length >= 4
-        ? staffRegistry.find((s) => s.badgeId.toLowerCase().startsWith(u.toLowerCase()) &&
-            staffRegistry.filter((x) => x.badgeId.toLowerCase().startsWith(u.toLowerCase())).length === 1)
-        : undefined);
+      let matchedStaff =
+        staffRegistry.find((s) => s.badgeId.toLowerCase() === u.toLowerCase()) ||
+        (u.length >= 4
+          ? staffRegistry.find(
+              (s) =>
+                s.badgeId.toLowerCase().startsWith(u.toLowerCase()) &&
+                staffRegistry.filter((x) => x.badgeId.toLowerCase().startsWith(u.toLowerCase())).length === 1
+            )
+          : undefined);
+
+      // Realtime Firestore lookup (source of truth across devices)
+      try {
+        const { firestoreGetStaffByBadge, firestoreRecordLogin } = await import('../../lib/firebase');
+        const remote = await firestoreGetStaffByBadge(effectiveHospital.id, u);
+        if (remote && remote.badgeId) {
+          matchedStaff = {
+            badgeId: String(remote.badgeId),
+            name: String(remote.name || remote.fullName || 'Staff'),
+            role: String(remote.role || 'Staff'),
+            shortRole: String(remote.shortRole || remote.role || 'Staff'),
+            title: String(remote.title || remote.role || 'Staff'),
+            roleKey: String(remote.roleKey || 'doctor'),
+            clearanceLevel: Number(remote.clearanceLevel ?? 2),
+            clearanceLabel: String(remote.clearanceLabel || 'L2'),
+            department: String(remote.department || ''),
+            initials: String(remote.initials || 'ST'),
+            permissions: (remote.permissions as string[]) || ['dashboard'],
+            pin: String(remote.pin || ''),
+            hospitalId: String(remote.hospitalId || remote.facilityId || effectiveHospital.id),
+            hospitalName: String(remote.hospitalName || remote.facilityName || effectiveHospital.name),
+            color: '#0052D4',
+          };
+        }
+        if (matchedStaff && pass && pass === matchedStaff.pin) {
+          void firestoreRecordLogin(matchedStaff.hospitalId || effectiveHospital.id, matchedStaff.badgeId, {
+            method: 'badge_pin',
+            hospitalId: effectiveHospital.id,
+          });
+        }
+      } catch (e) {
+        console.warn('[auth] firestore badge lookup', e);
+      }
+
       if (!matchedStaff) {
-        setError('Staff ID not found. Check the badge number from your staff card.');
+        setError('Staff ID not found on this hospital (check Firestore enrolment or badge number).');
         setLoading(false);
         return;
       }
@@ -332,9 +420,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         setError('Incorrect PIN. Try again or contact your administrator.');
         setLoading(false);
         return;
-      }
-      if (matchedStaff.hospitalId && matchedStaff.hospitalId !== effectiveHospital.id) {
-        // Still allow login but bind session to staff's hospital
       }
       const session: UserSession = {
         id: matchedStaff.badgeId,
@@ -350,7 +435,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         clearanceLabel: matchedStaff.clearanceLabel,
         clearanceLevel: matchedStaff.clearanceLevel,
         permissions: matchedStaff.permissions,
-        authMethod: 'Staff ID',
+        authMethod: 'Staff ID · Firebase',
         loginTime: new Date().toLocaleTimeString('en-GB', {
           hour: '2-digit',
           minute: '2-digit',
@@ -643,6 +728,25 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           }}>
             Welcome Back
           </h1>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            marginBottom: 8,
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            color: firebaseLive ? '#047857' : '#94A3B8',
+          }}>
+            <span style={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: firebaseLive ? '#10B981' : '#CBD5E1',
+              boxShadow: firebaseLive ? '0 0 0 3px rgba(16,185,129,0.25)' : 'none',
+            }} />
+            {firebaseLive ? 'Firebase realtime connected' : 'Connecting to Firebase…'}
+          </div>
           <p style={{
             fontSize: '0.88rem',
             color: '#64748B',
