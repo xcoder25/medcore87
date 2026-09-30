@@ -7,6 +7,7 @@ import { pushActivity, setOpenPositions, getOpenPositions } from '../../lib/admi
  */
 import React, { useMemo, useState, useEffect } from 'react';
 import { UserPlus, IdCard, CheckCircle2 } from 'lucide-react';
+import { LogoProgressBar } from '../realtime/LogoProgressBar';
 import { HOSPITALS } from '../auth/AuthScreen';
 import { enrolStaffAndIssueCard, listStaffCards, getStaffCard } from '../../lib/staffCardStore';
 import { firebaseSignUp, isEmailCredential } from '../../lib/firebase';
@@ -230,8 +231,9 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
               <div style={{ color: '#EF4444', fontSize: '0.8rem', fontWeight: 600 }}>{error}</div>
             )}
             <button type="submit" disabled={busy} className="os-action-btn-primary" style={{ marginTop: 4 }}>
-              <UserPlus size={16} /> Enrol & issue staff ID card
+              <UserPlus size={16} /> {busy ? 'Processing…' : 'Enrol & issue staff ID card'}
             </button>
+            <LogoProgressBar active={busy} label="Creating account & issuing staff ID…" />
           </div>
         </form>
 

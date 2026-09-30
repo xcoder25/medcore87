@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { LogoProgressBar } from '../realtime/LogoProgressBar';
 import {
   Building2, Lock, User, Eye, EyeOff, ArrowRight, CheckCircle2, AlertCircle
 } from 'lucide-react';
@@ -878,6 +879,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 </>
               )}
             </button>
+            <LogoProgressBar active={loading || success} label={success ? 'Launching Hospital OS…' : 'Signing in…'} />
           </form>
 
           {/* Divider */}

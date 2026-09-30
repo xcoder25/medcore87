@@ -4202,3 +4202,83 @@ html, body {
   color: #047857;
   border-bottom-color: #A7F3D0;
 }
+
+
+/* ── Logo progressive bar (button processing) ───────────────────────────── */
+.os-logo-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #F0F9FF 0%, #ECFDF5 100%);
+  border: 1px solid #BAE6FD;
+}
+.os-logo-progress-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.os-logo-progress-img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  animation: osLogoPulse 1.1s ease-in-out infinite;
+}
+.os-logo-progress-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #0A2540;
+  letter-spacing: 0.01em;
+}
+.os-logo-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 82, 212, 0.12);
+  overflow: hidden;
+  position: relative;
+}
+.os-logo-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #0052D4 0%, #00BFA5 50%, #0052D4 100%);
+  background-size: 200% 100%;
+  animation: osProgressSlide 1.15s ease-in-out infinite;
+}
+.os-logo-progress-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(248, 250, 252, 0.72);
+  backdrop-filter: blur(4px);
+  border-radius: inherit;
+  padding: 16px;
+}
+.os-logo-progress-overlay .os-logo-progress {
+  max-width: 320px;
+  margin: 0;
+  box-shadow: 0 12px 32px rgba(0, 82, 212, 0.12);
+}
+@keyframes osProgressSlide {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
+@keyframes osLogoPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.85; }
+}
+.os-action-btn-primary:disabled,
+.os-primary-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  filter: grayscale(0.15);
+}
