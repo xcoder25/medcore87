@@ -1,5 +1,5 @@
 'use client';
-import { pushActivity } from '../../lib/adminRealtimeStore';
+import { pushActivity, getAccessRecords, setAccessRecords } from '../../lib/adminRealtimeStore';
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -78,7 +78,7 @@ interface Props {
 export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [transfers, setTransfers] = useState<TransferRecord[]>([]);
-  const [activeTab, setActiveTab] = useState<'roster' | 'pending' | 'history'>('roster');
+  const [activeTab, setActiveTab] = useState<'roster' | 'pending' | 'incoming' | 'history'>('roster');
   const [search, setSearch] = useState('');
   const [filterHospital, setFilterHospital] = useState('all');
 
@@ -111,10 +111,33 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
     try {
       localStorage.setItem('medcore_os_staff_registry', JSON.stringify(updatedStaff));
       localStorage.setItem('medcore_os_transfers', JSON.stringify(updatedTransfers));
+      window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'transfers' } }));
     } catch (e) {
       console.error(e);
     }
   };
+
+  /** Notify destination facility admin (local inbox + Firestore when available) */
+  const notifyDestination = async (tr: TransferRecord) => {
+    try {
+      const key = `medcore_os_transfer_inbox_${tr.toHospitalId}`;
+      const raw = localStorage.getItem(key);
+      const list = raw ? JSON.parse(raw) : [];
+      const next = [tr, ...list.filter((x: TransferRecord) => x.id !== tr.id)];
+      localStorage.setItem(key, JSON.stringify(next));
+      // Shared mirror for same browser multi-tab
+      localStorage.setItem('medcore_os_transfers', JSON.stringify([tr, ...transfers.filter((x) => x.id !== tr.id)]));
+    } catch { /* ignore */ }
+    try {
+      const { firestoreWriteFacility } = await import('../../lib/firebase');
+      await firestoreWriteFacility(tr.toHospitalId, {
+        transferInbox: {
+          [tr.id]: { ...tr, notifiedAt: new Date().toISOString() },
+        },
+      });
+    } catch { /* offline */ }
+  };
+
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -170,6 +193,7 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
       setTransfers(updatedTransfers);
       setStaff(updatedStaff);
       persistData(updatedStaff, updatedTransfers);
+      void notifyDestination(newTransfer);
 
       setTransferring(false);
       setModalOpen(false);
@@ -217,8 +241,80 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
     showToast(`Transfer ${transferId} rejected`);
   };
 
+  const myHospitalId = session?.hospitalId || '';
+
+  /** Destination admin grants login at this facility */
+  const grantIncomingAccess = (transferId: string) => {
+    const tr = transfers.find((t) => t.id === transferId);
+    if (!tr) return;
+    const updatedTransfers = transfers.map((t) =>
+      t.id === transferId ? { ...t, status: 'completed' as const } : t
+    );
+    const updatedStaff = staff.map((s) =>
+      s.id === tr.staffId || s.name === tr.staffName
+        ? {
+            ...s,
+            hospitalId: tr.toHospitalId,
+            hospitalName: tr.toHospitalName,
+            status: 'active' as const,
+          }
+        : s
+    );
+    // Ensure staff appears at destination registry
+    const exists = updatedStaff.some((s) => s.id === tr.staffId);
+    const withStaff = exists
+      ? updatedStaff
+      : [
+          {
+            id: tr.staffId,
+            name: tr.staffName,
+            role: tr.role,
+            roleKey: (tr as any).roleKey || 'doctor',
+            department: 'Transferred',
+            hospitalId: tr.toHospitalId,
+            hospitalName: tr.toHospitalName,
+            status: 'active' as const,
+            joinDate: new Date().toISOString().slice(0, 10),
+            avatarInitials: tr.staffName.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase(),
+            accentColor: '#0052D4',
+          },
+          ...updatedStaff,
+        ];
+
+    setTransfers(updatedTransfers);
+    setStaff(withStaff);
+    persistData(withStaff, updatedTransfers);
+
+    // Access row so they can log in here
+    try {
+      const row = {
+        id: tr.staffId,
+        name: tr.staffName,
+        role: tr.role,
+        department: 'Transferred in',
+        clearance: 3,
+        status: 'active' as const,
+        lastLogin: 'Never',
+        permissions: ['dashboard'],
+      };
+      setAccessRecords([row, ...getAccessRecords().filter((r: any) => r.id !== tr.staffId)]);
+    } catch { /* ignore */ }
+
+    showToast(`Login access granted for ${tr.staffName} at this hospital`);
+  };
+
+  // Incoming transfers for this admin's hospital
+  const incomingTransfers = transfers.filter(
+    (t) =>
+      t.status === 'pending' &&
+      myHospitalId &&
+      t.toHospitalId === myHospitalId &&
+      t.fromHospitalId !== myHospitalId
+  );
+
   // Filtered staff
   const filteredStaff = staff.filter(s => {
+
     const q = search.toLowerCase();
     const matchSearch = !q || s.name.toLowerCase().includes(q) || s.role.toLowerCase().includes(q) || s.department.toLowerCase().includes(q) || s.id.toLowerCase().includes(q);
     const matchHosp = filterHospital === 'all' || s.hospitalId === filterHospital;
@@ -296,7 +392,7 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8 }}>
-        {(['roster', 'pending', 'history'] as const).map(tab => (
+        {(['roster', 'pending', 'incoming', 'history'] as const).map(tab => (
           <button key={tab} className="os-ghost-btn" onClick={() => setActiveTab(tab)}
             style={{
               background: activeTab === tab ? 'linear-gradient(90deg, rgba(0,82,212,0.12) 0%, rgba(0,191,165,0.12) 100%)' : undefined,
@@ -305,7 +401,7 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
               textTransform: 'capitalize',
               fontWeight: activeTab === tab ? 700 : 600,
             }}>
-            {tab === 'roster' ? '👥 Staff Roster' : tab === 'pending' ? `⏳ Pending (${pendingTransfers.length})` : '📋 Transfer History'}
+            {tab === 'roster' ? '👥 Staff Roster' : tab === 'pending' ? `⏳ Outgoing (${pendingTransfers.length})` : tab === 'incoming' ? `📥 Incoming (${incomingTransfers.length})` : '📋 Transfer History'}
           </button>
         ))}
       </div>
@@ -505,7 +601,40 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
       )}
 
       {/* ── HISTORY TAB ── */}
-      {activeTab === 'history' && (
+      
+      {activeTab === 'incoming' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="os-insight-banner">
+            <div style={{ fontSize: '0.84rem', color: '#64748B', lineHeight: 1.5 }}>
+              Transfers <strong>into your hospital</strong>. Grant login access so the staff member can use their badge on this facility&apos;s role dashboard.
+            </div>
+          </div>
+          {incomingTransfers.length === 0 && (
+            <div className="os-card" style={{ padding: 24, textAlign: 'center', color: '#64748B' }}>
+              No incoming transfer requests for this hospital.
+            </div>
+          )}
+          {incomingTransfers.map((tr) => (
+            <div key={tr.id} className="os-card" style={{ padding: 16, borderLeft: '3px solid #00BFA5' }}>
+              <div style={{ fontWeight: 800 }}>{tr.staffName}</div>
+              <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: 4 }}>
+                {tr.role} · from {tr.fromHospitalName} → {tr.toHospitalName}
+              </div>
+              <div style={{ fontSize: '0.78rem', marginTop: 8 }}>Reason: {tr.reason}</div>
+              <button
+                type="button"
+                className="os-primary-btn"
+                style={{ marginTop: 12 }}
+                onClick={() => grantIncomingAccess(tr.id)}
+              >
+                Grant login access at this hospital
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+{activeTab === 'history' && (
         <div className="os-table-wrap">
           <table className="os-table">
             <thead>

@@ -33,6 +33,7 @@ import { enableFirestoreOffline } from '../lib/firebase';
 import { RoleDashboard } from '../components/dashboards/RoleDashboard';
 import { DoctorPortal } from '../components/dashboards/DoctorPortal';
 import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
+import { roleCanAccessModule } from '../lib/rolePermissionsStore';
 import { EmergencyTriageSuite } from '../components/clinical-core/EmergencyTriageSuite';
 import { PharmacyDispensingSuite } from '../components/clinical-core/PharmacyDispensingSuite';
 import { LaboratorySuite } from '../components/clinical-core/LaboratorySuite';
@@ -855,6 +856,9 @@ export default function OSPage() {
     if (key === 'dashboard') return true;
     if (userSession.permissions?.includes('*')) return true;
     if (userSession.permissions?.includes(key)) return true;
+    if (userSession.roleKey && userSession.roleKey !== 'hospital_admin' && !roleCanAccessModule(userSession.roleKey, key)) {
+      return false;
+    }
     const req = MODULE_CLEARANCE[key];
     if (req && userSession.clearanceLevel >= req.level) return true;
     return false;

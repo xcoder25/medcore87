@@ -8,7 +8,7 @@ import type { UserSession } from '../auth/AuthScreen';
 import { AdminWorkspace } from './AdminWorkspace';
 import {
   LayoutDashboard, Users, Building2, Activity, BedDouble, RefreshCw, PhoneCall,
-  Lock, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus,
+  Lock, Shield, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus,
 } from 'lucide-react';
 
 // Lazy module map — same keys as page.tsx
@@ -19,6 +19,7 @@ import { CommandCentreDashboard } from '../command-centre/CommandCentreDashboard
 import { BedManagement } from '../beds/BedManagement';
 import { PatientFlowVisibility } from '../patient-flow/PatientFlowVisibility';
 import { AccessControl } from '../rbac/AccessControl';
+import { RolePermissionsMatrix } from '../rbac/RolePermissionsMatrix';
 import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
 import { CashierRevenue } from '../cashier/CashierRevenue';
 import NotificationBell from '../realtime/NotificationBell';
@@ -39,6 +40,7 @@ type AdminModule =
   | 'patient-flow'
   | 'ambulance'
   | 'rbac'
+  | 'role-permissions'
   | 'enrolment'
   | 'compliance'
   | 'cashier';
@@ -76,6 +78,7 @@ const NAV: NavSection[] = [
     label: 'Identity, Security & Finance',
     items: [
       { key: 'rbac', label: 'Staff Access Control', icon: Lock },
+      { key: 'role-permissions', label: 'Role Visibility', icon: Shield },
       { key: 'compliance', label: 'Compliance & Audit', icon: FileText },
       { key: 'cashier', label: 'Revenue & Cashier', icon: BarChart3 },
     ],
@@ -189,6 +192,8 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         );
       case 'rbac':
         return <AccessControl session={session} />;
+      case 'role-permissions':
+        return <RolePermissionsMatrix />;
       case 'enrolment':
         return <AccessControl session={session} />;
       case 'compliance':

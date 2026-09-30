@@ -53,6 +53,79 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
     const facilityId = session?.hospitalId || 'IGH-EKT';
     const facilityName = session?.facility || 'Hospital';
 
+    // Role visibility automation
+    const lowerQ = query.toLowerCase();
+    if (
+      (lowerQ.includes('role') && (lowerQ.includes('can see') || lowerQ.includes('permission') || lowerQ.includes('visibility') || lowerQ.includes('module'))) ||
+      lowerQ.startsWith('allow ') ||
+      lowerQ.startsWith('deny ') ||
+      lowerQ.includes('enable module') ||
+      lowerQ.includes('set role')
+    ) {
+      try {
+        const { applyRoleModules, setRoleModule, getModulesForRole, CONFIGURABLE_ROLES, MODULE_CATALOG } = await import('../../lib/rolePermissionsStore');
+        let reply = '';
+        // allow nurses emr, beds
+        const allow = query.match(/allow\s+(\w+)\s+(.+)/i);
+        const deny = query.match(/deny\s+(\w+)\s+(.+)/i);
+        const setAll = query.match(/set\s+role\s+(\w+)\s+(?:to\s+)?(.+)/i);
+        const roleWord = (w: string) => {
+          const x = w.toLowerCase().replace(/s$/, '');
+          return (
+            CONFIGURABLE_ROLES.find((r) => r.roleKey === x || r.label.toLowerCase().includes(x))?.roleKey ||
+            x
+          );
+        };
+        const parseMods = (s: string) =>
+          s.split(/[,\s]+/).map((m) => m.trim().toLowerCase()).filter(Boolean).map((m) => {
+            const hit = MODULE_CATALOG.find((c) => c.key === m || c.label.toLowerCase().includes(m));
+            return hit?.key || m;
+          });
+        if (allow) {
+          const rk = roleWord(allow[1]);
+          const mods = parseMods(allow[2]);
+          mods.forEach((m) => setRoleModule(rk, m, true));
+          reply = `M87 Role Visibility: enabled for **${rk}**: ${mods.join(', ')}. Current: ${getModulesForRole(rk).join(', ')}`;
+        } else if (deny) {
+          const rk = roleWord(deny[1]);
+          const mods = parseMods(deny[2]);
+          mods.forEach((m) => setRoleModule(rk, m, false));
+          reply = `M87 Role Visibility: disabled for **${rk}**: ${mods.join(', ')}. Current: ${getModulesForRole(rk).join(', ')}`;
+        } else if (setAll) {
+          const rk = roleWord(setAll[1]);
+          const mods = parseMods(setAll[2]);
+          applyRoleModules(rk, mods);
+          reply = `M87 Role Visibility: **${rk}** modules set to: ${getModulesForRole(rk).join(', ')}`;
+        } else {
+          reply =
+            'Role visibility commands:\n• allow nurse emr beds\n• deny doctor analytics\n• set role reception to dashboard patient-card patient-flow cashier\n\nOr open Role Visibility page for tick boxes.';
+        }
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: reply,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+      } catch (err: unknown) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: (err as Error)?.message || 'Role permission automation failed',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+      }
+      setIsThinking(false);
+      return;
+    }
+
     const staffIntent = parseStaffAutomationIntent(query, facilityId, facilityName);
     if (staffIntent.handled) {
       let reply = staffIntent.replyIfEmpty || '';
