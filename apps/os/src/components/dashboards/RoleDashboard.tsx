@@ -286,21 +286,44 @@ function RoleHome({
   triggerAction: (msg: string, navKey?: string) => void;
 }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div>
-        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0A2540' }}>{title}</h2>
-        <p style={{ margin: '6px 0 0', fontSize: '0.88rem', color: '#64748B', lineHeight: 1.5 }}>{subtitle}</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 960 }}>
+      <div style={{
+        padding: '20px 22px',
+        borderRadius: 18,
+        background: 'linear-gradient(135deg, rgba(224,242,254,0.9) 0%, rgba(240,249,255,0.95) 45%, rgba(236,253,245,0.85) 100%)',
+        border: '1px solid rgba(0,82,212,0.1)',
+        boxShadow: '0 8px 32px rgba(0,82,212,0.06)',
+      }}>
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          fontSize: 11,
+          fontWeight: 800,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: '#0052D4',
+          marginBottom: 8,
+        }}>
+          <span style={{
+            width: 7, height: 7, borderRadius: '50%', background: '#10B981',
+            boxShadow: '0 0 0 3px rgba(16,185,129,0.25)',
+          }} />
+          Live role desk
+        </div>
+        <h2 className="os-role-home-title" style={{ margin: 0 }}>{title}</h2>
+        <p className="os-role-home-sub" style={{ margin: '8px 0 0' }}>{subtitle}</p>
       </div>
       <div className="os-metrics-ribbon">
         {metrics.map((m) => (
           <div key={m.label} className={`metric-box${m.tone === 'green' ? ' alert-green' : ''}`}>
             <span className="metric-label">{m.label}</span>
-            <span className="metric-val" style={{ fontSize: '1.15rem' }}>{m.value}</span>
+            <span className="metric-val" style={{ fontSize: '1.2rem' }}>{m.value}</span>
             <span className="metric-sub">{m.sub}</span>
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+      <div className="os-role-action-grid">
         {actions.map((a) => (
           <button
             key={a.label}
@@ -312,8 +335,8 @@ function RoleHome({
           </button>
         ))}
       </div>
-      <div className="os-card" style={{ padding: 16, color: '#64748B', fontSize: '0.84rem', lineHeight: 1.55 }}>
-        Shared role workspace — all staff with this role use the same tools. Patient lists fill from live EMR / queue modules as care is recorded (no demo patients).
+      <div className="os-role-note">
+        Shared role workspace — everyone with this role uses the same tools. Patient queues and charts appear from live EMR and flow modules as care is recorded.
       </div>
     </div>
   );
