@@ -183,7 +183,21 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
     [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+    <div className="os-mpi-shell">
+      <div className="os-mpi-hero">
+        <div>
+          <div className="os-chip">Patient MPI · Live</div>
+          <h1>Register &amp; find patients</h1>
+          <div className="os-mpi-hero-meta">
+            <span>{facilityName}</span>
+            <span>{patients.length} enrolled</span>
+            <span>Front-desk safe · no clinical chart dump</span>
+          </div>
+        </div>
+        <button type="button" className="os-ghost-btn" style={{ background: '#fff', color: '#0284C7', borderColor: '#fff', fontWeight: 800 }} onClick={() => setShowRegister(true)}>
+          <UserPlus size={16} /> Register patient
+        </button>
+      </div>
       {toast && (
         <div
           style={{
@@ -259,7 +273,7 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
 
       {/* Register form */}
       {showRegister && (
-        <form className="os-card" onSubmit={handleRegister} style={{ padding: 18 }}>
+        <form className="os-card os-register-panel" onSubmit={handleRegister} style={{ padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
             <div style={{ fontWeight: 800, fontSize: '1.05rem' }}>New patient registration</div>
             <button type="button" className="os-ghost-btn" style={{ padding: 6 }} onClick={() => setShowRegister(false)}>
@@ -357,8 +371,10 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
             Facility patient list ({filtered.length})
           </div>
           {filtered.length === 0 ? (
-            <div style={{ padding: 36, textAlign: 'center', color: '#94A3B8', fontSize: 14 }}>
-              No patients yet. Use <strong>Register patient</strong> — demo records have been removed.
+            <div className="os-empty-state">
+              <div style={{ fontSize: 28, marginBottom: 8 }}>📋</div>
+              <div style={{ fontWeight: 700, color: '#0A2540', marginBottom: 6 }}>No patients enrolled yet</div>
+              Demo records are cleared. Click <strong>Register patient</strong> to create the first hospital number and digital card.
             </div>
           ) : (
             <div style={{ maxHeight: 520, overflowY: 'auto' }}>
@@ -367,13 +383,14 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
                   key={p.id}
                   type="button"
                   onClick={() => setSelectedId(p.id)}
+                  className={`os-mpi-list-item${selectedId === p.id ? ' is-selected' : ''}`}
                   style={{
                     width: '100%',
                     textAlign: 'left',
                     padding: '14px 16px',
                     border: 'none',
                     borderBottom: '1px solid #F1F5F9',
-                    background: selectedId === p.id ? 'rgba(2,132,199,0.08)' : '#fff',
+                    background: '#fff',
                     cursor: 'pointer',
                   }}
                 >
@@ -417,16 +434,7 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
             </div>
           ) : (
             <>
-              <div
-                style={{
-                  borderRadius: 16,
-                  padding: 18,
-                  background: 'linear-gradient(145deg, #0A2540 0%, #0369A1 50%, #00BFA5 100%)',
-                  color: '#fff',
-                  marginBottom: 14,
-                  boxShadow: '0 12px 32px rgba(3,105,161,0.3)',
-                }}
-              >
+              <div className="os-digital-card" style={{ marginBottom: 14 }}>
                 <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', opacity: 0.85 }}>
                   HOSPITAL DIGITAL HEALTH CARD
                 </div>

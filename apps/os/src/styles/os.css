@@ -4583,3 +4583,113 @@ body {
   background: rgba(0, 82, 212, 0.18);
   color: #0A2540;
 }
+
+/* ── Patient MPI / Reception premium surfaces ── */
+.os-mpi-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  animation: osPremiumFade 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.os-mpi-hero {
+  border-radius: 20px;
+  padding: 20px 22px;
+  background:
+    radial-gradient(600px 200px at 100% 0%, rgba(0, 191, 165, 0.15), transparent 60%),
+    linear-gradient(135deg, #0369A1 0%, #0284C7 42%, #0D9488 100%);
+  color: #fff;
+  box-shadow: 0 16px 40px rgba(2, 132, 199, 0.28);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.os-mpi-hero h1 {
+  margin: 4px 0 0;
+  font-family: var(--os-font-heading);
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.os-mpi-hero-meta {
+  font-size: 0.8rem;
+  opacity: 0.92;
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.os-mpi-list-item {
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.os-mpi-list-item:hover {
+  background: rgba(2, 132, 199, 0.05) !important;
+}
+.os-mpi-list-item.is-selected {
+  background: linear-gradient(90deg, rgba(2, 132, 199, 0.1), rgba(0, 191, 165, 0.06)) !important;
+  box-shadow: inset 3px 0 0 #0284C7;
+}
+
+.os-digital-card {
+  border-radius: 18px;
+  padding: 20px;
+  background:
+    radial-gradient(180px 120px at 100% 0%, rgba(255,255,255,0.18), transparent),
+    linear-gradient(145deg, #0A2540 0%, #0E4D7B 48%, #0D9488 100%);
+  color: #fff;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.12) inset,
+    0 16px 40px rgba(10, 37, 64, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+.os-digital-card::after {
+  content: '';
+  position: absolute;
+  right: -30px;
+  bottom: -30px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  pointer-events: none;
+}
+
+.os-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.18);
+  backdrop-filter: blur(6px);
+}
+
+.os-register-panel {
+  border-radius: 18px !important;
+  border: 1px solid rgba(2, 132, 199, 0.15) !important;
+  box-shadow: 0 12px 36px rgba(2, 132, 199, 0.08) !important;
+  background:
+    linear-gradient(180deg, #F0F9FF 0%, #FFFFFF 28%) !important;
+}
+
+.os-empty-state {
+  padding: 48px 28px;
+  text-align: center;
+  border-radius: 16px;
+  border: 1.5px dashed #CBD5E1;
+  background: linear-gradient(180deg, #F8FAFC, #FFFFFF);
+  color: #64748B;
+}
+.os-empty-state strong {
+  color: #0A2540;
+}
