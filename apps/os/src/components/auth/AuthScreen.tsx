@@ -535,7 +535,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               code === 'auth/wrong-password')
           ) {
             try {
-              fbUser = await firebaseEnsureBadgeAccount(profile.badgeId, pinNorm);
+              await firebaseEnsureBadgeAccount(profile.badgeId, pinNorm);
+              fbUser = await firebaseSignInWithBadge(profile.badgeId, pinNorm);
             } catch (e2: unknown) {
               setError(
                 (e2 as { message?: string })?.message ||

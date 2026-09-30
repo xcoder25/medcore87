@@ -2,7 +2,7 @@
  * Firebase client — Auth + Firestore for Hospital OS.
  * Prefer NEXT_PUBLIC_FIREBASE_* env on Vercel.
  */
-import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
+import { initializeApp, getApps, deleteApp, type FirebaseApp } from 'firebase/app';
 import {
   getAuth,
   signInWithEmailAndPassword,
@@ -105,7 +105,7 @@ export function badgeAuthEmail(badgeId: string): string {
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return `badge.${id}@staff.naija-bites-1s3y1.firebaseapp.com`;
+  return `badge.${id}@naija-bites-1s3y1.firebaseapp.com`;
 }
 
 /** Firebase requires password length >= 6 */
@@ -115,21 +115,117 @@ export function normalizeStaffPin(pin: string): string {
   return (p + '000000').slice(0, 6);
 }
 
-/** Create or reuse Firebase Auth account bound to badge ID */
+/**
+ * Create Firebase Auth for a staff badge without signing the admin out.
+ * Uses a secondary Firebase app instance (createUser signs into that app only).
+ */
 export async function firebaseEnsureBadgeAccount(
   badgeId: string,
   pin: string
-): Promise<User> {
+): Promise<{ email: string; uid?: string; created: boolean }> {
   const email = badgeAuthEmail(badgeId);
   const password = normalizeStaffPin(pin);
+  const secondaryName = `StaffEnrol_${Date.now()}`;
+  let secondary: FirebaseApp | undefined;
   try {
-    return await firebaseSignUp(email, password);
-  } catch (err: unknown) {
-    const code = (err as { code?: string })?.code || '';
-    if (code === 'auth/email-already-in-use') {
-      return await firebaseSignIn(email, password);
+    secondary = initializeApp(
+      {
+        apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyAOLWLpM0vzIljUeXOnSQbppzuaHhfmXyI',
+        authDomain:
+          process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'naija-bites-1s3y1.firebaseapp.com',
+        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'naija-bites-1s3y1',
+        storageBucket:
+          process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'naija-bites-1s3y1.firebasestorage.app',
+        messagingSenderId:
+          process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '667802678337',
+        appId:
+          process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:667802678337:web:2018efd10f6ca9dbe742c0',
+      },
+      secondaryName
+    );
+    const { getAuth: getAuthSecondary, createUserWithEmailAndPassword: createSecondary, signInWithEmailAndPassword: signInSecondary, signOut: signOutSecondary } = await import('firebase/auth');
+    const secAuth = getAuthSecondary(secondary);
+    try {
+      const cred = await createSecondary(secAuth, email, password);
+      await signOutSecondary(secAuth);
+      return { email, uid: cred.user.uid, created: true };
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code || '';
+      if (code === 'auth/email-already-in-use') {
+        // Verify PIN matches existing account (on secondary only)
+        try {
+          const cred = await signInSecondary(secAuth, email, password);
+          await signOutSecondary(secAuth);
+          return { email, uid: cred.user.uid, created: false };
+        } catch {
+          throw err;
+        }
+      }
+      throw err;
     }
-    throw err;
+  } finally {
+    if (secondary) {
+      try {
+        await deleteApp(secondary);
+      } catch { /* ignore */ }
+    }
+  }
+}
+
+/** Create email/password user without replacing current admin session */
+export async function firebaseEnsureEmailAccount(
+  email: string,
+  password: string
+): Promise<{ email: string; uid?: string; created: boolean }> {
+  const passwordNorm = normalizeStaffPin(password);
+  const secondaryName = `EmailEnrol_${Date.now()}`;
+  let secondary: FirebaseApp | undefined;
+  try {
+    secondary = initializeApp(
+      {
+        apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyAOLWLpM0vzIljUeXOnSQbppzuaHhfmXyI',
+        authDomain:
+          process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'naija-bites-1s3y1.firebaseapp.com',
+        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'naija-bites-1s3y1',
+        storageBucket:
+          process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'naija-bites-1s3y1.firebasestorage.app',
+        messagingSenderId:
+          process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '667802678337',
+        appId:
+          process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:667802678337:web:2018efd10f6ca9dbe742c0',
+      },
+      secondaryName
+    );
+    const {
+      getAuth: getAuthSecondary,
+      createUserWithEmailAndPassword: createSecondary,
+      signInWithEmailAndPassword: signInSecondary,
+      signOut: signOutSecondary,
+    } = await import('firebase/auth');
+    const secAuth = getAuthSecondary(secondary);
+    try {
+      const cred = await createSecondary(secAuth, email.trim(), passwordNorm);
+      await signOutSecondary(secAuth);
+      return { email: email.trim(), uid: cred.user.uid, created: true };
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code || '';
+      if (code === 'auth/email-already-in-use') {
+        try {
+          const cred = await signInSecondary(secAuth, email.trim(), passwordNorm);
+          await signOutSecondary(secAuth);
+          return { email: email.trim(), uid: cred.user.uid, created: false };
+        } catch {
+          throw err;
+        }
+      }
+      throw err;
+    }
+  } finally {
+    if (secondary) {
+      try {
+        await deleteApp(secondary);
+      } catch { /* ignore */ }
+    }
   }
 }
 

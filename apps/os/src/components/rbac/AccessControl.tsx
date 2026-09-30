@@ -13,6 +13,7 @@ import {
   reactivateAccess,
   subscribeAdminSync,
   pushActivity,
+  resetAllPilotData,
   type AccessRecord,
 } from '../../lib/adminRealtimeStore';
 import {
@@ -22,7 +23,7 @@ import {
   deleteStaffMember,
 } from '../../lib/staffCardStore';
 import {
-  firebaseSignUp,
+  firebaseEnsureEmailAccount,
   isEmailCredential,
   firestoreUpsertStaffMember,
   firestorePushStaffDirectory,
@@ -169,24 +170,21 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       });
 
       try {
-        await firebaseEnsureBadgeAccount(card.badgeId, pinNorm);
-        firebaseAuth = 'ok';
+        const authRes = await firebaseEnsureBadgeAccount(card.badgeId, pinNorm);
+        firebaseAuth = authRes?.email ? 'ok' : 'fail';
       } catch (err: any) {
         console.warn('[access] badge auth', err);
         firebaseAuth = 'fail';
+        // Still keep local + Firestore so badge PIN login can migrate on first sign-in
       }
 
       if (mail && isEmailCredential(mail)) {
         try {
-          await firebaseSignUp(mail, pinNorm);
+          await firebaseEnsureEmailAccount(mail, pinNorm);
           emailAuth = 'ok';
         } catch (err: any) {
-          if (err?.code === 'auth/email-already-in-use') {
-            emailAuth = 'ok';
-          } else {
-            console.warn('[access] email auth', err);
-            emailAuth = 'fail';
-          }
+          console.warn('[access] email auth', err);
+          emailAuth = 'fail';
         }
       }
 
@@ -366,9 +364,44 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
             setShowCreate((v) => !v);
             setError('');
             setIssued(null);
+            setConfirmInfo(null);
           }}
         >
           <UserPlus size={16} /> {showCreate ? 'Close form' : 'Create staff account'}
+        </button>
+        <button
+          type="button"
+          className="os-ghost-btn"
+          style={{ color: '#B91C1C', borderColor: 'rgba(185,28,28,0.35)', fontSize: 13 }}
+          onClick={async () => {
+            const ok = window.confirm(
+              `Reset all staff / access / cards for this hospital (${facilityName})?\n\nClears local data and cloud staff directory for ${facilityId}. Admin must sign in again if session keys are wiped.`
+            );
+            if (!ok) return;
+            try {
+              // Clear facility cloud store
+              const { firestoreWriteFacility } = await import('../../lib/firebase');
+              await firestoreWriteFacility(facilityId, {
+                staffCards: [],
+                staffRegistry: [],
+                transferInbox: {},
+                resetAt: new Date().toISOString(),
+              });
+            } catch (e) {
+              console.warn('[access] cloud reset', e);
+            }
+            resetAllPilotData();
+            setRecords([]);
+            setIssued(null);
+            setConfirmInfo(null);
+            setSelectedId(null);
+            setError('');
+            pushActivity(`Facility data reset · ${facilityId}`);
+            window.alert('Reset complete. Page will reload.');
+            window.location.reload();
+          }}
+        >
+          Reset facility data
         </button>
       </div>
 
