@@ -39,6 +39,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
       : roleTitle.includes('lab') ? 'lab'
       : roleTitle.includes('radiolog') ? 'radiologist'
       : roleTitle.includes('account') ? 'accountant'
+      : roleTitle.includes('reception') || roleTitle.includes('front desk') || roleTitle.includes('front-desk') ? 'reception'
       : roleTitle.includes('record') ? 'records'
       : roleTitle.includes('biomedical') ? 'biomedical'
       : roleTitle.includes('director') || roleTitle.includes('superintendent') ? 'medical_director'
@@ -242,6 +243,9 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
       {roleKey === 'records' && (
         <RecordsDashboardBody onNavigate={onNavigate} triggerAction={triggerAction} activeTab={activeTab} />
       )}
+      {roleKey === 'reception' && (
+        <ReceptionDashboardBody onNavigate={onNavigate} triggerAction={triggerAction} activeTab={activeTab} />
+      )}
 
       {roleKey === 'biomedical' && (
         <BiomedicalDashboardBody onNavigate={onNavigate} triggerAction={triggerAction} activeTab={activeTab} />
@@ -265,6 +269,48 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
 /* -------------------------------------------------------------
    1. DOCTOR DASHBOARD
 ------------------------------------------------------------- */
+
+function ReceptionDashboardBody({ onNavigate, triggerAction, activeTab }: any) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="os-metrics-ribbon">
+        <div className="metric-box alert-green">
+          <span className="metric-label">Front desk</span>
+          <span className="metric-val" style={{ fontSize: '1.1rem' }}>Reception</span>
+          <span className="metric-sub">Register · cards · queue</span>
+        </div>
+        <div className="metric-box">
+          <span className="metric-label">Shift</span>
+          <span className="metric-val" style={{ fontSize: '1.05rem' }}>Active</span>
+          <span className="metric-sub">Shared queue for all receptionists</span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        <button type="button" className="os-primary-btn" onClick={() => triggerAction('Open patient registration', 'patient-card')}>
+          Register patient
+        </button>
+        <button type="button" className="os-ghost-btn" onClick={() => triggerAction('Open patient card / folder', 'patient-card')}>
+          Patient card / folder
+        </button>
+        <button type="button" className="os-ghost-btn" onClick={() => triggerAction('Open EMR records', 'emr')}>
+          Find existing record
+        </button>
+        <button type="button" className="os-ghost-btn" onClick={() => triggerAction('Open billing / cashier', 'cashier')}>
+          Cashier / billing
+        </button>
+        <button type="button" className="os-ghost-btn" onClick={() => triggerAction('Patient flow board', 'patient-flow')}>
+          Patient flow
+        </button>
+      </div>
+      {activeTab === 'queue' && (
+        <div className="os-card" style={{ padding: 16, color: '#64748B' }}>
+          Arrival queue is shared across reception shifts — continue from the same patient list after handover.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DoctorDashboardBody({ onNavigate, triggerAction, activeTab }: any) {
   return (
     <>

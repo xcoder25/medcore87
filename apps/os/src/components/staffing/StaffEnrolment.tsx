@@ -24,6 +24,7 @@ const ROLE_OPTIONS = [
   { roleKey: 'radiologist', role: 'Radiologist', title: 'Consultant Radiologist', shortRole: 'Radiology', clearanceLevel: 5, clearanceLabel: 'L5 Radiology', department: 'Radiology' },
   { roleKey: 'records', role: 'Records Officer', title: 'Health Records Officer', shortRole: 'Records', clearanceLevel: 2, clearanceLabel: 'L2 Records', department: 'Medical Records' },
   { roleKey: 'accountant', role: 'Finance Officer', title: 'Finance Officer', shortRole: 'Accounts', clearanceLevel: 3, clearanceLabel: 'L3 Finance', department: 'Billing & Finance' },
+  { roleKey: 'reception', role: 'Reception / Front Desk', title: 'Reception Officer', shortRole: 'Reception', clearanceLevel: 2, clearanceLabel: 'L2 Front Desk', department: 'Patient Reception' },
   { roleKey: 'hospital_admin', role: 'Hospital Administrator', title: 'Hospital Administrator', shortRole: 'Admin', clearanceLevel: 5, clearanceLabel: 'L5 Executive', department: 'Administration' },
   { roleKey: 'sysadmin', role: 'ICT / System Admin', title: 'System Administrator', shortRole: 'SysAdmin', clearanceLevel: 6, clearanceLabel: 'L6 SysAdmin', department: 'ICT' },
 ];
@@ -102,7 +103,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
       const mail = email.trim();
       if (mail) {
         if (!isEmailCredential(mail)) {
-          setError('Invalid email — card was issued; fix email to create Firebase login.');
+          setError('Invalid email — card was issued; you can add a valid email later.');
         } else {
           try {
             await firebaseSignUp(mail, pin || '123456');
@@ -205,7 +206,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
               )}
             </label>
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
-              Email (optional · Firebase login)
+              Email
               <input
                 className="os-search-input"
                 style={{ display: 'block', width: '100%', marginTop: 6, padding: '10px 12px' }}
