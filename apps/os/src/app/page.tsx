@@ -208,6 +208,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
   }
 
   const roleTitle = (session.role || session.title || '').toLowerCase();
+  // Prefer explicit roleKey from enrolment / session (do not mis-route staff)
   const roleKey = session.roleKey ||
     (roleTitle.includes('surgeon') ? 'surgeon'
       : roleTitle.includes('nurse') ? 'nurse'
@@ -215,11 +216,13 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
       : roleTitle.includes('pharmacist') ? 'pharmacist'
       : roleTitle.includes('lab') ? 'lab'
       : roleTitle.includes('radiolog') ? 'radiologist'
-      : roleTitle.includes('account') || roleTitle.includes('cashier') ? 'accountant'
+      : roleTitle.includes('reception') || roleTitle.includes('front desk') ? 'reception'
+      : roleTitle.includes('account') || roleTitle.includes('cashier') || roleTitle.includes('finance') ? 'accountant'
       : roleTitle.includes('record') ? 'records'
       : roleTitle.includes('biomedical') ? 'biomedical'
       : roleTitle.includes('director') || roleTitle.includes('superintendent') ? 'medical_director'
-      : roleTitle.includes('admin') || roleTitle.includes('ict') ? 'sysadmin'
+      : roleTitle.includes('hospital_admin') || (roleTitle.includes('administrator') && !roleTitle.includes('system')) ? 'hospital_admin'
+      : roleTitle.includes('sysadmin') || roleTitle.includes('ict') || roleTitle.includes('system admin') ? 'sysadmin'
       : 'doctor');
 
   switch (roleKey) {
@@ -441,6 +444,26 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'facilities', icon: Gauge, label: 'Oxygen Plant & Utilities' },
             { key: 'environmental', icon: Trash2, label: 'Environmental Health & Safety' },
             { key: 'inventory', icon: Package, label: 'Central Medical Store Parts' },
+          ],
+        },
+      ];
+
+    case 'reception':
+      return [
+        {
+          label: 'Front desk',
+          items: [
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Reception desk', badge: 'Live' },
+            { key: 'patient-card', icon: FileText, label: 'Register / patient card', badge: 'New' },
+            { key: 'patient-flow', icon: Activity, label: 'Patient flow & queue' },
+            { key: 'emr', icon: FileText, label: 'Find existing record' },
+          ],
+        },
+        {
+          label: 'Billing handoff',
+          items: [
+            { key: 'cashier', icon: CreditCard, label: 'Cashier / POS' },
+            { key: 'billing', icon: CreditCard, label: 'Billing office' },
           ],
         },
       ];
@@ -1137,13 +1160,16 @@ export default function OSPage() {
       : roleTitle.includes('pharmacist') ? 'pharmacist'
       : roleTitle.includes('lab') ? 'lab'
       : roleTitle.includes('radiolog') ? 'radiologist'
-      : roleTitle.includes('account') || roleTitle.includes('cashier') ? 'accountant'
+      : roleTitle.includes('reception') || roleTitle.includes('front desk') ? 'reception'
+      : roleTitle.includes('account') || roleTitle.includes('cashier') || roleTitle.includes('finance') ? 'accountant'
       : roleTitle.includes('record') ? 'records'
       : roleTitle.includes('biomedical') ? 'biomedical'
       : roleTitle.includes('director') || roleTitle.includes('superintendent') ? 'medical_director'
-      : roleTitle.includes('admin') || roleTitle.includes('administrator') ? 'hospital_admin'
-      : roleTitle.includes('ict') ? 'sysadmin'
+      : roleTitle.includes('hospital_admin') || (roleTitle.includes('administrator') && !roleTitle.includes('system')) ? 'hospital_admin'
+      : roleTitle.includes('sysadmin') || roleTitle.includes('ict') || roleTitle.includes('system admin') ? 'sysadmin'
+      : roleTitle.includes('doctor') || roleTitle.includes('medical officer') || roleTitle.includes('physician') ? 'doctor'
       : 'doctor');
+
   const currentRoleTheme = ROLE_THEMES[activeRoleKey] || ROLE_THEMES.doctor;
   const RoleIcon = currentRoleTheme.icon;
 

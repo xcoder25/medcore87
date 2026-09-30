@@ -28,7 +28,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
     }
   };
 
-  // Determine role key from session role or session.roleKey or title
+  // Prefer enrolment roleKey so every staff in the same role shares this dashboard
   const roleTitle = (session.role || session.title || '').toLowerCase();
   const roleKey =
     session.roleKey ||
@@ -38,13 +38,13 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
       : roleTitle.includes('pharmacist') ? 'pharmacist'
       : roleTitle.includes('lab') ? 'lab'
       : roleTitle.includes('radiolog') ? 'radiologist'
-      : roleTitle.includes('account') ? 'accountant'
       : roleTitle.includes('reception') || roleTitle.includes('front desk') || roleTitle.includes('front-desk') ? 'reception'
+      : roleTitle.includes('account') || roleTitle.includes('finance') || roleTitle.includes('cashier') ? 'accountant'
       : roleTitle.includes('record') ? 'records'
       : roleTitle.includes('biomedical') ? 'biomedical'
       : roleTitle.includes('director') || roleTitle.includes('superintendent') ? 'medical_director'
-      : roleTitle.includes('hospital_admin') || roleTitle.includes('administrator') ? 'hospital_admin'
-      : roleTitle.includes('ict') ? 'sysadmin'
+      : roleTitle.includes('hospital_admin') || (roleTitle.includes('administrator') && !roleTitle.includes('system')) ? 'hospital_admin'
+      : roleTitle.includes('sysadmin') || roleTitle.includes('ict') || roleTitle.includes('system admin') ? 'sysadmin'
       : 'doctor');
 
 
@@ -270,806 +270,299 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
    1. DOCTOR DASHBOARD
 ------------------------------------------------------------- */
 
-function ReceptionDashboardBody({ onNavigate, triggerAction, activeTab }: any) {
+
+/** Shared empty-state role home — no demo patients; actions navigate to live modules */
+function RoleHome({
+  title,
+  subtitle,
+  metrics,
+  actions,
+  triggerAction,
+}: {
+  title: string;
+  subtitle: string;
+  metrics: { label: string; value: string; sub: string; tone?: string }[];
+  actions: { label: string; nav?: string; msg: string; primary?: boolean }[];
+  triggerAction: (msg: string, navKey?: string) => void;
+}) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0A2540' }}>{title}</h2>
+        <p style={{ margin: '6px 0 0', fontSize: '0.88rem', color: '#64748B', lineHeight: 1.5 }}>{subtitle}</p>
+      </div>
       <div className="os-metrics-ribbon">
-        <div className="metric-box alert-green">
-          <span className="metric-label">Front desk</span>
-          <span className="metric-val" style={{ fontSize: '1.1rem' }}>Reception</span>
-          <span className="metric-sub">Register · cards · queue</span>
-        </div>
-        <div className="metric-box">
-          <span className="metric-label">Shift</span>
-          <span className="metric-val" style={{ fontSize: '1.05rem' }}>Active</span>
-          <span className="metric-sub">Shared queue for all receptionists</span>
-        </div>
+        {metrics.map((m) => (
+          <div key={m.label} className={`metric-box${m.tone === 'green' ? ' alert-green' : ''}`}>
+            <span className="metric-label">{m.label}</span>
+            <span className="metric-val" style={{ fontSize: '1.15rem' }}>{m.value}</span>
+            <span className="metric-sub">{m.sub}</span>
+          </div>
+        ))}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-        <button type="button" className="os-primary-btn" onClick={() => triggerAction('Open patient registration', 'patient-card')}>
-          Register patient
-        </button>
-        <button type="button" className="os-ghost-btn" onClick={() => triggerAction('Open patient card / folder', 'patient-card')}>
-          Patient card / folder
-        </button>
-        <button type="button" className="os-ghost-btn" onClick={() => triggerAction('Open EMR records', 'emr')}>
-          Find existing record
-        </button>
-        <button type="button" className="os-ghost-btn" onClick={() => triggerAction('Open billing / cashier', 'cashier')}>
-          Cashier / billing
-        </button>
-        <button type="button" className="os-ghost-btn" onClick={() => triggerAction('Patient flow board', 'patient-flow')}>
-          Patient flow
-        </button>
+        {actions.map((a) => (
+          <button
+            key={a.label}
+            type="button"
+            className={a.primary ? 'os-primary-btn' : 'os-ghost-btn'}
+            onClick={() => triggerAction(a.msg, a.nav)}
+          >
+            {a.label}
+          </button>
+        ))}
       </div>
-      {activeTab === 'queue' && (
-        <div className="os-card" style={{ padding: 16, color: '#64748B' }}>
-          Arrival queue is shared across reception shifts — continue from the same patient list after handover.
-        </div>
-      )}
+      <div className="os-card" style={{ padding: 16, color: '#64748B', fontSize: '0.84rem', lineHeight: 1.55 }}>
+        Shared role workspace — all staff with this role use the same tools. Patient lists fill from live EMR / queue modules as care is recorded (no demo patients).
+      </div>
     </div>
   );
 }
 
-function DoctorDashboardBody({ onNavigate, triggerAction, activeTab }: any) {
+function ReceptionDashboardBody({ onNavigate, triggerAction, activeTab }: any) {
   return (
-    <>
-      {/* 4 KPIs */}
-      <div className="os-metrics-ribbon">
-        <div className="metric-box">
-          <span className="metric-label"><Users size={13} style={{ display: 'inline', marginRight: 4 }} />Inpatients Under Care</span>
-          <span className="metric-val">18 Patients</span>
-          <span className="metric-sub">4 Critical � 14 Stable Inpatients</span>
-        </div>
-        <div className="metric-box alert-yellow">
-          <span className="metric-label"><Clock size={13} style={{ display: 'inline', marginRight: 4 }} />Diagnostic Results to Review</span>
-          <span className="metric-val">6 Labs � 2 PACS</span>
-          <span className="metric-sub">1 Panic Critical Call Logged</span>
-        </div>
-        <div className="metric-box alert-green">
-          <span className="metric-label"><Brain size={13} style={{ display: 'inline', marginRight: 4 }} />M87 AI Clinical Copilot</span>
-          <span className="metric-val">Active Sentinel</span>
-          <span className="metric-sub">3 Differential & Drug Checks Passed</span>
-        </div>
-        <div className="metric-box alert-red">
-          <span className="metric-label"><AlertTriangle size={13} style={{ display: 'inline', marginRight: 4 }} />Urgent Emergency Consults</span>
-          <span className="metric-val">2 Pending</span>
-          <span className="metric-sub">A&E Bed 3 & ICU Step-Down</span>
-        </div>
-      </div>
-
-      {/* Quick Launchpad */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="os-primary-btn" onClick={() => onNavigate('m87-ai')}>
-          <Brain size={15} /> <span>Open M87 AI Copilot</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('emergency')}>
-          <Flame size={15} /> <span>A&E Triage Queue</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('nursing')}>
-          <FileText size={15} /> <span>Ward Rounds & e-MAR</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('pharmacy')}>
-          <Pill size={15} /> <span>e-Prescriptions & Formulary</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('laboratory')}>
-          <FlaskConical size={15} /> <span>Lab Tests & Blood Crossmatch</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('radiology')}>
-          <Layers size={15} /> <span>PACS DICOM Scans</span>
-        </button>
-      </div>
-
-      {/* Main Table / Worklist */}
-      <div style={{ background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 14, padding: 20 }}>
-        <div className="os-section-header" style={{ marginBottom: 14 }}>
-          <span className="os-section-title">
-            <Stethoscope size={16} style={{ display: 'inline', marginRight: 6, color: '#0284C7' }} />
-            Active Assigned Inpatients � Clinical Rounds Worklist
-          </span>
-          <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>Auto-synced with HL7 FHIR Ward Census</span>
-        </div>
-
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #E2E8F0', color: '#94A3B8' }}>
-                <th style={{ padding: '10px 12px' }}>Bed / Ward</th>
-                <th style={{ padding: '10px 12px' }}>Patient Name</th>
-                <th style={{ padding: '10px 12px' }}>Age / Sex</th>
-                <th style={{ padding: '10px 12px' }}>Working Diagnosis</th>
-                <th style={{ padding: '10px 12px' }}>Latest Vitals</th>
-                <th style={{ padding: '10px 12px' }}>ESI Acuity</th>
-                <th style={{ padding: '10px 12px' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                { bed: 'MMW-04', name: 'Elder Etebong Udo', age: '64 / M', dx: 'Decompensated Heart Failure � Hypertensive Urgency', vitals: 'BP 164/98 � HR 88 � SpO2 94%', esi: 'ESI 2 � High Risk', status: 'critical' },
-                { bed: 'FMW-11', name: 'Mrs. Idorenyin Bassey', age: '42 / F', dx: 'Community-Acquired Pneumonia (Lobar)', vitals: 'BP 122/78 � HR 82 � Temp 38.4�C', esi: 'ESI 3 � Urgent', status: 'stable' },
-                { bed: 'SRG-07', name: 'Emem Akpan', age: '29 / M', dx: 'Post-Appendectomy Day 1 � Healing Well', vitals: 'BP 118/74 � HR 76 � SpO2 99%', esi: 'ESI 4 � Stable', status: 'stable' },
-                { bed: 'ICU-02', name: 'Blessing Okon', age: '51 / F', dx: 'Severe Sepsis secondary to Pyelonephritis', vitals: 'BP 92/58 � HR 112 � Lactate 3.4', esi: 'ESI 1 � Resuscitation', status: 'critical' },
-              ].map((pt, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #FFFFFF', transition: 'background 0.15s' }}>
-                  <td style={{ padding: '12px', fontWeight: 700, color: '#0052D4', fontFamily: 'monospace' }}>{pt.bed}</td>
-                  <td style={{ padding: '12px', fontWeight: 600, color: '#0A2540' }}>{pt.name}</td>
-                  <td style={{ padding: '12px', color: '#94A3B8' }}>{pt.age}</td>
-                  <td style={{ padding: '12px', color: '#CBD5E1' }}>{pt.dx}</td>
-                  <td style={{ padding: '12px', fontFamily: 'monospace', fontSize: '0.78rem', color: pt.status === 'critical' ? '#F87171' : '#4ADE80' }}>
-                    {pt.vitals}
-                  </td>
-                  <td style={{ padding: '12px' }}>
-                    <span style={{
-                      padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700,
-                      background: pt.status === 'critical' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(2, 132, 199, 0.15)',
-                      color: pt.status === 'critical' ? '#EF4444' : '#38BDF8'
-                    }}>
-                      {pt.esi}
-                    </span>
-                  </td>
-                  <td style={{ padding: '12px' }}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        className="os-ghost-btn"
-                        style={{ padding: '4px 8px', fontSize: '0.72rem' }}
-                        onClick={() => triggerAction(`Opened Chart for ${pt.name}`, 'm87-ai')}
-                      >
-                        M87 AI
-                      </button>
-                      <button
-                        className="os-ghost-btn"
-                        style={{ padding: '4px 8px', fontSize: '0.72rem' }}
-                        onClick={() => triggerAction(`Prescription order drafted for ${pt.name}`, 'pharmacy')}
-                      >
-                        Order Rx
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
+    <RoleHome
+      title="Reception / front desk"
+      subtitle="All receptionists share registration, queue, and cashier handoff."
+      metrics={[
+        { label: 'Role', value: 'Reception', sub: 'Front desk', tone: 'green' },
+        { label: 'Queue', value: 'Live', sub: 'Patient flow' },
+        { label: 'Shift', value: 'Active', sub: 'Shared arrivals list' },
+      ]}
+      actions={[
+        { label: 'Register patient', nav: 'patient-card', msg: 'Registration', primary: true },
+        { label: 'Find record', nav: 'emr', msg: 'EMR search' },
+        { label: 'Patient flow', nav: 'patient-flow', msg: 'Flow board' },
+        { label: 'Cashier', nav: 'cashier', msg: 'Billing handoff' },
+      ]}
+      triggerAction={triggerAction}
+    />
   );
 }
+
+
+function DoctorDashboardBody({ onNavigate, triggerAction, activeTab }: any) {
+  return (
+    <RoleHome
+      title="Physician workspace"
+      subtitle="All doctors share this dashboard. Open EMR, wards, theatre, or M87 from here."
+      metrics={[
+        { label: 'Role', value: 'Doctor', sub: 'Shared clinical desk', tone: 'green' },
+        { label: 'Queue', value: 'Live', sub: 'From EMR / flow modules' },
+        { label: 'Shift', value: 'Active', sub: 'Continue from last note' },
+      ]}
+      actions={[
+        { label: 'Open EMR', nav: 'emr', msg: 'Opening EMR', primary: true },
+        { label: 'Patient card', nav: 'patient-card', msg: 'Patient registration / card' },
+        { label: 'Bed census', nav: 'beds', msg: 'Ward bed board' },
+        { label: 'Theatre list', nav: 'theatre', msg: 'Operating theatre' },
+        { label: 'M87 AI', nav: 'm87-ai', msg: 'Clinical AI assistant' },
+        { label: 'Pharmacy / Rx', nav: 'pharmacy', msg: 'e-Prescription' },
+      ]}
+      triggerAction={triggerAction}
+    />
+  );
+}
+
 
 /* -------------------------------------------------------------
    2. SURGEON DASHBOARD
 ------------------------------------------------------------- */
 function SurgeonDashboardBody({ onNavigate, triggerAction }: any) {
   return (
-    <>
-      <div className="os-metrics-ribbon">
-        <div className="metric-box alert-yellow">
-          <span className="metric-label"><Activity size={13} style={{ display: 'inline', marginRight: 4 }} />Today's Theatre Slates</span>
-          <span className="metric-val">7 Procedures</span>
-          <span className="metric-sub">3 In Progress � 4 In Pre-Op Holding</span>
-        </div>
-        <div className="metric-box">
-          <span className="metric-label"><BedDouble size={13} style={{ display: 'inline', marginRight: 4 }} />Operating Theatres Active</span>
-          <span className="metric-val">3 / 4 Suites</span>
-          <span className="metric-sub">Suite 1: General � Suite 2: Ortho � Suite 3: C-Section</span>
-        </div>
-        <div className="metric-box alert-green">
-          <span className="metric-label"><Droplet size={13} style={{ display: 'inline', marginRight: 4 }} />Blood Crossmatch Cleared</span>
-          <span className="metric-val">14 Units Ready</span>
-          <span className="metric-sub">O- (4 Units) � A+ (6 Units) � B+ (4 Units)</span>
-        </div>
-        <div className="metric-box alert-red">
-          <span className="metric-label"><AlertTriangle size={13} style={{ display: 'inline', marginRight: 4 }} />PACU Recovery Beds</span>
-          <span className="metric-val">4 / 6 Occupied</span>
-          <span className="metric-sub">2 Post-Op Beds Available</span>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="os-primary-btn" onClick={() => onNavigate('theatre')}>
-          <Activity size={15} /> <span>Open Theatre Suite</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('icu')}>
-          <Wind size={15} /> <span>ICU Telemetry</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('blood-bank')}>
-          <Droplet size={15} /> <span>Blood Bank Requests</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => triggerAction('WHO Surgical Safety Checklist Initiated')}>
-          <ShieldCheck size={15} /> <span>WHO Safety Checklist</span>
-        </button>
-      </div>
-
-      <div style={{ background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 14, padding: 20 }}>
-        <div className="os-section-header">
-          <span className="os-section-title">Today's Operating Theatre Schedule</span>
-          <span style={{ fontSize: '0.75rem', color: '#059669' }}>? 3 Surgical Suites In Session</span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginTop: 12 }}>
-          {[
-            { theatre: 'Theatre 1', time: '08:30 - 11:00', pt: 'Kufre Edet (48M)', op: 'Open Reduction Internal Fixation (Femur)', anaes: 'General Endotracheal', status: 'In Surgery', color: '#F59E0B' },
-            { theatre: 'Theatre 2', time: '09:15 - 11:30', pt: 'Aniekan Umoh (33M)', op: 'Laparoscopic Cholecystectomy', anaes: 'General Anesthesia', status: 'In Surgery', color: '#F59E0B' },
-            { theatre: 'Theatre 3', time: '11:00 - 12:30', pt: 'Mercy Friday (28F)', op: 'Emergency Lower Segment Caesarean Section', anaes: 'Spinal Anaesthesia', status: 'Pre-Op Induction', color: '#0052D4' },
-            { theatre: 'Theatre 4', time: '13:00 - 14:30', pt: 'Bassey Asuquo (61M)', op: 'Transurethral Resection of Prostate (TURP)', anaes: 'Regional Spinal', status: 'Sterilization Cycle', color: '#A855F7' },
-          ].map((th, idx) => (
-            <div key={idx} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, padding: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontWeight: 800, color: '#0052D4' }}>{th.theatre}</span>
-                <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 4, background: `${th.color}22`, color: th.color, fontWeight: 700 }}>
-                  {th.status}
-                </span>
-              </div>
-              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0A2540', marginBottom: 4 }}>{th.op}</div>
-              <div style={{ fontSize: '0.8rem', color: '#94A3B8', marginBottom: 6 }}>Patient: {th.pt}</div>
-              <div style={{ fontSize: '0.74rem', color: '#64748B', display: 'flex', justifyContent: 'space-between' }}>
-                <span>{th.time}</span>
-                <span>{th.anaes}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    <RoleHome
+      title="Surgeon workspace"
+      subtitle="Shared OT desk for all surgeons — lists and notes stay on the patient record across shifts."
+      metrics={[
+        { label: 'Role', value: 'Surgeon', sub: 'Theatre command', tone: 'green' },
+        { label: 'OT board', value: 'Live', sub: 'Open theatre module' },
+        { label: 'Shift', value: 'Active', sub: 'Handover via EMR' },
+      ]}
+      actions={[
+        { label: 'Theatre schedule', nav: 'theatre', msg: 'Opening theatre', primary: true },
+        { label: 'Open EMR', nav: 'emr', msg: 'Surgical notes / EMR' },
+        { label: 'ICU', nav: 'icu', msg: 'Critical care' },
+        { label: 'M87 AI', nav: 'm87-ai', msg: 'Surgical AI helper' },
+      ]}
+      triggerAction={triggerAction}
+    />
   );
 }
+
 
 /* -------------------------------------------------------------
    3. NURSE DASHBOARD
 ------------------------------------------------------------- */
 function NurseDashboardBody({ onNavigate, triggerAction }: any) {
   return (
-    <>
-      <div className="os-metrics-ribbon">
-        <div className="metric-box">
-          <span className="metric-label"><Users size={13} style={{ display: 'inline', marginRight: 4 }} />My Assigned Inpatients</span>
-          <span className="metric-val">12 Patients</span>
-          <span className="metric-sub">Ward 3B � Surgical & Medical Stepdown</span>
-        </div>
-        <div className="metric-box alert-yellow">
-          <span className="metric-label"><Pill size={13} style={{ display: 'inline', marginRight: 4 }} />e-MAR Medications Due</span>
-          <span className="metric-val">8 Doses Due</span>
-          <span className="metric-sub">3 Antibiotics IV � 5 Oral Maintenance</span>
-        </div>
-        <div className="metric-box alert-red">
-          <span className="metric-label"><HeartPulse size={13} style={{ display: 'inline', marginRight: 4 }} />Vitals Telemetry Alert</span>
-          <span className="metric-val">2 Alerts</span>
-          <span className="metric-sub">Bed 3B-04 Temp 39.1�C � Bed 3B-09 BP 85/52</span>
-        </div>
-        <div className="metric-box alert-green">
-          <span className="metric-label"><BedDouble size={13} style={{ display: 'inline', marginRight: 4 }} />Ward Occupancy Rate</span>
-          <span className="metric-val">94% Occupied</span>
-          <span className="metric-sub">45 / 48 Beds In Use</span>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="os-primary-btn" onClick={() => onNavigate('nursing')}>
-          <FileText size={15} /> <span>Open Inpatient Nursing Suite</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('beds')}>
-          <BedDouble size={15} /> <span>Bed Management</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('patient-flow')}>
-          <RefreshCw size={15} /> <span>Patient Transit & Admissions</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => triggerAction('Recorded Routine Bedside Vitals Batch')}>
-          <Activity size={15} /> <span>Batch Record Vitals</span>
-        </button>
-      </div>
-
-      <div style={{ background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 14, padding: 20 }}>
-        <div className="os-section-header">
-          <span className="os-section-title">Immediate e-MAR Medication Administration Schedule</span>
-          <span style={{ fontSize: '0.75rem', color: '#0052D4' }}>Next 2 Hours Window</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-          {[
-            { bed: 'Bed 3B-01', pt: 'Nsikak Udoh', med: 'IV Ceftriaxone 1g in 100ml Normal Saline', due: '10:00 AM (Due Now)', status: 'due', route: 'IV Infusion' },
-            { bed: 'Bed 3B-04', pt: 'Mary Archibong', med: 'IV Paracetamol 1g STAT (Fever 39.1�C)', due: 'Immediate STAT', status: 'urgent', route: 'IV Push' },
-            { bed: 'Bed 3B-07', pt: 'Okon Essien', med: 'Tab Enalapril 10mg + Tab Amlodipine 5mg', due: '10:30 AM', status: 'pending', route: 'Oral' },
-            { bed: 'Bed 3B-11', pt: 'Peace Patrick', med: 'Subcutaneous Enoxaparin 40mg DVT Prophylaxis', due: '11:00 AM', status: 'pending', route: 'SC Injection' },
-          ].map((m, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontWeight: 800, color: '#0052D4', fontFamily: 'monospace' }}>{m.bed}</span>
-                  <span style={{ fontWeight: 600, color: '#0A2540' }}>{m.pt}</span>
-                  <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4, background: m.status === 'urgent' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(2, 132, 199, 0.2)', color: m.status === 'urgent' ? '#EF4444' : '#38BDF8' }}>
-                    {m.route}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.82rem', color: '#CBD5E1', marginTop: 3 }}>{m.med}</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: m.status === 'urgent' ? '#EF4444' : '#F59E0B' }}>{m.due}</span>
-                <button
-                  className="os-primary-btn"
-                  style={{ padding: '5px 12px', fontSize: '0.74rem' }}
-                  onClick={() => triggerAction(`Administered and e-signed: ${m.med} for ${m.pt}`)}
-                >
-                  Administer & Sign
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    <RoleHome
+      title="Nursing workspace"
+      subtitle="All nurses share this desk — wards, e-MAR, and vitals come from live modules."
+      metrics={[
+        { label: 'Role', value: 'Nurse', sub: 'Ward & e-MAR', tone: 'green' },
+        { label: 'Wards', value: 'Live', sub: 'Inpatient nursing' },
+        { label: 'Shift', value: 'Active', sub: 'Shared patient list' },
+      ]}
+      actions={[
+        { label: 'Wards / e-MAR', nav: 'nursing', msg: 'Nursing module', primary: true },
+        { label: 'Open EMR', nav: 'emr', msg: 'Clinical record' },
+        { label: 'Bed board', nav: 'beds', msg: 'Bed occupancy' },
+        { label: 'Patient flow', nav: 'patient-flow', msg: 'Flow board' },
+        { label: 'M87 AI', nav: 'm87-ai', msg: 'Nursing AI' },
+      ]}
+      triggerAction={triggerAction}
+    />
   );
 }
+
 
 /* -------------------------------------------------------------
    4. MIDWIFE DASHBOARD
 ------------------------------------------------------------- */
 function MidwifeDashboardBody({ onNavigate, triggerAction }: any) {
   return (
-    <>
-      <div className="os-metrics-ribbon">
-        <div className="metric-box alert-yellow">
-          <span className="metric-label"><Baby size={13} style={{ display: 'inline', marginRight: 4 }} />Active Labour Deliveries</span>
-          <span className="metric-val">4 Mothers</span>
-          <span className="metric-sub">Suite 1 in Second Stage (Fully Dilated)</span>
-        </div>
-        <div className="metric-box alert-red">
-          <span className="metric-label"><HeartPulse size={13} style={{ display: 'inline', marginRight: 4 }} />CTG Fetal Telemetry</span>
-          <span className="metric-val">1 Alert</span>
-          <span className="metric-sub">Labour Room 2: Late Decelerations Flagged</span>
-        </div>
-        <div className="metric-box alert-green">
-          <span className="metric-label"><Users size={13} style={{ display: 'inline', marginRight: 4 }} />Antenatal Clinic Attendance</span>
-          <span className="metric-val">28 Bookings</span>
-          <span className="metric-sub">High-Risk Obstetric Consults: 6</span>
-        </div>
-        <div className="metric-box">
-          <span className="metric-label"><BedDouble size={13} style={{ display: 'inline', marginRight: 4 }} />Postnatal Mothers & Babies</span>
-          <span className="metric-val">14 Mother-Baby Pairs</span>
-          <span className="metric-sub">All Newborn Screening Completed</span>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="os-primary-btn" onClick={() => onNavigate('maternity')}>
-          <Stethoscope size={15} /> <span>Open Maternity & Labour Suite</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('paediatrics')}>
-          <Baby size={15} /> <span>NICU Incubators</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => triggerAction('Fetal Distress Alert Paged to On-Duty Obstetrician')}>
-          <AlertTriangle size={15} /> <span>Page Obstetrician STAT</span>
-        </button>
-      </div>
-
-      <div style={{ background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 14, padding: 20 }}>
-        <div className="os-section-header">
-          <span className="os-section-title">Active Labour Partograph Telemetry</span>
-          <span style={{ fontSize: '0.75rem', color: '#059669' }}>Real-time CTG Transducers</span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginTop: 12 }}>
-          {[
-            { room: 'Labour Room 1', mother: 'Anietie Ekpo (G2P1)', dilation: '10 cm (Full)', fhr: '142 bpm (Normal)', contractions: '4 in 10 min � Strong', status: 'Second Stage', urgent: false },
-            { room: 'Labour Room 2', mother: 'Victoria Bassey (G1P0)', dilation: '6 cm', fhr: '108 bpm (Decelerations)', contractions: '3 in 10 min � Moderate', status: 'Fetal Distress Alert', urgent: true },
-            { room: 'Labour Room 3', mother: 'Grace Inyang (G3P2)', dilation: '4 cm', fhr: '136 bpm (Normal)', contractions: '2 in 10 min � Mild', status: 'Active First Stage', urgent: false },
-            { room: 'Labour Room 4', mother: 'Ekaette Dan (G2P1)', dilation: '8 cm', fhr: '148 bpm (Normal)', contractions: '3 in 10 min � Moderate', status: 'Active First Stage', urgent: false },
-          ].map((l, i) => (
-            <div key={i} style={{ background: '#FFFFFF', border: `1px solid ${l.urgent ? '#EF4444' : '#E2E8F0'}`, borderRadius: 10, padding: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontWeight: 800, color: '#0052D4' }}>{l.room}</span>
-                <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 4, background: l.urgent ? 'rgba(239,68,68,0.2)' : 'rgba(5,150,105,0.12)', color: l.urgent ? '#EF4444' : '#4ADE80', fontWeight: 700 }}>
-                  {l.status}
-                </span>
-              </div>
-              <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.9rem' }}>{l.mother}</div>
-              <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#CBD5E1', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div>Cervical Dilation: <strong style={{ color: '#0052D4' }}>{l.dilation}</strong></div>
-                <div>Fetal Heart Rate: <strong style={{ color: l.urgent ? '#EF4444' : '#4ADE80' }}>{l.fhr}</strong></div>
-                <div>Contractions: <span>{l.contractions}</span></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    <RoleHome
+      title="Midwifery workspace"
+      subtitle="Maternity and labour tools shared across midwifery shifts."
+      metrics={[
+        { label: 'Role', value: 'Midwife', sub: 'Maternity', tone: 'green' },
+        { label: 'Labour', value: 'Live', sub: 'From nursing / EMR' },
+        { label: 'Shift', value: 'Active', sub: 'Shared handover' },
+      ]}
+      actions={[
+        { label: 'Maternity / wards', nav: 'nursing', msg: 'Maternity nursing', primary: true },
+        { label: 'Open EMR', nav: 'emr', msg: 'Maternity EMR' },
+        { label: 'Bed board', nav: 'beds', msg: 'Beds' },
+        { label: 'M87 AI', nav: 'm87-ai', msg: 'AI assistant' },
+      ]}
+      triggerAction={triggerAction}
+    />
   );
 }
+
 
 /* -------------------------------------------------------------
    5. PHARMACIST DASHBOARD
 ------------------------------------------------------------- */
 function PharmacistDashboardBody({ onNavigate, triggerAction }: any) {
   return (
-    <>
-      <div className="os-metrics-ribbon">
-        <div className="metric-box alert-yellow">
-          <span className="metric-label"><Pill size={13} style={{ display: 'inline', marginRight: 4 }} />Prescriptions to Dispense</span>
-          <span className="metric-val">32 Pending Rx</span>
-          <span className="metric-sub">18 Outpatient � 14 Inpatient e-MAR</span>
-        </div>
-        <div className="metric-box alert-red">
-          <span className="metric-label"><Flame size={13} style={{ display: 'inline', marginRight: 4 }} />STAT Urgent Orders</span>
-          <span className="metric-val">4 STAT Prescriptions</span>
-          <span className="metric-sub">A&E Resus � Theatre 3 Pre-Op</span>
-        </div>
-        <div className="metric-box alert-green">
-          <span className="metric-label"><Wind size={13} style={{ display: 'inline', marginRight: 4 }} />Cold-Chain Refrigerator</span>
-          <span className="metric-val">3.6�C (Optimal)</span>
-          <span className="metric-sub">Insulin, Oxytocin & Vaccines Valid</span>
-        </div>
-        <div className="metric-box">
-          <span className="metric-label"><Package size={13} style={{ display: 'inline', marginRight: 4 }} />Formulary Stockouts</span>
-          <span className="metric-val">3 Items Low</span>
-          <span className="metric-sub">IV Amoxiclav � Artesunate Vials</span>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="os-primary-btn" onClick={() => onNavigate('pharmacy')}>
-          <Pill size={15} /> <span>Open Pharmacy Dispensing Suite</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('inventory')}>
-          <Package size={15} /> <span>Central Medical Store (CMS)</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => triggerAction('Cold Chain Telemetry Logged to State NAFDAC Compliance')}>
-          <Wind size={15} /> <span>Verify Cold Chain Log</span>
-        </button>
-      </div>
-
-      <div style={{ background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 14, padding: 20 }}>
-        <div className="os-section-header">
-          <span className="os-section-title">Live Inpatient & Outpatient Prescription Queue</span>
-          <span style={{ fontSize: '0.75rem', color: '#F59E0B' }}>4 STAT Prescriptions Flagged</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-          {[
-            { rx: 'RX-9801', pt: 'Ime Akpan (A&E)', doc: 'Dr. E. Bassey', meds: 'IV Artesunate 120mg STAT + IV Ceftriaxone 1g', urgency: 'STAT Urgent', status: 'Awaiting Dispense' },
-            { rx: 'RX-9800', pt: 'Sarah Udeme (Postnatal)', doc: 'Dr. O. Friday', meds: 'Tab Ferrous Sulphate 200mg + Tab Folic Acid 5mg (30 Days)', urgency: 'Routine', status: 'Dispensed' },
-            { rx: 'RX-9799', pt: 'Victor Edem (Male Medical)', doc: 'Dr. A. Patrick', meds: 'Tab Enalapril 10mg + Tab Atorvastatin 20mg nocte', urgency: 'Urgent', status: 'Awaiting Dispense' },
-            { rx: 'RX-9798', pt: 'Kufre George (Paediatrics)', doc: 'Dr. N. Inyang', meds: 'Amoxicillin Syrup 250mg/5ml � 5ml TDS x 7 days', urgency: 'Routine', status: 'Awaiting Dispense' },
-          ].map((r, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontWeight: 800, color: '#0052D4', fontFamily: 'monospace' }}>{r.rx}</span>
-                  <span style={{ fontWeight: 600, color: '#0A2540' }}>{r.pt}</span>
-                  <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>Prescribed by {r.doc}</span>
-                  <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4, background: r.urgency.includes('STAT') ? 'rgba(239,68,68,0.2)' : 'rgba(2,132,199,0.2)', color: r.urgency.includes('STAT') ? '#EF4444' : '#38BDF8' }}>
-                    {r.urgency}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.82rem', color: '#CBD5E1', marginTop: 3 }}>{r.meds}</div>
-              </div>
-              <button
-                className="os-primary-btn"
-                style={{ padding: '5px 12px', fontSize: '0.74rem' }}
-                onClick={() => triggerAction(`Verified & Dispensed ${r.rx} for ${r.pt}`)}
-              >
-                Verify & Dispense
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    <RoleHome
+      title="Pharmacy workspace"
+      subtitle="Dispensary desk shared by all pharmacists on duty."
+      metrics={[
+        { label: 'Role', value: 'Pharmacist', sub: 'Dispensary', tone: 'green' },
+        { label: 'Queue', value: 'Live', sub: 'Pharmacy module' },
+        { label: 'Shift', value: 'Active', sub: 'Shared Rx queue' },
+      ]}
+      actions={[
+        { label: 'Dispense / pharmacy', nav: 'pharmacy', msg: 'Pharmacy', primary: true },
+        { label: 'Open EMR', nav: 'emr', msg: 'Medication history' },
+        { label: 'Inventory', nav: 'inventory', msg: 'Medical store' },
+        { label: 'M87 AI', nav: 'm87-ai', msg: 'Drug safety AI' },
+      ]}
+      triggerAction={triggerAction}
+    />
   );
 }
+
 
 /* -------------------------------------------------------------
    6. LAB SCIENTIST DASHBOARD
 ------------------------------------------------------------- */
 function LabDashboardBody({ onNavigate, triggerAction }: any) {
   return (
-    <>
-      <div className="os-metrics-ribbon">
-        <div className="metric-box alert-yellow">
-          <span className="metric-label"><FlaskConical size={13} style={{ display: 'inline', marginRight: 4 }} />Specimens in Worklist</span>
-          <span className="metric-val">42 Specimens</span>
-          <span className="metric-sub">16 Hematology � 18 Biochem � 8 Micro</span>
-        </div>
-        <div className="metric-box alert-red">
-          <span className="metric-label"><AlertTriangle size={13} style={{ display: 'inline', marginRight: 4 }} />STAT Panic Critical Values</span>
-          <span className="metric-val">2 Critical Values</span>
-          <span className="metric-sub">Potassium 6.8 mmol/L (MMW-04) � Phone Call Made</span>
-        </div>
-        <div className="metric-box alert-green">
-          <span className="metric-label"><Cpu size={13} style={{ display: 'inline', marginRight: 4 }} />Automated Analyzers</span>
-          <span className="metric-val">4 Instruments Online</span>
-          <span className="metric-sub">Sysmex XN-1000 � Cobas 6000 � Mindray</span>
-        </div>
-        <div className="metric-box">
-          <span className="metric-label"><Droplet size={13} style={{ display: 'inline', marginRight: 4 }} />Blood Bank Crossmatches</span>
-          <span className="metric-val">18 Units Ready</span>
-          <span className="metric-sub">4 Emergency O-Negative Units Reserved</span>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="os-primary-btn" onClick={() => onNavigate('laboratory')}>
-          <FlaskConical size={15} /> <span>Open Laboratory LIS Suite</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('blood-bank')}>
-          <Droplet size={15} /> <span>Blood Bank Crossmatch</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => triggerAction('Panic Value Logged & Attending Doctor Telephoned')}>
-          <PhoneCall size={15} /> <span>Log Panic Phone Call</span>
-        </button>
-      </div>
-
-      <div style={{ background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 14, padding: 20 }}>
-        <div className="os-section-header">
-          <span className="os-section-title">Specimen Accession & Result Validation Queue</span>
-          <span style={{ fontSize: '0.75rem', color: '#0052D4' }}>Average Turnaround: 34 mins</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-          {[
-            { bar: 'LAB-8841', pt: 'Elder Etebong Udo', test: 'Serum Electrolytes, Urea & Creatinine (E/U/Cr)', result: 'K+: 6.8 mmol/L (PANIC HIGH) � Cr: 210 �mol/L', analyzer: 'Roche Cobas c501', status: 'PANIC ALERT', alert: true },
-            { bar: 'LAB-8840', pt: 'Blessing Okon', test: 'Full Blood Count + Diff (FBC)', result: 'WBC: 18.4 x10^9/L � Platelets: 98 x10^9/L � Hb: 8.2 g/dL', analyzer: 'Sysmex XN-1000', status: 'Awaiting Sign-off', alert: false },
-            { bar: 'LAB-8839', pt: 'Usen Akpan', test: 'Pre-Op Blood Grouping & Crossmatch', result: 'Group O Rh(D) Positive � 2 Units Compatible', analyzer: 'Manual Tile / Gel Card', status: 'Crossmatch Complete', alert: false },
-            { bar: 'LAB-8838', pt: 'Emem Archibong', test: 'Malaria Parasite (MP) Film + RDT', result: 'P. falciparum (+++) Ring forms seen', analyzer: 'Olympus CX23 Microscopy', status: 'Validated', alert: false },
-          ].map((s, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#F8FAFC', borderRadius: 8, border: `1px solid ${s.alert ? '#EF4444' : '#FFFFFF'}` }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontWeight: 800, color: '#0052D4', fontFamily: 'monospace' }}>{s.bar}</span>
-                  <span style={{ fontWeight: 600, color: '#0A2540' }}>{s.pt}</span>
-                  <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>{s.test}</span>
-                </div>
-                <div style={{ fontSize: '0.82rem', color: s.alert ? '#F87171' : '#CBD5E1', marginTop: 4, fontWeight: s.alert ? 700 : 500 }}>
-                  Result: {s.result}
-                </div>
-              </div>
-              <button
-                className="os-primary-btn"
-                style={{ padding: '5px 12px', fontSize: '0.74rem' }}
-                onClick={() => triggerAction(`Released verified lab result: ${s.bar} for ${s.pt}`)}
-              >
-                Sign & Transmit
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    <RoleHome
+      title="Laboratory workspace"
+      subtitle="LIS and specimen workflow shared across lab scientists."
+      metrics={[
+        { label: 'Role', value: 'Lab', sub: 'Pathology', tone: 'green' },
+        { label: 'Orders', value: 'Live', sub: 'Laboratory module' },
+        { label: 'Shift', value: 'Active', sub: 'Shared worklist' },
+      ]}
+      actions={[
+        { label: 'Lab LIS', nav: 'laboratory', msg: 'Laboratory', primary: true },
+        { label: 'Open EMR', nav: 'emr', msg: 'Lab results / EMR' },
+        { label: 'Blood bank', nav: 'blood-bank', msg: 'Blood bank' },
+        { label: 'M87 AI', nav: 'm87-ai', msg: 'AI assistant' },
+      ]}
+      triggerAction={triggerAction}
+    />
   );
 }
+
 
 /* -------------------------------------------------------------
    7. RADIOLOGIST DASHBOARD
 ------------------------------------------------------------- */
 function RadiologistDashboardBody({ onNavigate, triggerAction }: any) {
   return (
-    <>
-      <div className="os-metrics-ribbon">
-        <div className="metric-box alert-yellow">
-          <span className="metric-label"><Layers size={13} style={{ display: 'inline', marginRight: 4 }} />Unread PACS Studies</span>
-          <span className="metric-val">19 Scans</span>
-          <span className="metric-sub">6 CT � 4 MRI � 7 Digital X-Ray � 2 Ultrasound</span>
-        </div>
-        <div className="metric-box alert-red">
-          <span className="metric-label"><Flame size={13} style={{ display: 'inline', marginRight: 4 }} />STAT Emergency Trauma</span>
-          <span className="metric-val">3 Priority Scans</span>
-          <span className="metric-sub">CT Polytrauma (A&E) � Acute Stroke CT</span>
-        </div>
-        <div className="metric-box alert-green">
-          <span className="metric-label"><Activity size={13} style={{ display: 'inline', marginRight: 4 }} />Modalities Online</span>
-          <span className="metric-val">4 / 4 Modalities</span>
-          <span className="metric-sub">128-Slice CT � 1.5T MRI � Digital X-Ray � 4D US</span>
-        </div>
-        <div className="metric-box">
-          <span className="metric-label"><Clock size={13} style={{ display: 'inline', marginRight: 4 }} />Turnaround Time</span>
-          <span className="metric-val">38 mins Avg</span>
-          <span className="metric-sub">Target &lt; 60 mins � 96% SLA Compliance</span>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="os-primary-btn" onClick={() => onNavigate('radiology')}>
-          <Layers size={15} /> <span>Launch PACS DICOM Viewer</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => triggerAction('Voice Dictation Module Launched for Radiology Reporting')}>
-          <FileText size={15} /> <span>Voice Dictation Reporting</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => triggerAction('Critical Finding Alert Broadcast to A&E Consultant')}>
-          <AlertTriangle size={15} /> <span>Broadcast Critical Finding</span>
-        </button>
-      </div>
-
-      <div style={{ background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 14, padding: 20 }}>
-        <div className="os-section-header">
-          <span className="os-section-title">PACS DICOM Diagnostic Worklist</span>
-          <span style={{ fontSize: '0.75rem', color: '#0052D4' }}>Integrated Orthanc & DICOM Gateway</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-          {[
-            { id: 'PAC-4410', pt: 'Kufre Etim (32M)', modality: '128-Slice CT', exam: 'CT Brain (Non-Contrast) � Rule out Epidural Hematoma', ref: 'Dr. E. Bassey (A&E)', urgency: 'STAT Trauma', alert: true },
-            { id: 'PAC-4409', pt: 'Iniobong Udoh (58F)', modality: 'Digital X-Ray', exam: 'Chest PA View � Suspected Lobar Consolidation', ref: 'Dr. A. Okon (Internal Med)', urgency: 'Urgent', alert: false },
-            { id: 'PAC-4408', pt: 'David Akpan (45M)', modality: '1.5T MRI', exam: 'MRI Lumbar Spine � Radiculopathy L4-L5', ref: 'Dr. O. Friday (Ortho)', urgency: 'Routine', alert: false },
-            { id: 'PAC-4407', pt: 'Mary Bassey (26F)', modality: 'Sonography', exam: 'Pelvic & Obstetric Ultrasound � 34 Weeks Gestation', ref: 'Midwife Archibong', urgency: 'Routine', alert: false },
-          ].map((p, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#F8FAFC', borderRadius: 8, border: `1px solid ${p.alert ? '#EF4444' : '#FFFFFF'}` }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontWeight: 800, color: '#0052D4', fontFamily: 'monospace' }}>{p.id}</span>
-                  <span style={{ fontWeight: 600, color: '#0A2540' }}>{p.pt}</span>
-                  <span style={{ fontSize: '0.72rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(2,132,199,0.2)', color: '#0052D4', fontWeight: 700 }}>
-                    {p.modality}
-                  </span>
-                  <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4, background: p.alert ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)', color: p.alert ? '#EF4444' : '#F59E0B' }}>
-                    {p.urgency}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.82rem', color: '#CBD5E1', marginTop: 4 }}>{p.exam}</div>
-                <div style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: 2 }}>Referred by: {p.ref}</div>
-              </div>
-              <button
-                className="os-primary-btn"
-                style={{ padding: '6px 14px', fontSize: '0.75rem' }}
-                onClick={() => triggerAction(`Launched PACS Viewer for ${p.id}`, 'radiology')}
-              >
-                Open DICOM
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    <RoleHome
+      title="Radiology workspace"
+      subtitle="Imaging desk shared by radiologists — open PACS and report in EMR."
+      metrics={[
+        { label: 'Role', value: 'Radiology', sub: 'Imaging', tone: 'green' },
+        { label: 'Studies', value: 'Live', sub: 'Radiology module' },
+        { label: 'Shift', value: 'Active', sub: 'Shared worklist' },
+      ]}
+      actions={[
+        { label: 'Radiology / PACS', nav: 'radiology', msg: 'Radiology', primary: true },
+        { label: 'Open EMR', nav: 'emr', msg: 'Reports in EMR' },
+        { label: 'M87 AI', nav: 'm87-ai', msg: 'Imaging AI' },
+      ]}
+      triggerAction={triggerAction}
+    />
   );
 }
+
 
 /* -------------------------------------------------------------
    8. ACCOUNTANT DASHBOARD
 ------------------------------------------------------------- */
 function AccountantDashboardBody({ onNavigate, triggerAction }: any) {
   return (
-    <>
-      <div className="os-metrics-ribbon">
-        <div className="metric-box alert-green">
-          <span className="metric-label"><CreditCard size={13} style={{ display: 'inline', marginRight: 4 }} />Today's Hospital Collections</span>
-          <span className="metric-val">?4,820,500</span>
-          <span className="metric-sub">5 Active Tills � 100% Reconciled</span>
-        </div>
-        <div className="metric-box">
-          <span className="metric-label"><ShieldCheck size={13} style={{ display: 'inline', marginRight: 4 }} />AKSHIA & NHIA Insurance Claims</span>
-          <span className="metric-val">?12,450,000</span>
-          <span className="metric-sub">94.2% Adjudication Approval Rate</span>
-        </div>
-        <div className="metric-box alert-yellow">
-          <span className="metric-label"><Clock size={13} style={{ display: 'inline', marginRight: 4 }} />Unsettled Inpatient Balances</span>
-          <span className="metric-val">?1,840,000</span>
-          <span className="metric-sub">14 Discharge Accounts Awaiting Clearance</span>
-        </div>
-        <div className="metric-box">
-          <span className="metric-label"><BarChart3 size={13} style={{ display: 'inline', marginRight: 4 }} />State Health Remittance</span>
-          <span className="metric-val">?3,600,000</span>
-          <span className="metric-sub">Auto-Swept to Akwa Ibom TSA (Verified)</span>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button
-          className="os-primary-btn"
-          style={{ background: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)', color: '#FFF' }}
-          onClick={() => {
-            triggerAction('Opening Inpatient & Outpatient Billing Ledger to Add New Bill...', 'billing');
-          }}
-        >
-          <Plus size={15} /> <span>Add New Bill</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('billing')}>
-          <CreditCard size={15} /> <span>Inpatient / Outpatient Billing</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('cashier')}>
-          <CreditCard size={15} /> <span>Cashier Shift Tills</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('claims')}>
-          <ShieldCheck size={15} /> <span>AKSHIA / HMO Claims</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('revenue-cycle')}>
-          <BarChart3 size={15} /> <span>Revenue Cycle & Ledger</span>
-        </button>
-      </div>
-
-      <div style={{ background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 14, padding: 20 }}>
-        <div className="os-section-header">
-          <span className="os-section-title">Active Cashier Tills & Collection Points</span>
-          <span style={{ fontSize: '0.75rem', color: '#059669' }}>? All POS Terminals Online</span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14, marginTop: 12 }}>
-          {[
-            { till: 'Till 1 � GOPD Outpatient', cashier: 'Inemesit Okon', total: '?1,420,000', trans: '142 Receipts', status: 'Balanced' },
-            { till: 'Till 2 � A&E Emergency', cashier: 'Ubong Umoh', total: '?980,500', trans: '84 Receipts', status: 'Balanced' },
-            { till: 'Till 3 � Pharmacy Main POS', cashier: 'Mfon Akpan', total: '?1,240,000', trans: '168 Receipts', status: 'Balanced' },
-            { till: 'Till 4 � Theatre & Inpatient Billing', cashier: 'Blessing Essien', total: '?1,180,000', trans: '28 Receipts', status: 'Balanced' },
-          ].map((t, i) => (
-            <div key={i} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, padding: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontWeight: 800, color: '#0052D4', fontSize: '0.88rem' }}>{t.till}</span>
-                <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(5,150,105,0.12)', color: '#059669', fontWeight: 700 }}>
-                  {t.status}
-                </span>
-              </div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0A2540', margin: '6px 0' }}>{t.total}</div>
-              <div style={{ fontSize: '0.78rem', color: '#94A3B8', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Cashier: {t.cashier}</span>
-                <span>{t.trans}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    <RoleHome
+      title="Finance workspace"
+      subtitle="Cashiers and finance officers share billing and POS tools."
+      metrics={[
+        { label: 'Role', value: 'Finance', sub: 'Billing & POS', tone: 'green' },
+        { label: 'Tills', value: 'Live', sub: 'Cashier module' },
+        { label: 'Shift', value: 'Active', sub: 'Shared revenue desk' },
+      ]}
+      actions={[
+        { label: 'Cashier / POS', nav: 'cashier', msg: 'Cashier', primary: true },
+        { label: 'Billing', nav: 'billing', msg: 'Billing office' },
+        { label: 'Revenue', nav: 'revenue', msg: 'Revenue cycle' },
+        { label: 'Patient card', nav: 'patient-card', msg: 'Patient billing identity' },
+      ]}
+      triggerAction={triggerAction}
+    />
   );
 }
+
 
 /* -------------------------------------------------------------
    9. MEDICAL RECORDS OFFICER DASHBOARD
 ------------------------------------------------------------- */
 function RecordsDashboardBody({ onNavigate, triggerAction }: any) {
   return (
-    <>
-      <div className="os-metrics-ribbon">
-        <div className="metric-box">
-          <span className="metric-label"><Users size={13} style={{ display: 'inline', marginRight: 4 }} />Today's Registrations</span>
-          <span className="metric-val">84 Patients</span>
-          <span className="metric-sub">56 New In-State Registrations � 28 Follow-ups</span>
-        </div>
-        <div className="metric-box alert-green">
-          <span className="metric-label"><FileText size={13} style={{ display: 'inline', marginRight: 4 }} />AkwaHealth Smart Cards Issued</span>
-          <span className="metric-val">62 Cards</span>
-          <span className="metric-sub">RFID / QR Encoded with FHIR Patient ID</span>
-        </div>
-        <div className="metric-box">
-          <span className="metric-label"><Package size={13} style={{ display: 'inline', marginRight: 4 }} />Archive Folders Dispatched</span>
-          <span className="metric-val">140 Folders</span>
-          <span className="metric-sub">Sent to Specialty Clinics on Time</span>
-        </div>
-        <div className="metric-box alert-yellow">
-          <span className="metric-label"><Calendar size={13} style={{ display: 'inline', marginRight: 4 }} />Appointments Booked</span>
-          <span className="metric-val">96 Bookings</span>
-          <span className="metric-sub">Cardiology, GOPD, O&G, Paediatrics</span>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="os-primary-btn" onClick={() => onNavigate('patient-card')}>
-          <FileText size={15} /> <span>Digital Health Card (FHIR)</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('patient-flow')}>
-          <RefreshCw size={15} /> <span>Patient Flow & Admissions</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => triggerAction('New Patient Intake Record & FHIR Bundle Created')}>
-          <Plus size={15} /> <span>Register New Inpatient</span>
-        </button>
-      </div>
-
-      <div style={{ background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 14, padding: 20 }}>
-        <div className="os-section-header">
-          <span className="os-section-title">Front-Desk Patient Registration & Smart Card Issuance Stream</span>
-          <span style={{ fontSize: '0.75rem', color: '#059669' }}>HL7 FHIR Patient Resource Synced</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-          {[
-            { mrn: 'AK-2026-9014', name: 'Nseobong Sunday Udoh', lga: 'Uyo LGA', type: 'GOPD Consultation', card: 'Card Issued', time: '09:22 AM' },
-            { mrn: 'AK-2026-9013', name: 'Blessing Ekong Asuquo', lga: 'Ikot Ekpene LGA', type: 'Antenatal Booking', card: 'Card Issued', time: '09:14 AM' },
-            { mrn: 'AK-2026-9012', name: 'Aniefiok Okon Bassey', lga: 'Eket LGA', type: 'Emergency A&E Intake', card: 'Temporary Band Issued', time: '08:58 AM' },
-            { mrn: 'AK-2026-9011', name: 'Christiana Edet Archibong', lga: 'Oron LGA', type: 'Paediatric Immunization', card: 'Card Issued', time: '08:45 AM' },
-          ].map((p, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontWeight: 800, color: '#0052D4', fontFamily: 'monospace' }}>{p.mrn}</span>
-                  <span style={{ fontWeight: 600, color: '#0A2540' }}>{p.name}</span>
-                  <span style={{ fontSize: '0.74rem', color: '#94A3B8' }}>{p.lga}</span>
-                </div>
-                <div style={{ fontSize: '0.8rem', color: '#CBD5E1', marginTop: 3 }}>Type: {p.type} � Registered: {p.time}</div>
-              </div>
-              <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 4, background: 'rgba(5,150,105,0.1)', color: '#059669', fontWeight: 700 }}>
-                {p.card}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    <RoleHome
+      title="Health records workspace"
+      subtitle="Records officers share MPI / folder and chart retrieval tools."
+      metrics={[
+        { label: 'Role', value: 'Records', sub: 'MPI & folders', tone: 'green' },
+        { label: 'Charts', value: 'Live', sub: 'EMR / cards' },
+        { label: 'Shift', value: 'Active', sub: 'Shared desk' },
+      ]}
+      actions={[
+        { label: 'Patient card / MPI', nav: 'patient-card', msg: 'Patient card', primary: true },
+        { label: 'Open EMR', nav: 'emr', msg: 'Clinical records' },
+        { label: 'Patient flow', nav: 'patient-flow', msg: 'Flow' },
+      ]}
+      triggerAction={triggerAction}
+    />
   );
 }
+
 
 /* -------------------------------------------------------------
    10. BIOMEDICAL ENGINEER DASHBOARD
@@ -1230,75 +723,24 @@ function MedicalDirectorDashboardBody({ onNavigate, triggerAction }: any) {
 ------------------------------------------------------------- */
 function SysadminDashboardBody({ onNavigate, triggerAction }: any) {
   return (
-    <>
-      <div className="os-metrics-ribbon">
-        <div className="metric-box">
-          <span className="metric-label"><Users size={13} style={{ display: 'inline', marginRight: 4 }} />Active Authenticated Sessions</span>
-          <span className="metric-val">84 Hospital Users</span>
-          <span className="metric-sub">JWT Bearer � PKI Smart Cards Active</span>
-        </div>
-        <div className="metric-box alert-green">
-          <span className="metric-label"><Cpu size={13} style={{ display: 'inline', marginRight: 4 }} />System Uptime & Latency</span>
-          <span className="metric-val">99.98% � 18ms</span>
-          <span className="metric-sub">API Gateway, DB & PACS Nodes Healthy</span>
-        </div>
-        <div className="metric-box alert-green">
-          <span className="metric-label"><Database size={13} style={{ display: 'inline', marginRight: 4 }} />HL7 FHIR Interop Gateway</span>
-          <span className="metric-val">1,420 Bundles</span>
-          <span className="metric-sub">0 Errors � FHIR R4 Compliant</span>
-        </div>
-        <div className="metric-box">
-          <span className="metric-label"><ShieldCheck size={13} style={{ display: 'inline', marginRight: 4 }} />Immutable Audit Ledger</span>
-          <span className="metric-val">Block #84,219</span>
-          <span className="metric-sub">100% Cryptographic Hash Verification</span>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="os-primary-btn" onClick={() => onNavigate('sysadmin')}>
-          <Shield size={15} /> <span>System Administration</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('rbac')}>
-          <Lock size={15} /> <span>Role-Based Access Control</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('fhir')}>
-          <Database size={15} /> <span>FHIR R4 Message Gateway</span>
-        </button>
-        <button className="os-ghost-btn" onClick={() => onNavigate('compliance')}>
-          <FileText size={15} /> <span>Security & Audit Logs</span>
-        </button>
-      </div>
-
-      <div style={{ background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 14, padding: 20 }}>
-        <div className="os-section-header">
-          <span className="os-section-title">Core Infrastructure Node Health & Security Feed</span>
-          <span style={{ fontSize: '0.75rem', color: '#059669' }}>All 6 Nodes Operational</span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14, marginTop: 12 }}>
-          {[
-            { node: 'MedCore API Gateway', host: 'api.medcore.aks.gov.ng', port: '443 (HTTPS)', status: 'Online � 14ms', ok: true },
-            { node: 'PostgreSQL Relational DB', host: 'db.medcore.internal', port: '5432', status: 'Online � 2.4GB / 50GB', ok: true },
-            { node: 'FHIR R4 Server', host: 'fhir.medcore.internal', port: '8080', status: 'Online � HAPI FHIR R4', ok: true },
-            { node: 'PACS Orthanc DICOM', host: 'pacs.medcore.internal', port: '4242', status: 'Online � 1.4TB DICOM', ok: true },
-            { node: 'Redis Session Cache', host: 'redis.medcore.internal', port: '6379', status: 'Online � 84 Keys', ok: true },
-            { node: 'Immutable Audit Hash Chain', host: 'audit.medcore.internal', port: '8443', status: 'Verified Integrity', ok: true },
-          ].map((n, i) => (
-            <div key={i} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, padding: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ fontWeight: 800, color: '#0052D4', fontSize: '0.85rem' }}>{n.node}</span>
-                <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(5,150,105,0.12)', color: '#059669', fontWeight: 700 }}>
-                  Active
-                </span>
-              </div>
-              <div style={{ fontSize: '0.78rem', color: '#CBD5E1', margin: '4px 0', fontFamily: 'monospace' }}>{n.host}:{n.port}</div>
-              <div style={{ fontSize: '0.74rem', color: '#059669' }}>{n.status}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    <RoleHome
+      title="ICT / System Admin"
+      subtitle="Infrastructure and access tools for ICT officers."
+      metrics={[
+        { label: 'Role', value: 'SysAdmin', sub: 'ICT', tone: 'green' },
+        { label: 'Systems', value: 'Live', sub: 'Health checks' },
+        { label: 'Access', value: 'RBAC', sub: 'Via admin when permitted' },
+      ]}
+      actions={[
+        { label: 'System admin', nav: 'system-admin', msg: 'System administration', primary: true },
+        { label: 'Data hub', nav: 'data-hub', msg: 'Data hub' },
+        { label: 'M87 AI', nav: 'm87-ai', msg: 'AI' },
+      ]}
+      triggerAction={triggerAction}
+    />
   );
 }
+
 
 /* -------------------------------------------------------------
    12. HOSPITAL ADMIN DASHBOARD
