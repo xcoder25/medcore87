@@ -411,7 +411,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       (u.toLowerCase() === adminEmail ||
         (u.toLowerCase().includes('xcoder2442') && pass === PLATFORM_ADMIN.password));
 
-    // ── Badge + PIN mode: never use Firebase / admin fallback ─────────────
+    // ── Badge + PIN ────────────────────────────────────────────────────────
     if (authMode === 'badge') {
       const badgeQuery = u.trim().toUpperCase().replace(/\s+/g, '');
       const pinQuery = pass.trim();
@@ -426,89 +426,42 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         return;
       }
 
-      // Always re-read registry + cards from disk (enrol may have just happened)
-      let registryForLookup: PresetStaff[] = staffRegistry;
+      const mapProfile = (raw: Record<string, unknown>): PresetStaff => ({
+        badgeId: String(raw.badgeId || raw.id || badgeQuery).toUpperCase(),
+        name: String(raw.name || raw.fullName || 'Staff'),
+        role: String(raw.role || 'Staff'),
+        shortRole: String(raw.shortRole || raw.role || 'Staff'),
+        title: String(raw.title || raw.role || 'Staff'),
+        roleKey: String(raw.roleKey || 'doctor'),
+        clearanceLevel: Number(raw.clearanceLevel ?? 2),
+        clearanceLabel: String(raw.clearanceLabel || 'L2'),
+        department: String(raw.department || ''),
+        initials: String(raw.initials || 'ST'),
+        permissions: (raw.permissions as string[]) || ['dashboard'],
+        pin: String(raw.pin || pinQuery),
+        hospitalId: String(raw.hospitalId || raw.facilityId || effectiveHospital.id),
+        hospitalName: String(raw.hospitalName || raw.facilityName || effectiveHospital.name),
+        color: '#0052D4',
+      });
+
+      let registryForLookup = [...staffRegistry];
       try {
-        const saved = localStorage.getItem('medcore_os_staff_registry');
-        const parsed: any[] = saved ? JSON.parse(saved) : [];
-        const byBadge = new Map<string, PresetStaff>();
-        const admin = PRESET_STAFF.find((x) => x.badgeId === PLATFORM_ADMIN.badgeId);
-        if (admin) byBadge.set(admin.badgeId.toUpperCase().replace(/\s+/g, ''), admin);
-        for (const p of Array.isArray(parsed) ? parsed : []) {
-          const bid = String(p.badgeId || p.id || '').toUpperCase().replace(/\s+/g, '');
-          if (!bid) continue;
-          byBadge.set(bid, {
-            badgeId: bid,
-            name: p.name || p.fullName || 'Staff',
-            role: p.role || 'Staff',
-            shortRole: p.shortRole || p.role || 'Staff',
-            title: p.title || p.role || 'Staff',
-            roleKey: p.roleKey || 'doctor',
-            clearanceLevel: p.clearanceLevel ?? 2,
-            clearanceLabel: p.clearanceLabel || 'L2',
-            department: p.department || '',
-            initials: p.initials || 'ST',
-            permissions: p.permissions || ['dashboard'],
-            pin: String(p.pin || '1234'),
-            hospitalId: p.hospitalId || p.facilityId || effectiveHospital.id,
-            hospitalName: p.hospitalName || p.facilityName || effectiveHospital.name,
-            color: p.color || '#0052D4',
-          });
-        }
-        try {
-          const cardsRaw = localStorage.getItem('medcore_staff_id_cards');
-          const cards: any[] = cardsRaw ? JSON.parse(cardsRaw) : [];
-          for (const c of Array.isArray(cards) ? cards : []) {
-            const bid = String(c.badgeId || '').toUpperCase().replace(/\s+/g, '');
-            if (!bid) continue;
-            const prev = byBadge.get(bid);
-            if (prev) continue;
-            byBadge.set(bid, {
-              badgeId: bid,
-              name: c.fullName || c.name || 'Staff',
-              role: c.role || 'Staff',
-              shortRole: c.role || 'Staff',
-              title: c.title || c.role || 'Staff',
-              roleKey: c.roleKey || 'doctor',
-              clearanceLevel: c.clearanceLevel ?? 2,
-              clearanceLabel: c.clearanceLabel || 'L2',
-              department: c.department || '',
-              initials: c.initials || 'ST',
-              permissions: ['dashboard'],
-              pin: String(prev?.pin || '1234'),
-              hospitalId: c.facilityId || effectiveHospital.id,
-              hospitalName: c.facilityName || effectiveHospital.name,
-              color: '#0052D4',
-            });
+        const raw = localStorage.getItem('medcore_os_staff_registry');
+        const arr = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(arr) && arr.length) {
+          const byBadge = new Map<string, PresetStaff>();
+          for (const s of registryForLookup) {
+            byBadge.set(s.badgeId.toUpperCase(), s);
           }
-        } catch { /* ignore */ }
-        registryForLookup = Array.from(byBadge.values());
-        setStaffRegistry(registryForLookup);
+          for (const s of arr) {
+            const b = String(s.badgeId || s.id || '').toUpperCase();
+            if (!b) continue;
+            byBadge.set(b, mapProfile(s));
+          }
+          registryForLookup = Array.from(byBadge.values());
+        }
       } catch { /* ignore */ }
-      }
 
-      const mapProfile = (raw: Record<string, unknown> | PresetStaff): PresetStaff => {
-        const r = raw as Record<string, unknown>;
-        return {
-          badgeId: String(r.badgeId || r.id || badgeQuery).toUpperCase(),
-          name: String(r.name || r.fullName || 'Staff'),
-          role: String(r.role || 'Staff'),
-          shortRole: String(r.shortRole || r.role || 'Staff'),
-          title: String(r.title || r.role || 'Staff'),
-          roleKey: String(r.roleKey || 'doctor'),
-          clearanceLevel: Number(r.clearanceLevel ?? 2),
-          clearanceLabel: String(r.clearanceLabel || 'L2'),
-          department: String(r.department || ''),
-          initials: String(r.initials || 'ST'),
-          permissions: (r.permissions as string[]) || ['dashboard'],
-          pin: String(r.pin || pinQuery),
-          hospitalId: String(r.hospitalId || r.facilityId || effectiveHospital.id),
-          hospitalName: String(r.hospitalName || r.facilityName || effectiveHospital.name),
-          color: '#0052D4',
-        };
-      };
-
-      // Load profile from local (fresh disk) + Firestore
       let profile: PresetStaff | undefined = registryForLookup.find(
         (s) => s.badgeId.toUpperCase().replace(/\s+/g, '') === badgeQuery
       );
@@ -538,17 +491,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           try {
             const { listStaffCards } = await import('../../lib/staffCardStore');
             const card = listStaffCards().find(
-              (c) => (c.badgeId || '').toUpperCase() === badgeQuery
+              (c) => (c.badgeId || '').toUpperCase().replace(/\s+/g, '') === badgeQuery
             );
             if (card) {
-              let cardPin = '1234';
-              try {
-                const reg = JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]');
-                const hit = Array.isArray(reg)
-                  ? reg.find((r: any) => String(r.badgeId || r.id || '').toUpperCase().replace(/\s+/g, '') === badgeQuery)
-                  : null;
-                if (hit?.pin) cardPin = String(hit.pin);
-              } catch { /* ignore */ }
               profile = mapProfile({
                 badgeId: card.badgeId,
                 name: card.fullName,
@@ -561,26 +506,24 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 initials: card.initials,
                 hospitalId: card.facilityId,
                 hospitalName: card.facilityName,
-                pin: cardPin,
+                pin: pinQuery,
               });
             }
           } catch { /* ignore */ }
         }
 
         if (!profile) {
-          setError('Staff ID not found. Confirm enrolment completed and hospital is correct.');
+          setError('Staff ID not found. Confirm enrolment and hospital selection.');
           setLoading(false);
           return;
         }
 
-        // Firebase Auth with badge + PIN (same as email/password path)
         const pinNorm = normalizeStaffPin(pinQuery);
         let fbUser;
         try {
           fbUser = await firebaseSignInWithBadge(profile.badgeId, pinNorm);
         } catch (authErr: unknown) {
           const code = (authErr as { code?: string })?.code || '';
-          // Migrate older cards: local/Firestore PIN matches → create Auth account once
           const localPinOk =
             normalizeStaffPin(String(profile.pin || '')) === pinNorm ||
             String(profile.pin || '') === pinQuery;
@@ -596,7 +539,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             } catch (e2: unknown) {
               setError(
                 (e2 as { message?: string })?.message ||
-                  'Could not create Firebase login for this badge. Enable Email/Password in Firebase Console.'
+                  'Could not create Firebase login for this badge. Enable Email/Password in Firebase.'
               );
               setLoading(false);
               return;
@@ -606,40 +549,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             setLoading(false);
             return;
           } else {
-            // Offline / network: still allow local PIN session if enrolled on this device
-            const localPinOk2 =
-              String(profile.pin || '') === pinQuery ||
-              String(profile.pin || '') === pinNorm;
-            if (localPinOk2 && (code === 'auth/network-request-failed' || code === 'auth/internal-error' || !code)) {
-              const session: UserSession = {
-                id: profile.badgeId,
-                badgeId: profile.badgeId,
-                name: profile.name,
-                role: profile.role,
-                roleKey: profile.roleKey,
-                title: profile.title,
-                facility: profile.hospitalName || effectiveHospital.name,
-                hospitalId: profile.hospitalId || effectiveHospital.id,
-                department: profile.department,
-                avatarInitials: profile.initials,
-                clearanceLabel: profile.clearanceLabel,
-                clearanceLevel: profile.clearanceLevel,
-                permissions: profile.permissions,
-                authMethod: 'Staff PIN · Offline',
-                token: `LOCAL-${Date.now().toString(36).toUpperCase()}`,
-                loginTime: new Date().toLocaleTimeString('en-GB', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                }),
-              };
-              setSuccess(true);
-              setLoading(false);
-              setTimeout(() => triggerLogin(session), 300);
-              return;
-            }
             setError(
               (authErr as { message?: string })?.message ||
-                'Badge sign-in failed. Check PIN and Firebase Auth settings.'
+                'Badge sign-in failed. Check PIN and Firebase Auth.'
             );
             setLoading(false);
             return;
@@ -683,7 +595,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       }
     }
 
-    // ── Email mode → Firebase (platform admin or staff email) ─────────────
+    // ── Email → Firebase ───────────────────────────────────────────────────
     if (u.includes('@') || isPlatformAdmin) {
       const email = u.includes('@') ? u : PLATFORM_ADMIN.email;
       try {
@@ -698,8 +610,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           setLoading(false);
           return;
         }
-
-        // Platform admin must use the issued password
         if (email.toLowerCase() === adminEmail && pass !== PLATFORM_ADMIN.password) {
           setError('Incorrect password for this administrator account.');
           setLoading(false);
@@ -711,33 +621,35 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           fbUser = await firebaseSignIn(email, pass);
         } catch (signInErr: unknown) {
           const code = (signInErr as { code?: string })?.code || '';
-          if (code === 'auth/user-not-found' || code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
-            // First-time: create only the known platform admin account
+          if (
+            code === 'auth/user-not-found' ||
+            code === 'auth/invalid-credential' ||
+            code === 'auth/wrong-password'
+          ) {
             if (email.toLowerCase() === adminEmail && pass === PLATFORM_ADMIN.password) {
               try {
                 fbUser = await firebaseSignUp(email, pass);
               } catch (signUpErr: unknown) {
-                // Already exists with different state — retry sign-in once
                 try {
                   fbUser = await firebaseSignIn(email, pass);
                 } catch {
-                  const msg =
+                  setError(
                     (signUpErr as { message?: string })?.message ||
-                    'Could not sign in. Enable Email/Password in Firebase Console, then try again.';
-                  setError(msg);
+                      'Could not sign in. Enable Email/Password in Firebase Console.'
+                  );
                   setLoading(false);
                   return;
                 }
               }
             } else {
-              setError('Wrong email or password. Contact your hospital administrator for access.');
+              setError('Invalid email or password.');
               setLoading(false);
               return;
             }
           } else {
             setError(
               (signInErr as { message?: string })?.message ||
-                'Sign-in failed. Check your internet connection and try again.'
+                'Sign-in failed. Check your connection and try again.'
             );
             setLoading(false);
             return;
@@ -745,16 +657,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         }
 
         const adminStaff = staffRegistry.find((s) => s.badgeId === PLATFORM_ADMIN.badgeId);
-        // Never default a non-admin email to the hospital admin session
         const matchedStaff =
-          email.toLowerCase() === adminEmail
-            ? adminStaff
-            : detectedStaff;
+          email.toLowerCase() === adminEmail ? adminStaff : detectedStaff;
         if (!matchedStaff) {
           setError(
             email.toLowerCase() === adminEmail
               ? 'Admin profile missing. Contact support.'
-              : 'No staff profile linked to this email. Sign in with ID No. (badge + PIN) or ask admin to enrol you.'
+              : 'No staff profile linked to this email. Use Sign in with ID No. or ask admin to enrol you.'
           );
           setLoading(false);
           return;
@@ -766,7 +675,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             : fbUser.displayName || matchedStaff.name;
         const initials = displayName
           .split(/\s+/)
-          .map((p) => p[0])
+          .map((part) => part[0])
           .join('')
           .slice(0, 2)
           .toUpperCase();
@@ -804,45 +713,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       }
     }
 
-    // ── Staff badge + PIN (must match enrolled staff — not open demo) ──────
-    const matchedStaff = detectedStaff;
-    if (!matchedStaff) {
-      setError('Staff ID not found. Use your badge ID or work email.');
-      setLoading(false);
-      return;
-    }
-    if (!pass || pass !== matchedStaff.pin) {
-      setError('Incorrect PIN. Try again or contact your administrator.');
-      setLoading(false);
-      return;
-    }
-
-    const session: UserSession = {
-      id: matchedStaff.badgeId,
-      badgeId: matchedStaff.badgeId,
-      name: matchedStaff.name,
-      role: matchedStaff.role,
-      roleKey: matchedStaff.roleKey,
-      title: matchedStaff.title,
-      facility: matchedStaff.hospitalName || effectiveHospital.name,
-      hospitalId: matchedStaff.hospitalId || effectiveHospital.id,
-      department: matchedStaff.department,
-      avatarInitials: matchedStaff.initials,
-      clearanceLabel: matchedStaff.clearanceLabel,
-      clearanceLevel: matchedStaff.clearanceLevel,
-      permissions: matchedStaff.permissions,
-      authMethod: 'Staff PIN',
-      token: `PIN-${Date.now().toString(36).toUpperCase()}`,
-      loginTime: new Date().toLocaleTimeString('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-    };
-
-    setSuccess(true);
+    setError('Use work email, or switch to Sign in with ID No. (badge + PIN).');
     setLoading(false);
-    setTimeout(() => triggerLogin(session), 300);
   };
+
 
   return (
     <div style={{
