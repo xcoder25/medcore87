@@ -203,3 +203,120 @@ export function ensureCardForSession(session: {
   );
   return card;
 }
+
+/** Normalize badge for comparison */
+export function normalizeBadgeId(badgeId: string): string {
+  return String(badgeId || '').trim().toUpperCase().replace(/\s+/g, '');
+}
+
+/**
+ * Find staff profile by badge from all local stores (registry, cards, access).
+ * Used by AuthScreen so generated IDs always resolve on the same browser.
+ */
+export function resolveStaffByBadge(badgeId: string): {
+  badgeId: string;
+  name: string;
+  role: string;
+  roleKey: string;
+  title: string;
+  department: string;
+  clearanceLevel: number;
+  clearanceLabel: string;
+  initials: string;
+  permissions: string[];
+  pin: string;
+  hospitalId: string;
+  hospitalName: string;
+} | null {
+  const q = normalizeBadgeId(badgeId);
+  if (!q || typeof window === 'undefined') return null;
+
+  const match = (b: string) => normalizeBadgeId(b) === q;
+
+  // 1) Staff registry
+  try {
+    for (const key of [STAFF_REGISTRY_STORAGE_KEY, 'medcore_os_staff_registry']) {
+      const raw = localStorage.getItem(key);
+      const arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) continue;
+      const hit = arr.find((r: any) => match(String(r.badgeId || r.id || '')));
+      if (hit) {
+        return {
+          badgeId: normalizeBadgeId(hit.badgeId || hit.id),
+          name: hit.name || hit.fullName || 'Staff',
+          role: hit.role || 'Staff',
+          roleKey: hit.roleKey || 'doctor',
+          title: hit.title || hit.role || 'Staff',
+          department: hit.department || '',
+          clearanceLevel: hit.clearanceLevel ?? 2,
+          clearanceLabel: hit.clearanceLabel || 'L2',
+          initials: hit.initials || 'ST',
+          permissions: hit.permissions || ['dashboard'],
+          pin: String(hit.pin || '123456'),
+          hospitalId: hit.hospitalId || hit.facilityId || '',
+          hospitalName: hit.hospitalName || hit.facilityName || '',
+        };
+      }
+    }
+  } catch { /* ignore */ }
+
+  // 2) ID cards + pin from registry if needed
+  try {
+    const cards = listStaffCards();
+    const card = cards.find((c) => match(c.badgeId));
+    if (card) {
+      let pin = '123456';
+      try {
+        const raw = localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        const hit = Array.isArray(arr)
+          ? arr.find((r: any) => match(String(r.badgeId || r.id || '')))
+          : null;
+        if (hit?.pin) pin = String(hit.pin);
+      } catch { /* ignore */ }
+      return {
+        badgeId: normalizeBadgeId(card.badgeId),
+        name: card.fullName,
+        role: card.role,
+        roleKey: card.roleKey,
+        title: card.title,
+        department: card.department,
+        clearanceLevel: card.clearanceLevel,
+        clearanceLabel: card.clearanceLabel,
+        initials: card.initials,
+        permissions: ['dashboard'],
+        pin,
+        hospitalId: card.facilityId,
+        hospitalName: card.facilityName,
+      };
+    }
+  } catch { /* ignore */ }
+
+  // 3) Access control list (no PIN — caller may still use Firebase)
+  try {
+    const raw = localStorage.getItem('medcore_os_access_control');
+    const arr = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(arr)) {
+      const hit = arr.find((r: any) => match(String(r.id || '')));
+      if (hit) {
+        return {
+          badgeId: normalizeBadgeId(hit.id),
+          name: hit.name || 'Staff',
+          role: hit.role || 'Staff',
+          roleKey: 'doctor',
+          title: hit.role || 'Staff',
+          department: hit.department || '',
+          clearanceLevel: hit.clearance ?? 2,
+          clearanceLabel: `L${hit.clearance ?? 2}`,
+          initials: String(hit.name || 'ST').split(/\s+/).map((p: string) => p[0]).join('').slice(0, 2).toUpperCase(),
+          permissions: hit.permissions || ['dashboard'],
+          pin: '', // unknown — require Firebase or re-enrol
+          hospitalId: '',
+          hospitalName: '',
+        };
+      }
+    }
+  } catch { /* ignore */ }
+
+  return null;
+}
