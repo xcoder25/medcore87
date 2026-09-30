@@ -191,7 +191,7 @@ export function firestoreSubscribeStaffDirectory(
 /** Per-staff doc: facilities/{facilityId}/staff/{badgeId} */
 export function staffMemberRef(facilityId: string, badgeId: string) {
   const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
-  const bid = (badgeId || 'UNKNOWN').replace(/[\/#?]/g, '_');
+  const bid = (badgeId || 'UNKNOWN').trim().toUpperCase().replace(/[\/#?]/g, '_');
   return doc(getFirestore(), 'facilities', fid, 'staff', bid);
 }
 

@@ -10,7 +10,7 @@ import { UserPlus, IdCard, CheckCircle2 } from 'lucide-react';
 import { LogoProgressBar } from '../realtime/LogoProgressBar';
 import { HOSPITALS } from '../auth/AuthScreen';
 import { enrolStaffAndIssueCard, listStaffCards, getStaffCard } from '../../lib/staffCardStore';
-import { firebaseSignUp, isEmailCredential } from '../../lib/firebase';
+import { firebaseSignUp, isEmailCredential, firestoreUpsertStaffMember, firestorePushStaffDirectory } from '../../lib/firebase';
 import { emitLiveAction } from '../../lib/liveActions';
 import { StaffIdCardView } from './StaffIdCardView';
 import type { StaffCardRecord } from '@medcore/types';
@@ -99,6 +99,24 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         shortRole: roleMeta.shortRole,
         permissions: ['dashboard'],
       });
+
+      // Ensure Firestore has this staff before they try to sign in on another device
+      try {
+        const regRaw = localStorage.getItem('medcore_os_staff_registry');
+        const reg = regRaw ? JSON.parse(regRaw) : [];
+        await firestorePushStaffDirectory(facility.id, {
+          staffCards: JSON.parse(localStorage.getItem('medcore_staff_id_cards') || '[]'),
+          staffRegistry: reg,
+        });
+        const entry = Array.isArray(reg)
+          ? reg.find((r: any) => String(r.badgeId || '').toUpperCase() === card.badgeId.toUpperCase())
+          : null;
+        if (entry) {
+          await firestoreUpsertStaffMember(facility.id, { ...entry, badgeId: card.badgeId.toUpperCase() });
+        }
+      } catch (err) {
+        console.warn('[enrol] firestore ensure', err);
+      }
 
       // Optional Firebase Auth account (email + PIN as password) for cloud login
       const mail = email.trim();

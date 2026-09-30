@@ -46,12 +46,13 @@ export function enrolStaffAndIssueCard(
   input: StaffEnrolmentInput,
   badgeId?: string
 ): { card: StaffCardRecord; badgeId: string } {
-  const id =
+  const id = (
     badgeId ||
     `${input.facilityId.slice(0, 3).toUpperCase()}-${input.roleKey.slice(0, 3).toUpperCase()}-${Date.now()
       .toString(36)
       .slice(-4)
-      .toUpperCase()}`;
+      .toUpperCase()}`
+  ).trim().toUpperCase();
 
   const card = issueStaffCardFromEnrolment(input, id);
   const cards = readCards().filter((c) => c.badgeId !== id);

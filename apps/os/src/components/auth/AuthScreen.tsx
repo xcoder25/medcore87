@@ -368,40 +368,124 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
     // ── Badge + PIN mode: never use Firebase / admin fallback ─────────────
     if (authMode === 'badge') {
-      let matchedStaff =
-        staffRegistry.find((s) => s.badgeId.toLowerCase() === u.toLowerCase()) ||
-        (u.length >= 4
-          ? staffRegistry.find(
-              (s) =>
-                s.badgeId.toLowerCase().startsWith(u.toLowerCase()) &&
-                staffRegistry.filter((x) => x.badgeId.toLowerCase().startsWith(u.toLowerCase())).length === 1
-            )
-          : undefined);
+      const badgeQuery = u.trim().toUpperCase();
+      const pinQuery = pass.trim();
 
-      // Realtime Firestore lookup (source of truth across devices)
+      const mapRemote = (remote: Record<string, unknown>, fallbackPin?: string): PresetStaff => ({
+        badgeId: String(remote.badgeId || remote.id || badgeQuery).toUpperCase(),
+        name: String(remote.name || remote.fullName || 'Staff'),
+        role: String(remote.role || 'Staff'),
+        shortRole: String(remote.shortRole || remote.role || 'Staff'),
+        title: String(remote.title || remote.role || 'Staff'),
+        roleKey: String(remote.roleKey || 'doctor'),
+        clearanceLevel: Number(remote.clearanceLevel ?? 2),
+        clearanceLabel: String(remote.clearanceLabel || 'L2'),
+        department: String(remote.department || ''),
+        initials: String(remote.initials || 'ST'),
+        permissions: (remote.permissions as string[]) || ['dashboard'],
+        pin: String(remote.pin || fallbackPin || ''),
+        hospitalId: String(remote.hospitalId || remote.facilityId || effectiveHospital.id),
+        hospitalName: String(remote.hospitalName || remote.facilityName || effectiveHospital.name),
+        color: '#0052D4',
+      });
+
+      // 1) Local registry (same browser as enrolment)
+      let matchedStaff: PresetStaff | undefined =
+        staffRegistry.find((s) => s.badgeId.toUpperCase() === badgeQuery) ||
+        staffRegistry.find(
+          (s) =>
+            badgeQuery.length >= 4 &&
+            s.badgeId.toUpperCase().startsWith(badgeQuery) &&
+            staffRegistry.filter((x) => x.badgeId.toUpperCase().startsWith(badgeQuery)).length === 1
+        );
+
+      // 2) Local staff cards + registry PIN (PIN lives on registry, not card template)
+      if (!matchedStaff) {
+        try {
+          const { listStaffCards } = await import('../../lib/staffCardStore');
+          const cards = listStaffCards();
+          const card =
+            cards.find((c) => (c.badgeId || '').toUpperCase() === badgeQuery) ||
+            cards.find(
+              (c) =>
+                badgeQuery.length >= 4 &&
+                (c.badgeId || '').toUpperCase().startsWith(badgeQuery) &&
+                cards.filter((x) => (x.badgeId || '').toUpperCase().startsWith(badgeQuery)).length === 1
+            );
+          let regPin = '1234';
+          let regPerms: string[] = ['dashboard'];
+          try {
+            const regRaw = localStorage.getItem('medcore_os_staff_registry');
+            const reg = regRaw ? JSON.parse(regRaw) : [];
+            const regHit = Array.isArray(reg)
+              ? reg.find(
+                  (r: any) =>
+                    String(r.badgeId || r.id || '').toUpperCase() === (card?.badgeId || badgeQuery).toUpperCase()
+                )
+              : null;
+            if (regHit) {
+              regPin = String(regHit.pin || '1234');
+              regPerms = regHit.permissions || regPerms;
+              if (!card && regHit) {
+                matchedStaff = {
+                  badgeId: String(regHit.badgeId || regHit.id).toUpperCase(),
+                  name: regHit.name || regHit.fullName || 'Staff',
+                  role: regHit.role || 'Staff',
+                  shortRole: regHit.shortRole || regHit.role || 'Staff',
+                  title: regHit.title || regHit.role || 'Staff',
+                  roleKey: regHit.roleKey || 'doctor',
+                  clearanceLevel: regHit.clearanceLevel ?? 2,
+                  clearanceLabel: regHit.clearanceLabel || 'L2',
+                  department: regHit.department || '',
+                  initials: regHit.initials || 'ST',
+                  permissions: regPerms,
+                  pin: regPin,
+                  hospitalId: regHit.hospitalId || regHit.facilityId || effectiveHospital.id,
+                  hospitalName: regHit.hospitalName || regHit.facilityName || effectiveHospital.name,
+                  color: '#0052D4',
+                };
+              }
+            }
+          } catch { /* ignore */ }
+          if (card && !matchedStaff) {
+            matchedStaff = {
+              badgeId: card.badgeId.toUpperCase(),
+              name: card.fullName || 'Staff',
+              role: card.role || 'Staff',
+              shortRole: card.role || 'Staff',
+              title: card.title || card.role || 'Staff',
+              roleKey: card.roleKey || 'doctor',
+              clearanceLevel: card.clearanceLevel ?? 2,
+              clearanceLabel: card.clearanceLabel || 'L2',
+              department: card.department || '',
+              initials: card.initials || 'ST',
+              permissions: regPerms,
+              pin: regPin,
+              hospitalId: card.facilityId || effectiveHospital.id,
+              hospitalName: card.facilityName || effectiveHospital.name,
+              color: '#0052D4',
+            };
+          }
+        } catch (e) {
+          console.warn('[auth] local cards', e);
+        }
+      }
+
+      // 3) Firestore — selected hospital, then all hospitals if needed
       try {
         const { firestoreGetStaffByBadge, firestoreRecordLogin } = await import('../../lib/firebase');
-        const remote = await firestoreGetStaffByBadge(effectiveHospital.id, u);
-        if (remote && remote.badgeId) {
-          matchedStaff = {
-            badgeId: String(remote.badgeId),
-            name: String(remote.name || remote.fullName || 'Staff'),
-            role: String(remote.role || 'Staff'),
-            shortRole: String(remote.shortRole || remote.role || 'Staff'),
-            title: String(remote.title || remote.role || 'Staff'),
-            roleKey: String(remote.roleKey || 'doctor'),
-            clearanceLevel: Number(remote.clearanceLevel ?? 2),
-            clearanceLabel: String(remote.clearanceLabel || 'L2'),
-            department: String(remote.department || ''),
-            initials: String(remote.initials || 'ST'),
-            permissions: (remote.permissions as string[]) || ['dashboard'],
-            pin: String(remote.pin || ''),
-            hospitalId: String(remote.hospitalId || remote.facilityId || effectiveHospital.id),
-            hospitalName: String(remote.hospitalName || remote.facilityName || effectiveHospital.name),
-            color: '#0052D4',
-          };
+        let remote = await firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery);
+        if (!remote) {
+          for (const h of HOSPITALS) {
+            if (h.id === effectiveHospital.id) continue;
+            remote = await firestoreGetStaffByBadge(h.id, badgeQuery);
+            if (remote) break;
+          }
         }
-        if (matchedStaff && pass && pass === matchedStaff.pin) {
+        if (remote && (remote.badgeId || remote.id)) {
+          matchedStaff = mapRemote(remote, matchedStaff?.pin);
+        }
+        if (matchedStaff && pinQuery && pinQuery === matchedStaff.pin) {
           void firestoreRecordLogin(matchedStaff.hospitalId || effectiveHospital.id, matchedStaff.badgeId, {
             method: 'badge_pin',
             hospitalId: effectiveHospital.id,
@@ -412,15 +496,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       }
 
       if (!matchedStaff) {
-        setError('Staff ID not found on this hospital (check Firestore enrolment or badge number).');
+        setError(
+          'Staff ID not found. Use the exact badge on the card (e.g. IGH-DOC-XXXX). Re-enrol if this PC never synced.'
+        );
         setLoading(false);
         return;
       }
-      if (!pass || pass !== matchedStaff.pin) {
-        setError('Incorrect PIN. Try again or contact your administrator.');
+      if (!pinQuery || pinQuery !== String(matchedStaff.pin)) {
+        setError('Incorrect PIN. Use the PIN set when the staff was enrolled.');
         setLoading(false);
         return;
       }
+
       const session: UserSession = {
         id: matchedStaff.badgeId,
         badgeId: matchedStaff.badgeId,
