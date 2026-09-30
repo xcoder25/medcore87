@@ -78,6 +78,16 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [issued, setIssued] = useState<StaffCardRecord | null>(null);
+  const [confirmInfo, setConfirmInfo] = useState<{
+    badgeId: string;
+    name: string;
+    role: string;
+    pin: string;
+    email?: string;
+    firebaseAuth: 'ok' | 'fail' | 'skipped';
+    firestore: 'ok' | 'fail';
+    emailAuth?: 'ok' | 'fail' | 'skipped';
+  } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -134,10 +144,16 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     }
 
     setBusy(true);
+    setConfirmInfo(null);
+    let firebaseAuth: 'ok' | 'fail' | 'skipped' = 'skipped';
+    let firestoreStatus: 'ok' | 'fail' = 'fail';
+    let emailAuth: 'ok' | 'fail' | 'skipped' = 'skipped';
     try {
       const pinNorm = normalizeStaffPin(pin);
+      const nameSnap = fullName.trim();
+      const mail = email.trim();
       const { card } = enrolStaffAndIssueCard({
-        fullName: fullName.trim(),
+        fullName: nameSnap,
         role: roleMeta.role,
         roleKey: roleMeta.roleKey,
         title: roleMeta.title,
@@ -153,24 +169,29 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
       try {
         await firebaseEnsureBadgeAccount(card.badgeId, pinNorm);
+        firebaseAuth = 'ok';
       } catch (err: any) {
         console.warn('[access] badge auth', err);
+        firebaseAuth = 'fail';
       }
 
-      const mail = email.trim();
       if (mail && isEmailCredential(mail)) {
         try {
           await firebaseSignUp(mail, pinNorm);
+          emailAuth = 'ok';
         } catch (err: any) {
-          if (err?.code !== 'auth/email-already-in-use') {
+          if (err?.code === 'auth/email-already-in-use') {
+            emailAuth = 'ok';
+          } else {
             console.warn('[access] email auth', err);
+            emailAuth = 'fail';
           }
         }
       }
 
       const accessRow: AccessRecord = {
         id: card.badgeId,
-        name: fullName.trim(),
+        name: nameSnap,
         role: roleMeta.role,
         department: roleMeta.department,
         clearance: roleMeta.clearanceLevel,
@@ -183,9 +204,9 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       setRecords(nextAccess);
 
       try {
-        await firestoreUpsertStaffMember(facilityId, {
+        const fsOk = await firestoreUpsertStaffMember(facilityId, {
           badgeId: card.badgeId,
-          name: fullName.trim(),
+          name: nameSnap,
           role: roleMeta.role,
           roleKey: roleMeta.roleKey,
           title: roleMeta.title,
@@ -199,18 +220,38 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           permissions: accessRow.permissions,
           status: 'active',
         });
-        await firestorePushStaffDirectory(facilityId, {
+        const dirOk = await firestorePushStaffDirectory(facilityId, {
           staffCards: listStaffCards(),
           staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
         });
+        firestoreStatus = fsOk && dirOk !== false ? 'ok' : fsOk ? 'ok' : 'fail';
+        // Verify read-back from Firestore
+        try {
+          const { firestoreGetStaffByBadge } = await import('../../lib/firebase');
+          const remote = await firestoreGetStaffByBadge(facilityId, card.badgeId);
+          firestoreStatus = remote && remote.badgeId ? 'ok' : 'fail';
+        } catch {
+          firestoreStatus = fsOk ? 'ok' : 'fail';
+        }
       } catch (err) {
         console.warn('[access] firestore', err);
+        firestoreStatus = 'fail';
       }
 
-      pushActivity(`Account created · ${fullName.trim()} · ${card.badgeId} · ID card issued`);
+      pushActivity(`Account created · ${nameSnap} · ${card.badgeId} · ID card issued`);
       emitLiveAction(`Account + ID card · ${card.badgeId}`, { module: 'access' });
       setIssued(card);
       setSelectedId(card.badgeId);
+      setConfirmInfo({
+        badgeId: card.badgeId,
+        name: nameSnap,
+        role: roleMeta.role,
+        pin: pinNorm,
+        email: mail || undefined,
+        firebaseAuth,
+        firestore: firestoreStatus,
+        emailAuth,
+      });
       setFullName('');
       setEmail('');
       setShowCreate(false);
@@ -359,13 +400,77 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         </form>
       )}
 
-      {issued && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'flex-start' }}>
-          <div>
-            <div style={{ fontWeight: 700, marginBottom: 8, color: '#047857', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <CheckCircle2 size={16} /> Account ready · Badge {issued.badgeId}
+      {confirmInfo && (
+        <div
+          className="os-card"
+          style={{
+            padding: 20,
+            border: '1px solid #86EFAC',
+            background: 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 50%, #F0F9FF 100%)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#047857', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CheckCircle2 size={20} /> Account created successfully
+              </div>
+              <div style={{ marginTop: 10, fontSize: '0.88rem', color: '#0F172A', lineHeight: 1.6 }}>
+                <div><strong>Name:</strong> {confirmInfo.name}</div>
+                <div><strong>Role:</strong> {confirmInfo.role}</div>
+                <div>
+                  <strong>Badge ID:</strong>{' '}
+                  <span style={{ fontFamily: 'var(--os-font-mono)', fontWeight: 800, color: '#0052D4' }}>
+                    {confirmInfo.badgeId}
+                  </span>
+                </div>
+                <div><strong>PIN:</strong> {confirmInfo.pin} <span style={{ color: '#64748B' }}>(give this to the staff member)</span></div>
+                {confirmInfo.email && <div><strong>Email:</strong> {confirmInfo.email}</div>}
+              </div>
+              <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.82rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: confirmInfo.firebaseAuth === 'ok' ? '#16A34A' : confirmInfo.firebaseAuth === 'fail' ? '#EF4444' : '#94A3B8',
+                  }} />
+                  <strong>Firebase Auth (badge login):</strong>{' '}
+                  {confirmInfo.firebaseAuth === 'ok' ? 'Stored — can Sign in with ID No.' :
+                    confirmInfo.firebaseAuth === 'fail' ? 'Failed — check Email/Password provider in Firebase Console' : 'Skipped'}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: confirmInfo.firestore === 'ok' ? '#16A34A' : '#EF4444',
+                  }} />
+                  <strong>Firestore profile:</strong>{' '}
+                  {confirmInfo.firestore === 'ok' ? 'Saved & verified on cloud' : 'Not verified — local card exists; cloud sync failed (check rules/network)'}
+                </div>
+                {confirmInfo.email && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{
+                      width: 8, height: 8, borderRadius: '50%',
+                      background: confirmInfo.emailAuth === 'ok' ? '#16A34A' : confirmInfo.emailAuth === 'fail' ? '#EF4444' : '#94A3B8',
+                    }} />
+                    <strong>Email login:</strong>{' '}
+                    {confirmInfo.emailAuth === 'ok' ? 'Firebase email account ready' :
+                      confirmInfo.emailAuth === 'fail' ? 'Email Auth failed' : 'Not used'}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                className="os-ghost-btn"
+                style={{ marginTop: 14, fontSize: 12 }}
+                onClick={() => setConfirmInfo(null)}
+              >
+                Dismiss
+              </button>
             </div>
-            <StaffIdCardView card={issued} />
+            {issued && (
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748B', marginBottom: 8 }}>Staff ID card</div>
+                <StaffIdCardView card={issued} compact />
+              </div>
+            )}
           </div>
         </div>
       )}
