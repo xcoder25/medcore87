@@ -62,8 +62,9 @@ export const RolePermissionsMatrix: React.FC = () => {
             Role visibility · what each role can see
           </div>
           <div style={{ fontSize: '0.8rem', color: '#64748B', lineHeight: 1.5 }}>
-            Staff accounts open the <strong>same dashboard for their role</strong> (e.g. all doctors share the doctor
-            workspace). Tick modules below to control what that role is allowed to open. Hospital admin always has full access.
+            Staff with the same role share one dashboard. Tick <strong>Apps</strong> for screens they may open, and
+            <strong>Patient data</strong> for what they may see on a patient (identity, notes, labs, billing, etc.).
+            Hospital admin always has full access.
           </div>
         </div>
       </div>
