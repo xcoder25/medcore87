@@ -962,21 +962,24 @@ html, body {
 }
 .os-form-select, .os-form-input {
   width: 100%;
-  background: rgba(3, 8, 16, 0.7);
-  border: 1px solid var(--os-border);
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
   border-radius: 10px;
   padding: 10px 14px;
   font-size: 0.85rem;
-  color: #FFFFFF;
+  color: #0F172A;
   font-family: var(--os-font);
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .os-form-select:focus, .os-form-input:focus {
-  border-color: var(--ak-orange);
-  box-shadow: 0 0 0 3px var(--ak-orange-glow);
+  border-color: #0052D4;
+  box-shadow: 0 0 0 3px rgba(0, 82, 212, 0.12);
 }
-.os-form-select option { background: #0C1628; }
+.os-form-select option {
+  background: #FFFFFF;
+  color: #0F172A;
+}
 
 /* Auth Error */
 .os-auth-error-banner {
@@ -1952,6 +1955,11 @@ html, body {
   outline: none;
   border-color: #0066FF;
   box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.12);
+}
+.os-form-select option,
+.os-form-select optgroup {
+  background: #FFFFFF;
+  color: #0F172A;
 }
 
 
