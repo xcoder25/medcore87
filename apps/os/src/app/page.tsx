@@ -1815,13 +1815,13 @@ export default function OSPage() {
           <div key={moduleKey} className="os-active-module-wrap">
             {isModulePermitted(activeModule) ? (
               activeModule === 'dashboard' && userSession && userSession.roleKey === 'reception' ? (
-                <ReceptionWorkspace session={userSession} onNavigate={handleModuleChange} initialView="home" />
+                <ReceptionWorkspace session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} initialView="home" />
               ) : activeModule === 'dashboard' && userSession ? (
                 <RoleDashboard session={userSession} onNavigate={handleModuleChange} />
               ) : (
                 <ActiveComponent
                   session={userSession}
-                  onNavigate={handleModuleChange}
+                  onNavigate={(k: string) => handleModuleChange(k as ModuleKey)}
                   {...(useReceptionCockpit
                     ? {
                         initialView:

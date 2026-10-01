@@ -56,7 +56,7 @@ import {
 
 interface Props {
   session: UserSession;
-  onNavigate?: (moduleKey: string) => void;
+  onNavigate?: (moduleKey: any) => void;
   initialView?: View;
 }
 
