@@ -892,8 +892,9 @@ export default function OSPage() {
     try {
       const saved = localStorage.getItem('medcore_os_session');
       if (saved) {
-        setUserSession(JSON.parse(saved));
-        setActiveModule(session.roleKey === 'reception' ? 'patient-flow' : 'dashboard');
+        const restored = JSON.parse(saved) as UserSession;
+        setUserSession(restored);
+        setActiveModule(restored.roleKey === 'reception' ? 'patient-flow' : 'dashboard');
       }
     } catch {
       // ignore
@@ -1004,7 +1005,7 @@ export default function OSPage() {
 
   const handleLoginSuccess = (session: UserSession) => {
     setUserSession(session);
-    setActiveModule('dashboard');
+    setActiveModule(session.roleKey === 'reception' ? 'patient-flow' : 'dashboard');
     setAppState('app');
   };
 
