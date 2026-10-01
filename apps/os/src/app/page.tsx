@@ -27,6 +27,7 @@ import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 
 // Specialty Suites
 import { AdminShell } from '../components/dashboards/AdminShell';
+import { ReceptionWorkspace } from '../components/dashboards/ReceptionWorkspace';
 import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { startOutboxAutoFlush } from '../lib/durableOutbox';
 import { enableFirestoreOffline } from '../lib/firebase';
@@ -58,6 +59,7 @@ import { FhirHl7GatewaySuite } from '../components/interop/FhirHl7GatewaySuite';
 import { ConnectedDevicesSuite } from '../components/interop/ConnectedDevicesSuite';
 import { ClinicalSafetyBcpSuite } from '../components/interop/ClinicalSafetyBcpSuite';
 import { EMRManager } from '../components/gateway-modules/EMRManager';
+import { AppointmentsManager } from '../components/gateway-modules/AppointmentsManager';
 import NotificationBell from '../components/realtime/NotificationBell';
 import AlertBanner from '../components/realtime/AlertBanner';
 import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
@@ -83,7 +85,7 @@ export type ModuleKey =
   | 'emr' | 'emergency' | 'theatre' | 'icu' | 'pharmacy' | 'laboratory' | 'radiology'
   | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'patient-card'
   // Pillar 3: Operations
-  | 'command' | 'beds' | 'patient-flow' | 'staffing' | 'ambulance'
+  | 'command' | 'beds' | 'patient-flow' | 'appointments' | 'staffing' | 'ambulance'
   | 'inventory' | 'biomedical' | 'facilities' | 'environmental'
   // Pillar 4: Finance
   | 'billing' | 'cashier' | 'claims' | 'revenue-cycle' | 'procurement'
@@ -436,29 +438,26 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'reception':
       return [
         {
-          label: 'Front desk',
+          label: 'Desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Reception dashboard', badge: 'Live' },
-            { key: 'patient-card', icon: FileText, label: 'Register / find patient', badge: 'MPI' },
-            { key: 'patient-flow', icon: Activity, label: 'Check-in & live queue' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Reception cockpit' },
+            { key: 'patient-flow', icon: Activity, label: 'Check-in & live queue', badge: 'Live' },
           ],
         },
         {
-          label: 'Appointments & walk-ins',
+          label: 'Patients',
           items: [
-            { key: 'patient-card', icon: Calendar, label: 'Book / manage appointments' },
-            { key: 'patient-flow', icon: Users, label: 'Walk-in registration' },
+            { key: 'patient-card', icon: FileText, label: 'Register & find (MPI)', badge: 'MPI' },
+            { key: 'appointments', icon: Calendar, label: 'Appointments' },
           ],
         },
         {
-          label: 'Billing & HMO',
+          label: 'Revenue',
           items: [
-            { key: 'cashier', icon: CreditCard, label: 'Collect payment / POS' },
-            { key: 'billing', icon: CreditCard, label: 'Invoices & outstanding' },
+            { key: 'cashier', icon: CreditCard, label: 'POS & payments' },
           ],
         },
       ];
-
     case 'records':
       return [
         {
@@ -731,6 +730,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   command: CommandCentreDashboard,
   beds: BedManagement,
   'patient-flow': PatientFlowVisibility,
+  appointments: AppointmentsManager as any,
   staffing: StaffingOverview,
   ambulance: AmbulanceTransfersSuite,
   inventory: SupplyChainInventorySuite,
@@ -892,7 +892,7 @@ export default function OSPage() {
       const saved = localStorage.getItem('medcore_os_session');
       if (saved) {
         setUserSession(JSON.parse(saved));
-        setActiveModule('dashboard');
+        setActiveModule(session.roleKey === 'reception' ? 'patient-flow' : 'dashboard');
       }
     } catch {
       // ignore
@@ -1149,7 +1149,13 @@ export default function OSPage() {
     return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
-  const ActiveComponent = MODULE_COMPONENTS[activeModule] || CommandCentreDashboard;
+  const receptionViews = ['dashboard', 'patient-flow', 'patient-card', 'appointments', 'cashier'] as const;
+  const useReceptionCockpit =
+    userSession?.roleKey === 'reception' &&
+    receptionViews.includes(activeModule as (typeof receptionViews)[number]);
+  const ActiveComponent = useReceptionCockpit
+    ? ReceptionWorkspace
+    : MODULE_COMPONENTS[activeModule] || CommandCentreDashboard;
 
   // Resolve active role theme
   const activeRoleKey = userSession
@@ -1720,9 +1726,16 @@ export default function OSPage() {
 
             <button
               type="button"
-              className="os-hud-btn"
+              className="os-hud-btn os-hud-lock-primary"
               onClick={handleLockScreen}
               title="Lock screen"
+              style={{
+                order: -1,
+                background: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(248, 113, 113, 0.45)',
+                color: '#FCA5A5',
+                fontWeight: 700,
+              }}
             >
               <Lock size={14} />
               <span>Lock</span>
@@ -1740,28 +1753,7 @@ export default function OSPage() {
           </div>
         </header>
 
-        {/* Activity strip — plain language */}
-        <div className="os-realtime-ticker">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, fontWeight: 700, color: '#38BDF8' }}>
-            <span className="os-status-dot pulse-green" />
-            <span>LIVE UPDATES</span>
-          </div>
-          <div className="os-ticker-track">
-            {realtimeEvents.map((evt) => (
-              <div key={evt.id} className="os-ticker-item">
-                <span className="os-ticker-badge" style={{ background: `${evt.badgeColor}25`, color: evt.badgeColor }}>
-                  {evt.category}
-                </span>
-                <span style={{ color: '#64748B', fontSize: '0.68rem', fontFamily: 'var(--os-font-mono)' }}>{evt.time}</span>
-                <span style={{ color: '#F8FAFC' }}>{evt.message}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, color: '#34D399', fontWeight: 600, fontSize: '0.7rem' }}>
-            <Zap size={12} />
-            <span>{wsLatency}ms · {wsConnected ? 'Connected' : 'Connecting...'}</span>
-          </div>
-        </div>
+        {/* LIVE UPDATES ticker removed */}
 
         {/* Emergency Alert Banner */}
         {activeEmergencyCode && (
@@ -1820,10 +1812,29 @@ export default function OSPage() {
 
           <div key={moduleKey} className="os-active-module-wrap">
             {isModulePermitted(activeModule) ? (
-              activeModule === 'dashboard' && userSession ? (
+              activeModule === 'dashboard' && userSession && userSession.roleKey === 'reception' ? (
+                <ReceptionWorkspace session={userSession} onNavigate={handleModuleChange} initialView="home" />
+              ) : activeModule === 'dashboard' && userSession ? (
                 <RoleDashboard session={userSession} onNavigate={handleModuleChange} />
               ) : (
-                <ActiveComponent session={userSession} onNavigate={handleModuleChange} />
+                <ActiveComponent
+                  session={userSession}
+                  onNavigate={handleModuleChange}
+                  {...(useReceptionCockpit
+                    ? {
+                        initialView:
+                          activeModule === 'patient-flow'
+                            ? 'queue'
+                            : activeModule === 'patient-card'
+                              ? 'register'
+                              : activeModule === 'appointments'
+                                ? 'appointments'
+                                : activeModule === 'cashier'
+                                  ? 'payment'
+                                  : 'home',
+                      }
+                    : {})}
+                />
               )
             ) : (
               <div
