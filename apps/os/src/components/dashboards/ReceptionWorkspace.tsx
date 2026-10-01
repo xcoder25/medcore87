@@ -45,6 +45,14 @@ import {
   verifyInsurance,
 } from '../../lib/receptionConstants';
 import { emitLiveAction } from '../../lib/liveActions';
+import {
+  orchestrateArrival,
+  orchestrateDeskOverview,
+  enrichCardWithGemini,
+  actionLabel,
+  type AiCheckInCard,
+  type ArrivalIntent,
+} from '../../lib/receptionAiOrchestrator';
 
 interface Props {
   session: UserSession;
@@ -115,6 +123,8 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [ninMsg, setNinMsg] = useState('');
   const [insVerify, setInsVerify] = useState<ReturnType<typeof verifyInsurance> | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [aiCard, setAiCard] = useState<AiCheckInCard | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
   const [camOn, setCamOn] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -206,7 +216,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
   const openPatient = (p: FacilityPatient) => {
     setSelected(p);
-    setPanelOpen(true);
+    void runAiArrival(p, 'manual_search');
   };
 
   const stopCam = () => {
@@ -402,6 +412,82 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     reload();
     flash(`Appointment booked · ${apDate} ${apTime}`);
   };
+
+
+  const runAiArrival = async (patient: FacilityPatient, intent: ArrivalIntent = 'manual_search') => {
+    setAiBusy(true);
+    let card = orchestrateArrival(
+      {
+        patient,
+        facilityId,
+        facilityName,
+        intent,
+        arrivedAt: new Date().toISOString(),
+      },
+      appts,
+      visits
+    );
+    try {
+      card = await enrichCardWithGemini(card);
+    } catch { /* offline rules stand */ }
+    setAiCard(card);
+    setSelected(patient);
+    setAiBusy(false);
+  };
+
+  const executeAiAction = (action: AiCheckInCard['primaryAction'], card: AiCheckInCard) => {
+    const p = patients.find((x) => x.id === card.patientId) || selected;
+    if (!p) {
+      flash('Patient not found');
+      return;
+    }
+    if (action === 'admit' || action === 'start_walkin') {
+      if (action === 'start_walkin') setCiType('walkin');
+      else if (card.appointment) {
+        setCiType('appointment');
+        setCiDept(card.appointment.department);
+        setCiDoctor(card.appointment.provider);
+      }
+      doCheckIn(p);
+      setAiCard(null);
+      setView('queue');
+      return;
+    }
+    if (action === 'take_payment') {
+      setPosPatient(p);
+      setAiCard(null);
+      setView('payment');
+      return;
+    }
+    if (action === 'complete_registration' || action === 'review') {
+      setSelected(p);
+      setPanelOpen(true);
+      setAiCard(null);
+      return;
+    }
+    if (action === 'find_appointment') {
+      setApPatient(p);
+      setAiCard(null);
+      setView('appointments');
+      return;
+    }
+    if (action === 'verify_insurance') {
+      setSelected(p);
+      setView('register');
+      setAiCard(null);
+      flash('Open insurance step for this patient or re-register details');
+      return;
+    }
+    if (action === 'decline') {
+      setAiCard(null);
+      flash('Arrival dismissed');
+    }
+  };
+
+  const deskAi = useMemo(
+    () => orchestrateDeskOverview(visits, patients, stats),
+    [visits, patients, stats]
+  );
 
   const waiting = visits.filter((v) => v.status === 'waiting' || v.status === 'called');
 
@@ -723,16 +809,47 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               >
                 Check in to live queue
               </button>
+              <button
+                type="button"
+                disabled={!selected || aiBusy}
+                onClick={() => selected && void runAiArrival(selected, 'gesture_checkin')}
+                style={{
+                  marginTop: 8,
+                  width: '100%',
+                  padding: 10,
+                  borderRadius: 10,
+                  border: '1px solid #A78BFA',
+                  background: '#F5F3FF',
+                  color: '#5B21B6',
+                  fontWeight: 700,
+                  cursor: selected ? 'pointer' : 'not-allowed',
+                  fontSize: 12,
+                }}
+              >
+                👋 Simulate gesture / AI check-in
+              </button>
             </div>
             <div style={{ background: '#FFFBEB', borderRadius: 16, border: '1px solid #FDE68A', padding: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, color: '#92400E' }}>
-                <Sparkles size={16} /> AI desk assistant
+                <Sparkles size={16} /> AI reception orchestrator
               </div>
-              <ul style={{ margin: '10px 0 0', paddingLeft: 18, fontSize: 12, color: '#78350F', lineHeight: 1.6 }}>
-                <li>Auto-reminds patients who exceed estimated wait</li>
-                <li>NIN quick-reg fills identity fields when available</li>
-                <li>HMO gateway verifies eligibility before billing</li>
-              </ul>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+                {[
+                  { l: 'Waiting', v: deskAi.waiting, c: '#0284C7' },
+                  { l: 'Ready', v: deskAi.ready, c: '#16A34A' },
+                  { l: 'Incomplete reg', v: deskAi.incompleteRegistration, c: '#D97706' },
+                  { l: 'With provider', v: deskAi.waitingForProvider, c: '#6366F1' },
+                ].map((k) => (
+                  <div key={k.l} style={{ background: '#fff', borderRadius: 10, padding: 10, border: '1px solid #FDE68A' }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: k.c }}>{k.v}</div>
+                    <div style={{ fontSize: 11, color: '#78350F' }}>{k.l}</div>
+                  </div>
+                ))}
+              </div>
+              <p style={{ margin: '12px 0 0', fontSize: 12, color: '#78350F', lineHeight: 1.55 }}>{deskAi.narrative}</p>
+              <div style={{ fontSize: 11, color: '#A16207', marginTop: 8 }}>
+                Gemini enriches wording when NEXT_PUBLIC_GEMINI_API_KEY is set · EMR stays source of truth
+              </div>
             </div>
           </div>
         </div>
@@ -1330,6 +1447,159 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               </div>
             ))}
             {payments.length === 0 && <div style={{ color: C.muted }}>No payments yet today</div>}
+          </div>
+        </div>
+      )}
+
+
+      {/* AI contextual check-in card — human must confirm */}
+      {aiCard && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,0.5)',
+            zIndex: 90,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+          onClick={() => setAiCard(null)}
+        >
+          <div
+            style={{
+              width: 'min(440px, 100%)',
+              background: '#fff',
+              borderRadius: 20,
+              overflow: 'hidden',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: '16px 18px',
+                background:
+                  aiCard.severity === 'success'
+                    ? 'linear-gradient(135deg,#0D9488,#0284C7)'
+                    : aiCard.severity === 'attention'
+                      ? 'linear-gradient(135deg,#EA580C,#B91C1C)'
+                      : aiCard.severity === 'warn'
+                        ? 'linear-gradient(135deg,#D97706,#CA8A04)'
+                        : 'linear-gradient(135deg,#0284C7,#6366F1)',
+                color: '#fff',
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.9, letterSpacing: 0.5 }}>
+                AI CHECK-IN · REQUIRES CONFIRMATION
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 800, marginTop: 6 }}>{aiCard.headline}</div>
+              <div style={{ fontSize: 13, opacity: 0.95, marginTop: 4 }}>{aiCard.subhead}</div>
+            </div>
+            <div style={{ padding: 18 }}>
+              <div style={{ fontSize: 12, color: '#64748B', marginBottom: 8 }}>
+                {aiCard.hospitalNumber}
+                {aiCard.appointment
+                  ? ` · ${aiCard.appointment.department} · ${aiCard.appointment.provider}`
+                  : ''}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                {aiCard.flags.map((f) => (
+                  <span
+                    key={f}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: '4px 8px',
+                      borderRadius: 8,
+                      background: '#F1F5F9',
+                      color: '#334155',
+                    }}
+                  >
+                    {f}
+                  </span>
+                ))}
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 8,
+                  marginBottom: 12,
+                  fontSize: 12,
+                }}
+              >
+                {[
+                  ['Registration', aiCard.readiness.registration],
+                  ['Insurance', aiCard.readiness.insurance],
+                  ['Appointment', aiCard.readiness.appointment],
+                  ['Payment clear', aiCard.readiness.paymentClear],
+                ].map(([l, ok]) => (
+                  <div
+                    key={String(l)}
+                    style={{
+                      padding: 8,
+                      borderRadius: 8,
+                      background: ok ? '#F0FDF4' : '#FEF2F2',
+                      color: ok ? '#166534' : '#991B1B',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {ok ? '✓' : '!'} {l}
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: 13, color: '#0F172A', lineHeight: 1.55, margin: '0 0 8px' }}>
+                <strong>Recommendation:</strong> {aiCard.recommendation}
+              </p>
+              <p style={{ fontSize: 12, color: '#64748B', lineHeight: 1.5, margin: '0 0 14px' }}>
+                {aiCard.explanation}
+              </p>
+              <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 12 }}>
+                Est. reception time: ~{aiCard.estimatedReceptionMin} min · AI never writes the chart without your tap
+              </div>
+              <button
+                type="button"
+                disabled={aiBusy}
+                onClick={() => executeAiAction(aiCard.primaryAction, aiCard)}
+                style={{
+                  width: '100%',
+                  padding: 12,
+                  borderRadius: 12,
+                  border: 'none',
+                  background: '#0284C7',
+                  color: '#fff',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  marginBottom: 8,
+                }}
+              >
+                {actionLabel(aiCard.primaryAction)}
+              </button>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {aiCard.secondaryActions.map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    onClick={() => executeAiAction(a, aiCard)}
+                    style={{
+                      flex: 1,
+                      minWidth: 100,
+                      padding: 10,
+                      borderRadius: 10,
+                      border: '1px solid #E2E8F0',
+                      background: '#fff',
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {actionLabel(a)}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
