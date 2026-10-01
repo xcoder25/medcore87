@@ -553,7 +553,7 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
               <button
                 type="button"
                 onClick={() => {
-                  const r = verifyInsurance(patient.insuranceProvider || 'NONE', patient.insuranceId);
+                  const r = verifyInsurance(patient.insuranceProvider || 'NONE', patient.insuranceId || '');
                   setInsMsg(r.message);
                   flash(r.message);
                 }}
