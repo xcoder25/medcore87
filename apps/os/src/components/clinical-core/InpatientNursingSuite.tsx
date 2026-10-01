@@ -145,7 +145,6 @@ export const InpatientNursingSuite: React.FC = () => {
       {activeSubTab === 'emar' ? (
         <BedsideEmarSuite />
       ) : (
-        /* Nursing Task Table */
         <div className="os-card" style={{ padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
             <div>
@@ -210,6 +209,7 @@ export const InpatientNursingSuite: React.FC = () => {
           </table>
         </div>
       </div>
+      )}
 
       {/* Add Nursing Task Modal */}
       {showAddModal && (
