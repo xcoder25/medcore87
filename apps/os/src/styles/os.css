@@ -1398,129 +1398,315 @@ html, body {
   --glass-border: rgba(226, 232, 240, 0.8);
 }
 
+
+/* ── Hospital OS floating top header (design system) ── */
 .os-top-hud {
-  height: 62px;
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  gap: 16px;
+  gap: 12px;
+  margin: 12px 16px 8px;
+  padding: 10px 16px 10px 14px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 999px;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 28px rgba(15, 23, 42, 0.06);
   flex-shrink: 0;
-  z-index: 50;
-  box-shadow: 0 1px 3px 0 rgba(16, 24, 40, 0.04), 0 4px 12px -2px rgba(16, 24, 40, 0.02);
+  z-index: 40;
+  min-height: 56px;
+  box-sizing: border-box;
 }
 
-.os-top-hud-left { 
-  display: flex; 
-  align-items: center; 
-  gap: 12px; 
+.os-top-hud-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  padding-right: 12px;
+  border-right: 1px solid #E2E8F0;
+  margin-right: 4px;
 }
 
-.os-hud-facility-pill {
-  display: inline-flex; 
-  align-items: center; 
-  gap: 7px;
-  background: rgba(0, 82, 212, 0.06);
-  border: 1px solid rgba(0, 82, 212, 0.18);
-  color: #0052D4;
-  padding: 6px 14px; 
-  border-radius: var(--radius-full);
-  font-size: 0.76rem; 
-  font-weight: 700;
+.os-top-hud-logo-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 55%, #0D9488 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+  flex-shrink: 0;
+}
+
+.os-top-hud-brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.os-top-hud-brand-title {
+  font-family: var(--os-font-heading, Outfit, sans-serif);
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #0F172A;
+  letter-spacing: -0.02em;
+}
+
+.os-top-hud-brand-title span {
+  color: #0284C7;
+}
+
+.os-top-hud-brand-sub {
+  font-size: 0.62rem;
+  color: #94A3B8;
+  font-weight: 600;
   letter-spacing: 0.01em;
-  transition: all 0.15s ease;
-}
-.os-hud-facility-pill:hover {
-  background: rgba(0, 82, 212, 0.1);
-  border-color: rgba(0, 82, 212, 0.3);
 }
 
-.os-hud-live-pill {
-  display: inline-flex; 
-  align-items: center; 
-  gap: 7px;
-  background: rgba(16, 185, 129, 0.08);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-  color: #059669; 
-  padding: 6px 14px;
-  border-radius: var(--radius-full); 
-  font-size: 0.74rem; 
+.os-top-hud-search {
+  flex: 1;
+  min-width: 140px;
+  max-width: 420px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.os-top-hud-search:hover {
+  background: #fff;
+  border-color: #BAE6FD;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.1);
+}
+
+.os-top-hud-search-placeholder {
+  flex: 1;
+  font-size: 0.8rem;
+  color: #94A3B8;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.os-top-hud-kbd {
+  font-size: 0.65rem;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  color: #64748B;
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-family: var(--os-font-mono, monospace);
 }
 
-.os-hud-role-pill {
-  display: inline-flex; 
-  align-items: center; 
-  gap: 6px;
-  border-radius: var(--radius-sm);
-  padding: 5px 12px;
+.os-top-hud-branch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #E2E8F0;
+  background: #fff;
+  flex-shrink: 0;
+  max-width: 200px;
+}
+
+.os-top-hud-branch-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.os-top-hud-branch-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #0F172A;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.os-top-hud-branch-role {
+  font-size: 0.65rem;
+  color: #64748B;
+  font-weight: 600;
+}
+
+.os-top-hud-datetime {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.2;
+  flex-shrink: 0;
+  padding: 0 4px;
+}
+
+.os-top-hud-date {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748B;
+}
+
+.os-top-hud-time {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #0F172A;
+  font-variant-numeric: tabular-nums;
+}
+
+.os-top-hud-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid #E2E8F0;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #475569;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.os-top-hud-icon-btn:hover {
+  background: #F0F9FF;
+  color: #0284C7;
+  border-color: #BAE6FD;
+}
+
+.os-top-hud-icon-btn .os-hud-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #EF4444;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+}
+
+.os-top-hud-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid #E2E8F0;
+  background: #fff;
+  flex-shrink: 0;
+  max-width: 200px;
+}
+
+.os-top-hud-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0284C7, #0D9488);
+  color: #fff;
   font-size: 0.72rem;
   font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-.os-top-hud-right { 
-  display: flex; 
-  align-items: center; 
-  gap: 10px; 
+.os-top-hud-user-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
 }
 
-.os-hud-clock {
-  font-family: var(--os-font-mono); 
-  font-size: 0.82rem;
-  color: #38BDF8; 
+.os-top-hud-user-name {
+  font-size: 0.78rem;
   font-weight: 700;
-  background: #090D16;
-  padding: 6px 14px; 
-  border-radius: var(--radius-md);
-  border: 1px solid #1E293B;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  letter-spacing: 0.05em;
+  color: #0F172A;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.os-top-hud-user-role {
+  font-size: 0.65rem;
+  color: #64748B;
+  font-weight: 600;
+}
+
+.os-top-hud-online {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #059669;
+  flex-shrink: 0;
+  padding-left: 4px;
+}
+
+.os-top-hud-online::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10B981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25);
+}
+
+/* Legacy class hooks kept for non-breaking */
+.os-top-hud-left,
+.os-top-hud-right {
+  display: contents;
+}
+
+.os-hud-facility-pill,
+.os-hud-live-pill,
+.os-hud-role-pill,
+.os-hud-clock,
+.os-hud-btn,
+.os-hud-btn-alert {
+  /* superseded by floating header — keep minimal fallback */
 }
 
 .os-hud-btn {
   background: #FFFFFF;
   border: 1px solid #E2E8F0;
   color: #1E293B;
-  padding: 7px 14px; 
-  border-radius: var(--radius-md);
-  font-size: 0.78rem; 
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 0.78rem;
   font-weight: 600;
-  cursor: pointer; 
-  display: flex; 
-  align-items: center; 
+  cursor: pointer;
+  display: flex;
+  align-items: center;
   gap: 7px;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1); 
   font-family: var(--os-font);
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
-}
-.os-hud-btn:hover {
-  background: #F8FAFC;
-  border-color: #CBD5E1;
-  color: #0052D4;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 24, 40, 0.08);
-}
-.os-hud-btn:active {
-  transform: scale(0.98);
 }
 
 .os-hud-btn-alert {
-  background: rgba(239, 68, 68, 0.08); 
-  border-color: rgba(239, 68, 68, 0.28);
   color: #DC2626;
-  font-weight: 700;
-}
-.os-hud-btn-alert:hover { 
-  background: rgba(239, 68, 68, 0.15); 
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #B91C1C; 
+  border-color: rgba(239, 68, 68, 0.28);
+  background: rgba(239, 68, 68, 0.06);
 }
 
 /* Real-time Telemetry Ticker */
@@ -4692,4 +4878,24 @@ body {
 }
 .os-empty-state strong {
   color: #0A2540;
+}
+
+@media (max-width: 1100px) {
+  .os-top-hud-brand-sub,
+  .os-top-hud-signout-label,
+  .os-top-hud-online {
+    display: none;
+  }
+  .os-top-hud-search {
+    max-width: 220px;
+  }
+  .os-top-hud-user-meta {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .os-top-hud-branch,
+  .os-top-hud-datetime {
+    display: none;
+  }
 }

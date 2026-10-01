@@ -72,7 +72,7 @@ import {
   CreditCard, FileText, Stethoscope, Calendar, HeartPulse, Database, Brain, Sparkles, Flame,
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Gauge, Trash2, Cpu, FileCode, ShieldCheck,
-  Search, X, LayoutDashboard, Zap, CheckCircle2, Globe, ArrowRight,
+  Search, X, LayoutDashboard, MapPin, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
   Command, CornerDownLeft
 } from 'lucide-react';
 
@@ -1637,116 +1637,125 @@ export default function OSPage() {
         {/* Real-Time Critical Alert Banner */}
         <AlertBanner alert={criticalAlert} onDismiss={dismissCriticalAlert} />
 
-        {/* Top Operations Header */}
+        {/* Top Operations Header — Hospital OS floating bar */}
         <header className="os-top-hud">
-          <div className="os-top-hud-left">
-            {userSession?.roleKey !== 'reception' && (
-              <div className="os-hud-facility-pill">
-                <Building2 size={13} />
-                <span>{userSession?.facility || 'Hospital'}</span>
-              </div>
-            )}
-            <div className="os-hud-live-pill">
-              <span className="os-status-dot pulse-green" />
-              <span>Online</span>
+          <div className="os-top-hud-brand">
+            <div className="os-top-hud-logo-mark">
+              <img
+                src="/medcore-logo.png"
+                alt=""
+                width={22}
+                height={22}
+                style={{ objectFit: 'contain', filter: 'brightness(0) invert(1)' }}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
             </div>
-            {userSession && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem' }}>
-                <span style={{ color: '#0A2540', fontWeight: 700 }}>{userSession.name}</span>
-                {userSession.roleKey === 'reception' ? (
-                  <span style={{ background: '#E0F2FE', color: '#0369A1', borderRadius: 6, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 600 }}>
-                    Reception
-                  </span>
-                ) : (
-                  <>
-                    <span style={{ color: '#94A3B8' }}>·</span>
-                    <span style={{ color: '#475569', fontWeight: 600 }}>{userSession.role.split('/')[0]}</span>
-                    <span style={{ background: '#F1F5F9', color: '#64748B', borderRadius: 6, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 600 }}>
-                      {userSession.department.split('&')[0].trim()}
-                    </span>
-                  </>
-                )}
+            <div className="os-top-hud-brand-text">
+              <div className="os-top-hud-brand-title">
+                Hospital <span>OS</span>
               </div>
-            )}
+              <div className="os-top-hud-brand-sub">Better Care. Smarter Systems.</div>
+            </div>
           </div>
 
-          <div className="os-top-hud-right">
-            <button
-              type="button"
-              className="os-hud-btn"
-              onClick={() => setCmdPaletteOpen(true)}
-              title="Search modules"
-              style={{
-                background: 'rgba(0, 82, 212, 0.05)',
-                borderColor: 'rgba(0, 82, 212, 0.2)',
-                color: '#0052D4',
-              }}
-            >
-              <Search size={14} />
-              <span>Search</span>
-            </button>
+          <button
+            type="button"
+            className="os-top-hud-search"
+            onClick={() => setCmdPaletteOpen(true)}
+            title="Search patient, modules, actions (⌘K)"
+          >
+            <Search size={15} color="#94A3B8" />
+            <span className="os-top-hud-search-placeholder">
+              Search patient, ID, phone, appointment…
+            </span>
+            <span className="os-top-hud-kbd">⌘K</span>
+          </button>
 
-            <NotificationBell app="MEDCORE_OS" facilityId={userSession?.facility} />
-
-            <div className="os-hud-clock">
-              <span>{currentTime || '09:00:00'}</span>
+          <div className="os-top-hud-branch" title={userSession?.facility || 'Facility'}>
+            <MapPin size={14} color="#0284C7" style={{ flexShrink: 0 }} />
+            <div className="os-top-hud-branch-text">
+              <span className="os-top-hud-branch-name">
+                {userSession?.facility?.split(',')[0] || 'Main Branch'}
+              </span>
+              <span className="os-top-hud-branch-role">
+                {userSession?.roleKey === 'reception'
+                  ? 'Reception Desk'
+                  : (userSession?.role || userSession?.title || 'Clinical desk').split('/')[0]}
+              </span>
             </div>
+            <ChevronDown size={14} color="#94A3B8" />
+          </div>
 
+          <div className="os-top-hud-datetime">
+            <span className="os-top-hud-date">
+              {new Date().toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+            </span>
+            <span className="os-top-hud-time">{currentTime || '—'}</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="os-top-hud-icon-btn" title="Notifications" style={{ position: 'relative' }}>
+              <NotificationBell app="MEDCORE_OS" facilityId={userSession?.facility} />
+            </div>
             <button
               type="button"
-              className="os-hud-btn"
-              style={{
-                background: 'rgba(0, 102, 255, 0.06)',
-                borderColor: 'rgba(0, 102, 255, 0.2)',
-                color: '#0066FF',
-                fontWeight: 600,
-              }}
-              onClick={() => setAiDrawerOpen(!aiDrawerOpen)}
-              title="Open clinical assistant"
+              className="os-top-hud-icon-btn"
+              title="Help"
+              onClick={() => setAiDrawerOpen(true)}
             >
-              <Brain size={14} />
-              <span>Assistant</span>
+              <HelpCircle size={16} />
             </button>
-
             <button
               type="button"
-              className="os-hud-btn os-hud-btn-alert"
-              onClick={() => {
-                const code = prompt('Send hospital alert (e.g. BLUE for cardiac arrest, RED for fire, YELLOW for surge):');
-                if (code) setActiveEmergencyCode(`CODE ${code.toUpperCase()}`);
-              }}
+              className="os-top-hud-icon-btn"
+              title="Lock terminal"
+              onClick={() => setIsLocked(true)}
             >
-              <AlertTriangle size={14} />
-              <span>Alert</span>
-            </button>
-
-            <button
-              type="button"
-              className="os-hud-btn os-hud-lock-primary"
-              onClick={handleLockScreen}
-              title="Lock screen"
-              style={{
-                order: -1,
-                background: 'rgba(239, 68, 68, 0.15)',
-                border: '1px solid rgba(248, 113, 113, 0.45)',
-                color: '#FCA5A5',
-                fontWeight: 700,
-              }}
-            >
-              <Lock size={14} />
-              <span>Lock</span>
-            </button>
-
-            <button
-              type="button"
-              className="os-hud-btn"
-              onClick={handleLogout}
-              title="Sign out"
-            >
-              <LogOut size={14} />
-              <span>Sign Out</span>
+              <Lock size={15} />
             </button>
           </div>
+
+          <div className="os-top-hud-user">
+            <div className="os-top-hud-avatar">
+              {(userSession?.avatarInitials ||
+                userSession?.name
+                  ?.split(' ')
+                  .map((w) => w[0])
+                  .join('')
+                  .slice(0, 2) ||
+                'ST'
+              ).toUpperCase()}
+            </div>
+            <div className="os-top-hud-user-meta">
+              <span className="os-top-hud-user-name">{userSession?.name || 'Staff'}</span>
+              <span className="os-top-hud-user-role">
+                {userSession?.roleKey === 'reception'
+                  ? 'Receptionist'
+                  : (userSession?.role || 'Staff').split('/')[0]}
+              </span>
+            </div>
+            <ChevronDown size={14} color="#94A3B8" />
+          </div>
+
+          <span className="os-top-hud-online">Online</span>
+
+          <button
+            type="button"
+            className="os-hud-btn"
+            onClick={handleLogout}
+            title="Sign out"
+            style={{ padding: '7px 12px', fontSize: '0.72rem' }}
+          >
+            <LogOut size={14} />
+            <span className="os-top-hud-signout-label">Sign out</span>
+          </button>
         </header>
 
         {/* LIVE UPDATES ticker removed */}
