@@ -1635,8 +1635,8 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
             {[
               { l: 'Today booked', v: appts.length, c: C.blue },
-              { l: 'Confirmed', v: appts.filter((a) => a.status === 'booked' || a.status === 'confirmed').length, c: '#059669' },
-              { l: 'Checked in', v: appts.filter((a) => a.status === 'checked_in' || a.status === 'arrived').length, c: C.teal },
+              { l: 'Confirmed', v: appts.filter((a) => a.status === 'booked').length, c: '#059669' },
+              { l: 'Checked in', v: appts.filter((a) => a.status === 'arrived').length, c: C.teal },
               { l: 'Cancelled', v: appts.filter((a) => a.status === 'cancelled').length, c: '#DC2626' },
             ].map((k) => (
               <div key={k.l} style={{ background: '#fff', borderRadius: 14, border: `1px solid ${C.border}`, padding: '12px 14px', borderTop: `3px solid ${k.c}` }}>
