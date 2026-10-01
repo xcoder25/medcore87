@@ -8,7 +8,7 @@ import type { UserSession } from '../auth/AuthScreen';
 import { AdminWorkspace } from './AdminWorkspace';
 import {
   LayoutDashboard, Users, Building2, Activity, BedDouble, RefreshCw, PhoneCall,
-  Lock, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus,
+  Lock, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus, Camera,
 } from 'lucide-react';
 
 // Lazy module map — same keys as page.tsx
@@ -23,6 +23,7 @@ import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
 import { CashierRevenue } from '../cashier/CashierRevenue';
 import { AmbulanceTransfersSuite } from '../operations/AmbulanceTransfersSuite';
 import { StaffEnrolment } from '../staffing/StaffEnrolment';
+import { AttendanceCameras } from '../staffing/AttendanceCameras';
 import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import { ensureCleanPilot, setActiveFacilityId, KEYS as ADMIN_KEYS } from '../../lib/adminRealtimeStore';
@@ -43,7 +44,8 @@ type AdminModule =
   | 'rbac'
   | 'enrolment'
   | 'compliance'
-  | 'cashier';
+  | 'cashier'
+  | 'cameras';
 
 interface NavItem {
   key: AdminModule;
@@ -79,6 +81,7 @@ const NAV: NavSection[] = [
     items: [
       { key: 'rbac', label: 'Staff Access Control', icon: Lock },
       { key: 'enrolment', label: 'Staff Enrolment & ID', icon: UserPlus },
+      { key: 'cameras', label: 'Attendance Cameras', icon: Camera },
       { key: 'compliance', label: 'Compliance & Audit', icon: FileText },
       { key: 'cashier', label: 'Revenue & Cashier', icon: BarChart3 },
     ],
@@ -192,6 +195,8 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         return <ComplianceAuditLogs />;
       case 'cashier':
         return <CashierRevenue />;
+      case 'cameras':
+        return <AttendanceCameras session={session} />;
       default:
         return <AdminWorkspace session={session} onNavigate={(k) => setModule(k as AdminModule)} />;
     }
@@ -266,9 +271,36 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
               <Building2 size={14} />
               <span>{facility}</span>
             </div>
-            <div className="admin-shell-online">
+            <div
+              className={`admin-shell-online${
+                !online ? ' is-offline' : hospitalShare === 'cloud' ? ' is-cloud' : hospitalShare === 'lan' ? ' is-lan-hub' : ''
+              }`}
+              title={
+                !online
+                  ? 'Device offline'
+                  : hospitalShare === 'cloud'
+                    ? 'Cloud backup active'
+                    : hospitalShare === 'lan'
+                      ? 'Hospital LAN hub active'
+                      : hospitalShare === 'local'
+                        ? 'Local browser session'
+                        : connected
+                          ? 'Realtime WebSocket connected'
+                          : 'Online'
+              }
+            >
               <span className="dot" />
-              {!online ? 'Offline' : hospitalShare === 'cloud' ? 'Cloud sync' : hospitalShare === 'lan' ? 'Hospital LAN' : connected ? 'Live' : 'Online'}
+              {!online
+                ? 'Offline'
+                : hospitalShare === 'cloud'
+                  ? 'Cloud'
+                  : hospitalShare === 'lan'
+                    ? 'LAN hub'
+                    : hospitalShare === 'local'
+                      ? 'Local'
+                      : connected
+                        ? 'Live'
+                        : 'Online'}
             </div>
             <div className="admin-shell-clock">{clock}</div>
           </div>
@@ -300,11 +332,6 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             Working offline on this device. For all staff to share data without internet, run the hospital API on your LAN (see hospital share below).
           </div>
         )}
-        {online && hospitalShare === 'local' && (
-          <div className="admin-share-banner" role="status">
-            Single-PC mode — data stays on this browser. Start api-server on the hospital network so every workstation shares the same staff, transfers, and bills.
-          </div>
-        )}
         {hospitalShare === 'lan' && (
           <div className="admin-share-banner is-lan" role="status">
             Hospital hub on — all saves go to the UPS hub on this LAN first, then to the cloud when the internet is up.
@@ -317,11 +344,6 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             <button type="button" className="admin-link" onClick={() => void flushOutbox().then(() => setPendingSync(getOutboxPendingCount()))}>
               Sync now
             </button>
-          </div>
-        )}
-        {hospitalShare === 'cloud' && (
-          <div className="admin-share-banner is-lan" role="status">
-            Cloud backup on — Firestore is receiving data. Prefer a hospital hub + UPS for blackouts so every PC shares one on-site copy.
           </div>
         )}
         <main className="admin-shell-content">{body}</main>
