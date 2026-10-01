@@ -8,7 +8,7 @@ import type { UserSession } from '../auth/AuthScreen';
 import { AdminWorkspace } from './AdminWorkspace';
 import {
   LayoutDashboard, Users, Building2, Activity, BedDouble, RefreshCw, PhoneCall,
-  Lock, Shield, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus,
+  Lock, Shield, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus, Settings,
 } from 'lucide-react';
 
 // Lazy module map — same keys as page.tsx
@@ -22,6 +22,7 @@ import { AccessControl } from '../rbac/AccessControl';
 import { RolePermissionsMatrix } from '../rbac/RolePermissionsMatrix';
 import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
 import { CashierRevenue } from '../cashier/CashierRevenue';
+import { AdminSettings } from '../admin/AdminSettings';
 import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import { ensureCleanPilot, setActiveFacilityId, KEYS as ADMIN_KEYS } from '../../lib/adminRealtimeStore';
@@ -43,7 +44,8 @@ type AdminModule =
   | 'role-permissions'
   | 'enrolment'
   | 'compliance'
-  | 'cashier';
+  | 'cashier'
+  | 'settings';
 
 interface NavItem {
   key: AdminModule;
@@ -81,6 +83,7 @@ const NAV: NavSection[] = [
       { key: 'role-permissions', label: 'Role Visibility', icon: Shield },
       { key: 'compliance', label: 'Compliance & Audit', icon: FileText },
       { key: 'cashier', label: 'Revenue & Cashier', icon: BarChart3 },
+      { key: 'settings', label: 'Hospital Settings', icon: Settings },
     ],
   },
 ];
@@ -200,6 +203,8 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         return <ComplianceAuditLogs />;
       case 'cashier':
         return <CashierRevenue />;
+      case 'settings':
+        return <AdminSettings session={session} />;
       default:
         return <AdminWorkspace session={session} onNavigate={(k) => setModule(k as AdminModule)} />;
     }
