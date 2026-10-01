@@ -1820,7 +1820,7 @@ export default function OSPage() {
                 <RoleDashboard session={userSession} onNavigate={handleModuleChange} />
               ) : (
                 <ActiveComponent
-                  session={userSession}
+                  session={userSession!}
                   onNavigate={(k: string) => handleModuleChange(k as ModuleKey)}
                   {...(useReceptionCockpit
                     ? {
