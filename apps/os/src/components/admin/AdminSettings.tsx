@@ -32,6 +32,9 @@ import { AKWA_IBOM_LGAS } from '../../lib/receptionConstants';
 import { getOutboxPendingCount, flushOutbox } from '../../lib/durableOutbox';
 import { probeHospitalApi } from '../../lib/hospitalSync';
 import { pushActivity } from '../../lib/adminRealtimeStore';
+import { downloadFacilityBackup } from '../../lib/backupService';
+import { downloadDhis2Aggregate } from '../../lib/dhis2Export';
+import { exportAuditCsv, listAudit, appendAudit } from '../../lib/auditLogStore';
 
 interface Props {
   session: UserSession;
@@ -577,6 +580,78 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
         <div style={{ gridColumn: '1 / -1' }}>
           <Section icon={Database} title="Data & safety">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  downloadFacilityBackup(facilityId);
+                  appendAudit({
+                    facilityId,
+                    actor: session.name,
+                    actorBadge: session.badgeId,
+                    action: 'facility_backup_exported',
+                    entity: 'backup',
+                  });
+                }}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: '1px solid #E2E8F0',
+                  background: '#fff',
+                  color: '#0F172A',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Download facility backup
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  downloadDhis2Aggregate(facilityId);
+                  appendAudit({
+                    facilityId,
+                    actor: session.name,
+                    actorBadge: session.badgeId,
+                    action: 'dhis2_export',
+                    entity: 'dhis2',
+                  });
+                }}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: '1px solid #E2E8F0',
+                  background: '#fff',
+                  color: '#0F172A',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                DHIS2 daily aggregate
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const csv = exportAuditCsv(facilityId);
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `audit-${facilityId}.csv`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: '1px solid #E2E8F0',
+                  background: '#fff',
+                  color: '#0F172A',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Export audit CSV ({listAudit(facilityId, 500).length})
+              </button>
               <button
                 type="button"
                 onClick={() => {

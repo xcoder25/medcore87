@@ -23,6 +23,7 @@ import { RolePermissionsMatrix } from '../rbac/RolePermissionsMatrix';
 import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
 import { CashierRevenue } from '../cashier/CashierRevenue';
 import { AdminSettings } from '../admin/AdminSettings';
+import { ClinicalOrdersPanel } from '../clinical-core/ClinicalOrdersPanel';
 import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import { ensureCleanPilot, setActiveFacilityId, KEYS as ADMIN_KEYS } from '../../lib/adminRealtimeStore';
@@ -45,7 +46,8 @@ type AdminModule =
   | 'enrolment'
   | 'compliance'
   | 'cashier'
-  | 'settings';
+  | 'settings'
+  | 'clinical-orders';
 
 interface NavItem {
   key: AdminModule;
@@ -84,6 +86,7 @@ const NAV: NavSection[] = [
       { key: 'compliance', label: 'Compliance & Audit', icon: FileText },
       { key: 'cashier', label: 'Revenue & Cashier', icon: BarChart3 },
       { key: 'settings', label: 'Hospital Settings', icon: Settings },
+      { key: 'clinical-orders', label: 'Clinical orders bus', icon: Activity },
     ],
   },
 ];
@@ -205,6 +208,8 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         return <CashierRevenue />;
       case 'settings':
         return <AdminSettings session={session} />;
+      case 'clinical-orders':
+        return <ClinicalOrdersPanel session={session} />;
       default:
         return <AdminWorkspace session={session} onNavigate={(k) => setModule(k as AdminModule)} />;
     }

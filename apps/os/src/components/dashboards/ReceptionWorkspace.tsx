@@ -45,6 +45,9 @@ import {
   verifyInsurance,
 } from '../../lib/receptionConstants';
 import { emitLiveAction } from '../../lib/liveActions';
+import { printQueueTicket, printPaymentReceipt } from '../../lib/printService';
+import { appendAudit } from '../../lib/auditLogStore';
+import { sendPatientAlert } from '../../lib/integrations/gateways';
 import {
   orchestrateArrival,
   orchestrateDeskOverview,
@@ -366,6 +369,30 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     });
     reload();
     emitLiveAction(`Check-in ${visit.queueNumber} · ${p.lastName}`, { module: 'queue' });
+    try {
+      printQueueTicket({
+        queueNumber: visit.queueNumber,
+        patientName: fullName(p),
+        hospitalNumber: p.hospitalNumber,
+        department: ciDept,
+        facilityName,
+      });
+    } catch { /* ignore */ }
+    appendAudit({
+      facilityId,
+      actor: session.name,
+      actorBadge: session.badgeId,
+      action: 'patient_checkin',
+      entity: 'visit',
+      entityId: visit.id,
+      detail: visit.queueNumber,
+    });
+    if (p.phone) {
+      void sendPatientAlert({
+        phone: p.phone,
+        message: `MedCore: You are checked in at ${facilityName}. Queue ${visit.queueNumber} for ${ciDept}.`,
+      });
+    }
     flash(`Checked in · Queue ${visit.queueNumber}`);
   };
 
@@ -393,6 +420,26 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       cashier: session.name,
     });
     reload();
+    try {
+      printPaymentReceipt({
+        reference: `POS-${Date.now().toString(36).toUpperCase()}`,
+        patientName: fullName(p),
+        hospitalNumber: p.hospitalNumber,
+        amount: amt,
+        method: posMethod,
+        purpose: posPurpose,
+        facilityName,
+        cashier: session.name,
+      });
+    } catch { /* ignore */ }
+    appendAudit({
+      facilityId,
+      actor: session.name,
+      actorBadge: session.badgeId,
+      action: 'payment_recorded',
+      entity: 'payment',
+      detail: `${posMethod} ${amt}`,
+    });
     flash(`Payment recorded · ₦${amt.toLocaleString()} · ${posMethod.toUpperCase()}`);
   };
 
