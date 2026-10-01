@@ -80,6 +80,17 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   onRefresh,
 }) => {
   const [deptFilter, setDeptFilter] = useState('all');
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const liveUpdate = async (id: string, status: ReceptionVisit['status']) => {
+    setBusyId(id);
+    onUpdateVisit(id, status);
+    try {
+      const { emitLiveAction } = await import('../../lib/liveActions');
+      emitLiveAction(`Queue ${status} · ${id}`, { module: 'queue' });
+    } catch { /* ignore */ }
+    window.setTimeout(() => setBusyId(null), 450);
+  };
   const firstName = (session.name || 'Staff').split(' ')[0];
 
   const waiting = visits.filter((v) => v.status === 'waiting');
@@ -198,11 +209,10 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
       {/* Hero */}
       <div
+        className="mc-hero-fluid"
         style={{
           borderRadius: 20,
           overflow: 'hidden',
-          background:
-            'linear-gradient(105deg, #0B3A6E 0%, #0C4A7A 35%, #0E7490 70%, #14B8A6 100%)',
           color: '#fff',
           position: 'relative',
           minHeight: 148,
@@ -306,6 +316,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
           return (
             <div
               key={k.label}
+              className="mc-kpi-card"
               style={{
                 background: '#fff',
                 borderRadius: 16,
@@ -370,7 +381,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
             <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>
               Speed up your workflow with essential actions
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
+            <div className="mc-stagger-desk" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
               {quick.map((q) => {
                 const Icon = q.icon;
                 return (
@@ -378,6 +389,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                     key={q.label}
                     type="button"
                     onClick={() => onGo(q.go)}
+                    className="mc-btn-live"
                     style={{
                       border: `1px solid ${C.border}`,
                       borderRadius: 14,
@@ -385,7 +397,6 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                       padding: '14px 10px',
                       cursor: 'pointer',
                       textAlign: 'center',
-                      transition: 'border-color 0.15s, box-shadow 0.15s',
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.borderColor = '#BFDBFE';
@@ -468,6 +479,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => onGo('walkin')}
+                  className="mc-btn-live"
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -554,7 +566,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                     </tr>
                   )}
                   {filtered.slice(0, 10).map((v, i) => (
-                    <tr key={v.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                    <tr key={v.id} className={`mc-queue-row${busyId === v.id ? ' is-updating' : ''}`} style={{ borderBottom: `1px solid ${C.border}` }}>
                       <td style={{ padding: '12px 10px', color: C.muted }}>{i + 1}</td>
                       <td style={{ padding: '12px 10px', fontWeight: 700, color: C.text }}>{v.patientName}</td>
                       <td style={{ padding: '12px 10px', color: C.muted, fontSize: 12 }}>{v.hospitalNumber}</td>
@@ -603,7 +615,8 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                           {v.status === 'waiting' && (
                             <button
                               type="button"
-                              onClick={() => onUpdateVisit(v.id, 'called')}
+                              onClick={() => void liveUpdate(v.id, 'called')}
+                              className={`mc-btn-live${busyId === v.id ? ' is-busy' : ''}`}
                               style={{
                                 fontSize: 11,
                                 fontWeight: 700,
@@ -621,7 +634,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                           {(v.status === 'waiting' || v.status === 'called') && (
                             <button
                               type="button"
-                              onClick={() => onUpdateVisit(v.id, 'with_provider')}
+                              onClick={() => void liveUpdate(v.id, 'with_provider')}
                               style={{
                                 fontSize: 11,
                                 fontWeight: 700,
@@ -639,7 +652,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                           {v.status !== 'completed' && (
                             <button
                               type="button"
-                              onClick={() => onUpdateVisit(v.id, 'completed')}
+                              onClick={() => void liveUpdate(v.id, 'completed')}
                               style={{
                                 fontSize: 11,
                                 fontWeight: 700,

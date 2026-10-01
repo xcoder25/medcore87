@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
 import {
   parseStaffAutomationIntent,
@@ -28,11 +28,59 @@ interface Props {
   session?: UserSession;
 }
 
+
+/** Streams assistant text with cursor — premium chat feel */
+function StreamingText({ text, animate }: { text: string; animate: boolean }) {
+  const [shown, setShown] = useState(animate ? '' : text);
+  const [done, setDone] = useState(!animate);
+
+  useEffect(() => {
+    if (!animate) {
+      setShown(text);
+      setDone(true);
+      return;
+    }
+    setShown('');
+    setDone(false);
+    let i = 0;
+    const step = Math.max(1, Math.floor(text.length / 80));
+    const id = window.setInterval(() => {
+      i = Math.min(text.length, i + step);
+      setShown(text.slice(0, i));
+      if (i >= text.length) {
+        window.clearInterval(id);
+        setDone(true);
+      }
+    }, 18);
+    return () => window.clearInterval(id);
+  }, [text, animate]);
+
+  return (
+    <>
+      {shown}
+      {!done && <span className="mc-stream-cursor" aria-hidden />}
+    </>
+  );
+}
+
 export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputPrompt, setInputPrompt] = useState('');
   const [activeAITab, setActiveAITab] = useState<'copilot' | 'forecasting' | 'anomalies' | 'orchestrator'>('copilot');
   const [isThinking, setIsThinking] = useState(false);
+  const [streamingId, setStreamingId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages, isThinking]);
+
+  useEffect(() => {
+    if (isThinking) return;
+    const last = messages[messages.length - 1];
+    if (last?.sender === 'm87') setStreamingId(last.id);
+  }, [isThinking]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -243,6 +291,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
           }}
         >
           <div
+            ref={listRef}
             style={{
               flex: 1,
               overflowY: 'auto',
@@ -350,7 +399,11 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
                       whiteSpace: 'pre-wrap',
                     }}
                   >
-                    {msg.text}
+                    {msg.sender === 'm87' ? (
+                      <StreamingText text={msg.text} animate={msg.id === streamingId} />
+                    ) : (
+                      msg.text
+                    )}
                     <div
                       style={{
                         fontSize: 10,
@@ -368,13 +421,13 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
             })}
 
             {isThinking && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748B', fontSize: 13 }}>
+              <div className="mc-ai-msg-in" style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748B', fontSize: 13 }}>
                 <div
+                  className="mc-gradient-fluid"
                   style={{
                     width: 28,
                     height: 28,
                     borderRadius: 8,
-                    background: 'linear-gradient(135deg, #7C3AED, #0284C7)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -382,7 +435,10 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
                 >
                   <Sparkles size={14} color="#fff" />
                 </div>
-                <span style={{ fontWeight: 600 }}>M87 is thinking…</span>
+                <div className="mc-typing-dots" aria-label="M87 is thinking">
+                  <span /><span /><span />
+                </div>
+                <span style={{ fontWeight: 600 }}>M87 is composing…</span>
               </div>
             )}
           </div>
