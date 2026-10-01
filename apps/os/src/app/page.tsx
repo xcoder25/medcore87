@@ -777,6 +777,7 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   command: { level: 2, label: 'L2 Support', roleDesc: 'General Hospital Staff & Floor Duty' },
   beds: { level: 3, label: 'L3 Clinical', roleDesc: 'Bed Managers & Ward Supervisors' },
   'patient-flow': { level: 1, label: 'L3 Clinical', roleDesc: 'Patient Flow Coordinators' },
+  appointments: { level: 1, label: 'L2 Front Desk', roleDesc: 'Reception & appointment clerks' },
   staffing: { level: 3, label: 'L3 Clinical', roleDesc: 'Duty Roster Officers & Matrons' },
   ambulance: { level: 2, label: 'L2 Support', roleDesc: 'EMS Dispatchers & Paramedics' },
   inventory: { level: 2, label: 'L2 Support', roleDesc: 'Procurement & Inventory Managers' },
