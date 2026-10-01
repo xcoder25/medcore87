@@ -66,7 +66,9 @@ type View =
   | 'queue'
   | 'appointments'
   | 'payment'
-  | 'search';
+  | 'search'
+  | 'scan'
+  | 'walkin';
 
 type RegStep = 1 | 2 | 3 | 4;
 
@@ -115,6 +117,8 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [payments, setPayments] = useState<ReceptionPayment[]>([]);
   const [stats, setStats] = useState(dayStats(facilityId));
   const [query, setQuery] = useState('');
+  const [scanCode, setScanCode] = useState('');
+  const [walkStep, setWalkStep] = useState<1 | 2 | 3>(1);
   const [selected, setSelected] = useState<FacilityPatient | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [regStep, setRegStep] = useState<RegStep>(1);
@@ -492,11 +496,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const waiting = visits.filter((v) => v.status === 'waiting' || v.status === 'called');
 
   const tools = [
-    { id: 'search' as View, icon: Search, label: 'Find patient', desc: 'MPI search · card · phone' },
+    { id: 'search' as View, icon: Search, label: 'Find patient', desc: 'Name · phone · hospital no.' },
+    { id: 'scan' as View, icon: QrCode, label: 'Scan ID / QR', desc: 'Card scan · badge lookup' },
     { id: 'register' as View, icon: UserPlus, label: 'Register', desc: 'Full form · NIN quick' },
-    { id: 'queue' as View, icon: Ticket, label: 'Live queue', desc: 'Call · complete · AI' },
-    { id: 'appointments' as View, icon: Calendar, label: 'Appointments', desc: 'Book · today list' },
-    { id: 'payment' as View, icon: Wallet, label: 'POS / Payment', desc: 'Cash · card · HMO' },
+    { id: 'walkin' as View, icon: Users, label: 'Walk-in', desc: 'No appointment · queue now' },
+    { id: 'appointments' as View, icon: Calendar, label: 'Appointments', desc: 'Book · confirm · arrive' },
+    { id: 'queue' as View, icon: Ticket, label: 'Live queue', desc: 'Call · skip · complete' },
+    { id: 'payment' as View, icon: Wallet, label: 'POS / Payment', desc: 'Cash · POS · transfer · HMO' },
   ];
 
   const inputStyle: React.CSSProperties = {
@@ -1288,6 +1294,271 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         </div>
       )}
 
+
+      {/* SCAN ID / QR — distinct from search */}
+      {view === 'scan' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(280px,360px)', gap: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 20 }}>
+            <div style={{ fontWeight: 800, fontSize: 16, color: C.navy, marginBottom: 6 }}>Scan hospital card / QR</div>
+            <p style={{ fontSize: 13, color: C.muted, margin: '0 0 16px', lineHeight: 1.5 }}>
+              Enter or scan the hospital number, digital card ID, or NIN printed on the patient card.
+              This looks up the MPI only — it does not open clinical charts.
+            </p>
+            <div
+              style={{
+                borderRadius: 16,
+                border: '2px dashed #7DD3FC',
+                background: 'linear-gradient(180deg,#F0F9FF,#fff)',
+                padding: 28,
+                textAlign: 'center',
+                marginBottom: 16,
+              }}
+            >
+              <QrCode size={48} color={C.blue} style={{ margin: '0 auto 12px' }} />
+              <div style={{ fontWeight: 800, color: C.navy }}>Ready to scan</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
+                Use a USB barcode/QR scanner into the field below, or type the ID
+              </div>
+            </div>
+            <label style={labelStyle}>Hospital number / card ID / NIN</label>
+            <input
+              autoFocus
+              style={{ ...inputStyle, fontSize: 16, fontFamily: 'var(--os-font-mono, monospace)', letterSpacing: '0.04em' }}
+              placeholder="e.g. IGH-PT-XXXX or AKSHIA-…"
+              value={scanCode}
+              onChange={(e) => setScanCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const q = scanCode.trim().toLowerCase();
+                  const hit =
+                    patients.find(
+                      (p) =>
+                        p.hospitalNumber.toLowerCase() === q ||
+                        p.id.toLowerCase() === q ||
+                        (p.nin || '').replace(/\D/g, '') === q.replace(/\D/g, '') ||
+                        (p.nhiaNumber || '').toLowerCase() === q
+                    ) ||
+                    patients.find(
+                      (p) =>
+                        p.hospitalNumber.toLowerCase().includes(q) ||
+                        (p.nhiaNumber || '').toLowerCase().includes(q)
+                    );
+                  if (hit) {
+                    setSelected(hit);
+                    setPanelOpen(true);
+                    flash(`Card matched · ${fullName(hit)}`);
+                  } else {
+                    flash('No patient found for this scan — register or try Find patient');
+                  }
+                }
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const q = scanCode.trim().toLowerCase();
+                  if (!q) {
+                    flash('Enter or scan a code first');
+                    return;
+                  }
+                  const hit =
+                    patients.find(
+                      (p) =>
+                        p.hospitalNumber.toLowerCase() === q ||
+                        p.id.toLowerCase() === q ||
+                        (p.nin || '').replace(/\D/g, '') === q.replace(/\D/g, '') ||
+                        (p.nhiaNumber || '').toLowerCase() === q
+                    ) ||
+                    patients.find((p) => p.hospitalNumber.toLowerCase().includes(q));
+                  if (hit) {
+                    setSelected(hit);
+                    setPanelOpen(true);
+                    flash(`Matched · ${fullName(hit)}`);
+                  } else {
+                    flash('No match — register new patient');
+                    setView('register');
+                  }
+                }}
+                style={{ padding: '12px 18px', borderRadius: 10, border: 'none', background: C.blue, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
+              >
+                Look up card
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setScanCode('');
+                  setView('register');
+                }}
+                style={{ padding: '12px 18px', borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', fontWeight: 700, cursor: 'pointer' }}
+              >
+                No card · Register
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('search')}
+                style={{ padding: '12px 18px', borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Manual search
+              </button>
+            </div>
+          </div>
+          <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
+            <div style={{ fontWeight: 800, marginBottom: 10 }}>After a successful scan</div>
+            <ul style={{ margin: 0, paddingLeft: 18, color: C.muted, fontSize: 13, lineHeight: 1.7 }}>
+              <li>Patient side panel opens with identity</li>
+              <li>Check-in → live queue number</li>
+              <li>POS if balance due</li>
+              <li>Book appointment if needed</li>
+            </ul>
+            {selected && (
+              <div style={{ marginTop: 16, padding: 12, borderRadius: 12, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                <div style={{ fontWeight: 800, color: '#166534' }}>{fullName(selected)}</div>
+                <div style={{ fontSize: 12, color: C.muted }}>{selected.hospitalNumber}</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCiType('appointment');
+                    doCheckIn(selected);
+                    setView('queue');
+                  }}
+                  style={{ marginTop: 10, width: '100%', padding: 10, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
+                >
+                  Check in now
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* WALK-IN — distinct flow */}
+      {view === 'walkin' && (
+        <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 20, maxWidth: 560 }}>
+          <div style={{ fontWeight: 800, fontSize: 16, color: C.navy }}>Walk-in registration</div>
+          <p style={{ fontSize: 13, color: C.muted, margin: '6px 0 16px' }}>
+            For patients <strong>without</strong> a booked appointment. Assign department, then check-in to the live queue.
+          </p>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+            {[1, 2, 3].map((s) => (
+              <div key={s} style={{ flex: 1, height: 4, borderRadius: 4, background: walkStep >= s ? `linear-gradient(90deg,${C.blue},${C.teal})` : '#E2E8F0' }} />
+            ))}
+          </div>
+
+          {walkStep === 1 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Who is arriving?</div>
+              <button
+                type="button"
+                onClick={() => {
+                  setView('search');
+                  flash('Find existing patient, then return to Walk-in or Check in from panel');
+                }}
+                style={{ padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: '#F8FAFC', textAlign: 'left', cursor: 'pointer', fontWeight: 700 }}
+              >
+                Existing patient · search MPI
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setView('scan');
+                  flash('Scan card for walk-in');
+                }}
+                style={{ padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: '#F8FAFC', textAlign: 'left', cursor: 'pointer', fontWeight: 700 }}
+              >
+                Scan hospital card / QR
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('register')}
+                style={{ padding: 14, borderRadius: 12, border: 'none', background: C.blue, color: '#fff', textAlign: 'left', cursor: 'pointer', fontWeight: 800 }}
+              >
+                New patient · register first
+              </button>
+              {selected && (
+                <div style={{ marginTop: 8, padding: 12, borderRadius: 12, background: '#E0F2FE' }}>
+                  Selected: <strong>{fullName(selected)}</strong>
+                  <button type="button" onClick={() => setWalkStep(2)} style={{ display: 'block', marginTop: 8, width: '100%', padding: 10, borderRadius: 10, border: 'none', background: C.navy, color: '#fff', fontWeight: 800, cursor: 'pointer' }}>
+                    Continue with this patient →
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {walkStep === 2 && selected && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontWeight: 700 }}>{fullName(selected)} · walk-in details</div>
+              <label style={labelStyle}>Reason for visit</label>
+              <input style={inputStyle} value={ciReason} onChange={(e) => setCiReason(e.target.value)} placeholder="e.g. Consultation, fever, follow-up" />
+              <label style={labelStyle}>Department</label>
+              <select style={inputStyle} value={ciDept} onChange={(e) => setCiDept(e.target.value)}>
+                {RECEPTION_DEPTS.map((d) => (
+                  <option key={d}>{d}</option>
+                ))}
+              </select>
+              <label style={labelStyle}>Preferred doctor</label>
+              <input style={inputStyle} value={ciDoctor} onChange={(e) => setCiDoctor(e.target.value)} />
+              <label style={labelStyle}>Payment at desk</label>
+              <select style={inputStyle} value={ciPay} onChange={(e) => setCiPay(e.target.value as ReceptionVisit['paymentStatus'])}>
+                <option value="pending">Pay later</option>
+                <option value="paid">Paid now</option>
+                <option value="hmo">HMO / Insurance</option>
+                <option value="waived">Waived</option>
+              </select>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button type="button" onClick={() => setWalkStep(1)} style={{ padding: '10px 14px', borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', fontWeight: 700, cursor: 'pointer' }}>Back</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCiType('walkin');
+                    setWalkStep(3);
+                  }}
+                  style={{ flex: 1, padding: 12, borderRadius: 10, border: 'none', background: C.blue, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
+                >
+                  Review & check in
+                </button>
+              </div>
+            </div>
+          )}
+
+          {walkStep === 3 && selected && (
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 10 }}>Confirm walk-in</div>
+              <div style={{ padding: 14, borderRadius: 12, background: '#F8FAFC', border: `1px solid ${C.border}`, fontSize: 13, lineHeight: 1.6, marginBottom: 14 }}>
+                <div><strong>Patient:</strong> {fullName(selected)}</div>
+                <div><strong>Dept:</strong> {ciDept}</div>
+                <div><strong>Doctor:</strong> {ciDoctor}</div>
+                <div><strong>Reason:</strong> {ciReason || '—'}</div>
+                <div><strong>Payment:</strong> {ciPay}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCiType('walkin');
+                  doCheckIn(selected);
+                  setWalkStep(1);
+                  setView('queue');
+                }}
+                style={{ width: '100%', padding: 14, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
+              >
+                Confirm · assign queue number
+              </button>
+              <button type="button" onClick={() => setWalkStep(2)} style={{ width: '100%', marginTop: 8, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+                Back
+              </button>
+            </div>
+          )}
+
+          {walkStep === 2 && !selected && (
+            <div style={{ color: C.muted, fontSize: 13 }}>
+              Select a patient in step 1 first.
+              <button type="button" onClick={() => setWalkStep(1)} style={{ display: 'block', marginTop: 10, fontWeight: 700, color: C.blue, background: 'none', border: 'none', cursor: 'pointer' }}>← Step 1</button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* APPOINTMENTS */}
       {view === 'appointments' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16 }}>
@@ -1377,7 +1648,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 )}
               </div>
             ))}
-            {appts.length === 0 && <div style={{ color: C.muted, padding: 16 }}>No appointments for today</div>}
+            {appts.length === 0 && (
+              <div style={{ padding: 24, textAlign: 'center', color: C.muted, border: `1px dashed ${C.border}`, borderRadius: 12 }}>
+                <div style={{ fontWeight: 700, color: C.navy, marginBottom: 6 }}>No appointments today</div>
+                Book from the form on the left after selecting a registered patient. Walk-ins should use the <strong>Walk-in</strong> tool, not this list.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1446,7 +1722,11 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 <div style={{ fontWeight: 800, color: C.teal }}>₦{p.amount.toLocaleString()}</div>
               </div>
             ))}
-            {payments.length === 0 && <div style={{ color: C.muted }}>No payments yet today</div>}
+            {payments.length === 0 && (
+              <div style={{ padding: 20, textAlign: 'center', color: C.muted, border: `1px dashed ${C.border}`, borderRadius: 12, marginTop: 8 }}>
+                No POS receipts yet. Select a patient, amount, and method, then <strong>Record payment</strong>.
+              </div>
+            )}
           </div>
         </div>
       )}
