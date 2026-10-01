@@ -56,6 +56,7 @@ import {
   type AiCheckInCard,
   type ArrivalIntent,
 } from '../../lib/receptionAiOrchestrator';
+import { ReceptionDeskHome } from './ReceptionDeskHome';
 
 interface Props {
   session: UserSession;
@@ -690,232 +691,26 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
       {/* HOME */}
       {view === 'home' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
-          <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-              <strong style={{ color: C.navy }}>Find patient</strong>
-              <span style={{ fontSize: 12, color: C.muted }}>⌘K</span>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ flex: 1, position: 'relative' }}>
-                <Search size={16} style={{ position: 'absolute', left: 12, top: 12, color: C.muted }} />
-                <input
-                  style={{ ...inputStyle, paddingLeft: 36 }}
-                  placeholder="Name, hospital no., phone, NHIA, NIN…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onFocus={() => setView('search')}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => setView('register')}
-                style={{
-                  background: C.blue,
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 10,
-                  padding: '0 16px',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <UserPlus size={16} /> New
-              </button>
-            </div>
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 8 }}>LIVE QUEUE</div>
-              {waiting.length === 0 && (
-                <div style={{ color: C.muted, fontSize: 13, padding: 12 }}>No patients waiting — ready for check-in</div>
-              )}
-              {waiting.slice(0, 6).map((v) => (
-                <div
-                  key={v.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '10px 0',
-                    borderBottom: `1px solid ${C.border}`,
-                  }}
-                >
-                  <div
-                    style={{
-                      background: '#E0F2FE',
-                      color: C.blue,
-                      fontWeight: 800,
-                      borderRadius: 8,
-                      padding: '6px 10px',
-                      fontFamily: 'monospace',
-                    }}
-                  >
-                    {v.queueNumber}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, color: C.navy }}>{v.patientName}</div>
-                    <div style={{ fontSize: 12, color: C.muted }}>
-                      {v.department} · {v.doctor}
-                      {v.aiReminderSent ? ' · AI reminded' : ''}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      updateVisitStatus(v.id, 'called');
-                      reload();
-                      flash(`Called ${v.queueNumber}`);
-                    }}
-                    style={{
-                      border: `1px solid ${C.blue}`,
-                      background: '#fff',
-                      color: C.blue,
-                      borderRadius: 8,
-                      padding: '6px 10px',
-                      fontWeight: 700,
-                      fontSize: 12,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Call
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      updateVisitStatus(v.id, 'completed');
-                      reload();
-                    }}
-                    style={{
-                      border: 'none',
-                      background: C.teal,
-                      color: '#fff',
-                      borderRadius: 8,
-                      padding: '6px 10px',
-                      fontWeight: 700,
-                      fontSize: 12,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Done
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={() => setView('queue')}
-                style={{
-                  marginTop: 12,
-                  width: '100%',
-                  padding: 10,
-                  borderRadius: 10,
-                  border: `1px dashed ${C.border}`,
-                  background: '#F8FAFC',
-                  fontWeight: 700,
-                  color: C.blue,
-                  cursor: 'pointer',
-                }}
-              >
-                Open full live queue →
-              </button>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 16 }}>
-              <div style={{ fontWeight: 800, marginBottom: 10, color: C.navy }}>Quick check-in</div>
-              <p style={{ fontSize: 12, color: C.muted, margin: '0 0 10px' }}>
-                Select a patient from search, set department, then check in to the live queue.
-              </p>
-              {selected ? (
-                <div style={{ background: '#F0F9FF', borderRadius: 10, padding: 12, marginBottom: 10 }}>
-                  <div style={{ fontWeight: 700 }}>{fullName(selected)}</div>
-                  <div style={{ fontSize: 12, color: C.muted }}>{selected.hospitalNumber}</div>
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>No patient selected</div>
-              )}
-              <label style={labelStyle}>Department</label>
-              <select style={inputStyle} value={ciDept} onChange={(e) => setCiDept(e.target.value)}>
-                {RECEPTION_DEPTS.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-              <label style={{ ...labelStyle, marginTop: 8 }}>Visit type</label>
-              <select style={inputStyle} value={ciType} onChange={(e) => setCiType(e.target.value as VisitType)}>
-                <option value="walkin">Walk-in</option>
-                <option value="appointment">Appointment</option>
-                <option value="emergency">Emergency</option>
-                <option value="referral">Referral</option>
-              </select>
-              <button
-                type="button"
-                disabled={!selected}
-                onClick={() => selected && doCheckIn(selected)}
-                style={{
-                  marginTop: 12,
-                  width: '100%',
-                  padding: 12,
-                  borderRadius: 10,
-                  border: 'none',
-                  background: selected ? C.blue : '#94A3B8',
-                  color: '#fff',
-                  fontWeight: 800,
-                  cursor: selected ? 'pointer' : 'not-allowed',
-                }}
-              >
-                Check in to live queue
-              </button>
-              <button
-                type="button"
-                disabled={!selected || aiBusy}
-                onClick={() => selected && void runAiArrival(selected, 'gesture_checkin')}
-                style={{
-                  marginTop: 8,
-                  width: '100%',
-                  padding: 10,
-                  borderRadius: 10,
-                  border: '1px solid #A78BFA',
-                  background: '#F5F3FF',
-                  color: '#5B21B6',
-                  fontWeight: 700,
-                  cursor: selected ? 'pointer' : 'not-allowed',
-                  fontSize: 12,
-                }}
-              >
-                👋 Simulate gesture / AI check-in
-              </button>
-            </div>
-            <div style={{ background: '#FFFBEB', borderRadius: 16, border: '1px solid #FDE68A', padding: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, color: '#92400E' }}>
-                <Sparkles size={16} /> AI reception orchestrator
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
-                {[
-                  { l: 'Waiting', v: deskAi.waiting, c: '#0284C7' },
-                  { l: 'Ready', v: deskAi.ready, c: '#16A34A' },
-                  { l: 'Incomplete reg', v: deskAi.incompleteRegistration, c: '#D97706' },
-                  { l: 'With provider', v: deskAi.waitingForProvider, c: '#6366F1' },
-                ].map((k) => (
-                  <div key={k.l} style={{ background: '#fff', borderRadius: 10, padding: 10, border: '1px solid #FDE68A' }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: k.c }}>{k.v}</div>
-                    <div style={{ fontSize: 11, color: '#78350F' }}>{k.l}</div>
-                  </div>
-                ))}
-              </div>
-              <p style={{ margin: '12px 0 0', fontSize: 12, color: '#78350F', lineHeight: 1.55 }}>{deskAi.narrative}</p>
-              <div style={{ fontSize: 11, color: '#A16207', marginTop: 8 }}>
-                Gemini enriches wording when NEXT_PUBLIC_GEMINI_API_KEY is set · EMR stays source of truth
-              </div>
-            </div>
-          </div>
-        </div>
+        <ReceptionDeskHome
+          session={session}
+          patients={patients}
+          visits={visits}
+          appts={appts}
+          stats={stats}
+          onGo={(v) => {
+            if (v === 'home') setView('home');
+            else setView(v as View);
+          }}
+          onCheckIn={(p) => doCheckIn(p)}
+          onUpdateVisit={(id, status) => {
+            updateVisitStatus(id, status);
+            reload();
+          }}
+          onSelectPatient={(p) => openPatient(p)}
+          onRefresh={reload}
+        />
       )}
 
-      {/* SEARCH */}
       {view === 'search' && (
         <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
           <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>

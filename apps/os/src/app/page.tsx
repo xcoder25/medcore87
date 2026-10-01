@@ -443,9 +443,15 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Home' },
             { key: 'patient-flow', icon: Activity, label: 'Check-in & queue' },
-            { key: 'patient-card', icon: FileText, label: 'Register / find patient' },
+            { key: 'patient-card', icon: FileText, label: 'Register / Find patient' },
             { key: 'appointments', icon: Calendar, label: 'Appointments' },
             { key: 'cashier', icon: CreditCard, label: 'Payments' },
+          ],
+        },
+        {
+          label: 'Billing & finance',
+          items: [
+            { key: 'cashier', icon: CreditCard, label: 'Cashier / POS' },
           ],
         },
       ];
