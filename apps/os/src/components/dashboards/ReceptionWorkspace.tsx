@@ -647,6 +647,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
             <button
               key={t.id}
               type="button"
+              className="os-tool-tile"
               onClick={() => {
                 if (t.id === 'payment' && onNavigate) {
                   onNavigate('cashier');

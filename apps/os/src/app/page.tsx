@@ -1806,6 +1806,9 @@ export default function OSPage() {
               <LogOut size={15} />
             </button>
           </div>
+          <span className="os-route-progress" aria-hidden>
+            <i />
+          </span>
         </header>
 
         {/* LIVE UPDATES ticker removed */}
