@@ -128,7 +128,7 @@ export const NotificationBell: React.FC<Props> = ({ app = 'MEDCORE_OS', facility
               </div>
             ) : (
               list.map((n: NotificationItem) => {
-                const meta = getTopicMeta(n.topic || n.type || '');
+                const meta = getTopicMeta(n.topic || '');
                 return (
                   <button
                     key={n.eventId}
