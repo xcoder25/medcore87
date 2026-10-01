@@ -108,7 +108,7 @@ const C = {
   bg: '#F0F9FF',
 };
 
-export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'home' }) => {
+export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'home', onNavigate }) => {
   const facilityId = session.hospitalId || 'IGH-EKT';
   const facilityName = session.facility || 'Hospital';
   const firstName = (session.name || 'Reception').split(' ')[0];
@@ -549,7 +549,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     { id: 'walkin' as View, icon: Users, label: 'Walk-in', desc: 'No appointment · queue now' },
     { id: 'appointments' as View, icon: Calendar, label: 'Appointments', desc: 'Book · confirm · arrive' },
     { id: 'queue' as View, icon: Ticket, label: 'Live queue', desc: 'Call · skip · complete' },
-    { id: 'payment' as View, icon: Wallet, label: 'POS / Payment', desc: 'Cash · POS · transfer · HMO' },
+    { id: 'payment' as View, icon: Wallet, label: 'POS / Payment', desc: 'Full desk · AI assist' },
   ];
 
   const inputStyle: React.CSSProperties = {
@@ -647,7 +647,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
             <button
               key={t.id}
               type="button"
-              onClick={() => setView(t.id)}
+              onClick={() => {
+                if (t.id === 'payment' && onNavigate) {
+                  onNavigate('cashier');
+                  return;
+                }
+                setView(t.id);
+              }}
               style={{
                 textAlign: 'left',
                 padding: 14,

@@ -19,6 +19,7 @@ import { SystemAdministration } from '../components/system-admin/SystemAdministr
 import { ComplianceAuditLogs } from '../components/compliance/ComplianceAuditLogs';
 import { AICommandInsights } from '../components/ai-insights/AICommandInsights';
 import { CashierRevenue } from '../components/cashier/CashierRevenue';
+import { PosPaymentDesk } from '../components/cashier/PosPaymentDesk';
 import { FacilityOnboarding } from '../components/facility/FacilityOnboarding';
 import { AuthIdentity } from '../components/auth/AuthIdentity';
 import { DigitalPatientCard } from '../components/patient-card/DigitalPatientCard';
@@ -738,7 +739,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   facilities: FacilitiesUtilitiesSuite,
   environmental: EnvironmentalSafetySuite,
   billing: BillingInvoicingSuite,
-  cashier: CashierRevenue,
+  cashier: PosPaymentDesk as any,
   claims: InsuranceHmoClaimsSuite,
   'revenue-cycle': RevenueCycleAccountingSuite,
   procurement: ProcurementHrSuite,
@@ -1151,7 +1152,7 @@ export default function OSPage() {
     return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
-  const receptionViews = ['dashboard', 'patient-flow', 'patient-card', 'appointments', 'cashier'] as const;
+  const receptionViews = ['dashboard', 'patient-flow', 'patient-card', 'appointments'] as const;
   const useReceptionCockpit =
     userSession?.roleKey === 'reception' &&
     receptionViews.includes(activeModule as (typeof receptionViews)[number]);
@@ -1831,9 +1832,7 @@ export default function OSPage() {
                               ? 'register'
                               : activeModule === 'appointments'
                                 ? 'appointments'
-                                : activeModule === 'cashier'
-                                  ? 'payment'
-                                  : 'home',
+                                : 'home',
                       }
                     : {})}
                 />
