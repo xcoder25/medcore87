@@ -439,23 +439,13 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'reception':
       return [
         {
-          label: 'Desk',
+          label: 'Front desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Reception cockpit' },
-            { key: 'patient-flow', icon: Activity, label: 'Check-in & live queue', badge: 'Live' },
-          ],
-        },
-        {
-          label: 'Patients',
-          items: [
-            { key: 'patient-card', icon: FileText, label: 'Register & find (MPI)', badge: 'MPI' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Home' },
+            { key: 'patient-flow', icon: Activity, label: 'Check-in & queue' },
+            { key: 'patient-card', icon: FileText, label: 'Register / find patient' },
             { key: 'appointments', icon: Calendar, label: 'Appointments' },
-          ],
-        },
-        {
-          label: 'Revenue',
-          items: [
-            { key: 'cashier', icon: CreditCard, label: 'POS & payments' },
+            { key: 'cashier', icon: CreditCard, label: 'Payments' },
           ],
         },
       ];
@@ -647,13 +637,13 @@ const ROLE_THEMES: Record<string, RoleThemeConfig> = {
     workspaceTitle: 'Radiology & PACS Viewer',
   },
   reception: {
-    label: 'Front Desk Command',
-    badge: 'RECEPTION WORKSPACE',
+    label: 'Reception',
+    badge: 'Front desk',
     accent: '#0284C7',
     gradient: 'linear-gradient(135deg, #0284C7 0%, #00BFA5 100%)',
     activeBg: 'linear-gradient(90deg, rgba(2, 132, 199, 0.28) 0%, rgba(0, 191, 165, 0.12) 100%)',
     icon: Users,
-    workspaceTitle: 'Patient Reception & Registration',
+    workspaceTitle: 'Reception',
   },
   accountant: {
     label: 'Revenue & Finance Desk',
@@ -1169,7 +1159,7 @@ export default function OSPage() {
   const RoleIcon = currentRoleTheme.icon;
 
   // Dynamically load tailored RBAC sidebar content
-  const roleNavSections = getRoleNavSections(userSession, showFullDirectory);
+  const roleNavSections = getRoleNavSections(userSession, userSession?.roleKey === 'reception' ? false : showFullDirectory);
 
   // Full admin chrome replaces the clinical OS shell
   if (userSession && (activeRoleKey === 'hospital_admin' || userSession.roleKey === 'hospital_admin')) {
@@ -1505,15 +1495,6 @@ export default function OSPage() {
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{
-                fontSize: '0.62rem',
-                fontWeight: 800,
-                letterSpacing: '0.06em',
-                color: currentRoleTheme.accent,
-                textTransform: 'uppercase',
-              }}>
-                {currentRoleTheme.label}
-              </div>
-              <div style={{
                 fontSize: '0.8rem',
                 fontWeight: 700,
                 color: '#FFFFFF',
@@ -1521,7 +1502,7 @@ export default function OSPage() {
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
               }}>
-                {userSession?.name || 'Staff Officer'}
+                {userSession?.name || 'Staff'}
               </div>
               <div style={{
                 fontSize: '0.66rem',
@@ -1530,7 +1511,9 @@ export default function OSPage() {
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
               }}>
-                {userSession?.facility || 'Hospital Network'}
+                {userSession?.roleKey === 'reception'
+                  ? 'Front desk'
+                  : (userSession?.role?.split('/')[0] || currentRoleTheme.label)}
               </div>
             </div>
           </div>
@@ -1551,8 +1534,8 @@ export default function OSPage() {
           </div>
         )}
 
-        {/* Quick Module Search Input */}
-        {sidebarOpen && (
+        {/* Quick Module Search Input — hidden for reception (short menu) */}
+        {sidebarOpen && userSession?.roleKey !== 'reception' && (
           <div style={{ padding: '8px 12px', borderBottom: '1px solid #1A2F4C' }}>
             <div className="os-search-wrap" style={{ minWidth: 'unset', width: '100%', padding: '6px 10px' }}>
               <Search size={12} />
@@ -1616,8 +1599,8 @@ export default function OSPage() {
             </div>
           ))}
 
-          {/* Directory Mode Switcher (For Executives or full exploration) */}
-          {sidebarOpen && (
+          {/* Directory Mode Switcher — not for reception desk */}
+          {sidebarOpen && userSession?.roleKey !== 'reception' && (
             <div style={{ padding: '10px 8px', borderTop: '1px solid #1A2F4C', marginTop: 12 }}>
               <button
                 type="button"
@@ -1657,10 +1640,12 @@ export default function OSPage() {
         {/* Top Operations Header */}
         <header className="os-top-hud">
           <div className="os-top-hud-left">
-            <div className="os-hud-facility-pill">
-              <Building2 size={13} />
-              <span>{userSession?.facility || 'Ibom Specialist Hospital, Uyo'}</span>
-            </div>
+            {userSession?.roleKey !== 'reception' && (
+              <div className="os-hud-facility-pill">
+                <Building2 size={13} />
+                <span>{userSession?.facility || 'Hospital'}</span>
+              </div>
+            )}
             <div className="os-hud-live-pill">
               <span className="os-status-dot pulse-green" />
               <span>Online</span>
@@ -1668,11 +1653,19 @@ export default function OSPage() {
             {userSession && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem' }}>
                 <span style={{ color: '#0A2540', fontWeight: 700 }}>{userSession.name}</span>
-                <span style={{ color: '#94A3B8' }}>·</span>
-                <span style={{ color: '#475569', fontWeight: 600 }}>{userSession.role.split('/')[0]}</span>
-                <span style={{ background: '#F1F5F9', color: '#64748B', borderRadius: 6, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 600 }}>
-                  {userSession.department.split('&')[0].trim()}
-                </span>
+                {userSession.roleKey === 'reception' ? (
+                  <span style={{ background: '#E0F2FE', color: '#0369A1', borderRadius: 6, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 600 }}>
+                    Reception
+                  </span>
+                ) : (
+                  <>
+                    <span style={{ color: '#94A3B8' }}>·</span>
+                    <span style={{ color: '#475569', fontWeight: 600 }}>{userSession.role.split('/')[0]}</span>
+                    <span style={{ background: '#F1F5F9', color: '#64748B', borderRadius: 6, padding: '2px 8px', fontSize: '0.7rem', fontWeight: 600 }}>
+                      {userSession.department.split('&')[0].trim()}
+                    </span>
+                  </>
+                )}
               </div>
             )}
           </div>
