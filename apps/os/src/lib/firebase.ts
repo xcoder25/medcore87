@@ -19,6 +19,8 @@ import {
   onSnapshot,
   enableIndexedDbPersistence,
   type Firestore,
+  type DocumentSnapshot,
+  type FirestoreError,
 } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -147,10 +149,10 @@ export function firestoreSubscribeFacility(
       await enableFirestoreOffline();
       unsub = onSnapshot(
         facilityStoreRef(facilityId),
-        (snap) => {
+        (snap: DocumentSnapshot) => {
           if (snap.exists()) onData(snap.data() as Record<string, unknown>);
         },
-        (err) => console.warn('[Firestore] snapshot', err)
+        (err: FirestoreError) => console.warn('[Firestore] snapshot', err)
       );
     } catch (e) {
       console.warn('[Firestore] subscribe failed', e);

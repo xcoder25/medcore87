@@ -291,7 +291,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             : fbUser.displayName || matchedStaff.name;
         const initials = displayName
           .split(/\s+/)
-          .map((p) => p[0])
+          .map((p: string) => p[0])
           .join('')
           .slice(0, 2)
           .toUpperCase();

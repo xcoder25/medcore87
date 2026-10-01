@@ -191,7 +191,7 @@ export const BedsideEmarSuite: React.FC = () => {
     setShowNarcoticModal(false);
     setWitnessBadge('');
     setWitnessName('');
-    showNotification(`✓ BCMA Verified: ${record.drugName} ${record.doseGiven} administered to ${record.patientName}.`);
+    showNotification(`✓ BCMA Verified: ${record.drugName} ${record.doseGiven} administered to ${selectedOrder.patientName}.`);
   };
 
   const handleHoldMedication = (orderId: string, reason: string) => {
