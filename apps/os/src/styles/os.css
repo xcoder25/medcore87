@@ -4941,3 +4941,143 @@ body {
   0% { transform: scale(1); opacity: 0.7; }
   100% { transform: scale(1.35); opacity: 0; }
 }
+
+
+/* ── Header trail organization (mockup alignment) ── */
+.os-top-hud {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px 8px 12px;
+}
+
+.os-top-hud-trail {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.os-top-hud-divider {
+  width: 1px;
+  height: 28px;
+  background: #E2E8F0;
+  flex-shrink: 0;
+}
+
+.os-top-hud-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.os-top-hud-search {
+  flex: 1 1 auto;
+  min-width: 180px;
+  max-width: 480px;
+  margin: 0 4px;
+}
+
+.os-top-hud-icon-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid #E8EEF5;
+  background: #F8FAFC;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.os-top-hud-icon-btn:hover {
+  background: #fff;
+  color: #0284C7;
+  border-color: #BAE6FD;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.12);
+}
+
+.os-hud-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #EF4444;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+  line-height: 1;
+}
+
+/* Denser sidebar navigation */
+.os-sidebar-nav {
+  padding: 8px 10px 12px !important;
+  gap: 2px;
+}
+
+.os-nav-section {
+  margin-bottom: 10px !important;
+}
+
+.os-nav-section-label {
+  font-size: 0.65rem !important;
+  letter-spacing: 0.08em !important;
+  padding: 8px 10px 6px !important;
+  opacity: 0.85;
+}
+
+.os-nav-item,
+.os-nav-item-btn {
+  min-height: 40px !important;
+  padding: 9px 12px !important;
+  border-radius: 11px !important;
+  gap: 10px !important;
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  margin-bottom: 2px !important;
+}
+
+.os-nav-item svg,
+.os-nav-item-btn svg {
+  width: 17px !important;
+  height: 17px !important;
+  flex-shrink: 0;
+}
+
+.os-nav-badge {
+  font-size: 0.6rem !important;
+  padding: 2px 7px !important;
+  border-radius: 999px !important;
+  font-weight: 800 !important;
+}
+
+.os-sidebar-footer {
+  padding: 10px 12px 14px !important;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.os-user-mini-card {
+  padding: 10px !important;
+  border-radius: 12px !important;
+  gap: 10px !important;
+}
+
+@media (max-width: 1200px) {
+  .os-top-hud-brand-sub { display: none; }
+  .os-top-hud-online { display: none; }
+}
+@media (max-width: 1000px) {
+  .os-top-hud-branch { display: none; }
+  .os-top-hud-datetime { display: none; }
+  .os-top-hud-user-meta { display: none; }
+}

@@ -1688,18 +1688,13 @@ export default function OSPage() {
 
         {/* Top Operations Header — Hospital OS floating bar */}
         <header className="os-top-hud">
+          {/* LEFT: brand */}
           <div className="os-top-hud-brand">
             <div className="os-top-hud-logo-mark">
-              <img
-                src="/medcore-logo.png"
-                alt=""
-                width={22}
-                height={22}
-                style={{ objectFit: 'contain', filter: 'brightness(0) invert(1)' }}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M12 3v18M3 12h18" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
+                <rect x="2" y="2" width="20" height="20" rx="6" stroke="#fff" strokeWidth="1.5" opacity="0.35" />
+              </svg>
             </div>
             <div className="os-top-hud-brand-text">
               <div className="os-top-hud-brand-title">
@@ -1709,6 +1704,7 @@ export default function OSPage() {
             </div>
           </div>
 
+          {/* CENTER: global search */}
           <button
             type="button"
             className="os-top-hud-search"
@@ -1722,45 +1718,77 @@ export default function OSPage() {
             <span className="os-top-hud-kbd">⌘K</span>
           </button>
 
-          <div className="os-top-hud-branch" title={userSession?.facility || 'Facility'}>
-            <MapPin size={14} color="#0284C7" style={{ flexShrink: 0 }} />
-            <div className="os-top-hud-branch-text">
-              <span className="os-top-hud-branch-name">
-                {userSession?.facility?.split(',')[0] || 'Main Branch'}
-              </span>
-              <span className="os-top-hud-branch-role">
-                {userSession?.roleKey === 'reception'
-                  ? 'Reception Desk'
-                  : (userSession?.role || userSession?.title || 'Clinical desk').split('/')[0]}
-              </span>
+          {/* RIGHT cluster */}
+          <div className="os-top-hud-trail">
+            <div className="os-top-hud-branch" title={userSession?.facility || 'Facility'}>
+              <MapPin size={14} color="#0284C7" style={{ flexShrink: 0 }} />
+              <div className="os-top-hud-branch-text">
+                <span className="os-top-hud-branch-name">
+                  {userSession?.facility?.split(',')[0] || 'Main Branch'}
+                </span>
+                <span className="os-top-hud-branch-role">
+                  {userSession?.roleKey === 'reception'
+                    ? 'Reception Desk'
+                    : (userSession?.role || userSession?.title || 'Clinical desk').split('/')[0]}
+                </span>
+              </div>
+              <ChevronDown size={14} color="#94A3B8" />
             </div>
-            <ChevronDown size={14} color="#94A3B8" />
-          </div>
 
-          <div className="os-top-hud-datetime">
-            <span className="os-top-hud-date">
-              {new Date().toLocaleDateString('en-US', {
-                weekday: 'short',
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              })}
-            </span>
-            <span className="os-top-hud-time">{currentTime || '—'}</span>
-          </div>
+            <div className="os-top-hud-divider" />
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div className="os-top-hud-icon-btn" title="Notifications" style={{ position: 'relative' }}>
+            <div className="os-top-hud-datetime">
+              <span className="os-top-hud-date">
+                {new Date().toLocaleDateString('en-US', {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </span>
+              <span className="os-top-hud-time">{currentTime || '—'}</span>
+            </div>
+
+            <div className="os-top-hud-divider" />
+
+            <div className="os-top-hud-actions">
               <NotificationBell app="MEDCORE_OS" facilityId={userSession?.facility} />
+              <button
+                type="button"
+                className="os-top-hud-icon-btn"
+                title="Help"
+                onClick={() => setAiDrawerOpen(true)}
+              >
+                <HelpCircle size={17} strokeWidth={2} />
+              </button>
             </div>
-            <button
-              type="button"
-              className="os-top-hud-icon-btn"
-              title="Help"
-              onClick={() => setAiDrawerOpen(true)}
-            >
-              <HelpCircle size={16} />
-            </button>
+
+            <div className="os-top-hud-divider" />
+
+            <div className="os-top-hud-user">
+              <div className="os-top-hud-avatar">
+                {(userSession?.avatarInitials ||
+                  userSession?.name
+                    ?.split(' ')
+                    .map((w) => w[0])
+                    .join('')
+                    .slice(0, 2) ||
+                  'ST'
+                ).toUpperCase()}
+              </div>
+              <div className="os-top-hud-user-meta">
+                <span className="os-top-hud-user-name">{userSession?.name || 'Staff'}</span>
+                <span className="os-top-hud-user-role">
+                  {userSession?.roleKey === 'reception'
+                    ? 'Receptionist'
+                    : (userSession?.role || 'Staff').split('/')[0]}
+                </span>
+              </div>
+              <ChevronDown size={14} color="#94A3B8" />
+            </div>
+
+            <span className="os-top-hud-online">Online</span>
+
             <button
               type="button"
               className="os-top-hud-icon-btn"
@@ -1769,42 +1797,15 @@ export default function OSPage() {
             >
               <Lock size={15} />
             </button>
+            <button
+              type="button"
+              className="os-top-hud-icon-btn"
+              title="Sign out"
+              onClick={handleLogout}
+            >
+              <LogOut size={15} />
+            </button>
           </div>
-
-          <div className="os-top-hud-user">
-            <div className="os-top-hud-avatar">
-              {(userSession?.avatarInitials ||
-                userSession?.name
-                  ?.split(' ')
-                  .map((w) => w[0])
-                  .join('')
-                  .slice(0, 2) ||
-                'ST'
-              ).toUpperCase()}
-            </div>
-            <div className="os-top-hud-user-meta">
-              <span className="os-top-hud-user-name">{userSession?.name || 'Staff'}</span>
-              <span className="os-top-hud-user-role">
-                {userSession?.roleKey === 'reception'
-                  ? 'Receptionist'
-                  : (userSession?.role || 'Staff').split('/')[0]}
-              </span>
-            </div>
-            <ChevronDown size={14} color="#94A3B8" />
-          </div>
-
-          <span className="os-top-hud-online">Online</span>
-
-          <button
-            type="button"
-            className="os-hud-btn"
-            onClick={handleLogout}
-            title="Sign out"
-            style={{ padding: '7px 12px', fontSize: '0.72rem' }}
-          >
-            <LogOut size={14} />
-            <span className="os-top-hud-signout-label">Sign out</span>
-          </button>
         </header>
 
         {/* LIVE UPDATES ticker removed */}
