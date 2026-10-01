@@ -1865,9 +1865,9 @@ export default function OSPage() {
             {isModulePermitted(activeModule) ? (
               activeModule === 'dashboard' && userSession ? (
                 <RoleDashboard session={userSession} onNavigate={handleModuleChange} />
-              ) : (
+              ) : userSession ? (
                 <ActiveComponent session={userSession} onNavigate={handleModuleChange} />
-              )
+              ) : null
             ) : (
               <div
                 style={{
