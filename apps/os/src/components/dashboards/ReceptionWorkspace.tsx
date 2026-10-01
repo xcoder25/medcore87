@@ -1242,54 +1242,124 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
       {/* QUEUE */}
       {view === 'queue' && (
-        <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontWeight: 800, fontSize: 16, color: C.navy }}>Live queue · realtime</div>
-              <div style={{ fontSize: 12, color: C.muted }}>{waiting.length} waiting · AI auto-reminder active</div>
+              <div style={{ fontWeight: 800, fontSize: 18, color: C.navy }}>Live queue board</div>
+              <div style={{ fontSize: 13, color: C.muted }}>Call · skip · complete · overtime alerts · by department</div>
             </div>
-            <button type="button" onClick={reload} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>
-              <RefreshCw size={14} /> Refresh
-            </button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => { setCiType('walkin'); setView('walkin'); }} style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: C.blue, color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: 12 }}>
+                + Walk-in check-in
+              </button>
+              <button type="button" onClick={reload} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
+                <RefreshCw size={14} /> Refresh
+              </button>
+            </div>
           </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ textAlign: 'left', color: C.muted, borderBottom: `1px solid ${C.border}` }}>
-                  <th style={{ padding: 10 }}>Queue</th>
-                  <th style={{ padding: 10 }}>Patient</th>
-                  <th style={{ padding: 10 }}>Dept</th>
-                  <th style={{ padding: 10 }}>Type</th>
-                  <th style={{ padding: 10 }}>Pay</th>
-                  <th style={{ padding: 10 }}>Status</th>
-                  <th style={{ padding: 10 }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visits.map((v) => (
-                  <tr key={v.id} style={{ borderBottom: `1px solid ${C.border}` }}>
-                    <td style={{ padding: 10, fontWeight: 800, fontFamily: 'monospace', color: C.blue }}>{v.queueNumber}</td>
-                    <td style={{ padding: 10 }}>
-                      <div style={{ fontWeight: 700 }}>{v.patientName}</div>
-                      <div style={{ fontSize: 11, color: C.muted }}>{v.hospitalNumber}</div>
-                    </td>
-                    <td style={{ padding: 10 }}>{v.department}</td>
-                    <td style={{ padding: 10 }}>{v.visitType}</td>
-                    <td style={{ padding: 10 }}>{v.paymentStatus}</td>
-                    <td style={{ padding: 10 }}>{v.status}{v.aiReminderSent ? ' 🔔' : ''}</td>
-                    <td style={{ padding: 10 }}>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        <button type="button" onClick={() => { updateVisitStatus(v.id, 'called'); reload(); }} style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 6, border: `1px solid ${C.blue}`, background: '#fff', color: C.blue, cursor: 'pointer' }}>Call</button>
-                        <button type="button" onClick={() => { updateVisitStatus(v.id, 'with_provider'); reload(); }} style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 6, border: 'none', background: '#E0E7FF', color: '#3730A3', cursor: 'pointer' }}>With doctor</button>
-                        <button type="button" onClick={() => { updateVisitStatus(v.id, 'completed'); reload(); }} style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 6, border: 'none', background: C.teal, color: '#fff', cursor: 'pointer' }}>Complete</button>
-                        <button type="button" onClick={() => { updateVisitStatus(v.id, 'no_show'); reload(); }} style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 6, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer' }}>No-show</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {visits.length === 0 && <div style={{ padding: 24, color: C.muted, textAlign: 'center' }}>Queue empty — check patients in from Cockpit or Find patient</div>}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
+            {[
+              { l: 'Waiting', v: waiting.length, c: '#D97706' },
+              { l: 'Called', v: visits.filter((x) => x.status === 'called').length, c: '#0284C7' },
+              { l: 'With provider', v: visits.filter((x) => x.status === 'with_provider').length, c: '#7C3AED' },
+              { l: 'Completed today', v: visits.filter((x) => x.status === 'completed').length, c: '#059669' },
+              { l: 'Unpaid in queue', v: visits.filter((x) => x.paymentStatus === 'pending' && x.status !== 'completed').length, c: '#DC2626' },
+            ].map((k) => (
+              <div key={k.l} style={{ background: '#fff', borderRadius: 14, border: `1px solid ${C.border}`, padding: '12px 14px', borderTop: `3px solid ${k.c}` }}>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', color: C.muted, textTransform: 'uppercase' }}>{k.l}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: C.navy, marginTop: 4 }}>{k.v}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) minmax(260px,340px)', gap: 14 }}>
+            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 16, overflow: 'hidden' }}>
+              <div style={{ fontWeight: 800, marginBottom: 10, fontSize: 14 }}>Active tickets</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', color: C.muted, borderBottom: `1px solid ${C.border}`, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      <th style={{ padding: 10 }}>Queue</th>
+                      <th style={{ padding: 10 }}>Patient</th>
+                      <th style={{ padding: 10 }}>Dept</th>
+                      <th style={{ padding: 10 }}>Type</th>
+                      <th style={{ padding: 10 }}>Pay</th>
+                      <th style={{ padding: 10 }}>Status</th>
+                      <th style={{ padding: 10 }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visits.length === 0 && (
+                      <tr>
+                        <td colSpan={7} style={{ padding: 28, textAlign: 'center', color: C.muted }}>
+                          No tickets yet. Use <strong>Walk-in</strong> or check in from <strong>Find patient</strong> to populate this board.
+                        </td>
+                      </tr>
+                    )}
+                    {visits.map((v) => (
+                      <tr key={v.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                        <td style={{ padding: 10, fontWeight: 800, fontFamily: 'monospace', color: C.blue }}>{v.queueNumber}</td>
+                        <td style={{ padding: 10 }}>
+                          <div style={{ fontWeight: 700 }}>{v.patientName}</div>
+                          <div style={{ fontSize: 11, color: C.muted }}>{v.hospitalNumber}</div>
+                        </td>
+                        <td style={{ padding: 10 }}>{v.department}</td>
+                        <td style={{ padding: 10 }}>{v.visitType}</td>
+                        <td style={{ padding: 10 }}>
+                          <span style={{
+                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                            background: v.paymentStatus === 'paid' || v.paymentStatus === 'hmo' ? '#D1FAE5' : '#FEF3C7',
+                            color: v.paymentStatus === 'paid' || v.paymentStatus === 'hmo' ? '#047857' : '#B45309',
+                          }}>{v.paymentStatus}</span>
+                        </td>
+                        <td style={{ padding: 10 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700 }}>{v.status}{v.aiReminderSent ? ' 🔔' : ''}</span>
+                        </td>
+                        <td style={{ padding: 10 }}>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {v.status === 'waiting' && (
+                              <button type="button" onClick={() => { updateVisitStatus(v.id, 'called'); reload(); flash(`Called ${v.queueNumber}`); }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: C.blue, color: '#fff', cursor: 'pointer' }}>Call</button>
+                            )}
+                            {v.status === 'called' && (
+                              <button type="button" onClick={() => { updateVisitStatus(v.id, 'with_provider'); reload(); }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: '#7C3AED', color: '#fff', cursor: 'pointer' }}>In room</button>
+                            )}
+                            {v.status !== 'completed' && v.status !== 'cancelled' && (
+                              <button type="button" onClick={() => { updateVisitStatus(v.id, 'completed'); reload(); flash('Completed'); }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer' }}>Done</button>
+                            )}
+                            {v.paymentStatus === 'pending' && (
+                              <button type="button" onClick={() => {
+                                const p = patients.find((x) => x.id === v.patientId);
+                                if (p) { setSelected(p); setPosPatient(p); setView('payment'); }
+                              }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: '#FEF3C7', color: '#B45309', cursor: 'pointer' }}>Pay</button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 16 }}>
+                <div style={{ fontWeight: 800, marginBottom: 10, fontSize: 13 }}>By department</div>
+                {RECEPTION_DEPTS.slice(0, 6).map((d) => {
+                  const n = visits.filter((v) => v.department === d && (v.status === 'waiting' || v.status === 'called')).length;
+                  return (
+                    <div key={d} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
+                      <span>{d}</span>
+                      <strong style={{ color: n ? C.blue : C.muted }}>{n}</strong>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ background: 'linear-gradient(135deg,#EEF2FF,#F0FDFA)', borderRadius: 16, border: '1px solid rgba(99,102,241,0.2)', padding: 16, fontSize: 13, color: '#334155', lineHeight: 1.5 }}>
+                <div style={{ fontWeight: 800, color: C.navy, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}><Sparkles size={14} /> Queue tips</div>
+                Call the longest wait first. Use <strong>Pay</strong> for unpaid tickets without leaving the board. Walk-ins and appointment arrivals both land here after check-in.
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1561,6 +1631,20 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
       {/* APPOINTMENTS */}
       {view === 'appointments' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
+            {[
+              { l: 'Today booked', v: appts.length, c: C.blue },
+              { l: 'Confirmed', v: appts.filter((a) => a.status === 'booked' || a.status === 'confirmed').length, c: '#059669' },
+              { l: 'Checked in', v: appts.filter((a) => a.status === 'checked_in' || a.status === 'arrived').length, c: C.teal },
+              { l: 'Cancelled', v: appts.filter((a) => a.status === 'cancelled').length, c: '#DC2626' },
+            ].map((k) => (
+              <div key={k.l} style={{ background: '#fff', borderRadius: 14, border: `1px solid ${C.border}`, padding: '12px 14px', borderTop: `3px solid ${k.c}` }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, textTransform: 'uppercase' }}>{k.l}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: C.navy, marginTop: 4 }}>{k.v}</div>
+              </div>
+            ))}
+          </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16 }}>
           <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
             <div style={{ fontWeight: 800, marginBottom: 12 }}>Book appointment</div>
@@ -1656,10 +1740,25 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
             )}
           </div>
         </div>
+        </div>
       )}
 
       {/* PAYMENT POS */}
       {view === 'payment' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
+            {[
+              { l: 'Collected today', v: `₦${(stats.collected || 0).toLocaleString()}`, c: '#059669' },
+              { l: 'Receipts', v: String(payments.length), c: C.blue },
+              { l: 'Pending in queue', v: String(visits.filter((x) => x.paymentStatus === 'pending' && x.status !== 'completed').length), c: '#D97706' },
+              { l: 'HMO / insurance', v: String(payments.filter((x) => x.method === 'hmo').length), c: '#7C3AED' },
+            ].map((k) => (
+              <div key={k.l} style={{ background: '#fff', borderRadius: 14, border: `1px solid ${C.border}`, padding: '12px 14px', borderTop: `3px solid ${k.c}` }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, textTransform: 'uppercase' }}>{k.l}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: C.navy, marginTop: 4 }}>{k.v}</div>
+              </div>
+            ))}
+          </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16 }}>
           <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
             <div style={{ fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1728,6 +1827,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               </div>
             )}
           </div>
+        </div>
         </div>
       )}
 
