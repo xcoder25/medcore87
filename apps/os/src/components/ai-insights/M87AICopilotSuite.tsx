@@ -188,222 +188,283 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
 
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Top AI Telemetry Strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
-        <div className="os-card" style={{ borderLeft: '4px solid #8B5CF6' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>M87 Neural Engine Status</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#A78BFA' }}>M87-v4.2</span>
-            <span style={{ fontSize: '0.75rem', color: '#34D399' }}>Active</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>Low-Latency Edge Inference (14ms)</span>
-        </div>
-
-        <div className="os-card" style={{ borderLeft: '4px solid #3B82F6' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Bed Surge Predictive Forecast</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#60A5FA' }}>+12 Beds</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: '#F87171' }}>Surge Anticipated Tonight at 21:00</span>
-        </div>
-
-        <div className="os-card" style={{ borderLeft: '4px solid #10B981' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Clinical Safety Guardrails</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#34D399' }}>100% Guarded</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>Medical Hallucination Filter Armed</span>
-        </div>
-
-        <div className="os-card" style={{ borderLeft: '4px solid var(--ak-orange)' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Financial Anomaly Detection</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--ak-orange-light)' }}>Zero Leakage</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: '#34D399' }}>Double-Entry Verification Passed</span>
-        </div>
-      </div>
-
-      {/* Navigation Pills */}
-      <div style={{ display: 'flex', gap: 8 }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        minHeight: 420,
+        gap: 0,
+        background: 'transparent',
+      }}
+    >
+      {/* Context chips */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 0 12px' }}>
         {[
-          { key: 'copilot', label: 'Generative AI Clinical Copilot', icon: Brain },
-          { key: 'forecasting', label: 'Operational & Surge Forecasting', icon: TrendingUp },
-          { key: 'anomalies', label: 'Financial & Billing Anomalies', icon: DollarSign },
-          { key: 'orchestrator', label: 'AI Workflow Orchestration', icon: Zap },
-        ].map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeAITab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              className="os-ghost-btn"
-              onClick={() => setActiveAITab(tab.key as any)}
-              style={{
-                background: isActive ? 'rgba(139,92,246,0.2)' : undefined,
-                borderColor: isActive ? '#8B5CF6' : undefined,
-                color: isActive ? '#FFF' : undefined,
-                fontWeight: 700,
-              }}
-            >
-              <Icon size={14} /> {tab.label}
-            </button>
-          );
-        })}
+          { id: 'copilot' as const, label: 'Chat' },
+          { id: 'forecasting' as const, label: 'Forecast' },
+          { id: 'anomalies' as const, label: 'Alerts' },
+          { id: 'orchestrator' as const, label: 'Ops' },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveAITab(tab.id)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 999,
+              border: activeAITab === tab.id ? 'none' : '1px solid #E2E8F0',
+              background:
+                activeAITab === tab.id
+                  ? 'linear-gradient(135deg, #7C3AED, #0284C7)'
+                  : '#fff',
+              color: activeAITab === tab.id ? '#fff' : '#64748B',
+              fontWeight: 700,
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {/* Main View Area */}
       {activeAITab === 'copilot' && (
-        <div className="os-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 560 }}>
-          {/* Chat Messages */}
-          <div style={{ flex: 1, padding: 20, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {messages.map(m => {
-              const isAi = m.sender === 'm87';
-              return (
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 0,
+            borderRadius: 16,
+            border: '1px solid #E2E8F0',
+            background: 'linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 40%)',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}
+          >
+            {messages.length === 0 && !isThinking && (
+              <div style={{ textAlign: 'center', padding: '28px 12px' }}>
                 <div
-                  key={m.id}
                   style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 16,
+                    margin: '0 auto 12px',
+                    background: 'linear-gradient(135deg, #7C3AED, #0284C7)',
                     display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: isAi ? 'flex-start' : 'flex-end',
-                    maxWidth: '85%',
-                    alignSelf: isAi ? 'flex-start' : 'flex-end',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 8px 24px rgba(124, 58, 237, 0.35)',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, fontSize: '0.72rem', color: 'var(--os-text-dim)' }}>
-                    {isAi && <Sparkles size={12} style={{ color: '#A78BFA' }} />}
-                    <span>{isAi ? 'M87 CLINICAL COPILOT' : 'YOU'}</span>
-                    <span>�</span>
-                    <span>{m.timestamp}</span>
-                  </div>
-                  <div style={{
-                    padding: '12px 16px',
-                    borderRadius: 12,
-                    background: isAi ? 'rgba(139,92,246,0.1)' : 'rgba(234,88,12,0.15)',
-                    border: isAi ? '1px solid rgba(139,92,246,0.25)' : '1px solid rgba(234,88,12,0.3)',
-                    color: '#0A2540',
-                    fontSize: '0.88rem',
-                    lineHeight: 1.6,
-                  }}>
-                    {m.text}
+                  <Sparkles size={26} color="#fff" />
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: '#0F172A' }}>M87 Assistant</div>
+                <div style={{ fontSize: 13, color: '#64748B', marginTop: 6, lineHeight: 1.5 }}>
+                  Ask about patients, queue, staff access, or beds.
+                  {session?.roleKey === 'reception'
+                    ? ' Reception: check-in, walk-in, and payment guidance.'
+                    : ' Admin: enrol staff, role visibility, bulk accounts.'}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 16 }}>
+                  {(session?.roleKey === 'reception'
+                    ? ['How do I check in a walk-in?', 'Unpaid patients in queue', 'Book appointment tips']
+                    : ['enrol nurse Ada Okon pin 123456', 'allow reception patient-card cashier', 'Bed capacity overview']
+                  ).map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      onClick={() => setInputPrompt(q)}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: 999,
+                        border: '1px solid #E2E8F0',
+                        background: '#fff',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: '#334155',
+                        cursor: 'pointer',
+                        boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+                      }}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {messages.map((msg) => {
+              const mine = msg.sender === 'user';
+              return (
+                <div
+                  key={msg.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: mine ? 'flex-end' : 'flex-start',
+                    gap: 8,
+                  }}
+                >
+                  {!mine && (
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 8,
+                        background: 'linear-gradient(135deg, #7C3AED, #0284C7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        marginTop: 4,
+                      }}
+                    >
+                      <Brain size={14} color="#fff" />
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      maxWidth: '85%',
+                      padding: '10px 14px',
+                      borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                      background: mine
+                        ? 'linear-gradient(135deg, #0284C7, #0D9488)'
+                        : '#fff',
+                      color: mine ? '#fff' : '#0F172A',
+                      border: mine ? 'none' : '1px solid #E2E8F0',
+                      boxShadow: mine
+                        ? '0 4px 14px rgba(2,132,199,0.25)'
+                        : '0 2px 8px rgba(15,23,42,0.04)',
+                      fontSize: 13,
+                      lineHeight: 1.55,
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
+                    {msg.text}
+                    <div
+                      style={{
+                        fontSize: 10,
+                        marginTop: 6,
+                        opacity: 0.7,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {msg.timestamp}
+                      {msg.category ? ` · ${msg.category}` : ''}
+                    </div>
                   </div>
                 </div>
               );
             })}
+
             {isThinking && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#A78BFA', fontSize: '0.8rem' }}>
-                <RefreshCw size={14} className="os-spin" />
-                <span>M87 is synthesizing clinical evidence and hospital telemetry...</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748B', fontSize: 13 }}>
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    background: 'linear-gradient(135deg, #7C3AED, #0284C7)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Sparkles size={14} color="#fff" />
+                </div>
+                <span style={{ fontWeight: 600 }}>M87 is thinking…</span>
               </div>
             )}
           </div>
 
-          {/* Prompt Input Form */}
-          <form onSubmit={handleSend} style={{ display: 'flex', gap: 10, padding: 16, background: 'rgba(255,255,255,0.02)', borderTop: '1px solid var(--os-border)' }}>
+          <form
+            onSubmit={handleSend}
+            style={{
+              padding: 12,
+              borderTop: '1px solid #E2E8F0',
+              background: '#fff',
+              display: 'flex',
+              gap: 8,
+              alignItems: 'flex-end',
+            }}
+          >
             <input
-              type="text"
-              className="os-search-input"
-              style={{ flex: 1, background: '#FFFFFF', borderRadius: 8, padding: '10px 14px' }}
-              placeholder="Ask M87 about differential diagnoses, drug dosages, bed forecasting, or financial reports..."
               value={inputPrompt}
-              onChange={e => setInputPrompt(e.target.value)}
+              onChange={(e) => setInputPrompt(e.target.value)}
+              placeholder="Message M87…"
+              style={{
+                flex: 1,
+                padding: '12px 14px',
+                borderRadius: 14,
+                border: '1px solid #E2E8F0',
+                fontSize: 14,
+                outline: 'none',
+                background: '#F8FAFC',
+              }}
             />
             <button
               type="submit"
-              className="os-action-btn-primary"
-              style={{ background: 'linear-gradient(135deg, #7C3AED, #6D28D9)', padding: '0 20px' }}
+              disabled={isThinking || !inputPrompt.trim()}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 14,
+                border: 'none',
+                background:
+                  isThinking || !inputPrompt.trim()
+                    ? '#CBD5E1'
+                    : 'linear-gradient(135deg, #7C3AED, #0284C7)',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: isThinking || !inputPrompt.trim() ? 'not-allowed' : 'pointer',
+                boxShadow: '0 4px 14px rgba(124,58,237,0.3)',
+              }}
             >
-              <Send size={14} /> Inquire
+              <Send size={18} />
             </button>
           </form>
         </div>
       )}
 
       {activeAITab === 'forecasting' && (
-        <div className="os-card" style={{ padding: 22 }}>
-          <h3 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', color: '#0A2540' }}>Operational Capacity & Surge Predictive Models</h3>
-          <p style={{ fontSize: '0.84rem', color: 'var(--os-text-muted)', lineHeight: 1.5, margin: '0 0 16px 0' }}>
-            Machine learning time-series regression trained on 3 years of Akwa Ibom State emergency admissions, rainfall patterns, malaria seasonal cycles, and market days.
+        <div style={{ padding: 16, borderRadius: 16, border: '1px solid #E2E8F0', background: '#fff' }}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Operational forecast</div>
+          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.5, margin: 0 }}>
+            Live bed and surge models use facility data as it accumulates. Open Bed & Ward Occupancy and the reception queue for current numbers — M87 will not invent occupancy figures.
           </p>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-            <div style={{ background: 'rgba(255,255,255,0.02)', padding: 14, borderRadius: 8, border: '1px solid #E2E8F0' }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--ak-orange-light)', fontWeight: 700 }}>A&E ADMISSION PEAK FORECAST</span>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0A2540', marginTop: 4 }}>18:00 � 22:00 Tonight</div>
-              <p style={{ margin: '6px 0 0 0', fontSize: '0.75rem', color: 'var(--os-text-dim)' }}>
-                Estimated 22 emergency arrivals. Recommend placing 2 on-call medical registrars on standby.
-              </p>
-            </div>
-
-            <div style={{ background: 'rgba(255,255,255,0.02)', padding: 14, borderRadius: 8, border: '1px solid #E2E8F0' }}>
-              <span style={{ fontSize: '0.72rem', color: '#60A5FA', fontWeight: 700 }}>ICU VENTILATOR RUNOUT TIME</span>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0A2540', marginTop: 4 }}>32 Hours</div>
-              <p style={{ margin: '6px 0 0 0', fontSize: '0.75rem', color: 'var(--os-text-dim)' }}>
-                4 available ventilators. Expected demand: 3 surgical post-op cases tomorrow morning.
-              </p>
-            </div>
-
-            <div style={{ background: 'rgba(255,255,255,0.02)', padding: 14, borderRadius: 8, border: '1px solid #E2E8F0' }}>
-              <span style={{ fontSize: '0.72rem', color: '#34D399', fontWeight: 700 }}>DISCHARGE ACCELERATION OPPORTUNITY</span>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0A2540', marginTop: 4 }}>18 Patients</div>
-              <p style={{ margin: '6px 0 0 0', fontSize: '0.75rem', color: 'var(--os-text-dim)' }}>
-                Clinically fit for step-down to outpatient follow-up. Can free 18 beds by 12:00.
-              </p>
-            </div>
-          </div>
         </div>
       )}
 
       {activeAITab === 'anomalies' && (
-        <div className="os-card" style={{ padding: 22 }}>
-          <h3 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', color: '#0A2540' }}>Financial Anomaly & Revenue Leakage Audit</h3>
-          <p style={{ fontSize: '0.84rem', color: 'var(--os-text-muted)', lineHeight: 1.5, margin: '0 0 16px 0' }}>
-            Continuous real-time comparison between clinical orders executed in Theatre/Pharmacy/Lab and cashier invoices generated.
+        <div style={{ padding: 16, borderRadius: 16, border: '1px solid #E2E8F0', background: '#fff' }}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Desk alerts</div>
+          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.5, margin: 0 }}>
+            Unpaid queue tickets, long waits, and POS risk flags surface on the reception and payment desks. Ask in Chat for guidance on the next action.
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 14, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8 }}>
-              <div>
-                <strong style={{ color: '#34D399' }}>Pharmacy Dispensation vs Invoice Reconciliation: 100% Match</strong>
-                <div style={{ fontSize: '0.75rem', color: 'var(--os-text-muted)', marginTop: 2 }}>Zero unbilled pharmaceuticals dispensed in last 24 hours.</div>
-              </div>
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#34D399', padding: '3px 10px', borderRadius: 4, background: 'rgba(5,150,105,0.12)' }}>CLEARED</span>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 14, background: 'rgba(234,88,12,0.08)', border: '1px solid rgba(234,88,12,0.25)', borderRadius: 8 }}>
-              <div>
-                <strong style={{ color: 'var(--ak-orange-light)' }}>Discharged Patient Co-Pay Variance Flag</strong>
-                <div style={{ fontSize: '0.75rem', color: 'var(--os-text-muted)', marginTop: 2 }}>PAT-AK-7721 billed for ORIF implants pending HMO authorization letter.</div>
-              </div>
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--ak-orange-light)', padding: '3px 10px', borderRadius: 4, background: 'rgba(234,88,12,0.2)' }}>RESOLVING</span>
-            </div>
-          </div>
         </div>
       )}
 
       {activeAITab === 'orchestrator' && (
-        <div className="os-card" style={{ padding: 22 }}>
-          <h3 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', color: '#0A2540' }}>Autonomous Clinical Workflow Orchestrator</h3>
-          <p style={{ fontSize: '0.84rem', color: 'var(--os-text-muted)', lineHeight: 1.5, margin: '0 0 16px 0' }}>
-            Event-driven agentic pipelines that automatically chain multi-departmental actions upon clinical triggers.
+        <div style={{ padding: 16, borderRadius: 16, border: '1px solid #E2E8F0', background: '#fff' }}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Ops automation</div>
+          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.5, margin: '0 0 10px' }}>
+            Try in Chat: enrol staff, bulk enrol, allow/deny role modules. Changes write through controlled EMR APIs — never silent clinical writes.
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: '0.8rem' }}>
-              <strong style={{ color: '#0A2540' }}>Trigger: STAT ECG Flags Acute ST Elevation in A&E</strong>
-              <div style={{ color: '#34D399', marginTop: 4 }}>
-                ? Automatically reserves Cath Lab Suite � Puts Cardiology Fellow on Call � Reserves 2 Units PRBC in Blood Bank � Alerts CCU Bed 3.
-              </div>
-            </div>
-            <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: '0.8rem' }}>
-              <strong style={{ color: '#0A2540' }}>Trigger: Surgical Case Marked Closed in Operating Theatre 1</strong>
-              <div style={{ color: '#60A5FA', marginTop: 4 }}>
-                ? Dispatches PACU Nurse Notification � Initiates Post-op Antibiotic e-MAR � Sends Discharge Summary Draft to Consultant.
-              </div>
-            </div>
-          </div>
         </div>
       )}
     </div>
   );
 };
+

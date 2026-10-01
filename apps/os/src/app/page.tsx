@@ -1378,48 +1378,97 @@ export default function OSPage() {
         </div>
       )}
 
-      {/* ── Slide-Over M87 AI Copilot Drawer ── */}
+      {/* ── M87 Assistant panel ── */}
       {aiDrawerOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: 480,
-          zIndex: 900,
-          background: '#FFFFFF',
-          backdropFilter: 'blur(30px)',
-          borderLeft: '1px solid #E2E8F0',
-          boxShadow: '-10px 0 40px rgba(0,82,212,0.1)',
-          display: 'flex',
-          flexDirection: 'column',
-          animation: 'slideInRight 0.3s ease-out',
-        }}>
-          <div style={{
+        <div
+          role="dialog"
+          aria-label="M87 Assistant"
+          style={{
+            position: 'fixed',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: 'min(420px, 100vw)',
+            zIndex: 9600,
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '16px 20px',
-            borderBottom: '1px solid #E2E8F0',
-            background: 'linear-gradient(90deg, rgba(0,82,212,0.06) 0%, rgba(0,191,165,0.06) 100%)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Brain size={18} style={{ color: '#7C3AED' }} />
-              <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0A2540' }}>M87 AI Clinical Copilot</span>
+            flexDirection: 'column',
+            background: 'rgba(255,255,255,0.98)',
+            backdropFilter: 'blur(20px)',
+            borderLeft: '1px solid #E2E8F0',
+            boxShadow: '-16px 0 48px rgba(15, 23, 42, 0.14)',
+            animation: 'osPremiumFade 0.28s cubic-bezier(0.22, 1, 0.36, 1)',
+          }}
+        >
+          <div
+            style={{
+              padding: '14px 16px',
+              borderBottom: '1px solid #E2E8F0',
+              background: 'linear-gradient(135deg, rgba(124,58,237,0.08) 0%, rgba(2,132,199,0.08) 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #7C3AED, #0284C7)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 6px 16px rgba(124,58,237,0.35)',
+              }}
+            >
+              <Sparkles size={20} color="#fff" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A' }}>M87 Assistant</div>
+              <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>
+                {userSession?.roleKey === 'reception' ? 'Reception copilot' : 'Hospital OS · AI'}
+                {' · '}
+                <span style={{ color: '#059669' }}>Online</span>
+              </div>
             </div>
             <button
               type="button"
-              className="os-ghost-btn"
-              style={{ padding: 4 }}
               onClick={() => setAiDrawerOpen(false)}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                border: '1px solid #E2E8F0',
+                background: '#fff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#64748B',
+              }}
+              aria-label="Close assistant"
             >
               <X size={16} />
             </button>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 14 }}>
             <M87AICopilotSuite session={userSession ?? undefined} />
           </div>
         </div>
+      )}
+
+      {/* Floating assistant launcher */}
+      {!aiDrawerOpen && (
+        <button
+          type="button"
+          className="os-ai-fab"
+          onClick={() => setAiDrawerOpen(true)}
+          title="Open M87 Assistant"
+          aria-label="Open M87 Assistant"
+        >
+          <Sparkles size={22} color="#fff" />
+          <span className="os-ai-fab-pulse" />
+        </button>
       )}
 
       {/* ── Left Navigation Sidebar (Bespoke Content per RBAC Role) ── */}
