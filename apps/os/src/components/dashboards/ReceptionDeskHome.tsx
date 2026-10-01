@@ -166,7 +166,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     },
     {
       label: 'Completed Today',
-      value: completed.length || stats.completed || 0,
+      value: completed.length,
       sub: 'vs. yesterday',
       trend: '+9%',
       up: true,

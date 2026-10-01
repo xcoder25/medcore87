@@ -57,6 +57,12 @@ import {
   type ArrivalIntent,
 } from '../../lib/receptionAiOrchestrator';
 import { ReceptionDeskHome } from './ReceptionDeskHome';
+import {
+  subscribePresence,
+  processPresenceArrival,
+  admitFromPresence,
+  emitPatientPresence,
+} from '../../lib/presenceArrivalEngine';
 
 interface Props {
   session: UserSession;
@@ -466,6 +472,22 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   };
 
 
+  
+  // Realtime presence / gesture from patient app → AI check-in card
+  useEffect(() => {
+    return subscribePresence((payload) => {
+      if (payload.facilityId !== facilityId) return;
+      const result = processPresenceArrival(payload);
+      if ('error' in result) {
+        flash(result.error);
+        return;
+      }
+      setAiCard(result.card);
+      setSelected(result.patient);
+      flash(`Presence · ${result.patient.firstName} ${result.patient.lastName}`);
+    });
+  }, [facilityId]);
+
   const runAiArrival = async (patient: FacilityPatient, intent: ArrivalIntent = 'manual_search') => {
     setAiBusy(true);
     let card = orchestrateArrival(
@@ -494,15 +516,21 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       return;
     }
     if (action === 'admit' || action === 'start_walkin') {
-      if (action === 'start_walkin') setCiType('walkin');
-      else if (card.appointment) {
-        setCiType('appointment');
-        setCiDept(card.appointment.department);
-        setCiDoctor(card.appointment.provider);
-      }
-      doCheckIn(p);
+      const visit = admitFromPresence({
+        patient: p,
+        facilityId,
+        facilityName,
+        department: card.appointment?.department || ciDept,
+        doctor: card.appointment?.provider || ciDoctor,
+        visitType: action === 'start_walkin' ? 'walkin' : card.appointment ? 'appointment' : ciType,
+        actorName: session.name,
+        actorBadge: session.badgeId,
+        printTicket: false,
+      });
+      reload();
       setAiCard(null);
-      setView('queue');
+      setView('home');
+      flash(`Admitted · Queue ${visit.queueNumber} · confirmation sent`);
       return;
     }
     if (action === 'take_payment') {

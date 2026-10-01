@@ -72,6 +72,7 @@ export interface ReceptionDayStats {
   appointments: number;
   waiting: number;
   checkIns: number;
+  completed: number;
   collected: number;
   bookedToday: number;
 }
@@ -129,6 +130,7 @@ export function dayStats(facilityId: string): ReceptionDayStats {
     appointments: tvs.filter((v) => v.visitType === 'appointment').length,
     waiting: tvs.filter((v) => v.status === 'waiting' || v.status === 'called').length,
     checkIns: tvs.length,
+    completed: tvs.filter((v) => v.status === 'completed').length,
     collected: load()
       .payments.filter(
         (p) => p.facilityId === facilityId && p.createdAt.slice(0, 10) === day && p.status === 'success'
