@@ -442,12 +442,6 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: '',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-          ],
-        },
-        {
-          label: 'Front desk',
-          items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Home' },
             { key: 'patient-flow', icon: Activity, label: 'Check-in & queue' },
             { key: 'patient-card', icon: FileText, label: 'Register / Find patient' },
             { key: 'appointments', icon: Calendar, label: 'Appointments' },
@@ -664,7 +658,7 @@ const ROLE_THEMES: Record<string, RoleThemeConfig> = {
   },
   reception: {
     label: 'Reception',
-    badge: 'Front desk',
+    badge: 'RECEPTION',
     accent: '#0284C7',
     gradient: 'linear-gradient(135deg, #0284C7 0%, #00BFA5 100%)',
     activeBg: 'linear-gradient(90deg, rgba(2, 132, 199, 0.28) 0%, rgba(0, 191, 165, 0.12) 100%)',
@@ -1544,74 +1538,6 @@ export default function OSPage() {
           </button>
         </div>
 
-        {/* Distinct Role Identity Header Card */}
-        {sidebarOpen ? (
-          <div style={{
-            margin: '8px 10px 10px',
-            padding: '10px 12px',
-            borderRadius: 10,
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: `1px solid ${currentRoleTheme.accent}33`,
-            boxShadow: `0 2px 10px ${currentRoleTheme.accent}12`,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-          }}>
-            <div style={{
-              width: 34,
-              height: 34,
-              borderRadius: 8,
-              background: currentRoleTheme.gradient,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#FFF',
-              flexShrink: 0,
-              boxShadow: `0 2px 8px ${currentRoleTheme.accent}40`,
-            }}>
-              <RoleIcon size={17} />
-            </div>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                color: '#FFFFFF',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}>
-                {userSession?.name || 'Staff'}
-              </div>
-              <div style={{
-                fontSize: '0.66rem',
-                color: '#94A3B8',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}>
-                {userSession?.roleKey === 'reception'
-                  ? 'Front desk'
-                  : (userSession?.role?.split('/')[0] || currentRoleTheme.label)}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div style={{
-            width: 36,
-            height: 36,
-            borderRadius: 9,
-            background: currentRoleTheme.gradient,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#FFF',
-            margin: '8px auto',
-            boxShadow: `0 2px 8px ${currentRoleTheme.accent}33`,
-          }} title={`${currentRoleTheme.label} - ${userSession?.name}`}>
-            <RoleIcon size={18} />
-          </div>
-        )}
-
         {/* Quick Module Search Input — hidden for reception (short menu) */}
         {sidebarOpen && userSession?.roleKey !== 'reception' && (
           <div style={{ padding: '8px 12px', borderBottom: '1px solid #1A2F4C' }}>
@@ -1702,7 +1628,7 @@ export default function OSPage() {
               </div>
               <div className="os-user-mini-info">
                 <span className="os-user-mini-name">{userSession.name}</span>
-                <span className="os-user-mini-role">{userSession.role.split('/')[0]}</span>
+                <span className="os-user-mini-role">{(userSession.roleKey === 'reception' ? 'Receptionist' : userSession.role.split('/')[0])}</span>
               </div>
               {/* access level chip removed — keep header simple for staff */}
             </div>
@@ -1715,57 +1641,41 @@ export default function OSPage() {
         {/* Real-Time Critical Alert Banner */}
         <AlertBanner alert={criticalAlert} onDismiss={dismissCriticalAlert} />
 
-        {/* Top Operations Header — Hospital OS floating bar */}
+        {/* Top Operations Header */}
         <header className="os-top-hud">
-          {/* LEFT: brand */}
-          <div className="os-top-hud-brand">
-            <div className="os-top-hud-logo-mark">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path d="M12 3v18M3 12h18" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
-                <rect x="2" y="2" width="20" height="20" rx="6" stroke="#fff" strokeWidth="1.5" opacity="0.35" />
-              </svg>
+          <div className="os-top-hud-facility">
+            <div className="os-top-hud-facility-icon">
+              <Building2 size={16} color="#0284C7" />
             </div>
-            <div className="os-top-hud-brand-text">
-              <div className="os-top-hud-brand-title">
-                Hospital <span>OS</span>
-              </div>
-              <div className="os-top-hud-brand-sub">Better Care. Smarter Systems.</div>
+            <div className="os-top-hud-facility-meta">
+              <span className="os-top-hud-facility-name">
+                {userSession?.facility?.split(',')[0] || 'Main Branch'}
+              </span>
+              <span className="os-top-hud-facility-loc">
+                {(userSession?.facility || '').includes(',')
+                  ? userSession?.facility?.split(',').slice(1).join(',').trim()
+                  : userSession?.roleKey === 'reception'
+                    ? 'Reception'
+                    : (userSession?.department || 'Clinical desk')}
+              </span>
             </div>
+            <ChevronDown size={14} color="#94A3B8" />
           </div>
 
-          {/* CENTER: global search */}
           <button
             type="button"
             className="os-top-hud-search"
             onClick={() => setCmdPaletteOpen(true)}
-            title="Search patient, modules, actions (⌘K)"
+            title="Search (⌘K)"
           >
             <Search size={15} color="#94A3B8" />
             <span className="os-top-hud-search-placeholder">
-              Search patient, ID, phone, appointment…
+              Search patients, staff, ID, queue…
             </span>
             <span className="os-top-hud-kbd">⌘K</span>
           </button>
 
-          {/* RIGHT cluster */}
           <div className="os-top-hud-trail">
-            <div className="os-top-hud-branch" title={userSession?.facility || 'Facility'}>
-              <MapPin size={14} color="#0284C7" style={{ flexShrink: 0 }} />
-              <div className="os-top-hud-branch-text">
-                <span className="os-top-hud-branch-name">
-                  {userSession?.facility?.split(',')[0] || 'Main Branch'}
-                </span>
-                <span className="os-top-hud-branch-role">
-                  {userSession?.roleKey === 'reception'
-                    ? 'Reception Desk'
-                    : (userSession?.role || userSession?.title || 'Clinical desk').split('/')[0]}
-                </span>
-              </div>
-              <ChevronDown size={14} color="#94A3B8" />
-            </div>
-
-            <div className="os-top-hud-divider" />
-
             <div className="os-top-hud-datetime">
               <span className="os-top-hud-date">
                 {new Date().toLocaleDateString('en-US', {
@@ -1778,21 +1688,21 @@ export default function OSPage() {
               <span className="os-top-hud-time">{currentTime || '—'}</span>
             </div>
 
-            <div className="os-top-hud-divider" />
+            <span className="os-top-hud-live">
+              <span className="os-top-hud-live-dot" />
+              Live
+            </span>
 
-            <div className="os-top-hud-actions">
-              <NotificationBell app="MEDCORE_OS" facilityId={userSession?.facility} />
-              <button
-                type="button"
-                className="os-top-hud-icon-btn"
-                title="Help"
-                onClick={() => setAiDrawerOpen(true)}
-              >
-                <HelpCircle size={17} strokeWidth={2} />
-              </button>
-            </div>
+            <NotificationBell app="MEDCORE_OS" facilityId={userSession?.facility} />
 
-            <div className="os-top-hud-divider" />
+            <button
+              type="button"
+              className="os-top-hud-icon-btn"
+              title="Help"
+              onClick={() => setAiDrawerOpen(true)}
+            >
+              <HelpCircle size={17} strokeWidth={2} />
+            </button>
 
             <div className="os-top-hud-user">
               <div className="os-top-hud-avatar">
@@ -1802,26 +1712,24 @@ export default function OSPage() {
                     .map((w) => w[0])
                     .join('')
                     .slice(0, 2) ||
-                  'ST'
+                  'U'
                 ).toUpperCase()}
               </div>
               <div className="os-top-hud-user-meta">
-                <span className="os-top-hud-user-name">{userSession?.name || 'Staff'}</span>
+                <span className="os-top-hud-user-name">{userSession?.name || 'User'}</span>
                 <span className="os-top-hud-user-role">
                   {userSession?.roleKey === 'reception'
                     ? 'Receptionist'
-                    : (userSession?.role || 'Staff').split('/')[0]}
+                    : (userSession?.role || 'User').split('/')[0]}
                 </span>
               </div>
               <ChevronDown size={14} color="#94A3B8" />
             </div>
 
-            <span className="os-top-hud-online">Online</span>
-
             <button
               type="button"
               className="os-top-hud-icon-btn"
-              title="Lock terminal"
+              title="Lock"
               onClick={() => setIsLocked(true)}
             >
               <Lock size={15} />
