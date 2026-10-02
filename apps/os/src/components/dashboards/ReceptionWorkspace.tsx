@@ -709,8 +709,9 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
             textAlign: 'left',
             padding: 14,
             borderRadius: 14,
-            border: view === 'home' ? `2px solid ${C.teal}` : `1px solid ${C.border}`,
-            background: view === 'home' ? '#CCFBF1' : '#fff',
+            /* Always inactive style here: this rail only renders when view !== 'home' */
+            border: `1px solid ${C.border}`,
+            background: '#fff',
             cursor: 'pointer',
           }}
         >
