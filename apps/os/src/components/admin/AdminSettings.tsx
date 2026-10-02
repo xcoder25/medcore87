@@ -31,7 +31,7 @@ import {
 import { AKWA_IBOM_LGAS } from '../../lib/receptionConstants';
 import { getOutboxPendingCount, flushOutbox } from '../../lib/durableOutbox';
 import { probeHospitalApi } from '../../lib/hospitalSync';
-import { pushActivity } from '../../lib/adminRealtimeStore';
+import { pushActivity, resetAllPilotData } from '../../lib/adminRealtimeStore';
 import { downloadFacilityBackup } from '../../lib/backupService';
 import { downloadDhis2Aggregate } from '../../lib/dhis2Export';
 import { exportAuditCsv, listAudit, appendAudit } from '../../lib/auditLogStore';
@@ -655,6 +655,48 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
               <button
                 type="button"
                 onClick={() => {
+                  const ok1 = window.confirm(
+                    'Reset ALL hospital data on this browser?\n\nThis clears staff, patients, queue, payments, clinical orders, audit log, transfers, and settings for every admin page.\n\nYou will stay logged in. Download a backup first if needed.'
+                  );
+                  if (!ok1) return;
+                  const ok2 = window.confirm(
+                    'Final confirmation: wipe all module data now? This cannot be undone on this device.'
+                  );
+                  if (!ok2) return;
+                  try {
+                    appendAudit({
+                      facilityId,
+                      actor: session.name,
+                      actorBadge: session.badgeId,
+                      action: 'admin_full_data_reset',
+                      entity: 'facility',
+                      detail: 'All local module data wiped',
+                    });
+                  } catch { /* ignore */ }
+                  resetAllPilotData({ keepSession: true });
+                  const next = resetAdminSettings(facilityId, session.name);
+                  setDraft(next);
+                  setSettings(next);
+                  setDirty(false);
+                  setSavedAt(new Date().toLocaleTimeString('en-GB'));
+                  pushActivity(`Full data reset by ${session.name || 'Admin'}`);
+                  window.setTimeout(() => window.location.reload(), 600);
+                }}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: '1px solid #B91C1C',
+                  background: '#B91C1C',
+                  color: '#fff',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                Reset all hospital data
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   if (
                     window.confirm(
                       'Reset facility settings to defaults? Staff and patient records are not deleted.'
@@ -677,7 +719,7 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
                   cursor: 'pointer',
                 }}
               >
-                Reset settings defaults
+                Reset settings defaults only
               </button>
               <div style={{ fontSize: 12, color: C.muted, alignSelf: 'center' }}>
                 Last updated: {settings.updatedAt ? new Date(settings.updatedAt).toLocaleString() : '—'}

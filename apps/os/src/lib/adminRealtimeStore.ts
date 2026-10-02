@@ -365,6 +365,15 @@ export const ALL_PILOT_KEYS = [
   'medcore_os_onboarding',
   'medcore_facility_profile',
   'medcore_os_facilities',
+  'medcore_os_reception_ops_v1',
+  'medcore_os_patient_registry_v1',
+  'medcore_os_clinical_orders_v1',
+  'medcore_os_audit_log_v1',
+  'medcore_os_admin_settings_v1',
+  'medcore_os_alert_outbox',
+  'medcore_last_presence',
+  'medcore_lan_api_url',
+  'medcore_role_permissions_v1',
 ];
 
 /** Bump this to force a one-time full wipe on every browser that opens the OS. */
@@ -372,20 +381,39 @@ export const PILOT_DATA_VERSION = 'pilot-clean-v5';
 
 const WIPE_PREFIXES = ['medcore_', 'ibom_', 'medcore-'];
 
-/** Wipe all pilot / demo / local OS data and reseed empty defaults. */
-export function resetAllPilotData(): void {
+/**
+ * Wipe all hospital OS local data for every admin-facing module
+ * (staff, patients, queue, POS, clinical orders, audit, settings mirrors, outbox).
+ * @param opts.keepSession — if true, do not clear medcore_os_session (stay logged in)
+ */
+export function resetAllPilotData(opts?: { keepSession?: boolean }): void {
   if (typeof window === 'undefined') return;
+  const keepSession = !!opts?.keepSession;
+  let savedSession: string | null = null;
+  if (keepSession) {
+    try {
+      savedSession = localStorage.getItem('medcore_os_session');
+    } catch {
+      /* ignore */
+    }
+  }
 
   try {
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k) continue;
+      if (keepSession && k === 'medcore_os_session') continue;
       if (ALL_PILOT_KEYS.includes(k as any) || WIPE_PREFIXES.some((p) => k.startsWith(p))) {
         toRemove.push(k);
       }
     }
-    for (const k of toRemove) {
+    // Facility-scoped settings keys: medcore_os_admin_settings_v1:*
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.includes('admin_settings')) toRemove.push(k);
+    }
+    for (const k of Array.from(new Set(toRemove))) {
       try {
         localStorage.removeItem(k);
       } catch {
@@ -394,6 +422,7 @@ export function resetAllPilotData(): void {
     }
   } catch {
     for (const k of ALL_PILOT_KEYS) {
+      if (keepSession && k === 'medcore_os_session') continue;
       try {
         localStorage.removeItem(k);
       } catch {
@@ -408,13 +437,21 @@ export function resetAllPilotData(): void {
     /* ignore */
   }
 
+  if (keepSession && savedSession) {
+    try {
+      localStorage.setItem('medcore_os_session', savedSession);
+    } catch {
+      /* ignore */
+    }
+  }
+
   write(KEYS.access, DEFAULT_ACCESS);
   write(KEYS.compliance, []);
   write(KEYS.activity, [
     {
       id: 'boot',
       time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-      text: 'All data reset — clean hospital OS. Enrol staff to begin.',
+      text: 'Administrator reset all module data — clean hospital OS. Enrol staff to begin.',
       at: new Date().toISOString(),
     },
   ]);
@@ -428,6 +465,8 @@ export function resetAllPilotData(): void {
   }
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'reset' } }));
   window.dispatchEvent(new CustomEvent('medcore-data-reset', { detail: { at: new Date().toISOString() } }));
+  window.dispatchEvent(new CustomEvent('medcore-reception-ops', { detail: { visits: [], appointments: [], payments: [] } }));
+  window.dispatchEvent(new CustomEvent('medcore-clinical-orders', { detail: [] }));
 }
 
 /** Run once per browser when pilot version changes. */
