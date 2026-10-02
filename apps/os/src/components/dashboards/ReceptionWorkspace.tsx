@@ -522,7 +522,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         facilityName,
         department: card.appointment?.department || ciDept,
         doctor: card.appointment?.provider || ciDoctor,
-        visitType: action === 'start_walkin' ? 'walkin' : card.appointment ? 'appointment' : ciType,
+        visitType: action === 'start_walkin' || !card.appointment ? 'walkin' : 'appointment',
         actorName: session.name,
         actorBadge: session.badgeId,
         printTicket: false,
