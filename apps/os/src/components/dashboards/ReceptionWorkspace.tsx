@@ -163,6 +163,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [apReason, setApReason] = useState('Follow-up');
   const [apPatient, setApPatient] = useState<FacilityPatient | null>(null);
 
+  // POS always opens full intelligent desk, not the thin embedded panel
+  useEffect(() => {
+    if (view === 'payment' && onNavigate) {
+      onNavigate('cashier');
+    }
+  }, [view, onNavigate]);
+
   const reload = useCallback(() => {
     setPatients(listPatients(facilityId));
     setVisits(todayVisits(facilityId));
@@ -733,6 +740,11 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
           appts={appts}
           stats={stats}
           onGo={(v) => {
+            if (v === 'payment') {
+              if (onNavigate) onNavigate('cashier');
+              else setView('payment');
+              return;
+            }
             if (v === 'home') setView('home');
             else setView(v as View);
           }}
