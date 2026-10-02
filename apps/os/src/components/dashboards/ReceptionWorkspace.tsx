@@ -622,6 +622,9 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         </div>
       )}
 
+      {/* Compact tool strip — only when not on design-system home */}
+      {view !== 'home' && (
+      <>
       {/* Hero */}
       <div
         style={{
@@ -717,7 +720,10 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         </button>
       </div>
 
-      {/* HOME */}
+      </>
+      )}
+
+      {/* HOME — MedCore Front Desk design */}
       {view === 'home' && (
         <ReceptionDeskHome
           session={session}

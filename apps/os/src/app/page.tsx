@@ -439,6 +439,12 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'reception':
       return [
         {
+          label: '',
+          items: [
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+          ],
+        },
+        {
           label: 'Front desk',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Home' },
@@ -446,12 +452,26 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'patient-card', icon: FileText, label: 'Register / Find patient' },
             { key: 'appointments', icon: Calendar, label: 'Appointments' },
             { key: 'cashier', icon: CreditCard, label: 'Payments' },
+            { key: 'patient-card', icon: FileText, label: 'Patient records' },
           ],
         },
         {
           label: 'Billing & finance',
           items: [
             { key: 'cashier', icon: CreditCard, label: 'Cashier / POS' },
+            { key: 'billing', icon: CreditCard, label: 'Billing office' },
+          ],
+        },
+        {
+          label: 'Reports',
+          items: [
+            { key: 'analytics', icon: BarChart3, label: 'Reports & Analytics' },
+          ],
+        },
+        {
+          label: 'Settings',
+          items: [
+            { key: 'sysadmin', icon: Settings, label: 'System settings' },
           ],
         },
       ];
@@ -891,7 +911,7 @@ export default function OSPage() {
       if (saved) {
         const restored = JSON.parse(saved) as UserSession;
         setUserSession(restored);
-        setActiveModule(restored.roleKey === 'reception' ? 'patient-flow' : 'dashboard');
+        setActiveModule(restored.roleKey === 'reception' ? 'dashboard' : 'dashboard');
       }
     } catch {
       // ignore
@@ -1002,7 +1022,7 @@ export default function OSPage() {
 
   const handleLoginSuccess = (session: UserSession) => {
     setUserSession(session);
-    setActiveModule(session.roleKey === 'reception' ? 'patient-flow' : 'dashboard');
+    setActiveModule('dashboard');
     setAppState('app');
   };
 
@@ -1505,6 +1525,9 @@ export default function OSPage() {
             {sidebarOpen && (
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <span className="os-brand-text" style={{ fontSize: '1.05rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#FFFFFF' }}>MedCore</span>
+                <span style={{ display: 'block', fontSize: '0.65rem', color: 'rgba(148,163,184,0.95)', fontWeight: 600, marginTop: 2 }}>
+                  {userSession?.roleKey === 'reception' ? 'Hospital Administration' : 'Hospital OS'}
+                </span>
                 <span style={{ fontSize: '0.66rem', color: currentRoleTheme.accent, fontWeight: 800, letterSpacing: '0.05em' }}>
                   {currentRoleTheme.badge}
                 </span>

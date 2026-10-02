@@ -5821,3 +5821,36 @@ img, .os-top-hud-avatar {
   transform: translateY(-3px);
   box-shadow: 0 12px 28px -8px rgba(15, 23, 42, 0.12);
 }
+
+/* MedCore Front Desk — match design mockup density */
+.mc-kpi-card {
+  background: #fff;
+  border: 1px solid #E8EEF5;
+  border-radius: 16px;
+  padding: 16px;
+  transition: transform 0.2s cubic-bezier(0.22,1,0.36,1), box-shadow 0.25s ease;
+}
+.mc-kpi-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+.os-sidebar-nav .os-nav-section-label {
+  text-transform: uppercase;
+  letter-spacing: 0.1em !important;
+  font-size: 0.62rem !important;
+  color: rgba(148, 163, 184, 0.85) !important;
+  padding: 14px 12px 6px !important;
+}
+
+.os-sidebar .os-nav-item.is-active,
+.os-sidebar .os-nav-item-btn.active {
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.95), rgba(29, 78, 216, 0.9)) !important;
+  color: #fff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35) !important;
+}
+
+.os-main-column {
+  background: #F4F7FB !important;
+}
