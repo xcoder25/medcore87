@@ -674,7 +674,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
         {tools.map((t) => {
           const Icon = t.icon;
-          const on = view === t.id || (view === 'home' && t.id === 'queue' && false);
+          const on = view === t.id;
           return (
             <button
               key={t.id}
