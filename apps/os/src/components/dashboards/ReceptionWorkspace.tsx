@@ -163,12 +163,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [apReason, setApReason] = useState('Follow-up');
   const [apPatient, setApPatient] = useState<FacilityPatient | null>(null);
 
-  // POS always opens full intelligent desk, not the thin embedded panel
+  // POS is full-page only — never render embedded payment UI
   useEffect(() => {
-    if (view === 'payment' && onNavigate) {
+    if ((view === 'payment' || initialView === 'payment') && onNavigate) {
       onNavigate('cashier');
     }
-  }, [view, onNavigate]);
+  }, [view, initialView, onNavigate]);
 
   const reload = useCallback(() => {
     setPatients(listPatients(facilityId));
@@ -585,7 +585,6 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     { id: 'walkin' as View, icon: Users, label: 'Walk-in', desc: 'No appointment · queue now' },
     { id: 'appointments' as View, icon: Calendar, label: 'Appointments', desc: 'Book · confirm · arrive' },
     { id: 'queue' as View, icon: Ticket, label: 'Live queue', desc: 'Call · skip · complete' },
-    { id: 'payment' as View, icon: Wallet, label: 'POS / Payment', desc: 'Full desk · AI assist' },
   ];
 
   const inputStyle: React.CSSProperties = {
@@ -630,107 +629,6 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       )}
 
       {/* Compact tool strip — only when not on design-system home */}
-      {view !== 'home' && (
-      <>
-      {/* Hero */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #0284C7 0%, #0D9488 100%)',
-          borderRadius: 20,
-          padding: '20px 24px',
-          color: '#fff',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 16,
-          flexWrap: 'wrap',
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 12, opacity: 0.9, fontWeight: 700, letterSpacing: 0.6 }}>RECEPTION · {facilityName}</div>
-          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>Good day, {firstName}</div>
-          <div style={{ fontSize: 13, opacity: 0.9, marginTop: 4 }}>
-            Check-in, register, queue, payments & appointments — all in one desk
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {[
-            { l: 'Waiting', v: stats.waiting },
-            { l: 'Check-ins', v: stats.checkIns },
-            { l: 'Booked', v: stats.bookedToday },
-            { l: 'Collected', v: `₦${(stats.collected || 0).toLocaleString()}` },
-          ].map((k) => (
-            <div
-              key={k.l}
-              style={{
-                background: 'rgba(255,255,255,0.15)',
-                borderRadius: 14,
-                padding: '10px 16px',
-                minWidth: 88,
-                textAlign: 'center',
-              }}
-            >
-              <div style={{ fontSize: 18, fontWeight: 800 }}>{k.v}</div>
-              <div style={{ fontSize: 11, opacity: 0.9 }}>{k.l}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Tool rail */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
-        {tools.map((t) => {
-          const Icon = t.icon;
-          const on = view === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              className="os-tool-tile"
-              onClick={() => {
-                if (t.id === 'payment' && onNavigate) {
-                  onNavigate('cashier');
-                  return;
-                }
-                setView(t.id);
-              }}
-              style={{
-                textAlign: 'left',
-                padding: 14,
-                borderRadius: 14,
-                border: on ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
-                background: on ? '#E0F2FE' : '#fff',
-                cursor: 'pointer',
-              }}
-            >
-              <Icon size={18} color={C.blue} />
-              <div style={{ fontWeight: 800, fontSize: 13, marginTop: 8, color: C.navy }}>{t.label}</div>
-              <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{t.desc}</div>
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          onClick={() => setView('home')}
-          style={{
-            textAlign: 'left',
-            padding: 14,
-            borderRadius: 14,
-            /* Always inactive style here: this rail only renders when view !== 'home' */
-            border: `1px solid ${C.border}`,
-            background: '#fff',
-            cursor: 'pointer',
-          }}
-        >
-          <Stethoscope size={18} color={C.teal} />
-          <div style={{ fontWeight: 800, fontSize: 13, marginTop: 8, color: C.navy }}>Cockpit</div>
-          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>Overview · quick actions</div>
-        </button>
-      </div>
-
-      </>
-      )}
-
       {/* HOME — MedCore Front Desk design */}
       {view === 'home' && (
         <ReceptionDeskHome
@@ -1640,94 +1538,6 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       )}
 
       {/* PAYMENT POS */}
-      {view === 'payment' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
-            {[
-              { l: 'Collected today', v: `₦${(stats.collected || 0).toLocaleString()}`, c: '#059669' },
-              { l: 'Receipts', v: String(payments.length), c: C.blue },
-              { l: 'Pending in queue', v: String(visits.filter((x) => x.paymentStatus === 'pending' && x.status !== 'completed').length), c: '#D97706' },
-              { l: 'HMO / insurance', v: String(payments.filter((x) => x.method === 'hmo').length), c: '#7C3AED' },
-            ].map((k) => (
-              <div key={k.l} style={{ background: '#fff', borderRadius: 14, border: `1px solid ${C.border}`, padding: '12px 14px', borderTop: `3px solid ${k.c}` }}>
-                <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, textTransform: 'uppercase' }}>{k.l}</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: C.navy, marginTop: 4 }}>{k.v}</div>
-              </div>
-            ))}
-          </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16 }}>
-          <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
-            <div style={{ fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Banknote size={18} color={C.teal} /> POS / Payment
-            </div>
-            <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Record cash, card, transfer or HMO at the desk</div>
-            <label style={labelStyle}>Patient</label>
-            <select
-              style={inputStyle}
-              value={(posPatient || selected)?.id || ''}
-              onChange={(e) => setPosPatient(patients.find((p) => p.id === e.target.value) || null)}
-            >
-              <option value="">Select patient…</option>
-              {patients.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {fullName(p)} · {p.hospitalNumber}
-                </option>
-              ))}
-            </select>
-            <label style={{ ...labelStyle, marginTop: 8 }}>Amount (₦)</label>
-            <input style={inputStyle} value={posAmount} onChange={(e) => setPosAmount(e.target.value)} />
-            <label style={{ ...labelStyle, marginTop: 8 }}>Purpose</label>
-            <input style={inputStyle} value={posPurpose} onChange={(e) => setPosPurpose(e.target.value)} />
-            <label style={{ ...labelStyle, marginTop: 8 }}>Method</label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-              {(['cash', 'card', 'transfer', 'pos', 'hmo', 'waiver'] as PaymentMethod[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setPosMethod(m)}
-                  style={{
-                    padding: 10,
-                    borderRadius: 10,
-                    border: posMethod === m ? `2px solid ${C.teal}` : `1px solid ${C.border}`,
-                    background: posMethod === m ? '#CCFBF1' : '#fff',
-                    fontWeight: 700,
-                    fontSize: 12,
-                    textTransform: 'uppercase',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-            <button type="button" onClick={doPayment} style={{ marginTop: 14, width: '100%', padding: 12, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}>
-              Record payment
-            </button>
-          </div>
-          <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
-            <div style={{ fontWeight: 800, marginBottom: 12 }}>Today's collections · ₦{stats.collected.toLocaleString()}</div>
-            {payments.map((p) => (
-              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
-                <div>
-                  <div style={{ fontWeight: 700 }}>{p.patientName}</div>
-                  <div style={{ fontSize: 11, color: C.muted }}>
-                    {p.purpose} · {p.method} · {p.reference}
-                  </div>
-                </div>
-                <div style={{ fontWeight: 800, color: C.teal }}>₦{p.amount.toLocaleString()}</div>
-              </div>
-            ))}
-            {payments.length === 0 && (
-              <div style={{ padding: 20, textAlign: 'center', color: C.muted, border: `1px dashed ${C.border}`, borderRadius: 12, marginTop: 8 }}>
-                No POS receipts yet. Select a patient, amount, and method, then <strong>Record payment</strong>.
-              </div>
-            )}
-          </div>
-        </div>
-        </div>
-      )}
-
-
       {/* AI contextual check-in card — human must confirm */}
       {aiCard && (
         <div

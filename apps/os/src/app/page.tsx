@@ -1807,7 +1807,9 @@ export default function OSPage() {
 
           <div key={moduleKey} className="os-active-module-wrap">
             {isModulePermitted(activeModule) ? (
-              activeModule === 'dashboard' && userSession && userSession.roleKey === 'reception' ? (
+              activeModule === 'cashier' && userSession ? (
+                <PosPaymentDesk session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} />
+              ) : activeModule === 'dashboard' && userSession && userSession.roleKey === 'reception' ? (
                 <ReceptionWorkspace session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} initialView="home" />
               ) : activeModule === 'dashboard' && userSession ? (
                 <RoleDashboard session={userSession} onNavigate={handleModuleChange} />
