@@ -845,6 +845,7 @@ export default function OSPage() {
   const [activeEmergencyCode, setActiveEmergencyCode] = useState<string | null>(null);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
+  const [permTick, setPermTick] = useState(0);
   const [showFullDirectory, setShowFullDirectory] = useState(false);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [cmdSearch, setCmdSearch] = useState('');
@@ -893,15 +894,31 @@ export default function OSPage() {
   const isModulePermitted = (key: ModuleKey): boolean => {
     if (!userSession) return false;
     if (key === 'dashboard') return true;
-    if (userSession.permissions?.includes('*')) return true;
+    if (userSession.roleKey === 'hospital_admin' || userSession.permissions?.includes('*')) return true;
     if (userSession.permissions?.includes(key)) return true;
-    if (userSession.roleKey && userSession.roleKey !== 'hospital_admin' && !roleCanAccessModule(userSession.roleKey, key)) {
-      return false;
-    }
+    // Admin visibility matrix (tick/untick) is the primary gate
+    if (userSession.roleKey && roleCanAccessModule(userSession.roleKey, key)) return true;
     const req = MODULE_CLEARANCE[key];
     if (req && userSession.clearanceLevel >= req.level) return true;
     return false;
   };
+
+
+  // Live sidebar when admin ticks modules in role visibility matrix
+  useEffect(() => {
+    const bump = () => setPermTick((n) => n + 1);
+    window.addEventListener('medcore-role-permissions', bump);
+    window.addEventListener('medcore-admin-sync', bump);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'medcore_os_role_permissions_v3' || e.key === 'medcore_os_role_permissions_v2') bump();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('medcore-role-permissions', bump);
+      window.removeEventListener('medcore-admin-sync', bump);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -1216,13 +1233,31 @@ export default function OSPage() {
 
 
   // Filtered Nav items based on search
-  const filteredSections = roleNavSections.map(sec => ({
-    ...sec,
-    items: sec.items.filter(item =>
-      item.label.toLowerCase().includes(sidebarSearch.toLowerCase()) ||
-      (item.badge && item.badge.toLowerCase().includes(sidebarSearch.toLowerCase()))
-    ),
-  })).filter(sec => sec.items.length > 0);
+
+  // If admin removes current module, send user home
+  useEffect(() => {
+    if (!userSession) return;
+    if (activeModule !== 'dashboard' && !isModulePermitted(activeModule)) {
+      setActiveModule('dashboard');
+    }
+  }, [permTick, activeModule, userSession]);
+
+  // permTick forces re-read of role matrix when admin toggles modules
+  void permTick;
+  const filteredSections = roleNavSections
+    .map((sec) => ({
+      ...sec,
+      items: sec.items.filter((item) => {
+        if (!isModulePermitted(item.key as ModuleKey)) return false;
+        const q = sidebarSearch.toLowerCase();
+        if (!q) return true;
+        return (
+          item.label.toLowerCase().includes(q) ||
+          (!!item.badge && item.badge.toLowerCase().includes(q))
+        );
+      }),
+    }))
+    .filter((sec) => sec.items.length > 0);
 
 
   return (
