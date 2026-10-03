@@ -9,7 +9,7 @@ import type { UserSession } from '../auth/AuthScreen';
 import {
   Wallet, Search, CreditCard, Banknote, Building2, ShieldCheck,
   Sparkles, RefreshCw, Printer, CheckCircle2, AlertTriangle, Receipt,
-  Users, Clock, Zap,
+  Users, Clock, Zap, ArrowRight, X, UserRound,
 } from 'lucide-react';
 import {
   listPatients,
@@ -198,521 +198,476 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
     boxSizing: 'border-box',
   };
 
+  const totalLines = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+  const displayAmount = Number(amount) || totalLines || 0;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 1200 }}>
+    <div className="pos-desk" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 28, maxWidth: 1280, margin: '0 auto' }}>
       {toast && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 24,
-            right: 24,
-            zIndex: 100,
-            background: C.navy,
-            color: '#fff',
-            padding: '12px 18px',
-            borderRadius: 12,
-            fontWeight: 600,
-            fontSize: 13,
-            boxShadow: '0 8px 30px rgba(0,0,0,0.25)',
-          }}
-        >
+        <div className="os-toast-in" style={{
+          position: 'fixed', bottom: 28, right: 28, zIndex: 120,
+          background: C.navy, color: '#fff', padding: '14px 18px', borderRadius: 14,
+          fontWeight: 700, fontSize: 13, boxShadow: '0 12px 36px rgba(0,0,0,0.28)', maxWidth: 360,
+        }}>
           {toast}
         </div>
       )}
 
       {/* Hero */}
-      <div
-        style={{
-          borderRadius: 20,
-          padding: '20px 24px',
-          background: 'linear-gradient(135deg, #0F172A 0%, #0E4D7B 45%, #0D9488 100%)',
-          color: '#fff',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 16,
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          boxShadow: '0 16px 40px rgba(15,23,42,0.25)',
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', opacity: 0.9 }}>
-            POS · PAYMENT DESK · AI-ASSISTED
+      <div style={{
+        borderRadius: 20, overflow: 'hidden', color: '#fff', position: 'relative',
+        background: 'linear-gradient(120deg, #0B1220 0%, #0C4A6E 42%, #0F766E 100%)',
+        padding: '22px 26px', boxShadow: '0 18px 44px rgba(15,23,42,0.22)',
+        display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div style={{ position: 'relative', zIndex: 1, maxWidth: 560 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', opacity: 0.9 }}>
+            <Wallet size={14} /> POS · PAYMENT DESK
           </div>
-          <h1 style={{ margin: '6px 0 0', fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
-            {facilityName}
+          <h1 style={{ margin: '8px 0 0', fontSize: '1.45rem', fontWeight: 800, letterSpacing: '-0.03em' }}>
+            Front desk collections
           </h1>
-          <div style={{ fontSize: 13, opacity: 0.9, marginTop: 6 }}>
-            {cashier} · Shift live · AI never posts money without your confirm
+          <p style={{ margin: '8px 0 0', fontSize: 13, opacity: 0.9, lineHeight: 1.45 }}>
+            {facilityName} · {cashier} · AI suggests amount & method — you confirm every charge
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999,
+              background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(52,211,153,0.35)', fontSize: 12, fontWeight: 700,
+            }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#34D399' }} /> Shift live
+            </span>
+            <span style={{
+              padding: '5px 12px', borderRadius: 999, background: 'rgba(255,255,255,0.12)', fontSize: 12, fontWeight: 600,
+            }}>
+              Human confirm required
+            </span>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={reload}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '10px 14px',
-            borderRadius: 12,
-            border: '1px solid rgba(255,255,255,0.35)',
-            background: 'rgba(255,255,255,0.12)',
-            color: '#fff',
-            fontWeight: 700,
-            cursor: 'pointer',
-          }}
-        >
-          <RefreshCw size={14} /> Sync desk
+        <button type="button" onClick={reload} style={{
+          position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 8,
+          padding: '11px 16px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.3)',
+          background: 'rgba(255,255,255,0.12)', color: '#fff', fontWeight: 700, cursor: 'pointer',
+        }}>
+          <RefreshCw size={15} /> Refresh desk
         </button>
       </div>
 
-      {/* KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+      {/* KPIs */}
+      <div className="os-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
         {[
-          { l: 'Collected today', v: `₦${(stats.collected || 0).toLocaleString()}`, c: '#10B981' },
-          { l: 'Receipts', v: String(payments.length), c: C.blue },
-          { l: 'Unpaid in queue', v: String(deskAi.unpaidTickets), c: '#F59E0B' },
-          { l: 'Queue exposure', v: `₦${deskAi.pendingQueueValue.toLocaleString()}`, c: '#EF4444' },
-          { l: 'Avg ticket', v: `₦${Math.round(deskAi.avgTicket).toLocaleString()}`, c: '#8B5CF6' },
-          { l: 'Cash / HMO mix', v: `${deskAi.cashSharePct}% / ${deskAi.hmoSharePct}%`, c: C.teal },
-        ].map((k) => (
-          <div
-            key={k.l}
-            style={{
-              background: '#fff',
-              borderRadius: 14,
-              border: `1px solid ${C.border}`,
-              padding: '12px 14px',
+          { l: 'Collected today', v: `₦${(stats.collected || 0).toLocaleString()}`, sub: 'This shift', c: '#059669', bg: '#ECFDF5', icon: Banknote },
+          { l: 'Receipts', v: String(payments.length), sub: 'Posted today', c: C.blue, bg: '#EFF6FF', icon: Receipt },
+          { l: 'Unpaid in queue', v: String(deskAi.unpaidTickets), sub: 'Need collection', c: '#D97706', bg: '#FFFBEB', icon: Clock },
+          { l: 'Queue exposure', v: `₦${deskAi.pendingQueueValue.toLocaleString()}`, sub: 'Pending value', c: '#7C3AED', bg: '#F5F3FF', icon: Zap },
+        ].map((k) => {
+          const Icon = k.icon;
+          return (
+            <div key={k.l} className="mc-kpi-card" style={{
+              background: '#fff', border: `1px solid ${C.border}`, borderRadius: 16, padding: 16,
               borderTop: `3px solid ${k.c}`,
-            }}
-          >
-            <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {k.l}
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10, background: k.bg,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Icon size={18} color={k.c} />
+                </div>
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginTop: 12, letterSpacing: '0.04em' }}>{k.l.toUpperCase()}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: C.navy, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>{k.v}</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{k.sub}</div>
             </div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: C.navy, marginTop: 4 }}>{k.v}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* AI shift strip */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 12,
-          alignItems: 'flex-start',
-          padding: '14px 16px',
-          borderRadius: 14,
-          background: 'linear-gradient(135deg, #EEF2FF, #F0FDFA)',
-          border: '1px solid rgba(99,102,241,0.2)',
-        }}
-      >
-        <Sparkles size={18} color="#6366F1" style={{ flexShrink: 0, marginTop: 2 }} />
-        <div style={{ flex: 1, fontSize: 13, color: '#334155', lineHeight: 1.55 }}>
-          <strong style={{ color: C.navy }}>POS AI · shift brain</strong>
-          <div style={{ marginTop: 4 }}>{deskAi.shiftSummary}</div>
-          {deskAi.anomalies.length > 0 && (
-            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {deskAi.anomalies.map((a) => (
-                <span
-                  key={a}
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    padding: '4px 10px',
-                    borderRadius: 999,
-                    background: '#FEF3C7',
-                    color: '#B45309',
-                  }}
-                >
-                  <AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />
-                  {a}
-                </span>
+      {/* AI strip */}
+      <div style={{
+        display: 'flex', gap: 12, alignItems: 'flex-start', padding: '14px 16px', borderRadius: 14,
+        background: 'linear-gradient(90deg, #F5F3FF, #EFF6FF)', border: '1px solid #E9D5FF',
+      }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+          background: 'linear-gradient(135deg, #7C3AED, #0284C7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Sparkles size={18} color="#fff" />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: C.navy }}>POS AI · shift brain</div>
+          <div style={{ fontSize: 13, color: '#475569', marginTop: 4, lineHeight: 1.45 }}>{deskAi.shiftSummary}</div>
+          {deskAi.anomalies?.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+              {deskAi.anomalies.slice(0, 4).map((h: string, i: number) => (
+                <span key={i} style={{
+                  fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 999,
+                  background: '#fff', border: '1px solid #E2E8F0', color: '#475569',
+                }}>{h}</span>
               ))}
             </div>
           )}
         </div>
       </div>
 
-      {/* Main grid */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(240px, 280px) minmax(0, 1fr) minmax(260px, 320px)',
-          gap: 14,
-          alignItems: 'start',
-        }}
-      >
-        {/* Patient finder */}
-        <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 14 }}>
-          <div style={{ fontWeight: 800, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Users size={15} color={C.blue} /> Patient
-          </div>
-          <div style={{ position: 'relative', marginBottom: 10 }}>
-            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.muted }} />
-            <input
-              style={{ ...inputStyle, paddingLeft: 32 }}
-              placeholder="Name, hospital no., phone…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-          <div style={{ maxHeight: 360, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {searchHits.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => {
-                  setPatient(p);
-                  const sug = suggestChargeForPatient(p, visits, payments);
-                  if (sug?.suggestedAmount) {
-                    setAmount(String(sug.suggestedAmount));
-                    setLines([{ label: sug.suggestedPurpose || 'Consultation', amount: sug.suggestedAmount }]);
-                  }
-                  if (sug?.suggestedMethod) setMethod(sug.suggestedMethod);
-                }}
-                style={{
-                  textAlign: 'left',
-                  padding: '10px 10px',
-                  borderRadius: 10,
-                  border: patient?.id === p.id ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
-                  background: patient?.id === p.id ? '#E0F2FE' : '#fff',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ fontWeight: 700, fontSize: 13, color: C.navy }}>{fullName(p)}</div>
-                <div style={{ fontSize: 11, color: C.muted }}>{p.hospitalNumber}</div>
+      {/* Main 12-col style grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 0.85fr)', gap: 16, alignItems: 'start' }}>
+        {/* LEFT: charge console */}
+        <div style={{
+          background: '#fff', borderRadius: 18, border: `1px solid ${C.border}`,
+          boxShadow: '0 8px 28px rgba(15,23,42,0.05)', overflow: 'hidden',
+        }}>
+          <div style={{
+            padding: '14px 18px', borderBottom: `1px solid ${C.border}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+            background: 'linear-gradient(180deg, #F8FAFC, #fff)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 10, background: '#E0F2FE',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <CreditCard size={18} color={C.blue} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: C.navy }}>Charge console</div>
+                <div style={{ fontSize: 12, color: C.muted }}>Find patient → amount → method → confirm</div>
+              </div>
+            </div>
+            {patient && (
+              <button type="button" onClick={() => setPatient(null)} style={{
+                border: 'none', background: '#F1F5F9', borderRadius: 8, padding: 6, cursor: 'pointer',
+              }} title="Clear patient">
+                <X size={16} color={C.muted} />
               </button>
-            ))}
-            {searchHits.length === 0 && (
-              <div style={{ padding: 16, textAlign: 'center', color: C.muted, fontSize: 12 }}>No patients — register at reception first</div>
-            )}
-          </div>
-        </div>
-
-        {/* Charge console */}
-        <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
-          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Wallet size={16} color={C.teal} /> Charge console
-          </div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>
-            {patient ? (
-              <>
-                Charging <strong>{fullName(patient)}</strong> · {patient.hospitalNumber}
-              </>
-            ) : (
-              'Select a patient to enable AI charge suggestions'
             )}
           </div>
 
-          {patientAi && (
-            <div
-              style={{
-                marginBottom: 14,
-                padding: 12,
-                borderRadius: 12,
-                background:
-                  patientAi.severity === 'attention'
-                    ? '#FEF2F2'
-                    : patientAi.severity === 'warn'
-                      ? '#FFFBEB'
-                      : '#F0FDF4',
-                border: `1px solid ${
-                  patientAi.severity === 'attention'
-                    ? '#FECACA'
-                    : patientAi.severity === 'warn'
-                      ? '#FDE68A'
-                      : '#BBF7D0'
-                }`,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Zap size={14} /> {patientAi.title}
-                  </div>
-                  <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{patientAi.detail}</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
-                    {patientAi.flags.map((f) => (
-                      <span key={f} style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#fff', color: C.navy }}>
-                        {f}
-                      </span>
-                    ))}
-                  </div>
+          <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Patient search */}
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: '0.04em' }}>PATIENT</label>
+              <div style={{
+                marginTop: 6, display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 12px', borderRadius: 12, border: `1.5px solid ${patient ? '#7DD3FC' : C.border}`,
+                background: patient ? '#F0F9FF' : '#F8FAFC',
+              }}>
+                <Search size={16} color={C.muted} />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Name, hospital no., phone…"
+                  style={{
+                    flex: 1, border: 'none', background: 'transparent', outline: 'none',
+                    fontSize: 14, fontWeight: 600, color: C.navy,
+                  }}
+                />
+              </div>
+              {!patient && searchHits.length > 0 && (
+                <div style={{
+                  marginTop: 8, maxHeight: 180, overflowY: 'auto', borderRadius: 12,
+                  border: `1px solid ${C.border}`, background: '#fff',
+                }}>
+                  {searchHits.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setPatient(p);
+                        setQuery(`${p.firstName} ${p.lastName}`);
+                        const sug = suggestChargeForPatient(p, visits, payments);
+                        if (sug?.suggestedAmount) setAmount(String(sug?.suggestedAmount));
+                        if (sug?.suggestedMethod) setMethod(sug?.suggestedMethod as PaymentMethod);
+                      }}
+                      style={{
+                        width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none',
+                        borderBottom: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer',
+                        display: 'flex', gap: 10, alignItems: 'center',
+                      }}
+                    >
+                      <div style={{
+                        width: 34, height: 34, borderRadius: 10, background: '#E0F2FE',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      }}>
+                        <UserRound size={16} color={C.blue} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: 13, color: C.navy }}>
+                          {p.firstName} {p.lastName}
+                        </div>
+                        <div style={{ fontSize: 11, color: C.muted }}>
+                          {p.hospitalNumber} · {p.phone || 'No phone'}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
-                <button
-                  type="button"
-                  onClick={applyAiSuggestion}
-                  style={{
-                    flexShrink: 0,
-                    padding: '8px 12px',
-                    borderRadius: 10,
-                    border: 'none',
-                    background: C.navy,
-                    color: '#fff',
-                    fontWeight: 800,
-                    fontSize: 12,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Apply AI
-                </button>
-              </div>
-              <div style={{ fontSize: 11, marginTop: 8, color: C.muted }}>
-                Next: <strong>{patientAi.nextBestAction}</strong> · risk {patientAi.risk}
-              </div>
-            </div>
-          )}
-
-          <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 8 }}>LINE ITEMS</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-            {Object.entries(CONSULT_FEES).slice(0, 8).map(([dept, fee]) => (
-              <button
-                key={dept}
-                type="button"
-                onClick={() => applyLineTotal([{ label: dept, amount: fee }])}
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  padding: '6px 10px',
-                  borderRadius: 8,
-                  border: `1px solid ${C.border}`,
-                  background: '#F8FAFC',
-                  cursor: 'pointer',
-                }}
-              >
-                {dept} · ₦{fee.toLocaleString()}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 700, color: C.muted }}>Purpose</label>
-              <select style={{ ...inputStyle, marginTop: 4 }} value={purpose} onChange={(e) => setPurpose(e.target.value)}>
-                {PURPOSES.map((p) => (
-                  <option key={p}>{p}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 700, color: C.muted }}>Amount (₦)</label>
-              <input
-                style={{ ...inputStyle, marginTop: 4, fontSize: 18, fontWeight: 800 }}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
-              />
-            </div>
-          </div>
-
-          <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 8 }}>METHOD</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
-            {METHODS.map((m) => {
-              const Icon = m.icon;
-              const on = method === m.id;
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setMethod(m.id)}
-                  style={{
-                    padding: '12px 8px',
-                    borderRadius: 12,
-                    border: on ? `2px solid ${C.teal}` : `1px solid ${C.border}`,
-                    background: on ? '#CCFBF1' : '#fff',
-                    cursor: 'pointer',
-                    fontWeight: 700,
-                    fontSize: 12,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 4,
-                  }}
-                >
-                  <Icon size={16} color={on ? C.teal : C.muted} />
-                  {m.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {method === 'hmo' && patient && (
-            <div style={{ marginBottom: 12, padding: 10, borderRadius: 10, background: '#EFF6FF', fontSize: 12 }}>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>HMO verification</div>
-              <select
-                style={inputStyle}
-                value={patient.insuranceProvider || 'NONE'}
-                onChange={() => {}}
-                disabled
-              >
-                {NIGERIA_INSURANCE.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => {
-                  const r = verifyInsurance(patient.insuranceProvider || 'NONE', patient.insuranceId || '');
-                  setInsMsg(r.message);
-                  flash(r.message);
-                }}
-                style={{
-                  marginTop: 8,
-                  width: '100%',
-                  padding: 10,
-                  borderRadius: 10,
-                  border: 'none',
-                  background: C.blue,
-                  color: '#fff',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                }}
-              >
-                Run eligibility check
-              </button>
-              {insMsg && <div style={{ marginTop: 6, color: C.muted }}>{insMsg}</div>}
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={doCharge}
-            disabled={!patient}
-            style={{
-              width: '100%',
-              padding: 14,
-              borderRadius: 12,
-              border: 'none',
-              background: patient ? `linear-gradient(90deg, ${C.teal}, ${C.blue})` : '#94A3B8',
-              color: '#fff',
-              fontWeight: 800,
-              fontSize: 15,
-              cursor: patient ? 'pointer' : 'not-allowed',
-              boxShadow: patient ? '0 8px 24px rgba(13,148,136,0.35)' : 'none',
-            }}
-          >
-            Record payment · ₦{(Number(amount) || 0).toLocaleString()}
-          </button>
-
-          {lastReceipt && (
-            <div
-              style={{
-                marginTop: 14,
-                padding: 14,
-                borderRadius: 12,
-                background: '#F0FDF4',
-                border: '1px solid #BBF7D0',
-              }}
-            >
-              <div style={{ fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Receipt size={14} /> Last receipt
-              </div>
-              <div style={{ fontSize: 13, marginTop: 6 }}>
-                {lastReceipt.reference} · ₦{lastReceipt.amount.toLocaleString()} · {lastReceipt.method}
-              </div>
-              <div style={{ fontSize: 12, color: C.muted }}>{lastReceipt.patientName}</div>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                style={{
-                  marginTop: 8,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '8px 12px',
-                  borderRadius: 8,
-                  border: `1px solid ${C.border}`,
-                  background: '#fff',
-                  fontWeight: 700,
-                  fontSize: 12,
-                  cursor: 'pointer',
-                }}
-              >
-                <Printer size={13} /> Print
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Right: unpaid queue + receipts */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 14 }}>
-            <div style={{ fontWeight: 800, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Clock size={14} color="#D97706" /> Unpaid queue
-            </div>
-            {unpaidVisits.length === 0 ? (
-              <div style={{ fontSize: 12, color: C.muted, padding: 8 }}>Queue payments clear</div>
-            ) : (
-              unpaidVisits.slice(0, 8).map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => {
-                    const p = patients.find((x) => x.id === v.patientId);
-                    if (p) {
-                      setPatient(p);
-                      const fee = v.amount || CONSULT_FEES[v.department] || 5000;
-                      setAmount(String(fee));
-                      setPurpose(v.department);
-                      setLines([{ label: v.department, amount: fee }]);
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '10px 8px',
-                    border: 'none',
-                    borderBottom: `1px solid ${C.border}`,
-                    background: '#fff',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <span style={{ fontFamily: 'monospace', fontWeight: 800, color: C.blue }}>{v.queueNumber}</span>
-                    <span style={{ fontWeight: 700, fontSize: 12 }}>
-                      ₦{(v.amount || CONSULT_FEES[v.department] || 5000).toLocaleString()}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 12, fontWeight: 600 }}>{v.patientName}</div>
-                  <div style={{ fontSize: 11, color: C.muted }}>{v.department}</div>
-                </button>
-              ))
-            )}
-          </div>
-
-          <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 14 }}>
-            <div style={{ fontWeight: 800, marginBottom: 10 }}>Today&apos;s receipts</div>
-            <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-              {payments.map((p) => (
-                <div
-                  key={p.id}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    padding: '10px 0',
-                    borderBottom: `1px solid ${C.border}`,
-                    fontSize: 12,
-                  }}
-                >
+              )}
+              {patient && (
+                <div style={{
+                  marginTop: 10, padding: 12, borderRadius: 12,
+                  background: 'linear-gradient(135deg, #F0F9FF, #ECFDF5)', border: '1px solid #BAE6FD',
+                  display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center',
+                }}>
                   <div>
-                    <div style={{ fontWeight: 700 }}>{p.patientName}</div>
-                    <div style={{ color: C.muted }}>
-                      {p.method} · {p.reference}
+                    <div style={{ fontWeight: 800, color: C.navy }}>{patient.firstName} {patient.lastName}</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                      {patient.hospitalNumber} · {patient.sex} · {patient.phone || '—'}
                     </div>
                   </div>
-                  <div style={{ fontWeight: 800, color: C.teal }}>₦{p.amount.toLocaleString()}</div>
+                  <span style={{
+                    fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 999,
+                    background: '#fff', color: C.teal, border: '1px solid #99F6E4',
+                  }}>SELECTED</span>
                 </div>
+              )}
+            </div>
+
+            {/* AI patient suggestion */}
+            {patient && patientAi && (
+              <div style={{
+                padding: 12, borderRadius: 12, background: '#FAF5FF', border: '1px solid #E9D5FF',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontWeight: 800, fontSize: 12, color: '#6D28D9' }}>
+                    <Sparkles size={12} style={{ display: 'inline', marginRight: 4 }} />
+                    AI charge suggestion
+                  </div>
+                  <button type="button" onClick={applyAiSuggestion} style={{
+                    fontSize: 11, fontWeight: 800, padding: '5px 10px', borderRadius: 8,
+                    border: 'none', background: '#7C3AED', color: '#fff', cursor: 'pointer',
+                  }}>
+                    Apply AI
+                  </button>
+                </div>
+                <div style={{ fontSize: 12, color: '#57534E', marginTop: 6, lineHeight: 1.4 }}>
+                  {patientAi.detail || patientAi.nextBestAction || 'Review amount and method before posting.'}
+                </div>
+              </div>
+            )}
+
+            {/* Amount + purpose */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: '0.04em' }}>AMOUNT (₦)</label>
+                <input
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
+                  style={{
+                    marginTop: 6, width: '100%', padding: '12px 14px', borderRadius: 12,
+                    border: `1.5px solid ${C.border}`, fontSize: 20, fontWeight: 800,
+                    color: C.navy, fontVariantNumeric: 'tabular-nums', outline: 'none',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: '0.04em' }}>PURPOSE</label>
+                <select
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
+                  style={{
+                    marginTop: 6, width: '100%', padding: '12px 14px', borderRadius: 12,
+                    border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600,
+                    color: C.navy, background: '#fff', outline: 'none',
+                  }}
+                >
+                  {PURPOSES.map((x) => <option key={x} value={x}>{x}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Methods */}
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: '0.04em' }}>PAYMENT METHOD</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 8 }}>
+                {METHODS.map((m) => {
+                  const Icon = m.icon;
+                  const on = method === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setMethod(m.id)}
+                      style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                        padding: '12px 8px', borderRadius: 12, cursor: 'pointer',
+                        border: on ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
+                        background: on ? '#E0F2FE' : '#F8FAFC',
+                        color: on ? C.blue : C.navy, fontWeight: 700, fontSize: 12,
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Icon size={18} />
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Quick fee chips */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {Object.entries(CONSULT_FEES).slice(0, 6).map(([dept, fee]) => (
+                <button
+                  key={dept}
+                  type="button"
+                  onClick={() => {
+                    setAmount(String(fee));
+                    setPurpose(dept);
+                    setLines([{ label: dept, amount: fee as number }]);
+                  }}
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 999,
+                    border: `1px solid ${C.border}`, background: '#fff', color: C.navy, cursor: 'pointer',
+                  }}
+                >
+                  {dept} · ₦{(fee as number).toLocaleString()}
+                </button>
               ))}
-              {payments.length === 0 && (
-                <div style={{ fontSize: 12, color: C.muted, padding: 8 }}>No receipts yet this shift</div>
+            </div>
+
+            {/* Confirm */}
+            <button
+              type="button"
+              disabled={!patient}
+              onClick={doCharge}
+              style={{
+                marginTop: 4, height: 52, borderRadius: 14, border: 'none',
+                background: patient
+                  ? 'linear-gradient(90deg, #0284C7 0%, #0D9488 100%)'
+                  : '#CBD5E1',
+                color: '#fff', fontWeight: 800, fontSize: 15, cursor: patient ? 'pointer' : 'not-allowed',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                boxShadow: patient ? '0 12px 28px rgba(2,132,199,0.35)' : 'none',
+              }}
+            >
+              <CheckCircle2 size={18} />
+              Record ₦{displayAmount.toLocaleString()} · {method.toUpperCase()}
+              <ArrowRight size={18} />
+            </button>
+            <div style={{ fontSize: 11, color: C.muted, textAlign: 'center' }}>
+              AI never posts money without your confirmation
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT: unpaid queue + receipts */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{
+            background: '#fff', borderRadius: 18, border: `1px solid ${C.border}`,
+            boxShadow: '0 8px 28px rgba(15,23,42,0.05)', overflow: 'hidden',
+          }}>
+            <div style={{
+              padding: '14px 16px', borderBottom: `1px solid ${C.border}`,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              background: 'linear-gradient(180deg, #FFFBEB, #fff)',
+            }}>
+              <div style={{ fontWeight: 800, color: C.navy }}>Unpaid queue</div>
+              <span style={{
+                fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999,
+                background: '#FEF3C7', color: '#B45309',
+              }}>{deskAi.unpaidTickets}</span>
+            </div>
+            <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+              {visits.filter((v) => v.paymentStatus === 'pending' || v.paymentStatus === 'partial').length === 0 ? (
+                <div style={{ padding: 28, textAlign: 'center', color: C.muted, fontSize: 13 }}>
+                  No unpaid tickets — queue is clear
+                </div>
+              ) : (
+                visits
+                  .filter((v) => v.paymentStatus === 'pending' || v.paymentStatus === 'partial')
+                  .slice(0, 12)
+                  .map((v) => {
+                    const fee = v.amount || CONSULT_FEES[v.department] || 5000;
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => {
+                          const p = patients.find((x) => x.id === v.patientId);
+                          if (p) {
+                            setPatient(p);
+                            setQuery(`${p.firstName} ${p.lastName}`);
+                          }
+                          setAmount(String(fee));
+                          setPurpose(v.department || 'Consultation');
+                          setLines([{ label: v.department || 'Consultation', amount: fee }]);
+                        }}
+                        style={{
+                          width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none',
+                          borderBottom: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 800, color: C.blue, fontSize: 12 }}>
+                            {v.queueNumber}
+                          </span>
+                          <span style={{ fontWeight: 800, fontSize: 13, color: C.navy }}>
+                            ₦{fee.toLocaleString()}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4 }}>{v.patientName}</div>
+                        <div style={{ fontSize: 11, color: C.muted }}>{v.department}</div>
+                      </button>
+                    );
+                  })
               )}
             </div>
           </div>
+
+          <div style={{
+            background: '#fff', borderRadius: 18, border: `1px solid ${C.border}`,
+            boxShadow: '0 8px 28px rgba(15,23,42,0.05)', overflow: 'hidden',
+          }}>
+            <div style={{
+              padding: '14px 16px', borderBottom: `1px solid ${C.border}`,
+              fontWeight: 800, color: C.navy,
+            }}>
+              Today&apos;s receipts
+            </div>
+            <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+              {payments.length === 0 ? (
+                <div style={{ padding: 28, textAlign: 'center', color: C.muted, fontSize: 13 }}>
+                  No receipts yet this shift
+                </div>
+              ) : (
+                payments.slice(0, 20).map((p) => (
+                  <div key={p.id} style={{
+                    display: 'flex', justifyContent: 'space-between', gap: 10,
+                    padding: '12px 14px', borderBottom: `1px solid ${C.border}`, fontSize: 12,
+                  }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, color: C.navy }}>{p.patientName}</div>
+                      <div style={{ color: C.muted, marginTop: 2 }}>
+                        {p.method} · {p.reference || p.id}
+                      </div>
+                    </div>
+                    <div style={{ fontWeight: 800, color: C.teal, flexShrink: 0 }}>
+                      ₦{p.amount.toLocaleString()}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {lastReceipt && (
+            <div style={{
+              padding: 14, borderRadius: 14, background: '#ECFDF5', border: '1px solid #A7F3D0',
+            }}>
+              <div style={{ fontWeight: 800, color: '#047857', fontSize: 13 }}>Last receipt</div>
+              <div style={{ fontSize: 12, color: '#065F46', marginTop: 6 }}>
+                {lastReceipt.patientName} · ₦{lastReceipt.amount.toLocaleString()} · {lastReceipt.method}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 };
+
+
 
 export default PosPaymentDesk;
