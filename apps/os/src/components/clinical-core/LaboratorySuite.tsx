@@ -61,12 +61,20 @@ export const LaboratorySuite: React.FC = () => {
               patientName: o.patientName,
               patientId: o.patientId || o.hospitalNumber,
               testName: o.name,
-              specimen: 'Blood',
-              status: o.status === 'resulted' || o.status === 'completed' ? 'completed' : o.status === 'in_progress' ? 'processing' : 'pending',
+              specimenType: 'Blood',
+              barcode: `BC-${o.id.slice(-6)}`,
+              status:
+                o.status === 'resulted'
+                  ? 'completed'
+                  : o.status === 'in_progress'
+                    ? 'analyzing'
+                    : o.status === 'accepted'
+                      ? 'collected'
+                      : 'ordered',
               orderedAt: o.createdAt,
               result: o.resultSummary,
               isPanicValue: o.priority === 'stat',
-            } as LabOrder);
+            });
           }
         }
         return Array.from(byId.values());
