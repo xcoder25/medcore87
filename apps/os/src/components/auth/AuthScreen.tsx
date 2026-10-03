@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { LogoProgressBar } from '../realtime/LogoProgressBar';
 import {
   Building2, Lock, User, Eye, EyeOff, ArrowRight, CheckCircle2, AlertCircle
 } from 'lucide-react';
@@ -838,25 +837,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           }}>
             Welcome Back
           </h1>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-            marginBottom: 8,
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            color: firebaseLive ? '#047857' : '#94A3B8',
-          }}>
-            <span style={{
-              width: 7,
-              height: 7,
-              borderRadius: '50%',
-              background: firebaseLive ? '#10B981' : '#CBD5E1',
-              boxShadow: firebaseLive ? '0 0 0 3px rgba(16,185,129,0.25)' : 'none',
-            }} />
-            {firebaseLive ? 'Firebase realtime connected' : 'Connecting to Firebase…'}
-          </div>
           <p style={{
             fontSize: '0.88rem',
             color: '#64748B',
@@ -1136,7 +1116,35 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 </>
               )}
             </button>
-            <LogoProgressBar active={loading || success} label={success ? 'Launching Hospital OS…' : 'Signing in…'} />
+            {(loading || success) && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 12,
+                  marginTop: 18,
+                  padding: '8px 0 4px',
+                }}
+              >
+                <div
+                  className="auth-round-loader"
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: '50%',
+                    border: '3px solid #E2E8F0',
+                    borderTopColor: '#0284C7',
+                    borderRightColor: '#00BFA5',
+                    animation: 'authSpin 0.75s linear infinite',
+                  }}
+                />
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748B' }}>
+                  {success ? 'Launching Hospital OS…' : 'Signing in…'}
+                </span>
+              </div>
+            )}
           </form>
 
           {/* Divider */}
