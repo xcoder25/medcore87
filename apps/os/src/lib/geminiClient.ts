@@ -5,7 +5,8 @@ import { loadAdminSettings } from './adminSettingsStore';
 
 export async function geminiGenerate(
   prompt: string,
-  systemHint?: string
+  systemHint?: string,
+  ragContext?: string
 ): Promise<{ ok: boolean; text: string; usedGemini: boolean }> {
   let key = '';
   try {
@@ -41,9 +42,10 @@ export async function geminiGenerate(
             text: [
               systemHint ||
                 'You are M87, MedCore hospital OS copilot for Nigerian public hospitals (Akwa Ibom). Be concise, actionable, never invent patient data. Prefer operational next steps.',
+              ragContext ? `\n${ragContext}\n` : '',
               '',
               prompt,
-            ].join('\n'),
+            ].filter(Boolean).join('\n'),
           },
         ],
       },

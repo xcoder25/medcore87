@@ -1,6 +1,9 @@
 'use client';
 
 import { geminiGenerate, hasGeminiKey } from '../../lib/geminiClient';
+import { runM87Training, buildM87RagContext, retrieveRelevantExamples } from '../../lib/m87Train';
+import { addFeedback, getModelState, subscribeM87Learn } from '../../lib/m87LearningStore';
+import { liveAlert } from '../../lib/manualActions';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
@@ -71,11 +74,20 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
   const [activeAITab, setActiveAITab] = useState<'copilot' | 'forecasting' | 'anomalies' | 'orchestrator'>('copilot');
   const [isThinking, setIsThinking] = useState(false);
   const [streamingId, setStreamingId] = useState<string | null>(null);
+  const [trainSummary, setTrainSummary] = useState<string | null>(null);
+  const [modelVer, setModelVer] = useState<string | null>(() => getModelState()?.version || null);
+  const [isTraining, setIsTraining] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, isThinking]);
+
+  useEffect(() => {
+    const sync = () => setModelVer(getModelState()?.version || null);
+    sync();
+    return subscribeM87Learn(sync);
+  }, []);
 
   useEffect(() => {
     if (isThinking) return;
@@ -212,13 +224,20 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
       'M87: I can automate hospital admin tasks. Try:\n• enrol nurse Ada Okon pin 123456\n• bulk enrol: Emeka doctor; Chioma reception; Amaka nurse\n• create 5 nurses\n\nOr ask about beds, revenue, or clinical topics.';
     let cat: ChatMessage['category'] = 'clinical';
 
+    const fid = session?.hospitalId || 'IGH-EKT';
+    const rag = buildM87RagContext(query, fid);
+    const localHits = retrieveRelevantExamples(query, fid, 1);
     const gemini = await geminiGenerate(
       query,
-      `You are M87, MedCore hospital OS copilot. Facility context: staff assistant. Keep answers short. Never invent patient identifiers.`
+      `You are M87, MedCore hospital OS copilot. Facility context: staff assistant. Keep answers short. Never invent patient identifiers. Prefer learned hospital knowledge when provided.`,
+      rag
     );
     if (gemini.ok && gemini.text) {
       reply = gemini.text;
       cat = 'clinical';
+    } else if (localHits[0]) {
+      reply = localHits[0].idealOutput + '\n\n— M87 local model (train for fresher live data)';
+      cat = 'operational';
     } else {
       const lower = query.toLowerCase();
       if (lower.includes('bed') || lower.includes('surge') || lower.includes('capacity')) {
@@ -248,6 +267,43 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
     setIsThinking(false);
   };
 
+
+  const handleTrainM87 = () => {
+    setIsTraining(true);
+    try {
+      const fid = session?.hospitalId || 'IGH-EKT';
+      const { summary, model } = runM87Training(fid);
+      setTrainSummary(summary);
+      setModelVer(model.version);
+      liveAlert(summary, 'm87-ai', fid);
+      emitLiveAction(summary, { module: 'm87-ai' });
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-train-${Date.now()}`,
+          sender: 'm87',
+          text: `🧠 Training complete\n\n${summary}\n\nI will use harvested OPD/lab/bed facts and your 👍 feedback on future answers.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          category: 'operational',
+        },
+      ]);
+    } finally {
+      setIsTraining(false);
+    }
+  };
+
+  const rateMessage = (msg: ChatMessage, rating: 1 | -1) => {
+    const fid = session?.hospitalId || 'IGH-EKT';
+    const lastUser = [...messages].reverse().find((m) => m.sender === 'user');
+    addFeedback({
+      facilityId: fid,
+      messageId: msg.id,
+      prompt: lastUser?.text || '',
+      response: msg.text,
+      rating,
+    });
+    liveAlert(rating === 1 ? 'Thanks — saved to M87 training set' : 'Feedback noted', 'm87-ai', fid);
+  };
 
   return (
     <div
@@ -289,7 +345,37 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
             {tab.label}
           </button>
         ))}
+        <button
+          type="button"
+          className="mc-btn-live"
+          onClick={handleTrainM87}
+          disabled={isTraining}
+          style={{
+            marginLeft: 'auto',
+            padding: '6px 14px',
+            borderRadius: 999,
+            border: 'none',
+            background: isTraining ? '#94A3B8' : 'linear-gradient(135deg, #0D9488, #2563EB)',
+            color: '#fff',
+            fontWeight: 700,
+            fontSize: 12,
+            cursor: isTraining ? 'wait' : 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <Sparkles size={14} />
+          {isTraining ? 'Training…' : 'Train M87'}
+        </button>
       </div>
+      {modelVer && (
+        <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8 }}>
+          Local model: <strong>{modelVer}</strong>
+          {trainSummary ? ` · ${trainSummary.slice(0, 80)}…` : ' · Run Train to harvest live hospital data'}
+          {hasGeminiKey() ? ' · Gemini key detected' : ' · Set NEXT_PUBLIC_GEMINI_API_KEY for cloud ML'}
+        </div>
+      )}
 
       {activeAITab === 'copilot' && (
         <div
@@ -415,6 +501,14 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
                   >
                     {msg.sender === 'm87' ? (
                       <StreamingText text={msg.text} animate={msg.id === streamingId} />
+                    {msg.sender === 'm87' && (
+                      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                        <button type="button" className="mc-btn-live" onClick={() => rateMessage(msg, 1)}
+                          style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, border: '1px solid #E2E8F0', background: '#fff', cursor: 'pointer' }}>👍 Teach</button>
+                        <button type="button" className="mc-btn-live" onClick={() => rateMessage(msg, -1)}
+                          style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, border: '1px solid #E2E8F0', background: '#fff', cursor: 'pointer' }}>👎</button>
+                      </div>
+                    )}
                     ) : (
                       msg.text
                     )}
