@@ -917,8 +917,7 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
   );
 };
 
-// -- LAB ORDERS
- ----------------------------------------------------------------
+// -- LAB ORDERS ----------------------------------------------------------------
 
 const LabOrdersView: React.FC = () => {
   const [patient, setPatient] = useState<Patient | null>(null);
