@@ -6,6 +6,7 @@ import { inferRoleKey } from '../../lib/staffCardStore';
 import { AdminWorkspace } from './AdminWorkspace';
 import { ReceptionWorkspace } from './ReceptionWorkspace';
 import { DoctorDeskHome } from './DoctorDeskHome';
+import { RoleDeskHome, type RoleDeskConfig } from './RoleDeskHome';
 import { emitLiveAction } from '../../lib/liveActions';
 import {
   Stethoscope, Activity, Flame, Wind, Pill, FlaskConical, Layers, Baby, Droplet,
@@ -60,6 +61,142 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
   // Doctor clinical desk — same pattern as reception Front Desk
   if (roleKey === 'doctor') {
     return <DoctorDeskHome session={session} onNavigate={(k) => onNavigate(k)} />;
+  }
+
+
+  const deskForRole = (key: string): RoleDeskConfig | null => {
+    const ai = { label: 'M87 AI', desc: 'Assistant', icon: Brain, go: 'm87-ai' };
+    switch (key) {
+      case 'nurse':
+      case 'midwife':
+        return {
+          title: key === 'midwife' ? 'Maternity desk' : 'Nursing desk',
+          subtitle: 'Tasks, ward board, and patient flow in one place.',
+          badge: key === 'midwife' ? 'Maternity · Midwifery' : 'Nursing · Wards',
+          boardTitle: 'Ward / clinic board',
+          boardEmpty: 'No active visits — reception check-ins appear here.',
+          quick: [
+            { label: 'Inpatient', desc: 'Nursing suite', icon: BedDouble, go: 'nursing' },
+            { label: 'EMR', desc: 'Records', icon: FileText, go: 'emr' },
+            { label: 'Patient flow', desc: 'Queue', icon: Activity, go: 'patient-flow' },
+            { label: 'Beds', desc: 'Occupancy', icon: BedDouble, go: 'beds' },
+            { label: 'Maternity', desc: 'OG suite', icon: Baby, go: 'maternity' },
+          ],
+        };
+      case 'pharmacist':
+        return {
+          title: 'Pharmacy desk',
+          subtitle: 'Dispense from live prescriptions on the clinical bus.',
+          badge: 'Pharmacy · Dispensing',
+          boardTitle: 'Clinic activity',
+          boardEmpty: 'No visits in queue.',
+          orderType: 'rx',
+          quick: [
+            { label: 'Dispense', desc: 'Pharmacy suite', icon: Pill, go: 'pharmacy' },
+            { label: 'EMR', desc: 'Records', icon: FileText, go: 'emr' },
+            { label: 'Cashier', desc: 'Payments', icon: CreditCard, go: 'cashier' },
+          ],
+        };
+      case 'lab':
+        return {
+          title: 'Laboratory desk',
+          subtitle: 'Process orders and publish results to clinicians.',
+          badge: 'Lab · LIS',
+          boardTitle: 'Clinic activity',
+          boardEmpty: 'No visits in queue.',
+          orderType: 'lab',
+          quick: [
+            { label: 'Lab suite', desc: 'Orders & results', icon: FlaskConical, go: 'laboratory' },
+            { label: 'EMR', desc: 'Records', icon: FileText, go: 'emr' },
+            { label: 'Orders bus', desc: 'Clinical loop', icon: Activity, go: 'clinical-orders' },
+          ],
+        };
+      case 'radiologist':
+        return {
+          title: 'Imaging desk',
+          subtitle: 'Studies and reports linked to the clinical bus.',
+          badge: 'Radiology · PACS',
+          boardTitle: 'Clinic activity',
+          boardEmpty: 'No visits in queue.',
+          orderType: 'imaging',
+          quick: [
+            { label: 'Radiology', desc: 'PACS suite', icon: Layers, go: 'radiology' },
+            { label: 'EMR', desc: 'Records', icon: FileText, go: 'emr' },
+          ],
+        };
+      case 'surgeon':
+        return {
+          title: 'Theatre desk',
+          subtitle: 'Cases, lists, and perioperative coordination.',
+          badge: 'Theatre · Surgery',
+          boardTitle: 'Clinic / board',
+          boardEmpty: 'No active visits.',
+          quick: [
+            { label: 'Theatre', desc: 'OT suite', icon: Activity, go: 'theatre' },
+            { label: 'EMR', desc: 'Records', icon: FileText, go: 'emr' },
+            { label: 'ICU', desc: 'Critical care', icon: HeartPulse, go: 'icu' },
+          ],
+        };
+      case 'records':
+        return {
+          title: 'Records desk',
+          subtitle: 'Patient registry, cards, and documentation.',
+          badge: 'Health records',
+          boardTitle: 'Today’s visits',
+          boardEmpty: 'No visits yet today.',
+          quick: [
+            { label: 'Patients', desc: 'Registry', icon: Users, go: 'patients' },
+            { label: 'EMR', desc: 'Records', icon: FileText, go: 'emr' },
+            { label: 'Cards', desc: 'Patient ID', icon: CreditCard, go: 'patient-card' },
+          ],
+        };
+      case 'accountant':
+        return {
+          title: 'Finance desk',
+          subtitle: 'Cashier, billing, and claims visibility.',
+          badge: 'Revenue · Finance',
+          boardTitle: 'Today’s activity',
+          boardEmpty: 'No visits yet.',
+          quick: [
+            { label: 'Cashier', desc: 'POS', icon: CreditCard, go: 'cashier' },
+            { label: 'Billing', desc: 'Invoices', icon: BarChart3, go: 'billing' },
+            { label: 'Claims', desc: 'HMO / NHIS', icon: FileText, go: 'insurance' },
+          ],
+        };
+      case 'biomedical':
+        return {
+          title: 'Biomedical desk',
+          subtitle: 'Equipment and facility readiness.',
+          badge: 'Biomedical · Engineering',
+          boardTitle: 'Hospital pulse',
+          boardEmpty: 'No visit load.',
+          quick: [
+            { label: 'Equipment', desc: 'Biomed suite', icon: Wrench, go: 'biomedical' },
+            { label: 'Facilities', desc: 'Utilities', icon: Building2, go: 'facilities' },
+          ],
+        };
+      case 'sysadmin':
+      case 'medical_director':
+        return {
+          title: key === 'sysadmin' ? 'System desk' : 'Director desk',
+          subtitle: 'Oversight, command, and hospital performance.',
+          badge: key === 'sysadmin' ? 'IT · Systems' : 'Medical director',
+          boardTitle: 'Hospital activity',
+          boardEmpty: 'No visits yet today.',
+          quick: [
+            { label: 'Command', desc: 'Centre', icon: Activity, go: 'command' },
+            { label: 'Analytics', desc: 'Performance', icon: BarChart3, go: 'analytics' },
+            { label: 'Data hub', desc: 'Integration', icon: Database, go: 'data-hub' },
+          ],
+        };
+      default:
+        return null;
+    }
+  };
+
+  const sharedDesk = deskForRole(roleKey);
+  if (sharedDesk) {
+    return <RoleDeskHome session={session} onNavigate={(k) => onNavigate(k)} config={sharedDesk} />;
   }
 
   // Administrator gets dedicated premium workspace (no clinical banner)

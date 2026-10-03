@@ -1,5 +1,7 @@
 'use client';
 
+import { geminiGenerate, hasGeminiKey } from '../../lib/geminiClient';
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
 import {
@@ -205,22 +207,34 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
       return;
     }
 
-    // Default advisory replies (non-mutating)
+    // Gemini (when key configured) → else local advisory
     let reply =
       'M87: I can automate hospital admin tasks. Try:\n• enrol nurse Ada Okon pin 123456\n• bulk enrol: Emeka doctor; Chioma reception; Amaka nurse\n• create 5 nurses\n\nOr ask about beds, revenue, or clinical topics.';
     let cat: ChatMessage['category'] = 'clinical';
-    const lower = query.toLowerCase();
-    if (lower.includes('bed') || lower.includes('surge') || lower.includes('capacity')) {
-      reply =
-        'Operational Forecasting: Review Bed & Ward Occupancy for live counts. I can enrol ward staff in bulk if you need more nurses on duty.';
-      cat = 'operational';
-    } else if (lower.includes('money') || lower.includes('revenue') || lower.includes('hmo') || lower.includes('billing')) {
-      reply = 'Financial Intelligence: Open Revenue & Cashier for live tills. I automate staff access accounts, not payment posting.';
-      cat = 'financial';
-    } else if (lower.includes('access') || lower.includes('id card') || lower.includes('badge')) {
-      reply =
-        'Access Control: Say “enrol doctor Full Name pin 123456” or “bulk enrol: Name role; Name role” and I will create accounts + ID cards automatically.';
-      cat = 'operational';
+
+    const gemini = await geminiGenerate(
+      query,
+      `You are M87, MedCore hospital OS copilot. Facility context: staff assistant. Keep answers short. Never invent patient identifiers.`
+    );
+    if (gemini.ok && gemini.text) {
+      reply = gemini.text;
+      cat = 'clinical';
+    } else {
+      const lower = query.toLowerCase();
+      if (lower.includes('bed') || lower.includes('surge') || lower.includes('capacity')) {
+        reply =
+          'Operational Forecasting: Review Bed & Ward Occupancy for live counts. I can enrol ward staff in bulk if you need more nurses on duty.';
+        cat = 'operational';
+      } else if (lower.includes('money') || lower.includes('revenue') || lower.includes('hmo') || lower.includes('billing')) {
+        reply = 'Financial Intelligence: Open Revenue & Cashier for live tills. I automate staff access accounts, not payment posting.';
+        cat = 'financial';
+      } else if (lower.includes('access') || lower.includes('id card') || lower.includes('badge')) {
+        reply =
+          'Access Control: Say “enrol doctor Full Name pin 123456” or “bulk enrol: Name role; Name role” and I will create accounts + ID cards automatically.';
+        cat = 'operational';
+      } else if (gemini.usedGemini && gemini.text) {
+        reply = gemini.text + '\n\n(Falling back — check Gemini API key if this persists.)';
+      }
     }
 
     const aiMsg: ChatMessage = {
