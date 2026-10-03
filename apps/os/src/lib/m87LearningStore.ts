@@ -89,11 +89,11 @@ export function upsertExample(ex: Omit<M87TrainingExample, 'id' | 'createdAt' | 
     }
   }
   const row: M87TrainingExample = {
+    ...ex,
     id: `EX-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
     createdAt: now,
     updatedAt: now,
     score: ex.score ?? 0.7,
-    ...ex,
   };
   writeJson(EX_KEY, [row, ...all].slice(0, 2000));
   return row;
