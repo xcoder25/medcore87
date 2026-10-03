@@ -1,3 +1,4 @@
+import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 /**
  * Hospital bed board — local-first, facility-scoped, realtime via events.
  */
@@ -39,6 +40,8 @@ function save(state: State) {
   localStorage.setItem(KEY, JSON.stringify(state));
   window.dispatchEvent(new CustomEvent(EVT, { detail: state }));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: KEY } }));
+  const fid = state.beds[0]?.facilityId || 'IGH-EKT';
+  publishFacilityData(fid, FACILITY_KEYS.beds, state);
 }
 
 export function listBeds(facilityId: string): BedRecord[] {

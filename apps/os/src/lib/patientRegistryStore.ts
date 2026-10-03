@@ -1,3 +1,4 @@
+import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 /**
  * Facility patient registry — realtime local + optional Firestore mirror.
  * No seed/demo patients.
@@ -57,6 +58,13 @@ function writeAll(list: FacilityPatient[]) {
   localStorage.setItem(PATIENT_REGISTRY_KEY, JSON.stringify(list));
   window.dispatchEvent(new CustomEvent('medcore-patients-updated', { detail: list }));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: PATIENT_REGISTRY_KEY } }));
+  const fid = list[0]?.facilityId || 'IGH-EKT';
+  publishFacilityData(fid, FACILITY_KEYS.patients, list);
+  try {
+    const bc = new BroadcastChannel('medcore_patients');
+    bc.postMessage({ type: 'patients', list });
+    bc.close();
+  } catch { /* ignore */ }
 }
 
 export function listPatients(facilityId?: string): FacilityPatient[] {

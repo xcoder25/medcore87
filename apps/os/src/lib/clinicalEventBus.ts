@@ -1,3 +1,4 @@
+import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 /**
  * Closed clinical loop bus: Order → Lab/Rx → Result → Doctor screen
  * Local-first + broadcast; optional Firestore facility mirror.
@@ -49,6 +50,8 @@ function write(list: ClinicalOrder[]) {
   localStorage.setItem(KEY, JSON.stringify(list.slice(0, 500)));
   window.dispatchEvent(new CustomEvent('medcore-clinical-orders', { detail: list }));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: KEY } }));
+  const fid = list[0]?.facilityId || 'IGH-EKT';
+  publishFacilityData(fid, FACILITY_KEYS.clinical, list);
   try {
     const bc = new BroadcastChannel('medcore_clinical');
     bc.postMessage({ type: 'orders', list });
@@ -112,11 +115,20 @@ export function postLabResult(
 }
 
 export function subscribeOrders(cb: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
   const fn = () => cb();
   window.addEventListener('medcore-clinical-orders', fn);
   window.addEventListener('storage', fn);
+  window.addEventListener('medcore-admin-sync', fn);
+  let bc: BroadcastChannel | null = null;
+  try {
+    bc = new BroadcastChannel('medcore_clinical');
+    bc.onmessage = () => cb();
+  } catch { /* ignore */ }
   return () => {
     window.removeEventListener('medcore-clinical-orders', fn);
     window.removeEventListener('storage', fn);
+    window.removeEventListener('medcore-admin-sync', fn);
+    try { bc?.close(); } catch { /* ignore */ }
   };
 }

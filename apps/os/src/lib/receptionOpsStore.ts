@@ -1,6 +1,8 @@
 /**
  * Reception operations — visits, queue, appointments, POS payments (local realtime)
  */
+import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
+import { getActiveFacilityId } from './adminRealtimeStore';
 import type { FacilityPatient } from './patientRegistryStore';
 
 export const RECEPTION_OPS_KEY = 'medcore_os_reception_ops_v2';
@@ -108,6 +110,17 @@ function save(state: OpsState) {
   localStorage.setItem(RECEPTION_OPS_KEY, JSON.stringify(state));
   window.dispatchEvent(new CustomEvent('medcore-reception-ops', { detail: state }));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: RECEPTION_OPS_KEY } }));
+  const fid =
+    state.visits[0]?.facilityId ||
+    state.appointments[0]?.facilityId ||
+    (typeof getActiveFacilityId === 'function' ? getActiveFacilityId() : '') ||
+    'IGH-EKT';
+  publishFacilityData(fid, FACILITY_KEYS.reception, state);
+  try {
+    const bc = new BroadcastChannel('medcore_reception');
+    bc.postMessage({ type: 'ops', state });
+    bc.close();
+  } catch { /* ignore */ }
 }
 
 export function listVisits(facilityId: string): ReceptionVisit[] {
@@ -269,14 +282,21 @@ export function todayPayments(facilityId: string): ReceptionPayment[] {
 }
 
 export function subscribeReceptionOps(cb: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
   const fn = () => cb();
   window.addEventListener('medcore-reception-ops', fn);
-  window.addEventListener('medcore-admin-sync', fn);
   window.addEventListener('storage', fn);
+  window.addEventListener('medcore-admin-sync', fn);
+  let bc: BroadcastChannel | null = null;
+  try {
+    bc = new BroadcastChannel('medcore_reception');
+    bc.onmessage = () => cb();
+  } catch { /* ignore */ }
   return () => {
     window.removeEventListener('medcore-reception-ops', fn);
-    window.removeEventListener('medcore-admin-sync', fn);
     window.removeEventListener('storage', fn);
+    window.removeEventListener('medcore-admin-sync', fn);
+    try { bc?.close(); } catch { /* ignore */ }
   };
 }
 

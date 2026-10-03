@@ -1,3 +1,4 @@
+import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 /**
  * Ambulance dispatch — local-first realtime for hospital admin.
  */
@@ -36,6 +37,8 @@ function save(units: AmbulanceUnit[]) {
   localStorage.setItem(KEY, JSON.stringify(units));
   window.dispatchEvent(new CustomEvent(EVT, { detail: units }));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: KEY } }));
+  const fid = units[0]?.facilityId || 'IGH-EKT';
+  publishFacilityData(fid, FACILITY_KEYS.ambulance, units);
 }
 
 export function listUnits(facilityId: string): AmbulanceUnit[] {
