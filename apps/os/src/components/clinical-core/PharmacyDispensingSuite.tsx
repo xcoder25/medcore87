@@ -85,17 +85,21 @@ export const PharmacyDispensingSuite: React.FC = () => {
       const rx = listOrders(facilityId).filter((o) => o.type === 'rx');
       setPrescriptions((prev) => {
         const ids = new Set(prev.map((p) => p.id));
-        const extra = rx
+        const extra: PrescriptionOrder[] = rx
           .filter((o) => !ids.has(o.id))
           .map((o) => ({
             id: o.id,
             patientName: o.patientName,
             patientId: o.patientId,
-            drugName: o.name,
-            dose: o.notes || 'As ordered',
+            medication: o.name,
+            dosage: o.notes || 'As ordered',
+            frequency: 'As directed',
+            route: 'PO',
+            duration: 'As ordered',
+            prescribingDoctor: o.orderedBy || 'Clinician',
             status: o.status === 'resulted' || o.status === 'accepted' ? 'dispensed' : 'pending',
             orderedAt: o.createdAt,
-          })) as PrescriptionOrder[];
+          }));
         return extra.length ? [...extra, ...prev] : prev;
       });
     };
