@@ -1,5 +1,7 @@
 'use client';
 
+import { liveAlert } from '../../lib/manualActions';
+
 import React, { useState } from 'react';
 import {
   AlertTriangle, Activity, UserPlus, Clock, Heart, ShieldAlert,
@@ -172,7 +174,7 @@ export const EmergencyTriageSuite: React.FC = () => {
               type="button"
               className="os-ghost-btn"
               style={{ color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)', padding: '6px 10px', fontSize: '0.72rem' }}
-              onClick={() => alert(`CRITICAL CODE ACTIVATED for ${selectedPatient.patientName}`)}
+              onClick={() => liveAlert(`CRITICAL CODE ACTIVATED for ${selectedPatient.patientName}`)}
             >
               <ShieldAlert size={14} /> Trigger Code Blue
             </button>
@@ -225,14 +227,14 @@ export const EmergencyTriageSuite: React.FC = () => {
               type="button"
               className="os-action-btn-primary"
               style={{ flex: 1, justifyContent: 'center' }}
-              onClick={() => alert(`Transferring ${selectedPatient.patientName} to Intensive Care Unit (ICU)`)}
+              onClick={() => liveAlert(`Transferring ${selectedPatient.patientName} to Intensive Care Unit (ICU)`)}
             >
               <BedDouble size={14} /> Admit to Ward / ICU
             </button>
             <button
               type="button"
               className="os-ghost-btn"
-              onClick={() => alert(`Emergency consult paged to on-call surgeon`)}
+              onClick={() => liveAlert(`Emergency consult paged to on-call surgeon`)}
             >
               <PhoneCall size={14} /> Page Specialist
             </button>

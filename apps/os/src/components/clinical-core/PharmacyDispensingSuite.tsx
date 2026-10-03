@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Pill, AlertTriangle, CheckCircle2, Search, Package,
   Clock, Barcode, UserSearch, RefreshCw, ChevronDown, ChevronUp,
@@ -55,6 +55,15 @@ const statusStyle = (status: string) => {
   return map[status] || map.ACTIVE;
 };
 
+import {
+  listOrders,
+  updateOrderStatus,
+  subscribeOrders,
+} from '../../lib/clinicalEventBus';
+import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
+import { emitLiveAction } from '../../lib/liveActions';
+import { liveAlert } from '../../lib/manualActions';
+
 export const PharmacyDispensingSuite: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'scan' | 'queue' | 'formulary'>('scan');
   const [prescriptions, setPrescriptions] = useState<PrescriptionOrder[]>(INITIAL_PRESCRIPTIONS);
@@ -69,8 +78,36 @@ export const PharmacyDispensingSuite: React.FC = () => {
   const [dispensingId, setDispensingId] = useState<string | null>(null);
   const [expandedRx, setExpandedRx] = useState<string | null>(null);
 
+  const facilityId = (typeof window !== 'undefined' && getActiveFacilityId()) || 'IGH-EKT';
+
+  useEffect(() => {
+    const pull = () => {
+      const rx = listOrders(facilityId).filter((o) => o.type === 'rx');
+      setPrescriptions((prev) => {
+        const ids = new Set(prev.map((p) => p.id));
+        const extra = rx
+          .filter((o) => !ids.has(o.id))
+          .map((o) => ({
+            id: o.id,
+            patientName: o.patientName,
+            patientId: o.patientId,
+            drugName: o.name,
+            dose: o.notes || 'As ordered',
+            status: o.status === 'resulted' || o.status === 'accepted' ? 'dispensed' : 'pending',
+            orderedAt: o.createdAt,
+          })) as PrescriptionOrder[];
+        return extra.length ? [...extra, ...prev] : prev;
+      });
+    };
+    pull();
+    return subscribeOrders(pull);
+  }, [facilityId]);
+
   const handleLegacyDispense = (id: string) => {
     setPrescriptions(prev => prev.map(p => p.id === id ? { ...p, status: 'dispensed' } : p));
+    updateOrderStatus(id, 'resulted', { resultSummary: 'Dispensed at pharmacy', resultedBy: 'Pharmacist' });
+    emitLiveAction(`Dispensed ${id}`, { module: 'pharmacy' });
+    liveAlert('Prescription marked dispensed — visible on clinical desk', 'pharmacy', facilityId);
   };
 
   const pendingCount = prescriptions.filter(p => p.status === 'pending').length;
@@ -93,7 +130,34 @@ export const PharmacyDispensingSuite: React.FC = () => {
         setScanError(json.error || 'No prescriptions found');
       }
     } catch {
-      setScanError('Cannot reach MedCore API. Check server is running on port 4000.');
+      // Offline / no API — use clinical Rx orders bus
+      const rx = listOrders(facilityId).filter(
+        (o) =>
+          o.type === 'rx' &&
+          (o.patientName.toLowerCase().includes(query.toLowerCase()) ||
+            o.hospitalNumber.toLowerCase().includes(query.toLowerCase()) ||
+            o.patientId.toLowerCase().includes(query.toLowerCase()))
+      );
+      if (rx.length) {
+        setScanResult(
+          rx.map((o) => ({
+            id: o.id,
+            patientName: o.patientName,
+            status: o.status === 'resulted' ? 'DISPENSED' : 'ACTIVE',
+            drugs: [
+              {
+                id: o.id + '-d',
+                name: o.name,
+                dispensed: o.status === 'resulted',
+              },
+            ],
+          })) as any
+        );
+        setExpandedRx(rx[0].id);
+        liveAlert(`Loaded ${rx.length} Rx from clinical bus (offline)`, 'pharmacy', facilityId);
+      } else {
+        setScanError('No prescriptions on clinical bus for this patient. Orders appear when a doctor places Rx.');
+      }
     } finally {
       setScanning(false);
     }

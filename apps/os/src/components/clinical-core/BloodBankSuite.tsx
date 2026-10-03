@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import { liveAlert } from '../../lib/manualActions';
+
 import React, { useState } from 'react';
 import {
   Droplet, AlertTriangle, ShieldAlert, CheckCircle2,
@@ -69,7 +71,7 @@ export const BloodBankSuite: React.FC = () => {
             type="button"
             className="os-action-btn-primary"
             style={{ background: '#DC2626', fontSize: '0.75rem' }}
-            onClick={() => alert(`Donor Mobilization Broadcast initiated to Akwa Ibom State Voluntary Blood Donor Registry.`)}
+            onClick={() => liveAlert(`Donor Mobilization Broadcast initiated to Akwa Ibom State Voluntary Blood Donor Registry.`)}
           >
             Dispatch Donor Mobilization SMS
           </button>

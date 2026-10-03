@@ -6,6 +6,7 @@ import { inferRoleKey } from '../../lib/staffCardStore';
 import { AdminWorkspace } from './AdminWorkspace';
 import { ReceptionWorkspace } from './ReceptionWorkspace';
 import { DoctorDeskHome } from './DoctorDeskHome';
+import { emitLiveAction } from '../../lib/liveActions';
 import {
   Stethoscope, Activity, Flame, Wind, Pill, FlaskConical, Layers, Baby, Droplet,
   FileText, BedDouble, Users, Clock, ShieldCheck, AlertTriangle, CheckCircle2,
@@ -25,6 +26,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
 
   const triggerAction = (msg: string, navKey?: string) => {
     setActionNotice(msg);
+    emitLiveAction(msg, { module: navKey });
     setTimeout(() => setActionNotice(null), 3500);
     if (navKey) {
       setTimeout(() => onNavigate(navKey), 600);

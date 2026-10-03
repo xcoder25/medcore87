@@ -1,12 +1,23 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Activity, AlertTriangle, CheckCircle2, Search, Filter,
   Barcode, Zap, Clock, ShieldAlert, FileText, FlaskConical,
   Plus, X, Edit3, Send
 } from 'lucide-react';
 import type { LabOrder } from '@medcore/types';
+import {
+  listOrders,
+  placeOrder,
+  postLabResult,
+  updateOrderStatus,
+  subscribeOrders,
+  type ClinicalOrder,
+} from '../../lib/clinicalEventBus';
+import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
+import { liveAlert } from '../../lib/manualActions';
+import { emitLiveAction } from '../../lib/liveActions';
 
 const INITIAL_LAB_ORDERS: LabOrder[] = [];
 
@@ -35,6 +46,35 @@ export const LaboratorySuite: React.FC = () => {
   // Edit Result Form
   const [resultInput, setResultInput] = useState('');
   const [isPanicToggle, setIsPanicToggle] = useState(false);
+  const facilityId = (typeof window !== 'undefined' && getActiveFacilityId()) || 'IGH-EKT';
+
+  // Live clinical bus → lab queue
+  useEffect(() => {
+    const merge = () => {
+      const bus = listOrders(facilityId).filter((o) => o.type === 'lab');
+      setOrders((prev) => {
+        const byId = new Map(prev.map((o) => [o.id, o]));
+        for (const o of bus) {
+          if (!byId.has(o.id)) {
+            byId.set(o.id, {
+              id: o.id,
+              patientName: o.patientName,
+              patientId: o.patientId || o.hospitalNumber,
+              testName: o.name,
+              specimen: 'Blood',
+              status: o.status === 'resulted' || o.status === 'completed' ? 'completed' : o.status === 'in_progress' ? 'processing' : 'pending',
+              orderedAt: o.createdAt,
+              result: o.resultSummary,
+              isPanicValue: o.priority === 'stat',
+            } as LabOrder);
+          }
+        }
+        return Array.from(byId.values());
+      });
+    };
+    merge();
+    return subscribeOrders(merge);
+  }, [facilityId]);
 
   const showNotification = (msg: string) => {
     setNotice(msg);
@@ -50,7 +90,12 @@ export const LaboratorySuite: React.FC = () => {
 
   const handleValidateEHR = (id: string) => {
     setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'completed' } : o));
-    showNotification(`Lab report for ${selectedOrder.testName} validated and committed to EHR.`);
+    const o = orders.find(x => x.id === id);
+    postLabResult(id, o?.result || resultInput || 'Result validated', 'Lab scientist');
+    updateOrderStatus(id, 'resulted', { resultSummary: o?.result || resultInput || 'Validated' });
+    emitLiveAction(`Lab result transmitted · ${o?.testName || id}`, { module: 'laboratory' });
+    liveAlert(`Lab report validated and sent to clinical desk`, 'laboratory', facilityId);
+    showNotification(`Lab report for ${selectedOrder?.testName || 'test'} validated and committed to EHR.`);
   };
 
   const handleCreateOrder = (e: React.FormEvent) => {
@@ -72,6 +117,20 @@ export const LaboratorySuite: React.FC = () => {
 
     setOrders([newOrder, ...orders]);
     setSelectedId(newOrder.id);
+    try {
+      placeOrder({
+        facilityId,
+        patientId: newOrder.patientId,
+        patientName: newOrder.patientName,
+        hospitalNumber: newOrder.patientId,
+        type: 'lab',
+        code: newTest.slice(0, 12).toUpperCase().replace(/\s/g, '_'),
+        name: newTest,
+        orderedBy: 'Lab desk',
+        priority: 'routine',
+      });
+    } catch { /* ignore */ }
+    emitLiveAction(`Lab order ${nextId} · ${newOrder.patientName}`, { module: 'laboratory' });
     setShowOrderModal(false);
     setNewPatient('');
     showNotification(`Lab Order ${nextId} created for ${newOrder.patientName}! Barcode: ${nextBc}`);
@@ -93,6 +152,8 @@ export const LaboratorySuite: React.FC = () => {
       return o;
     }));
 
+    postLabResult(selectedOrder.id, resultInput.trim(), 'Lab scientist');
+    emitLiveAction(`Lab result entered · ${selectedOrder.patientName}`, { module: 'laboratory' });
     setShowResultModal(false);
     showNotification(`Results updated and validated for ${selectedOrder.patientName}.`);
   };

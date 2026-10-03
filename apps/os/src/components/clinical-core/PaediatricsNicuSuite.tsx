@@ -1,5 +1,7 @@
 'use client';
 
+import { liveAlert } from '../../lib/manualActions';
+
 import React, { useState } from 'react';
 import {
   Baby, Activity, AlertTriangle, CheckCircle2, ShieldAlert,
@@ -130,7 +132,7 @@ export const PaediatricsNicuSuite: React.FC = () => {
                 type="button"
                 className="os-ghost-btn"
                 style={{ width: '100%', justifyContent: 'center', fontSize: '0.75rem' }}
-                onClick={() => alert(`Neonatal vitals updated for ${unit.babyName}`)}
+                onClick={() => liveAlert(`Neonatal vitals updated for ${unit.babyName}`)}
               >
                 Log Neonatal Vitals & Blood Glucose
               </button>

@@ -1,5 +1,7 @@
 'use client';
 
+import { liveAlert } from '../../lib/manualActions';
+
 import React, { useState } from 'react';
 import {
   Activity, AlertTriangle, ShieldAlert, Heart, Wind,
@@ -174,14 +176,14 @@ export const CriticalCareIcuSuite: React.FC = () => {
               <button
                 type="button"
                 className="os-action-btn-primary"
-                onClick={() => alert(`ABG (Arterial Blood Gas) ordered for ${selectedStation.patientName}. Point-of-care analyzer flagged.`)}
+                onClick={() => liveAlert(`ABG (Arterial Blood Gas) ordered for ${selectedStation.patientName}. Point-of-care analyzer flagged.`)}
               >
                 <Activity size={14} /> Run STAT Bedside ABG
               </button>
               <button
                 type="button"
                 className="os-ghost-btn"
-                onClick={() => alert(`Intensivist consult broadcast dispatched to duty senior registrar.`)}
+                onClick={() => liveAlert(`Intensivist consult broadcast dispatched to duty senior registrar.`)}
               >
                 <ShieldAlert size={14} /> Alert Consultant Intensivist
               </button>

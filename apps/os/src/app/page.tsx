@@ -835,6 +835,7 @@ export default function OSPage() {
   const { criticalAlert, dismissCriticalAlert } = useRealtimeEvents({ app: 'MEDCORE_OS', facilityId: userSession?.facility });
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard');
   const [moduleLoading, setModuleLoading] = useState(false);
+  const [globalToast, setGlobalToast] = useState<string | null>(null);
   const [moduleKey, setModuleKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarSearch, setSidebarSearch] = useState('');
@@ -1043,6 +1044,22 @@ export default function OSPage() {
     setIsLocked(false);
   };
 
+  useEffect(() => {
+    const onToast = (e: Event) => {
+      const msg = (e as CustomEvent).detail?.message;
+      if (msg) {
+        setGlobalToast(String(msg));
+        window.setTimeout(() => setGlobalToast(null), 3200);
+      }
+    };
+    window.addEventListener('medcore-toast', onToast);
+    window.addEventListener('medcore-live-action', onToast as EventListener);
+    return () => {
+      window.removeEventListener('medcore-toast', onToast);
+      window.removeEventListener('medcore-live-action', onToast as EventListener);
+    };
+  }, []);
+
   const handleModuleChange = (key: ModuleKey) => {
     if (key === activeModule) return;
     setModuleLoading(true);
@@ -1210,6 +1227,26 @@ export default function OSPage() {
 
   return (
     <div className="os-workspace-shell">
+      {globalToast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 28,
+            right: 28,
+            zIndex: 99999,
+            background: '#0F172A',
+            color: '#fff',
+            padding: '12px 18px',
+            borderRadius: 12,
+            fontWeight: 600,
+            fontSize: 13,
+            maxWidth: 360,
+            boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
+          }}
+        >
+          {globalToast}
+        </div>
+      )}
       {/* ── Command Palette (⌘K / Ctrl+K Spotlight Modal) ── */}
       {cmdPaletteOpen && (
         <div className="os-cmd-palette-backdrop" onClick={() => setCmdPaletteOpen(false)}>
