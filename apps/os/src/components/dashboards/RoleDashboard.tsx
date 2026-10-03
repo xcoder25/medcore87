@@ -5,6 +5,7 @@ import { UserSession } from '../auth/AuthScreen';
 import { inferRoleKey } from '../../lib/staffCardStore';
 import { AdminWorkspace } from './AdminWorkspace';
 import { ReceptionWorkspace } from './ReceptionWorkspace';
+import { DoctorDeskHome } from './DoctorDeskHome';
 import {
   Stethoscope, Activity, Flame, Wind, Pill, FlaskConical, Layers, Baby, Droplet,
   FileText, BedDouble, Users, Clock, ShieldCheck, AlertTriangle, CheckCircle2,
@@ -52,6 +53,11 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
         <ReceptionWorkspace session={session} onNavigate={(k) => onNavigate(k)} />
       </div>
     );
+  }
+
+  // Doctor clinical desk — same pattern as reception Front Desk
+  if (roleKey === 'doctor') {
+    return <DoctorDeskHome session={session} onNavigate={(k) => onNavigate(k)} />;
   }
 
   // Administrator gets dedicated premium workspace (no clinical banner)
