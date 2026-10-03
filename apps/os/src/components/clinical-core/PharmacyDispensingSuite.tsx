@@ -63,6 +63,15 @@ import {
 import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
 import { emitLiveAction } from '../../lib/liveActions';
 import { liveAlert } from '../../lib/manualActions';
+import {
+  canDispenseOrder,
+  markOrderPaid,
+  markLinePaid,
+  getLineForOrder,
+  listBillLines,
+  subscribeBills,
+  type PatientBillLine,
+} from '../../lib/patientBillingStore';
 import { AksEmlFormularyPanel } from '../pharmacy/AksEmlFormularyPanel';
 
 export const PharmacyDispensingSuite: React.FC = () => {
@@ -108,11 +117,35 @@ export const PharmacyDispensingSuite: React.FC = () => {
     return subscribeOrders(pull);
   }, [facilityId]);
 
-  const handleLegacyDispense = (id: string) => {
+  const handleLegacyDispense = (id: string, opts?: { emergency?: boolean }) => {
+    const gate = canDispenseOrder(id);
+    if (!gate.ok && !opts?.emergency) {
+      liveAlert(gate.reason + ' · Or use Emergency override', 'pharmacy', facilityId);
+      return;
+    }
+    if (opts?.emergency && gate.line) {
+      markLinePaid(gate.line.id, { via: 'waiver', status: 'waived', paidBy: 'Emergency override', paymentRef: 'EMERG' });
+    }
     setPrescriptions(prev => prev.map(p => p.id === id ? { ...p, status: 'dispensed' } : p));
     updateOrderStatus(id, 'resulted', { resultSummary: 'Dispensed at pharmacy', resultedBy: 'Pharmacist' });
     emitLiveAction(`Dispensed ${id}`, { module: 'pharmacy' });
     liveAlert('Prescription marked dispensed — visible on clinical desk', 'pharmacy', facilityId);
+  };
+
+  const payAtPharmacy = (orderId: string) => {
+    const line = getLineForOrder(orderId);
+    if (!line) {
+      liveAlert('No bill line for this Rx', 'pharmacy', facilityId);
+      return;
+    }
+    markOrderPaid(orderId, {
+      via: 'pharmacy',
+      paidBy: 'Pharmacy till',
+      paymentRef: `PHARM-${Date.now().toString(36).toUpperCase()}`,
+      status: 'paid',
+    });
+    liveAlert(`Paid at pharmacy ₦${line.amountNgn.toLocaleString()} — ready to dispense`, 'pharmacy', facilityId);
+    emitLiveAction(`Pharmacy payment ${orderId}`, { module: 'cashier' });
   };
 
   const pendingCount = prescriptions.filter(p => p.status === 'pending').length;
@@ -503,9 +536,67 @@ export const PharmacyDispensingSuite: React.FC = () => {
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
                     <span style={{ fontSize: '0.74rem', color: 'var(--os-text-dim)' }}>Rx ID: {rx.id}</span>
                     {rx.status !== 'dispensed' ? (
-                      <button type="button" className="os-action-btn-primary" onClick={() => handleLegacyDispense(rx.id)}>
-                        <Barcode size={14} /> Scan & Dispense Drug
-                      </button>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+                        {(() => {
+                          const gate = canDispenseOrder(rx.id);
+                          const line = gate.line;
+                          return (
+                            <>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: gate.ok ? '#059669' : '#D97706' }}>
+                                {line
+                                  ? `${line.status.toUpperCase()} · ₦${line.amountNgn.toLocaleString()}`
+                                  : 'No bill line'}
+                              </span>
+                              {!gate.ok && (
+                                <button
+                                  type="button"
+                                  className="mc-btn-live"
+                                  onClick={() => payAtPharmacy(rx.id)}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: 8,
+                                    border: 'none',
+                                    background: '#2563EB',
+                                    color: '#fff',
+                                    fontWeight: 700,
+                                    fontSize: 12,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Pay at pharmacy
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="os-action-btn-primary"
+                                onClick={() => handleLegacyDispense(rx.id)}
+                                style={{ opacity: gate.ok ? 1 : 0.55 }}
+                              >
+                                <Barcode size={14} /> {gate.ok ? 'Dispense drug' : 'Dispense (needs payment)'}
+                              </button>
+                              {!gate.ok && (
+                                <button
+                                  type="button"
+                                  className="mc-btn-live"
+                                  onClick={() => handleLegacyDispense(rx.id, { emergency: true })}
+                                  style={{
+                                    padding: '4px 8px',
+                                    borderRadius: 6,
+                                    border: '1px solid #FECACA',
+                                    background: '#FEF2F2',
+                                    color: '#B91C1C',
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Emergency override
+                                </button>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
                     ) : (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: '#34D399', fontWeight: 700 }}>
                         <CheckCircle2 size={16} /> Dispensed & Label Printed

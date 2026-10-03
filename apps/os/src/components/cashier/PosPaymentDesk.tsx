@@ -29,6 +29,12 @@ import {
 import { CONSULT_FEES, NIGERIA_INSURANCE } from '../../lib/receptionConstants';
 import { orchestratePosDesk, suggestChargeForPatient } from '../../lib/posAiAssist';
 import { emitLiveAction } from '../../lib/liveActions';
+import {
+  listBillLines,
+  markLinePaid,
+  subscribeBills,
+  patientBalance,
+} from '../../lib/patientBillingStore';
 import { verifyInsurance } from '../../lib/receptionConstants';
 
 const C = {
@@ -183,10 +189,33 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
       purpose: lines.map((l) => l.label).join(', ') || purpose,
       cashier,
     });
+    // Settle unpaid pharmacy (and other) bill lines on this patient when paying at cashier
+    const unpaid = listBillLines(facilityId, { patientId: patient.id }).filter(
+      (l) => l.status === 'unpaid' || l.status === 'partial'
+    );
+    const settlePharmacy =
+      purpose === 'Pharmacy' ||
+      lines.some((l) => /pharm/i.test(l.label)) ||
+      unpaid.some((l) => l.source === 'pharmacy');
+    if (settlePharmacy || method === 'hmo' || method === 'waiver') {
+      for (const line of unpaid) {
+        if (purpose === 'Pharmacy' && line.source !== 'pharmacy') continue;
+        markLinePaid(line.id, {
+          via: method === 'hmo' ? 'hmo' : method === 'waiver' ? 'waiver' : 'cashier',
+          status: method === 'hmo' ? 'hmo' : method === 'waiver' ? 'waived' : 'paid',
+          paidBy: cashier,
+          paymentRef: pay.reference,
+        });
+      }
+    }
     setLastReceipt(pay);
     reload();
     emitLiveAction(`POS ${pay.reference} · ₦${amt}`, { module: 'cashier' });
-    flash(`Recorded · ${pay.reference} · ₦${amt.toLocaleString()}`);
+    const bal = patientBalance(facilityId, patient.id);
+    flash(
+      `Recorded · ${pay.reference} · ₦${amt.toLocaleString()}` +
+        (bal > 0 ? ` · Remaining bill ₦${bal.toLocaleString()}` : ' · Bill clear')
+    );
   };
 
   const inputStyle: React.CSSProperties = {

@@ -1,3 +1,4 @@
+import { billPharmacyRx } from './patientBillingStore';
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 /**
  * Closed clinical loop bus: Order → Lab/Rx → Result → Doctor screen
@@ -77,6 +78,20 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
     updatedAt: new Date().toISOString(),
   };
   write([order, ...read()]);
+  if (order.type === 'rx') {
+    try {
+      billPharmacyRx({
+        facilityId: order.facilityId,
+        patientId: order.patientId,
+        hospitalNumber: order.hospitalNumber,
+        patientName: order.patientName,
+        orderId: order.id,
+        drugName: order.name,
+      });
+    } catch {
+      /* ignore */
+    }
+  }
   return order;
 }
 
