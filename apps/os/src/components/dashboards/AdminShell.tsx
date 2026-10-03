@@ -24,6 +24,8 @@ import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
 import { CashierRevenue } from '../cashier/CashierRevenue';
 import { AdminSettings } from '../admin/AdminSettings';
 import { ClinicalOrdersPanel } from '../clinical-core/ClinicalOrdersPanel';
+import { AdminAmbulanceDesk } from '../operations/AdminAmbulanceDesk';
+import { StaffEnrolment } from '../staffing/StaffEnrolment';
 import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import { ensureCleanPilot, setActiveFacilityId, KEYS as ADMIN_KEYS } from '../../lib/adminRealtimeStore';
@@ -82,6 +84,7 @@ const NAV: NavSection[] = [
     label: 'Identity, Security & Finance',
     items: [
       { key: 'rbac', label: 'Staff Access Control', icon: Lock },
+      { key: 'enrolment', label: 'Staff Enrolment & ID', icon: UserPlus },
       { key: 'role-permissions', label: 'Role Visibility', icon: Shield },
       { key: 'compliance', label: 'Compliance & Audit', icon: FileText },
       { key: 'cashier', label: 'Revenue & Cashier', icon: BarChart3 },
@@ -189,19 +192,13 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'patient-flow':
         return <PatientFlowVisibility />;
       case 'ambulance':
-        return (
-          <div className="admin-placeholder">
-            <PhoneCall size={28} />
-            <h2>Ambulance &amp; Dispatch</h2>
-            <p>Fleet tracking and dispatch will appear here.</p>
-          </div>
-        );
+        return <AdminAmbulanceDesk />;
       case 'rbac':
         return <AccessControl session={session} />;
       case 'role-permissions':
         return <RolePermissionsMatrix />;
       case 'enrolment':
-        return <AccessControl session={session} />;
+        return <StaffEnrolment session={session} />;
       case 'compliance':
         return <ComplianceAuditLogs />;
       case 'cashier':
