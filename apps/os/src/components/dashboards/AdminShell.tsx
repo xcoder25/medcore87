@@ -28,6 +28,7 @@ import { AdminAmbulanceDesk } from '../operations/AdminAmbulanceDesk';
 import { StaffEnrolment } from '../staffing/StaffEnrolment';
 import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
+import { ModulePageLoader } from '../layout/ModulePageLoader';
 import { ensureCleanPilot, setActiveFacilityId, KEYS as ADMIN_KEYS } from '../../lib/adminRealtimeStore';
 import { startFacilitySyncLoop, probeHospitalApi, isHospitalApiKnown } from '../../lib/hospitalSync';
 import { firestoreSubscribeFacility, enableFirestoreOffline } from '../../lib/firebase';
@@ -118,6 +119,7 @@ function formatNow(): string {
 
 export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [module, setModule] = useState<AdminModule>('dashboard');
+  const [moduleLoading, setModuleLoading] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [clock, setClock] = useState(formatNow);
   const [search, setSearch] = useState('');
@@ -125,6 +127,13 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [hospitalShare, setHospitalShare] = useState<'local' | 'lan' | 'cloud' | 'probing'>('probing');
   const [pendingSync, setPendingSync] = useState(0);
   const { connected } = useRealtimeEvents({ app: 'MEDCORE_OS_ADMIN', facilityId: session.hospitalId });
+
+  const goModule = (key: AdminModule) => {
+    if (key === module) return;
+    setModuleLoading(true);
+    setModule(key);
+    window.setTimeout(() => setModuleLoading(false), 420);
+  };
 
   useEffect(() => {
     try { ensureCleanPilot(); } catch {}
@@ -178,7 +187,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const body = useMemo(() => {
     switch (module) {
       case 'dashboard':
-        return <AdminWorkspace session={session} onNavigate={(k) => setModule(k as AdminModule)} />;
+        return <AdminWorkspace session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
       case 'transfer':
         return <HospitalStaffTransfer session={session} />;
       case 'staffing':
@@ -208,7 +217,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'clinical-orders':
         return <ClinicalOrdersPanel session={session} />;
       default:
-        return <AdminWorkspace session={session} onNavigate={(k) => setModule(k as AdminModule)} />;
+        return <AdminWorkspace session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
     }
   }, [module, session]);
 
@@ -250,7 +259,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
                     key={item.key}
                     type="button"
                     className={`admin-shell-nav-item${active ? ' is-active' : ''}`}
-                    onClick={() => setModule(item.key)}
+                    onClick={() => goModule(item.key)}
                     title={item.label}
                   >
                     <Icon size={18} />
@@ -340,7 +349,9 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             </button>
           </div>
         </header>
-        <main className="admin-shell-content">{body}</main>
+        <main className={`admin-shell-content${moduleLoading ? ' is-module-loading' : ''}`}>
+          {moduleLoading ? <ModulePageLoader label="Opening workspace…" /> : body}
+        </main>
       </div>
     </div>
   );

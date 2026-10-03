@@ -29,6 +29,7 @@ import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 // Specialty Suites
 import { AdminShell } from '../components/dashboards/AdminShell';
 import { OsAppShell } from '../components/layout/OsAppShell';
+import { ModulePageLoader } from '../components/layout/ModulePageLoader';
 import { ReceptionWorkspace } from '../components/dashboards/ReceptionWorkspace';
 import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { startOutboxAutoFlush } from '../lib/durableOutbox';
@@ -833,6 +834,7 @@ export default function OSPage() {
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const { criticalAlert, dismissCriticalAlert } = useRealtimeEvents({ app: 'MEDCORE_OS', facilityId: userSession?.facility });
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard');
+  const [moduleLoading, setModuleLoading] = useState(false);
   const [moduleKey, setModuleKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarSearch, setSidebarSearch] = useState('');
@@ -1042,8 +1044,11 @@ export default function OSPage() {
   };
 
   const handleModuleChange = (key: ModuleKey) => {
+    if (key === activeModule) return;
+    setModuleLoading(true);
     setActiveModule(key);
     setModuleKey(prev => prev + 1);
+    window.setTimeout(() => setModuleLoading(false), 420);
   };
 
   const handleSwitchCadre = (staff: typeof PRESET_STAFF[0]) => {
@@ -1806,8 +1811,10 @@ export default function OSPage() {
             </>
           )}
 
-          <div key={moduleKey} className="os-active-module-wrap">
-            {isModulePermitted(activeModule) ? (
+          <div key={moduleKey} className={`os-active-module-wrap${moduleLoading ? '' : ' is-entering'}`}>
+            {moduleLoading ? (
+              <ModulePageLoader label="Opening workspace…" />
+            ) : isModulePermitted(activeModule) ? (
               activeModule === 'cashier' && userSession ? (
                 <PosPaymentDesk session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} />
               ) : activeModule === 'dashboard' && userSession && userSession.roleKey === 'reception' ? (
