@@ -1573,9 +1573,10 @@ export default function OSPage() {
       )}
 
       {/* ── Left Navigation Sidebar (Bespoke Content per RBAC Role) ── */}
-      <aside 
-        className="os-sidebar" 
-        style={{ width: sidebarOpen ? 275 : 64 }}
+      <aside
+        className={`os-sidebar${sidebarOpen ? '' : ' is-collapsed'}`}
+        style={{ width: sidebarOpen ? 275 : 72 }}
+        data-collapsed={sidebarOpen ? 'false' : 'true'}
       >
         <div className="os-sidebar-header">
           <div className="os-sidebar-brand">
@@ -1612,7 +1613,12 @@ export default function OSPage() {
           <button
             type="button"
             className="os-sidebar-toggle-btn"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setSidebarOpen((v) => !v);
+            }}
             title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
           >
             {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
@@ -1654,14 +1660,17 @@ export default function OSPage() {
                     className={`os-nav-item-btn ${isActive ? 'active' : ''}`}
                     title={!sidebarOpen ? `${item.label} (${reqClearance?.label || 'General'})` : undefined}
                     style={{
-                      padding: '8px 12px',
+                      padding: sidebarOpen ? '8px 12px' : '10px 0',
+                      justifyContent: sidebarOpen ? 'flex-start' : 'center',
                       opacity: permitted ? 1 : 0.65,
                       color: isActive ? '#FFFFFF' : '#E2E8F0',
                       background: isActive ? currentRoleTheme.activeBg : 'transparent',
-                      borderLeft: isActive ? `3.5px solid ${currentRoleTheme.accent}` : '3.5px solid transparent',
+                      borderLeft: sidebarOpen
+                        ? (isActive ? `3.5px solid ${currentRoleTheme.accent}` : '3.5px solid transparent')
+                        : (isActive ? `3px solid ${currentRoleTheme.accent}` : '3px solid transparent'),
                       fontWeight: isActive ? 700 : 500,
-                      borderRadius: '0 8px 8px 0',
-                      marginRight: 6,
+                      borderRadius: sidebarOpen ? '0 8px 8px 0' : 10,
+                      marginRight: sidebarOpen ? 6 : 0,
                       transition: 'all 0.15s ease',
                     }}
                   >
