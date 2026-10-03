@@ -818,6 +818,7 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   transfer: { level: 4, label: 'L4 Operations', roleDesc: 'Hospital Administrators & Medical Directors' },
   enrolment: { level: 4, label: 'Administrator', roleDesc: 'Hospital administrators enrol staff' },
   'my-card': { level: 2, label: 'All staff', roleDesc: 'Staff identity card' },
+  'desk-settings': { level: 2, label: 'Front desk', roleDesc: 'Reception & front desk operations settings' },
 };
 
 export default function OSPage() {
