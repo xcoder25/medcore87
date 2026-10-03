@@ -43,6 +43,26 @@ let auth: Auth | undefined;
 let db: Firestore | undefined;
 let persistenceEnabled = false;
 
+
+/** Offline / multi-tab noise — do not spam the console */
+function isBenignFirestoreError(e: unknown): boolean {
+  const code = String((e as { code?: string })?.code || '');
+  const msg = String((e as { message?: string })?.message || e || '').toLowerCase();
+  return (
+    code === 'unavailable' ||
+    code === 'failed-precondition' ||
+    msg.includes('client is offline') ||
+    msg.includes('offline') ||
+    msg.includes('network') ||
+    msg.includes('Failed to get document because the client is offline')
+  );
+}
+
+function fsWarn(tag: string, e: unknown) {
+  if (isBenignFirestoreError(e)) return;
+  console.warn(`[Firestore] ${tag}`, e);
+}
+
 export function getFirebaseApp(): FirebaseApp {
   if (!app) {
     app = getApps().length ? getApps()[0]! : initializeApp(firebaseConfig);
@@ -263,7 +283,7 @@ export async function firestoreWriteFacility(
     );
     return true;
   } catch (e) {
-    console.warn('[Firestore] write failed', e);
+    fsWarn('write failed', e);
     return false;
   }
 }
@@ -277,7 +297,7 @@ export async function firestoreReadFacility(
     if (!snap.exists()) return null;
     return snap.data() as Record<string, unknown>;
   } catch (e) {
-    console.warn('[Firestore] read failed', e);
+    fsWarn('read failed', e);
     return null;
   }
 }
@@ -296,10 +316,10 @@ export function firestoreSubscribeFacility(
         (snap) => {
           if (snap.exists()) onData(snap.data() as Record<string, unknown>);
         },
-        (err) => console.warn('[Firestore] snapshot', err)
+        (err) => fsWarn('snapshot', err)
       );
     } catch (e) {
-      console.warn('[Firestore] subscribe failed', e);
+      fsWarn('subscribe failed', e);
     }
   })();
   return () => unsub();
@@ -357,7 +377,7 @@ export async function firestoreUpsertStaffMember(
     );
     return true;
   } catch (e) {
-    console.warn('[Firestore] upsert staff', e);
+    fsWarn('upsert staff', e);
     return false;
   }
 }
@@ -374,7 +394,7 @@ export async function firestoreDeleteStaffMember(
     await deleteDoc(staffMemberRef(facilityId, bid));
     return true;
   } catch (e) {
-    console.warn('[Firestore] delete staff', e);
+    fsWarn('delete staff', e);
     return false;
   }
 }
@@ -389,7 +409,7 @@ export async function firestoreGetStaffByBadge(
     if (!snap.exists()) return null;
     return { id: snap.id, ...snap.data() };
   } catch (e) {
-    console.warn('[Firestore] get staff', e);
+    fsWarn('get staff', e);
     return null;
   }
 }
@@ -411,10 +431,10 @@ export function firestoreSubscribeStaffCollection(
           const rows = snap.docs.map((d) => ({ badgeId: d.id, ...d.data() }));
           onData(rows);
         },
-        (err) => console.warn('[Firestore] staff collection', err)
+        (err) => fsWarn('staff collection', err)
       );
     } catch (e) {
-      console.warn('[Firestore] staff subscribe', e);
+      fsWarn('staff subscribe', e);
     }
   })();
   return () => unsub();
@@ -436,7 +456,7 @@ export async function firestoreRecordLogin(
       { merge: true }
     );
   } catch (e) {
-    console.warn('[Firestore] record login', e);
+    fsWarn('record login', e);
   }
 }
 
