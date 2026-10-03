@@ -904,6 +904,17 @@ export default function OSPage() {
   };
 
 
+
+  // If admin removes current module, send user home (must run before any early return)
+  useEffect(() => {
+    if (!userSession) return;
+    if (activeModule === 'dashboard') return;
+    if (!isModulePermitted(activeModule)) {
+      setActiveModule('dashboard');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permTick, activeModule, userSession?.roleKey, userSession?.clearanceLevel]);
+
   // Live sidebar when admin ticks modules in role visibility matrix
   useEffect(() => {
     const bump = () => setPermTick((n) => n + 1);
@@ -1233,14 +1244,6 @@ export default function OSPage() {
 
 
   // Filtered Nav items based on search
-
-  // If admin removes current module, send user home
-  useEffect(() => {
-    if (!userSession) return;
-    if (activeModule !== 'dashboard' && !isModulePermitted(activeModule)) {
-      setActiveModule('dashboard');
-    }
-  }, [permTick, activeModule, userSession]);
 
   // permTick forces re-read of role matrix when admin toggles modules
   void permTick;

@@ -23,15 +23,19 @@ export interface NotificationItem extends RealtimeEvent {
   receivedAt: string;
 }
 
-/** Vercel HTTPS sites must use wss:// via NEXT_PUBLIC_WS_URL */
-function resolveWsUrl(): string {
+/** Prefer NEXT_PUBLIC_WS_URL. Skip WS on hosted sites when unset (avoids console spam). */
+function resolveWsUrl(): string | null {
   if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_WS_URL) {
     return process.env.NEXT_PUBLIC_WS_URL;
   }
-  return 'ws://localhost:4000/ws';
+  if (typeof window !== 'undefined') {
+    const h = window.location.hostname;
+    if (h === 'localhost' || h === '127.0.0.1') return 'ws://localhost:4000/ws';
+  }
+  return null; // production without hub — Firebase/local only
 }
-const WS_URL = resolveWsUrl();
-const RECONNECT_DELAY_MS = 3000;
+const RECONNECT_DELAY_MS = 5000;
+const MAX_RECONNECT_ATTEMPTS = 8;
 const MAX_NOTIFICATIONS = 100;
 
 interface UseRealtimeEventsOptions {
@@ -48,6 +52,7 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions = {}) {
   const [criticalAlert, setCriticalAlert] = useState<RealtimeEvent | null>(null);
   const wsRef      = useRef<WebSocket | null>(null);
   const mountedRef = useRef(true);
+  const reconnectAttempts = useRef(0);
 
   const addNotification = useCallback((event: RealtimeEvent) => {
     const item: NotificationItem = { ...event, read: false, receivedAt: new Date().toISOString() };
@@ -69,6 +74,8 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions = {}) {
 
   const connect = useCallback(() => {
     if (!mountedRef.current) return;
+    const WS_URL = resolveWsUrl();
+    if (!WS_URL) return; // no local hub configured
 
     try {
       const ws = new WebSocket(WS_URL);
@@ -76,6 +83,7 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions = {}) {
 
       ws.onopen = () => {
         if (!mountedRef.current) { ws.close(); return; }
+        reconnectAttempts.current = 0;
         setConnected(true);
         // Send subscription handshake
         ws.send(JSON.stringify({
@@ -98,8 +106,10 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions = {}) {
       ws.onclose = () => {
         if (!mountedRef.current) return;
         setConnected(false);
-        // Auto-reconnect
-        setTimeout(connect, RECONNECT_DELAY_MS);
+        reconnectAttempts.current += 1;
+        if (reconnectAttempts.current > MAX_RECONNECT_ATTEMPTS) return;
+        const delay = RECONNECT_DELAY_MS * Math.min(reconnectAttempts.current, 6);
+        setTimeout(connect, delay);
       };
 
       ws.onerror = () => {

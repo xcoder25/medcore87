@@ -30,6 +30,8 @@ export type FacilityBlob = Record<string, unknown>;
 let lastPullAt = 0;
 let lastKnownServerUpdatedAt: string | null = null;
 let syncAvailable: boolean | null = null;
+let lastProbeFailAt = 0;
+const PROBE_COOLDOWN_MS = 60_000;
 
 function facilityChannel(facilityId: string): BroadcastChannel | null {
   if (typeof BroadcastChannel === 'undefined') return null;
@@ -71,6 +73,19 @@ export function subscribeLocal(
 
 /** Probe LAN API once */
 export async function probeHospitalApi(): Promise<boolean> {
+  if (syncAvailable === false && Date.now() - lastProbeFailAt < PROBE_COOLDOWN_MS) {
+    return false;
+  }
+  // Hosted production without NEXT_PUBLIC_API_URL: skip localhost noise
+  if (typeof window !== 'undefined') {
+    const base = resolveApiBase();
+    if (base.includes('localhost') && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      syncAvailable = false;
+    lastProbeFailAt = Date.now();
+      lastProbeFailAt = Date.now();
+      return false;
+    }
+  }
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 2500);
