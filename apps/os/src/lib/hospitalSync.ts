@@ -1,29 +1,7 @@
 /**
  * Same-hospital shared data (offline-first on the hospital LAN).
-
- * Recommended production path:
- *   Staff PC → localStorage (instant)
- *           → Hospital hub PC on UPS (LAN api-server)  ← primary on-site copy
- *           → Firestore cloud when internet is up      ← off-site backup / multi-hospital
- *
- *
- * How multi-user works without the public internet:
- * 1. Always write to localStorage (works offline on each PC).
- * 2. BroadcastChannel — same browser / same origin tabs.
- * 3. When a LAN API is available (api-server on hospital Wi‑Fi),
- *    all workstations PUT/GET the same facility blob and see each other.
- *
- * Set NEXT_PUBLIC_API_URL=http://192.168.x.x:4000 on every hospital PC
- * (or leave default to try localhost:4000).
+ * On Vercel / public hosts: LAN API is disabled unless NEXT_PUBLIC_API_URL is set.
  */
-
-const DEFAULT_API =
-  (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) ||
-  'http://localhost:4000';
-
-export function resolveApiBase(): string {
-  return (DEFAULT_API || 'http://localhost:4000').replace(/\/$/, '');
-}
 
 export type FacilityBlob = Record<string, unknown>;
 
@@ -31,7 +9,31 @@ let lastPullAt = 0;
 let lastKnownServerUpdatedAt: string | null = null;
 let syncAvailable: boolean | null = null;
 let lastProbeFailAt = 0;
-const PROBE_COOLDOWN_MS = 60_000;
+const PROBE_COOLDOWN_MS = 120_000;
+
+/** True only when a real hospital hub URL is configured or we are on localhost. */
+export function isLanApiEligible(): boolean {
+  if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) {
+    return true;
+  }
+  if (typeof window !== 'undefined') {
+    const h = window.location.hostname;
+    return h === 'localhost' || h === '127.0.0.1';
+  }
+  // SSR: never assume LAN
+  return false;
+}
+
+export function resolveApiBase(): string {
+  if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) {
+    return String(process.env.NEXT_PUBLIC_API_URL).replace(/\/$/, '');
+  }
+  if (typeof window !== 'undefined') {
+    const h = window.location.hostname;
+    if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:4000';
+  }
+  return '';
+}
 
 function facilityChannel(facilityId: string): BroadcastChannel | null {
   if (typeof BroadcastChannel === 'undefined') return null;
@@ -42,7 +44,6 @@ function facilityChannel(facilityId: string): BroadcastChannel | null {
   }
 }
 
-/** Publish key/value to other tabs on this machine */
 export function broadcastLocal(facilityId: string, key: string, value: unknown) {
   const ch = facilityChannel(facilityId);
   if (!ch) return;
@@ -71,32 +72,30 @@ export function subscribeLocal(
   };
 }
 
-/** Probe LAN API once */
 export async function probeHospitalApi(): Promise<boolean> {
+  if (!isLanApiEligible()) {
+    syncAvailable = false;
+    return false;
+  }
   if (syncAvailable === false && Date.now() - lastProbeFailAt < PROBE_COOLDOWN_MS) {
     return false;
   }
-  // Hosted production without NEXT_PUBLIC_API_URL: skip localhost noise
-  if (typeof window !== 'undefined') {
-    const base = resolveApiBase();
-    if (base.includes('localhost') && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      syncAvailable = false;
-    lastProbeFailAt = Date.now();
-      lastProbeFailAt = Date.now();
-      return false;
-    }
+  const base = resolveApiBase();
+  if (!base) {
+    syncAvailable = false;
+    return false;
   }
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 2500);
-    const res = await fetch(`${resolveApiBase()}/api/v1/sync/status`, {
-      signal: ctrl.signal,
-    });
+    const t = setTimeout(() => ctrl.abort(), 2000);
+    const res = await fetch(`${base}/api/v1/sync/status`, { signal: ctrl.signal });
     clearTimeout(t);
     syncAvailable = res.ok;
+    if (!res.ok) lastProbeFailAt = Date.now();
     return res.ok;
   } catch {
     syncAvailable = false;
+    lastProbeFailAt = Date.now();
     return false;
   }
 }
@@ -105,72 +104,76 @@ export function isHospitalApiKnown(): boolean | null {
   return syncAvailable;
 }
 
-/** Push one or more keys into the shared facility document on the LAN API */
 export async function pushFacilityData(
   facilityId: string,
   partial: FacilityBlob
 ): Promise<boolean> {
-  if (!facilityId) return false;
+  if (!isLanApiEligible()) return false;
+  const base = resolveApiBase();
+  if (!base) return false;
   try {
-    const res = await fetch(
-      `${resolveApiBase()}/api/v1/sync/facility/${encodeURIComponent(facilityId)}`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: partial }),
-      }
-    );
+    const res = await fetch(`${base}/api/v1/sync/facility/${encodeURIComponent(facilityId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: partial, updatedAt: new Date().toISOString() }),
+    });
     if (res.ok) {
       syncAvailable = true;
       return true;
     }
     syncAvailable = false;
+    lastProbeFailAt = Date.now();
     return false;
   } catch {
     syncAvailable = false;
+    lastProbeFailAt = Date.now();
     return false;
   }
 }
 
-/** Pull shared facility document and apply keys into localStorage */
 export async function pullFacilityData(
   facilityId: string,
   applyKey: (key: string, value: unknown) => void
 ): Promise<{ ok: boolean; updatedAt: string | null }> {
-  if (!facilityId) return { ok: false, updatedAt: null };
+  if (!isLanApiEligible()) return { ok: false, updatedAt: null };
+  const base = resolveApiBase();
+  if (!base) return { ok: false, updatedAt: null };
   try {
-    const res = await fetch(
-      `${resolveApiBase()}/api/v1/sync/facility/${encodeURIComponent(facilityId)}`,
-      { method: 'GET' }
-    );
+    const res = await fetch(`${base}/api/v1/sync/facility/${encodeURIComponent(facilityId)}`, {
+      method: 'GET',
+    });
     if (!res.ok) {
       syncAvailable = false;
+      lastProbeFailAt = Date.now();
       return { ok: false, updatedAt: null };
     }
     syncAvailable = true;
-    const json = await res.json();
-    const updatedAt = json?.data?.updatedAt as string | null;
-    const data = (json?.data?.data || {}) as FacilityBlob;
+    const json = (await res.json()) as { data?: FacilityBlob; updatedAt?: string };
+    const data = json.data || {};
+    const updatedAt = json.updatedAt || null;
     if (updatedAt && updatedAt === lastKnownServerUpdatedAt) {
+      lastPullAt = Date.now();
       return { ok: true, updatedAt };
     }
     lastKnownServerUpdatedAt = updatedAt;
     lastPullAt = Date.now();
     for (const [k, v] of Object.entries(data)) {
+      if (k === 'updatedAt') continue;
       applyKey(k, v);
     }
     return { ok: true, updatedAt };
   } catch {
     syncAvailable = false;
+    lastProbeFailAt = Date.now();
     return { ok: false, updatedAt: null };
   }
 }
 
-/** Start background pull for the hospital facility (skips when no LAN API). */
+/** Background pull — no-ops on hosted sites without NEXT_PUBLIC_API_URL */
 export function startFacilitySyncLoop(
   facilityId: string,
   applyKey: (key: string, value: unknown) => void,
-  intervalMs = 4000
+  intervalMs = 15000
 ): () => void {
   let stopped = false;
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -178,26 +181,13 @@ export function startFacilitySyncLoop(
 
   const tick = async () => {
     if (stopped) return;
-    // Hosted sites without API: never hit localhost
-    if (typeof window !== 'undefined') {
-      const base = resolveApiBase();
-      const h = window.location.hostname;
-      if (
-        base.includes('localhost') &&
-        h !== 'localhost' &&
-        h !== '127.0.0.1' &&
-        !(typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL)
-      ) {
-        return;
-      }
-    }
+    if (!isLanApiEligible()) return;
     const ok = await probeHospitalApi();
     if (!ok) return;
     await pullFacilityData(facilityId, applyKey);
   };
 
   void tick();
-  // Slow poll; probe cooldown already limits failed fetches
   timer = setInterval(tick, Math.max(intervalMs, 15000));
 
   return () => {

@@ -340,15 +340,15 @@ export const PatientsManager: React.FC<PatientsManagerProps> = ({ onNavigate }) 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
               <div style={{ background: '#132F4C', padding: 12, borderRadius: 8, border: '1px solid #1E446B', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.68rem', color: '#94A8BE' }}>BLOOD PRESSURE</div>
-                <div style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: 4 }}>{selectedPatient.vitals.bp}</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: 4 }}>{selectedPatient?.vitals?.bp}</div>
               </div>
               <div style={{ background: '#132F4C', padding: 12, borderRadius: 8, border: '1px solid #1E446B', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.68rem', color: '#94A8BE' }}>PULSE / SPO2</div>
-                <div style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: 4 }}>{selectedPatient.vitals.pulse} bpm / {selectedPatient.vitals.spo2}%</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: 4 }}>{selectedPatient?.vitals?.pulse} bpm / {selectedPatient?.vitals?.spo2}%</div>
               </div>
               <div style={{ background: '#132F4C', padding: 12, borderRadius: 8, border: '1px solid #1E446B', textAlign: 'center' }}>
                 <div style={{ fontSize: '0.68rem', color: '#94A8BE' }}>BODY TEMP</div>
-                <div style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: 4 }}>{selectedPatient.vitals.temp}°C</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: 4 }}>{selectedPatient?.vitals?.temp}°C</div>
               </div>
             </div>
 

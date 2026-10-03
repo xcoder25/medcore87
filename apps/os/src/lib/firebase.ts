@@ -66,13 +66,8 @@ export function getFirestore(): Firestore {
 
 /** Offline cache on device — reads/writes work offline, sync when online */
 export async function enableFirestoreOffline(): Promise<void> {
-  if (persistenceEnabled || typeof window === 'undefined') return;
-  try {
-    // Legacy API — still works; multi-tab may fall back to memory (safe)
-    await enableIndexedDbPersistence(getFirestore());
-  } catch {
-    // failed-precondition (multi-tab) / unimplemented — memory cache is fine
-  }
+  // Skip IndexedDB persistence on web: avoids multi-tab failed-precondition
+  // and enableIndexedDbPersistence deprecation noise. Firestore still works online.
   persistenceEnabled = true;
 }
 

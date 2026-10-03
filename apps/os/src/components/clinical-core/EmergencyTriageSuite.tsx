@@ -186,18 +186,18 @@ export const EmergencyTriageSuite: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 6 }}>
               <div style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: 8, textAlign: 'center' }}>
                 <span style={{ fontSize: '0.65rem', color: 'var(--os-text-dim)' }}>Blood Pressure</span>
-                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0A2540' }}>{selectedPatient.vitals.bp}</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0A2540' }}>{selectedPatient?.vitals?.bp}</div>
               </div>
               <div style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: 8, textAlign: 'center' }}>
                 <span style={{ fontSize: '0.65rem', color: 'var(--os-text-dim)' }}>Heart Rate</span>
-                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: selectedPatient.vitals.pulse > 100 ? '#F87171' : '#FFF' }}>
-                  {selectedPatient.vitals.pulse} bpm
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: selectedPatient?.vitals?.pulse > 100 ? '#F87171' : '#FFF' }}>
+                  {selectedPatient?.vitals?.pulse} bpm
                 </div>
               </div>
               <div style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: 8, textAlign: 'center' }}>
                 <span style={{ fontSize: '0.65rem', color: 'var(--os-text-dim)' }}>Oxygen Sat</span>
-                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: selectedPatient.vitals.spo2 < 92 ? '#EF4444' : '#34D399' }}>
-                  {selectedPatient.vitals.spo2}%
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: selectedPatient?.vitals?.spo2 < 92 ? '#EF4444' : '#34D399' }}>
+                  {selectedPatient?.vitals?.spo2}%
                 </div>
               </div>
             </div>
