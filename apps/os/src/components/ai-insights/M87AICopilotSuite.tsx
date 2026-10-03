@@ -500,15 +500,41 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
                     }}
                   >
                     {msg.sender === 'm87' ? (
-                      <StreamingText text={msg.text} animate={msg.id === streamingId} />
-                    {msg.sender === 'm87' && (
-                      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                        <button type="button" className="mc-btn-live" onClick={() => rateMessage(msg, 1)}
-                          style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, border: '1px solid #E2E8F0', background: '#fff', cursor: 'pointer' }}>👍 Teach</button>
-                        <button type="button" className="mc-btn-live" onClick={() => rateMessage(msg, -1)}
-                          style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, border: '1px solid #E2E8F0', background: '#fff', cursor: 'pointer' }}>👎</button>
-                      </div>
-                    )}
+                      <>
+                        <StreamingText text={msg.text} animate={msg.id === streamingId} />
+                        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                          <button
+                            type="button"
+                            className="mc-btn-live"
+                            onClick={() => rateMessage(msg, 1)}
+                            style={{
+                              fontSize: 11,
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              border: '1px solid #E2E8F0',
+                              background: '#fff',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            👍 Teach
+                          </button>
+                          <button
+                            type="button"
+                            className="mc-btn-live"
+                            onClick={() => rateMessage(msg, -1)}
+                            style={{
+                              fontSize: 11,
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              border: '1px solid #E2E8F0',
+                              background: '#fff',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            👎
+                          </button>
+                        </div>
+                      </>
                     ) : (
                       msg.text
                     )}

@@ -1,7 +1,7 @@
 /**
  * Gemini client for M87 — uses NEXT_PUBLIC_GEMINI_API_KEY or admin settings.
  */
-import { loadAdminSettings } from './adminSettingsStore';
+import { getAdminSettings } from './adminSettingsStore';
 
 export async function geminiGenerate(
   prompt: string,
@@ -17,7 +17,7 @@ export async function geminiGenerate(
     key = '';
   }
   try {
-    const s = loadAdminSettings();
+    const s = getAdminSettings();
     if ((s as { geminiApiKey?: string }).geminiApiKey) {
       key = (s as { geminiApiKey?: string }).geminiApiKey || key;
     }
@@ -94,7 +94,7 @@ export function hasGeminiKey(): boolean {
     /* ignore */
   }
   try {
-    const s = loadAdminSettings() as { geminiApiKey?: string };
+    const s = getAdminSettings() as { geminiApiKey?: string };
     return Boolean(s.geminiApiKey);
   } catch {
     return false;
