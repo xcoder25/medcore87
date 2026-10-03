@@ -28,6 +28,7 @@ import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 
 // Specialty Suites
 import { AdminShell } from '../components/dashboards/AdminShell';
+import { OsAppShell } from '../components/layout/OsAppShell';
 import { ReceptionWorkspace } from '../components/dashboards/ReceptionWorkspace';
 import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { startOutboxAutoFlush } from '../lib/durableOutbox';
