@@ -20,6 +20,7 @@ import { ComplianceAuditLogs } from '../components/compliance/ComplianceAuditLog
 import { AICommandInsights } from '../components/ai-insights/AICommandInsights';
 import { CashierRevenue } from '../components/cashier/CashierRevenue';
 import { PosPaymentDesk } from '../components/cashier/PosPaymentDesk';
+import { FrontDeskSettings } from '../components/reception/FrontDeskSettings';
 import { FacilityOnboarding } from '../components/facility/FacilityOnboarding';
 import { AuthIdentity } from '../components/auth/AuthIdentity';
 import { DigitalPatientCard } from '../components/patient-card/DigitalPatientCard';
@@ -97,7 +98,7 @@ export type ModuleKey =
   // Pillar 6: Connected IoT
   | 'iot-devices'
   // Pillar 7: Security & Governance
-  | 'auth' | 'facility' | 'rbac' | 'compliance' | 'safety' | 'sysadmin' | 'transfer' | 'enrolment' | 'my-card';
+  | 'auth' | 'facility' | 'rbac' | 'compliance' | 'safety' | 'sysadmin' | 'transfer' | 'enrolment' | 'my-card' | 'desk-settings';
 
 export type NavSection = {
   label: string;
@@ -467,6 +468,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Settings',
           items: [
+            { key: 'desk-settings', icon: Settings, label: 'Front desk settings' },
             { key: 'sysadmin', icon: Settings, label: 'System settings' },
           ],
         },
@@ -765,6 +767,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   compliance: ComplianceAuditLogs,
   safety: ClinicalSafetyBcpSuite,
   sysadmin: SystemAdministration,
+  'desk-settings': FrontDeskSettings as any,
   transfer: HospitalStaffTransfer as any,
   enrolment: StaffEnrolment as any,
   'my-card': DigitalPatientCard as any,

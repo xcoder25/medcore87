@@ -64,6 +64,7 @@ export const MODULE_CATALOG: { key: string; label: string; group: string }[] = [
   { key: 'rbac', label: 'Role visibility matrix', group: 'Admin' },
   { key: 'enrolment', label: 'Staff enrolment & ID cards', group: 'Admin' },
   { key: 'sysadmin', label: 'System settings', group: 'Admin' },
+  { key: 'desk-settings', label: 'Front desk settings', group: 'Operations' },
 
   // Patient data scopes
   { key: 'patient.identity', label: 'Name, age, sex, photo, folder/card no.', group: 'Patient data' },
@@ -152,7 +153,7 @@ const DEFAULTS: Record<string, string[]> = {
   ],
   reception: [
     'dashboard', 'patient-flow', 'patient-card', 'appointments', 'cashier', 'billing',
-    'analytics', 'sysadmin', 'my-card',
+    'analytics', 'sysadmin', 'desk-settings', 'my-card',
     'patient.identity', 'patient.contact', 'patient.demographics', 'patient.billing', 'patient.insurance',
   ],
   records: [
