@@ -866,7 +866,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           )}
 
           {/* Sign-In Form */}
-          <form onSubmit={handleSignIn} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ position: 'relative' }}>
+          <form onSubmit={handleSignIn} style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'relative' }}>
             {/* Hospital Facility Selector */}
             <div>
               <div style={{
@@ -1119,33 +1120,42 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             {(loading || success) && (
               <div
                 style={{
+                  position: 'absolute',
+                  inset: 0,
+                  zIndex: 20,
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 12,
-                  marginTop: 18,
-                  padding: '8px 0 4px',
+                  gap: 14,
+                  borderRadius: 12,
+                  background: 'rgba(255, 255, 255, 0.72)',
+                  backdropFilter: 'blur(6px)',
+                  WebkitBackdropFilter: 'blur(6px)',
                 }}
               >
+                <style>{`@keyframes authSpin { to { transform: rotate(360deg); } }`}</style>
                 <div
                   className="auth-round-loader"
                   style={{
-                    width: 44,
-                    height: 44,
+                    width: 52,
+                    height: 52,
                     borderRadius: '50%',
-                    border: '3px solid #E2E8F0',
+                    border: '3.5px solid #E2E8F0',
                     borderTopColor: '#0284C7',
                     borderRightColor: '#00BFA5',
                     animation: 'authSpin 0.75s linear infinite',
+                    boxShadow: '0 8px 24px rgba(2, 132, 199, 0.2)',
                   }}
                 />
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748B' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A' }}>
                   {success ? 'Launching Hospital OS…' : 'Signing in…'}
                 </span>
               </div>
             )}
           </form>
+          </div>
+
 
           {/* Divider */}
           <div style={{
