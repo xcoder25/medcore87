@@ -68,16 +68,12 @@ export function getFirestore(): Firestore {
 export async function enableFirestoreOffline(): Promise<void> {
   if (persistenceEnabled || typeof window === 'undefined') return;
   try {
+    // Legacy API — still works; multi-tab may fall back to memory (safe)
     await enableIndexedDbPersistence(getFirestore());
-    persistenceEnabled = true;
-  } catch (err: unknown) {
-    const code = (err as { code?: string })?.code;
-    // multi-tab or already enabled — safe to ignore
-    if (code !== 'failed-precondition' && code !== 'unimplemented') {
-      console.warn('[Firestore] persistence:', code || err);
-    }
-    persistenceEnabled = true;
+  } catch {
+    // failed-precondition (multi-tab) / unimplemented — memory cache is fine
   }
+  persistenceEnabled = true;
 }
 
 export async function firebaseSignIn(email: string, password: string): Promise<User> {

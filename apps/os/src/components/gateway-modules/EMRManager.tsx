@@ -232,7 +232,8 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
   // Compute NEWS2 Deterioration Score dynamically from patient vitals
   const news2Score = useMemo(() => {
     let score = 0;
-    const v = selectedPatient.vitals;
+    const v = selectedPatient?.vitals;
+    if (!v) return 0;
 
     // Respiration Rate
     if (v.rr <= 8 || v.rr >= 25) score += 3;
@@ -245,7 +246,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
     else if (v.spo2 <= 95) score += 1;
 
     // Systolic BP (parse from e.g. "148/92")
-    const sysBp = parseInt(v.bp.split('/')[0] || '120', 10);
+    const sysBp = parseInt((v.bp || '120/80').split('/')[0] || '120', 10);
     if (sysBp <= 90 || sysBp >= 220) score += 3;
     else if (sysBp <= 100) score += 2;
     else if (sysBp <= 110) score += 1;
@@ -323,7 +324,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
         if (json.data) {
           const d = json.data;
           setSubjective(`Chief Complaint: ${d.subjective?.chiefComplaint || 'Chest discomfort evaluation'}\nHPI: ${d.subjective?.historyOfPresentingIllness || 'Symptoms resolving post-admission.'}\nMedications: ${d.subjective?.medications || selectedPatient.medications.join(', ')}\nAllergies: ${selectedPatient.allergies.join(', ') || 'NKDA'}`);
-          setObjective(`Vitals: ${d.objective?.vitals || `BP ${selectedPatient.vitals.bp}, HR ${selectedPatient.vitals.pulse} bpm, SpO2 ${selectedPatient.vitals.spo2}%`}\nExam: ${d.objective?.systemicExamination || 'Lungs vesicular, S1 S2 present, no murmurs.'}\nLabs: Fasting BGL 7.8, normal renal profile.`);
+          setObjective(`Vitals: ${d.objective?.vitals || `BP ${selectedPatient?.vitals?.bp}, HR ${selectedPatient?.vitals?.pulse} bpm, SpO2 ${selectedPatient?.vitals?.spo2}%`}\nExam: ${d.objective?.systemicExamination || 'Lungs vesicular, S1 S2 present, no murmurs.'}\nLabs: Fasting BGL 7.8, normal renal profile.`);
           setAssessment(`1. Primary: ${d.assessment?.primaryDiagnosis || selectedPatient.diagnoses[0] || 'Under Evaluation'}\n2. Differentials: ${d.assessment?.differentialDiagnoses || 'Resolving acute coronary episode'}\n3. Problem List: ${d.assessment?.problemList || selectedPatient.diagnoses.join(', ')}`);
           setPlan(`Investigations: ${d.plan?.investigations || 'Serial Troponin I, repeat fasting lipid'}\nRx: ${d.plan?.medications || 'Continue dual antiplatelets, low-dose diuretic'}\nFollow-Up: ${d.plan?.followUp || 'Review in 2 weeks in clinic'}`);
           showToast(`✨ M87 AI Engine synthesized SOAP Note (${json.data.confidence || 92}% confidence)`);
@@ -412,11 +413,11 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
           body: JSON.stringify({
             symptoms: ['chest pain', 'fatigue', 'edema', ...selectedPatient.diagnoses],
             vitals: {
-              systolicBP: parseInt(selectedPatient.vitals.bp) || 132,
-              heartRate: selectedPatient.vitals.pulse,
-              spO2: selectedPatient.vitals.spo2,
-              respiratoryRate: selectedPatient.vitals.rr,
-              temperature: selectedPatient.vitals.temp,
+              systolicBP: parseInt(selectedPatient?.vitals?.bp) || 132,
+              heartRate: selectedPatient?.vitals?.pulse,
+              spO2: selectedPatient?.vitals?.spo2,
+              respiratoryRate: selectedPatient?.vitals?.rr,
+              temperature: selectedPatient?.vitals?.temp,
             },
             demographics: { age: selectedPatient.age, sex: selectedPatient.sex },
           }),
@@ -1345,12 +1346,12 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               {/* Live Vital Sign Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                 {[
-                  { label: 'BLOOD PRESSURE', val: selectedPatient.vitals.bp, unit: 'mmHg', target: '< 130/80', color: '#5EEAD4' },
-                  { label: 'PULSE RATE', val: selectedPatient.vitals.pulse, unit: 'bpm', target: '60 - 90', color: selectedPatient.vitals.pulse > 100 ? '#EF4444' : '#34D399' },
-                  { label: 'OXYGEN SATURATION', val: `${selectedPatient.vitals.spo2}%`, unit: 'SpO2 Room Air', target: '>= 95%', color: selectedPatient.vitals.spo2 < 94 ? '#EF4444' : '#34D399' },
-                  { label: 'BODY TEMPERATURE', val: `${selectedPatient.vitals.temp}°C`, unit: 'Axillary', target: '36.5 - 37.5', color: selectedPatient.vitals.temp >= 38 ? '#F59E0B' : '#5EEAD4' },
-                  { label: 'RESPIRATORY RATE', val: `${selectedPatient.vitals.rr}`, unit: 'breaths/min', target: '12 - 20', color: selectedPatient.vitals.rr >= 22 ? '#EF4444' : '#34D399' },
-                  { label: 'WEIGHT / HEIGHT', val: `${selectedPatient.vitals.weight} kg`, unit: `${selectedPatient.vitals.height} cm`, target: 'BMI: 26.2', color: '#A78BFA' },
+                  { label: 'BLOOD PRESSURE', val: selectedPatient?.vitals?.bp, unit: 'mmHg', target: '< 130/80', color: '#5EEAD4' },
+                  { label: 'PULSE RATE', val: selectedPatient?.vitals?.pulse, unit: 'bpm', target: '60 - 90', color: selectedPatient?.vitals?.pulse > 100 ? '#EF4444' : '#34D399' },
+                  { label: 'OXYGEN SATURATION', val: `${selectedPatient?.vitals?.spo2}%`, unit: 'SpO2 Room Air', target: '>= 95%', color: selectedPatient?.vitals?.spo2 < 94 ? '#EF4444' : '#34D399' },
+                  { label: 'BODY TEMPERATURE', val: `${selectedPatient?.vitals?.temp}°C`, unit: 'Axillary', target: '36.5 - 37.5', color: selectedPatient?.vitals?.temp >= 38 ? '#F59E0B' : '#5EEAD4' },
+                  { label: 'RESPIRATORY RATE', val: `${selectedPatient?.vitals?.rr}`, unit: 'breaths/min', target: '12 - 20', color: selectedPatient?.vitals?.rr >= 22 ? '#EF4444' : '#34D399' },
+                  { label: 'WEIGHT / HEIGHT', val: `${selectedPatient?.vitals?.weight} kg`, unit: `${selectedPatient?.vitals?.height} cm`, target: 'BMI: 26.2', color: '#A78BFA' },
                   { label: 'CONSCIOUSNESS', val: 'Alert (A)', unit: 'AVPU Scale', target: 'Normal', color: '#10B981' },
                   { label: 'CAPILLARY REFILL', val: '< 2 sec', unit: 'Peripheral', target: '< 2 sec', color: '#10B981' },
                 ].map((stat, i) => (

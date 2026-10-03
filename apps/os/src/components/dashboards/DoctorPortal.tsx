@@ -333,7 +333,7 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
                     </div>
                     <div style={{ fontSize: '0.76rem', color: '#F87171', marginTop: 2 }}>{p.diagnosis}</div>
                     <div style={{ fontSize: '0.73rem', color: '#94A3B8', marginTop: 2 }}>
-                      {p.ward} � BP {p.vitals.bp} � HR {p.vitals.hr} � SpO2 {p.vitals.spo2}%
+                      {p.ward} � BP {p.vitals?.bp} � HR {p.vitals?.hr} � SpO2 {p.vitals?.spo2}%
                     </div>
                   </div>
                   <button type="button" style={{
@@ -389,9 +389,9 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
                     </td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <VitalChip label="BP" value={p.vitals.bp} warn={parseInt(p.vitals.bp) > 140} />
-                        <VitalChip label="HR" value={p.vitals.hr} unit="/m" warn={p.vitals.hr > 100 || p.vitals.hr < 50} />
-                        <VitalChip label="SpO2" value={p.vitals.spo2} unit="%" warn={p.vitals.spo2 < 94} />
+                        <VitalChip label="BP" value={p.vitals?.bp} warn={parseInt(p.vitals?.bp) > 140} />
+                        <VitalChip label="HR" value={p.vitals?.hr} unit="/m" warn={p.vitals?.hr > 100 || p.vitals?.hr < 50} />
+                        <VitalChip label="SpO2" value={p.vitals?.spo2} unit="%" warn={p.vitals?.spo2 < 94} />
                       </div>
                     </td>
                     <td style={{ padding: '10px 14px' }}>
@@ -552,9 +552,9 @@ const PatientsView: React.FC = () => {
               <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: 2 }}>Admit: {p.admitDate}</div>
             </div>
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              <VitalChip label="BP" value={p.vitals.bp} warn={parseInt(p.vitals.bp) > 140} />
-              <VitalChip label="HR" value={p.vitals.hr} unit="/m" warn={p.vitals.hr > 100} />
-              <VitalChip label="SpO2" value={p.vitals.spo2} unit="%" warn={p.vitals.spo2 < 94} />
+              <VitalChip label="BP" value={p.vitals?.bp} warn={parseInt(p.vitals?.bp) > 140} />
+              <VitalChip label="HR" value={p.vitals?.hr} unit="/m" warn={p.vitals?.hr > 100} />
+              <VitalChip label="SpO2" value={p.vitals?.spo2} unit="%" warn={p.vitals?.spo2 < 94} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
               <StatusBadge status={p.status} />
@@ -596,11 +596,11 @@ const PatientsView: React.FC = () => {
           <div>
             <div style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: 600, marginBottom: 7, textTransform: 'uppercase' }}>Current Vitals</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5 }}>
-              <VitalChip label="BP" value={selected.vitals.bp} warn={parseInt(selected.vitals.bp) > 140} />
-              <VitalChip label="HR" value={selected.vitals.hr} unit="/m" warn={selected.vitals.hr > 100} />
-              <VitalChip label="SpO2" value={selected.vitals.spo2} unit="%" warn={selected.vitals.spo2 < 94} />
-              <VitalChip label="Temp" value={selected.vitals.temp} unit="�C" warn={selected.vitals.temp > 38} />
-              <VitalChip label="RR" value={selected.vitals.rr} unit="/m" warn={selected.vitals.rr > 22} />
+              <VitalChip label="BP" value={selected.vitals?.bp} warn={parseInt(selected.vitals?.bp) > 140} />
+              <VitalChip label="HR" value={selected.vitals?.hr} unit="/m" warn={selected.vitals?.hr > 100} />
+              <VitalChip label="SpO2" value={selected.vitals?.spo2} unit="%" warn={selected.vitals?.spo2 < 94} />
+              <VitalChip label="Temp" value={selected.vitals?.temp} unit="�C" warn={selected.vitals?.temp > 38} />
+              <VitalChip label="RR" value={selected.vitals?.rr} unit="/m" warn={selected.vitals?.rr > 22} />
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -710,7 +710,7 @@ const ConsultationView: React.FC = () => {
             <div>
               <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>Current Vitals</div>
               <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                {patient && Object.entries(patient.vitals).map(([k, v]) => <VitalChip key={k} label={k.toUpperCase()} value={v} />)}
+                {patient && Object.entries((patient.vitals || {})).map(([k, v]) => <VitalChip key={k} label={k.toUpperCase()} value={v} />)}
               </div>
             </div>
             {ta('Physical Examination Findings', examination, setExamination, 8)}
@@ -966,9 +966,9 @@ const WardRoundView: React.FC = () => {
               <div style={{ fontSize: '0.73rem', color: '#94A3B8', marginTop: 2 }}>{p.id} � {p.ward}{p.bed ? ` � Bed ${p.bed}` : ''} � {p.diagnosis}</div>
             </div>
             <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-              <VitalChip label="BP" value={p.vitals.bp} warn={parseInt(p.vitals.bp) > 140} />
-              <VitalChip label="HR" value={p.vitals.hr} unit="/m" warn={p.vitals.hr > 100} />
-              <VitalChip label="SpO2" value={p.vitals.spo2} unit="%" warn={p.vitals.spo2 < 94} />
+              <VitalChip label="BP" value={p.vitals?.bp} warn={parseInt(p.vitals?.bp) > 140} />
+              <VitalChip label="HR" value={p.vitals?.hr} unit="/m" warn={p.vitals?.hr > 100} />
+              <VitalChip label="SpO2" value={p.vitals?.spo2} unit="%" warn={p.vitals?.spo2 < 94} />
               {expanded === p.id ? <ChevronUp size={16} color="#64748B" /> : <ChevronDown size={16} color="#64748B" />}
             </div>
           </div>

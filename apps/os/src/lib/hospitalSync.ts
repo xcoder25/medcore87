@@ -166,23 +166,43 @@ export async function pullFacilityData(
   }
 }
 
-/** Start background pull every `intervalMs` for the hospital facility */
+/** Start background pull for the hospital facility (skips when no LAN API). */
 export function startFacilitySyncLoop(
   facilityId: string,
   applyKey: (key: string, value: unknown) => void,
   intervalMs = 4000
 ): () => void {
   let stopped = false;
+  let timer: ReturnType<typeof setInterval> | null = null;
+  const unsubLocal = subscribeLocal(facilityId, applyKey);
+
   const tick = async () => {
     if (stopped) return;
+    // Hosted sites without API: never hit localhost
+    if (typeof window !== 'undefined') {
+      const base = resolveApiBase();
+      const h = window.location.hostname;
+      if (
+        base.includes('localhost') &&
+        h !== 'localhost' &&
+        h !== '127.0.0.1' &&
+        !(typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL)
+      ) {
+        return;
+      }
+    }
+    const ok = await probeHospitalApi();
+    if (!ok) return;
     await pullFacilityData(facilityId, applyKey);
   };
-  tick();
-  const id = setInterval(tick, intervalMs);
-  const unsubLocal = subscribeLocal(facilityId, applyKey);
+
+  void tick();
+  // Slow poll; probe cooldown already limits failed fetches
+  timer = setInterval(tick, Math.max(intervalMs, 15000));
+
   return () => {
     stopped = true;
-    clearInterval(id);
+    if (timer) clearInterval(timer);
     unsubLocal();
   };
 }

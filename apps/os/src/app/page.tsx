@@ -950,14 +950,33 @@ export default function OSPage() {
     updateClock();
     const interval = setInterval(updateClock, 1000);
 
-    // WebSocket real-time live connection
+    // Optional hospital-hub WebSocket (only when configured or on localhost)
     let ws: WebSocket | null = null;
-    let reconnectTimer: any = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let wsAttempts = 0;
+
+    const resolvePageWs = (): string | null => {
+      if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_WS_URL) {
+        return process.env.NEXT_PUBLIC_WS_URL;
+      }
+      if (typeof window !== 'undefined') {
+        const h = window.location.hostname;
+        if (h === 'localhost' || h === '127.0.0.1') return 'ws://localhost:4000/ws';
+      }
+      return null;
+    };
 
     const initWebSocket = () => {
+      const url = resolvePageWs();
+      if (!url) {
+        setWsConnected(false);
+        return;
+      }
+      if (wsAttempts > 6) return;
       try {
-        ws = new WebSocket('ws://localhost:4000/ws');
+        ws = new WebSocket(url);
         ws.onopen = () => {
+          wsAttempts = 0;
           setWsConnected(true);
           setWsLatency(Math.floor(Math.random() * 8) + 8);
         };
@@ -998,15 +1017,17 @@ export default function OSPage() {
         };
         ws.onclose = () => {
           setWsConnected(false);
-          reconnectTimer = setTimeout(initWebSocket, 5000);
+          wsAttempts += 1;
+          if (wsAttempts <= 6) {
+            reconnectTimer = setTimeout(initWebSocket, 5000 * Math.min(wsAttempts, 4));
+          }
         };
         ws.onerror = () => {
           setWsConnected(false);
-          ws?.close();
+          try { ws?.close(); } catch { /* ignore */ }
         };
       } catch {
         setWsConnected(false);
-        reconnectTimer = setTimeout(initWebSocket, 6000);
       }
     };
 

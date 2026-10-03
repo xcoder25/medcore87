@@ -228,7 +228,7 @@ export const ConsultationsManager: React.FC<ConsultationsManagerProps> = ({ init
                 </span>
               </div>
               <div style={{ fontSize: '0.75rem', color: '#CBD5E1', marginTop: 3 }}>
-                Vitals: BP {selectedPatient.vitals.bp} | HR {selectedPatient.vitals.pulse} bpm | SpO2 {selectedPatient.vitals.spo2}% | Temp {selectedPatient.vitals.temp}°C
+                Vitals: BP {selectedPatient?.vitals?.bp} | HR {selectedPatient?.vitals?.pulse} bpm | SpO2 {selectedPatient?.vitals?.spo2}% | Temp {selectedPatient?.vitals?.temp}°C
               </div>
             </div>
 
