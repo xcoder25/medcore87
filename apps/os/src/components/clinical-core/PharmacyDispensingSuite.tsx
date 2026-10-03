@@ -63,6 +63,7 @@ import {
 import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
 import { emitLiveAction } from '../../lib/liveActions';
 import { liveAlert } from '../../lib/manualActions';
+import { AksEmlFormularyPanel } from '../pharmacy/AksEmlFormularyPanel';
 
 export const PharmacyDispensingSuite: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'scan' | 'queue' | 'formulary'>('scan');
@@ -239,7 +240,7 @@ export const PharmacyDispensingSuite: React.FC = () => {
           {[
             { id: 'scan', label: 'Patient ID Scanner', Icon: UserSearch },
             { id: 'queue', label: `General Queue (${prescriptions.length})`, Icon: Clock },
-            { id: 'formulary', label: `Formulary & Stock (${formulary.length})`, Icon: Package },
+            { id: 'formulary', label: 'AKS EML Formulary', Icon: Package },
           ].map(({ id, label, Icon }) => (
             <button
               key={id}
@@ -524,42 +525,11 @@ export const PharmacyDispensingSuite: React.FC = () => {
       )}
 
       {/* -- FORMULARY TAB -- */}
+      {/* -- FORMULARY / AKS EML TAB -- */}
       {activeTab === 'formulary' && (
-        <div className="os-table-wrap">
-          <table className="os-table">
-            <thead>
-              <tr>
-                <th>Item Code</th><th>Drug Description</th><th>Category</th>
-                <th>Stock on Hand</th><th>Min Threshold</th><th>Expiry Date</th>
-                <th>Unit Price</th><th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {formulary
-                .filter(f => !search || f.name.toLowerCase().includes(search.toLowerCase()) || f.code.toLowerCase().includes(search.toLowerCase()))
-                .map(item => {
-                  const isLow = item.stockOnHand <= item.minimumThreshold;
-                  return (
-                    <tr key={item.id}>
-                      <td style={{ fontFamily: 'var(--os-font-mono)', fontSize: '0.75rem', color: 'var(--os-text-dim)' }}>{item.code}</td>
-                      <td style={{ fontWeight: 700, color: '#0A2540' }}>{item.name}</td>
-                      <td>{item.category}</td>
-                      <td style={{ fontWeight: 800, color: isLow ? '#F87171' : '#34D399' }}>{item.stockOnHand} {item.unit}</td>
-                      <td>{item.minimumThreshold} {item.unit}</td>
-                      <td style={{ fontSize: '0.78rem', color: 'var(--os-text-dim)' }}>{item.expiryDate}</td>
-                      <td style={{ fontWeight: 600 }}>?{item.unitPriceNgn.toLocaleString()}</td>
-                      <td>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: isLow ? 'rgba(239,68,68,0.15)' : 'rgba(5,150,105,0.1)', color: isLow ? '#F87171' : '#34D399' }}>
-                          {isLow ? 'REORDER' : 'IN STOCK'}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </div>
+        <AksEmlFormularyPanel />
       )}
+
     </div>
   );
 };
