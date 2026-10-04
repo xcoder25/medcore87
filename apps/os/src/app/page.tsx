@@ -25,6 +25,8 @@ import { FacilityOnboarding } from '../components/facility/FacilityOnboarding';
 import { AuthIdentity } from '../components/auth/AuthIdentity';
 import { DigitalPatientCard } from '../components/patient-card/DigitalPatientCard';
 import { Patient360View } from '../components/patients/Patient360View';
+import { UniversalQueueBoard } from '../components/queue/UniversalQueueBoard';
+import { NotificationCentre } from '../components/notifications/NotificationCentre';
 import { HospitalStaffTransfer } from '../components/staffing/HospitalStaffTransfer';
 import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 
@@ -71,6 +73,7 @@ import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
 
 // Icons
 import {
+  Clock, Bell,
   Activity, Shield, Lock, Unlock, LogOut, ChevronLeft, ChevronRight,
   AlertTriangle, Building2, Users, BedDouble, RefreshCw, BarChart3, Settings,
   CreditCard, FileText, Stethoscope, Calendar, HeartPulse, Database, Brain, Sparkles, Flame,
@@ -90,7 +93,7 @@ export type ModuleKey =
   | 'emr' | 'emergency' | 'theatre' | 'icu' | 'pharmacy' | 'laboratory' | 'radiology'
   | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'patient-card' | 'patient-360'
   // Pillar 3: Operations
-  | 'command' | 'beds' | 'patient-flow' | 'appointments' | 'staffing' | 'ambulance'
+  | 'command' | 'beds' | 'patient-flow' | 'universal-queue' | 'appointments' | 'staffing' | 'ambulance' | 'notifications'
   | 'inventory' | 'biomedical' | 'facilities' | 'environmental'
   // Pillar 4: Finance
   | 'billing' | 'cashier' | 'claims' | 'revenue-cycle' | 'procurement'
@@ -151,6 +154,8 @@ const MASTER_PILLARS: NavSection[] = [
       { key: 'command', icon: Activity, label: 'Hospital Operations Hub' },
       { key: 'beds', icon: BedDouble, label: 'Bed & Ward Management' },
       { key: 'patient-flow', icon: RefreshCw, label: 'Patient Transit & Admissions' },
+            { key: 'universal-queue', icon: Clock, label: 'Universal Queue' },
+            { key: 'notifications', icon: Bell, label: 'Notifications' },
       { key: 'staffing', icon: Users, label: 'Doctor & Nurse Shift Rosters' },
       { key: 'ambulance', icon: PhoneCall, label: 'Ambulance Fleet & Transfers', badge: 'GPS' },
       { key: 'inventory', icon: Package, label: 'Central Medical Store (CMS)' },
@@ -749,6 +754,8 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   command: CommandCentreDashboard,
   beds: BedManagement,
   'patient-flow': PatientFlowVisibility,
+  'universal-queue': UniversalQueueBoard as any,
+  notifications: NotificationCentre as any,
   appointments: AppointmentsManager as any,
   staffing: StaffingOverview,
   ambulance: AmbulanceTransfersSuite,
@@ -798,6 +805,8 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   command: { level: 2, label: 'L2 Support', roleDesc: 'General Hospital Staff & Floor Duty' },
   beds: { level: 3, label: 'L3 Clinical', roleDesc: 'Bed Managers & Ward Supervisors' },
   'patient-flow': { level: 1, label: 'L3 Clinical', roleDesc: 'Patient Flow Coordinators' },
+  'universal-queue': { level: 2, label: 'L2 Operations', roleDesc: 'Queue and floor coordinators' },
+  notifications: { level: 2, label: 'L2 All Roles', roleDesc: 'Hospital notification centre' },
   appointments: { level: 1, label: 'L2 Front Desk', roleDesc: 'Reception & appointment clerks' },
   staffing: { level: 3, label: 'L3 Clinical', roleDesc: 'Duty Roster Officers & Matrons' },
   ambulance: { level: 2, label: 'L2 Support', roleDesc: 'EMS Dispatchers & Paramedics' },

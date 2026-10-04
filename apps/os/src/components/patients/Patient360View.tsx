@@ -152,6 +152,9 @@ export const Patient360View: React.FC<Props> = ({ session, initialPatientId }) =
                   ['LGA / State', `${p.lga || '—'}, ${p.state || '—'}`],
                   ['Insurance', `${p.insuranceProvider || 'None'} ${p.insuranceId || ''}`],
                   ['Emergency', p.emergencyContact || '—'],
+                  ['Allergies', (p.allergies || []).join(', ') || 'None on file'],
+                  ['Chronic', (p.chronicConditions || []).join(', ') || '—'],
+                  ['Problems', (p.problems || []).join(', ') || '—'],
                 ].map(([l, v]) => (
                   <div key={l} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                     <span style={{ color: '#64748B' }}>{l}</span>

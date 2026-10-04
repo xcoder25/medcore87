@@ -1,4 +1,8 @@
 import { billPharmacyRx } from './patientBillingStore';
+import { enqueue } from './universalQueue';
+import { pushNotification } from './notificationEngine';
+import { checkPrescriptionSafety } from './pharmacySafety';
+import { getPatient } from './patientRegistryStore';
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 /**
  * Closed clinical loop bus: Order → Lab/Rx → Result → Doctor screen
@@ -88,10 +92,51 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
         orderId: order.id,
         drugName: order.name,
       });
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
   }
+  try {
+    const dept =
+      order.type === 'lab' ? 'lab' : order.type === 'rx' ? 'pharmacy' : order.type === 'imaging' ? 'radiology' : 'opd';
+    enqueue({
+      facilityId: order.facilityId,
+      department: dept as any,
+      patientId: order.patientId,
+      hospitalNumber: order.hospitalNumber,
+      patientName: order.patientName,
+      priority: order.priority === 'stat' ? 'stat' : order.priority === 'urgent' ? 'urgent' : 'routine',
+      service: order.name,
+      linkedOrderId: order.id,
+    });
+    if (order.priority === 'stat') {
+      pushNotification({
+        facilityId: order.facilityId,
+        level: 'critical',
+        title: `STAT ${order.type.toUpperCase()}`,
+        body: `${order.patientName}: ${order.name}`,
+        module: order.type === 'lab' ? 'laboratory' : order.type === 'rx' ? 'pharmacy' : 'radiology',
+        patientId: order.patientId,
+      });
+    }
+    if (order.type === 'rx') {
+      const pat = getPatient(order.patientId);
+      const flags = checkPrescriptionSafety({
+        drugName: order.name,
+        allergies: pat?.allergies,
+        otherDrugs: pat?.currentMedications,
+        notes: order.notes,
+      });
+      for (const f of flags.filter((x) => x.level === 'high')) {
+        pushNotification({
+          facilityId: order.facilityId,
+          level: 'critical',
+          title: 'Pharmacy safety',
+          body: f.message,
+          module: 'pharmacy',
+          patientId: order.patientId,
+        });
+      }
+    }
+  } catch { /* ignore */ }
   return order;
 }
 

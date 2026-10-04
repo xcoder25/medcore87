@@ -39,6 +39,14 @@ export interface FacilityPatient {
   lastVisit?: string;
   /** Administrative only — reception should not rely on clinical fields */
   notesAdmin?: string;
+  /** Clinical chart fields (authorized roles) */
+  allergies?: string[];
+  chronicConditions?: string[];
+  surgicalHistory?: string;
+  familyHistory?: string;
+  currentMedications?: string[];
+  immunizations?: string;
+  problems?: string[];
 }
 
 function readAll(): FacilityPatient[] {
