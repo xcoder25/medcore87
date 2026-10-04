@@ -205,8 +205,10 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
     },
   ]);
 
-  const selectedPatient = patients.find(p => p.id === selectedPatientId) || patients[0];
-  const patientNotes = INITIAL_CLINICAL_NOTES.filter(n => n.patientId === selectedPatient.id);
+  const selectedPatient = patients.find(p => p.id === selectedPatientId) || patients[0] || null;
+  const patientNotes = selectedPatient
+    ? INITIAL_CLINICAL_NOTES.filter(n => n.patientId === selectedPatient.id)
+    : [];
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -216,10 +218,10 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
   // Filtered Patients List
   const filteredPatients = useMemo(() => {
     return patients.filter(p => {
-      const matchesSearch = p.name.toLowerCase().includes(patientSearch.toLowerCase()) ||
-        p.mrn.toLowerCase().includes(patientSearch.toLowerCase()) ||
-        p.ward.toLowerCase().includes(patientSearch.toLowerCase()) ||
-        p.diagnoses.some(d => d.toLowerCase().includes(patientSearch.toLowerCase()));
+      const matchesSearch = (p.name || '').toLowerCase().includes(patientSearch.toLowerCase()) ||
+        (p.mrn || '').toLowerCase().includes(patientSearch.toLowerCase()) ||
+        (p.ward || '').toLowerCase().includes(patientSearch.toLowerCase()) ||
+        (p.diagnoses || []).some(d => (d || '').toLowerCase().includes(patientSearch.toLowerCase()));
 
       if (!matchesSearch) return false;
       if (patientFilter === 'inpatient') return p.type === 'inpatient';
@@ -751,6 +753,32 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
       setInteropLoading(false);
     }
   };
+
+  if (!selectedPatient) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: 420,
+          padding: 40,
+          textAlign: 'center',
+          background: 'linear-gradient(180deg, #070B14 0%, #0A0F1C 100%)',
+          color: '#94A3B8',
+          borderRadius: 16,
+        }}
+      >
+        <FileText size={40} style={{ marginBottom: 12, opacity: 0.5 }} />
+        <h2 style={{ margin: '0 0 8px', color: '#F8FAFC', fontSize: '1.15rem' }}>No patient chart open</h2>
+        <p style={{ margin: 0, maxWidth: 420, fontSize: '0.9rem', lineHeight: 1.5 }}>
+          Select a patient from clinic queue, Patient 360, or registration to open the longitudinal EMR.
+          Charts appear here after a visit is started.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div style={{
