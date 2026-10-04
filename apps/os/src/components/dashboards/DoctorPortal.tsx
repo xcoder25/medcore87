@@ -5,9 +5,10 @@ import { UserSession } from '../auth/AuthScreen';
 import { EMRManager } from '../gateway-modules/EMRManager';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import { placeOrder, listOrders, subscribeOrders, type ClinicalOrder } from '../../lib/clinicalEventBus';
-import { listPatients, type FacilityPatient } from '../../lib/patientRegistryStore';
+import { listPatients, subscribePatients, type FacilityPatient } from '../../lib/patientRegistryStore';
 import { emitLiveAction } from '../../lib/liveActions';
 import { liveAlert } from '../../lib/manualActions';
+import { DoctorDeskHome } from './DoctorDeskHome';
 import {
   LayoutDashboard, Users, FileText, Stethoscope, Pill, FlaskConical, Layers,
   BedDouble, Calendar, Bell, Settings, ClipboardList, Send, AlertTriangle,
@@ -1214,39 +1215,44 @@ const Placeholder: React.FC<{ icon: React.ComponentType<any>; label: string; des
   </div>
 );
 
-// -- SIDEBAR DEFINITION --------------------------------------------------------
+// -- Sub-nav only (NO second sidebar — OS shell owns nav) ----------------------
 
-const NAV_ITEMS: { key: SubModule; icon: React.ComponentType<any>; label: string; badge?: string | number }[] = [
-  { key: 'dashboard',        icon: LayoutDashboard, label: 'Command Desk',        badge: 'Live' },
-  { key: 'patients',         icon: Users,           label: 'My Patients',         badge: 6 },
-  { key: 'appointments',     icon: Calendar,        label: "Today's Schedule",    badge: 8 },
-  { key: 'consultation',     icon: Stethoscope,     label: 'Consultation',        badge: '1' },
-  { key: 'emr',              icon: FileText,        label: 'Clinical Records / EMR' },
-  { key: 'prescriptions',    icon: Pill,            label: 'Prescriptions',       badge: 'Rx' },
-  { key: 'lab-orders',       icon: FlaskConical,    label: 'Lab Orders',          badge: 3 },
-  { key: 'radiology-orders', icon: Layers,          label: 'Radiology Orders',    badge: 2 },
+const NAV_ITEMS: { key: SubModule; icon: React.ComponentType<any>; label: string }[] = [
+  { key: 'dashboard',        icon: LayoutDashboard, label: 'Command Desk' },
+  { key: 'patients',         icon: Users,           label: 'My Patients' },
+  { key: 'appointments',     icon: Calendar,        label: "Today's Schedule" },
+  { key: 'consultation',     icon: Stethoscope,     label: 'Consultation' },
+  { key: 'emr',              icon: FileText,        label: 'Clinical Records' },
+  { key: 'prescriptions',    icon: Pill,            label: 'Prescriptions' },
+  { key: 'lab-orders',       icon: FlaskConical,    label: 'Lab Orders' },
+  { key: 'radiology-orders', icon: Layers,          label: 'Radiology' },
   { key: 'ward-round',       icon: BedDouble,       label: 'Ward Round' },
   { key: 'admission',        icon: UserPlus,        label: 'Admissions' },
   { key: 'referrals',        icon: Send,            label: 'Referrals' },
-  { key: 'tasks',            icon: ClipboardList,   label: 'Clinical Tasks',      badge: 6 },
-  { key: 'messages',         icon: MessageSquare,   label: 'Messages',            badge: 3 },
+  { key: 'tasks',            icon: ClipboardList,   label: 'Clinical Tasks' },
+  { key: 'messages',         icon: MessageSquare,   label: 'Messages' },
   { key: 'analytics',        icon: BarChart3,       label: 'My Analytics' },
   { key: 'settings',         icon: Settings,        label: 'Preferences' },
 ];
 
-// -- MAIN EXPORT ---------------------------------------------------------------
+// -- MAIN EXPORT: single workspace (no nested Doctor Portal chrome) ------------
 
 export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate }) => {
   const [activeModule, setActiveModule] = useState<SubModule>('dashboard');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [now, setNow] = useState(new Date());
-
-  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
 
   const renderContent = () => {
     switch (activeModule) {
-      case 'dashboard':        return <DashboardView session={session} onSubNav={setActiveModule} />;
-      case 'patients':         return <PatientsView />;
+      case 'dashboard':
+        return (
+          <DoctorDeskHome
+            session={session}
+            onNavigate={(k) => {
+              if (k === 'doctor-portal') setActiveModule('patients');
+              else onNavigate(k);
+            }}
+          />
+        );
+      case 'patients':         return <PatientsViewLive session={session} onNavigate={onNavigate} />;
       case 'consultation':     return <ConsultationView />;
       case 'prescriptions':    return <PrescriptionsView session={session} />;
       case 'lab-orders':       return <LabOrdersView />;
@@ -1260,111 +1266,288 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate 
       case 'messages':         return <Placeholder icon={MessageSquare} label="Clinical Messaging" description="Secure clinician-to-clinician messaging, nurse escalations, department broadcasts, and ward-level notifications." color="#60A5FA" />;
       case 'admission':        return <Placeholder icon={UserPlus} label="Admissions & Discharge Planning" description="Patient admission requests, ward/bed allocation, transfer orders, and structured discharge planning with after-care instructions." color="#38BDF8" />;
       case 'settings':         return <Placeholder icon={Settings} label="Doctor Preferences" description="Notification settings, signature setup, prescription defaults, preferred investigation labs, portal shortcuts, and display configuration." color="#94A3B8" />;
-      default:                 return <DashboardView session={session} onSubNav={setActiveModule} />;
+      default:
+        return (
+          <DoctorDeskHome
+            session={session}
+            onNavigate={(k) => {
+              if (k === 'doctor-portal') setActiveModule('patients');
+              else onNavigate(k);
+            }}
+          />
+        );
     }
   };
 
-  const current = NAV_ITEMS.find(i => i.key === activeModule);
-
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-
-      {/* Portal Sidebar */}
-      <div style={{ width: sidebarCollapsed ? 54 : 224, flexShrink: 0, background: 'rgba(6,13,26,0.98)', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', transition: 'width 0.22s ease', overflow: 'hidden' }}>
-        {/* Header */}
-        <div style={{ padding: sidebarCollapsed ? '12px 7px' : '12px 14px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 7 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 7, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 2, flexShrink: 0, boxShadow: '0 1px 4px rgba(0,0,0,0.15)' }}>
-              <img src="/medcore-logo.png" alt="MedCore" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#F8FAFC' }}>
+      {/* Horizontal sub-nav only — no second dark sidebar */}
+      <div
+        style={{
+          flexShrink: 0,
+          background: '#fff',
+          borderBottom: '1px solid #E8EEF5',
+          padding: '10px 16px 0',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 0,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <Stethoscope size={18} color="#0D9488" />
+          <div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A', lineHeight: 1.2 }}>
+              Clinical workspace
             </div>
-            {!sidebarCollapsed && (
-              <div>
-                <div style={{ fontSize: '0.82rem', color: '#0A2540', fontWeight: 800, lineHeight: 1.1 }}>MedCore</div>
-                <div style={{ fontSize: '0.64rem', color: '#0052D4', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Doctor Portal</div>
-              </div>
-            )}
+            <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+              {session.name || 'Doctor'} · {session.roleLabel || 'Medical Officer'} · one desk, no nested portal
+            </div>
           </div>
-          <button type="button" onClick={() => setSidebarCollapsed(c => !c)} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', color: '#64748B', borderRadius: 7, padding: '5px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Menu size={13} />
-          </button>
+          <span style={{ flex: 1 }} />
+          <span
+            style={{
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              color: '#0D9488',
+              background: '#CCFBF1',
+              border: '1px solid #99F6E4',
+              padding: '4px 10px',
+              borderRadius: 999,
+            }}
+          >
+            Live
+          </span>
         </div>
-
-        {/* Time */}
-        {!sidebarCollapsed && (
-          <div style={{ padding: '9px 14px', borderBottom: '1px solid #FFFFFF' }}>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0A2540', fontFamily: 'monospace' }}>{now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
-            <div style={{ fontSize: '0.68rem', color: '#64748B' }}>{now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ADE80', display: 'inline-block' }} />
-              <span style={{ fontSize: '0.66rem', color: '#059669', fontWeight: 600 }}>Active Duty</span>
-            </div>
-          </div>
-        )}
-
-        {/* Nav */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '9px 7px' }}>
-          {NAV_ITEMS.map(item => {
+        <div
+          style={{
+            display: 'flex',
+            gap: 4,
+            overflowX: 'auto',
+            paddingBottom: 0,
+            scrollbarWidth: 'thin',
+          }}
+        >
+          {NAV_ITEMS.map((item) => {
             const active = activeModule === item.key;
+            const Icon = item.icon;
             return (
-              <button key={item.key} type="button" onClick={() => setActiveModule(item.key)} title={sidebarCollapsed ? item.label : undefined}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: sidebarCollapsed ? 0 : 9, padding: sidebarCollapsed ? '8px 0' : '8px 9px', justifyContent: sidebarCollapsed ? 'center' : 'flex-start', borderRadius: 8, border: 'none', cursor: 'pointer', marginBottom: 2, background: active ? 'rgba(2,132,199,0.18)' : 'transparent', transition: 'all 0.14s', position: 'relative' }}
-                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = '#FFFFFF'; }}
-                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setActiveModule(item.key)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '8px 12px',
+                  border: 'none',
+                  borderBottom: active ? '2px solid #0D9488' : '2px solid transparent',
+                  background: active ? 'rgba(13,148,136,0.06)' : 'transparent',
+                  color: active ? '#0D9488' : '#64748B',
+                  fontWeight: active ? 700 : 600,
+                  fontSize: '0.74rem',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  borderRadius: '8px 8px 0 0',
+                }}
               >
-                {active && <span style={{ position: 'absolute', left: 0, top: '20%', height: '60%', width: 3, background: '#0284C7', borderRadius: '0 3px 3px 0' }} />}
-                <item.icon size={15} color={active ? '#38BDF8' : '#64748B'} />
-                {!sidebarCollapsed && (
-                  <>
-                    <span style={{ flex: 1, fontSize: '0.78rem', fontWeight: active ? 700 : 500, color: active ? '#F8FAFC' : '#94A3B8', textAlign: 'left' }}>{item.label}</span>
-                    {item.badge !== undefined && (
-                      <span style={{ fontSize: '0.6rem', fontWeight: 700, color: active ? '#38BDF8' : '#64748B', background: active ? 'rgba(2,132,199,0.18)' : '#FFFFFF', border: `1px solid ${active ? 'rgba(2,132,199,0.38)' : '#E2E8F0'}`, borderRadius: 999, padding: '1px 6px' }}>{item.badge}</span>
-                    )}
-                  </>
-                )}
+                <Icon size={13} />
+                {item.label}
               </button>
             );
           })}
         </div>
-
-        {/* Exit */}
-        {!sidebarCollapsed && (
-          <div style={{ padding: '9px 7px', borderTop: '1px solid #FFFFFF' }}>
-            <button type="button" onClick={() => onNavigate('command')} style={{ width: '100%', background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#64748B', padding: '7px 9px', borderRadius: 7, cursor: 'pointer', fontSize: '0.73rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <ChevronsRight size={12} /> Exit to HospitalOS
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* Main Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Top bar */}
-        <div style={{ padding: '10px 22px', borderBottom: '1px solid #FFFFFF', background: 'rgba(6,13,26,0.6)', display: 'flex', alignItems: 'center', gap: 11, flexShrink: 0 }}>
-          {current && <current.icon size={15} color="#38BDF8" />}
-          <h2 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: '#0A2540' }}>{current?.label || 'Doctor Portal'}</h2>
-          <span style={{ flex: 1 }} />
-          {[
-            { label: '? 1 Critical', color: '#EF4444', bg: 'rgba(239,68,68,0.11)', border: 'rgba(239,68,68,0.28)', nav: 'patients' },
-            { label: '? 5 Pending Results', color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.26)', nav: 'lab-orders' },
-            { label: '? 3 Messages', color: '#0052D4', bg: 'rgba(56,189,248,0.1)', border: 'rgba(56,189,248,0.25)', nav: 'messages' },
-          ].map(b => (
-            <button key={b.label} type="button" onClick={() => setActiveModule(b.nav as SubModule)} style={{ fontSize: '0.66rem', fontWeight: 700, color: b.color, background: b.bg, border: `1px solid ${b.border}`, padding: '3px 10px', borderRadius: 999, cursor: 'pointer' }}>{b.label}</button>
+      <div style={{ flex: 1, overflowY: 'auto', padding: activeModule === 'dashboard' ? 0 : '16px 18px' }}>
+        {renderContent()}
+      </div>
+    </div>
+  );
+};
+
+/** Live My Patients — registry + today's visits (no demo cards) */
+const PatientsViewLive: React.FC<{ session: UserSession; onNavigate: (k: any) => void }> = ({ session, onNavigate }) => {
+  const facilityId = session.hospitalId || 'IGH-EKT';
+  const [tick, setTick] = useState(0);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'all' | 'inpatient' | 'outpatient' | 'critical'>('all');
+
+  useEffect(() => {
+    const u1 = subscribeOrders(() => setTick((t) => t + 1));
+    const u2 = subscribePatients(() => setTick((t) => t + 1));
+    return () => {
+      u1();
+      u2();
+    };
+  }, []);
+
+  const registry = listPatients(facilityId);
+  const q = search.toLowerCase().trim();
+  const rows = registry.filter((p) => {
+    const name = [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ');
+    if (q && !(`${name} ${p.hospitalNumber} ${p.id}`.toLowerCase().includes(q))) return false;
+    return true;
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div
+        style={{
+          background: '#fff',
+          border: '1px solid #E8EEF5',
+          borderRadius: 14,
+          padding: '14px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ flex: 1, position: 'relative', minWidth: 200 }}>
+          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748B' }} />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name, hospital number…"
+            style={{
+              width: '100%',
+              padding: '9px 12px 9px 32px',
+              boxSizing: 'border-box',
+              background: '#F8FAFC',
+              border: '1px solid #E8EEF5',
+              borderRadius: 10,
+              color: '#0F172A',
+              fontSize: '0.84rem',
+              outline: 'none',
+            }}
+          />
+        </div>
+        {(['all', 'inpatient', 'outpatient', 'critical'] as const).map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFilter(f)}
+            style={{
+              padding: '7px 12px',
+              borderRadius: 8,
+              fontWeight: 600,
+              fontSize: '0.76rem',
+              cursor: 'pointer',
+              background: filter === f ? 'rgba(13,148,136,0.12)' : '#fff',
+              border: `1px solid ${filter === f ? '#0D9488' : '#E8EEF5'}`,
+              color: filter === f ? '#0D9488' : '#64748B',
+            }}
+          >
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => onNavigate('emr')}
+          style={{
+            background: 'linear-gradient(135deg,#0D9488,#0F766E)',
+            border: 'none',
+            color: '#fff',
+            padding: '8px 14px',
+            borderRadius: 9,
+            fontWeight: 700,
+            fontSize: '0.8rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+          }}
+        >
+          <Plus size={14} /> Open EMR
+        </button>
+      </div>
+
+      {rows.length === 0 ? (
+        <div
+          style={{
+            background: '#fff',
+            border: '1px dashed #CBD5E1',
+            borderRadius: 14,
+            padding: '48px 24px',
+            textAlign: 'center',
+            color: '#64748B',
+          }}
+        >
+          <Users size={28} style={{ marginBottom: 10, opacity: 0.5 }} />
+          <div style={{ fontWeight: 700, color: '#0F172A', marginBottom: 6 }}>No patients on your list yet</div>
+          <div style={{ fontSize: '0.84rem', maxWidth: 420, margin: '0 auto' }}>
+            When reception checks a patient in or registers them, they appear here in realtime. No demo cards.
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {rows.map((p) => (
+            <div
+              key={p.id}
+              style={{
+                background: '#fff',
+                border: '1px solid #E8EEF5',
+                borderRadius: 14,
+                padding: '14px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 14,
+              }}
+            >
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  background: 'linear-gradient(135deg,#CCFBF1,#E0F2FE)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 800,
+                  color: '#0F766E',
+                  fontSize: '0.85rem',
+                }}
+              >
+                {([p.firstName, p.lastName].filter(Boolean).join(' ') || '?')
+                  .split(' ')
+                  .map((w) => w[0])
+                  .slice(0, 2)
+                  .join('')
+                  .toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: '#0F172A' }}>{[p.firstName, p.lastName].filter(Boolean).join(' ')}</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                  {p.hospitalNumber || p.id}
+                  {p.sex ? ` · ${p.sex}` : ''}
+                  {p.phone ? ` · ${p.phone}` : ''}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  emitLiveAction(`Opened chart ${[p.firstName, p.lastName].filter(Boolean).join(' ')}`, { module: 'doctor-portal' });
+                  onNavigate('emr');
+                }}
+                style={{
+                  border: '1px solid #0D9488',
+                  background: '#fff',
+                  color: '#0D9488',
+                  fontWeight: 700,
+                  fontSize: '0.78rem',
+                  padding: '8px 12px',
+                  borderRadius: 9,
+                  cursor: 'pointer',
+                }}
+              >
+                Open chart
+              </button>
+            </div>
           ))}
         </div>
-
-        {/* Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px' }}>
-          {renderContent()}
-        </div>
-      </div>
-
-      <style>{`
-        @keyframes docPortalPulse {
-          0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0.55); }
-          70%  { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
-          100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
-        }
-      `}</style>
+      )}
+      <span style={{ display: 'none' }}>{tick}</span>
     </div>
   );
 };
