@@ -46,12 +46,12 @@ export function enrolStaffAndIssueCard(
   input: StaffEnrolmentInput,
   badgeId?: string
 ): { card: StaffCardRecord; badgeId: string } {
+  // Facility-owned prefix: full facilityId (e.g. IGH-EKT-ADM-001) so every hospital has its own ID space
+  const facilityPrefix = (input.facilityId || 'FAC').trim().toUpperCase().replace(/\s+/g, '');
+  const roleSeg = (input.roleKey || 'STF').slice(0, 3).toUpperCase();
   const id = (
     badgeId ||
-    `${input.facilityId.slice(0, 3).toUpperCase()}-${input.roleKey.slice(0, 3).toUpperCase()}-${Date.now()
-      .toString(36)
-      .slice(-4)
-      .toUpperCase()}`
+    `${facilityPrefix}-${roleSeg}-${Date.now().toString(36).slice(-4).toUpperCase()}`
   ).trim().toUpperCase();
 
   const card = issueStaffCardFromEnrolment(input, id);
@@ -354,4 +354,136 @@ export function resolveStaffByBadge(badgeId: string): {
   } catch { /* ignore */ }
 
   return null;
+}
+
+
+// ─── Facility admin auto-provisioning ───────────────────────────────────────
+
+/** True if this facility already has at least one hospital_admin */
+export function hasFacilityAdmin(facilityId: string): boolean {
+  const fid = String(facilityId || '').toUpperCase();
+  if (!fid || typeof window === 'undefined') return false;
+
+  const cards = listStaffCards();
+  if (cards.some((c) => String(c.facilityId || '').toUpperCase() === fid && c.roleKey === 'hospital_admin')) {
+    return true;
+  }
+
+  try {
+    for (const key of [STAFF_REGISTRY_STORAGE_KEY, 'medcore_os_staff_registry']) {
+      const raw = localStorage.getItem(key);
+      const arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) continue;
+      if (arr.some((r: any) => {
+        const hid = String(r.hospitalId || r.facilityId || '').toUpperCase();
+        const rk = String(r.roleKey || '').toLowerCase();
+        return hid === fid && (rk === 'hospital_admin' || rk === 'admin');
+      })) return true;
+    }
+  } catch { /* ignore */ }
+
+  return false;
+}
+
+/** True if facility has zero enrolled staff (cards or registry) */
+export function isFacilityEmpty(facilityId: string): boolean {
+  const fid = String(facilityId || '').toUpperCase();
+  if (!fid || typeof window === 'undefined') return true;
+
+  const cards = listStaffCards();
+  if (cards.some((c) => String(c.facilityId || '').toUpperCase() === fid)) return false;
+
+  try {
+    for (const key of [STAFF_REGISTRY_STORAGE_KEY, 'medcore_os_staff_registry']) {
+      const raw = localStorage.getItem(key);
+      const arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) continue;
+      if (arr.some((r: any) => String(r.hospitalId || r.facilityId || '').toUpperCase() === fid)) {
+        return false;
+      }
+    }
+  } catch { /* ignore */ }
+
+  return true;
+}
+
+export type ProvisionFacilityAdminResult = {
+  ok: boolean;
+  badgeId?: string;
+  pin?: string;
+  profile?: ReturnType<typeof resolveStaffByBadge>;
+  error?: string;
+  created?: boolean;
+};
+
+/**
+ * Auto-provision a facility-scoped Hospital Administrator on first login
+ * to an empty facility. Badge uses the facility's own prefix, e.g. IGH-EKT-ADM-001.
+ * After this, that admin manages all further staff creation for the facility.
+ */
+export function provisionFacilityAdmin(
+  facility: { id: string; name: string },
+  opts?: { pin?: string; fullName?: string }
+): ProvisionFacilityAdminResult {
+  const facilityId = String(facility.id || '').trim();
+  const facilityName = String(facility.name || facilityId).trim();
+  if (!facilityId) return { ok: false, error: 'Missing facility id' };
+
+  if (hasFacilityAdmin(facilityId)) {
+    // Already has an admin — do not create another
+    const existing = listStaffCards().find(
+      (c) => c.facilityId === facilityId && c.roleKey === 'hospital_admin'
+    );
+    if (existing) {
+      const profile = resolveStaffByBadge(existing.badgeId);
+      return {
+        ok: true,
+        badgeId: existing.badgeId,
+        pin: profile?.pin,
+        profile: profile || undefined,
+        created: false,
+      };
+    }
+    return { ok: false, error: 'Facility already has an administrator.' };
+  }
+
+  const pin = (opts?.pin || 'AKS-0012442').trim();
+  const fullName = (opts?.fullName || 'Hospital Administrator').trim();
+  // Deterministic first admin badge: {facilityId}-ADM-001
+  const badgeId = `${facilityId.toUpperCase()}-ADM-001`;
+
+  try {
+    const { card } = enrolStaffAndIssueCard(
+      {
+        fullName,
+        role: 'Hospital Administrator',
+        roleKey: 'hospital_admin',
+        title: 'Hospital Administrator',
+        department: 'Hospital Management',
+        facilityId,
+        facilityName,
+        clearanceLevel: 5,
+        clearanceLabel: 'Administrator',
+        pin,
+        shortRole: 'Admin',
+        permissions: [
+          'dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing',
+          'enrolment', 'my-card', 'cashier', 'patient-card', 'auth', 'facility',
+          'data-hub', 'analytics', 'rbac', 'sysadmin', 'compliance', 'transfer', 'ai',
+        ],
+      },
+      badgeId
+    );
+
+    const profile = resolveStaffByBadge(card.badgeId);
+    return {
+      ok: true,
+      badgeId: card.badgeId,
+      pin,
+      profile: profile || undefined,
+      created: true,
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Failed to provision facility admin' };
+  }
 }

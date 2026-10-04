@@ -231,7 +231,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         const saved = localStorage.getItem('medcore_os_staff_registry');
         const parsed: any[] = saved ? JSON.parse(saved) : [];
         const enrolled = Array.isArray(parsed) ? parsed.map(mapEntry) : [];
-        // Bootstrap admin always available; enrolled staff appended (dedupe by badge)
+        // Bootstrap platform admin always available (can claim empty facilities); enrolled staff appended (dedupe by badge)
         const byBadge = new Map<string, PresetStaff>();
         for (const s of PRESET_STAFF.filter((x) => x.roleKey === 'hospital_admin' || x.badgeId === PLATFORM_ADMIN.badgeId)) {
           byBadge.set(s.badgeId, s);
@@ -405,10 +405,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     const pass = (password || '').trim();
     const effectiveHospital = selectedHospital;
     const adminEmail = PLATFORM_ADMIN.email.toLowerCase();
+    const badgeNorm = u.trim().toUpperCase().replace(/\s+/g, '');
     const isPlatformAdmin =
-      authMode === 'email' &&
-      (u.toLowerCase() === adminEmail ||
-        (u.toLowerCase().includes('xcoder2442') && pass === PLATFORM_ADMIN.password));
+      (authMode === 'email' &&
+        (u.toLowerCase() === adminEmail ||
+          (u.toLowerCase().includes('xcoder2442') && pass === PLATFORM_ADMIN.password))) ||
+      (authMode === 'badge' &&
+        badgeNorm === PLATFORM_ADMIN.badgeId.toUpperCase() &&
+        (pass === PLATFORM_ADMIN.password || pass === PLATFORM_ADMIN.password));
 
     // ── Badge + PIN ────────────────────────────────────────────────────────
     if (authMode === 'badge') {
@@ -501,11 +505,53 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             hospitalName: effectiveHospital.name,
           });
         } catch {
-          setError(
-            'Staff ID not found. Use the exact badge from the confirmation screen (e.g. IGH-DOC-XXXX). Create the account again under Staff Access Control if needed.'
-          );
-          setLoading(false);
-          return;
+          // 5) First login to an empty facility → auto-provision facility admin
+          //    (only when using platform bootstrap credentials, so facilities stay claimable securely)
+          const {
+            hasFacilityAdmin,
+            provisionFacilityAdmin,
+          } = await import('../../lib/staffCardStore');
+
+          const canClaim =
+            isPlatformAdmin ||
+            (badgeNorm === PLATFORM_ADMIN.badgeId.toUpperCase() &&
+              (pinQuery === PLATFORM_ADMIN.password || pinNorm === normalizeStaffPin(PLATFORM_ADMIN.password)));
+
+          if (canClaim && !hasFacilityAdmin(effectiveHospital.id)) {
+            const prov = provisionFacilityAdmin(
+              { id: effectiveHospital.id, name: effectiveHospital.name },
+              { pin: PLATFORM_ADMIN.password, fullName: `${effectiveHospital.name.split(',')[0]} Administrator` }
+            );
+            if (prov.ok && prov.badgeId) {
+              // Ensure Firebase Auth account for the new facility admin
+              try {
+                await firebaseEnsureBadgeAccount(prov.badgeId, normalizeStaffPin(prov.pin || PLATFORM_ADMIN.password));
+              } catch { /* offline ok */ }
+
+              const created = resolveStaffByBadge(prov.badgeId);
+              if (created) {
+                profile = mapProfile(created as unknown as Record<string, unknown>);
+                // continue into normal session creation below
+              } else {
+                setError(prov.error || 'Could not provision facility admin.');
+                setLoading(false);
+                return;
+              }
+            } else {
+              setError(
+                prov.error ||
+                  'Staff ID not found. Use the exact badge from the confirmation screen (e.g. IGH-EKT-DOC-XXXX). Create the account under Staff Access Control if needed.'
+              );
+              setLoading(false);
+              return;
+            }
+          } else {
+            setError(
+              'Staff ID not found. Use the exact badge from the confirmation screen (e.g. IGH-EKT-DOC-XXXX). Create the account under Staff Access Control if needed.'
+            );
+            setLoading(false);
+            return;
+          }
         }
       }
 
@@ -655,9 +701,64 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           }
         }
 
-        const adminStaff = staffRegistry.find((s) => s.badgeId === PLATFORM_ADMIN.badgeId);
-        const matchedStaff =
-          email.toLowerCase() === adminEmail ? adminStaff : detectedStaff;
+        // Auto-provision facility admin on first login to an empty facility
+        let matchedStaff: PresetStaff | undefined;
+        if (email.toLowerCase() === adminEmail) {
+          const {
+            hasFacilityAdmin,
+            provisionFacilityAdmin,
+            resolveStaffByBadge,
+          } = await import('../../lib/staffCardStore');
+
+          if (!hasFacilityAdmin(effectiveHospital.id)) {
+            const prov = provisionFacilityAdmin(
+              { id: effectiveHospital.id, name: effectiveHospital.name },
+              { pin: PLATFORM_ADMIN.password, fullName: `${effectiveHospital.name.split(',')[0]} Administrator` }
+            );
+            if (prov.ok && prov.badgeId) {
+              try {
+                const { firebaseEnsureBadgeAccount, normalizeStaffPin } = await import('../../lib/firebase');
+                await firebaseEnsureBadgeAccount(prov.badgeId, normalizeStaffPin(prov.pin || PLATFORM_ADMIN.password));
+              } catch { /* offline ok */ }
+              const created = resolveStaffByBadge(prov.badgeId);
+              if (created) {
+                matchedStaff = {
+                  badgeId: created.badgeId,
+                  name: created.name,
+                  role: created.role,
+                  shortRole: 'Admin',
+                  title: created.title,
+                  roleKey: created.roleKey,
+                  clearanceLevel: created.clearanceLevel,
+                  clearanceLabel: created.clearanceLabel,
+                  department: created.department,
+                  initials: created.initials,
+                  permissions: created.permissions,
+                  pin: created.pin,
+                  hospitalId: effectiveHospital.id,
+                  hospitalName: effectiveHospital.name,
+                  color: '#EA580C',
+                };
+              }
+            }
+          }
+
+          if (!matchedStaff) {
+            const adminStaff = staffRegistry.find((s) => s.badgeId === PLATFORM_ADMIN.badgeId);
+            matchedStaff = adminStaff;
+            // Re-bind session to selected facility even if using global bootstrap profile
+            if (matchedStaff) {
+              matchedStaff = {
+                ...matchedStaff,
+                hospitalId: effectiveHospital.id,
+                hospitalName: effectiveHospital.name,
+              };
+            }
+          }
+        } else {
+          matchedStaff = detectedStaff;
+        }
+
         if (!matchedStaff) {
           setError(
             email.toLowerCase() === adminEmail
