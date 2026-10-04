@@ -744,9 +744,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       return;
     }
 
-    // ── Email → Firebase ───────────────────────────────────────────────────
+    // ── Email → Firebase (given email creates / signs into the account) ─────
     if (u.includes('@') || isPlatformAdmin) {
-      const email = u.includes('@') ? u : PLATFORM_ADMIN.email;
+      const email = (u.includes('@') ? u : PLATFORM_ADMIN.email).trim().toLowerCase();
       try {
         const { firebaseSignIn, firebaseSignUp, isEmailCredential } = await import('../../lib/firebase');
         if (!isEmailCredential(email)) {
@@ -759,16 +759,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           setLoading(false);
           return;
         }
-        if (email.toLowerCase() === adminEmail && pass !== PLATFORM_ADMIN.password) {
-          setError('Incorrect password for this administrator account.');
-          setLoading(false);
-          return;
-        }
 
-        let fbUser: import('firebase/auth').User | null = null;
+        const {
+          hasFacilityAdmin,
+          provisionFacilityAdmin,
+          resolveStaffByBadge,
+          listStaffCards,
+        } = await import('../../lib/staffCardStore');
+
+        const facilityEmpty = !hasFacilityAdmin(effectiveHospital.id);
         const isBootstrapAdmin =
-          email.toLowerCase() === adminEmail && pass === PLATFORM_ADMIN.password;
+          email === adminEmail && pass === PLATFORM_ADMIN.password;
 
+        // 1) Sign in with the email the user typed; if new → create that account
+        let fbUser: import('firebase/auth').User | null = null;
         try {
           fbUser = await withTimeout(firebaseSignIn(email, pass), 8000);
         } catch (signInErr: unknown) {
@@ -776,153 +780,173 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           const code =
             (signInErr as { code?: string })?.code ||
             (msg.match(/auth\/[a-z0-9-]+/i)?.[0] || '');
-          const timedOut = msg.toLowerCase().includes('timeout');
-          if (
-            code === 'auth/user-not-found' ||
-            code === 'auth/invalid-credential' ||
-            code === 'auth/wrong-password' ||
-            code === 'auth/invalid-email' ||
-            code === 'auth/network-request-failed' ||
-            timedOut
-          ) {
-            if (isBootstrapAdmin) {
-              // Try create once; if Firebase still fails, continue with local admin session
+          try {
+            fbUser = await withTimeout(firebaseSignUp(email, pass), 8000);
+          } catch (signUpErr: unknown) {
+            const upMsg = String((signUpErr as Error)?.message || signUpErr || '');
+            const upCode =
+              (signUpErr as { code?: string })?.code ||
+              (upMsg.match(/auth\/[a-z0-9-]+/i)?.[0] || '');
+            // Email already registered with a different password
+            if (
+              upCode.includes('email-already-in-use') ||
+              upCode.includes('email-already-exists')
+            ) {
               try {
-                fbUser = await withTimeout(firebaseSignUp(email, pass), 8000);
-              } catch (signUpErr: unknown) {
-                try {
-                  fbUser = await withTimeout(firebaseSignIn(email, pass), 6000);
-                } catch {
-                  console.warn('[auth] Firebase admin optional — local session', signUpErr);
-                  fbUser = null;
+                fbUser = await withTimeout(firebaseSignIn(email, pass), 6000);
+              } catch {
+                // Wrong password for existing account — only allow bootstrap / empty facility local path
+                if (!isBootstrapAdmin && !facilityEmpty) {
+                  setError('Incorrect password for this email.');
+                  setLoading(false);
+                  return;
                 }
+                fbUser = null;
               }
+            } else if (isBootstrapAdmin || facilityEmpty) {
+              // Offline or Auth disabled — continue local for bootstrap / first hospital claim
+              console.warn('[auth] Firebase optional', code, upCode);
+              fbUser = null;
             } else {
-              setError(
-                'Invalid email or password. Use your enrolled work email, or Sign in with ID No. (badge + PIN). Platform admin: xcoder2442@gmail.com'
-              );
+              setError('Could not sign in with this email. Check the password or use Sign in with ID No.');
               setLoading(false);
               return;
             }
-          } else if (isBootstrapAdmin) {
-            // Any other Firebase error — do not block platform admin
-            console.warn('[auth] Firebase sign-in skipped for platform admin', signInErr);
-            fbUser = null;
-          } else {
-            setError(
-              (signInErr as { message?: string })?.message ||
-                'Sign-in failed. Check your connection and try again.'
-            );
-            setLoading(false);
-            return;
           }
         }
 
-        // Auto-provision facility admin on first login to an empty facility
+        // 2) Facility admin for selected hospital (first claim uses this email)
         let matchedStaff: PresetStaff | undefined;
-        if (email.toLowerCase() === adminEmail) {
-          const {
-            hasFacilityAdmin,
-            provisionFacilityAdmin,
-            resolveStaffByBadge,
-          } = await import('../../lib/staffCardStore');
+        const shortName = effectiveHospital.name.split(',')[0].trim();
+        const adminFullName =
+          isBootstrapAdmin || email === adminEmail
+            ? PLATFORM_ADMIN.name
+            : (fbUser?.displayName || email.split('@')[0].replace(/[._]/g, ' ') || shortName + ' Administrator');
 
-          if (!hasFacilityAdmin(effectiveHospital.id)) {
-            const prov = provisionFacilityAdmin(
-              { id: effectiveHospital.id, name: effectiveHospital.name },
-              { pin: PLATFORM_ADMIN.password, fullName: `${effectiveHospital.name.split(',')[0]} Administrator` }
-            );
-            if (prov.ok && prov.badgeId) {
-              try {
-                const { firebaseEnsureBadgeAccount, normalizeStaffPin } = await import('../../lib/firebase');
-                await withTimeout(
-                  firebaseEnsureBadgeAccount(prov.badgeId, normalizeStaffPin(prov.pin || PLATFORM_ADMIN.password)),
-                  6000
+        if (!hasFacilityAdmin(effectiveHospital.id)) {
+          const prov = provisionFacilityAdmin(
+            { id: effectiveHospital.id, name: effectiveHospital.name },
+            {
+              pin: pass.length >= 6 ? pass : PLATFORM_ADMIN.password,
+              fullName: adminFullName.replace(/\b\w/g, (c) => c.toUpperCase()),
+            }
+          );
+          if (prov.ok && prov.badgeId) {
+            try {
+              const { firebaseEnsureBadgeAccount, normalizeStaffPin } = await import('../../lib/firebase');
+              await withTimeout(
+                firebaseEnsureBadgeAccount(prov.badgeId, normalizeStaffPin(prov.pin || pass)),
+                6000
+              );
+            } catch { /* offline ok */ }
+            // Persist work email on registry for future email login
+            try {
+              const key = 'medcore_os_staff_registry';
+              const raw = localStorage.getItem(key);
+              const arr = raw ? JSON.parse(raw) : [];
+              if (Array.isArray(arr)) {
+                const next = arr.map((r: any) =>
+                  String(r.badgeId || r.id || '').toUpperCase() === prov.badgeId!.toUpperCase()
+                    ? { ...r, email, workEmail: email }
+                    : r
                 );
-              } catch { /* offline / timeout ok */ }
-              const created = resolveStaffByBadge(prov.badgeId);
-              const shortName = effectiveHospital.name.split(',')[0].trim();
+                localStorage.setItem(key, JSON.stringify(next));
+              }
+            } catch { /* ignore */ }
+            const created = resolveStaffByBadge(prov.badgeId);
+            matchedStaff = {
+              badgeId: prov.badgeId,
+              name: created?.name || adminFullName,
+              role: 'Hospital Administrator',
+              shortRole: 'Admin',
+              title: 'Hospital Administrator',
+              roleKey: 'hospital_admin',
+              clearanceLevel: 5,
+              clearanceLabel: 'Administrator',
+              department: 'Hospital Management',
+              initials: created?.initials || 'HA',
+              permissions: created?.permissions || [
+                'dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing',
+                'enrolment', 'my-card', 'cashier', 'rbac', 'sysadmin', 'ai',
+              ],
+              pin: prov.pin || pass,
+              hospitalId: effectiveHospital.id,
+              hospitalName: effectiveHospital.name,
+              color: '#EA580C',
+            };
+          }
+        }
+
+        if (!matchedStaff) {
+          // Existing facility admin for this hospital
+          const existing = listStaffCards().find(
+            (c) =>
+              String(c.facilityId || '').toUpperCase() === effectiveHospital.id.toUpperCase() &&
+              c.roleKey === 'hospital_admin'
+          );
+          if (existing) {
+            const created = resolveStaffByBadge(existing.badgeId);
+            if (created) {
               matchedStaff = {
-                badgeId: prov.badgeId,
-                name: created?.name || `${shortName} Administrator`,
-                role: created?.role || 'Hospital Administrator',
+                badgeId: created.badgeId,
+                name: created.name,
+                role: created.role,
                 shortRole: 'Admin',
-                title: created?.title || 'Hospital Administrator',
+                title: created.title,
                 roleKey: 'hospital_admin',
-                clearanceLevel: created?.clearanceLevel ?? 5,
-                clearanceLabel: created?.clearanceLabel || 'Administrator',
-                department: created?.department || 'Hospital Management',
-                initials: created?.initials || 'HA',
-                permissions: created?.permissions || [
-                  'dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing',
-                  'enrolment', 'my-card', 'cashier', 'rbac', 'sysadmin', 'ai',
-                ],
-                pin: prov.pin || PLATFORM_ADMIN.password,
+                clearanceLevel: created.clearanceLevel,
+                clearanceLabel: created.clearanceLabel,
+                department: created.department,
+                initials: created.initials,
+                permissions: created.permissions,
+                pin: created.pin,
                 hospitalId: effectiveHospital.id,
                 hospitalName: effectiveHospital.name,
                 color: '#EA580C',
               };
             }
           }
-
-          if (!matchedStaff) {
-            // Prefer existing facility admin for this hospital over global bootstrap
-            try {
-              const { listStaffCards, resolveStaffByBadge: resolveBadge } = await import('../../lib/staffCardStore');
-              const existing = listStaffCards().find(
-                (c) =>
-                  String(c.facilityId || '').toUpperCase() === effectiveHospital.id.toUpperCase() &&
-                  c.roleKey === 'hospital_admin'
-              );
-              if (existing) {
-                const created = resolveBadge(existing.badgeId);
-                if (created) {
-                  matchedStaff = {
-                    badgeId: created.badgeId,
-                    name: created.name,
-                    role: created.role,
-                    shortRole: 'Admin',
-                    title: created.title,
-                    roleKey: created.roleKey,
-                    clearanceLevel: created.clearanceLevel,
-                    clearanceLabel: created.clearanceLabel,
-                    department: created.department,
-                    initials: created.initials,
-                    permissions: created.permissions,
-                    pin: created.pin,
-                    hospitalId: effectiveHospital.id,
-                    hospitalName: effectiveHospital.name,
-                    color: '#EA580C',
-                  };
-                }
-              }
-            } catch { /* ignore */ }
-          }
-          if (!matchedStaff) {
-            const adminStaff = staffRegistry.find((s) => s.badgeId === PLATFORM_ADMIN.badgeId);
-            matchedStaff = adminStaff;
-            // Re-bind session to selected facility even if using global bootstrap profile
-            if (matchedStaff) {
-              matchedStaff = {
-                ...matchedStaff,
-                hospitalId: effectiveHospital.id,
-                hospitalName: effectiveHospital.name,
-                roleKey: 'hospital_admin',
-                role: 'Hospital Administrator',
-                title: 'Hospital Administrator',
-              };
-            }
-          }
-        } else {
-          matchedStaff = detectedStaff ?? undefined;
         }
 
-        if (!matchedStaff && email.toLowerCase() === adminEmail) {
-          // Last resort: synthetic facility admin so first login on any hospital never fails
-          const shortName = effectiveHospital.name.split(',')[0].trim();
+        // Match enrolled staff by work email in registry
+        if (!matchedStaff) {
+          try {
+            const raw = localStorage.getItem('medcore_os_staff_registry');
+            const arr = raw ? JSON.parse(raw) : [];
+            if (Array.isArray(arr)) {
+              const hit = arr.find(
+                (r: any) =>
+                  String(r.email || r.workEmail || '').toLowerCase() === email &&
+                  String(r.hospitalId || r.facilityId || '').toUpperCase() ===
+                    effectiveHospital.id.toUpperCase()
+              );
+              if (hit) {
+                matchedStaff = {
+                  badgeId: hit.badgeId || hit.id,
+                  name: hit.name || hit.fullName || email,
+                  role: hit.role || 'Staff',
+                  shortRole: hit.shortRole || hit.role || 'Staff',
+                  title: hit.title || hit.role || 'Staff',
+                  roleKey: hit.roleKey || 'doctor',
+                  clearanceLevel: hit.clearanceLevel ?? 2,
+                  clearanceLabel: hit.clearanceLabel || 'L2',
+                  department: hit.department || '',
+                  initials: hit.initials || 'ST',
+                  permissions: hit.permissions || ['dashboard'],
+                  pin: hit.pin || pass,
+                  hospitalId: effectiveHospital.id,
+                  hospitalName: effectiveHospital.name,
+                  color: '#0052D4',
+                };
+              }
+            }
+          } catch { /* ignore */ }
+        }
+
+        if (!matchedStaff && (isBootstrapAdmin || facilityEmpty || fbUser)) {
           matchedStaff = {
             badgeId: `${effectiveHospital.id.toUpperCase()}-ADM-001`,
-            name: `${shortName} Administrator`,
+            name: adminFullName.replace(/\b\w/g, (c: string) => c.toUpperCase()),
             role: 'Hospital Administrator',
             shortRole: 'Admin',
             title: 'Hospital Administrator',
@@ -935,44 +959,29 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               'dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing',
               'enrolment', 'my-card', 'cashier', 'rbac', 'sysadmin', 'ai',
             ],
-            pin: PLATFORM_ADMIN.password,
+            pin: pass,
             hospitalId: effectiveHospital.id,
             hospitalName: effectiveHospital.name,
             color: '#EA580C',
           };
-          try {
-            const { provisionFacilityAdmin } = await import('../../lib/staffCardStore');
-            provisionFacilityAdmin(
-              { id: effectiveHospital.id, name: effectiveHospital.name },
-              { pin: PLATFORM_ADMIN.password, fullName: matchedStaff.name }
-            );
-          } catch { /* already attempted */ }
         }
+
         if (!matchedStaff) {
-          setError(
-            'No staff profile linked to this email. Use Sign in with ID No. or ask admin to enrol you.'
-          );
+          setError('No staff profile for this email at the selected hospital. Use Sign in with ID No. or ask your administrator to enrol you.');
           setLoading(false);
           return;
         }
 
         const displayName =
-          email.toLowerCase() === adminEmail
-            ? PLATFORM_ADMIN.name
-            : (fbUser?.displayName || matchedStaff.name);
+          matchedStaff.name ||
+          fbUser?.displayName ||
+          email.split('@')[0];
         const initials = displayName
           .split(/\s+/)
-          .map((part) => part[0])
+          .map((part: string) => part[0])
           .join('')
           .slice(0, 2)
           .toUpperCase();
-
-        // Non-admin email login still requires Firebase user
-        if (!fbUser && email.toLowerCase() !== adminEmail) {
-          setError('Invalid email or password. Ask your administrator to enrol you, or use Sign in with ID No.');
-          setLoading(false);
-          return;
-        }
 
         const session: UserSession = {
           id: fbUser?.uid || matchedStaff.badgeId || `local-${Date.now().toString(36)}`,
@@ -988,10 +997,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           clearanceLabel: matchedStaff.clearanceLabel,
           clearanceLevel: matchedStaff.clearanceLevel,
           permissions: matchedStaff.permissions,
-          authMethod: fbUser ? 'Firebase' : 'Local admin',
+          authMethod: fbUser ? 'Firebase' : 'Local',
           token: fbUser
             ? await withTimeout(fbUser.getIdToken(), 4000).catch(() => `EMAIL-${Date.now().toString(36)}`)
-            : `LOCAL-ADMIN-${Date.now().toString(36)}`,
+            : `LOCAL-${Date.now().toString(36)}`,
           loginTime: new Date().toLocaleTimeString('en-GB', {
             hour: '2-digit',
             minute: '2-digit',
