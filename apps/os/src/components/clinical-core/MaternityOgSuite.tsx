@@ -113,8 +113,7 @@ export const MaternityOgSuite: React.FC = () => {
   };
 
   return (
-    <div
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <SharedBedStrip
         facilityId="IGH-EKT"
         wardFilter={['Maternity']}

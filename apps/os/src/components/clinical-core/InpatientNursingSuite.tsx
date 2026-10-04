@@ -56,8 +56,7 @@ export const InpatientNursingSuite: React.FC = () => {
   const overdueCount = items.filter(i => i.status === 'overdue').length;
 
   return (
-    <div
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <SharedBedStrip
         facilityId="IGH-EKT"
         wardFilter={['Male Medical', 'Female Medical', 'Surgical', 'ICU', 'Paediatrics']}
