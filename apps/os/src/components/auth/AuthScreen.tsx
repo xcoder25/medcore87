@@ -756,7 +756,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             }
           }
         } else {
-          matchedStaff = detectedStaff;
+          matchedStaff = detectedStaff ?? undefined;
         }
 
         if (!matchedStaff) {
