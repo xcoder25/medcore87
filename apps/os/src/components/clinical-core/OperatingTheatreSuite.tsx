@@ -38,7 +38,7 @@ export const OperatingTheatreSuite: React.FC = () => {
     setTimeout(() => setNotice(null), 3500);
   };
 
-  const selectedCase = cases.find(c => c.id === selectedId) || cases[0];
+  const selectedCase = cases.find(c => c.id === selectedId) || cases[0] || null;
 
   const handleUpdateStatus = (id: string, newStatus: SurgicalCase['status']) => {
     setCases(prev => prev.map(c => c.id === id ? { ...c, status: newStatus } : c));
@@ -221,26 +221,26 @@ export const OperatingTheatreSuite: React.FC = () => {
                 Active Operating Suite Live Card
               </div>
               <span style={{ fontSize: '0.72rem', color: '#D97706', fontWeight: 700 }}>
-                {selectedCase.theatreNumber.split('(')[0]}
+                {selectedCase?.theatreNumber ?? '—'.split('(')[0]}
               </span>
             </div>
 
-            <h3 style={{ margin: '0 0 4px 0', fontSize: '1.2rem', color: '#0A2540' }}>{selectedCase.procedure}</h3>
-            <div style={{ fontSize: '0.85rem', color: 'var(--os-text-muted)' }}>Patient: <strong>{selectedCase.patientName}</strong></div>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '1.2rem', color: '#0A2540' }}>{selectedCase?.procedure ?? 'No case selected'}</h3>
+            <div style={{ fontSize: '0.85rem', color: 'var(--os-text-muted)' }}>Patient: <strong>{selectedCase?.patientName ?? '—'}</strong></div>
 
             <div style={{ margin: '14px 0', padding: 12, background: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.78rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--os-text-dim)' }}>Lead Surgeon:</span>
-                <span style={{ fontWeight: 700, color: '#0A2540' }}>{selectedCase.leadSurgeon}</span>
+                <span style={{ fontWeight: 700, color: '#0A2540' }}>{selectedCase?.leadSurgeon ?? '—'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--os-text-dim)' }}>Anesthesiologist:</span>
-                <span style={{ fontWeight: 700, color: '#0A2540' }}>{selectedCase.anesthetist}</span>
+                <span style={{ fontWeight: 700, color: '#0A2540' }}>{selectedCase?.anesthetist ?? '—'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--os-text-dim)' }}>Blood Bank Cross-match:</span>
-                <span style={{ fontWeight: 700, color: selectedCase.bloodUnitsCrossmatched > 0 ? '#059669' : '#64748B' }}>
-                  {selectedCase.bloodUnitsCrossmatched} Units PRBC Standby
+                <span style={{ fontWeight: 700, color: (selectedCase?.bloodUnitsCrossmatched ?? 0) > 0 ? '#059669' : '#64748B' }}>
+                  {(selectedCase?.bloodUnitsCrossmatched ?? 0)} Units PRBC Standby
                 </span>
               </div>
             </div>
@@ -251,47 +251,47 @@ export const OperatingTheatreSuite: React.FC = () => {
                 <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>
                   WHO Surgical Safety Protocol (Tap to Verify)
                 </span>
-                <span style={{ fontSize: '0.7rem', color: selectedCase.whoChecklistCompleted ? '#059669' : '#D97706', fontWeight: 700 }}>
-                  {selectedCase.whoChecklistCompleted ? 'ALL COMPLETED' : 'INCOMPLETE'}
+                <span style={{ fontSize: '0.7rem', color: (selectedCase?.whoChecklistCompleted ?? false) ? '#059669' : '#D97706', fontWeight: 700 }}>
+                  {(selectedCase?.whoChecklistCompleted ?? false) ? 'ALL COMPLETED' : 'INCOMPLETE'}
                 </span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div
-                  onClick={() => handleToggleChecklist(selectedCase.id, 'signIn')}
+                  onClick={() => handleToggleChecklist((selectedCase?.id ?? ''), 'signIn')}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 12px', background: selectedCase.signInDone ? '#ECFDF5' : '#F8FAFC',
-                    border: `1px solid ${selectedCase.signInDone ? '#A7F3D0' : '#E2E8F0'}`,
-                    borderRadius: 6, fontSize: '0.76rem', color: selectedCase.signInDone ? '#059669' : '#64748B',
+                    padding: '8px 12px', background: (selectedCase?.signInDone ?? false) ? '#ECFDF5' : '#F8FAFC',
+                    border: `1px solid ${(selectedCase?.signInDone ?? false) ? '#A7F3D0' : '#E2E8F0'}`,
+                    borderRadius: 6, fontSize: '0.76rem', color: (selectedCase?.signInDone ?? false) ? '#059669' : '#64748B',
                     fontWeight: 700, cursor: 'pointer',
                   }}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <CheckCircle2 size={14} color={selectedCase.signInDone ? '#059669' : '#94A3B8'} />
+                    <CheckCircle2 size={14} color={(selectedCase?.signInDone ?? false) ? '#059669' : '#94A3B8'} />
                     SIGN IN (Before Induction of Anaesthesia)
                   </span>
-                  <span>{selectedCase.signInDone ? 'VERIFIED' : 'CLICK TO CHECK'}</span>
+                  <span>{(selectedCase?.signInDone ?? false) ? 'VERIFIED' : 'CLICK TO CHECK'}</span>
                 </div>
 
                 <div
-                  onClick={() => handleToggleChecklist(selectedCase.id, 'timeOut')}
+                  onClick={() => handleToggleChecklist((selectedCase?.id ?? ''), 'timeOut')}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 12px', background: selectedCase.timeOutDone ? '#ECFDF5' : '#F8FAFC',
-                    border: `1px solid ${selectedCase.timeOutDone ? '#A7F3D0' : '#E2E8F0'}`,
-                    borderRadius: 6, fontSize: '0.76rem', color: selectedCase.timeOutDone ? '#059669' : '#64748B',
+                    padding: '8px 12px', background: (selectedCase?.timeOutDone ?? false) ? '#ECFDF5' : '#F8FAFC',
+                    border: `1px solid ${(selectedCase?.timeOutDone ?? false) ? '#A7F3D0' : '#E2E8F0'}`,
+                    borderRadius: 6, fontSize: '0.76rem', color: (selectedCase?.timeOutDone ?? false) ? '#059669' : '#64748B',
                     fontWeight: 700, cursor: 'pointer',
                   }}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <CheckCircle2 size={14} color={selectedCase.timeOutDone ? '#059669' : '#94A3B8'} />
+                    <CheckCircle2 size={14} color={(selectedCase?.timeOutDone ?? false) ? '#059669' : '#94A3B8'} />
                     TIME OUT (Before Skin Incision)
                   </span>
-                  <span>{selectedCase.timeOutDone ? 'VERIFIED' : 'CLICK TO CHECK'}</span>
+                  <span>{(selectedCase?.timeOutDone ?? false) ? 'VERIFIED' : 'CLICK TO CHECK'}</span>
                 </div>
 
                 <div
-                  onClick={() => handleToggleChecklist(selectedCase.id, 'signOut')}
+                  onClick={() => handleToggleChecklist((selectedCase?.id ?? ''), 'signOut')}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '8px 12px', background: selectedCase.signOutDone ? '#ECFDF5' : '#F8FAFC',
@@ -316,7 +316,7 @@ export const OperatingTheatreSuite: React.FC = () => {
                   type="button"
                   className="os-action-btn-primary"
                   style={{ width: '100%', justifyContent: 'center' }}
-                  onClick={() => handleUpdateStatus(selectedCase.id, 'in_surgery')}
+                  onClick={() => handleUpdateStatus((selectedCase?.id ?? ''), 'in_surgery')}
                 >
                   <Play size={14} /> Begin Surgical Procedure
                 </button>
@@ -326,7 +326,7 @@ export const OperatingTheatreSuite: React.FC = () => {
                   type="button"
                   className="os-action-btn-primary"
                   style={{ width: '100%', justifyContent: 'center', background: '#3B82F6' }}
-                  onClick={() => handleUpdateStatus(selectedCase.id, 'pacu')}
+                  onClick={() => handleUpdateStatus((selectedCase?.id ?? ''), 'pacu')}
                 >
                   <CheckCircle2 size={14} /> Transfer to Recovery (PACU)
                 </button>
@@ -336,7 +336,7 @@ export const OperatingTheatreSuite: React.FC = () => {
                   type="button"
                   className="os-action-btn-primary"
                   style={{ width: '100%', justifyContent: 'center', background: '#10B981' }}
-                  onClick={() => handleUpdateStatus(selectedCase.id, 'completed')}
+                  onClick={() => handleUpdateStatus((selectedCase?.id ?? ''), 'completed')}
                 >
                   <CheckCircle2 size={14} /> Discharge to Inpatient Ward
                 </button>

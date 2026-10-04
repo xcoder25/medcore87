@@ -15,7 +15,7 @@ export const CriticalCareIcuSuite: React.FC = () => {
   const [stations, setStations] = useState<ICUStation[]>(INITIAL_STATIONS);
   const [selectedId, setSelectedId] = useState<string>('');
 
-  const selectedStation = stations.find(s => s.id === selectedId) || stations[0];
+  const selectedStation = stations.find(s => s.id === selectedId) || stations[0] || null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -107,14 +107,14 @@ export const CriticalCareIcuSuite: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
               <div>
                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--os-text-dim)', textTransform: 'uppercase' }}>
-                  {selectedStation.stationNumber}
+                  {(selectedStation?.stationNumber ?? '—')}
                 </div>
-                <h2 style={{ margin: '4px 0 2px 0', fontSize: '1.35rem', color: '#0A2540' }}>{selectedStation.patientName}</h2>
-                <div style={{ fontSize: '0.84rem', color: 'var(--os-text-muted)' }}>{selectedStation.diagnosis}</div>
+                <h2 style={{ margin: '4px 0 2px 0', fontSize: '1.35rem', color: '#0A2540' }}>{(selectedStation?.patientName ?? '—')}</h2>
+                <div style={{ fontSize: '0.84rem', color: 'var(--os-text-muted)' }}>{(selectedStation?.diagnosis ?? '—')}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)' }}>Assigned Nurse</span>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0A2540' }}>{selectedStation.nurseOnDuty}</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0A2540' }}>{(selectedStation?.nurseOnDuty ?? '—')}</div>
               </div>
             </div>
 
@@ -122,28 +122,28 @@ export const CriticalCareIcuSuite: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, margin: '16px 0' }}>
               <div style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: 10, padding: 12, textAlign: 'center' }}>
                 <span style={{ fontSize: '0.68rem', color: '#93C5FD', fontWeight: 700 }}>VENTILATOR MODE</span>
-                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0A2540', marginTop: 4 }}>{selectedStation.ventilatorMode.split('(')[0]}</div>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0A2540', marginTop: 4 }}>{String(selectedStation?.ventilatorMode || '—').split('(')[0]}</div>
                 <span style={{ fontSize: '0.7rem', color: '#60A5FA' }}>Hamilton C6 Synced</span>
               </div>
 
               <div style={{ background: 'rgba(234,88,12,0.1)', border: '1px solid rgba(234,88,12,0.25)', borderRadius: 10, padding: 12, textAlign: 'center' }}>
                 <span style={{ fontSize: '0.68rem', color: 'var(--ak-orange-light)', fontWeight: 700 }}>FiO2 & PEEP</span>
                 <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0A2540', marginTop: 2 }}>
-                  {selectedStation.fio2}% <span style={{ fontSize: '0.8rem', color: 'var(--os-text-dim)' }}>/ {selectedStation.peep} cmH2O</span>
+                  {(selectedStation?.fio2 ?? '—')}% <span style={{ fontSize: '0.8rem', color: 'var(--os-text-dim)' }}>/ {(selectedStation?.peep ?? '—')} cmH2O</span>
                 </div>
                 <span style={{ fontSize: '0.7rem', color: 'var(--ak-orange-light)' }}>Target PaO2 &gt; 65</span>
               </div>
 
               <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, padding: 12, textAlign: 'center' }}>
                 <span style={{ fontSize: '0.68rem', color: '#FCA5A5', fontWeight: 700 }}>ARTERIAL PRESSURE</span>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0A2540', marginTop: 2 }}>{selectedStation.arterialPressure}</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0A2540', marginTop: 2 }}>{(selectedStation?.arterialPressure ?? '—')}</div>
                 <span style={{ fontSize: '0.7rem', color: '#EF4444' }}>Radial A-Line Continuous</span>
               </div>
 
               <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 10, padding: 12, textAlign: 'center' }}>
                 <span style={{ fontSize: '0.68rem', color: '#6EE7B7', fontWeight: 700 }}>SOFA / GCS</span>
                 <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0A2540', marginTop: 2 }}>
-                  {selectedStation.sofaScore} <span style={{ fontSize: '0.8rem', color: 'var(--os-text-dim)' }}>/ GCS {selectedStation.gcsScore}</span>
+                  {(selectedStation?.sofaScore ?? '—')} <span style={{ fontSize: '0.8rem', color: 'var(--os-text-dim)' }}>/ GCS {(selectedStation?.gcsScore ?? '—')}</span>
                 </div>
                 <span style={{ fontSize: '0.7rem', color: '#10B981' }}>Organ Dysfunction Score</span>
               </div>
@@ -176,7 +176,7 @@ export const CriticalCareIcuSuite: React.FC = () => {
               <button
                 type="button"
                 className="os-action-btn-primary"
-                onClick={() => liveAlert(`ABG (Arterial Blood Gas) ordered for ${selectedStation.patientName}. Point-of-care analyzer flagged.`)}
+                onClick={() => liveAlert(`ABG (Arterial Blood Gas) ordered for ${(selectedStation?.patientName ?? '—')}. Point-of-care analyzer flagged.`)}
               >
                 <Activity size={14} /> Run STAT Bedside ABG
               </button>
