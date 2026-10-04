@@ -28,10 +28,39 @@ export const EmergencyTriageSuite: React.FC = () => {
   const selectedPatient = patients.find(p => p.id === selectedId) || patients[0];
 
   const filteredPatients = patients.filter(p => {
-    const matchesSearch = p.patientName.toLowerCase().includes(search.toLowerCase()) || p.id.toLowerCase().includes(search.toLowerCase());
+    const name = (p.patientName || '').toLowerCase();
+    const id = (p.id || '').toLowerCase();
+    const q = search.toLowerCase();
+    const matchesSearch = !q || name.includes(q) || id.includes(q);
     const matchesEsi = esiFilter === 'ALL' || p.esiLevel === esiFilter;
     return matchesSearch && matchesEsi;
   });
+
+  const registerArrival = () => {
+    const n = patients.length + 1;
+    const esi = (n % 5 === 0 ? 1 : n % 3 === 0 ? 2 : 3) as 1 | 2 | 3 | 4 | 5;
+    const p: EmergencyTriagePatient = {
+      id: `AE-${String(n).padStart(4, '0')}`,
+      patientName: `Walk-in Patient ${n}`,
+      age: 20 + (n % 50),
+      gender: n % 2 === 0 ? 'F' : 'M',
+      esiLevel: esi,
+      chiefComplaint: esi <= 2 ? 'Chest pain / distress' : 'Fever and body ache',
+      vitals: {
+        bp: esi <= 2 ? '90/60' : '120/80',
+        pulse: esi <= 2 ? 118 : 88,
+        spo2: esi <= 2 ? 91 : 98,
+        temp: 37.2 + (n % 3) * 0.4,
+        rr: esi <= 2 ? 28 : 18,
+      },
+      arrivalTime: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      bayAssigned: esi === 1 ? 'Resus 1' : esi === 2 ? 'Trauma Bay' : `Triage ${n}`,
+      status: esi === 1 ? 'resuscitation' : 'triage',
+    };
+    setPatients(prev => [p, ...prev]);
+    setSelectedId(p.id);
+    liveAlert(`A&E arrival registered: ${p.patientName} · ESI ${p.esiLevel}`);
+  };
 
   const resusCount = patients.filter(p => p.esiLevel === 1).length;
   const emergentCount = patients.filter(p => p.esiLevel === 2).length;
@@ -91,6 +120,14 @@ export const EmergencyTriageSuite: React.FC = () => {
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
+            <button
+              type="button"
+              className="os-action-btn-primary"
+              onClick={registerArrival}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
+            >
+              <UserPlus size={14} /> Register Arrival
+            </button>
             <div style={{ display: 'flex', gap: 6 }}>
               {(['ALL', 1, 2, 3, 4] as const).map(lvl => (
                 <button
@@ -114,7 +151,7 @@ export const EmergencyTriageSuite: React.FC = () => {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {filteredPatients.map(p => {
-              const esi = ESI_BADGE[p.esiLevel];
+              const esi = ESI_BADGE[p.esiLevel] || ESI_BADGE[3];
               const isSelected = p.id === selectedId;
               return (
                 <div
@@ -157,6 +194,13 @@ export const EmergencyTriageSuite: React.FC = () => {
                 </div>
               );
             })}
+            {filteredPatients.length === 0 && (
+              <div className="os-card" style={{ padding: 24, textAlign: 'center', color: 'var(--os-text-dim)' }}>
+                <ShieldAlert size={28} style={{ marginBottom: 8, opacity: 0.5 }} />
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>No patients in A&E triage queue</div>
+                <div style={{ fontSize: '0.8rem' }}>New arrivals will appear here in realtime. Use &quot;Register Arrival&quot; when a patient presents.</div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -164,17 +208,17 @@ export const EmergencyTriageSuite: React.FC = () => {
         <div className="os-card" style={{ display: 'flex', flexDirection: 'column', gap: 16, height: 'fit-content' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--os-border)', paddingBottom: 12 }}>
             <div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 8px', borderRadius: 4, background: ESI_BADGE[selectedPatient.esiLevel].color, color: '#FFF', fontSize: '0.7rem', fontWeight: 800, marginBottom: 6 }}>
-                {ESI_BADGE[selectedPatient.esiLevel].label}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 8px', borderRadius: 4, background: ESI_BADGE[selectedPatient?.esiLevel ?? 3]?.color ?? '#EAB308', color: '#FFF', fontSize: '0.7rem', fontWeight: 800, marginBottom: 6 }}>
+                {ESI_BADGE[selectedPatient?.esiLevel ?? 3]?.label ?? 'ESI —'}
               </div>
-              <h3 style={{ margin: '2px 0', fontSize: '1.2rem', color: '#0A2540' }}>{selectedPatient.patientName}</h3>
-              <span style={{ fontSize: '0.75rem', color: 'var(--os-text-dim)' }}>ID: {selectedPatient.id} � Assigned to: {selectedPatient.bayAssigned}</span>
+              <h3 style={{ margin: '2px 0', fontSize: '1.2rem', color: '#0A2540' }}>{selectedPatient?.patientName ?? 'No patient selected'}</h3>
+              <span style={{ fontSize: '0.75rem', color: 'var(--os-text-dim)' }}>ID: {selectedPatient?.id ?? '—'} � Assigned to: {selectedPatient?.bayAssigned ?? 'Unassigned'}</span>
             </div>
             <button
               type="button"
               className="os-ghost-btn"
               style={{ color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)', padding: '6px 10px', fontSize: '0.72rem' }}
-              onClick={() => liveAlert(`CRITICAL CODE ACTIVATED for ${selectedPatient.patientName}`)}
+              onClick={() => liveAlert(`CRITICAL CODE ACTIVATED for ${selectedPatient?.patientName ?? 'No patient selected'}`)}
             >
               <ShieldAlert size={14} /> Trigger Code Blue
             </button>
@@ -190,13 +234,13 @@ export const EmergencyTriageSuite: React.FC = () => {
               </div>
               <div style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: 8, textAlign: 'center' }}>
                 <span style={{ fontSize: '0.65rem', color: 'var(--os-text-dim)' }}>Heart Rate</span>
-                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: selectedPatient?.vitals?.pulse > 100 ? '#F87171' : '#FFF' }}>
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: (selectedPatient?.vitals?.pulse ?? 0) > 100 ? '#F87171' : '#0A2540' }}>
                   {selectedPatient?.vitals?.pulse} bpm
                 </div>
               </div>
               <div style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: 8, textAlign: 'center' }}>
                 <span style={{ fontSize: '0.65rem', color: 'var(--os-text-dim)' }}>Oxygen Sat</span>
-                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: selectedPatient?.vitals?.spo2 < 92 ? '#EF4444' : '#34D399' }}>
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: (selectedPatient?.vitals?.spo2 ?? 100) < 92 ? '#EF4444' : '#34D399' }}>
                   {selectedPatient?.vitals?.spo2}%
                 </div>
               </div>
@@ -227,7 +271,7 @@ export const EmergencyTriageSuite: React.FC = () => {
               type="button"
               className="os-action-btn-primary"
               style={{ flex: 1, justifyContent: 'center' }}
-              onClick={() => liveAlert(`Transferring ${selectedPatient.patientName} to Intensive Care Unit (ICU)`)}
+              onClick={() => liveAlert(`Transferring ${selectedPatient?.patientName ?? 'No patient selected'} to Intensive Care Unit (ICU)`)}
             >
               <BedDouble size={14} /> Admit to Ward / ICU
             </button>

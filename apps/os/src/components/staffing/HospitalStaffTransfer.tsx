@@ -91,16 +91,49 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
   const [transferring, setTransferring] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  // Normalize registry / card shapes into StaffMember (prevents crash on missing fields)
+  const normalizeStaff = (raw: Record<string, unknown>): StaffMember => {
+    const name = String(raw.name || raw.fullName || 'Staff');
+    const initials =
+      String(raw.avatarInitials || raw.initials || '') ||
+      name
+        .split(/\s+/)
+        .map((p) => p[0] || '')
+        .join('')
+        .slice(0, 2)
+        .toUpperCase() ||
+      'ST';
+    const statusRaw = String(raw.status || 'active').toLowerCase();
+    const status: StaffMember['status'] =
+      statusRaw === 'on-leave' || statusRaw === 'pending-transfer' ? (statusRaw as StaffMember['status']) : 'active';
+    return {
+      id: String(raw.id || raw.badgeId || `STF-${Math.random().toString(36).slice(2, 8)}`),
+      name,
+      role: String(raw.role || raw.title || 'Staff'),
+      roleKey: String(raw.roleKey || ''),
+      department: String(raw.department || '—'),
+      hospitalId: String(raw.hospitalId || raw.facilityId || ''),
+      hospitalName: String(raw.hospitalName || raw.facilityName || '—'),
+      status,
+      joinDate: String(raw.joinDate || raw.issuedAt || raw.registeredAt || '—'),
+      avatarInitials: initials.slice(0, 2),
+      accentColor: String(raw.accentColor || raw.color || '#0052D4'),
+    };
+  };
+
   // Sync with localStorage on mount
   useEffect(() => {
     try {
       const savedStaff = localStorage.getItem('medcore_os_staff_registry');
       if (savedStaff) {
-        setStaff(JSON.parse(savedStaff));
+        const parsed = JSON.parse(savedStaff);
+        const list = Array.isArray(parsed) ? parsed : [];
+        setStaff(list.map((r: Record<string, unknown>) => normalizeStaff(r || {})));
       }
       const savedTransfers = localStorage.getItem('medcore_os_transfers');
       if (savedTransfers) {
-        setTransfers(JSON.parse(savedTransfers));
+        const parsed = JSON.parse(savedTransfers);
+        setTransfers(Array.isArray(parsed) ? parsed : []);
       }
     } catch (e) {
       console.error(e);
@@ -156,7 +189,8 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
     if (!selectedStaff || !targetHospitalId || !effectiveDate || !transferReason) return;
     setTransferring(true);
     setTimeout(() => {
-      const targetHosp = HOSPITALS.find(h => h.id === targetHospitalId)!;
+      const targetHosp = HOSPITALS.find(h => h.id === targetHospitalId);
+      if (!targetHosp) { showToast('Select a destination hospital'); setTransferring(false); return; }
       const newTransfer: TransferRecord = {
         id: `TRF-${String(transfers.length + 92).padStart(4, '0')}`,
         staffId: selectedStaff.id,
@@ -314,9 +348,12 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
 
   // Filtered staff
   const filteredStaff = staff.filter(s => {
-
     const q = search.toLowerCase();
-    const matchSearch = !q || s.name.toLowerCase().includes(q) || s.role.toLowerCase().includes(q) || s.department.toLowerCase().includes(q) || s.id.toLowerCase().includes(q);
+    const name = (s.name || '').toLowerCase();
+    const role = (s.role || '').toLowerCase();
+    const dept = (s.department || '').toLowerCase();
+    const id = (s.id || '').toLowerCase();
+    const matchSearch = !q || name.includes(q) || role.includes(q) || dept.includes(q) || id.includes(q);
     const matchHosp = filterHospital === 'all' || s.hospitalId === filterHospital;
     return matchSearch && matchHosp;
   });
@@ -454,7 +491,7 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
               </thead>
               <tbody>
                 {filteredStaff.map(member => {
-                  const sc = STATUS_CONFIG[member.status];
+                  const sc = STATUS_CONFIG[member.status] || STATUS_CONFIG.active;
                   return (
                     <tr key={member.id} className="transfer-row" style={{ background: 'transparent', transition: 'background 0.15s' }}>
                       <td>
@@ -486,7 +523,7 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
                           </span>
                         </div>
                         <div style={{ fontSize: '0.7rem', color: '#4B5563', marginTop: 2 }}>
-                          {member.hospitalName.length > 30 ? member.hospitalName.slice(0, 30) + '…' : member.hospitalName}
+                          {(member.hospitalName || '—').length > 30 ? (member.hospitalName || '').slice(0, 30) + '…' : (member.hospitalName || '—')}
                         </div>
                       </td>
                       <td>
