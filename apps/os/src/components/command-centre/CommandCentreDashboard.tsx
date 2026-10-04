@@ -10,6 +10,8 @@ import { listUnits, ensureDefaultFleet, subscribeAmbulance } from '../../lib/amb
 import { dayStats, todayVisits, subscribeReceptionOps } from '../../lib/receptionOpsStore';
 import { getStaffRegistry, subscribeAdminSync, getActiveFacilityId } from '../../lib/adminRealtimeStore';
 import { emitLiveAction } from '../../lib/liveActions';
+import { buildOpsIntelligence } from '../../lib/opsIntelligence';
+import { scanEarlyWarnings } from '../../lib/clinicalEarlyWarning';
 
 export const CommandCentreDashboard: React.FC = () => {
   const facilityId = (typeof window !== 'undefined' && getActiveFacilityId()) || 'IGH-EKT';
@@ -113,6 +115,34 @@ export const CommandCentreDashboard: React.FC = () => {
             </div>
           );
         })}
+      </div>
+
+      <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', padding: 16 }}>
+        <div style={{ fontWeight: 800, marginBottom: 10 }}>AI operational recommendations</div>
+        <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10 }}>From live queues, beds, lab/Rx — assistive only</div>
+        {buildOpsIntelligence(facilityId).map((r) => (
+          <div
+            key={r.id}
+            style={{
+              padding: '10px 12px',
+              marginBottom: 8,
+              borderRadius: 12,
+              border: '1px solid #E2E8F0',
+              background:
+                r.level === 'critical' ? '#FEF2F2' : r.level === 'warn' ? '#FFFBEB' : r.level === 'ok' ? '#ECFDF5' : '#F8FAFC',
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 13 }}>{r.title}</div>
+            <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>{r.detail}</div>
+            {r.action && <div style={{ fontSize: 11, color: '#2563EB', marginTop: 4 }}>{r.action}</div>}
+          </div>
+        ))}
+        {scanEarlyWarnings(facilityId).slice(0, 5).map((w) => (
+          <div key={w.id} style={{ fontSize: 12, padding: '6px 0', borderTop: '1px solid #F1F5F9' }}>
+            <strong style={{ color: w.level === 'high' ? '#DC2626' : '#D97706' }}>{w.level.toUpperCase()}</strong>
+            {' · '}{w.patientName}: {w.message}
+          </div>
+        ))}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 16 }}>

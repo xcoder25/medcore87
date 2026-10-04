@@ -24,6 +24,7 @@ import { FrontDeskSettings } from '../components/reception/FrontDeskSettings';
 import { FacilityOnboarding } from '../components/facility/FacilityOnboarding';
 import { AuthIdentity } from '../components/auth/AuthIdentity';
 import { DigitalPatientCard } from '../components/patient-card/DigitalPatientCard';
+import { Patient360View } from '../components/patients/Patient360View';
 import { HospitalStaffTransfer } from '../components/staffing/HospitalStaffTransfer';
 import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 
@@ -87,7 +88,7 @@ export type ModuleKey =
   | 'm87-ai' | 'ai'
   // Pillar 2: Core
   | 'emr' | 'emergency' | 'theatre' | 'icu' | 'pharmacy' | 'laboratory' | 'radiology'
-  | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'patient-card'
+  | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'patient-card' | 'patient-360'
   // Pillar 3: Operations
   | 'command' | 'beds' | 'patient-flow' | 'appointments' | 'staffing' | 'ambulance'
   | 'inventory' | 'biomedical' | 'facilities' | 'environmental'
@@ -223,6 +224,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: 'Physician Command',
           items: [
             { key: 'doctor-portal', icon: Stethoscope, label: 'Doctor Clinical Portal', badge: 'Live' },
+            { key: 'patient-360', icon: Users, label: 'Patient 360°', badge: 'Chart' },
             { key: 'dashboard', icon: LayoutDashboard, label: 'Role Overview Dashboard' },
             { key: 'm87-ai', icon: Brain, label: 'Clinical assistant', badge: 'AI' },
             { key: 'ai', icon: Sparkles, label: 'Decision Support & SOAP', badge: 'AI' },
@@ -449,6 +451,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'patient-card', icon: FileText, label: 'Register / Find patient' },
             { key: 'appointments', icon: Calendar, label: 'Appointments' },
             { key: 'cashier', icon: CreditCard, label: 'Payments' },
+            { key: 'patient-360', icon: Users, label: 'Patient 360°' },
             { key: 'patient-card', icon: FileText, label: 'Patient records' },
           ],
         },
@@ -742,6 +745,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   'blood-bank': BloodBankSuite,
   nursing: InpatientNursingSuite,
   'patient-card': DigitalPatientCard,
+  'patient-360': Patient360View as any,
   command: CommandCentreDashboard,
   beds: BedManagement,
   'patient-flow': PatientFlowVisibility,
@@ -790,6 +794,7 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   'blood-bank': { level: 2, label: 'L2 Support', roleDesc: 'Hematology Technicians & Blood Bank Officers' },
   nursing: { level: 3, label: 'L3 Clinical', roleDesc: 'Inpatient Ward Nurses & Sisters' },
   'patient-card': { level: 1, label: 'L2 Support', roleDesc: 'Records & Front Desk Officers' },
+  'patient-360': { level: 2, label: 'L2 Clinical & Records', roleDesc: 'Longitudinal patient profile' },
   command: { level: 2, label: 'L2 Support', roleDesc: 'General Hospital Staff & Floor Duty' },
   beds: { level: 3, label: 'L3 Clinical', roleDesc: 'Bed Managers & Ward Supervisors' },
   'patient-flow': { level: 1, label: 'L3 Clinical', roleDesc: 'Patient Flow Coordinators' },
