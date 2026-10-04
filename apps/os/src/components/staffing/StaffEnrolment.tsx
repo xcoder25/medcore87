@@ -115,14 +115,23 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         permissions: ['dashboard'],
       });
 
+      // Never hang the UI on slow/blocked Firebase — local card is already issued
+      const withTimeout = <T,>(p: Promise<T>, ms = 8000): Promise<T> =>
+        Promise.race([
+          p,
+          new Promise<T>((_, reject) =>
+            setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms)
+          ),
+        ]);
+
       // Firebase Auth account for badge + PIN (same system as email/password)
       const pinNorm = normalizeStaffPin(pin);
       try {
-        await firebaseEnsureBadgeAccount(card.badgeId, pinNorm);
+        await withTimeout(firebaseEnsureBadgeAccount(card.badgeId, pinNorm), 8000);
       } catch (err: any) {
         console.warn('[enrol] badge Firebase Auth', err);
         setError(
-          `Card issued, but Firebase login setup failed: ${err?.message || err?.code || 'check Email/Password provider'}. Try sign-in after enabling Auth.`
+          `Card issued locally. Cloud login setup pending: ${err?.message || err?.code || 'network/timeout'}. Staff can still use badge + PIN on this device.`
         );
       }
 
@@ -150,15 +159,18 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
               hospitalId: facility.id,
               hospitalName: facility.name,
             };
-        await firestoreUpsertStaffMember(facility.id, enriched);
-        await firestorePushStaffDirectory(facility.id, {
-          staffCards: JSON.parse(localStorage.getItem('medcore_staff_id_cards') || '[]'),
-          staffRegistry: Array.isArray(reg)
-            ? reg.map((r: any) =>
-                String(r.badgeId || '').toUpperCase() === card.badgeId.toUpperCase() ? enriched : r
-              )
-            : [enriched],
-        });
+        await withTimeout(firestoreUpsertStaffMember(facility.id, enriched), 8000);
+        await withTimeout(
+          firestorePushStaffDirectory(facility.id, {
+            staffCards: JSON.parse(localStorage.getItem('medcore_staff_id_cards') || '[]'),
+            staffRegistry: Array.isArray(reg)
+              ? reg.map((r: any) =>
+                  String(r.badgeId || '').toUpperCase() === card.badgeId.toUpperCase() ? enriched : r
+                )
+              : [enriched],
+          }),
+          8000
+        );
       } catch (err) {
         console.warn('[enrol] firestore ensure', err);
       }
@@ -170,7 +182,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
           setError('Invalid email — card was issued; you can add a valid email later.');
         } else {
           try {
-            await firebaseSignUp(mail, pin || '123456');
+            await withTimeout(firebaseSignUp(mail, pin || '123456'), 8000);
           } catch (err: any) {
             const code = err?.code || '';
             if (code !== 'auth/email-already-in-use') {
@@ -197,6 +209,9 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
       setIssued(card);
       setFullName('');
       setEmail('');
+    } catch (err: any) {
+      console.error('[enrol] fatal', err);
+      setError(err?.message || 'Enrolment failed. Please try again.');
     } finally {
       setBusy(false);
     }
