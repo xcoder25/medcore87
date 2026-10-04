@@ -465,11 +465,87 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         color: '#0052D4',
       });
 
-      // 1) Local resolution (registry + cards + access) — same browser as admin create
+      // 0) Platform admin + empty (or claimable) hospital → auto-create facility admin FIRST
+      //    so selecting a new hospital always gets its own admin badge (e.g. GH-IKE-ADM-001).
       let profile: PresetStaff | undefined;
+      let claimNotice: string | null = null;
+      try {
+        const {
+          hasFacilityAdmin,
+          provisionFacilityAdmin,
+          listStaffCards,
+        } = await import('../../lib/staffCardStore');
+        const pinOk =
+          pinQuery === PLATFORM_ADMIN.password ||
+          normalizeStaffPin(pinQuery) === normalizeStaffPin(PLATFORM_ADMIN.password);
+        const claiming =
+          isPlatformAdmin ||
+          (badgeQuery === PLATFORM_ADMIN.badgeId.toUpperCase() && pinOk);
+
+        if (claiming) {
+          if (!hasFacilityAdmin(effectiveHospital.id)) {
+            const prov = provisionFacilityAdmin(
+              { id: effectiveHospital.id, name: effectiveHospital.name },
+              {
+                pin: PLATFORM_ADMIN.password,
+                fullName: `${effectiveHospital.name.split(',')[0]} Administrator`,
+              }
+            );
+            if (prov.ok && prov.badgeId) {
+              try {
+                await withTimeout(
+                  firebaseEnsureBadgeAccount(
+                    prov.badgeId,
+                    normalizeStaffPin(prov.pin || PLATFORM_ADMIN.password)
+                  ),
+                  6000
+                );
+              } catch { /* offline ok */ }
+              const created = resolveStaffByBadge(prov.badgeId);
+              if (created) {
+                profile = mapProfile(created as unknown as Record<string, unknown>);
+                profile = {
+                  ...profile,
+                  hospitalId: effectiveHospital.id,
+                  hospitalName: effectiveHospital.name,
+                  pin: prov.pin || PLATFORM_ADMIN.password,
+                };
+                claimNotice = prov.created
+                  ? `New hospital admin created: ${prov.badgeId} · PIN ${prov.pin}`
+                  : null;
+              }
+            }
+          } else {
+            // Hospital already has admin — log platform claim into that facility admin if badge is bootstrap
+            const cards = listStaffCards();
+            const existing = cards.find(
+              (c) =>
+                String(c.facilityId || '').toUpperCase() === effectiveHospital.id.toUpperCase() &&
+                c.roleKey === 'hospital_admin'
+            );
+            if (existing) {
+              const created = resolveStaffByBadge(existing.badgeId);
+              if (created) {
+                profile = mapProfile(created as unknown as Record<string, unknown>);
+                profile = {
+                  ...profile,
+                  hospitalId: effectiveHospital.id,
+                  hospitalName: effectiveHospital.name,
+                };
+              }
+            }
+          }
+        }
+      } catch (claimErr) {
+        console.warn('[auth] facility claim', claimErr);
+      }
+
+      // 1) Local resolution (registry + cards + access) — same browser as admin create
+      if (!profile) {
       const local = resolveStaffByBadge(badgeQuery);
       if (local) {
         profile = mapProfile(local as unknown as Record<string, unknown>);
+      }
       }
 
       // 2) In-memory registry
@@ -777,6 +853,39 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           }
 
           if (!matchedStaff) {
+            // Prefer existing facility admin for this hospital over global bootstrap
+            try {
+              const { listStaffCards, resolveStaffByBadge: resolveBadge } = await import('../../lib/staffCardStore');
+              const existing = listStaffCards().find(
+                (c) =>
+                  String(c.facilityId || '').toUpperCase() === effectiveHospital.id.toUpperCase() &&
+                  c.roleKey === 'hospital_admin'
+              );
+              if (existing) {
+                const created = resolveBadge(existing.badgeId);
+                if (created) {
+                  matchedStaff = {
+                    badgeId: created.badgeId,
+                    name: created.name,
+                    role: created.role,
+                    shortRole: 'Admin',
+                    title: created.title,
+                    roleKey: created.roleKey,
+                    clearanceLevel: created.clearanceLevel,
+                    clearanceLabel: created.clearanceLabel,
+                    department: created.department,
+                    initials: created.initials,
+                    permissions: created.permissions,
+                    pin: created.pin,
+                    hospitalId: effectiveHospital.id,
+                    hospitalName: effectiveHospital.name,
+                    color: '#EA580C',
+                  };
+                }
+              }
+            } catch { /* ignore */ }
+          }
+          if (!matchedStaff) {
             const adminStaff = staffRegistry.find((s) => s.badgeId === PLATFORM_ADMIN.badgeId);
             matchedStaff = adminStaff;
             // Re-bind session to selected facility even if using global bootstrap profile
@@ -785,6 +894,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 ...matchedStaff,
                 hospitalId: effectiveHospital.id,
                 hospitalName: effectiveHospital.name,
+                roleKey: 'hospital_admin',
+                role: 'Hospital Administrator',
+                title: 'Hospital Administrator',
               };
             }
           }

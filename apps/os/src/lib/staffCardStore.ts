@@ -225,16 +225,21 @@ export function inferRoleKey(raw?: string, badgeId?: string): string {
   if (s.includes('hospital_admin') || (s.includes('administrator') && !s.includes('system'))) return 'hospital_admin';
   if (s.includes('sysadmin') || s.includes('ict') || s.includes('system admin')) return 'sysadmin';
   if (s.includes('doctor') || s.includes('medical officer') || s.includes('physician') || s.includes('clinician')) return 'doctor';
-  // Badge pattern: IGH-REC-XXXX → middle token
-  const parts = String(badgeId || '').toUpperCase().split('-');
+  // Badge pattern: IGH-EKT-ADM-001 or GH-IKE-ADM-001 → scan segments for role code
+  const parts = String(badgeId || '').toUpperCase().split('-').filter(Boolean);
   if (parts.length >= 2) {
-    const mid = parts[1];
     const map: Record<string, string> = {
       DOC: 'doctor', SUR: 'surgeon', NUR: 'nurse', MID: 'midwife', PHA: 'pharmacist',
       LAB: 'lab', RAD: 'radiologist', REC: 'reception', REO: 'records', ACC: 'accountant',
       SYS: 'sysadmin', ADM: 'hospital_admin', BIO: 'biomedical', DIR: 'medical_director',
     };
-    if (map[mid]) return map[mid];
+    // Prefer role segment (usually second-to-last before serial)
+    for (let i = parts.length - 2; i >= 1; i--) {
+      if (map[parts[i]]) return map[parts[i]];
+    }
+    for (const p of parts) {
+      if (map[p]) return map[p];
+    }
   }
   return 'doctor';
 }
