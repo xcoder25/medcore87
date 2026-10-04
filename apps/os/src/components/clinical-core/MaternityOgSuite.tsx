@@ -1,5 +1,7 @@
 'use client';
 
+import { SharedBedStrip } from '../beds/SharedBedStrip';
+
 import React, { useState } from 'react';
 import {
   Heart, Activity, AlertTriangle, CheckCircle2, Clock,
@@ -111,7 +113,13 @@ export const MaternityOgSuite: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <SharedBedStrip
+        facilityId="IGH-EKT"
+        wardFilter={['Maternity']}
+        title="Maternity beds (shared board)"
+      />
       {/* Toast Notification */}
       {notice && (
         <div style={{

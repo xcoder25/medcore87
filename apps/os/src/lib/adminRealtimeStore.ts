@@ -375,6 +375,7 @@ export const ALL_PILOT_KEYS = [
   'medcore_lan_api_url',
   'medcore_role_permissions_v1',
   'medcore_os_bed_board_v1',
+  'medcore_os_bed_audit_v1',
   'medcore_os_patient_bills_v1',
   'medcore_os_notifications_v1',
   'medcore_os_infection_v1',

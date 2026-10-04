@@ -1,5 +1,7 @@
 'use client';
 
+import { SharedBedStrip } from '../beds/SharedBedStrip';
+
 import React, { useState } from 'react';
 import {
   Activity, CheckCircle2, Clock, ShieldAlert, User,
@@ -88,7 +90,13 @@ export const OperatingTheatreSuite: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <SharedBedStrip
+        facilityId="IGH-EKT"
+        wardFilter={['PACU', 'Surgical', 'ICU']}
+        title="PACU / surgical beds (shared board)"
+      />
       {/* Toast Notification */}
       {notice && (
         <div style={{

@@ -1,5 +1,7 @@
 'use client';
 
+import { SharedBedStrip } from '../beds/SharedBedStrip';
+
 import React, { useState } from 'react';
 import {
   Heart, Activity, CheckCircle2, Clock, Pill,
@@ -54,7 +56,13 @@ export const InpatientNursingSuite: React.FC = () => {
   const overdueCount = items.filter(i => i.status === 'overdue').length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <SharedBedStrip
+        facilityId="IGH-EKT"
+        wardFilter={['Male Medical', 'Female Medical', 'Surgical', 'ICU', 'Paediatrics']}
+        title="Shared bed board (same IDs as Bed & Ward)"
+      />
       {/* Toast */}
       {notice && (
         <div style={{
