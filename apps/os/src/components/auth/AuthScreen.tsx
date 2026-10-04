@@ -765,38 +765,49 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           return;
         }
 
-        let fbUser;
+        let fbUser: import('firebase/auth').User | null = null;
+        const isBootstrapAdmin =
+          email.toLowerCase() === adminEmail && pass === PLATFORM_ADMIN.password;
+
         try {
           fbUser = await withTimeout(firebaseSignIn(email, pass), 8000);
         } catch (signInErr: unknown) {
-          const code = (signInErr as { code?: string })?.code || '';
-          const timedOut = String((signInErr as Error)?.message || '').includes('timeout');
+          const msg = String((signInErr as Error)?.message || signInErr || '');
+          const code =
+            (signInErr as { code?: string })?.code ||
+            (msg.match(/auth\/[a-z0-9-]+/i)?.[0] || '');
+          const timedOut = msg.toLowerCase().includes('timeout');
           if (
             code === 'auth/user-not-found' ||
             code === 'auth/invalid-credential' ||
             code === 'auth/wrong-password' ||
+            code === 'auth/invalid-email' ||
+            code === 'auth/network-request-failed' ||
             timedOut
           ) {
-            if (email.toLowerCase() === adminEmail && pass === PLATFORM_ADMIN.password) {
+            if (isBootstrapAdmin) {
+              // Try create once; if Firebase still fails, continue with local admin session
               try {
                 fbUser = await withTimeout(firebaseSignUp(email, pass), 8000);
               } catch (signUpErr: unknown) {
                 try {
                   fbUser = await withTimeout(firebaseSignIn(email, pass), 6000);
                 } catch {
-                  setError(
-                    (signUpErr as { message?: string })?.message ||
-                      'Could not sign in. Enable Email/Password in Firebase Console.'
-                  );
-                  setLoading(false);
-                  return;
+                  console.warn('[auth] Firebase admin optional — local session', signUpErr);
+                  fbUser = null;
                 }
               }
             } else {
-              setError('Invalid email or password.');
+              setError(
+                'Invalid email or password. Use your enrolled work email, or Sign in with ID No. (badge + PIN). Platform admin: xcoder2442@gmail.com'
+              );
               setLoading(false);
               return;
             }
+          } else if (isBootstrapAdmin) {
+            // Any other Firebase error — do not block platform admin
+            console.warn('[auth] Firebase sign-in skipped for platform admin', signInErr);
+            fbUser = null;
           } else {
             setError(
               (signInErr as { message?: string })?.message ||
@@ -830,25 +841,27 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 );
               } catch { /* offline / timeout ok */ }
               const created = resolveStaffByBadge(prov.badgeId);
-              if (created) {
-                matchedStaff = {
-                  badgeId: created.badgeId,
-                  name: created.name,
-                  role: created.role,
-                  shortRole: 'Admin',
-                  title: created.title,
-                  roleKey: created.roleKey,
-                  clearanceLevel: created.clearanceLevel,
-                  clearanceLabel: created.clearanceLabel,
-                  department: created.department,
-                  initials: created.initials,
-                  permissions: created.permissions,
-                  pin: created.pin,
-                  hospitalId: effectiveHospital.id,
-                  hospitalName: effectiveHospital.name,
-                  color: '#EA580C',
-                };
-              }
+              const shortName = effectiveHospital.name.split(',')[0].trim();
+              matchedStaff = {
+                badgeId: prov.badgeId,
+                name: created?.name || `${shortName} Administrator`,
+                role: created?.role || 'Hospital Administrator',
+                shortRole: 'Admin',
+                title: created?.title || 'Hospital Administrator',
+                roleKey: 'hospital_admin',
+                clearanceLevel: created?.clearanceLevel ?? 5,
+                clearanceLabel: created?.clearanceLabel || 'Administrator',
+                department: created?.department || 'Hospital Management',
+                initials: created?.initials || 'HA',
+                permissions: created?.permissions || [
+                  'dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing',
+                  'enrolment', 'my-card', 'cashier', 'rbac', 'sysadmin', 'ai',
+                ],
+                pin: prov.pin || PLATFORM_ADMIN.password,
+                hospitalId: effectiveHospital.id,
+                hospitalName: effectiveHospital.name,
+                color: '#EA580C',
+              };
             }
           }
 
@@ -904,11 +917,40 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           matchedStaff = detectedStaff ?? undefined;
         }
 
+        if (!matchedStaff && email.toLowerCase() === adminEmail) {
+          // Last resort: synthetic facility admin so first login on any hospital never fails
+          const shortName = effectiveHospital.name.split(',')[0].trim();
+          matchedStaff = {
+            badgeId: `${effectiveHospital.id.toUpperCase()}-ADM-001`,
+            name: `${shortName} Administrator`,
+            role: 'Hospital Administrator',
+            shortRole: 'Admin',
+            title: 'Hospital Administrator',
+            roleKey: 'hospital_admin',
+            clearanceLevel: 5,
+            clearanceLabel: 'Administrator',
+            department: 'Hospital Management',
+            initials: 'HA',
+            permissions: [
+              'dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing',
+              'enrolment', 'my-card', 'cashier', 'rbac', 'sysadmin', 'ai',
+            ],
+            pin: PLATFORM_ADMIN.password,
+            hospitalId: effectiveHospital.id,
+            hospitalName: effectiveHospital.name,
+            color: '#EA580C',
+          };
+          try {
+            const { provisionFacilityAdmin } = await import('../../lib/staffCardStore');
+            provisionFacilityAdmin(
+              { id: effectiveHospital.id, name: effectiveHospital.name },
+              { pin: PLATFORM_ADMIN.password, fullName: matchedStaff.name }
+            );
+          } catch { /* already attempted */ }
+        }
         if (!matchedStaff) {
           setError(
-            email.toLowerCase() === adminEmail
-              ? 'Admin profile missing. Contact support.'
-              : 'No staff profile linked to this email. Use Sign in with ID No. or ask admin to enrol you.'
+            'No staff profile linked to this email. Use Sign in with ID No. or ask admin to enrol you.'
           );
           setLoading(false);
           return;
@@ -917,7 +959,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         const displayName =
           email.toLowerCase() === adminEmail
             ? PLATFORM_ADMIN.name
-            : fbUser.displayName || matchedStaff.name;
+            : (fbUser?.displayName || matchedStaff.name);
         const initials = displayName
           .split(/\s+/)
           .map((part) => part[0])
@@ -925,8 +967,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           .slice(0, 2)
           .toUpperCase();
 
+        // Non-admin email login still requires Firebase user
+        if (!fbUser && email.toLowerCase() !== adminEmail) {
+          setError('Invalid email or password. Ask your administrator to enrol you, or use Sign in with ID No.');
+          setLoading(false);
+          return;
+        }
+
         const session: UserSession = {
-          id: fbUser.uid,
+          id: fbUser?.uid || matchedStaff.badgeId || `local-${Date.now().toString(36)}`,
           badgeId: matchedStaff.badgeId,
           name: displayName,
           role: matchedStaff.role,
@@ -939,8 +988,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           clearanceLabel: matchedStaff.clearanceLabel,
           clearanceLevel: matchedStaff.clearanceLevel,
           permissions: matchedStaff.permissions,
-          authMethod: 'Firebase',
-          token: await withTimeout(fbUser.getIdToken(), 4000).catch(() => `EMAIL-${Date.now().toString(36)}`),
+          authMethod: fbUser ? 'Firebase' : 'Local admin',
+          token: fbUser
+            ? await withTimeout(fbUser.getIdToken(), 4000).catch(() => `EMAIL-${Date.now().toString(36)}`)
+            : `LOCAL-ADMIN-${Date.now().toString(36)}`,
           loginTime: new Date().toLocaleTimeString('en-GB', {
             hour: '2-digit',
             minute: '2-digit',
