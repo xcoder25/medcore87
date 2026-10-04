@@ -401,6 +401,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     setLoading(true);
     setError(null);
 
+    const withTimeout = <T,>(p: Promise<T>, ms = 6000): Promise<T> =>
+      Promise.race([
+        p,
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms)
+        ),
+      ]);
+
+    try {
     const u = (username || '').trim();
     const pass = (password || '').trim();
     const effectiveHospital = selectedHospital;
@@ -471,12 +480,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         if (hit) profile = hit;
       }
 
-      // 3) Firestore — selected hospital, then all
+      // 3) Firestore — selected hospital (timed); brief peer scan
       try {
-        let remote = await firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery);
+        let remote = await withTimeout(
+          firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery),
+          4000
+        );
         if (!remote) {
-          for (const h of HOSPITALS) {
-            remote = await firestoreGetStaffByBadge(h.id, badgeQuery);
+          for (const h of HOSPITALS.slice(0, 5)) {
+            if (h.id === effectiveHospital.id) continue;
+            try {
+              remote = await withTimeout(firestoreGetStaffByBadge(h.id, badgeQuery), 2000);
+            } catch {
+              remote = null;
+            }
             if (remote) break;
           }
         }
@@ -493,7 +510,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
       if (!profile) {
         try {
-          fbUser = await firebaseSignInWithBadge(badgeQuery, pinNorm);
+          fbUser = await withTimeout(firebaseSignInWithBadge(badgeQuery, pinNorm), 6000);
           // Auth worked — build minimal session profile
           profile = mapProfile({
             badgeId: badgeQuery,
@@ -525,8 +542,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             if (prov.ok && prov.badgeId) {
               // Ensure Firebase Auth account for the new facility admin
               try {
-                await firebaseEnsureBadgeAccount(prov.badgeId, normalizeStaffPin(prov.pin || PLATFORM_ADMIN.password));
-              } catch { /* offline ok */ }
+                await withTimeout(
+                  firebaseEnsureBadgeAccount(prov.badgeId, normalizeStaffPin(prov.pin || PLATFORM_ADMIN.password)),
+                  6000
+                );
+              } catch { /* offline / timeout ok */ }
 
               const created = resolveStaffByBadge(prov.badgeId);
               if (created) {
@@ -557,27 +577,33 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
       // Verify PIN when we have a stored pin
       if (profile.pin && String(profile.pin) !== pinQuery && normalizeStaffPin(profile.pin) !== pinNorm) {
-        // still allow if Firebase accepts the PIN
+        // still allow if Firebase accepts the PIN (timed)
         try {
-          if (!fbUser) fbUser = await firebaseSignInWithBadge(profile.badgeId, pinNorm);
+          if (!fbUser) {
+            fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
+          }
         } catch {
           setError('Incorrect PIN.');
           setLoading(false);
           return;
         }
       } else {
-        // PIN matches local — sign in or create Firebase account
+        // PIN matches local — try Firebase quickly, then fall back to local session
         try {
           if (!fbUser) {
             try {
-              fbUser = await firebaseSignInWithBadge(profile.badgeId, pinNorm);
+              fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
             } catch {
-              await firebaseEnsureBadgeAccount(profile.badgeId, pinNorm);
-              fbUser = await firebaseSignInWithBadge(profile.badgeId, pinNorm);
+              try {
+                await withTimeout(firebaseEnsureBadgeAccount(profile.badgeId, pinNorm), 6000);
+                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
+              } catch {
+                fbUser = null; // valid local PIN — proceed without cloud Auth
+              }
             }
           }
         } catch (authErr: unknown) {
-          // Offline / Auth disabled: still allow local PIN session
+          // Offline / Auth disabled / timeout: still allow local PIN session
           console.warn('[auth] firebase badge optional', authErr);
           const sessionLocal: UserSession = {
             id: profile.badgeId,
@@ -663,20 +689,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
         let fbUser;
         try {
-          fbUser = await firebaseSignIn(email, pass);
+          fbUser = await withTimeout(firebaseSignIn(email, pass), 8000);
         } catch (signInErr: unknown) {
           const code = (signInErr as { code?: string })?.code || '';
+          const timedOut = String((signInErr as Error)?.message || '').includes('timeout');
           if (
             code === 'auth/user-not-found' ||
             code === 'auth/invalid-credential' ||
-            code === 'auth/wrong-password'
+            code === 'auth/wrong-password' ||
+            timedOut
           ) {
             if (email.toLowerCase() === adminEmail && pass === PLATFORM_ADMIN.password) {
               try {
-                fbUser = await firebaseSignUp(email, pass);
+                fbUser = await withTimeout(firebaseSignUp(email, pass), 8000);
               } catch (signUpErr: unknown) {
                 try {
-                  fbUser = await firebaseSignIn(email, pass);
+                  fbUser = await withTimeout(firebaseSignIn(email, pass), 6000);
                 } catch {
                   setError(
                     (signUpErr as { message?: string })?.message ||
@@ -718,8 +746,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             if (prov.ok && prov.badgeId) {
               try {
                 const { firebaseEnsureBadgeAccount, normalizeStaffPin } = await import('../../lib/firebase');
-                await firebaseEnsureBadgeAccount(prov.badgeId, normalizeStaffPin(prov.pin || PLATFORM_ADMIN.password));
-              } catch { /* offline ok */ }
+                await withTimeout(
+                  firebaseEnsureBadgeAccount(prov.badgeId, normalizeStaffPin(prov.pin || PLATFORM_ADMIN.password)),
+                  6000
+                );
+              } catch { /* offline / timeout ok */ }
               const created = resolveStaffByBadge(prov.badgeId);
               if (created) {
                 matchedStaff = {
@@ -815,6 +846,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
     setError('Use work email, or switch to Sign in with ID No. (badge + PIN).');
     setLoading(false);
+    } catch (fatal: unknown) {
+      console.error('[auth] sign-in fatal', fatal);
+      setError(
+        (fatal as { message?: string })?.message ||
+          'Sign-in failed. Check your connection and try again.'
+      );
+      setLoading(false);
+    } finally {
+      // Never leave the button stuck on "Signing in…"
+      setLoading(false);
+    }
   };
 
 
