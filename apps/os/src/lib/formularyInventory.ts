@@ -90,7 +90,7 @@ export function depleteStock(facilityId: string, drugName: string, qty = 1): boo
 
 export function seedDefaultFormulary(facilityId: string) {
   if (listFormulary(facilityId).length) return;
-  const defaults = [
+  const defaults: [string, string, string, string, string, number][] = [
     ['Amoxicillin 500mg', 'Amoxicillin', '500mg', 'Capsule', 'Antibiotic', 350],
     ['Metformin 500mg', 'Metformin', '500mg', 'Tablet', 'Antidiabetic', 200],
     ['Paracetamol 500mg', 'Paracetamol', '500mg', 'Tablet', 'Analgesic', 50],
@@ -102,12 +102,12 @@ export function seedDefaultFormulary(facilityId: string) {
     upsertDrug({
       id,
       facilityId,
-      name: name as string,
-      genericName: generic as string,
-      strength: strength as string,
-      form: form as string,
-      category: category as string,
-      unitPriceNgn: price as number,
+      name,
+      genericName: generic,
+      strength,
+      form,
+      category,
+      unitPriceNgn: price,
       reorderLevel: 50,
       controlled: false,
     });
