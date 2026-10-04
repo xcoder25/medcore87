@@ -1300,7 +1300,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate 
               Clinical workspace
             </div>
             <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-              {session.name || 'Doctor'} · {session.roleLabel || 'Medical Officer'} · one desk, no nested portal
+              {session.name || 'Doctor'} · {session.role || session.title || 'Medical Officer'} · one desk, no nested portal
             </div>
           </div>
           <span style={{ flex: 1 }} />
