@@ -654,7 +654,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         clearanceLevel: profile.clearanceLevel,
         permissions: profile.permissions,
         authMethod: fbUser ? 'Firebase · Staff ID' : 'Staff PIN',
-        token: fbUser ? await fbUser.getIdToken() : `PIN-${Date.now().toString(36)}`,
+        token: fbUser
+          ? await withTimeout(fbUser.getIdToken(), 4000).catch(() => `PIN-${Date.now().toString(36)}`)
+          : `PIN-${Date.now().toString(36)}`,
         loginTime: new Date().toLocaleTimeString('en-GB', {
           hour: '2-digit',
           minute: '2-digit',
@@ -826,7 +828,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           clearanceLevel: matchedStaff.clearanceLevel,
           permissions: matchedStaff.permissions,
           authMethod: 'Firebase',
-          token: await fbUser.getIdToken(),
+          token: await withTimeout(fbUser.getIdToken(), 4000).catch(() => `EMAIL-${Date.now().toString(36)}`),
           loginTime: new Date().toLocaleTimeString('en-GB', {
             hour: '2-digit',
             minute: '2-digit',
