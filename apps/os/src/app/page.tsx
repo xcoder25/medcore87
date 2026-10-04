@@ -27,6 +27,7 @@ import { DigitalPatientCard } from '../components/patient-card/DigitalPatientCar
 import { Patient360View } from '../components/patients/Patient360View';
 import { UniversalQueueBoard } from '../components/queue/UniversalQueueBoard';
 import { NotificationCentre } from '../components/notifications/NotificationCentre';
+import { AdvancedHospitalSuites } from '../components/advanced/AdvancedHospitalSuites';
 import { HospitalStaffTransfer } from '../components/staffing/HospitalStaffTransfer';
 import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 
@@ -98,7 +99,7 @@ export type ModuleKey =
   // Pillar 4: Finance
   | 'billing' | 'cashier' | 'claims' | 'revenue-cycle' | 'procurement'
   // Pillar 5: Data & Interop
-  | 'data-hub' | 'fhir' | 'analytics'
+  | 'data-hub' | 'fhir' | 'analytics' | 'ambient-soap' | 'lis' | 'formulary' | 'mfa-sso' | 'knowledge-graph' | 'predictive-staffing' | 'infection' | 'hie' | 'pacs-advanced'
   // Pillar 6: Connected IoT
   | 'iot-devices'
   // Pillar 7: Security & Governance
@@ -230,6 +231,15 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           items: [
             { key: 'doctor-portal', icon: Stethoscope, label: 'Doctor Clinical Portal', badge: 'Live' },
             { key: 'patient-360', icon: Users, label: 'Patient 360°', badge: 'Chart' },
+            { key: 'ambient-soap', icon: Stethoscope, label: 'Ambient SOAP' },
+            { key: 'lis', icon: FlaskConical, label: 'LIS Barcode & TAT' },
+            { key: 'formulary', icon: Pill, label: 'Formulary inventory' },
+            { key: 'pacs-advanced', icon: Layers, label: 'PACS / DICOM' },
+            { key: 'infection', icon: Shield, label: 'Infection control' },
+            { key: 'knowledge-graph', icon: Database, label: 'Knowledge graph' },
+            { key: 'predictive-staffing', icon: Users, label: 'Predictive staffing' },
+            { key: 'mfa-sso', icon: Lock, label: 'MFA & SSO' },
+            { key: 'hie', icon: Globe, label: 'National HIE' },
             { key: 'dashboard', icon: LayoutDashboard, label: 'Role Overview Dashboard' },
             { key: 'm87-ai', icon: Brain, label: 'Clinical assistant', badge: 'AI' },
             { key: 'ai', icon: Sparkles, label: 'Decision Support & SOAP', badge: 'AI' },
@@ -768,6 +778,15 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   claims: InsuranceHmoClaimsSuite,
   'revenue-cycle': RevenueCycleAccountingSuite,
   procurement: ProcurementHrSuite,
+  'ambient-soap': (props: any) => <AdvancedHospitalSuites {...props} mode="ambient-soap" />,
+  'lis': (props: any) => <AdvancedHospitalSuites {...props} mode="lis" />,
+  'formulary': (props: any) => <AdvancedHospitalSuites {...props} mode="formulary" />,
+  'mfa-sso': (props: any) => <AdvancedHospitalSuites {...props} mode="mfa-sso" />,
+  'knowledge-graph': (props: any) => <AdvancedHospitalSuites {...props} mode="knowledge-graph" />,
+  'predictive-staffing': (props: any) => <AdvancedHospitalSuites {...props} mode="predictive-staffing" />,
+  'infection': (props: any) => <AdvancedHospitalSuites {...props} mode="infection" />,
+  'hie': (props: any) => <AdvancedHospitalSuites {...props} mode="hie" />,
+  'pacs-advanced': (props: any) => <AdvancedHospitalSuites {...props} mode="pacs-advanced" />,
   'data-hub': IntegratedDataHub,
   fhir: FhirHl7GatewaySuite,
   analytics: PerformanceAnalytics,
@@ -819,6 +838,15 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   claims: { level: 2, label: 'L2 Finance', roleDesc: 'AKSHIA & HMO Adjudicators' },
   'revenue-cycle': { level: 2, label: 'L2 Finance', roleDesc: 'Finance Directors & Revenue Officers' },
   procurement: { level: 2, label: 'L2 Finance', roleDesc: 'Procurement & HR Officers' },
+  'ambient-soap': { level: 3, label: 'L3 Advanced', roleDesc: 'Clinical & operations advanced module' },
+  'lis': { level: 3, label: 'L3 Advanced', roleDesc: 'Clinical & operations advanced module' },
+  'formulary': { level: 3, label: 'L3 Advanced', roleDesc: 'Clinical & operations advanced module' },
+  'mfa-sso': { level: 3, label: 'L3 Advanced', roleDesc: 'Clinical & operations advanced module' },
+  'knowledge-graph': { level: 3, label: 'L3 Advanced', roleDesc: 'Clinical & operations advanced module' },
+  'predictive-staffing': { level: 3, label: 'L3 Advanced', roleDesc: 'Clinical & operations advanced module' },
+  'infection': { level: 3, label: 'L3 Advanced', roleDesc: 'Clinical & operations advanced module' },
+  'hie': { level: 3, label: 'L3 Advanced', roleDesc: 'Clinical & operations advanced module' },
+  'pacs-advanced': { level: 3, label: 'L3 Advanced', roleDesc: 'Clinical & operations advanced module' },
   'data-hub': { level: 4, label: 'L4 Senior Clinical', roleDesc: 'Health Informaticians & Clinical Directors' },
   fhir: { level: 4, label: 'L4 Senior Clinical', roleDesc: 'Interoperability Engineers & MoH Liaisons' },
   analytics: { level: 3, label: 'L3 Clinical', roleDesc: 'Clinical Audit & Quality Analysts' },

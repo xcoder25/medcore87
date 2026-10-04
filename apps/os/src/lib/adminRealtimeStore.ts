@@ -377,6 +377,10 @@ export const ALL_PILOT_KEYS = [
   'medcore_os_bed_board_v1',
   'medcore_os_patient_bills_v1',
   'medcore_os_notifications_v1',
+  'medcore_os_infection_v1',
+  'medcore_os_lis_specimens_v1',
+  'medcore_os_drug_stock_v1',
+  'medcore_os_formulary_v1',
   'medcore_os_universal_queue_v1',
   'medcore_os_ambulance_v1',
 ];
