@@ -23,6 +23,13 @@ import {
   newWardRow,
   newTheatre,
   newClinic,
+  subscribeFacilityCatalog,
+  applyServicePackByTier,
+  bulkCreateTheatres,
+  bulkCreateStandardClinics,
+  applyDiagnosticsStandard,
+  applyPharmacyStandard,
+  mergeAiFacilityPatch,
   CLINICAL_SERVICE_LABELS,
   LAB_LABELS,
   RADIOLOGY_LABELS,
@@ -230,10 +237,25 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [bedTick, setBedTick] = useState(0);
+  const [live, setLive] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [showAiPanel, setShowAiPanel] = useState(true);
 
   useEffect(() => {
     setCatalog(loadFacilityCatalog(facilityId, session?.facility));
   }, [facilityId, session?.facility]);
+
+  // Realtime: other workstations / tabs update this admin's catalog live
+  useEffect(() => {
+    if (!facilityId || facilityId === 'UNKNOWN') return;
+    const unsub = subscribeFacilityCatalog(facilityId, (remote) => {
+      setCatalog(remote);
+      setLive(true);
+      setBedTick((t) => t + 1);
+    });
+    setLive(true);
+    return unsub;
+  }, [facilityId]);
 
   const existingBeds = useMemo(() => {
     void bedTick;
@@ -277,6 +299,99 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
         targetTotalBeds: c.targetTotalBeds || result.rows.reduce((s, r) => s + r.count, 0),
       }));
       setAiNote(result.note);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  /** Single or bulk AI automation from natural language / quick actions */
+  const runAiAutomate = async (mode: 'prompt' | 'full' | 'wards' | 'services' | 'clinics' | 'theatres' | 'diagnostics' | 'pharmacy') => {
+    setAiLoading(true);
+    setAiNote(null);
+    setMsg(null);
+    try {
+      if (mode === 'services') {
+        const next = applyServicePackByTier(catalog, 'auto');
+        setCatalog(next);
+        setAiNote('Service pack applied from facility type/tier (bulk)');
+        return;
+      }
+      if (mode === 'clinics') {
+        const clinics = bulkCreateStandardClinics(catalog.type);
+        setCatalog((c) => ({ ...c, clinics }));
+        setAiNote(`Bulk clinics: ${clinics.length} OPD clinics generated`);
+        return;
+      }
+      if (mode === 'theatres') {
+        const n = Math.max(catalog.theatreCount || 2, 2);
+        const theatres = bulkCreateTheatres(n);
+        setCatalog((c) => ({ ...c, theatres, theatreCount: theatres.length }));
+        setAiNote(`Bulk theatres: ${theatres.length} theatres generated`);
+        return;
+      }
+      if (mode === 'diagnostics') {
+        setCatalog(applyDiagnosticsStandard(catalog, 'standard'));
+        setAiNote('Standard lab + imaging pack applied (bulk)');
+        return;
+      }
+      if (mode === 'pharmacy') {
+        setCatalog(applyPharmacyStandard(catalog, 'standard'));
+        setAiNote('Standard pharmacy pack applied (bulk)');
+        return;
+      }
+      if (mode === 'wards') {
+        await runAiSuggest();
+        return;
+      }
+
+      // full or prompt — try Gemini, then offline cascade
+      const system =
+        'You are M87, MedCore hospital OS for Nigerian public hospitals. ' +
+        'Return ONLY JSON (no markdown) matching FacilityCatalog partial fields: ' +
+        '{"name","type","tier","targetTotalBeds","icuBeds","hduBeds","nicuCots","isolationBeds","emergencyBays","deliverySuites","theatreCount","ambulanceCount",' +
+        '"wards":[{"ward","prefix","count","category"}],"theatres":[{"name","type","hasLaminarFlow"}],' +
+        '"clinics":[{"name","specialty","days","slotsPerDay"}],' +
+        '"services":{"general_medicine":true},' +
+        '"labCapabilities":{"haematology":true},"radiologyModalities":{"xray":true},"pharmacyCapabilities":{"outpatient_dispensary":true},' +
+        '"hasBloodBank":true,"operates24x7":true,"emergency24x7":true,"acceptsNhis":true}. Use realistic Akwa Ibom secondary hospital defaults.';
+
+      const userPrompt =
+        mode === 'prompt' && aiPrompt.trim()
+          ? aiPrompt.trim()
+          : `Fully set up EMR facility catalog for: ${catalog.name || session?.facility || 'General Hospital'} (${catalog.type}, ${catalog.tier}). Target ~${catalog.targetTotalBeds || 80} beds. Include wards, theatres, clinics, services, lab, radiology, pharmacy.`;
+
+      let applied = false;
+      if (hasGeminiKey()) {
+        const res = await geminiGenerate(userPrompt, system);
+        if (res.ok && res.text) {
+          try {
+            const cleaned = res.text.replace(/```json|```/g, '').trim();
+            const parsed = JSON.parse(cleaned);
+            setCatalog((c) => mergeAiFacilityPatch(c, parsed));
+            setAiNote('M87 AI applied full catalog patch (realtime-ready — Save to sync peers)');
+            applied = true;
+          } catch {
+            /* fall through */
+          }
+        }
+      }
+      if (!applied) {
+        // Offline full cascade
+        let next = applyServicePackByTier(catalog, 'auto');
+        next = applyDiagnosticsStandard(next, 'standard');
+        next = applyPharmacyStandard(next, 'standard');
+        const wardResult = await suggestWardLayout(next);
+        next = {
+          ...next,
+          wards: wardResult.rows,
+          targetTotalBeds: next.targetTotalBeds || wardResult.rows.reduce((s, r) => s + r.count, 0),
+          clinics: bulkCreateStandardClinics(next.type),
+          theatres: bulkCreateTheatres(Math.max(next.theatreCount || 2, 2)),
+          theatreCount: Math.max(next.theatreCount || 2, 2),
+        };
+        setCatalog(next);
+        setAiNote('Offline automation: services + diagnostics + pharmacy + wards + clinics + theatres (bulk)');
+      }
     } finally {
       setAiLoading(false);
     }
@@ -370,8 +485,143 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
               </span>
             )}
           </div>
+          {live && (
+            <span
+              style={{
+                padding: '5px 10px',
+                borderRadius: 999,
+                background: 'rgba(16,185,129,0.12)',
+                color: '#047857',
+                fontSize: '0.72rem',
+                fontWeight: 800,
+              }}
+              title="Changes sync across workstations via local + Firestore"
+            >
+              ● Live
+            </span>
+          )}
         </div>
       </div>
+
+      {/* AI Assist — single + bulk */}
+      {showAiPanel && (
+        <div
+          style={{
+            background: 'linear-gradient(135deg, #F5F3FF 0%, #EFF6FF 100%)',
+            borderRadius: 16,
+            border: '1px solid #DDD6FE',
+            padding: 16,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <Sparkles size={18} color="#7C3AED" />
+            <strong style={{ color: '#0A2540', fontSize: '0.9rem' }}>M87 AI Assist</strong>
+            <span style={{ fontSize: '0.78rem', color: '#64748B', flex: 1 }}>
+              Automate one section or the whole facility catalog (single + bulk). Save publishes realtime to all workstations.
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowAiPanel(false)}
+              style={{ border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', fontSize: '0.75rem' }}
+            >
+              Hide
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <input
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              placeholder='e.g. "80-bed general hospital in Eket with 2 theatres, full maternity, NHIS…"'
+              style={{
+                flex: 1,
+                minWidth: 220,
+                padding: '10px 12px',
+                borderRadius: 10,
+                border: '1px solid #C4B5FD',
+                fontSize: '0.85rem',
+              }}
+            />
+            <button
+              type="button"
+              disabled={aiLoading}
+              onClick={() => runAiAutomate(aiPrompt.trim() ? 'prompt' : 'full')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '10px 14px',
+                borderRadius: 10,
+                border: 'none',
+                background: 'linear-gradient(135deg, #7C3AED, #0052D4)',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: '0.84rem',
+                cursor: aiLoading ? 'wait' : 'pointer',
+              }}
+            >
+              {aiLoading ? <Loader2 size={15} /> : <Sparkles size={15} />}
+              {aiLoading ? 'Working…' : 'Run AI setup'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {(
+              [
+                ['full', 'Full catalog'],
+                ['wards', 'Wards (bulk)'],
+                ['services', 'Services pack'],
+                ['clinics', 'Clinics (bulk)'],
+                ['theatres', 'Theatres (bulk)'],
+                ['diagnostics', 'Lab + imaging'],
+                ['pharmacy', 'Pharmacy pack'],
+              ] as const
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                disabled={aiLoading}
+                onClick={() => runAiAutomate(mode)}
+                style={{
+                  padding: '6px 11px',
+                  borderRadius: 999,
+                  border: '1px solid #C4B5FD',
+                  background: '#fff',
+                  color: '#5B21B6',
+                  fontWeight: 650,
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {aiNote && (
+            <p style={{ margin: '10px 0 0', fontSize: '0.8rem', color: '#5B21B6', fontWeight: 600 }}>{aiNote}</p>
+          )}
+        </div>
+      )}
+      {!showAiPanel && (
+        <button
+          type="button"
+          onClick={() => setShowAiPanel(true)}
+          style={{
+            alignSelf: 'flex-start',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '8px 12px',
+            borderRadius: 10,
+            border: '1px solid #DDD6FE',
+            background: '#F5F3FF',
+            color: '#7C3AED',
+            fontWeight: 700,
+            fontSize: '0.8rem',
+            cursor: 'pointer',
+          }}
+        >
+          <Sparkles size={14} /> Show M87 AI Assist
+        </button>
+      )}
 
       {/* Section nav */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

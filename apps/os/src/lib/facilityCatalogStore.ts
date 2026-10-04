@@ -4,6 +4,8 @@
  */
 import { createBeds, listBeds, listWards } from './bedBoardStore';
 import { emitLiveAction } from './liveActions';
+import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
+import { firestoreSubscribeFacility, firestoreReadFacility } from './firebase';
 
 export const FACILITY_CATALOG_KEY = 'medcore_facility_catalog_v1';
 export const FACILITY_CATALOG_EVT = 'medcore-facility-catalog';
@@ -342,8 +344,93 @@ export function saveFacilityCatalog(catalog: FacilityCatalog, actor?: string): F
     }
     window.dispatchEvent(new CustomEvent(FACILITY_CATALOG_EVT, { detail: next }));
     window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: FACILITY_CATALOG_KEY } }));
+    // Realtime: other tabs (BroadcastChannel) + durable outbox → LAN/Firestore
+    try {
+      publishFacilityData(next.facilityId, FACILITY_KEYS.facilityCatalog, next);
+    } catch {
+      /* offline ok — local already saved */
+    }
   }
   return next;
+}
+
+/**
+ * Subscribe to live facility catalog updates (Firestore + storage + custom events).
+ * Returns unsubscribe function.
+ */
+export function subscribeFacilityCatalog(
+  facilityId: string,
+  onUpdate: (catalog: FacilityCatalog) => void
+): () => void {
+  if (typeof window === 'undefined' || !facilityId) return () => {};
+
+  const handleLocal = (raw: unknown) => {
+    try {
+      if (!raw || typeof raw !== 'object') return;
+      const c = raw as FacilityCatalog;
+      if (c.facilityId && c.facilityId !== facilityId) return;
+      onUpdate(loadFacilityCatalog(facilityId, c.name));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === storageKey(facilityId) && e.newValue) {
+      try {
+        handleLocal(JSON.parse(e.newValue));
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  const onCustom = (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail?.facilityId === facilityId || detail?.key === FACILITY_CATALOG_KEY) {
+      onUpdate(loadFacilityCatalog(facilityId));
+    }
+  };
+
+  window.addEventListener('storage', onStorage);
+  window.addEventListener(FACILITY_CATALOG_EVT, onCustom as EventListener);
+  window.addEventListener('medcore-admin-sync', onCustom as EventListener);
+
+  // Live Firestore listener
+  const unsubFs = firestoreSubscribeFacility(facilityId, (data) => {
+    const remote = data?.[FACILITY_KEYS.facilityCatalog] ?? data?.facilityCatalog;
+    if (remote && typeof remote === 'object') {
+      try {
+        const merged = { ...loadFacilityCatalog(facilityId), ...(remote as FacilityCatalog), facilityId };
+        localStorage.setItem(storageKey(facilityId), JSON.stringify(merged));
+        onUpdate(merged);
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  // One-shot pull in case listener is slow
+  void firestoreReadFacility(facilityId).then((data) => {
+    if (!data) return;
+    const remote = data[FACILITY_KEYS.facilityCatalog] ?? data.facilityCatalog;
+    if (remote && typeof remote === 'object') {
+      const merged = { ...loadFacilityCatalog(facilityId), ...(remote as FacilityCatalog), facilityId };
+      try {
+        localStorage.setItem(storageKey(facilityId), JSON.stringify(merged));
+      } catch {
+        /* ignore */
+      }
+      onUpdate(merged);
+    }
+  });
+
+  return () => {
+    window.removeEventListener('storage', onStorage);
+    window.removeEventListener(FACILITY_CATALOG_EVT, onCustom as EventListener);
+    window.removeEventListener('medcore-admin-sync', onCustom as EventListener);
+    unsubFs();
+  };
 }
 
 export function catalogCompleteness(c: FacilityCatalog): { score: number; missing: string[] } {
@@ -439,4 +526,173 @@ export function newClinic(partial?: Partial<ClinicUnit>): ClinicUnit {
     days: partial?.days || 'Mon–Fri',
     slotsPerDay: partial?.slotsPerDay ?? 20,
   };
+}
+
+
+// ─── AI / bulk automation ────────────────────────────────────────────────────
+
+export type FacilityAiAction =
+  | 'full_setup'
+  | 'wards_only'
+  | 'services_by_tier'
+  | 'clinics_bulk'
+  | 'theatres_bulk'
+  | 'diagnostics_standard'
+  | 'pharmacy_standard';
+
+/** Enable a sensible service pack by facility tier/type (no network). */
+export function applyServicePackByTier(
+  catalog: FacilityCatalog,
+  pack: 'cottage' | 'chc' | 'general' | 'tertiary' | 'auto' = 'auto'
+): FacilityCatalog {
+  const t = (pack === 'auto' ? catalog.type + ' ' + catalog.tier : pack).toLowerCase();
+  const isCottage = t.includes('cottage') || t.includes('primary');
+  const isChc = t.includes('comprehensive') || t.includes('chc') || t.includes('health care');
+  const isTertiary = t.includes('tertiary') || t.includes('teaching') || t.includes('referral');
+
+  const services: FacilityCatalog['services'] = { ...catalog.services };
+  const enable = (keys: ClinicalServiceKey[]) => {
+    for (const k of Object.keys(CLINICAL_SERVICE_LABELS) as ClinicalServiceKey[]) services[k] = false;
+    for (const k of keys) services[k] = true;
+  };
+
+  if (isCottage) {
+    enable([
+      'general_medicine', 'family_medicine', 'paediatrics', 'obstetrics_gynaecology',
+      'emergency', 'anc_pnc', 'immunization', 'nutrition',
+    ]);
+  } else if (isChc) {
+    enable([
+      'general_medicine', 'family_medicine', 'paediatrics', 'obstetrics_gynaecology',
+      'emergency', 'surgery', 'anc_pnc', 'immunization', 'hiv_art', 'tb_dots', 'nutrition',
+    ]);
+  } else if (isTertiary) {
+    enable(Object.keys(CLINICAL_SERVICE_LABELS) as ClinicalServiceKey[]);
+  } else {
+    enable([
+      'general_medicine', 'surgery', 'paediatrics', 'obstetrics_gynaecology', 'emergency',
+      'icu_critical_care', 'orthopaedics', 'family_medicine', 'anc_pnc', 'immunization',
+      'hiv_art', 'tb_dots', 'physiotherapy', 'infectious_disease',
+    ]);
+  }
+  return { ...catalog, services };
+}
+
+/** Bulk-create N theatres with sensible names/types. */
+export function bulkCreateTheatres(count: number, start = 1): TheatreUnit[] {
+  const n = Math.max(1, Math.min(20, count));
+  const types: TheatreUnit['type'][] = ['main', 'emergency', 'obstetric', 'day_case', 'minor'];
+  return Array.from({ length: n }, (_, i) =>
+    newTheatre({
+      name: `Theatre ${start + i}`,
+      type: types[i % types.length],
+      hasLaminarFlow: i === 0,
+      active: true,
+    })
+  );
+}
+
+/** Bulk-create standard OPD clinics for Nigerian secondary hospitals. */
+export function bulkCreateStandardClinics(facilityType?: string): ClinicUnit[] {
+  const t = (facilityType || '').toLowerCase();
+  const base = [
+    newClinic({ name: 'GOPD', specialty: 'Family Medicine', days: 'Mon–Fri', slotsPerDay: 40 }),
+    newClinic({ name: 'ANC Clinic', specialty: 'Obstetrics', days: 'Mon / Wed / Fri', slotsPerDay: 30 }),
+    newClinic({ name: 'Child Welfare / Immunization', specialty: 'Paediatrics', days: 'Tue / Thu', slotsPerDay: 35 }),
+    newClinic({ name: 'HIV / ART Clinic', specialty: 'Infectious Disease', days: 'Wed', slotsPerDay: 25 }),
+    newClinic({ name: 'TB / DOTS', specialty: 'Pulmonary', days: 'Mon–Fri', slotsPerDay: 15 }),
+  ];
+  if (t.includes('general') || t.includes('tertiary') || t.includes('specialist')) {
+    base.push(
+      newClinic({ name: 'Surgical Outpatient', specialty: 'Surgery', days: 'Tue / Thu', slotsPerDay: 20 }),
+      newClinic({ name: 'Medical Outpatient', specialty: 'Internal Medicine', days: 'Mon / Wed', slotsPerDay: 25 }),
+      newClinic({ name: 'Eye Clinic', specialty: 'Ophthalmology', days: 'Fri', slotsPerDay: 15 }),
+    );
+  }
+  return base;
+}
+
+export function applyDiagnosticsStandard(catalog: FacilityCatalog, level: 'basic' | 'standard' | 'advanced' = 'standard'): FacilityCatalog {
+  const lab: FacilityCatalog['labCapabilities'] = { ...catalog.labCapabilities };
+  const rad: FacilityCatalog['radiologyModalities'] = { ...catalog.radiologyModalities };
+  const allLab = Object.keys(LAB_LABELS) as LabCapabilityKey[];
+  const allRad = Object.keys(RADIOLOGY_LABELS) as RadiologyModalityKey[];
+  for (const k of allLab) lab[k] = false;
+  for (const k of allRad) rad[k] = false;
+
+  if (level === 'basic') {
+    for (const k of ['haematology', 'chemistry', 'urine_analysis', 'parasitology', 'point_of_care'] as LabCapabilityKey[]) lab[k] = true;
+    for (const k of ['xray', 'ultrasound', 'ecg'] as RadiologyModalityKey[]) rad[k] = true;
+  } else if (level === 'advanced') {
+    for (const k of allLab) lab[k] = true;
+    for (const k of allRad) rad[k] = true;
+  } else {
+    for (const k of ['haematology', 'chemistry', 'microbiology', 'serology_immunology', 'urine_analysis', 'parasitology', 'blood_bank_crossmatch', 'point_of_care'] as LabCapabilityKey[]) lab[k] = true;
+    for (const k of ['xray', 'ultrasound', 'ecg', 'echo'] as RadiologyModalityKey[]) rad[k] = true;
+  }
+  return { ...catalog, labCapabilities: lab, radiologyModalities: rad };
+}
+
+export function applyPharmacyStandard(catalog: FacilityCatalog, level: 'basic' | 'standard' | 'full' = 'standard'): FacilityCatalog {
+  const ph: FacilityCatalog['pharmacyCapabilities'] = { ...catalog.pharmacyCapabilities };
+  const all = Object.keys(PHARMACY_LABELS) as PharmacyCapabilityKey[];
+  for (const k of all) ph[k] = false;
+  if (level === 'basic') {
+    ph.outpatient_dispensary = true;
+    ph.cold_chain = true;
+  } else if (level === 'full') {
+    for (const k of all) ph[k] = true;
+  } else {
+    ph.outpatient_dispensary = true;
+    ph.inpatient_pharmacy = true;
+    ph.emergency_pharmacy = true;
+    ph.cold_chain = true;
+    ph.controlled_substances = true;
+  }
+  return {
+    ...catalog,
+    pharmacyCapabilities: ph,
+    hasBloodBank: level !== 'basic',
+  };
+}
+
+/**
+ * Parse a free-text or structured AI JSON response into catalog patches.
+ * Safe to call with Gemini output or offline templates.
+ */
+export function mergeAiFacilityPatch(
+  catalog: FacilityCatalog,
+  patch: Partial<FacilityCatalog> & {
+    wards?: Partial<WardCapacityRow>[];
+    theatres?: Partial<TheatreUnit>[];
+    clinics?: Partial<ClinicUnit>[];
+  }
+): FacilityCatalog {
+  const next: FacilityCatalog = { ...catalog, ...patch, facilityId: catalog.facilityId };
+  if (Array.isArray(patch.wards)) {
+    next.wards = patch.wards.map((w) =>
+      newWardRow({
+        ward: w.ward,
+        prefix: w.prefix,
+        count: w.count,
+        category: w.category,
+      })
+    );
+  }
+  if (Array.isArray(patch.theatres)) {
+    next.theatres = patch.theatres.map((t) =>
+      newTheatre({ name: t.name, type: t.type, hasLaminarFlow: t.hasLaminarFlow, active: t.active })
+    );
+    next.theatreCount = Math.max(next.theatreCount, next.theatres.length);
+  }
+  if (Array.isArray(patch.clinics)) {
+    next.clinics = patch.clinics.map((c) =>
+      newClinic({ name: c.name, specialty: c.specialty, days: c.days, slotsPerDay: c.slotsPerDay })
+    );
+  }
+  if (patch.services) next.services = { ...catalog.services, ...patch.services };
+  if (patch.labCapabilities) next.labCapabilities = { ...catalog.labCapabilities, ...patch.labCapabilities };
+  if (patch.radiologyModalities) next.radiologyModalities = { ...catalog.radiologyModalities, ...patch.radiologyModalities };
+  if (patch.pharmacyCapabilities) next.pharmacyCapabilities = { ...catalog.pharmacyCapabilities, ...patch.pharmacyCapabilities };
+  return next;
 }

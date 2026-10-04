@@ -20,6 +20,7 @@ export const FACILITY_KEYS = {
   ambulance: 'medcore_os_ambulance_v1',
   staff: 'medcore_os_staff_registry',
   audit: 'medcore_os_audit_log_v1',
+  facilityCatalog: 'medcore_facility_catalog_v1',
 } as const;
 
 /** Publish a facility-scoped payload to LAN/cloud peers + other tabs. */
