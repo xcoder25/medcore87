@@ -153,14 +153,14 @@ const MASTER_PILLARS: NavSection[] = [
     label: '3. Hospital Operations & Logistics',
     items: [
       { key: 'command', icon: Activity, label: 'Hospital Operations Hub' },
-      { key: 'beds', icon: BedDouble, label: 'Bed & Ward Management' },
+      { key: 'beds', icon: BedDouble, label: 'Clinical bed placement' },
       { key: 'patient-flow', icon: RefreshCw, label: 'Patient Transit & Admissions' },
             { key: 'universal-queue', icon: Clock, label: 'Universal Queue' },
             { key: 'notifications', icon: Bell, label: 'Notifications' },
       { key: 'staffing', icon: Users, label: 'Doctor & Nurse Shift Rosters' },
       { key: 'ambulance', icon: PhoneCall, label: 'Ambulance Fleet & Transfers', badge: 'GPS' },
       { key: 'inventory', icon: Package, label: 'Central Medical Store (CMS)' },
-      { key: 'biomedical', icon: Wrench, label: 'Biomedical Equipment Assets' },
+      { key: 'biomedical', icon: Wrench, label: 'Clinical device log (not CMMS) Assets' },
       { key: 'facilities', icon: Gauge, label: 'Oxygen Plant & Utilities' },
       { key: 'environmental', icon: Trash2, label: 'Environmental Health & Safety' },
     ],
@@ -304,7 +304,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Ward Nursing Station', badge: 'Live' },
             { key: 'nursing', icon: FileText, label: 'Inpatient Nursing & e-MAR', badge: 'e-MAR' },
-            { key: 'beds', icon: BedDouble, label: 'Bed & Ward Management', badge: 'Beds' },
+            { key: 'beds', icon: BedDouble, label: 'Clinical bed placement', badge: 'Beds' },
           ],
         },
         {
@@ -442,7 +442,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: 'Clinical Engineering Desk',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Engineering Command Desk', badge: 'Live' },
-            { key: 'biomedical', icon: Wrench, label: 'Biomedical Equipment Assets', badge: 'PM' },
+            { key: 'biomedical', icon: Wrench, label: 'Clinical device log (not CMMS) Assets', badge: 'PM' },
             { key: 'iot-devices', icon: Cpu, label: 'Connected Medical IoT Monitors', badge: 'IoT' },
           ],
         },
@@ -554,7 +554,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: 'Operations & Bed Management',
           items: [
             { key: 'command', icon: Activity, label: 'Hospital Command Centre' },
-            { key: 'beds', icon: BedDouble, label: 'Bed & Ward Occupancy' },
+            { key: 'beds', icon: BedDouble, label: 'Clinical bed census' },
             { key: 'patient-flow', icon: RefreshCw, label: 'Patient Flow Visibility' },
             { key: 'ambulance', icon: PhoneCall, label: 'Ambulance & Dispatch' },
           ],
@@ -595,7 +595,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'fhir', icon: FileCode, label: 'FHIR R4 & HL7 Message Gateway', badge: 'R4' },
             { key: 'data-hub', icon: Database, label: 'Central Telemetry Data Hub' },
             { key: 'iot-devices', icon: Cpu, label: 'Medical Devices & IoT', badge: 'IoT' },
-            { key: 'biomedical', icon: Wrench, label: 'Biomedical Equipment Assets' },
+            { key: 'biomedical', icon: Wrench, label: 'Clinical device log (not CMMS) Assets' },
             { key: 'safety', icon: ShieldCheck, label: 'Disaster Recovery & BCP' },
             { key: 'compliance', icon: FileText, label: 'Security & Audit Logs' },
           ],
@@ -712,7 +712,7 @@ const ROLE_THEMES: Record<string, RoleThemeConfig> = {
     gradient: 'linear-gradient(135deg, #EA580C 0%, #F97316 100%)',
     activeBg: 'linear-gradient(90deg, rgba(234, 88, 12, 0.28) 0%, rgba(249, 115, 22, 0.12) 100%)',
     icon: Wrench,
-    workspaceTitle: 'Biomedical Equipment Assets',
+    workspaceTitle: 'Clinical device log (not CMMS) Assets',
   },
   medical_director: {
     label: 'Executive Oversight Hub',

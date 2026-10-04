@@ -33,10 +33,10 @@ import { listPatients } from '../../lib/patientRegistryStore';
 const BED_STATUS_META: Record<BedStatus, { label: string; color: string }> = {
   occupied: { label: 'Occupied', color: '#EA580C' },
   available: { label: 'Available', color: '#22C55E' },
-  maintenance: { label: 'Maintenance', color: '#F59E0B' },
+  maintenance: { label: 'Out of service', color: '#F59E0B' },
   isolation: { label: 'Isolation', color: '#A855F7' },
   reserved: { label: 'Reserved', color: '#3B82F6' },
-  cleaning: { label: 'Cleaning', color: '#64748B' },
+  cleaning: { label: 'Turnover', color: '#64748B' },
 };
 
 export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: string } }> = ({
@@ -135,7 +135,7 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
       <style>body{font-family:system-ui;padding:24px}table{border-collapse:collapse;width:100%;font-size:12px}
       th,td{border:1px solid #ccc;padding:6px;text-align:left}h1{font-size:18px}</style></head><body>
       <h1>Night report · Daily census · ${census.date}</h1>
-      <p>Total ${census.total} · Occupied ${census.occupied} · Isolation ${census.isolation} · Available ${census.available} · Cleaning ${census.cleaning}</p>
+      <p>Total ${census.total} · Occupied ${census.occupied} · Isolation ${census.isolation} · Available ${census.available} · Turnover ${census.cleaning}</p>
       <table><thead><tr><th>Ward</th><th>Bed</th><th>Status</th><th>Patient</th><th>Doctor</th><th>Admitted</th><th>EDD</th><th>LOS</th></tr></thead>
       <tbody>${census.rows
         .map(
@@ -188,10 +188,10 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h2 style={{ margin: 0, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <BedDouble size={22} /> Bed & Ward Occupancy
+            <BedDouble size={22} /> Clinical bed census
           </h2>
           <p style={{ margin: '6px 0 0', fontSize: 13, color: '#64748B' }}>
-            Authoritative bed IDs · Nursing e-MAR, Theatre PACU & Maternity use this same board
+            Patient placement only (who is in which bed). Not estates/HVAC/housekeeping CMMS — Turnover = not ready for admit.
           </p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -220,7 +220,7 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
           { l: 'Occupied', v: census.occupied, c: '#EA580C' },
           { l: 'Isolation', v: census.isolation, c: '#A855F7' },
           { l: 'Available', v: census.available, c: '#22C55E' },
-          { l: 'Cleaning', v: census.cleaning, c: '#64748B' },
+          { l: 'Turnover', v: census.cleaning, c: '#64748B' },
         ].map((k) => (
           <div key={k.l} style={card}>
             <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>{k.l}</div>
@@ -430,7 +430,7 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
                       onClick={() => {
                         dischargeBed(selected.id, actor);
                         reload();
-                        showNotification('Discharged · bed cleaning');
+                        showNotification('Discharged · bed in turnover (not ready for admit)');
                       }}
                     >
                       Discharge

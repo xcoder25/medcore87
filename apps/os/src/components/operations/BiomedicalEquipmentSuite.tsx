@@ -9,6 +9,7 @@ import type { BiomedicalDevice } from '@medcore/types';
 
 const INITIAL_DEVICES: BiomedicalDevice[] = [];
 
+/** Clinical visibility of devices linked to care — not a full CMMS for calibration work-orders. */
 export const BiomedicalEquipmentSuite: React.FC = () => {
   const [devices, setDevices] = useState<BiomedicalDevice[]>(INITIAL_DEVICES);
   const [search, setSearch] = useState('');

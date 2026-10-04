@@ -1,5 +1,5 @@
 /**
- * Hospital bed board — authoritative bed IDs shared across Nursing, Theatre, Maternity.
+ * Clinical bed census — patient placement IDs shared across Nursing, Theatre, Maternity. Not facilities/CMMS.
  * Local-first, facility-scoped, realtime via events + role sync.
  */
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';

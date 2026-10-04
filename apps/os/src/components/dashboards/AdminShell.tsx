@@ -69,14 +69,14 @@ const NAV: NavSection[] = [
       { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { key: 'transfer', label: 'Hospital Staff Transfer', icon: Users },
       { key: 'staffing', label: 'Staffing & Rosters', icon: Users },
-      { key: 'facility', label: 'My Hospital', icon: Building2 },
+      { key: 'facility', label: 'Clinical facility profile', icon: Building2 },
     ],
   },
   {
-    label: 'Operations & Bed Management',
+    label: 'Clinical operations & beds',
     items: [
       { key: 'command', label: 'Hospital Command Centre', icon: Activity },
-      { key: 'beds', label: 'Bed & Ward Occupancy', icon: BedDouble },
+      { key: 'beds', label: 'Clinical bed census', icon: BedDouble },
       { key: 'patient-flow', label: 'Patient Flow Visibility', icon: RefreshCw },
       { key: 'ambulance', label: 'Ambulance & Dispatch', icon: PhoneCall },
     ],

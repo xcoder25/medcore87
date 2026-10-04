@@ -1,8 +1,9 @@
 'use client';
 
 /**
- * Full EMR facility setup — identity, capacity, services, diagnostics, pharmacy,
- * emergency/maternity, OPD clinics, operations. Agentic ward/bed layout via M87.
+ * Clinical EMR facility profile — service lines, orderables, and bed capacity
+ * for patient placement. Not a CMMS/IWMS (no HVAC, estates, or plant maintenance).
+ * Agentic ward/bed layout via M87 for clinical census only.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -54,13 +55,13 @@ type Section =
 
 const SECTIONS: { id: Section; label: string; icon: React.ReactNode }[] = [
   { id: 'identity', label: 'Identity & licence', icon: <Building2 size={15} /> },
-  { id: 'capacity', label: 'Beds & units', icon: <BedDouble size={15} /> },
+  { id: 'capacity', label: 'Clinical beds & units', icon: <BedDouble size={15} /> },
   { id: 'services', label: 'Clinical services', icon: <Stethoscope size={15} /> },
   { id: 'diagnostics', label: 'Lab & imaging', icon: <FlaskConical size={15} /> },
   { id: 'pharmacy', label: 'Pharmacy & blood', icon: <Pill size={15} /> },
   { id: 'emergency', label: 'Emergency & maternity', icon: <Ambulance size={15} /> },
   { id: 'clinics', label: 'OPD clinics', icon: <Hospital size={15} /> },
-  { id: 'operations', label: 'Hours & payers', icon: <Clock size={15} /> },
+  { id: 'operations', label: 'Hours & payers (clinical)', icon: <Clock size={15} /> },
 ];
 
 function fallbackLayout(totalBeds: number, facilityType: string): WardCapacityRow[] {
@@ -457,11 +458,11 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
           <Building2 size={22} color="#0052D4" />
           <div style={{ flex: 1, minWidth: 200 }}>
             <h2 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 800, color: '#0A2540' }}>
-              Hospital facility setup (EMR)
+              Clinical facility profile (EMR)
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: '0.83rem', color: '#475569' }}>
-              Configure everything an EMR needs for <strong>{catalog.name || session?.facility}</strong> (
-              {facilityId}) — capacity, services, diagnostics, pharmacy, emergency, clinics, and operations.
+              Clinical profile for <strong>{catalog.name || session?.facility}</strong> (
+              {facilityId}): service lines, orderables, OPD/A&amp;E, and beds for <em>patient placement</em> — not building, EVS, or plant maintenance.
             </p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
@@ -517,7 +518,7 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
             <Sparkles size={18} color="#7C3AED" />
             <strong style={{ color: '#0A2540', fontSize: '0.9rem' }}>M87 AI Assist</strong>
             <span style={{ fontSize: '0.78rem', color: '#64748B', flex: 1 }}>
-              Automate one section or the whole facility catalog (single + bulk). Save publishes realtime to all workstations.
+              Draft clinical service lines, wards for patient placement, lab/Rx/imaging orderables (single or bulk). Review before save — not building/estates management.
             </span>
             <button
               type="button"
@@ -1486,7 +1487,7 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
             cursor: 'pointer',
           }}
         >
-          <Save size={15} /> Save facility catalog
+          <Save size={15} /> Save clinical profile
         </button>
         <button
           type="button"
