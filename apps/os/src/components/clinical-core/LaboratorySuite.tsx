@@ -89,7 +89,7 @@ export const LaboratorySuite: React.FC = () => {
     setTimeout(() => setNotice(null), 3500);
   };
 
-  const selectedOrder = orders.find(o => o.id === selectedId) || orders[0];
+  const selectedOrder = orders.find(o => o.id === selectedId) || orders[0] || null;
 
   const handleAcknowledgePanic = (id: string) => {
     setOrders(prev => prev.map(o => o.id === id ? { ...o, isPanicValue: false, status: 'completed' } : o));
@@ -146,7 +146,7 @@ export const LaboratorySuite: React.FC = () => {
 
   const handleSaveResult = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resultInput.trim()) return;
+    if (!resultInput.trim() || !selectedOrder) return;
 
     setOrders(prev => prev.map(o => {
       if (o.id === selectedOrder.id) {
@@ -315,6 +315,16 @@ export const LaboratorySuite: React.FC = () => {
         {/* Right: Analyzer Telemetry & Result Actions */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Selected Order Result Card */}
+          {!selectedOrder ? (
+            <div className="os-card" style={{ padding: 20 }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--os-text-dim)', textTransform: 'uppercase', marginBottom: 8 }}>
+                LIS Specimen Analysis
+              </div>
+              <p style={{ margin: 0, fontSize: 13, color: '#64748B' }}>
+                No lab orders yet. Create an order or wait for doctors to send tests from EMR.
+              </p>
+            </div>
+          ) : (
           <div className="os-card" style={{ padding: 20, borderColor: selectedOrder.isPanicValue ? '#EF4444' : undefined }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--os-text-dim)', textTransform: 'uppercase' }}>
@@ -376,6 +386,7 @@ export const LaboratorySuite: React.FC = () => {
               </button>
             )}
           </div>
+          )}
 
           {/* Automated Instruments Telemetry */}
           <div className="os-card" style={{ padding: 18 }}>
@@ -488,13 +499,13 @@ export const LaboratorySuite: React.FC = () => {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0A2540' }}>
-                Enter Result: {selectedOrder.testName}
+                Enter Result: {selectedOrder?.testName || 'Lab test'}
               </h3>
               <button className="os-ghost-btn" style={{ padding: 4 }} onClick={() => setShowResultModal(false)}><X size={16} /></button>
             </div>
             <form onSubmit={handleSaveResult} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ fontSize: '0.82rem', color: '#64748B' }}>
-                Patient: <strong style={{ color: '#0A2540' }}>{selectedOrder.patientName}</strong> • Barcode: <span style={{ fontFamily: 'monospace' }}>{selectedOrder.barcode}</span>
+                Patient: <strong style={{ color: '#0A2540' }}>{selectedOrder?.patientName || '—'}</strong> • Barcode: <span style={{ fontFamily: 'monospace' }}>{selectedOrder?.barcode || '—'}</span>
               </div>
               <div>
                 <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>

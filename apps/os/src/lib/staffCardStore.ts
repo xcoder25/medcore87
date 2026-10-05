@@ -48,7 +48,12 @@ export function enrolStaffAndIssueCard(
 ): { card: StaffCardRecord; badgeId: string } {
   // Facility-owned prefix: full facilityId (e.g. IGH-EKT-ADM-001) so every hospital has its own ID space
   const facilityPrefix = (input.facilityId || 'FAC').trim().toUpperCase().replace(/\s+/g, '');
-  const roleSeg = (input.roleKey || 'STF').slice(0, 3).toUpperCase();
+  const ROLE_BADGE_SEG: Record<string, string> = {
+    doctor: 'DOC', surgeon: 'SUR', nurse: 'NUR', midwife: 'MID', pharmacist: 'PHA',
+    lab: 'LAB', radiologist: 'RAD', reception: 'REC', records: 'REO', accountant: 'ACC',
+    hospital_admin: 'ADM', sysadmin: 'SYS', biomedical: 'BIO', medical_director: 'DIR',
+  };
+  const roleSeg = (ROLE_BADGE_SEG[input.roleKey] || (input.roleKey || 'STF').slice(0, 3)).toUpperCase();
   const id = (
     badgeId ||
     `${facilityPrefix}-${roleSeg}-${Date.now().toString(36).slice(-4).toUpperCase()}`
@@ -211,13 +216,29 @@ export function inferRoleKey(raw?: string, badgeId?: string): string {
       s === 'pharmacist' || s === 'lab' || s === 'radiologist' || s === 'reception' ||
       s === 'records' || s === 'accountant' || s === 'sysadmin' || s === 'hospital_admin' ||
       s === 'biomedical' || s === 'medical_director') return s;
+  // Badge pattern first when raw is weak — avoids reception IDs becoming "doctor"
+  const parts = String(badgeId || '').toUpperCase().split('-').filter(Boolean);
+  const badgeMap: Record<string, string> = {
+    DOC: 'doctor', SUR: 'surgeon', NUR: 'nurse', MID: 'midwife', PHA: 'pharmacist',
+    LAB: 'lab', RAD: 'radiologist', REC: 'reception', FRO: 'reception', DES: 'reception',
+    REO: 'records', ACC: 'accountant', SYS: 'sysadmin', ADM: 'hospital_admin', HOS: 'hospital_admin',
+    BIO: 'biomedical', DIR: 'medical_director', STF: 'records',
+  };
+  if (parts.length >= 2) {
+    for (let i = parts.length - 2; i >= 1; i--) {
+      if (badgeMap[parts[i]]) return badgeMap[parts[i]];
+    }
+    for (const p of parts) {
+      if (badgeMap[p]) return badgeMap[p];
+    }
+  }
   if (s.includes('surgeon')) return 'surgeon';
   if (s.includes('nurse')) return 'nurse';
   if (s.includes('midwife')) return 'midwife';
   if (s.includes('pharm')) return 'pharmacist';
-  if (s.includes('lab')) return 'lab';
+  if (s.includes('lab') || s.includes('patholog') || s.includes('scientist')) return 'lab';
   if (s.includes('radio')) return 'radiologist';
-  if (s.includes('reception') || s.includes('front desk')) return 'reception';
+  if (s.includes('reception') || s.includes('front desk') || s.includes('front-desk') || s.includes('cashier desk')) return 'reception';
   if (s.includes('record')) return 'records';
   if (s.includes('account') || s.includes('finance') || s.includes('cashier')) return 'accountant';
   if (s.includes('biomed')) return 'biomedical';
@@ -225,24 +246,27 @@ export function inferRoleKey(raw?: string, badgeId?: string): string {
   if (s.includes('hospital_admin') || (s.includes('administrator') && !s.includes('system'))) return 'hospital_admin';
   if (s.includes('sysadmin') || s.includes('ict') || s.includes('system admin')) return 'sysadmin';
   if (s.includes('doctor') || s.includes('medical officer') || s.includes('physician') || s.includes('clinician')) return 'doctor';
-  // Badge pattern: IGH-EKT-ADM-001 or GH-IKE-ADM-001 → scan segments for role code
-  const parts = String(badgeId || '').toUpperCase().split('-').filter(Boolean);
-  if (parts.length >= 2) {
-    const map: Record<string, string> = {
-      DOC: 'doctor', SUR: 'surgeon', NUR: 'nurse', MID: 'midwife', PHA: 'pharmacist',
-      LAB: 'lab', RAD: 'radiologist', REC: 'reception', REO: 'records', ACC: 'accountant',
-      SYS: 'sysadmin', ADM: 'hospital_admin', BIO: 'biomedical', DIR: 'medical_director',
-    };
-    // Prefer role segment (usually second-to-last before serial)
-    for (let i = parts.length - 2; i >= 1; i--) {
-      if (map[parts[i]]) return map[parts[i]];
-    }
-    for (const p of parts) {
-      if (map[p]) return map[p];
-    }
-  }
-  return 'doctor';
+  // Unknown — do NOT default to doctor (that sent reception staff to Doctor Workspace)
+  return 'records';
 }
+
+/** Default module permissions when registry only has dashboard */
+export function defaultPermissionsForRole(roleKey: string): string[] {
+  const map: Record<string, string[]> = {
+    reception: ['dashboard', 'patient-flow', 'patient-card', 'appointments', 'cashier', 'patient-360', 'ai'],
+    doctor: ['dashboard', 'doctor-portal', 'emr', 'patients', 'pharmacy', 'laboratory', 'radiology', 'beds', 'ai', 'm87-ai'],
+    nurse: ['dashboard', 'nursing', 'emr', 'beds', 'patients', 'ai'],
+    pharmacist: ['dashboard', 'pharmacy', 'emr', 'ai'],
+    lab: ['dashboard', 'laboratory', 'emr', 'ai'],
+    radiologist: ['dashboard', 'radiology', 'emr', 'ai'],
+    hospital_admin: ['dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing', 'enrolment', 'my-card', 'cashier', 'rbac', 'sysadmin', 'ai', 'm87-ai'],
+    accountant: ['dashboard', 'cashier', 'billing', 'ai'],
+    records: ['dashboard', 'patient-card', 'emr', 'patients', 'ai'],
+    sysadmin: ['dashboard', 'sysadmin', 'rbac', 'ai'],
+  };
+  return map[roleKey] || ['dashboard'];
+}
+
 
 /** Normalize badge for comparison */
 export function normalizeBadgeId(badgeId: string): string {
@@ -291,7 +315,9 @@ export function resolveStaffByBadge(badgeId: string): {
           clearanceLevel: hit.clearanceLevel ?? 2,
           clearanceLabel: hit.clearanceLabel || 'L2',
           initials: hit.initials || 'ST',
-          permissions: hit.permissions || ['dashboard'],
+          permissions: (hit.permissions && hit.permissions.length > 1)
+            ? hit.permissions
+            : defaultPermissionsForRole(inferRoleKey(hit.roleKey || hit.role, hit.badgeId || hit.id)),
           pin: String(hit.pin || '123456'),
           hospitalId: hit.hospitalId || hit.facilityId || '',
           hospitalName: hit.hospitalName || hit.facilityName || '',
@@ -324,7 +350,7 @@ export function resolveStaffByBadge(badgeId: string): {
         clearanceLevel: card.clearanceLevel,
         clearanceLabel: card.clearanceLabel,
         initials: card.initials,
-        permissions: ['dashboard'],
+        permissions: defaultPermissionsForRole(inferRoleKey(card.roleKey || card.role, card.badgeId)),
         pin,
         hospitalId: card.facilityId,
         hospitalName: card.facilityName,

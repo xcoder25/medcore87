@@ -112,22 +112,34 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
   const handleAdmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selected || !admitPatientName.trim()) return;
+    // Explicit named fields — never positional; avoid name/doctor/dx swap
+    const patientName = admitPatientName.trim();
+    const doctorName = admitDoctor.trim();
+    const diagnosisText = admitDiagnosis.trim();
+    const fromReg = admitPatientId ? patients.find((x) => x.id === admitPatientId) : undefined;
+    const hospitalNumber =
+      fromReg?.hospitalNumber ||
+      fromReg?.id ||
+      undefined;
     admitToBed(selected.id, {
-      patient: admitPatientName.trim(),
-      patientId: admitPatientId || undefined,
-      doctor: admitDoctor.trim() || undefined,
-      diagnosis: admitDiagnosis.trim() || undefined,
+      patient: patientName,
+      patientId: admitPatientId || fromReg?.id || undefined,
+      hospitalNumber,
+      doctor: doctorName || undefined,
+      diagnosis: diagnosisText || undefined,
       expectedDischarge: admitEdd || undefined,
       isolation: admitIsolation,
       actor,
     });
     reload();
     setShowAdmitModal(false);
+    setAdmitPatientId('');
     setAdmitPatientName('');
+    setAdmitDoctor('');
     setAdmitDiagnosis('');
     setAdmitEdd('');
     setAdmitIsolation(false);
-    showNotification(`${admitPatientName.trim()} admitted to ${selected.bedNo}`);
+    showNotification(`${patientName} admitted to ${selected.bedNo}${doctorName ? ` · Dr ${doctorName}` : ''}`);
   };
 
   const printCensus = () => {
@@ -390,7 +402,15 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
                   <button
                     type="button"
                     style={btnPrimary}
-                    onClick={() => setShowAdmitModal(true)}
+                    onClick={() => {
+                      setAdmitPatientId('');
+                      setAdmitPatientName('');
+                      setAdmitDoctor('');
+                      setAdmitDiagnosis('');
+                      setAdmitEdd('');
+                      setAdmitIsolation(false);
+                      setShowAdmitModal(true);
+                    }}
                   >
                     <UserPlus size={14} /> Admit patient
                   </button>
@@ -574,15 +594,37 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
             </label>
             <label style={label}>
               Patient name
-              <input value={admitPatientName} onChange={(e) => setAdmitPatientName(e.target.value)} style={input} required />
+              <input
+                name="admit_patient_name"
+                autoComplete="off"
+                value={admitPatientName}
+                onChange={(e) => setAdmitPatientName(e.target.value)}
+                style={input}
+                required
+                placeholder="Full patient name"
+              />
             </label>
             <label style={label}>
-              Doctor
-              <input value={admitDoctor} onChange={(e) => setAdmitDoctor(e.target.value)} style={input} />
+              Attending doctor
+              <input
+                name="admit_doctor"
+                autoComplete="off"
+                value={admitDoctor}
+                onChange={(e) => setAdmitDoctor(e.target.value)}
+                style={input}
+                placeholder="Doctor name"
+              />
             </label>
             <label style={label}>
-              Diagnosis
-              <input value={admitDiagnosis} onChange={(e) => setAdmitDiagnosis(e.target.value)} style={input} />
+              Admission diagnosis
+              <input
+                name="admit_diagnosis"
+                autoComplete="off"
+                value={admitDiagnosis}
+                onChange={(e) => setAdmitDiagnosis(e.target.value)}
+                style={input}
+                placeholder="Working diagnosis"
+              />
             </label>
             <label style={label}>
               Expected discharge
