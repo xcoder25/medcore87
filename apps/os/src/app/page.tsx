@@ -83,7 +83,7 @@ import {
   AlertTriangle, Building2, Users, BedDouble, RefreshCw, BarChart3, Settings,
   CreditCard, FileText, Stethoscope, Calendar, HeartPulse, Database, Brain, Sparkles, Flame,
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
-  Package, Wrench, Gauge, Trash2, Cpu, FileCode, ShieldCheck,
+  Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck,
   Search, X, LayoutDashboard, MapPin, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
   Command, CornerDownLeft
 } from 'lucide-react';
