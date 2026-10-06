@@ -34,6 +34,7 @@ import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 // Specialty Suites
 import { AdminShell } from '../components/dashboards/AdminShell';
 import { OsAppShell } from '../components/layout/OsAppShell';
+import { listPatients } from '../lib/patientRegistryStore';
 import { ModulePageLoader } from '../components/layout/ModulePageLoader';
 import { ReceptionWorkspace } from '../components/dashboards/ReceptionWorkspace';
 import { ensureCleanPilot } from '../lib/adminRealtimeStore';
@@ -1253,8 +1254,27 @@ export default function OSPage() {
       });
     });
 
+    
+    try {
+      const fid = userSession?.hospitalId || 'IGH-EKT';
+      for (const p of listPatients(fid).slice(0, 40)) {
+        list.push({
+          id: `pt-${p.id}`,
+          label: `${p.firstName} ${p.lastName} · ${p.hospitalNumber}`,
+          group: 'Patients',
+          icon: Users,
+          badge: 'Chart',
+          action: () => {
+            try { sessionStorage.setItem('medcore_focus_patient', p.id); } catch {}
+            handleModuleChange('patient-360' as ModuleKey);
+            setCmdPaletteOpen(false);
+          },
+        });
+      }
+    } catch {}
+
     return list;
-  }, []);
+  }, [userSession?.hospitalId]);
 
   const filteredCommands = useMemo(() => {
     if (!cmdSearch.trim()) return allPaletteCommands;

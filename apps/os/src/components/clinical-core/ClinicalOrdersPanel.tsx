@@ -18,6 +18,7 @@ import { ORDER_SETS, previewOrderBpa, type BpaAlert } from '../../lib/clinicalIn
 import { listPatients, type FacilityPatient } from '../../lib/patientRegistryStore';
 import { appendAudit } from '../../lib/auditLogStore';
 import { FlaskConical, Pill, Activity, CheckCircle2 } from 'lucide-react';
+import { PatientChartBanner } from './PatientChartBanner';
 
 interface Props {
   session: UserSession;
@@ -187,6 +188,11 @@ export const ClinicalOrdersPanel: React.FC<Props> = ({ session }) => {
         <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Activity size={18} color="#0052D4" /> Place order
         </div>
+        {patients.find((x) => x.id === patientId) && (
+          <div style={{ marginBottom: 12 }}>
+            <PatientChartBanner patient={patients.find((x) => x.id === patientId)!} compact />
+          </div>
+        )}
         <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Patient</label>
         <select style={{ ...input, marginBottom: 10 }} value={patientId} onChange={(e) => { setPatientId(e.target.value); runBpaPreview(e.target.value); }}>
           <option value="">Select…</option>

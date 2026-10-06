@@ -17,6 +17,7 @@ import { listPatients, subscribePatients, type FacilityPatient } from '../../lib
 import { emitLiveAction } from '../../lib/liveActions';
 import { liveAlert } from '../../lib/manualActions';
 import { DoctorDeskHome } from './DoctorDeskHome';
+import { PatientChartBanner } from '../clinical-core/PatientChartBanner';
 import {
   LayoutDashboard, Users, FileText, Stethoscope, Pill, FlaskConical, Layers,
   BedDouble, Calendar, Bell, Settings, ClipboardList, Send, AlertTriangle,
@@ -904,6 +905,9 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
 
       <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ fontWeight: 800, fontSize: 14 }}>New prescription</div>
+        {patient && (
+          <PatientChartBanner patient={patient} compact />
+        )}
         <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
           Patient (registry)
           <select

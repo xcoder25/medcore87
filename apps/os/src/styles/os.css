@@ -6332,3 +6332,75 @@ img, .os-top-hud-avatar {
   min-width: 0 !important;
   transition: margin 0.28s ease;
 }
+
+
+/* ── Epic/Cerner-inspired clinical UX density ───────────────────────── */
+.mc-patient-banner {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  backdrop-filter: blur(8px);
+}
+
+.mc-worklist-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--os-border, #E2E8F0);
+  transition: background 0.12s ease;
+}
+.mc-worklist-row:hover {
+  background: #F8FAFC;
+}
+.mc-worklist-row:focus-within {
+  background: #EFF6FF;
+  outline: none;
+}
+
+.mc-status-chip {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space:nowrap;
+}
+.mc-status-chip--critical {
+  background: #FEE2E2;
+  color: #991B1B;
+  border: 1px solid #FECACA;
+}
+.mc-status-chip--warn {
+  background: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+}
+.mc-status-chip--ok {
+  background: #D1FAE5;
+  color: #065F46;
+  border: 1px solid #A7F3D0;
+}
+.mc-status-chip--info {
+  background: #DBEAFE;
+  color: #1E40AF;
+  border: 1px solid #BFDBFE;
+}
+
+/* Hyperdrive-style: denser tables in clinical panels */
+.mc-clinical-dense table td,
+.mc-clinical-dense table th {
+  padding: 8px 10px;
+  font-size: 0.82rem;
+}
+
+/* Reduce alert fatigue: only hard stops pulse */
+@keyframes mc-hard-stop-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+.mc-bpa-hard-stop {
+  animation: mc-hard-stop-pulse 2s ease-in-out infinite;
+  border-left: 4px solid #DC2626 !important;
+}
