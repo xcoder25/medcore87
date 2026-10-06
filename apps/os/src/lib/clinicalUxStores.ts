@@ -18,6 +18,8 @@ function writeJson(key: string, val: unknown) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(key, JSON.stringify(val));
   window.dispatchEvent(new CustomEvent('medcore-clinical-ux'));
+  window.dispatchEvent(new CustomEvent('medcore-admin-sync'));
+  try { window.dispatchEvent(new StorageEvent('storage', { key })); } catch { /* ignore */ }
 }
 export function subscribeClinicalUx(cb: () => void): () => void {
   if (typeof window === 'undefined') return () => {};

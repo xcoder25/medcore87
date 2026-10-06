@@ -88,7 +88,16 @@ export const ClinicalUxSuite: React.FC<Props> = ({ session, onNavigate, onLock, 
     const u1 = subscribeClinicalUx(reload);
     const u2 = subscribeOrders(reload);
     const u3 = subscribeReceptionOps(reload);
-    return () => { u1(); u2(); u3(); };
+    const onSync = () => reload();
+    window.addEventListener('medcore-admin-sync', onSync);
+    window.addEventListener('storage', onSync);
+    const id = window.setInterval(reload, 8000); // soft poll for multi-tab
+    return () => {
+      u1(); u2(); u3();
+      window.removeEventListener('medcore-admin-sync', onSync);
+      window.removeEventListener('storage', onSync);
+      window.clearInterval(id);
+    };
   }, []);
 
   const patients = useMemo(() => listPatients(facilityId), [facilityId, tick]);
@@ -834,7 +843,7 @@ function PrefsPanel({ session, onToast, onNavigate }: { session: UserSession; on
                 background: on ? C.teal : '#fff', color: on ? '#fff' : C.text,
               }}
             >
-              {s.name}
+              {s.label}
             </button>
           );
         })}
