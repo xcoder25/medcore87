@@ -15,14 +15,13 @@ import { FACILITY_KEYS } from './roleSyncBus';
 const KEY_EVENTS: Record<string, string[]> = {
   [FACILITY_KEYS.patients]: ['medcore-patients-updated', 'medcore-admin-sync'],
   [FACILITY_KEYS.reception]: ['medcore-reception-ops', 'medcore-admin-sync'],
-  medcore_os_reception_ops_v1: ['medcore-reception-ops', 'medcore-admin-sync'],
+  medcore_os_reception_ops_v1: ['medcore-reception-ops', 'medcore-admin-sync'], // legacy key
   [FACILITY_KEYS.clinical]: ['medcore-clinical-orders', 'medcore-admin-sync'],
   [FACILITY_KEYS.beds]: ['medcore-bed-board', 'medcore-admin-sync'],
   [FACILITY_KEYS.ambulance]: ['medcore-ambulance', 'medcore-admin-sync'],
   [FACILITY_KEYS.staff]: ['medcore-staff-cards-updated', 'medcore-admin-sync'],
   medcore_staff_id_cards: ['medcore-staff-cards-updated', 'medcore-admin-sync'],
   [FACILITY_KEYS.notifications]: ['medcore-notifications', 'medcore-admin-sync'],
-  medcore_os_notifications_v1: ['medcore-notifications', 'medcore-admin-sync'],
   [FACILITY_KEYS.audit]: ['medcore-admin-sync'],
   [FACILITY_KEYS.facilityCatalog]: ['medcore-facility-catalog', 'medcore-admin-sync'],
 };
