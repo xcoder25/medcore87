@@ -12,6 +12,7 @@ import { getStaffRegistry, subscribeAdminSync, getActiveFacilityId } from '../..
 import { emitLiveAction } from '../../lib/liveActions';
 import { buildOpsIntelligence } from '../../lib/opsIntelligence';
 import { scanEarlyWarnings } from '../../lib/clinicalEarlyWarning';
+import { facilityIntelligencePulse, listPendingCriticalAcks } from '../../lib/clinicalIntelligenceEngine';
 
 export const CommandCentreDashboard: React.FC = () => {
   const facilityId = (typeof window !== 'undefined' && getActiveFacilityId()) || 'IGH-EKT';
@@ -118,6 +119,29 @@ export const CommandCentreDashboard: React.FC = () => {
       </div>
 
       <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', padding: 16 }}>
+        {(() => {
+          const pulse = facilityIntelligencePulse(facilityId);
+          const pending = listPendingCriticalAcks(facilityId);
+          return (
+            <div
+              style={{
+                marginBottom: 12,
+                padding: '12px 14px',
+                borderRadius: 12,
+                border: `1px solid ${pulse.level === 'critical' ? '#FECACA' : pulse.level === 'warn' ? '#FDE68A' : '#A7F3D0'}`,
+                background: pulse.level === 'critical' ? '#FEF2F2' : pulse.level === 'warn' ? '#FFFBEB' : '#ECFDF5',
+              }}
+            >
+              <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>
+                Clinical intelligence pulse · {pending.length} critical ACK pending
+              </div>
+              <div style={{ fontSize: 13, color: '#334155' }}>{pulse.headline}</div>
+              <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>
+                Open STAT {pulse.openStat} · Long waits {pulse.longWait} · Epic/Cerner-style BPA + critical result protocol active
+              </div>
+            </div>
+          );
+        })()}
         <div style={{ fontWeight: 800, marginBottom: 10 }}>AI operational recommendations</div>
         <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10 }}>From live queues, beds, lab/Rx — assistive only</div>
         {buildOpsIntelligence(facilityId).map((r) => (

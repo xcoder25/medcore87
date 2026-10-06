@@ -14,6 +14,7 @@ import {
   type ClinicalOrder,
   type ClinicalOrderType,
 } from '../../lib/clinicalEventBus';
+import { ORDER_SETS, previewOrderBpa, type BpaAlert } from '../../lib/clinicalIntelligenceEngine';
 import { listPatients, type FacilityPatient } from '../../lib/patientRegistryStore';
 import { appendAudit } from '../../lib/auditLogStore';
 import { FlaskConical, Pill, Activity, CheckCircle2 } from 'lucide-react';
@@ -33,6 +34,9 @@ export const ClinicalOrdersPanel: React.FC<Props> = ({ session }) => {
   const [priority, setPriority] = useState<'routine' | 'urgent' | 'stat'>('routine');
   const [resultText, setResultText] = useState('');
   const [toast, setToast] = useState('');
+  const [bpaAlerts, setBpaAlerts] = useState<BpaAlert[]>([]);
+  const [orderSetId, setOrderSetId] = useState('');
+  const [overrideBpa, setOverrideBpa] = useState(false);
 
   const reload = () => {
     setOrders(listOrders(facilityId));
@@ -49,10 +53,42 @@ export const ClinicalOrdersPanel: React.FC<Props> = ({ session }) => {
     setTimeout(() => setToast(''), 3000);
   };
 
+  const runBpaPreview = (pid: string, t = type, c = code, n = name, pr = priority) => {
+    if (!pid) {
+      setBpaAlerts([]);
+      return;
+    }
+    setBpaAlerts(
+      previewOrderBpa({
+        facilityId,
+        patientId: pid,
+        type: t,
+        code: c,
+        name: n,
+        priority: pr,
+      })
+    );
+    setOverrideBpa(false);
+  };
+
   const submitOrder = () => {
     const p = patients.find((x) => x.id === patientId);
     if (!p) {
       flash('Select a patient');
+      return;
+    }
+    const alerts = previewOrderBpa({
+      facilityId,
+      patientId: p.id,
+      type,
+      code,
+      name,
+      priority,
+    });
+    setBpaAlerts(alerts);
+    const hard = alerts.filter((a) => a.level === 'hard_stop');
+    if (hard.length && !overrideBpa) {
+      flash('Best-practice alert: review hard stops or tick override');
       return;
     }
     const o = placeOrder({
@@ -74,10 +110,48 @@ export const ClinicalOrdersPanel: React.FC<Props> = ({ session }) => {
       action: 'clinical_order_placed',
       entity: 'order',
       entityId: o.id,
-      detail: `${type} ${name}`,
+      detail: `${type} ${name}${hard.length ? ' · BPA override' : ''}`,
     });
     reload();
+    setBpaAlerts([]);
+    setOverrideBpa(false);
     flash(`Order ${o.id} placed`);
+  };
+
+  const applyOrderSet = () => {
+    const set = ORDER_SETS.find((s) => s.id === orderSetId);
+    const p = patients.find((x) => x.id === patientId);
+    if (!set || !p) {
+      flash('Select patient and an order set');
+      return;
+    }
+    let n = 0;
+    for (const item of set.items) {
+      placeOrder({
+        facilityId,
+        patientId: p.id,
+        patientName: `${p.firstName} ${p.lastName}`,
+        hospitalNumber: p.hospitalNumber,
+        type: item.type,
+        code: item.code,
+        name: item.name,
+        orderedBy: session.name,
+        orderedByBadge: session.badgeId,
+        priority: item.priority || 'routine',
+      });
+      n += 1;
+    }
+    appendAudit({
+      facilityId,
+      actor: session.name,
+      actorBadge: session.badgeId,
+      action: 'order_set_applied',
+      entity: 'order_set',
+      entityId: set.id,
+      detail: `${set.label} · ${n} orders`,
+    });
+    reload();
+    flash(`Order set “${set.label}” — ${n} orders on bus`);
   };
 
   const input: React.CSSProperties = {
@@ -114,7 +188,7 @@ export const ClinicalOrdersPanel: React.FC<Props> = ({ session }) => {
           <Activity size={18} color="#0052D4" /> Place order
         </div>
         <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Patient</label>
-        <select style={{ ...input, marginBottom: 10 }} value={patientId} onChange={(e) => setPatientId(e.target.value)}>
+        <select style={{ ...input, marginBottom: 10 }} value={patientId} onChange={(e) => { setPatientId(e.target.value); runBpaPreview(e.target.value); }}>
           <option value="">Select…</option>
           {patients.map((p) => (
             <option key={p.id} value={p.id}>
@@ -160,9 +234,71 @@ export const ClinicalOrdersPanel: React.FC<Props> = ({ session }) => {
           <option value="urgent">Urgent</option>
           <option value="stat">STAT</option>
         </select>
+        <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Order set (Cerner/Epic style)</label>
+        <select
+          style={{ ...input, marginBottom: 8 }}
+          value={orderSetId}
+          onChange={(e) => setOrderSetId(e.target.value)}
+        >
+          <option value="">Single order…</option>
+          {ORDER_SETS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label} · {s.specialty}
+            </option>
+          ))}
+        </select>
+        {orderSetId && (
+          <button
+            type="button"
+            onClick={applyOrderSet}
+            style={{
+              width: '100%',
+              marginBottom: 12,
+              padding: 10,
+              borderRadius: 10,
+              border: '1px solid #A5B4FC',
+              background: '#EEF2FF',
+              color: '#3730A3',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Fire order set to bus
+          </button>
+        )}
+        {bpaAlerts.length > 0 && (
+          <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {bpaAlerts.map((a) => (
+              <div
+                key={a.id}
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  border: `1px solid ${a.level === 'hard_stop' ? '#FECACA' : a.level === 'warning' ? '#FDE68A' : '#E2E8F0'}`,
+                  background: a.level === 'hard_stop' ? '#FEF2F2' : a.level === 'warning' ? '#FFFBEB' : '#F8FAFC',
+                }}
+              >
+                <div style={{ fontWeight: 800, color: a.level === 'hard_stop' ? '#B91C1C' : '#92400E' }}>
+                  {a.level === 'hard_stop' ? 'Hard stop' : a.level === 'warning' ? 'Warning' : 'Info'} · {a.title}
+                </div>
+                <div style={{ color: '#475569', marginTop: 2 }}>{a.detail}</div>
+              </div>
+            ))}
+            {bpaAlerts.some((a) => a.level === 'hard_stop') && (
+              <label style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+                <input type="checkbox" checked={overrideBpa} onChange={(e) => setOverrideBpa(e.target.checked)} />
+                Clinician override (document reason in notes)
+              </label>
+            )}
+          </div>
+        )}
         <button
           type="button"
-          onClick={submitOrder}
+          onClick={() => {
+            runBpaPreview(patientId);
+            submitOrder();
+          }}
           style={{
             width: '100%',
             padding: 12,

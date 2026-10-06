@@ -4,6 +4,7 @@ import { pushNotification } from './notificationEngine';
 import { checkPrescriptionSafety } from './pharmacySafety';
 import { getPatient } from './patientRegistryStore';
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
+import { evaluateOrderBpa, evaluateResultForCritical } from './clinicalIntelligenceEngine';
 /**
  * Closed clinical loop bus: Order → Lab/Rx → Result → Doctor screen
  * Local-first + broadcast; optional Firestore facility mirror.
@@ -136,6 +137,27 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
         });
       }
     }
+    // Epic/Cerner-style BPA on place
+    try {
+      const bpas = evaluateOrderBpa({
+        facilityId: order.facilityId,
+        patientId: order.patientId,
+        type: order.type,
+        code: order.code,
+        name: order.name,
+        priority: order.priority,
+      });
+      for (const b of bpas.filter((x) => x.level === 'hard_stop' || x.level === 'warning')) {
+        pushNotification({
+          facilityId: order.facilityId,
+          level: b.level === 'hard_stop' ? 'critical' : 'important',
+          title: b.title,
+          body: b.detail,
+          module: 'doctor-portal',
+          patientId: order.patientId,
+        });
+      }
+    } catch { /* assistive */ }
   } catch { /* ignore */ }
   return order;
 }
@@ -171,7 +193,25 @@ export function postLabResult(
   summary: string,
   by: string
 ): ClinicalOrder | undefined {
-  return updateOrderStatus(orderId, 'resulted', { resultSummary: summary, resultedBy: by });
+  const order = updateOrderStatus(orderId, 'resulted', { resultSummary: summary, resultedBy: by });
+  if (order) {
+    try {
+      evaluateResultForCritical(order);
+    } catch { /* assistive only */ }
+  }
+  return order;
+}
+
+/** Pre-order BPA (Epic-style) — call before placeOrder; non-blocking unless hard_stop handled by UI */
+export function previewOrderBpa(input: {
+  facilityId: string;
+  patientId: string;
+  type: ClinicalOrderType;
+  code: string;
+  name: string;
+  priority?: string;
+}) {
+  return evaluateOrderBpa(input);
 }
 
 export function subscribeOrders(cb: () => void): () => void {

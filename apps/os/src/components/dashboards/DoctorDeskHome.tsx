@@ -13,6 +13,12 @@ import {
 } from 'lucide-react';
 import { todayVisits, subscribeReceptionOps, type ReceptionVisit } from '../../lib/receptionOpsStore';
 import { listOrders, subscribeOrders, type ClinicalOrder } from '../../lib/clinicalEventBus';
+import {
+  listPendingCriticalAcks,
+  acknowledgeCriticalResult,
+  facilityIntelligencePulse,
+  subscribeIntelligence,
+} from '../../lib/clinicalIntelligenceEngine';
 import { listPatients, subscribePatients } from '../../lib/patientRegistryStore';
 import { emitLiveAction } from '../../lib/liveActions';
 import { updateVisitStatus } from '../../lib/receptionOpsStore';
@@ -50,15 +56,19 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     const u1 = subscribeReceptionOps(reload);
     const u2 = subscribeOrders(reload);
     const u3 = subscribePatients(reload);
+    const u4 = subscribeIntelligence(reload);
     return () => {
       u1();
       u2();
       u3();
+      u4();
     };
   }, []);
 
   const visits = useMemo(() => todayVisits(facilityId), [facilityId, tick]);
   const orders = useMemo(() => listOrders(facilityId), [facilityId, tick]);
+  const criticalAcks = useMemo(() => listPendingCriticalAcks(facilityId), [facilityId, tick]);
+  const pulse = useMemo(() => facilityIntelligencePulse(facilityId), [facilityId, tick]);
   const patients = useMemo(() => listPatients(facilityId), [facilityId, tick]);
 
   const waiting = visits.filter((v) => v.status === 'waiting' || v.status === 'called');
@@ -142,8 +152,69 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     reload();
   };
 
+
+  const criticalPanel = criticalAcks.length > 0 && (
+    <div
+      style={{
+        background: '#FEF2F2',
+        border: '1px solid #FECACA',
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 16,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <AlertTriangle size={18} color="#DC2626" />
+        <span style={{ fontWeight: 800, color: '#991B1B', fontSize: 14 }}>
+          Critical results — acknowledge ({criticalAcks.length})
+        </span>
+      </div>
+      <div style={{ fontSize: 12, color: '#7F1D1D', marginBottom: 10 }}>{pulse.headline}</div>
+      {criticalAcks.map((a) => (
+        <div
+          key={a.orderId}
+          style={{
+            background: '#fff',
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 8,
+            border: '1px solid #FECACA',
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 13 }}>{a.patientName}</div>
+          <div style={{ fontSize: 12, color: '#64748B' }}>{a.hospitalNumber}</div>
+          <div style={{ fontSize: 12, marginTop: 6, color: '#0F172A' }}>{a.summary}</div>
+          <button
+            type="button"
+            onClick={() => {
+              acknowledgeCriticalResult(a.orderId, session.name || 'Doctor', session.badgeId);
+              reload();
+              emitLiveAction(`Critical result acknowledged: ${a.patientName}`, { module: 'doctor-portal' });
+            }}
+            style={{
+              marginTop: 10,
+              padding: '8px 14px',
+              borderRadius: 8,
+              border: 'none',
+              background: '#DC2626',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            Acknowledge (Epic-style)
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
+      {criticalPanel}
+
       {/* Hero */}
       <div
         className="mc-hero-fluid"
