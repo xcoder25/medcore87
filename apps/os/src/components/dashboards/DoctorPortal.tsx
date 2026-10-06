@@ -5,6 +5,14 @@ import { UserSession } from '../auth/AuthScreen';
 import { EMRManager } from '../gateway-modules/EMRManager';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import { placeOrder, listOrders, subscribeOrders, type ClinicalOrder } from '../../lib/clinicalEventBus';
+import {
+  previewOrderBpa,
+  ORDER_SETS,
+  listPendingCriticalAcks,
+  acknowledgeCriticalResult,
+  subscribeIntelligence,
+  type BpaAlert,
+} from '../../lib/clinicalIntelligenceEngine';
 import { listPatients, subscribePatients, type FacilityPatient } from '../../lib/patientRegistryStore';
 import { emitLiveAction } from '../../lib/liveActions';
 import { liveAlert } from '../../lib/manualActions';
@@ -787,10 +795,46 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
     cancelled: '#EF4444',
   };
 
+  const [bpaAlerts, setBpaAlerts] = useState<BpaAlert[]>([]);
+  const [overrideBpa, setOverrideBpa] = useState(false);
+
+  const runBpa = (pid: string, drug: string) => {
+    if (!pid || !drug.trim()) {
+      setBpaAlerts([]);
+      return;
+    }
+    setBpaAlerts(
+      previewOrderBpa({
+        facilityId,
+        patientId: pid,
+        type: 'rx',
+        code: drug.slice(0, 16).toUpperCase().replace(/\s+/g, '_'),
+        name: drug.trim(),
+        priority: 'routine',
+      })
+    );
+    setOverrideBpa(false);
+  };
+
   const prescribe = () => {
     if (!patient || !drugName.trim()) {
       setNotice('Select a registered patient and drug');
       setTimeout(() => setNotice(null), 2800);
+      return;
+    }
+    const alerts = previewOrderBpa({
+      facilityId,
+      patientId: patient.id,
+      type: 'rx',
+      code: drugName.slice(0, 16).toUpperCase().replace(/\s+/g, '_'),
+      name: drugName.trim(),
+      priority: 'routine',
+    });
+    setBpaAlerts(alerts);
+    const hard = alerts.filter((a) => a.level === 'hard_stop');
+    if (hard.length && !overrideBpa) {
+      setNotice('Best-practice alert: review hard stops or tick clinician override');
+      setTimeout(() => setNotice(null), 3500);
       return;
     }
     const notes = [dose && `Dose: ${dose}`, freq && `Freq: ${freq}`, route && `Route: ${route}`, duration && `Duration: ${duration}`, instructions]
@@ -811,11 +855,13 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
     });
     emitLiveAction(`Rx sent to pharmacy · ${patient.hospitalNumber} · ${drugName}`, { module: 'pharmacy' });
     liveAlert(`Prescription ${o.id} sent to pharmacy`, 'pharmacy', facilityId);
-    setNotice(`Sent to pharmacy · ${o.id} · Patient ${patient.hospitalNumber}`);
+    setNotice(`Sent to pharmacy · ${o.id}${hard.length ? ' · BPA override' : ''} · bill line created`);
     setTimeout(() => setNotice(null), 3500);
     setDrugName('');
     setDose('');
     setInstructions('');
+    setBpaAlerts([]);
+    setOverrideBpa(false);
     reload();
   };
 
@@ -880,7 +926,10 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
           Drug
           <select
             value={drugName}
-            onChange={(e) => setDrugName(e.target.value)}
+            onChange={(e) => {
+              setDrugName(e.target.value);
+              if (patientId) runBpa(patientId, e.target.value);
+            }}
             style={{ display: 'block', width: '100%', marginTop: 4, padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}
           >
             <option value="">Select drug…</option>
@@ -888,6 +937,33 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
               <option key={d} value={d}>{d}</option>
             ))}
           </select>
+        {bpaAlerts.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {bpaAlerts.map((a) => (
+              <div
+                key={a.id}
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  border: `1px solid ${a.level === 'hard_stop' ? '#FECACA' : a.level === 'warning' ? '#FDE68A' : '#E2E8F0'}`,
+                  background: a.level === 'hard_stop' ? '#FEF2F2' : a.level === 'warning' ? '#FFFBEB' : '#F8FAFC',
+                }}
+              >
+                <div style={{ fontWeight: 800, color: a.level === 'hard_stop' ? '#B91C1C' : '#92400E' }}>
+                  {a.level === 'hard_stop' ? 'Hard stop' : a.level === 'warning' ? 'Warning' : 'Info'} · {a.title}
+                </div>
+                <div style={{ color: '#475569', marginTop: 2 }}>{a.detail}</div>
+              </div>
+            ))}
+            {bpaAlerts.some((a) => a.level === 'hard_stop') && (
+              <label style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+                <input type="checkbox" checked={overrideBpa} onChange={(e) => setOverrideBpa(e.target.checked)} />
+                Clinician override (document reason in notes)
+              </label>
+            )}
+          </div>
+        )}
         </label>
         <input placeholder="Dose e.g. 500mg" value={dose} onChange={(e) => setDose(e.target.value)}
           style={{ padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }} />
@@ -920,83 +996,327 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
 
 // -- LAB ORDERS ----------------------------------------------------------------
 
-const LabOrdersView: React.FC = () => {
-  const [patient, setPatient] = useState<Patient | null>(null);
+const LabOrdersView: React.FC<{ session: UserSession }> = ({ session }) => {
+  const facilityId = session.hospitalId || 'IGH-EKT';
+  const [registry, setRegistry] = useState<FacilityPatient[]>(() => listPatients(facilityId));
+  const [patientId, setPatientId] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
-  const [orders, setOrders] = useState([
-    { id: 'LAB-001', patient: 'Chukwudi Obi', tests: ['Malaria RDT', 'FBC', 'MP Film'], status: 'pending', ordered: '09:15', priority: 'Urgent' },
-    { id: 'LAB-002', patient: 'Adaobi Nwosu', tests: ['Fasting BGL', 'HbA1c', 'Lipid Profile'], status: 'in-progress', ordered: '08:30', priority: 'Routine' },
-    { id: 'LAB-003', patient: 'Emeka Eze', tests: ['Troponin I', 'BNP', 'D-Dimer', 'ABG'], status: 'resulted', ordered: '08:00', priority: 'Urgent', result: 'Troponin: 2.4 ng/mL (?) � Critical value alerted' },
-    { id: 'LAB-004', patient: 'Grace Afolabi', tests: ['U&E', 'eGFR', 'Urine MCS'], status: 'pending', ordered: '09:50', priority: 'Routine' },
-  ]);
+  const [priority, setPriority] = useState<'routine' | 'urgent' | 'stat'>('urgent');
+  const [orders, setOrders] = useState<ClinicalOrder[]>([]);
+  const [bpaAlerts, setBpaAlerts] = useState<BpaAlert[]>([]);
+  const [overrideBpa, setOverrideBpa] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [orderSetId, setOrderSetId] = useState('');
+
+  const reload = () => {
+    setRegistry(listPatients(facilityId));
+    setOrders(listOrders(facilityId).filter((o) => o.type === 'lab'));
+  };
+
+  useEffect(() => {
+    reload();
+    const u1 = subscribeOrders(reload);
+    const u2 = subscribePatients(reload);
+    return () => {
+      u1();
+      u2();
+    };
+  }, [facilityId]);
+
+  const patient = registry.find((p) => p.id === patientId);
 
   const PANELS: Record<string, string[]> = {
-    'Haematology': ['FBC', 'Peripheral Film', 'ESR', 'Reticulocyte', 'PT/aPTT/INR'],
-    'Chemistry': ['LFT', 'U&E', 'Lipid Profile', 'HbA1c', 'Fasting BGL', 'RBS', 'Uric Acid'],
+    Haematology: ['FBC', 'Peripheral Film', 'ESR', 'Reticulocyte', 'PT/aPTT/INR'],
+    Chemistry: ['LFT', 'U&E', 'Lipid Profile', 'HbA1c', 'Fasting BGL', 'RBS', 'Uric Acid'],
     'Cardiac Markers': ['Troponin I', 'BNP / NT-proBNP', 'CK-MB', 'D-Dimer', 'ABG'],
     'Infection Screen': ['Malaria RDT', 'MP Film', 'Widal', 'Blood C&S', 'Hep B&C', 'HIV Rapid'],
-    'Microbiology': ['Urine MCS', 'HVS C&S', 'Sputum AFB', 'Stool MCS'],
-    'Endocrine': ['TSH', 'Free T4', 'PSA', 'CA-125', 'CEA'],
+    Microbiology: ['Urine MCS', 'HVS C&S', 'Sputum AFB', 'Stool MCS'],
+    Endocrine: ['TSH', 'Free T4', 'PSA', 'CA-125', 'CEA'],
   };
 
-  const toggle = (t: string) => setSelected(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
-  const place = () => {
-    if (!patient || !selected.length) return;
-    setOrders(prev => [{ id: `LAB-${String(prev.length + 1).padStart(3, '0')}`, patient: patient.name, tests: selected, status: 'pending', ordered: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }), priority: 'Urgent' }, ...prev]);
+  const toggle = (test: string) =>
+    setSelected((prev) => (prev.includes(test) ? prev.filter((x) => x !== test) : [...prev, test]));
+
+  const placeSelected = () => {
+    if (!patient || !selected.length) {
+      setNotice('Select patient and at least one test');
+      setTimeout(() => setNotice(null), 2500);
+      return;
+    }
+    let blocked = 0;
+    let placed = 0;
+    for (const test of selected) {
+      const alerts = previewOrderBpa({
+        facilityId,
+        patientId: patient.id,
+        type: 'lab',
+        code: test.slice(0, 12).toUpperCase().replace(/\s+/g, '_'),
+        name: test,
+        priority,
+      });
+      const hard = alerts.filter((a) => a.level === 'hard_stop');
+      if (hard.length && !overrideBpa) {
+        setBpaAlerts(alerts);
+        blocked += 1;
+        continue;
+      }
+      placeOrder({
+        facilityId,
+        patientId: patient.id,
+        patientName: `${patient.firstName} ${patient.lastName}`,
+        hospitalNumber: patient.hospitalNumber,
+        type: 'lab',
+        code: test.slice(0, 12).toUpperCase().replace(/\s+/g, '_'),
+        name: test,
+        orderedBy: session.name || 'Doctor',
+        orderedByBadge: session.badgeId,
+        priority,
+      });
+      placed += 1;
+    }
+    if (blocked && !placed) {
+      setNotice('Hard-stop BPA on order — tick override or change selection');
+      setTimeout(() => setNotice(null), 3500);
+      return;
+    }
+    emitLiveAction(`Lab orders · ${placed} tests · ${patient.hospitalNumber}`, { module: 'laboratory' });
+    liveAlert(`${placed} lab order(s) on bus`, 'laboratory', facilityId);
+    setNotice(`${placed} lab order(s) on bus · bills auto-created${blocked ? ` · ${blocked} blocked` : ''}`);
+    setTimeout(() => setNotice(null), 3500);
     setSelected([]);
+    setBpaAlerts([]);
+    setOverrideBpa(false);
+    reload();
   };
-  const sc: Record<string, string> = { pending: '#F59E0B', 'in-progress': '#38BDF8', resulted: '#4ADE80', cancelled: '#EF4444' };
+
+  const fireSet = () => {
+    const set = ORDER_SETS.find((s) => s.id === orderSetId);
+    if (!patient || !set) {
+      setNotice('Select patient and order set');
+      setTimeout(() => setNotice(null), 2500);
+      return;
+    }
+    let n = 0;
+    for (const item of set.items.filter((i) => i.type === 'lab' || i.type === 'rx' || i.type === 'imaging')) {
+      placeOrder({
+        facilityId,
+        patientId: patient.id,
+        patientName: `${patient.firstName} ${patient.lastName}`,
+        hospitalNumber: patient.hospitalNumber,
+        type: item.type,
+        code: item.code,
+        name: item.name,
+        orderedBy: session.name || 'Doctor',
+        orderedByBadge: session.badgeId,
+        priority: item.priority || 'routine',
+      });
+      n += 1;
+    }
+    setNotice(`Order set “${set.label}” · ${n} items on bus`);
+    setTimeout(() => setNotice(null), 3500);
+    reload();
+  };
+
+  const sc: Record<string, string> = {
+    ordered: '#F59E0B',
+    accepted: '#38BDF8',
+    in_progress: '#A78BFA',
+    resulted: '#4ADE80',
+    cancelled: '#EF4444',
+  };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
-      <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, overflow: 'hidden' }}>
-        <div style={{ padding: '15px 20px', borderBottom: '1px solid #FFFFFF' }}>
-          <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 7 }}><FlaskConical size={15} color="#F59E0B" /> Lab Orders & Results</div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
+      {notice && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            zIndex: 50,
+            background: '#0F172A',
+            color: '#fff',
+            padding: '12px 16px',
+            borderRadius: 12,
+            fontWeight: 600,
+            fontSize: 13,
+          }}
+        >
+          {notice}
         </div>
-        {orders.map(o => (
-          <div key={o.id} style={{ padding: '13px 20px', borderBottom: '1px solid #FFFFFF' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
+      )}
+      <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ padding: '15px 20px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 7 }}>
+            <FlaskConical size={15} color="#F59E0B" /> Lab orders (live bus)
+          </div>
+          <div style={{ fontSize: '0.73rem', color: '#64748B' }}>{orders.length} on bus</div>
+        </div>
+        {orders.length === 0 && (
+          <div style={{ padding: 28, textAlign: 'center', color: '#64748B', fontSize: 13 }}>
+            No lab orders yet — order from the panel; results return on this bus.
+          </div>
+        )}
+        {orders.map((o) => (
+          <div key={o.id} style={{ padding: '13px 20px', borderBottom: '1px solid #F1F5F9' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
               <div>
-                <span style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem' }}>{o.patient}</span>
-                <span style={{ fontSize: '0.7rem', color: '#64748B', marginLeft: 7 }}>{o.id} � {o.ordered} � {o.priority}</span>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{o.name}</div>
+                <div style={{ fontSize: 11, color: '#64748B' }}>
+                  {o.patientName} · {o.hospitalNumber} · {o.priority}
+                </div>
+                {o.resultSummary && (
+                  <div style={{ fontSize: 12, marginTop: 4, color: '#0F172A' }}>{o.resultSummary}</div>
+                )}
               </div>
-              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: sc[o.status], background: `${sc[o.status]}13`, border: `1px solid ${sc[o.status]}40`, borderRadius: 999, padding: '2px 8px' }}>{o.status}</span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: '3px 8px',
+                  borderRadius: 999,
+                  height: 'fit-content',
+                  background: `${sc[o.status] || '#94A3B8'}22`,
+                  color: sc[o.status] || '#64748B',
+                }}
+              >
+                {o.status}
+              </span>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {o.tests.map(t => <span key={t} style={{ fontSize: '0.7rem', background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.18)', color: '#F59E0B', borderRadius: 5, padding: '2px 7px' }}>{t}</span>)}
-            </div>
-            {'result' in o && o.result && (
-              <div style={{ marginTop: 8, background: 'rgba(74,222,128,0.05)', border: '1px solid rgba(74,222,128,0.18)', borderRadius: 7, padding: '7px 11px', fontSize: '0.76rem', color: '#059669' }}>?? {o.result}</div>
-            )}
           </div>
         ))}
       </div>
-      <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid rgba(245,158,11,0.16)', borderRadius: 14, padding: '18px', display: 'flex', flexDirection: 'column', gap: 13 }}>
-        <div style={{ fontWeight: 700, color: '#F59E0B', fontSize: '0.93rem', display: 'flex', alignItems: 'center', gap: 7 }}><Plus size={15} /> New Lab Order</div>
-        <div>
-          <label style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Patient</label>
-          <select value={patient?.id || ''} onChange={e => setPatient(PATIENTS.find(p => p.id === e.target.value) || null)} style={{ width: '100%', padding: '8px 10px', background: '#FFFFFF', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, color: '#0A2540', fontSize: '0.82rem', outline: 'none' }}>
-            <option value="">� Select Patient �</option>
-            {PATIENTS.map(p => <option key={p.id} value={p.id}>{p.name} ({p.id})</option>)}
+
+      <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontWeight: 800, fontSize: 14 }}>New lab order</div>
+        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+          Patient
+          <select
+            value={patientId}
+            onChange={(e) => setPatientId(e.target.value)}
+            style={{ display: 'block', width: '100%', marginTop: 4, padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}
+          >
+            <option value="">Select…</option>
+            {registry.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.firstName} {p.lastName} · {p.hospitalNumber}
+              </option>
+            ))}
           </select>
-        </div>
-        <div style={{ overflowY: 'auto', maxHeight: 340 }}>
-          {Object.entries(PANELS).map(([panel, tests]) => (
-            <div key={panel} style={{ marginBottom: 11 }}>
-              <div style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>{panel}</div>
-              {tests.map(t => (
-                <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 7px', borderRadius: 6, background: selected.includes(t) ? 'rgba(245,158,11,0.07)' : 'transparent', border: `1px solid ${selected.includes(t) ? 'rgba(245,158,11,0.28)' : 'transparent'}`, marginBottom: 3 }}>
-                  <input type="checkbox" checked={selected.includes(t)} onChange={() => toggle(t)} style={{ accentColor: '#F59E0B' }} />
-                  <span style={{ fontSize: '0.78rem', color: selected.includes(t) ? '#F59E0B' : '#CBD5E1' }}>{t}</span>
-                </label>
-              ))}
-            </div>
-          ))}
-        </div>
-        {selected.length > 0 && <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)', borderRadius: 7, padding: '9px 11px', fontSize: '0.76rem', color: '#F59E0B' }}>{selected.length} test(s): {selected.join(', ')}</div>}
-        <button type="button" onClick={place} style={{ background: 'linear-gradient(135deg,#D97706,#B45309)', border: 'none', color: '#fff', padding: '11px', borderRadius: 9, fontWeight: 700, fontSize: '0.86rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-          <FlaskConical size={15} /> Place Lab Order
-        </button>
+        </label>
+        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+          Priority
+          <select
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as typeof priority)}
+            style={{ display: 'block', width: '100%', marginTop: 4, padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}
+          >
+            <option value="routine">Routine</option>
+            <option value="urgent">Urgent</option>
+            <option value="stat">STAT</option>
+          </select>
+        </label>
+        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+          Order set
+          <select
+            value={orderSetId}
+            onChange={(e) => setOrderSetId(e.target.value)}
+            style={{ display: 'block', width: '100%', marginTop: 4, padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}
+          >
+            <option value="">Individual tests…</option>
+            {ORDER_SETS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {orderSetId ? (
+          <button
+            type="button"
+            onClick={fireSet}
+            style={{
+              padding: 12,
+              borderRadius: 10,
+              border: 'none',
+              background: 'linear-gradient(135deg, #2563EB, #0D9488)',
+              color: '#fff',
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            Fire order set to bus
+          </button>
+        ) : (
+          <>
+            {Object.entries(PANELS).map(([group, tests]) => (
+              <div key={group}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 4 }}>{group}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {tests.map((test) => (
+                    <button
+                      key={test}
+                      type="button"
+                      onClick={() => toggle(test)}
+                      style={{
+                        fontSize: 11,
+                        padding: '6px 10px',
+                        borderRadius: 8,
+                        border: selected.includes(test) ? '1px solid #2563EB' : '1px solid #E2E8F0',
+                        background: selected.includes(test) ? '#EFF6FF' : '#fff',
+                        color: selected.includes(test) ? '#1D4ED8' : '#334155',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {test}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {bpaAlerts.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {bpaAlerts.map((a) => (
+                  <div
+                    key={a.id}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: 10,
+                      fontSize: 12,
+                      border: `1px solid ${a.level === 'hard_stop' ? '#FECACA' : '#FDE68A'}`,
+                      background: a.level === 'hard_stop' ? '#FEF2F2' : '#FFFBEB',
+                    }}
+                  >
+                    <strong>{a.title}</strong>
+                    <div style={{ color: '#475569' }}>{a.detail}</div>
+                  </div>
+                ))}
+                {bpaAlerts.some((a) => a.level === 'hard_stop') && (
+                  <label style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input type="checkbox" checked={overrideBpa} onChange={(e) => setOverrideBpa(e.target.checked)} />
+                    Clinician override
+                  </label>
+                )}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={placeSelected}
+              style={{
+                padding: 12,
+                borderRadius: 10,
+                border: 'none',
+                background: '#0052D4',
+                color: '#fff',
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              Place {selected.length || ''} test(s) on bus
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1255,7 +1575,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate 
       case 'patients':         return <PatientsViewLive session={session} onNavigate={onNavigate} />;
       case 'consultation':     return <ConsultationView />;
       case 'prescriptions':    return <PrescriptionsView session={session} />;
-      case 'lab-orders':       return <LabOrdersView />;
+      case 'lab-orders':       return <LabOrdersView session={session} />;
       case 'ward-round':       return <WardRoundView />;
       case 'appointments':     return <AppointmentsView />;
       case 'tasks':            return <TasksView />;

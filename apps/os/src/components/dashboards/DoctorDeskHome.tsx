@@ -18,6 +18,7 @@ import {
   previewOrderBpa,
   listPendingCriticalAcks,
   acknowledgeCriticalResult,
+  canAcknowledgeCritical,
   facilityIntelligencePulse,
   subscribeIntelligence,
 } from '../../lib/clinicalIntelligenceEngine';
@@ -233,7 +234,12 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
           <button
             type="button"
             onClick={() => {
-              acknowledgeCriticalResult(a.orderId, session.name || 'Doctor', session.badgeId);
+              const ok = canAcknowledgeCritical(session.roleKey);
+              if (!ok) {
+                emitLiveAction('Only clinicians can acknowledge critical results', { module: 'doctor-portal' });
+                return;
+              }
+              acknowledgeCriticalResult(a.orderId, session.name || 'Doctor', session.badgeId, session.roleKey);
               reload();
               emitLiveAction(`Critical result acknowledged: ${a.patientName}`, { module: 'doctor-portal' });
             }}
@@ -249,7 +255,7 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
               cursor: 'pointer',
             }}
           >
-            Acknowledge (Epic-style)
+            {canAcknowledgeCritical(session.roleKey) ? 'Acknowledge critical result' : 'Clinician ACK only'}
           </button>
         </div>
       ))}

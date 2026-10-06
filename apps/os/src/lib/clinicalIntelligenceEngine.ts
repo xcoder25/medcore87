@@ -278,11 +278,45 @@ export function listPendingCriticalAcks(facilityId: string): CriticalAck[] {
   return readAcks().filter((a) => a.facilityId === facilityId && !a.ackAt);
 }
 
+
+/** Clinician roles that may acknowledge critical results (Epic-style) */
+const CLINICAL_ACK_ROLES = new Set([
+  'doctor',
+  'physician',
+  'consultant',
+  'medical_officer',
+  'medical-officer',
+  'clinical_officer',
+  'clinical-officer',
+  'admin',
+  'administrator',
+  'platform_admin',
+  'sysadmin',
+  'mo',
+  'surgeon',
+  'hospital_admin',
+]);
+
+export function canAcknowledgeCritical(roleKey?: string, roleLabel?: string): boolean {
+  const raw = `${roleKey || ''} ${roleLabel || ''}`.toLowerCase();
+  if (!raw.trim()) return true; // desk without role still doctor portal
+  for (const r of CLINICAL_ACK_ROLES) {
+    if (raw.includes(r.replace('_', ' ')) || raw.includes(r)) return true;
+  }
+  // Lab/pharmacy/reception cannot ACK clinical critical results
+  if (/lab|pharm|recep|cash|nurse|records|radiol/.test(raw)) return false;
+  return true;
+}
+
 export function acknowledgeCriticalResult(
   orderId: string,
   by: string,
-  badge?: string
+  badge?: string,
+  roleKey?: string
 ): CriticalAck | undefined {
+  if (roleKey && !canAcknowledgeCritical(roleKey)) {
+    return undefined;
+  }
   const list = readAcks();
   const idx = list.findIndex((a) => a.orderId === orderId);
   if (idx < 0) return undefined;
