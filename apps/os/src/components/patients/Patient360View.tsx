@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
 import { PatientChartBanner } from '../clinical-core/PatientChartBanner';
+import { setPatientContext } from '../../lib/patientContextStore';
 import { Search, User, RefreshCw, FileText, Pill, FlaskConical, Wallet, Calendar } from 'lucide-react';
 import { buildPatient360, searchPatients360, type Patient360Bundle, type TimelineEvent } from '../../lib/patient360';
 import { scanEarlyWarnings } from '../../lib/clinicalEarlyWarning';
@@ -34,6 +35,7 @@ export const Patient360View: React.FC<Props> = ({ session, initialPatientId }) =
   const load = (key: string) => {
     const b = buildPatient360(facilityId, key);
     setBundle(b);
+      if (b?.patient) setPatientContext(b.patient);
     setWarnings(scanEarlyWarnings(facilityId));
   };
 

@@ -14,6 +14,7 @@ import { todayVisits, subscribeReceptionOps } from '../../lib/receptionOpsStore'
 import { listOrders, subscribeOrders } from '../../lib/clinicalEventBus';
 import { listPatients, subscribePatients } from '../../lib/patientRegistryStore';
 import { emitLiveAction } from '../../lib/liveActions';
+import { InBasketPanel } from '../clinical-core/InBasketPanel';
 
 export type DeskQuick = { label: string; desc: string; icon: LucideIcon; go: string };
 export type DeskKpi = { label: string; value: number | string; sub: string; icon: LucideIcon; tint: string; iconColor: string };
@@ -125,6 +126,7 @@ export const RoleDeskHome: React.FC<Props> = ({ session, onNavigate, config, ext
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
+      <InBasketPanel facilityId={facilityId} roleKey={session.roleKey} onNavigate={onNavigate} />
       <div
         className="mc-hero-fluid"
         style={{

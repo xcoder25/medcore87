@@ -34,6 +34,7 @@ import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 // Specialty Suites
 import { AdminShell } from '../components/dashboards/AdminShell';
 import { OsAppShell } from '../components/layout/OsAppShell';
+import { KeyboardShortcutsHint } from '../components/layout/KeyboardShortcutsHint';
 import { listPatients } from '../lib/patientRegistryStore';
 import { ModulePageLoader } from '../components/layout/ModulePageLoader';
 import { ReceptionWorkspace } from '../components/dashboards/ReceptionWorkspace';
@@ -208,7 +209,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
   if (showFullDirectory || !session) {
     return [
       {
-        label: 'Role Command Workspace',
+        label: 'My workspace',
         items: [
           {
             key: 'dashboard',
@@ -228,7 +229,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'doctor':
       return [
         {
-          label: 'Physician Command',
+          label: 'Doctor desk',
           items: [
             { key: 'doctor-portal', icon: Stethoscope, label: 'Doctor Clinical Portal', badge: 'Live' },
             { key: 'patient-360', icon: Users, label: 'Patient 360°', badge: 'Chart' },
@@ -272,7 +273,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'surgeon':
       return [
         {
-          label: 'Surgical Command Suite',
+          label: 'Theatre & surgery',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Surgeon Operating Desk', badge: 'Live' },
             { key: 'theatre', icon: Activity, label: 'Operating Theatre & Surgeries', badge: 'OT' },
@@ -301,7 +302,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'nurse':
       return [
         {
-          label: 'Nursing Station Command',
+          label: 'Nursing station',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Ward Nursing Station', badge: 'Live' },
             { key: 'nursing', icon: FileText, label: 'Inpatient Nursing & e-MAR', badge: 'e-MAR' },
@@ -335,7 +336,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Labour & Delivery Desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Labour Ward Command', badge: 'Live' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Labour ward', badge: 'Live' },
             { key: 'maternity', icon: Stethoscope, label: 'Maternity, Labour & CTG', badge: 'CTG' },
             { key: 'paediatrics', icon: Baby, label: 'Paediatrics & NICU Incubators', badge: 'NICU' },
           ],
@@ -356,7 +357,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'pharmacist':
       return [
         {
-          label: 'Dispensary Command Desk',
+          label: 'Pharmacy desk',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Pharmacy Dispensary Desk', badge: 'Live' },
             { key: 'pharmacy', icon: Pill, label: 'Patient ID Scanner & Dispense', badge: 'Scan' },
@@ -379,7 +380,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Pathology & Diagnostic Desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Laboratory Command Desk', badge: 'Live' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Laboratory desk', badge: 'Live' },
             { key: 'laboratory', icon: FlaskConical, label: 'Lab LIS & Automated Analyzers', badge: 'LIS' },
           ],
         },
@@ -400,7 +401,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Medical Imaging Desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Radiology Command Desk', badge: 'Live' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Radiology desk', badge: 'Live' },
             { key: 'radiology', icon: Layers, label: 'Radiology & PACS Viewer', badge: 'DICOM' },
             { key: 'm87-ai', icon: Brain, label: 'Imaging assistant', badge: 'AI' },
           ],
@@ -420,7 +421,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Revenue & Finance Desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Finance Command Desk', badge: 'Live' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Finance desk', badge: 'Live' },
             { key: 'cashier', icon: CreditCard, label: 'Cashier Shift Tills & POS', badge: 'POS' },
             { key: 'billing', icon: CreditCard, label: 'Inpatient / Outpatient Billing', badge: 'Bill' },
           ],
@@ -442,7 +443,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Clinical Engineering Desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Engineering Command Desk', badge: 'Live' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Engineering desk', badge: 'Live' },
             { key: 'biomedical', icon: Wrench, label: 'Clinical device log (not CMMS) Assets', badge: 'PM' },
             { key: 'iot-devices', icon: Cpu, label: 'Connected Medical IoT Monitors', badge: 'IoT' },
           ],
@@ -497,7 +498,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Health Records & Triage Desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Records Command Desk', badge: 'Live' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Records desk', badge: 'Live' },
             { key: 'patient-card', icon: FileText, label: 'Digital Health Card (FHIR)', badge: 'FHIR' },
             { key: 'patient-flow', icon: RefreshCw, label: 'Patient Transit & Admissions' },
             { key: 'beds', icon: BedDouble, label: 'Bed Management Board' },
@@ -554,7 +555,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Operations & Bed Management',
           items: [
-            { key: 'command', icon: Activity, label: 'Hospital Command Centre' },
+            { key: 'command', icon: Activity, label: 'Hospital overview' },
             { key: 'beds', icon: BedDouble, label: 'Clinical bed census' },
             { key: 'patient-flow', icon: RefreshCw, label: 'Patient Flow Visibility' },
             { key: 'ambulance', icon: PhoneCall, label: 'Ambulance & Dispatch' },
@@ -617,7 +618,7 @@ interface RoleThemeConfig {
 
 const ROLE_THEMES: Record<string, RoleThemeConfig> = {
   doctor: {
-    label: 'Physician Command',
+    label: 'Doctor desk',
     badge: 'DOCTOR WORKSPACE',
     accent: '#0052D4',
     gradient: 'linear-gradient(135deg, #0052D4 0%, #00BFA5 100%)',
@@ -626,7 +627,7 @@ const ROLE_THEMES: Record<string, RoleThemeConfig> = {
     workspaceTitle: 'Doctor Clinical Workspace',
   },
   surgeon: {
-    label: 'Surgical Command Suite',
+    label: 'Theatre & surgery',
     badge: 'SURGEON OPERATING DESK',
     accent: '#DC2626',
     gradient: 'linear-gradient(135deg, #DC2626 0%, #F43F5E 100%)',
@@ -635,7 +636,7 @@ const ROLE_THEMES: Record<string, RoleThemeConfig> = {
     workspaceTitle: 'Operating Theatre & Surgeries',
   },
   nurse: {
-    label: 'Nursing Station Command',
+    label: 'Nursing station',
     badge: 'WARD NURSING STATION',
     accent: '#00BFA5',
     gradient: 'linear-gradient(135deg, #00BFA5 0%, #00D2A0 100%)',
@@ -653,7 +654,7 @@ const ROLE_THEMES: Record<string, RoleThemeConfig> = {
     workspaceTitle: 'Maternity, Labour & CTG',
   },
   pharmacist: {
-    label: 'Dispensary Command Desk',
+    label: 'Pharmacy desk',
     badge: 'PHARMACY DISPENSARY',
     accent: '#059669',
     gradient: 'linear-gradient(135deg, #059669 0%, #10B981 100%)',
@@ -805,7 +806,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
 };
 
 const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDesc: string }> = {
-  dashboard: { level: 2, label: 'L2 All Roles', roleDesc: 'Dedicated Role Command Desk' },
+  dashboard: { level: 2, label: 'L2 All Roles', roleDesc: 'Your main work desk' },
   'doctor-portal': { level: 3, label: 'L3 Clinical', roleDesc: 'Licensed Medical Doctors & Clinical Officers' },
   emr: { level: 2, label: 'L2 Clinical & Records', roleDesc: 'Physicians, Clinical Officers & Records' },
   'm87-ai': { level: 3, label: 'L3 Clinical', roleDesc: 'Clinical Officers & Nursing Supervisors' },
@@ -895,6 +896,8 @@ export default function OSPage() {
   const [permTick, setPermTick] = useState(0);
   const [showFullDirectory, setShowFullDirectory] = useState(false);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [gotoBuffer, setGotoBuffer] = useState('');
   const [cmdSearch, setCmdSearch] = useState('');
   const [wsConnected, setWsConnected] = useState(true);
   const [wsLatency, setWsLatency] = useState(12);
@@ -1089,10 +1092,42 @@ export default function OSPage() {
     const handleGlobalKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setCmdPaletteOpen(prev => !prev);
+        setCmdPaletteOpen((prev) => !prev);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+        e.preventDefault();
+        setShortcutsOpen((prev) => !prev);
       }
       if (e.key === 'Escape') {
         setCmdPaletteOpen(false);
+        setShortcutsOpen(false);
+      }
+      // G then letter navigation (Epic-style)
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        const k = e.key.toLowerCase();
+        if (k === 'g') {
+          setGotoBuffer('g');
+          return;
+        }
+        setGotoBuffer((buf) => {
+          if (buf !== 'g') return '';
+          const map: Record<string, string> = {
+            d: 'dashboard',
+            p: 'patient-360',
+            l: 'laboratory',
+            r: 'pharmacy',
+            q: 'patient-flow',
+            e: 'emr',
+          };
+          const mod = map[k];
+          if (mod) {
+            e.preventDefault();
+            handleModuleChange(mod as ModuleKey);
+          }
+          return '';
+        });
       }
     };
     window.addEventListener('keydown', handleGlobalKey);
@@ -1373,6 +1408,7 @@ export default function OSPage() {
         </div>
       )}
       {/* ── Command Palette (⌘K / Ctrl+K Spotlight Modal) ── */}
+      <KeyboardShortcutsHint open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       {cmdPaletteOpen && (
         <div className="os-cmd-palette-backdrop" onClick={() => setCmdPaletteOpen(false)}>
           <div className="os-cmd-palette-modal" onClick={e => e.stopPropagation()}>

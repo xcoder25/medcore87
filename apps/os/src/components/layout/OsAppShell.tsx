@@ -10,6 +10,7 @@ import {
   Building2, Search, LogOut, ChevronLeft, Lock, Brain, AlertTriangle,
 } from 'lucide-react';
 import NotificationBell from '../realtime/NotificationBell';
+import { GlobalPatientContextBar } from '../clinical-core/GlobalPatientContextBar';
 
 export type ShellNavItem = {
   key: string;
@@ -218,7 +219,10 @@ export const OsAppShell: React.FC<Props> = ({
             </button>
           </div>
         </header>
-        <main className="admin-shell-content">{children}</main>
+        <main className="admin-shell-content"><>
+          <GlobalPatientContextBar onOpen360={() => onNavigate('patient-360')} />
+          {children}
+        </></main>
       </div>
     </div>
   );

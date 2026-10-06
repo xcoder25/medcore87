@@ -18,6 +18,7 @@ import { emitLiveAction } from '../../lib/liveActions';
 import { liveAlert } from '../../lib/manualActions';
 import { DoctorDeskHome } from './DoctorDeskHome';
 import { PatientChartBanner } from '../clinical-core/PatientChartBanner';
+import { setPatientContext } from '../../lib/patientContextStore';
 import {
   LayoutDashboard, Users, FileText, Stethoscope, Pill, FlaskConical, Layers,
   BedDouble, Calendar, Bell, Settings, ClipboardList, Send, AlertTriangle,
@@ -912,7 +913,12 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
           Patient (registry)
           <select
             value={patientId}
-            onChange={(e) => setPatientId(e.target.value)}
+            onChange={(e) => {
+              const id = e.target.value;
+              setPatientId(id);
+              const p = registry.find((x) => x.id === id);
+              if (p) setPatientContext(p, session.name);
+            }}
             style={{ display: 'block', width: '100%', marginTop: 4, padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}
           >
             <option value="">Select patient…</option>

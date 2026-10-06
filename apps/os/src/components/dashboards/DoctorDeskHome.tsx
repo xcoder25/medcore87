@@ -27,6 +27,9 @@ import {
   isReviewed,
   subscribeResultReviews,
 } from '../../lib/resultReviewStore';
+import { VisitStoryboard } from '../clinical-core/VisitStoryboard';
+import { InBasketPanel } from '../clinical-core/InBasketPanel';
+import { getPatientContext, subscribePatientContext } from '../../lib/patientContextStore';
 import { listPatients, subscribePatients } from '../../lib/patientRegistryStore';
 import { emitLiveAction } from '../../lib/liveActions';
 import { updateVisitStatus } from '../../lib/receptionOpsStore';
@@ -70,12 +73,14 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     const u3 = subscribePatients(reload);
     const u4 = subscribeIntelligence(reload);
     const u5 = subscribeResultReviews(reload);
+    const u6 = subscribePatientContext(reload);
     return () => {
       u1();
       u2();
       u3();
       u4();
       u5();
+      u6();
     };
   }, []);
 
@@ -274,6 +279,21 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
       {criticalPanel}
+      {getPatientContext() && (
+        <VisitStoryboard
+          facilityId={facilityId}
+          patientId={getPatientContext()!.patientId}
+          onJump={(step) => {
+            if (step === 'orders' || step === 'results') onNavigate('laboratory');
+            else if (step === 'rx') onNavigate('pharmacy');
+            else if (step === 'checkin' || step === 'consult') onNavigate('patient-flow');
+            else onNavigate('patient-360');
+          }}
+        />
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
+        <InBasketPanel facilityId={facilityId} roleKey={session.roleKey} onNavigate={onNavigate} />
+      </div>
 
       {/* Doctor order path — order sets + closed loop */}
       <div

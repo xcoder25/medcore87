@@ -3,6 +3,7 @@
 /**
  * Front Desk Operations home — matches MedCore reception design system mockup.
  */
+import { InBasketPanel } from '../clinical-core/InBasketPanel';
 import React, { useMemo, useState } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
 import type { FacilityPatient } from '../../lib/patientRegistryStore';
@@ -79,6 +80,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   onSelectPatient,
   onRefresh,
 }) => {
+  const facilityId = session.hospitalId || 'IGH-EKT';
   const [deptFilter, setDeptFilter] = useState('all');
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -206,6 +208,16 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   ];
 
   return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <InBasketPanel
+        facilityId={facilityId}
+        roleKey="reception"
+        onNavigate={(k) => {
+          if (k === 'patient-flow' || k === 'dashboard') onGo('queue');
+          else if (k === 'patient-360') onGo('search');
+          else onGo('home');
+        }}
+      />
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
       {/* Hero */}
       <div
@@ -844,6 +856,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 };
