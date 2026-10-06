@@ -73,12 +73,16 @@ import {
   type PatientBillLine,
 } from '../../lib/patientBillingStore';
 import { AksEmlFormularyPanel } from '../pharmacy/AksEmlFormularyPanel';
+import { depleteStock, seedDefaultFormulary, stockQty, listFormulary } from '../../lib/formularyInventory';
+import { parseRxNotes } from '../../lib/rxSigParse';
+import { listPatients } from '../../lib/patientRegistryStore';
 
 export const PharmacyDispensingSuite: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'scan' | 'queue' | 'formulary'>('scan');
   const [prescriptions, setPrescriptions] = useState<PrescriptionOrder[]>(INITIAL_PRESCRIPTIONS);
   const [formulary] = useState<FormularyItem[]>(INITIAL_FORMULARY);
   const [search, setSearch] = useState('');
+  const [lookupId, setLookupId] = useState('');
 
   // Patient scanner state
   const [scanInput, setScanInput] = useState('');
@@ -91,26 +95,46 @@ export const PharmacyDispensingSuite: React.FC = () => {
   const facilityId = (typeof window !== 'undefined' && getActiveFacilityId()) || 'IGH-EKT';
 
   useEffect(() => {
+    seedDefaultFormulary(facilityId);
     const pull = () => {
       const rx = listOrders(facilityId).filter((o) => o.type === 'rx');
       setPrescriptions((prev) => {
         const ids = new Set(prev.map((p) => p.id));
         const extra: PrescriptionOrder[] = rx
           .filter((o) => !ids.has(o.id))
-          .map((o) => ({
-            id: o.id,
-            patientName: o.patientName,
-            patientId: o.patientId,
+          .map((o) => {
+            const sig = parseRxNotes(o.notes, o.name);
+            return {
+              id: o.id,
+              patientName: o.patientName,
+              patientId: o.patientId || o.hospitalNumber,
+              medication: o.name,
+              dosage: sig.dose,
+              frequency: sig.frequency,
+              route: sig.route,
+              duration: sig.duration,
+              prescribingDoctor: o.orderedBy || 'Clinician',
+              status: o.status === 'resulted' || o.status === 'accepted' ? 'dispensed' : 'pending',
+              orderedAt: o.createdAt,
+            };
+          });
+        // Prefer bus truth: refresh statuses for known ids
+        const byBus = new Map(rx.map((o) => [o.id, o]));
+        const merged = prev.map((p) => {
+          const o = byBus.get(p.id);
+          if (!o) return p;
+          const sig = parseRxNotes(o.notes, o.name);
+          return {
+            ...p,
             medication: o.name,
-            dosage: o.notes || 'As ordered',
-            frequency: 'As directed',
-            route: 'PO',
-            duration: 'As ordered',
-            prescribingDoctor: o.orderedBy || 'Clinician',
-            status: o.status === 'resulted' || o.status === 'accepted' ? 'dispensed' : 'pending',
-            orderedAt: o.createdAt,
-          }));
-        return extra.length ? [...extra, ...prev] : prev;
+            dosage: sig.dose,
+            frequency: sig.frequency,
+            route: sig.route,
+            duration: sig.duration,
+            status: o.status === 'resulted' || o.status === 'accepted' ? 'dispensed' : p.status === 'dispensed' ? 'dispensed' : 'pending',
+          };
+        });
+        return extra.length ? [...extra, ...merged] : merged;
       });
     };
     pull();
@@ -126,10 +150,49 @@ export const PharmacyDispensingSuite: React.FC = () => {
     if (opts?.emergency && gate.line) {
       markLinePaid(gate.line.id, { via: 'waiver', status: 'waived', paidBy: 'Emergency override', paymentRef: 'EMERG' });
     }
+    const rx = prescriptions.find((p) => p.id === id);
+    const drugName = rx?.medication || '';
+    const stockOk = drugName ? depleteStock(facilityId, drugName, 1) : false;
     setPrescriptions(prev => prev.map(p => p.id === id ? { ...p, status: 'dispensed' } : p));
-    updateOrderStatus(id, 'resulted', { resultSummary: 'Dispensed at pharmacy', resultedBy: 'Pharmacist' });
-    emitLiveAction(`Dispensed ${id}`, { module: 'pharmacy' });
-    liveAlert('Prescription marked dispensed — visible on clinical desk', 'pharmacy', facilityId);
+    updateOrderStatus(id, 'resulted', {
+      resultSummary: stockOk
+        ? `Dispensed at pharmacy · stock decremented`
+        : `Dispensed at pharmacy · stock not matched (check formulary)`,
+      resultedBy: 'Pharmacist',
+    });
+    emitLiveAction(`Dispensed ${id}${stockOk ? ' · stock −1' : ' · no stock match'}`, { module: 'pharmacy' });
+    liveAlert(
+      stockOk
+        ? 'Dispensed — stock updated — visible on clinical desk'
+        : 'Dispensed — formulary stock not found for this drug name',
+      'pharmacy',
+      facilityId
+    );
+  };
+
+  const runPatientLookup = () => {
+    const q = (scanInput || lookupId || search).trim();
+    if (!q) {
+      liveAlert('Enter hospital number or patient name', 'pharmacy', facilityId);
+      return;
+    }
+    setLookupId(q);
+    setSearch(q);
+    const hits = listOrders(facilityId).filter(
+      (o) =>
+        o.type === 'rx' &&
+        (o.hospitalNumber.toLowerCase().includes(q.toLowerCase()) ||
+          o.patientName.toLowerCase().includes(q.toLowerCase()) ||
+          o.patientId.toLowerCase().includes(q.toLowerCase()))
+    );
+    liveAlert(
+      hits.length
+        ? `Found ${hits.length} Rx for “${q}” on clinical bus`
+        : `No Rx on bus for “${q}” — confirm doctor sent prescription`,
+      'pharmacy',
+      facilityId
+    );
+    setActiveTab('queue');
   };
 
   const payAtPharmacy = (orderId: string) => {
@@ -148,13 +211,32 @@ export const PharmacyDispensingSuite: React.FC = () => {
     emitLiveAction(`Pharmacy payment ${orderId}`, { module: 'cashier' });
   };
 
-  const pendingCount = prescriptions.filter(p => p.status === 'pending').length;
+  const q = (lookupId || search || scanInput).trim().toLowerCase();
+  const filteredPrescriptions = q
+    ? prescriptions.filter(
+        (p) =>
+          p.patientName.toLowerCase().includes(q) ||
+          String(p.patientId || '').toLowerCase().includes(q) ||
+          p.medication.toLowerCase().includes(q) ||
+          p.id.toLowerCase().includes(q)
+      )
+    : prescriptions;
+  const registryHint = q
+    ? listPatients(facilityId).filter(
+        (p) =>
+          p.hospitalNumber.toLowerCase().includes(q) ||
+          `${p.firstName} ${p.lastName}`.toLowerCase().includes(q)
+      ).slice(0, 5)
+    : [];
+  const pendingCount = filteredPrescriptions.filter((p) => p.status === 'pending').length;
   const lowStockCount = formulary.filter(f => f.stockOnHand <= f.minimumThreshold).length;
 
   // --- Live Patient Scan ----------------------------------------------------
   const handleScan = async () => {
     const query = scanInput.trim();
     if (!query) return;
+    setLookupId(query);
+    setSearch(query);
     setScanning(true);
     setScanError('');
     setScanResult(null);
@@ -214,7 +296,7 @@ export const PharmacyDispensingSuite: React.FC = () => {
         setScanResult(prev => prev ? prev.map(rx => rx.id === rxId ? json.data : rx) : prev);
       }
     } catch {
-      // silently retry
+      handleLegacyDispense(rxId);
     } finally {
       setDispensingId(null);
     }
@@ -272,7 +354,7 @@ export const PharmacyDispensingSuite: React.FC = () => {
         <div style={{ display: 'flex', gap: 8 }}>
           {[
             { id: 'scan', label: 'Patient ID Scanner', Icon: UserSearch },
-            { id: 'queue', label: `General Queue (${prescriptions.length})`, Icon: Clock },
+            { id: 'queue', label: `General Queue (${filteredPrescriptions.length})`, Icon: Clock },
             { id: 'formulary', label: 'AKS EML Formulary', Icon: Package },
           ].map(({ id, label, Icon }) => (
             <button
@@ -506,9 +588,7 @@ export const PharmacyDispensingSuite: React.FC = () => {
       {/* -- QUEUE TAB -- */}
       {activeTab === 'queue' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {prescriptions
-            .filter(rx => !search || rx.patientName.toLowerCase().includes(search.toLowerCase()) || rx.medication.toLowerCase().includes(search.toLowerCase()))
-            .map(rx => (
+          {filteredPrescriptions.map(rx => (
               <div key={rx.id} className="os-card" style={{ padding: '16px 20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>

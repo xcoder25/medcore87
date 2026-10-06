@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { UserSession } from '../auth/AuthScreen';
 import { EMRManager } from '../gateway-modules/EMRManager';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
-import { placeOrder, listOrders, subscribeOrders, type ClinicalOrder } from '../../lib/clinicalEventBus';
+import { placeOrder, listOrders, subscribeOrders, updateOrderStatus, type ClinicalOrder } from '../../lib/clinicalEventBus';
 import {
   previewOrderBpa,
   ORDER_SETS,
@@ -1322,6 +1322,245 @@ const LabOrdersView: React.FC<{ session: UserSession }> = ({ session }) => {
   );
 };
 
+
+const RADIOLOGY_STUDIES = [
+  'Chest X-Ray PA',
+  'Abdominal Ultrasound',
+  'Pelvic Ultrasound',
+  'CT Brain plain',
+  'CT Abdomen/Pelvis',
+  'MRI Lumbosacral spine',
+  'Obstetric Ultrasound',
+  'Doppler Lower Limb',
+];
+
+const RadiologyOrdersView: React.FC<{ session: UserSession }> = ({ session }) => {
+  const facilityId = session.hospitalId || 'IGH-EKT';
+  const [registry, setRegistry] = useState<FacilityPatient[]>(() => listPatients(facilityId));
+  const [patientId, setPatientId] = useState('');
+  const [study, setStudy] = useState(RADIOLOGY_STUDIES[0]);
+  const [priority, setPriority] = useState<'routine' | 'urgent' | 'stat'>('routine');
+  const [reportText, setReportText] = useState('');
+  const [orders, setOrders] = useState<ClinicalOrder[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const reload = () => {
+    setRegistry(listPatients(facilityId));
+    setOrders(listOrders(facilityId).filter((o) => o.type === 'imaging'));
+  };
+
+  useEffect(() => {
+    reload();
+    const u1 = subscribeOrders(reload);
+    const u2 = subscribePatients(reload);
+    return () => {
+      u1();
+      u2();
+    };
+  }, [facilityId]);
+
+  const patient = registry.find((p) => p.id === patientId);
+
+  const place = () => {
+    if (!patient) {
+      setNotice('Select a patient');
+      setTimeout(() => setNotice(null), 2500);
+      return;
+    }
+    const o = placeOrder({
+      facilityId,
+      patientId: patient.id,
+      patientName: `${patient.firstName} ${patient.lastName}`,
+      hospitalNumber: patient.hospitalNumber,
+      type: 'imaging',
+      code: study.slice(0, 12).toUpperCase().replace(/\s+/g, '_'),
+      name: study,
+      orderedBy: session.name || 'Doctor',
+      orderedByBadge: session.badgeId,
+      priority,
+    });
+    emitLiveAction(`Imaging order ${study}`, { module: 'radiology' });
+    liveAlert(`Radiology order ${o.id} on bus`, 'radiology', facilityId);
+    setNotice(`Ordered ${study} · ${o.id} · bill line created`);
+    setTimeout(() => setNotice(null), 3500);
+    reload();
+  };
+
+  const postReport = (id: string) => {
+    const summary = reportText.trim() || 'Report available — no acute findings';
+    updateOrderStatus(id, 'resulted', {
+      resultSummary: summary,
+      resultedBy: session.name || 'Radiologist',
+    });
+    // Soft notification path — critical imaging wording can still trigger intelligence if lab-like
+    emitLiveAction(`Imaging report posted`, { module: 'doctor-portal' });
+    liveAlert('Radiology report on clinical bus', 'radiology', facilityId);
+    setReportText('');
+    setNotice('Report posted — visible on doctor results inbox');
+    setTimeout(() => setNotice(null), 3000);
+    reload();
+  };
+
+  const sc: Record<string, string> = {
+    ordered: '#F59E0B',
+    accepted: '#38BDF8',
+    in_progress: '#A78BFA',
+    resulted: '#4ADE80',
+    cancelled: '#EF4444',
+  };
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
+      {notice && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            zIndex: 50,
+            background: '#0F172A',
+            color: '#fff',
+            padding: '12px 16px',
+            borderRadius: 12,
+            fontWeight: 600,
+            fontSize: 13,
+          }}
+        >
+          {notice}
+        </div>
+      )}
+      <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ padding: '15px 20px', borderBottom: '1px solid #E2E8F0', fontWeight: 700, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Layers size={15} color="#F472B6" /> Radiology orders (live bus)
+        </div>
+        {orders.length === 0 && (
+          <div style={{ padding: 28, textAlign: 'center', color: '#64748B', fontSize: 13 }}>
+            No imaging orders — place from the panel. Reports return here and on the doctor results inbox.
+          </div>
+        )}
+        {orders.map((o) => (
+          <div key={o.id} style={{ padding: '13px 20px', borderBottom: '1px solid #F1F5F9' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{o.name}</div>
+                <div style={{ fontSize: 11, color: '#64748B' }}>
+                  {o.patientName} · {o.hospitalNumber} · {o.priority}
+                </div>
+                {o.resultSummary && (
+                  <div style={{ fontSize: 12, marginTop: 4 }}>{o.resultSummary}</div>
+                )}
+              </div>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: '3px 8px',
+                  borderRadius: 999,
+                  height: 'fit-content',
+                  background: `${sc[o.status] || '#94A3B8'}22`,
+                  color: sc[o.status] || '#64748B',
+                }}
+              >
+                {o.status}
+              </span>
+            </div>
+            {o.status !== 'resulted' && o.status !== 'cancelled' && (
+              <button
+                type="button"
+                onClick={() => postReport(o.id)}
+                style={{
+                  marginTop: 8,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: '6px 10px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#DB2777',
+                  color: '#fff',
+                  cursor: 'pointer',
+                }}
+              >
+                Post report
+              </button>
+            )}
+          </div>
+        ))}
+        <div style={{ padding: 12 }}>
+          <input
+            value={reportText}
+            onChange={(e) => setReportText(e.target.value)}
+            placeholder="Optional report text before Post report"
+            style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #E2E8F0', fontSize: 13, boxSizing: 'border-box' }}
+          />
+        </div>
+      </div>
+      <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontWeight: 800, fontSize: 14 }}>New imaging order</div>
+        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+          Patient
+          <select
+            value={patientId}
+            onChange={(e) => setPatientId(e.target.value)}
+            style={{ display: 'block', width: '100%', marginTop: 4, padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}
+          >
+            <option value="">Select…</option>
+            {registry.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.firstName} {p.lastName} · {p.hospitalNumber}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+          Study
+          <select
+            value={study}
+            onChange={(e) => setStudy(e.target.value)}
+            style={{ display: 'block', width: '100%', marginTop: 4, padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}
+          >
+            {RADIOLOGY_STUDIES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+          Priority
+          <select
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as typeof priority)}
+            style={{ display: 'block', width: '100%', marginTop: 4, padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}
+          >
+            <option value="routine">Routine</option>
+            <option value="urgent">Urgent</option>
+            <option value="stat">STAT</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={place}
+          style={{
+            padding: 12,
+            borderRadius: 10,
+            border: 'none',
+            background: 'linear-gradient(135deg, #DB2777, #7C3AED)',
+            color: '#fff',
+            fontWeight: 800,
+            cursor: 'pointer',
+          }}
+        >
+          Place on bus
+        </button>
+        <div style={{ fontSize: 11, color: '#64748B', lineHeight: 1.4 }}>
+          Orders bill automatically. Post report when complete — appears on doctor results inbox. Full PACS/DICOM needs hospital Orthanc/dcm4chee URL.
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 // -- WARD ROUND ----------------------------------------------------------------
 
 const WardRoundView: React.FC = () => {
@@ -1581,7 +1820,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate 
       case 'tasks':            return <TasksView />;
       case 'analytics':        return <AnalyticsView />;
       case 'emr':              return <EMRManager onNavigate={(m) => onNavigate(m)} />;
-      case 'radiology-orders': return <Placeholder icon={Layers} label="Radiology Orders & PACS Viewer" description="Request X-Ray, CT, MRI, Ultrasound. View DICOM images and structured radiology reports inline." color="#F472B6" />;
+      case 'radiology-orders': return <RadiologyOrdersView session={session} />;
       case 'referrals':        return <Placeholder icon={Send} label="Referral Management" description="Internal and external referrals, specialist consultations, inter-hospital transfers with clinical summaries and acceptance tracking." color="#10B981" />;
       case 'messages':         return <Placeholder icon={MessageSquare} label="Clinical Messaging" description="Secure clinician-to-clinician messaging, nurse escalations, department broadcasts, and ward-level notifications." color="#60A5FA" />;
       case 'admission':        return <Placeholder icon={UserPlus} label="Admissions & Discharge Planning" description="Patient admission requests, ward/bed allocation, transfer orders, and structured discharge planning with after-care instructions." color="#38BDF8" />;

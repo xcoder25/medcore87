@@ -96,6 +96,11 @@ export function seedDefaultFormulary(facilityId: string) {
     ['Paracetamol 500mg', 'Paracetamol', '500mg', 'Tablet', 'Analgesic', 50],
     ['Amlodipine 5mg', 'Amlodipine', '5mg', 'Tablet', 'Cardiovascular', 150],
     ['Artemether/Lumefantrine', 'AL', '20/120', 'Tablet', 'Antimalarial', 800],
+    ['Lisinopril 10mg', 'Lisinopril', '10mg', 'Tablet', 'Cardiovascular', 180],
+    ['Omeprazole 20mg', 'Omeprazole', '20mg', 'Capsule', 'GI', 120],
+    ['Metronidazole 400mg', 'Metronidazole', '400mg', 'Tablet', 'Antibiotic', 90],
+    ['Aspirin 75mg', 'Aspirin', '75mg', 'Tablet', 'Cardiovascular', 40],
+    ['Furosemide 40mg', 'Furosemide', '40mg', 'Tablet', 'Diuretic', 70],
   ];
   for (const [name, generic, strength, form, category, price] of defaults) {
     const id = `DRG-${generic.slice(0, 4).toUpperCase()}-${Date.now().toString(36)}`;

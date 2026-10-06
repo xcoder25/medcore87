@@ -22,6 +22,11 @@ import {
   facilityIntelligencePulse,
   subscribeIntelligence,
 } from '../../lib/clinicalIntelligenceEngine';
+import {
+  markResultReviewed,
+  isReviewed,
+  subscribeResultReviews,
+} from '../../lib/resultReviewStore';
 import { listPatients, subscribePatients } from '../../lib/patientRegistryStore';
 import { emitLiveAction } from '../../lib/liveActions';
 import { updateVisitStatus } from '../../lib/receptionOpsStore';
@@ -55,6 +60,7 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   const [orderPatientId, setOrderPatientId] = useState('');
   const [orderSetId, setOrderSetId] = useState('os-malaria');
   const [orderFlash, setOrderFlash] = useState('');
+  const [resultTab, setResultTab] = useState<'critical' | 'unreviewed' | 'reviewed'>('unreviewed');
 
   const reload = () => setTick((t) => t + 1);
 
@@ -63,11 +69,13 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     const u2 = subscribeOrders(reload);
     const u3 = subscribePatients(reload);
     const u4 = subscribeIntelligence(reload);
+    const u5 = subscribeResultReviews(reload);
     return () => {
       u1();
       u2();
       u3();
       u4();
+      u5();
     };
   }, []);
 
@@ -669,45 +677,121 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
               padding: 16,
             }}
           >
-            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <FlaskConical size={15} color={C.amber} /> Results ready
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <FlaskConical size={15} color={C.amber} /> Results inbox
             </div>
-            {pendingResults.length === 0 && (
-              <div style={{ fontSize: 12, color: C.muted }}>No new results — order labs from EMR</div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+              {[
+                { id: 'critical', label: `Critical (${criticalAcks.length})` },
+                { id: 'unreviewed', label: 'Unreviewed' },
+                { id: 'reviewed', label: 'Reviewed' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setResultTab(tab.id as typeof resultTab)}
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: '4px 10px',
+                    borderRadius: 8,
+                    border: resultTab === tab.id ? `1px solid ${C.blue}` : `1px solid ${C.border}`,
+                    background: resultTab === tab.id ? '#EFF6FF' : '#fff',
+                    color: resultTab === tab.id ? C.blue : C.muted,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            {resultTab === 'critical' && (
+              <>
+                {criticalAcks.length === 0 && (
+                  <div style={{ fontSize: 12, color: C.muted }}>No critical results pending ACK</div>
+                )}
+                {criticalAcks.slice(0, 6).map((a) => (
+                  <div key={a.orderId} style={{ padding: '10px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
+                    <div style={{ fontWeight: 700, color: C.red }}>{a.patientName}</div>
+                    <div style={{ color: C.muted }}>{a.summary}</div>
+                    {canAcknowledgeCritical(session.roleKey) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          acknowledgeCriticalResult(a.orderId, session.name || 'Doctor', session.badgeId, session.roleKey);
+                          reload();
+                        }}
+                        style={{
+                          marginTop: 6,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: '4px 10px',
+                          borderRadius: 8,
+                          border: 'none',
+                          background: C.red,
+                          color: '#fff',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Acknowledge
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </>
             )}
-            {pendingResults.slice(0, 5).map((o) => (
-              <div
-                key={o.id}
-                style={{
-                  padding: '10px 0',
-                  borderBottom: `1px solid ${C.border}`,
-                  fontSize: 12,
-                }}
-              >
-                <div style={{ fontWeight: 700 }}>{o.patientName}</div>
-                <div style={{ color: C.muted }}>
-                  {o.name} · {o.resultSummary || 'Result available'}
-                </div>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => onNavigate('laboratory')}
-              style={{
-                marginTop: 10,
-                border: 'none',
-                background: 'none',
-                color: C.blue,
-                fontWeight: 700,
-                fontSize: 12,
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-            >
-              Open lab <ChevronRight size={14} />
-            </button>
+            {resultTab === 'unreviewed' && (
+              <>
+                {pendingResults.filter((o) => !isReviewed(o.id)).length === 0 && (
+                  <div style={{ fontSize: 12, color: C.muted }}>No unreviewed results</div>
+                )}
+                {pendingResults.filter((o) => !isReviewed(o.id)).slice(0, 8).map((o) => (
+                  <div key={o.id} style={{ padding: '10px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
+                    <div style={{ fontWeight: 700 }}>{o.patientName}</div>
+                    <div style={{ color: C.muted }}>{o.name} · {o.resultSummary || 'Result available'}</div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        markResultReviewed(o.id, {
+                          facilityId,
+                          patientId: o.patientId,
+                          by: session.name || 'Doctor',
+                          badge: session.badgeId,
+                        });
+                        emitLiveAction(`Reviewed result ${o.name}`, { module: 'doctor-portal' });
+                        reload();
+                      }}
+                      style={{
+                        marginTop: 6,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: '4px 10px',
+                        borderRadius: 8,
+                        border: `1px solid ${C.border}`,
+                        background: '#fff',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Mark reviewed
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+            {resultTab === 'reviewed' && (
+              <>
+                {pendingResults.filter((o) => isReviewed(o.id)).length === 0 && (
+                  <div style={{ fontSize: 12, color: C.muted }}>No reviewed results yet today</div>
+                )}
+                {pendingResults.filter((o) => isReviewed(o.id)).slice(0, 8).map((o) => (
+                  <div key={o.id} style={{ padding: '10px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
+                    <div style={{ fontWeight: 700 }}>{o.patientName}</div>
+                    <div style={{ color: C.muted }}>{o.name} · {o.resultSummary || '—'}</div>
+                    <div style={{ color: C.green, fontWeight: 600, marginTop: 4 }}>Reviewed</div>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
 
           <div
