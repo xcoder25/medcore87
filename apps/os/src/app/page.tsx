@@ -35,6 +35,7 @@ import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 import { AdminShell } from '../components/dashboards/AdminShell';
 import { OsAppShell } from '../components/layout/OsAppShell';
 import { ClinicalUxSuite } from '../components/clinical-ux/ClinicalUxSuite';
+import { DeviceGatewaySettings } from '../components/interop/DeviceGatewaySettings';
 import { KeyboardShortcutsHint } from '../components/layout/KeyboardShortcutsHint';
 import { listPatients } from '../lib/patientRegistryStore';
 import { ModulePageLoader } from '../components/layout/ModulePageLoader';
@@ -95,7 +96,7 @@ export type ModuleKey =
   | 'm87-ai' | 'ai'
   // Pillar 2: Core
   | 'emr' | 'emergency' | 'theatre' | 'icu' | 'pharmacy' | 'laboratory' | 'radiology'
-  | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'patient-card' | 'patient-360' | 'clinical-ux'
+  | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'patient-card' | 'patient-360' | 'clinical-ux' | 'device-gateway'
   // Pillar 3: Operations
   | 'command' | 'beds' | 'patient-flow' | 'universal-queue' | 'appointments' | 'staffing' | 'ambulance' | 'notifications'
   | 'inventory' | 'biomedical' | 'facilities' | 'environmental'
@@ -182,14 +183,16 @@ const MASTER_PILLARS: NavSection[] = [
     label: '5. Data & Interoperability',
     items: [
       { key: 'data-hub', icon: Database, label: 'Central Telemetry Data Hub' },
-      { key: 'fhir', icon: FileCode, label: 'FHIR R4 & HL7 Message Gateway', badge: 'R4' },
+      { key: 'device-gateway', icon: Server, label: 'Device gateway', badge: 'Hub' },
+            { key: 'fhir', icon: FileCode, label: 'FHIR R4 & HL7 Message Gateway', badge: 'R4' },
       { key: 'analytics', icon: BarChart3, label: 'Clinical Performance Analytics' },
     ],
   },
   {
     label: '6. Connected IoT Ecosystem',
     items: [
-      { key: 'iot-devices', icon: Cpu, label: 'Medical Devices & Bedside Monitors', badge: 'IoT' },
+      { key: 'device-gateway', icon: Server, label: 'Device gateway', badge: 'Hub' },
+            { key: 'iot-devices', icon: Cpu, label: 'Medical Devices & Bedside Monitors', badge: 'IoT' },
     ],
   },
   {
@@ -797,6 +800,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   fhir: FhirHl7GatewaySuite,
   analytics: PerformanceAnalytics,
   'iot-devices': ConnectedDevicesSuite,
+  'device-gateway': DeviceGatewaySettings,
   auth: AuthIdentity,
   facility: FacilityOnboarding,
   rbac: AccessControl,
@@ -828,6 +832,7 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   'patient-card': { level: 1, label: 'L2 Support', roleDesc: 'Records & Front Desk Officers' },
   'patient-360': { level: 2, label: 'L2 Clinical & Records', roleDesc: 'Longitudinal patient profile' },
   'clinical-ux': { level: 2, label: 'L2 Clinical', roleDesc: 'Schedule, meds, notes, discharge' },
+  'device-gateway': { level: 4, label: 'L4 IT / Admin', roleDesc: 'Device hub HL7 Orthanc config' },
   command: { level: 2, label: 'L2 Support', roleDesc: 'General Hospital Staff & Floor Duty' },
   beds: { level: 3, label: 'L3 Clinical', roleDesc: 'Bed Managers & Ward Supervisors' },
   'patient-flow': { level: 1, label: 'L3 Clinical', roleDesc: 'Patient Flow Coordinators' },
