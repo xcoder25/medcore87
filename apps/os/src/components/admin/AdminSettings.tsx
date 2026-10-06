@@ -616,7 +616,7 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
                       facilityId,
                       actorName: session.name || 'Admin',
                       actorBadge: session.badgeId,
-                      facilityName: draft.displayName || session.hospitalName || facilityId,
+                      facilityName: draft.displayName || session.facility || facilityId,
                     });
                     setPilotResult(r);
                     pushActivity(

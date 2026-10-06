@@ -243,6 +243,20 @@ export function evaluateOrderBpa(input: {
   return alerts;
 }
 
+/** Alias used by order UIs (same as evaluateOrderBpa) */
+export function previewOrderBpa(
+  input: {
+    facilityId: string;
+    patientId: string;
+    type: ClinicalOrderType;
+    code: string;
+    name: string;
+    priority?: string;
+  }
+): BpaAlert[] {
+  return evaluateOrderBpa(input);
+}
+
 /** After result post — detect critical wording and create ACK requirement */
 export function evaluateResultForCritical(order: ClinicalOrder): CriticalAck | null {
   const summary = order.resultSummary || '';
