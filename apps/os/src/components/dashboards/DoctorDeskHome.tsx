@@ -12,8 +12,10 @@ import {
   HeartPulse, Layers,
 } from 'lucide-react';
 import { todayVisits, subscribeReceptionOps, type ReceptionVisit } from '../../lib/receptionOpsStore';
-import { listOrders, subscribeOrders, type ClinicalOrder } from '../../lib/clinicalEventBus';
+import { listOrders, subscribeOrders, placeOrder, type ClinicalOrder } from '../../lib/clinicalEventBus';
 import {
+  ORDER_SETS,
+  previewOrderBpa,
   listPendingCriticalAcks,
   acknowledgeCriticalResult,
   facilityIntelligencePulse,
@@ -49,6 +51,9 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   const firstName = (session.name || 'Doctor').split(' ')[0];
   const [tick, setTick] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [orderPatientId, setOrderPatientId] = useState('');
+  const [orderSetId, setOrderSetId] = useState('os-malaria');
+  const [orderFlash, setOrderFlash] = useState('');
 
   const reload = () => setTick((t) => t + 1);
 
@@ -153,6 +158,47 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   };
 
 
+
+  const fireOrderSet = () => {
+    const set = ORDER_SETS.find((s) => s.id === orderSetId);
+    const p = patients.find((x) => x.id === orderPatientId);
+    if (!set || !p) {
+      setOrderFlash('Select patient and order set');
+      setTimeout(() => setOrderFlash(''), 2500);
+      return;
+    }
+    let n = 0;
+    let warns = 0;
+    for (const item of set.items) {
+      const bpas = previewOrderBpa({
+        facilityId,
+        patientId: p.id,
+        type: item.type,
+        code: item.code,
+        name: item.name,
+        priority: item.priority,
+      });
+      if (bpas.some((b) => b.level === 'hard_stop' || b.level === 'warning')) warns += 1;
+      placeOrder({
+        facilityId,
+        patientId: p.id,
+        patientName: `${p.firstName} ${p.lastName}`,
+        hospitalNumber: p.hospitalNumber,
+        type: item.type,
+        code: item.code,
+        name: item.name,
+        orderedBy: session.name || 'Doctor',
+        orderedByBadge: session.badgeId,
+        priority: item.priority || 'routine',
+      });
+      n += 1;
+    }
+    emitLiveAction(`Order set ${set.label}: ${n} orders on bus`, { module: 'doctor-portal' });
+    setOrderFlash(`${set.label} · ${n} orders${warns ? ` · ${warns} BPA flags` : ''} · bills auto-created`);
+    setTimeout(() => setOrderFlash(''), 4000);
+    reload();
+  };
+
   const criticalPanel = criticalAcks.length > 0 && (
     <div
       style={{
@@ -214,6 +260,70 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
       {criticalPanel}
+
+      {/* Doctor order path — order sets + closed loop */}
+      <div
+        style={{
+          background: '#fff',
+          border: '1px solid #E2E8F0',
+          borderRadius: 16,
+          padding: 16,
+          display: 'grid',
+          gridTemplateColumns: '1.2fr 1fr auto',
+          gap: 12,
+          alignItems: 'end',
+        }}
+      >
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 6 }}>Order path (sets → lab/Rx bus → bills)</div>
+          <select
+            value={orderPatientId}
+            onChange={(e) => setOrderPatientId(e.target.value)}
+            style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #E2E8F0', fontSize: 13 }}
+          >
+            <option value="">Patient…</option>
+            {patients.slice(0, 40).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.firstName} {p.lastName} · {p.hospitalNumber}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>Order set</div>
+          <select
+            value={orderSetId}
+            onChange={(e) => setOrderSetId(e.target.value)}
+            style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #E2E8F0', fontSize: 13 }}
+          >
+            {ORDER_SETS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          onClick={fireOrderSet}
+          style={{
+            padding: '10px 16px',
+            borderRadius: 10,
+            border: 'none',
+            background: 'linear-gradient(135deg, #2563EB, #0D9488)',
+            color: '#fff',
+            fontWeight: 800,
+            fontSize: 13,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Fire to bus
+        </button>
+        {orderFlash && (
+          <div style={{ gridColumn: '1 / -1', fontSize: 12, color: '#0F766E', fontWeight: 600 }}>{orderFlash}</div>
+        )}
+      </div>
 
       {/* Hero */}
       <div

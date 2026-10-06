@@ -1,4 +1,4 @@
-import { billPharmacyRx } from './patientBillingStore';
+import { billPharmacyRx, billLabOrder, billImagingOrder } from './patientBillingStore';
 import { enqueue } from './universalQueue';
 import { pushNotification } from './notificationEngine';
 import { checkPrescriptionSafety } from './pharmacySafety';
@@ -92,6 +92,30 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
         patientName: order.patientName,
         orderId: order.id,
         drugName: order.name,
+      });
+    } catch { /* ignore */ }
+  }
+  if (order.type === 'lab') {
+    try {
+      billLabOrder({
+        facilityId: order.facilityId,
+        patientId: order.patientId,
+        hospitalNumber: order.hospitalNumber,
+        patientName: order.patientName,
+        orderId: order.id,
+        testName: order.name,
+      });
+    } catch { /* ignore */ }
+  }
+  if (order.type === 'imaging') {
+    try {
+      billImagingOrder({
+        facilityId: order.facilityId,
+        patientId: order.patientId,
+        hospitalNumber: order.hospitalNumber,
+        patientName: order.patientName,
+        orderId: order.id,
+        studyName: order.name,
       });
     } catch { /* ignore */ }
   }

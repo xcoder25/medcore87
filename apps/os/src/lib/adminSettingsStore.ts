@@ -32,6 +32,10 @@ export interface AdminFacilitySettings {
   allowWalkInWithoutNin: boolean;
   /** Soft notice on dashboards */
   maintenanceMessage: string;
+  /** Optional Gemini API key (facility) — prefer NEXT_PUBLIC_GEMINI_API_KEY in production */
+  geminiApiKey: string;
+  /** Default lab fee NGN when order placed */
+  defaultLabFeeNgn: number;
   updatedAt: string;
   updatedBy?: string;
 }
@@ -54,6 +58,8 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   requireConfirmBeforeCheckIn: true,
   allowWalkInWithoutNin: true,
   maintenanceMessage: '',
+  geminiApiKey: '',
+  defaultLabFeeNgn: 3500,
   updatedBy: undefined,
 };
 

@@ -35,6 +35,7 @@ import { pushActivity, resetAllPilotData } from '../../lib/adminRealtimeStore';
 import { downloadFacilityBackup } from '../../lib/backupService';
 import { downloadDhis2Aggregate } from '../../lib/dhis2Export';
 import { exportAuditCsv, listAudit, appendAudit } from '../../lib/auditLogStore';
+import { runOpdDayPilot, type PilotRunResult } from '../../lib/opdPilotScript';
 
 interface Props {
   session: UserSession;
@@ -59,6 +60,8 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
   const [pending, setPending] = useState(0);
   const [lanOk, setLanOk] = useState<boolean | null>(null);
   const [probing, setProbing] = useState(false);
+  const [pilotResult, setPilotResult] = useState<PilotRunResult | null>(null);
+  const [pilotRunning, setPilotRunning] = useState(false);
   const [online, setOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
@@ -558,21 +561,44 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
               checked={draft.allowWalkInWithoutNin}
               onChange={(v) => patch({ allowWalkInWithoutNin: v })}
             />
-            <div
-              style={{
-                marginTop: 8,
-                padding: 12,
-                borderRadius: 10,
-                background: '#FFFBEB',
-                border: '1px solid #FDE68A',
-                fontSize: 12,
-                color: '#92400E',
-                lineHeight: 1.5,
-              }}
-            >
-              <Bell size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-              Gemini enrichment uses <code>NEXT_PUBLIC_GEMINI_API_KEY</code> on the deployment — never
-              paste private keys into this form. EMR remains the source of truth; AI only recommends.
+            <div style={{ marginTop: 12 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 6 }}>
+                Gemini API key (M87 / all AI assistants)
+              </label>
+              <input
+                type="password"
+                autoComplete="off"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: '1px solid #E2E8F0',
+                  fontSize: 14,
+                  boxSizing: 'border-box',
+                  fontFamily: 'ui-monospace, monospace',
+                }}
+                value={draft.geminiApiKey || ''}
+                onChange={(e) => patch({ geminiApiKey: e.target.value })}
+                placeholder="Paste Gemini API key — or set NEXT_PUBLIC_GEMINI_API_KEY on Vercel"
+              />
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: 12,
+                  borderRadius: 10,
+                  background: '#F0F9FF',
+                  border: '1px solid #BAE6FD',
+                  fontSize: 12,
+                  color: '#0C4A6E',
+                  lineHeight: 1.5,
+                }}
+              >
+                <Bell size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+                Facility key is stored in hospital settings (local + sync). Prefer{' '}
+                <code>NEXT_PUBLIC_GEMINI_API_KEY</code> on Vercel for production. EMR remains source of
+                truth — AI only recommends.
+                {draft.geminiApiKey?.trim() ? ' · Key saved in draft — click Save.' : ' · No facility key yet.'}
+              </div>
             </div>
           </Section>
         </div>
@@ -580,6 +606,67 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
         <div style={{ gridColumn: '1 / -1' }}>
           <Section icon={Database} title="Data & safety">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              <button
+                type="button"
+                disabled={pilotRunning}
+                onClick={() => {
+                  setPilotRunning(true);
+                  try {
+                    const r = runOpdDayPilot({
+                      facilityId,
+                      actorName: session.name || 'Admin',
+                      actorBadge: session.badgeId,
+                      facilityName: draft.displayName || session.hospitalName || facilityId,
+                    });
+                    setPilotResult(r);
+                    pushActivity(
+                      `OPD pilot: ${r.patientName} · ${r.steps.filter((s) => s.ok).length}/${r.steps.length} steps ok`
+                    );
+                  } finally {
+                    setPilotRunning(false);
+                  }
+                }}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #2563EB, #0D9488)',
+                  color: '#fff',
+                  fontWeight: 700,
+                  cursor: pilotRunning ? 'wait' : 'pointer',
+                }}
+              >
+                {pilotRunning ? 'Running OPD pilot…' : 'Run OPD day pilot'}
+              </button>
+            {pilotResult && (
+              <div
+                style={{
+                  marginTop: 14,
+                  width: '100%',
+                  padding: 14,
+                  borderRadius: 12,
+                  border: '1px solid #A7F3D0',
+                  background: '#ECFDF5',
+                  fontSize: 13,
+                }}
+              >
+                <div style={{ fontWeight: 800, marginBottom: 8 }}>
+                  OPD pilot · {pilotResult.patientName} · {pilotResult.hospitalNumber}
+                </div>
+                <div style={{ color: '#64748B', marginBottom: 8 }}>
+                  Balance ₦{pilotResult.balanceNgn.toLocaleString()} · open orders {pilotResult.openOrders}
+                </div>
+                {pilotResult.steps.map((s) => (
+                  <div key={s.step} style={{ padding: '4px 0', borderTop: '1px solid #D1FAE5' }}>
+                    <strong style={{ color: s.ok ? '#059669' : '#DC2626' }}>
+                      {s.ok ? '✓' : '✗'} {s.step}. {s.name}
+                    </strong>
+                    <div style={{ color: '#475569', fontSize: 12 }}>{s.detail}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
               <button
                 type="button"
                 onClick={() => {

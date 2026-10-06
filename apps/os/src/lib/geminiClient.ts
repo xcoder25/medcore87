@@ -18,8 +18,8 @@ export async function geminiGenerate(
   }
   try {
     const s = getAdminSettings();
-    if ((s as { geminiApiKey?: string }).geminiApiKey) {
-      key = (s as { geminiApiKey?: string }).geminiApiKey || key;
+    if (s.geminiApiKey?.trim()) {
+      key = s.geminiApiKey.trim();
     }
   } catch {
     /* ignore */
@@ -94,8 +94,8 @@ export function hasGeminiKey(): boolean {
     /* ignore */
   }
   try {
-    const s = getAdminSettings() as { geminiApiKey?: string };
-    return Boolean(s.geminiApiKey);
+    const s = getAdminSettings();
+    return Boolean(s.geminiApiKey?.trim());
   } catch {
     return false;
   }

@@ -31,6 +31,8 @@ const EVT = 'medcore-patient-bills';
 
 /** Simple default drug fee when no formulary price — adjustable later */
 export const DEFAULT_RX_FEE_NGN = 2500;
+export const DEFAULT_LAB_FEE_NGN = 3500;
+export const DEFAULT_IMAGING_FEE_NGN = 8000;
 
 function read(): PatientBillLine[] {
   if (typeof window === 'undefined') return [];
@@ -103,6 +105,54 @@ export function billPharmacyRx(input: {
     source: 'pharmacy',
     description: `Pharmacy · ${input.drugName}`,
     amountNgn: input.amountNgn ?? DEFAULT_RX_FEE_NGN,
+    orderId: input.orderId,
+    status: 'unpaid',
+  });
+}
+
+export function billLabOrder(input: {
+  facilityId: string;
+  patientId: string;
+  hospitalNumber: string;
+  patientName: string;
+  orderId: string;
+  testName: string;
+  amountNgn?: number;
+}): PatientBillLine {
+  const existing = getLineForOrder(input.orderId);
+  if (existing) return existing;
+  return addBillLine({
+    facilityId: input.facilityId,
+    patientId: input.patientId,
+    hospitalNumber: input.hospitalNumber,
+    patientName: input.patientName,
+    source: 'lab',
+    description: `Laboratory · ${input.testName}`,
+    amountNgn: input.amountNgn ?? DEFAULT_LAB_FEE_NGN,
+    orderId: input.orderId,
+    status: 'unpaid',
+  });
+}
+
+export function billImagingOrder(input: {
+  facilityId: string;
+  patientId: string;
+  hospitalNumber: string;
+  patientName: string;
+  orderId: string;
+  studyName: string;
+  amountNgn?: number;
+}): PatientBillLine {
+  const existing = getLineForOrder(input.orderId);
+  if (existing) return existing;
+  return addBillLine({
+    facilityId: input.facilityId,
+    patientId: input.patientId,
+    hospitalNumber: input.hospitalNumber,
+    patientName: input.patientName,
+    source: 'other',
+    description: `Imaging · ${input.studyName}`,
+    amountNgn: input.amountNgn ?? DEFAULT_IMAGING_FEE_NGN,
     orderId: input.orderId,
     status: 'unpaid',
   });

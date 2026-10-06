@@ -6,6 +6,7 @@ import { getPatient, listPatients, type FacilityPatient } from './patientRegistr
 import { listVisits, listAppointments, todayPayments, type ReceptionVisit, type ReceptionAppointment, type ReceptionPayment } from './receptionOpsStore';
 import { listOrders, type ClinicalOrder } from './clinicalEventBus';
 import { listBillLines, type PatientBillLine } from './patientBillingStore';
+import { buildCareTimeline, listPendingCriticalAcks } from './clinicalIntelligenceEngine';
 
 export type TimelineKind =
   | 'registration'
@@ -119,6 +120,42 @@ export function buildPatient360(facilityId: string, patientKey: string): Patient
       status: pay.status,
     });
   }
+  // Epic/Cerner-style care intelligence: critical ACKs + extended timeline
+  try {
+    for (const a of listPendingCriticalAcks(facilityId).filter((x) => x.patientId === patient.id)) {
+      events.push({
+        id: `crit-${a.orderId}`,
+        at: a.resultAt,
+        kind: 'lab',
+        title: 'Critical result — pending clinician ACK',
+        detail: a.summary,
+        status: 'needs_ack',
+      });
+    }
+    for (const ce of buildCareTimeline(facilityId, patient.id)) {
+      if (events.some((e) => e.id === ce.id || e.id === `o-${ce.id}`)) continue;
+      const kindMap: Record<string, TimelineKind> = {
+        visit: 'visit',
+        lab: 'lab',
+        rx: 'rx',
+        imaging: 'imaging',
+        result: 'lab',
+        alert: 'note',
+        payment: 'payment',
+        bed: 'note',
+      };
+      events.push({
+        id: ce.id,
+        at: ce.at,
+        kind: kindMap[ce.kind] || 'note',
+        title: ce.title,
+        detail: ce.detail || '',
+        status: ce.level,
+      });
+    }
+  } catch { /* assistive */ }
+
+
 
   events.sort((a, b) => b.at.localeCompare(a.at));
 
