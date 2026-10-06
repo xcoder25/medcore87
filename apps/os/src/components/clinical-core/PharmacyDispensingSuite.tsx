@@ -114,16 +114,22 @@ export const PharmacyDispensingSuite: React.FC = () => {
               route: sig.route,
               duration: sig.duration,
               prescribingDoctor: o.orderedBy || 'Clinician',
-              status: o.status === 'resulted' || o.status === 'accepted' ? 'dispensed' : 'pending',
+              status: (o.status === 'resulted' || o.status === 'accepted' ? 'dispensed' : 'pending') as PrescriptionOrder['status'],
               orderedAt: o.createdAt,
             };
           });
         // Prefer bus truth: refresh statuses for known ids
         const byBus = new Map(rx.map((o) => [o.id, o]));
-        const merged = prev.map((p) => {
+        const merged: PrescriptionOrder[] = prev.map((p) => {
           const o = byBus.get(p.id);
           if (!o) return p;
           const sig = parseRxNotes(o.notes, o.name);
+          const status: PrescriptionOrder['status'] =
+            o.status === 'resulted' || o.status === 'accepted'
+              ? 'dispensed'
+              : p.status === 'dispensed'
+                ? 'dispensed'
+                : 'pending';
           return {
             ...p,
             medication: o.name,
@@ -131,7 +137,7 @@ export const PharmacyDispensingSuite: React.FC = () => {
             frequency: sig.frequency,
             route: sig.route,
             duration: sig.duration,
-            status: o.status === 'resulted' || o.status === 'accepted' ? 'dispensed' : p.status === 'dispensed' ? 'dispensed' : 'pending',
+            status,
           };
         });
         return extra.length ? [...extra, ...merged] : merged;
