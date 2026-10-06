@@ -1787,21 +1787,21 @@ const Placeholder: React.FC<{ icon: React.ComponentType<any>; label: string; des
 // -- Sub-nav only (NO second sidebar — OS shell owns nav) ----------------------
 
 const NAV_ITEMS: { key: SubModule; icon: React.ComponentType<any>; label: string }[] = [
-  { key: 'dashboard',        icon: LayoutDashboard, label: 'Command Desk' },
-  { key: 'patients',         icon: Users,           label: 'My Patients' },
-  { key: 'appointments',     icon: Calendar,        label: "Today's Schedule" },
+  { key: 'dashboard',        icon: LayoutDashboard, label: 'Clinical desk' },
+  { key: 'patients',         icon: Users,           label: 'My patients' },
   { key: 'consultation',     icon: Stethoscope,     label: 'Consultation' },
-  { key: 'emr',              icon: FileText,        label: 'Clinical Records' },
-  { key: 'prescriptions',    icon: Pill,            label: 'Prescriptions' },
-  { key: 'lab-orders',       icon: FlaskConical,    label: 'Lab Orders' },
-  { key: 'radiology-orders', icon: Layers,          label: 'Radiology' },
-  { key: 'ward-round',       icon: BedDouble,       label: 'Ward Round' },
-  { key: 'admission',        icon: UserPlus,        label: 'Admissions' },
+  { key: 'emr',              icon: FileText,        label: 'EMR' },
+  { key: 'prescriptions',    icon: Pill,            label: 'Rx' },
+  { key: 'lab-orders',       icon: FlaskConical,    label: 'Labs' },
+  { key: 'radiology-orders', icon: Layers,          label: 'Imaging' },
+  { key: 'ward-round',       icon: BedDouble,       label: 'Ward round' },
+  { key: 'appointments',     icon: Calendar,        label: 'Schedule' },
+  { key: 'tasks',            icon: ClipboardList,   label: 'Tasks' },
   { key: 'referrals',        icon: Send,            label: 'Referrals' },
-  { key: 'tasks',            icon: ClipboardList,   label: 'Clinical Tasks' },
+  { key: 'admission',        icon: UserPlus,        label: 'Admit' },
   { key: 'messages',         icon: MessageSquare,   label: 'Messages' },
-  { key: 'analytics',        icon: BarChart3,       label: 'My Analytics' },
-  { key: 'settings',         icon: Settings,        label: 'Preferences' },
+  { key: 'analytics',        icon: BarChart3,       label: 'Analytics' },
+  { key: 'settings',         icon: Settings,        label: 'Settings' },
 ];
 
 // -- MAIN EXPORT: single workspace (no nested Doctor Portal chrome) ------------

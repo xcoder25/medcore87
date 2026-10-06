@@ -8,13 +8,18 @@ import { Inbox, FlaskConical, AlertTriangle, Pill, ClipboardList, ChevronRight }
 import { listOrders, subscribeOrders } from '../../lib/clinicalEventBus';
 import { listPendingCriticalAcks, subscribeIntelligence } from '../../lib/clinicalIntelligenceEngine';
 import { isReviewed, subscribeResultReviews } from '../../lib/resultReviewStore';
-import { todayVisits, subscribeReceptionOps } from '../../lib/receptionOpsStore';
+import {
+  todayVisits,
+  visitAssignedToDoctor,
+  subscribeReceptionOps,
+} from '../../lib/receptionOpsStore';
 import { setPatientContext } from '../../lib/patientContextStore';
 import { getPatient } from '../../lib/patientRegistryStore';
+import { listNotifications, subscribeNotifications } from '../../lib/notificationEngine';
 
 export type BasketItem = {
   id: string;
-  kind: 'critical' | 'result' | 'rx' | 'queue' | 'task';
+  kind: 'critical' | 'result' | 'rx' | 'queue' | 'task' | 'assignment';
   title: string;
   detail: string;
   patientId?: string;
@@ -26,11 +31,19 @@ export type BasketItem = {
 interface Props {
   facilityId: string;
   roleKey?: string;
+  /** Logged-in staff display name — filters assigned patients for doctors */
+  staffName?: string;
   onNavigate?: (moduleKey: string) => void;
   limit?: number;
 }
 
-export const InBasketPanel: React.FC<Props> = ({ facilityId, roleKey, onNavigate, limit = 12 }) => {
+export const InBasketPanel: React.FC<Props> = ({
+  facilityId,
+  roleKey,
+  staffName,
+  onNavigate,
+  limit = 12,
+}) => {
   const [tick, setTick] = useState(0);
   const reload = () => setTick((t) => t + 1);
 
@@ -39,17 +52,20 @@ export const InBasketPanel: React.FC<Props> = ({ facilityId, roleKey, onNavigate
     const u2 = subscribeIntelligence(reload);
     const u3 = subscribeResultReviews(reload);
     const u4 = subscribeReceptionOps(reload);
+    const u5 = subscribeNotifications(reload);
     return () => {
       u1();
       u2();
       u3();
       u4();
+      u5();
     };
   }, []);
 
   const items = useMemo(() => {
     const out: BasketItem[] = [];
     const role = (roleKey || '').toLowerCase();
+    const isDoctor = role.includes('doctor') || role.includes('surgeon') || role.includes('consultant');
 
     for (const a of listPendingCriticalAcks(facilityId)) {
       out.push({
@@ -94,32 +110,64 @@ export const InBasketPanel: React.FC<Props> = ({ facilityId, roleKey, onNavigate
       }
     }
 
-    if (role.includes('recep') || role.includes('doctor') || role.includes('admin') || !role) {
-      for (const v of todayVisits(facilityId).filter((x) => x.status === 'waiting' || x.status === 'called')) {
+    // Assignment alerts for this doctor
+    if (isDoctor && staffName) {
+      for (const n of listNotifications(facilityId, true, { staffName, roleKey })) {
+        if (n.roleHint !== 'doctor' && n.module !== 'doctor-portal') continue;
+        if (!n.title.toLowerCase().includes('assigned') && !n.title.toLowerCase().includes('queue')) continue;
+        out.push({
+          id: `asg-${n.id}`,
+          kind: 'assignment',
+          title: n.title,
+          detail: n.body,
+          patientId: n.patientId,
+          patientName: undefined,
+          at: n.createdAt,
+          module: 'doctor-portal',
+        });
+      }
+    }
+
+    if (role.includes('recep') || isDoctor || role.includes('admin') || !role) {
+      const queueVisits = todayVisits(facilityId).filter((x) => {
+        if (x.status !== 'waiting' && x.status !== 'called') return false;
+        // Doctors only see patients assigned to them (or open pool)
+        if (isDoctor && staffName) return visitAssignedToDoctor(x, staffName);
+        return true;
+      });
+      for (const v of queueVisits) {
         out.push({
           id: `q-${v.id}`,
           kind: 'queue',
-          title: `Waiting · ${v.department}`,
-          detail: `${v.queueNumber} · ${v.visitType}`,
+          title: isDoctor ? `Assigned · ${v.department}` : `Waiting · ${v.department}`,
+          detail: `${v.queueNumber} · ${v.visitType}${v.doctor ? ` · ${v.doctor}` : ''}`,
           patientId: v.patientId,
           patientName: v.patientName,
           at: v.checkedInAt,
-          module: role.includes('doctor') ? 'doctor-portal' : 'patient-flow',
+          module: isDoctor ? 'doctor-portal' : 'patient-flow',
         });
       }
     }
 
     out.sort((a, b) => {
-      const rank = { critical: 0, result: 1, rx: 2, queue: 3, task: 4 };
+      const rank: Record<BasketItem['kind'], number> = {
+        critical: 0,
+        assignment: 1,
+        result: 2,
+        rx: 3,
+        queue: 4,
+        task: 5,
+      };
       const d = rank[a.kind] - rank[b.kind];
       if (d !== 0) return d;
       return b.at.localeCompare(a.at);
     });
     return out.slice(0, limit);
-  }, [facilityId, roleKey, tick, limit]);
+  }, [facilityId, roleKey, staffName, tick, limit]);
 
   const icon = (k: BasketItem['kind']) => {
     if (k === 'critical') return <AlertTriangle size={14} color="#DC2626" />;
+    if (k === 'assignment') return <ClipboardList size={14} color="#0D9488" />;
     if (k === 'result') return <FlaskConical size={14} color="#D97706" />;
     if (k === 'rx') return <Pill size={14} color="#7C3AED" />;
     if (k === 'queue') return <ClipboardList size={14} color="#2563EB" />;

@@ -213,6 +213,42 @@ export function updateVisitStatus(visitId: string, status: QueueStatus) {
   save(state);
 }
 
+/** Normalize doctor names for matching (Dr. X vs X) */
+export function normalizeDoctorName(name: string): string {
+  return (name || '')
+    .toLowerCase()
+    .replace(/^dr\.?\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Whether a visit is assigned to this doctor (or open pool "Any available") */
+export function visitAssignedToDoctor(visit: ReceptionVisit, doctorName: string): boolean {
+  const assigned = normalizeDoctorName(visit.doctor);
+  if (!assigned || assigned === 'any available' || assigned === 'any') return true;
+  const me = normalizeDoctorName(doctorName);
+  if (!me) return false;
+  return assigned === me || assigned.includes(me) || me.includes(assigned);
+}
+
+/** Today's visits for a specific doctor (includes open-pool assignments) */
+export function visitsForDoctor(facilityId: string, doctorName: string): ReceptionVisit[] {
+  return todayVisits(facilityId).filter((v) => visitAssignedToDoctor(v, doctorName));
+}
+
+/** Re-assign a waiting visit to another doctor */
+export function assignVisitDoctor(visitId: string, doctor: string): ReceptionVisit | null {
+  const state = load();
+  let updated: ReceptionVisit | null = null;
+  state.visits = state.visits.map((v) => {
+    if (v.id !== visitId) return v;
+    updated = { ...v, doctor: doctor.trim() || 'Any available' };
+    return updated;
+  });
+  if (updated) save(state);
+  return updated;
+}
+
 export function markAiReminder(visitId: string) {
   const state = load();
   state.visits = state.visits.map((v) =>

@@ -25,13 +25,21 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
   const [sum, setSum] = useState(notificationSummary(facilityId));
 
   const reload = () => {
-    setItems(listNotifications(facilityId));
+    setItems(
+      listNotifications(facilityId, false, {
+        staffName: session?.name,
+        roleKey: session?.roleKey,
+      })
+    );
     setSum(notificationSummary(facilityId));
   };
 
   useEffect(() => {
     // Seed from live intelligence once per mount if empty
-    const existing = listNotifications(facilityId);
+    const existing = listNotifications(facilityId, false, {
+      staffName: session?.name,
+      roleKey: session?.roleKey,
+    });
     if (existing.length === 0) {
       for (const w of scanEarlyWarnings(facilityId).slice(0, 5)) {
         pushNotification({

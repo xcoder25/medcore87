@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Building2, Lock, User, Eye, EyeOff, ArrowRight, CheckCircle2, AlertCircle
 } from 'lucide-react';
+import { inferRoleKey, defaultPermissionsForRole } from '../../lib/staffCardStore';
 
 // --- Types --------------------------------------------------------------------
 
@@ -214,12 +215,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       role: p.role || 'Staff',
       shortRole: p.shortRole || p.role || 'Staff',
       title: p.title || p.role || 'Staff',
-      roleKey: p.roleKey || 'doctor',
+      roleKey: inferRoleKey(String(p.roleKey || p.role || p.title || ''), String(p.badgeId || p.id || '')),
       clearanceLevel: p.clearanceLevel ?? 2,
       clearanceLabel: p.clearanceLabel || 'L2',
       department: p.department || '',
       initials: p.initials || String(p.name || 'S').slice(0, 2).toUpperCase(),
-      permissions: p.permissions || ['dashboard'],
+      permissions: (p.permissions && p.permissions.length) ? p.permissions : defaultPermissionsForRole(inferRoleKey(String(p.roleKey || p.role || p.title || ''), String(p.badgeId || p.id || ''))),
       pin: p.pin || '1234',
       hospitalId: p.hospitalId || p.facilityId || selectedHospital.id,
       hospitalName: p.hospitalName || p.facilityName || selectedHospital.name,
@@ -317,7 +318,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               role: r.role,
               shortRole: r.shortRole || r.role,
               title: r.title || r.role,
-              roleKey: r.roleKey || 'doctor',
+              roleKey: inferRoleKey(String(r.roleKey || r.role || r.title || ''), String(r.badgeId || r.id || '')),
               clearanceLevel: r.clearanceLevel ?? 2,
               clearanceLabel: r.clearanceLabel || 'L2',
               department: r.department || '',
@@ -927,7 +928,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   role: hit.role || 'Staff',
                   shortRole: hit.shortRole || hit.role || 'Staff',
                   title: hit.title || hit.role || 'Staff',
-                  roleKey: hit.roleKey || 'doctor',
+                  roleKey: inferRoleKey(String(hit.roleKey || hit.role || hit.title || ''), String(hit.badgeId || hit.id || '')),
                   clearanceLevel: hit.clearanceLevel ?? 2,
                   clearanceLabel: hit.clearanceLabel || 'L2',
                   department: hit.department || '',

@@ -15,7 +15,12 @@ export interface HospitalNotification {
   patientId?: string;
   read: boolean;
   createdAt: string;
+  /** Role key hint e.g. doctor | reception | pharmacy */
   roleHint?: string;
+  /** When set, notification is primarily for this staff member (full name) */
+  targetStaff?: string;
+  /** Visit / queue id when related to an assignment */
+  visitId?: string;
 }
 
 const KEY = 'medcore_os_notifications_v1';
@@ -41,11 +46,12 @@ function write(list: HospitalNotification[]) {
 export function pushNotification(
   input: Omit<HospitalNotification, 'id' | 'read' | 'createdAt'>
 ): HospitalNotification {
-  // Dedupe same title within 2 minutes
+  // Dedupe same title + body within 2 minutes (allow different patients)
   const recent = read().find(
     (n) =>
       n.facilityId === input.facilityId &&
       n.title === input.title &&
+      n.body === input.body &&
       Date.now() - new Date(n.createdAt).getTime() < 120000
   );
   if (recent) return recent;
@@ -60,10 +66,36 @@ export function pushNotification(
   return n;
 }
 
-export function listNotifications(facilityId: string, unreadOnly = false): HospitalNotification[] {
+function normName(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .replace(/^dr\.?\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** True when notification is relevant to this staff session */
+export function notificationVisibleTo(
+  n: HospitalNotification,
+  opts?: { staffName?: string; roleKey?: string }
+): boolean {
+  if (!n.targetStaff) return true;
+  const me = normName(opts?.staffName || '');
+  if (!me) return true;
+  const target = normName(n.targetStaff);
+  if (target === 'any available' || target === 'any') return true;
+  return target === me || target.includes(me) || me.includes(target);
+}
+
+export function listNotifications(
+  facilityId: string,
+  unreadOnly = false,
+  opts?: { staffName?: string; roleKey?: string }
+): HospitalNotification[] {
   const order: Record<NotifLevel, number> = { critical: 0, important: 1, info: 2 };
   return read()
     .filter((n) => n.facilityId === facilityId && (!unreadOnly || !n.read))
+    .filter((n) => notificationVisibleTo(n, opts))
     .sort((a, b) => order[a.level] - order[b.level] || b.createdAt.localeCompare(a.createdAt));
 }
 

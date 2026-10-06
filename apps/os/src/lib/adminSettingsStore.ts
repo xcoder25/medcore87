@@ -34,6 +34,8 @@ export interface AdminFacilitySettings {
   maintenanceMessage: string;
   /** Optional Gemini API key (facility) — prefer NEXT_PUBLIC_GEMINI_API_KEY in production */
   geminiApiKey: string;
+  /** Paystack public key (pk_live_… / pk_test_…) for reception payments */
+  paystackPublicKey: string;
   /** Default lab fee NGN when order placed */
   defaultLabFeeNgn: number;
   updatedAt: string;
@@ -59,6 +61,7 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   allowWalkInWithoutNin: true,
   maintenanceMessage: '',
   geminiApiKey: '',
+  paystackPublicKey: '',
   defaultLabFeeNgn: 3500,
   updatedBy: undefined,
 };

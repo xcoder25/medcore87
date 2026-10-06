@@ -51,21 +51,31 @@ export function printPaymentReceipt(input: {
   purpose: string;
   facilityName: string;
   cashier?: string;
+  paystackRef?: string;
+  channel?: string;
 }) {
+  const methodLabel = [input.method, input.channel].filter(Boolean).join(' · ').toUpperCase();
   printHtml(
     `Receipt ${input.reference}`,
-    `<h1>${input.facilityName}</h1>
-     <div class="muted">Payment receipt</div>
+    `<div style="text-align:center;margin-bottom:12px">
+       <img src="/medcore-logo.png" alt="MedCore" style="height:36px;vertical-align:middle;margin-right:10px" />
+       <img src="/arise-logo.png" alt="Arise" style="height:32px;vertical-align:middle" />
+     </div>
+     <h1>${input.facilityName}</h1>
+     <div class="muted">Payment receipt · MedCore OS</div>
      <div class="box">
        <table>
          <tr><td>Patient</td><td><strong>${input.patientName}</strong></td></tr>
          <tr><td>Hospital no.</td><td>${input.hospitalNumber}</td></tr>
          <tr><td>Purpose</td><td>${input.purpose}</td></tr>
-         <tr><td>Method</td><td>${input.method.toUpperCase()}</td></tr>
+         <tr><td>Method</td><td>${methodLabel}</td></tr>
          <tr><td>Amount</td><td><strong>₦${input.amount.toLocaleString()}</strong></td></tr>
          <tr><td>Reference</td><td>${input.reference}</td></tr>
+         ${input.paystackRef ? `<tr><td>Paystack</td><td>${input.paystackRef}</td></tr>` : ''}
          ${input.cashier ? `<tr><td>Cashier</td><td>${input.cashier}</td></tr>` : ''}
+         <tr><td>Date</td><td>${new Date().toLocaleString()}</td></tr>
        </table>
-     </div>`
+     </div>
+     <div class="muted" style="margin-top:12px;text-align:center">Thank you · Arise Health × MedCore</div>`
   );
 }

@@ -11,8 +11,18 @@ import {
   Brain, ChevronRight, RefreshCw, TrendingUp, AlertTriangle, CheckCircle2,
   HeartPulse, Layers,
 } from 'lucide-react';
-import { todayVisits, subscribeReceptionOps, type ReceptionVisit } from '../../lib/receptionOpsStore';
+import {
+  visitsForDoctor,
+  subscribeReceptionOps,
+  updateVisitStatus,
+  type ReceptionVisit,
+} from '../../lib/receptionOpsStore';
 import { listOrders, subscribeOrders, placeOrder, type ClinicalOrder } from '../../lib/clinicalEventBus';
+import {
+  listNotifications,
+  subscribeNotifications,
+  markRead,
+} from '../../lib/notificationEngine';
 import {
   ORDER_SETS,
   previewOrderBpa,
@@ -32,7 +42,6 @@ import { InBasketPanel } from '../clinical-core/InBasketPanel';
 import { getPatientContext, subscribePatientContext } from '../../lib/patientContextStore';
 import { listPatients, subscribePatients } from '../../lib/patientRegistryStore';
 import { emitLiveAction } from '../../lib/liveActions';
-import { updateVisitStatus } from '../../lib/receptionOpsStore';
 
 interface Props {
   session: UserSession;
@@ -74,6 +83,7 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     const u4 = subscribeIntelligence(reload);
     const u5 = subscribeResultReviews(reload);
     const u6 = subscribePatientContext(reload);
+    const u7 = subscribeNotifications(reload);
     return () => {
       u1();
       u2();
@@ -81,14 +91,28 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
       u4();
       u5();
       u6();
+      u7();
     };
   }, []);
 
-  const visits = useMemo(() => todayVisits(facilityId), [facilityId, tick]);
+  const doctorName = session.name || '';
+  /** Only visits assigned to this doctor (or open pool "Any available") */
+  const visits = useMemo(
+    () => visitsForDoctor(facilityId, doctorName),
+    [facilityId, doctorName, tick]
+  );
   const orders = useMemo(() => listOrders(facilityId), [facilityId, tick]);
   const criticalAcks = useMemo(() => listPendingCriticalAcks(facilityId), [facilityId, tick]);
   const pulse = useMemo(() => facilityIntelligencePulse(facilityId), [facilityId, tick]);
   const patients = useMemo(() => listPatients(facilityId), [facilityId, tick]);
+  const myNotifs = useMemo(
+    () =>
+      listNotifications(facilityId, true, {
+        staffName: doctorName,
+        roleKey: session.roleKey,
+      }).filter((n) => n.roleHint === 'doctor' || n.module === 'doctor-portal' || !n.roleHint),
+    [facilityId, doctorName, session.roleKey, tick]
+  );
 
   const waiting = visits.filter((v) => v.status === 'waiting' || v.status === 'called');
   const withMe = visits.filter((v) => v.status === 'with_provider');
@@ -276,9 +300,70 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   );
 
 
+  const assignmentBanner =
+    myNotifs.length > 0 ? (
+      <div
+        style={{
+          background: '#ECFDF5',
+          border: '1px solid #A7F3D0',
+          borderRadius: 12,
+          padding: '12px 14px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 13, color: '#065F46' }}>
+          New assignments · {myNotifs.length}
+        </div>
+        {myNotifs.slice(0, 4).map((n) => (
+          <div
+            key={n.id}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 10,
+              background: '#fff',
+              borderRadius: 8,
+              padding: '8px 10px',
+              border: '1px solid #D1FAE5',
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: '#0F172A' }}>{n.title}</div>
+              <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>{n.body}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                markRead(n.id);
+                reload();
+                onNavigate('doctor-portal');
+              }}
+              style={{
+                flexShrink: 0,
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '5px 10px',
+                borderRadius: 6,
+                border: 'none',
+                background: '#0D9488',
+                color: '#fff',
+                cursor: 'pointer',
+              }}
+            >
+              Open
+            </button>
+          </div>
+        ))}
+      </div>
+    ) : null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
       {criticalPanel}
+      {assignmentBanner}
       {getPatientContext() && (
         <VisitStoryboard
           facilityId={facilityId}
@@ -292,7 +377,12 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
         />
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
-        <InBasketPanel facilityId={facilityId} roleKey={session.roleKey} onNavigate={onNavigate} />
+        <InBasketPanel
+          facilityId={facilityId}
+          roleKey={session.roleKey}
+          staffName={session.name}
+          onNavigate={onNavigate}
+        />
       </div>
 
       {/* Doctor order path — order sets + closed loop */}

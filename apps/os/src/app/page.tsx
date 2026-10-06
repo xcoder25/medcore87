@@ -43,11 +43,12 @@ import { ReceptionWorkspace } from '../components/dashboards/ReceptionWorkspace'
 import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { startOutboxAutoFlush } from '../lib/durableOutbox';
 import { enableFirestoreOffline } from '../lib/firebase';
+import { startHospitalCloudSync } from '../lib/facilityCloudSync';
 import { RoleDashboard } from '../components/dashboards/RoleDashboard';
 import { DoctorPortal } from '../components/dashboards/DoctorPortal';
 import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
 import { roleCanAccessModule } from '../lib/rolePermissionsStore';
-import { inferRoleKey } from '../lib/staffCardStore';
+import { inferRoleKey, isReceptionRole, defaultPermissionsForRole } from '../lib/staffCardStore';
 import { EmergencyTriageSuite } from '../components/clinical-core/EmergencyTriageSuite';
 import { PharmacyDispensingSuite } from '../components/clinical-core/PharmacyDispensingSuite';
 import { LaboratorySuite } from '../components/clinical-core/LaboratorySuite';
@@ -233,44 +234,38 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'doctor':
       return [
         {
-          label: 'Doctor desk',
+          label: 'My clinical desk',
           items: [
-            { key: 'doctor-portal', icon: Stethoscope, label: 'Doctor Clinical Portal', badge: 'Live' },
-            { key: 'patient-360', icon: Users, label: 'Patient 360°', badge: 'Chart' },
-            { key: 'clinical-ux', icon: Stethoscope, label: 'Clinical workspace', badge: 'Epic+' },
-            { key: 'ambient-soap', icon: Stethoscope, label: 'Ambient SOAP' },
-            { key: 'lis', icon: FlaskConical, label: 'LIS Barcode & TAT' },
-            { key: 'formulary', icon: Pill, label: 'Formulary inventory' },
-            { key: 'pacs-advanced', icon: Layers, label: 'PACS / DICOM' },
-            { key: 'infection', icon: Shield, label: 'Infection control' },
-            { key: 'knowledge-graph', icon: Database, label: 'Knowledge graph' },
-            { key: 'predictive-staffing', icon: Users, label: 'Predictive staffing' },
-            { key: 'mfa-sso', icon: Lock, label: 'MFA & SSO' },
-            { key: 'hie', icon: Globe, label: 'National HIE' },
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Role Overview Dashboard' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Clinical desk', badge: 'Live' },
+            { key: 'doctor-portal', icon: Stethoscope, label: 'Consultations & worklist', badge: 'OPD' },
+            { key: 'patient-360', icon: Users, label: 'Patient chart', badge: 'Chart' },
+            { key: 'notifications', icon: Bell, label: 'Notifications' },
+          ],
+        },
+        {
+          label: 'Care & orders',
+          items: [
+            { key: 'emr', icon: FileText, label: 'EMR & clinical notes', badge: 'EMR' },
+            { key: 'pharmacy', icon: Pill, label: 'Prescribe & pharmacy', badge: 'Rx' },
+            { key: 'laboratory', icon: FlaskConical, label: 'Lab orders & results' },
+            { key: 'radiology', icon: Layers, label: 'Imaging orders & reports', badge: 'PACS' },
+          ],
+        },
+        {
+          label: 'Wards & acute care',
+          items: [
+            { key: 'emergency', icon: Flame, label: 'A&E triage', badge: 'ESI' },
+            { key: 'beds', icon: BedDouble, label: 'Bed & ward occupancy' },
+            { key: 'nursing', icon: FileText, label: 'Inpatient wards' },
+            { key: 'icu', icon: Wind, label: 'ICU', badge: 'ICU' },
+            { key: 'theatre', icon: Activity, label: 'Theatre schedule', badge: 'OT' },
+          ],
+        },
+        {
+          label: 'Assist',
+          items: [
             { key: 'm87-ai', icon: Brain, label: 'Clinical assistant', badge: 'AI' },
-            { key: 'ai', icon: Sparkles, label: 'Decision Support & SOAP', badge: 'AI' },
-          ],
-        },
-        {
-          label: 'Clinical Stations',
-          items: [
-            { key: 'emr', icon: FileText, label: 'Intelligent EMR & Records', badge: 'AI' },
-            { key: 'emergency', icon: Flame, label: 'Accident & Emergency Triage', badge: 'ESI' },
-            { key: 'nursing', icon: FileText, label: 'Inpatient Wards & e-MAR' },
-            { key: 'pharmacy', icon: Pill, label: 'e-Prescription & Pharmacy', badge: 'Rx' },
-            { key: 'beds', icon: BedDouble, label: 'Ward Bed Census Board' },
-            { key: 'theatre', icon: Activity, label: 'Operating Theatre Schedule', badge: 'OT' },
-            { key: 'icu', icon: Wind, label: 'ICU Critical Care Telemetry', badge: 'ICU' },
-          ],
-        },
-        {
-          label: 'Diagnostics & Records',
-          items: [
-            { key: 'radiology', icon: Layers, label: 'Radiology PACS & DICOM', badge: 'DICOM' },
-            { key: 'laboratory', icon: FlaskConical, label: 'Laboratory LIS & Analyzers' },
-            { key: 'patient-card', icon: FileText, label: 'Digital Health Card (FHIR)', badge: 'FHIR' },
-            { key: 'staffing', icon: Users, label: 'Physician Duty Rosters' },
+            { key: 'patient-card', icon: FileText, label: 'Patient health card' },
           ],
         },
       ];
@@ -278,28 +273,30 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'surgeon':
       return [
         {
-          label: 'Theatre & surgery',
+          label: 'Surgery desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Surgeon Operating Desk', badge: 'Live' },
-            { key: 'theatre', icon: Activity, label: 'Operating Theatre & Surgeries', badge: 'OT' },
-            { key: 'm87-ai', icon: Brain, label: 'Surgical risk helper', badge: 'AI' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Surgeon desk', badge: 'Live' },
+            { key: 'theatre', icon: Activity, label: 'Theatre list & OT', badge: 'OT' },
+            { key: 'doctor-portal', icon: Stethoscope, label: 'Consultations & worklist' },
+            { key: 'notifications', icon: Bell, label: 'Notifications' },
           ],
         },
         {
-          label: 'Critical Care & Resuscitation',
+          label: 'Peri-op care',
           items: [
-            { key: 'icu', icon: Wind, label: 'ICU & Critical Care Telemetry', badge: 'ICU' },
-            { key: 'blood-bank', icon: Droplet, label: 'Blood Bank & Cross-Match', badge: 'ABO' },
-            { key: 'emergency', icon: Flame, label: 'Trauma Resuscitation & A&E', badge: 'ESI' },
-            { key: 'beds', icon: BedDouble, label: 'PACU Recovery Beds' },
+            { key: 'icu', icon: Wind, label: 'ICU / HDU', badge: 'ICU' },
+            { key: 'beds', icon: BedDouble, label: 'PACU & recovery beds' },
+            { key: 'blood-bank', icon: Droplet, label: 'Blood bank & cross-match' },
+            { key: 'emergency', icon: Flame, label: 'Trauma / A&E', badge: 'ESI' },
           ],
         },
         {
-          label: 'Pre-Op Diagnostics & Records',
+          label: 'Workup & records',
           items: [
-            { key: 'radiology', icon: Layers, label: 'Pre-Op Radiology & PACS', badge: 'DICOM' },
-            { key: 'laboratory', icon: FlaskConical, label: 'Pre-Op Laboratory Workups' },
-            { key: 'patient-card', icon: FileText, label: 'Digital Patient Record', badge: 'FHIR' },
+            { key: 'laboratory', icon: FlaskConical, label: 'Pre-op labs' },
+            { key: 'radiology', icon: Layers, label: 'Pre-op imaging', badge: 'PACS' },
+            { key: 'emr', icon: FileText, label: 'EMR & notes' },
+            { key: 'm87-ai', icon: Brain, label: 'Surgical assistant', badge: 'AI' },
           ],
         },
       ];
@@ -309,29 +306,28 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Nursing station',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Ward Nursing Station', badge: 'Live' },
-            { key: 'nursing', icon: FileText, label: 'Inpatient Nursing & e-MAR', badge: 'e-MAR' },
-            { key: 'beds', icon: BedDouble, label: 'Clinical bed placement', badge: 'Beds' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Ward station', badge: 'Live' },
+            { key: 'nursing', icon: FileText, label: 'Inpatient & e-MAR', badge: 'e-MAR' },
+            { key: 'beds', icon: BedDouble, label: 'Bed occupancy', badge: 'Beds' },
+            { key: 'notifications', icon: Bell, label: 'Notifications' },
           ],
         },
         {
-          label: 'Clinical Units & Patient Flow',
+          label: 'Patient flow',
           items: [
-            { key: 'emergency', icon: Flame, label: 'A&E Triage Queue', badge: 'ESI' },
-            { key: 'patient-flow', icon: RefreshCw, label: 'Patient Transit & Admissions' },
-            { key: 'maternity', icon: Stethoscope, label: 'Labour Ward & CTG Telemetry' },
-            { key: 'paediatrics', icon: Baby, label: 'Paediatrics & NICU Incubators' },
-            { key: 'blood-bank', icon: Droplet, label: 'Blood Transfusion Requests' },
-            { key: 'pharmacy', icon: Pill, label: 'Ward Pharmacy Requisitions', badge: 'Rx' },
+            { key: 'patient-flow', icon: RefreshCw, label: 'Admissions & transit' },
+            { key: 'emergency', icon: Flame, label: 'A&E triage queue', badge: 'ESI' },
+            { key: 'pharmacy', icon: Pill, label: 'Ward pharmacy requests', badge: 'Rx' },
+            { key: 'blood-bank', icon: Droplet, label: 'Transfusion requests' },
           ],
         },
         {
-          label: 'Nursing Assist & Duty',
+          label: 'Units',
           items: [
+            { key: 'maternity', icon: Stethoscope, label: 'Maternity / labour' },
+            { key: 'paediatrics', icon: Baby, label: 'Paediatrics / NICU' },
+            { key: 'icu', icon: Wind, label: 'ICU', badge: 'ICU' },
             { key: 'm87-ai', icon: Brain, label: 'Nursing assistant', badge: 'AI' },
-            { key: 'staffing', icon: Users, label: 'Nursing Duty Rosters' },
-            { key: 'iot-devices', icon: Cpu, label: 'Bedside Telemetry Monitors', badge: 'IoT' },
-            { key: 'patient-card', icon: FileText, label: 'Digital Health Card', badge: 'FHIR' },
           ],
         },
       ];
@@ -339,22 +335,23 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'midwife':
       return [
         {
-          label: 'Labour & Delivery Desk',
+          label: 'Labour & delivery',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Labour ward', badge: 'Live' },
-            { key: 'maternity', icon: Stethoscope, label: 'Maternity, Labour & CTG', badge: 'CTG' },
-            { key: 'paediatrics', icon: Baby, label: 'Paediatrics & NICU Incubators', badge: 'NICU' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Labour ward desk', badge: 'Live' },
+            { key: 'maternity', icon: Stethoscope, label: 'Maternity, labour & CTG', badge: 'CTG' },
+            { key: 'paediatrics', icon: Baby, label: 'Newborn / NICU', badge: 'NICU' },
+            { key: 'notifications', icon: Bell, label: 'Notifications' },
           ],
         },
         {
-          label: 'Obstetric Care & Flow',
+          label: 'Care & support',
           items: [
-            { key: 'nursing', icon: FileText, label: 'Postnatal Inpatient Nursing' },
-            { key: 'blood-bank', icon: Droplet, label: 'Obstetric Blood Crossmatch' },
-            { key: 'beds', icon: BedDouble, label: 'Maternity Bed Board' },
-            { key: 'patient-flow', icon: RefreshCw, label: 'Mother & Neonate Admissions' },
-            { key: 'm87-ai', icon: Brain, label: 'Maternity assistant', badge: 'AI' },
-            { key: 'patient-card', icon: FileText, label: 'Digital Health Card', badge: 'FHIR' },
+            { key: 'beds', icon: BedDouble, label: 'Maternity beds' },
+            { key: 'nursing', icon: FileText, label: 'Nursing & e-MAR' },
+            { key: 'emergency', icon: Flame, label: 'Obstetric emergency' },
+            { key: 'blood-bank', icon: Droplet, label: 'Blood bank' },
+            { key: 'pharmacy', icon: Pill, label: 'Pharmacy requests' },
+            { key: 'm87-ai', icon: Brain, label: 'Midwifery assistant', badge: 'AI' },
           ],
         },
       ];
@@ -364,18 +361,19 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Pharmacy desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Pharmacy Dispensary Desk', badge: 'Live' },
-            { key: 'pharmacy', icon: Pill, label: 'Patient ID Scanner & Dispense', badge: 'Scan' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Dispensary desk', badge: 'Live' },
+            { key: 'pharmacy', icon: Pill, label: 'Dispense & stock', badge: 'Rx' },
+            { key: 'formulary', icon: Pill, label: 'AKS EML formulary', badge: 'EML' },
+            { key: 'notifications', icon: Bell, label: 'Notifications' },
           ],
         },
         {
-          label: 'Stocks, Logistics & Safety',
+          label: 'Linked care',
           items: [
-            { key: 'inventory', icon: Package, label: 'Central Medical Store (CMS)', badge: 'CMS' },
-            { key: 'nursing', icon: FileText, label: 'Inpatient e-MAR Administration' },
-            { key: 'facilities', icon: Gauge, label: 'Cold Chain Storage Telemetry' },
-            { key: 'm87-ai', icon: Brain, label: 'Drug Interaction & Safety AI', badge: 'AI' },
-            { key: 'patient-card', icon: FileText, label: 'Patient Medication History' },
+            { key: 'cashier', icon: CreditCard, label: 'Payments / POS' },
+            { key: 'emr', icon: FileText, label: 'Patient records' },
+            { key: 'patient-flow', icon: RefreshCw, label: 'Clinic queue' },
+            { key: 'm87-ai', icon: Brain, label: 'Pharmacy assistant', badge: 'AI' },
           ],
         },
       ];
@@ -383,20 +381,20 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'lab':
       return [
         {
-          label: 'Pathology & Diagnostic Desk',
+          label: 'Laboratory desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Laboratory desk', badge: 'Live' },
-            { key: 'laboratory', icon: FlaskConical, label: 'Lab LIS & Automated Analyzers', badge: 'LIS' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Lab desk', badge: 'Live' },
+            { key: 'laboratory', icon: FlaskConical, label: 'LIS & results', badge: 'LIS' },
+            { key: 'notifications', icon: Bell, label: 'Notifications' },
           ],
         },
         {
-          label: 'Specimens & Diagnostics',
+          label: 'Specimens & support',
           items: [
-            { key: 'blood-bank', icon: Droplet, label: 'Blood Bank & Donor Screening', badge: 'ABO' },
-            { key: 'data-hub', icon: Database, label: 'Central Telemetry Data Hub' },
-            { key: 'iot-devices', icon: Cpu, label: 'Analyzer IoT Telemetry', badge: 'IoT' },
-            { key: 'patient-card', icon: FileText, label: 'Specimen Patient Records' },
-            { key: 'compliance', icon: FileText, label: 'Quality Control & Audit Logs' },
+            { key: 'blood-bank', icon: Droplet, label: 'Blood bank', badge: 'ABO' },
+            { key: 'patient-card', icon: FileText, label: 'Patient records' },
+            { key: 'emr', icon: FileText, label: 'EMR' },
+            { key: 'm87-ai', icon: Brain, label: 'Lab assistant', badge: 'AI' },
           ],
         },
       ];
@@ -404,19 +402,19 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'radiologist':
       return [
         {
-          label: 'Medical Imaging Desk',
+          label: 'Imaging desk',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Radiology desk', badge: 'Live' },
-            { key: 'radiology', icon: Layers, label: 'Radiology & PACS Viewer', badge: 'DICOM' },
-            { key: 'm87-ai', icon: Brain, label: 'Imaging assistant', badge: 'AI' },
+            { key: 'radiology', icon: Layers, label: 'PACS & reporting', badge: 'DICOM' },
+            { key: 'notifications', icon: Bell, label: 'Notifications' },
           ],
         },
         {
-          label: 'Modalities & Infrastructure',
+          label: 'Support',
           items: [
-            { key: 'biomedical', icon: Wrench, label: 'Imaging Equipment Maintenance' },
-            { key: 'data-hub', icon: Database, label: 'DICOM Image Telemetry Hub' },
-            { key: 'patient-card', icon: FileText, label: 'Patient Imaging History' },
+            { key: 'emr', icon: FileText, label: 'Clinical records' },
+            { key: 'patient-card', icon: FileText, label: 'Patient imaging history' },
+            { key: 'm87-ai', icon: Brain, label: 'Imaging assistant', badge: 'AI' },
           ],
         },
       ];
@@ -953,13 +951,16 @@ export default function OSPage() {
 
   const isModulePermitted = (key: ModuleKey): boolean => {
     if (!userSession) return false;
-    if (key === 'dashboard') return true;
-    if (userSession.roleKey === 'hospital_admin' || userSession.permissions?.includes('*')) return true;
-    if (userSession.permissions?.includes(key)) return true;
-    // Admin visibility matrix (tick/untick) is the primary gate
-    if (userSession.roleKey && roleCanAccessModule(userSession.roleKey, key)) return true;
-    const req = MODULE_CLEARANCE[key];
-    if (req && userSession.clearanceLevel >= req.level) return true;
+    const rk = inferRoleKey(
+      userSession.roleKey || userSession.role || userSession.title,
+      userSession.badgeId
+    );
+    // Hospital admin / platform wildcard only
+    if (rk === 'hospital_admin' || userSession.permissions?.includes('*')) return true;
+    // Specialty lock: role matrix is the source of truth (not clearance level alone)
+    if (roleCanAccessModule(rk, key)) return true;
+    // Session permissions may include modules granted at enrol — still require matrix allow
+    // (prevents radiologist with old broad permissions opening theatre via search)
     return false;
   };
 
@@ -996,8 +997,16 @@ export default function OSPage() {
       const saved = localStorage.getItem('medcore_os_session');
       if (saved) {
         const restored = JSON.parse(saved) as UserSession;
-        setUserSession(restored);
-        setActiveModule(restored.roleKey === 'reception' ? 'dashboard' : 'dashboard');
+        const roleKey = inferRoleKey(
+          restored.roleKey || restored.role || restored.title,
+          restored.badgeId
+        );
+        const fixed = { ...restored, roleKey };
+        setUserSession(fixed);
+        setActiveModule('dashboard');
+        try {
+          localStorage.setItem('medcore_os_session', JSON.stringify(fixed));
+        } catch { /* ignore */ }
       }
     } catch {
       // ignore
@@ -1160,7 +1169,23 @@ export default function OSPage() {
   };
 
   const handleLoginSuccess = (session: UserSession) => {
-    setUserSession(session);
+    // Canonicalise role so reception never opens clinical desk
+    const roleKey = inferRoleKey(
+      session.roleKey || session.role || session.title,
+      session.badgeId
+    );
+    const normalized: UserSession = {
+      ...session,
+      roleKey,
+      permissions:
+        session.permissions && session.permissions.length > 0
+          ? session.permissions
+          : defaultPermissionsForRole(roleKey),
+    };
+    try {
+      localStorage.setItem('medcore_os_session', JSON.stringify(normalized));
+    } catch { /* ignore */ }
+    setUserSession(normalized);
     setActiveModule('dashboard');
     setAppState('app');
   };
@@ -1175,7 +1200,15 @@ export default function OSPage() {
     setAppState('auth');
   };
 
-  const handleLockScreen = () => {
+  
+  // Same-hospital live cloud sync — no reload needed for peer changes
+  useEffect(() => {
+    if (!userSession?.hospitalId) return;
+    const stop = startHospitalCloudSync(userSession.hospitalId);
+    return () => stop();
+  }, [userSession?.hospitalId]);
+
+const handleLockScreen = () => {
     setIsLocked(true);
     setUnlockPin('');
   };
@@ -1285,6 +1318,8 @@ export default function OSPage() {
     const allSections = getRoleNavSections(null, true);
     allSections.forEach(sec => {
       sec.items.forEach(item => {
+        // Specialty lock: hide modules this role cannot open (search cannot bypass sidebar)
+        if (userSession && !isModulePermitted(item.key as ModuleKey)) return;
         list.push({
           id: `mod-${item.key}`,
           label: item.label,
@@ -1346,8 +1381,12 @@ export default function OSPage() {
   }
 
   const receptionViews = ['dashboard', 'patient-flow', 'patient-card', 'appointments'] as const;
+  const receptionUser = !!(
+    userSession &&
+    isReceptionRole(userSession.roleKey, userSession.role, userSession.title, userSession.badgeId)
+  );
   const useReceptionCockpit =
-    userSession?.roleKey === 'reception' &&
+    receptionUser &&
     receptionViews.includes(activeModule as (typeof receptionViews)[number]);
   const ActiveComponent = useReceptionCockpit
     ? ReceptionWorkspace
@@ -1362,7 +1401,7 @@ export default function OSPage() {
   const RoleIcon = currentRoleTheme.icon;
 
   // Dynamically load tailored RBAC sidebar content
-  const roleNavSections = getRoleNavSections(userSession, userSession?.roleKey === 'reception' ? false : showFullDirectory);
+  const roleNavSections = getRoleNavSections(userSession, receptionUser ? false : showFullDirectory);
 
   // Full admin chrome replaces the clinical OS shell
   if (userSession && (activeRoleKey === 'hospital_admin' || userSession.roleKey === 'hospital_admin')) {
@@ -2034,7 +2073,7 @@ export default function OSPage() {
             ) : isModulePermitted(activeModule) ? (
               activeModule === 'cashier' && userSession ? (
                 <PosPaymentDesk session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} />
-              ) : activeModule === 'dashboard' && userSession && userSession.roleKey === 'reception' ? (
+              ) : activeModule === 'dashboard' && userSession && isReceptionRole(userSession.roleKey, userSession.role, userSession.title, userSession.badgeId) ? (
                 <ReceptionWorkspace session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} initialView="home" />
               ) : activeModule === 'dashboard' && userSession ? (
                 <RoleDashboard session={userSession} onNavigate={handleModuleChange} />

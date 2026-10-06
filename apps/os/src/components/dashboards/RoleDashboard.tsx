@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { UserSession } from '../auth/AuthScreen';
-import { inferRoleKey } from '../../lib/staffCardStore';
+import { inferRoleKey, isReceptionRole } from '../../lib/staffCardStore';
 import { AdminWorkspace } from './AdminWorkspace';
 import { ReceptionWorkspace } from './ReceptionWorkspace';
 import { DoctorDeskHome } from './DoctorDeskHome';
@@ -36,10 +36,8 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
 
   const roleKey = inferRoleKey(session.roleKey || session.role || session.title, session.badgeId);
 
-
-
-  // Reception: full front-desk workspace (no generic Staff Dashboard chrome)
-  if (roleKey === 'reception') {
+  // Reception: full front-desk workspace — never clinical desk
+  if (roleKey === 'reception' || isReceptionRole(session.roleKey, session.role, session.title, session.badgeId)) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {actionNotice && (

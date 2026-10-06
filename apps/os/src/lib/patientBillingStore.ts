@@ -19,7 +19,7 @@ export interface PatientBillLine {
   status: BillLineStatus;
   orderId?: string; // clinical order / Rx id
   paidAt?: string;
-  paidVia?: 'cashier' | 'pharmacy' | 'hmo' | 'waiver';
+  paidVia?: 'cashier' | 'pharmacy' | 'hmo' | 'waiver' | 'paystack';
   paidBy?: string;
   paymentRef?: string;
   createdAt: string;
@@ -237,4 +237,42 @@ export function subscribeBills(cb: () => void): () => void {
     window.removeEventListener('storage', fn);
     window.removeEventListener('medcore-admin-sync', fn);
   };
+}
+
+
+/** Mark all unpaid lines for a patient as paid (reception / Paystack settlement). */
+export function markPatientOutstandingPaid(
+  facilityId: string,
+  patientId: string,
+  opts: {
+    via: PatientBillLine['paidVia'];
+    paidBy?: string;
+    paymentRef?: string;
+  }
+): PatientBillLine[] {
+  const list = read();
+  const now = new Date().toISOString();
+  let changed = false;
+  const updated = list.map((l) => {
+    if (l.facilityId !== facilityId) return l;
+    if (l.patientId !== patientId && l.hospitalNumber !== patientId) return l;
+    if (l.status !== 'unpaid' && l.status !== 'partial') return l;
+    changed = true;
+    return {
+      ...l,
+      status: 'paid' as BillLineStatus,
+      paidAt: now,
+      paidVia: opts.via,
+      paidBy: opts.paidBy,
+      paymentRef: opts.paymentRef,
+      updatedAt: now,
+    };
+  });
+  if (changed) write(updated);
+  return updated.filter(
+    (l) =>
+      l.facilityId === facilityId &&
+      (l.patientId === patientId || l.hospitalNumber === patientId) &&
+      l.paymentRef === opts.paymentRef
+  );
 }

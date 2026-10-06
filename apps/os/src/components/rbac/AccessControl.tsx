@@ -475,40 +475,6 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         >
           <UserPlus size={16} /> {showCreate ? 'Close form' : 'Create staff account'}
         </button>
-        <button
-          type="button"
-          className="os-ghost-btn"
-          style={{ color: '#B91C1C', borderColor: 'rgba(185,28,28,0.35)', fontSize: 13 }}
-          onClick={async () => {
-            const ok = window.confirm(
-              `Reset all staff / access / cards for this hospital (${facilityName})?\n\nClears local data and cloud staff directory for ${facilityId}. Admin must sign in again if session keys are wiped.`
-            );
-            if (!ok) return;
-            try {
-              // Clear facility cloud store
-              const { firestoreWriteFacility } = await import('../../lib/firebase');
-              await firestoreWriteFacility(facilityId, {
-                staffCards: [],
-                staffRegistry: [],
-                transferInbox: {},
-                resetAt: new Date().toISOString(),
-              });
-            } catch (e) {
-              console.warn('[access] cloud reset', e);
-            }
-            resetAllPilotData();
-            setRecords([]);
-            setIssued(null);
-            setConfirmInfo(null);
-            setSelectedId(null);
-            setError('');
-            pushActivity(`Facility data reset · ${facilityId}`);
-            window.alert('Reset complete. Page will reload.');
-            window.location.reload();
-          }}
-        >
-          Reset facility data
-        </button>
       </div>
 
       {showCreate && (

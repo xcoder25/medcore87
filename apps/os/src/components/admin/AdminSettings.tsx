@@ -599,6 +599,30 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
                 truth — AI only recommends.
                 {draft.geminiApiKey?.trim() ? ' · Key saved in draft — click Save.' : ' · No facility key yet.'}
               </div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginTop: 14, marginBottom: 6 }}>
+                Paystack public key (reception payments)
+              </label>
+              <input
+                type="password"
+                autoComplete="off"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: '1px solid #E2E8F0',
+                  fontSize: 14,
+                  boxSizing: 'border-box',
+                  fontFamily: 'ui-monospace, monospace',
+                }}
+                value={draft.paystackPublicKey || ''}
+                onChange={(e) => patch({ paystackPublicKey: e.target.value })}
+                placeholder="pk_test_… or pk_live_…"
+              />
+              <div style={{ fontSize: 11, color: '#64748B', marginTop: 6, lineHeight: 1.45 }}>
+                Card / bank transfer / USSD at reception. Prefer{' '}
+                <code>NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY</code> in production.
+                {draft.paystackPublicKey?.trim() ? ' · Key saved in draft — click Save.' : ' · No Paystack key yet.'}
+              </div>
             </div>
           </Section>
         </div>

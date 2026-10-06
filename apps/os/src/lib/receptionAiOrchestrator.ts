@@ -15,6 +15,7 @@ import type {
   ReceptionVisit,
   ReceptionDayStats,
 } from './receptionOpsStore';
+import { geminiGenerate } from './geminiClient';
 
 export type ArrivalIntent =
   | 'gesture_checkin'
@@ -326,13 +327,13 @@ export function orchestrateDeskOverview(
 /** Optional Gemini refinement — never mutates EMR; only enriches text. */
 export async function enrichCardWithGemini(
   card: AiCheckInCard,
-  apiKey?: string
+  _apiKey?: string
 ): Promise<AiCheckInCard> {
-  const key = apiKey || (typeof process !== 'undefined' ? process.env?.NEXT_PUBLIC_GEMINI_API_KEY : '') || '';
-  if (!key) return card;
-
   try {
-    const prompt = `You are a hospital front-desk AI copilot in Nigeria. Do NOT invent clinical advice. Rewrite only the "recommendation" and "explanation" fields to be clearer for a receptionist. Keep facts unchanged. JSON only: {"recommendation":"...","explanation":"..."}\n\nCard:\n${JSON.stringify(
+    const prompt = `You are a hospital front-desk AI copilot in Nigeria. Do NOT invent clinical advice. Rewrite only the "recommendation" and "explanation" fields to be clearer for a receptionist. Keep facts unchanged. JSON only: {"recommendation":"...","explanation":"..."}
+
+Card:
+${JSON.stringify(
       {
         headline: card.headline,
         subhead: card.subhead,
@@ -343,24 +344,12 @@ export async function enrichCardWithGemini(
         primaryAction: card.primaryAction,
       }
     )}`;
-
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 256 },
-        }),
-      }
+    const res = await geminiGenerate(
+      prompt,
+      'MedCore reception AI. JSON only. No invented clinical data.',
     );
-    if (!res.ok) return card;
-    const data = (await res.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
-    };
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const match = text.match(/\{[\s\S]*\}/);
+    if (!res.ok || !res.text) return card;
+    const match = res.text.match(/\{[\s\S]*\}/);
     if (!match) return card;
     const parsed = JSON.parse(match[0]) as { recommendation?: string; explanation?: string };
     return {

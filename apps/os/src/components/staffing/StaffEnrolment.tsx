@@ -9,7 +9,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { UserPlus, IdCard, CheckCircle2, Trash2 } from 'lucide-react';
 import { LogoProgressBar } from '../realtime/LogoProgressBar';
 import { HOSPITALS } from '../auth/AuthScreen';
-import { enrolStaffAndIssueCard, listStaffCards, getStaffCard, deleteStaffMember } from '../../lib/staffCardStore';
+import { enrolStaffAndIssueCard, listStaffCards, getStaffCard, deleteStaffMember, defaultPermissionsForRole } from '../../lib/staffCardStore';
 import { firebaseSignUp, isEmailCredential, firestoreUpsertStaffMember, firestorePushStaffDirectory, firebaseEnsureBadgeAccount, badgeAuthEmail, normalizeStaffPin } from '../../lib/firebase';
 import { emitLiveAction } from '../../lib/liveActions';
 import { StaffIdCardView } from './StaffIdCardView';
@@ -17,18 +17,26 @@ import type { StaffCardRecord } from '@medcore/types';
 import type { UserSession } from '../auth/AuthScreen';
 
 const ROLE_OPTIONS = [
-  { roleKey: 'doctor', role: 'Medical Officer', title: 'Medical Officer', shortRole: 'Doctor', clearanceLevel: 4, clearanceLabel: 'L4 Clinical', department: 'Internal Medicine' },
-  { roleKey: 'nurse', role: 'Nursing Officer', title: 'Senior Nursing Officer', shortRole: 'Nurse', clearanceLevel: 3, clearanceLabel: 'L3 Nursing', department: 'Inpatient Wards' },
-  { roleKey: 'surgeon', role: 'Consultant Surgeon', title: 'Consultant Surgeon', shortRole: 'Surgeon', clearanceLevel: 5, clearanceLabel: 'L5 Consultant', department: 'Surgery & Theatre' },
-  { roleKey: 'pharmacist', role: 'Pharmacist', title: 'Pharmacist', shortRole: 'Pharmacist', clearanceLevel: 3, clearanceLabel: 'L3 Pharmacy', department: 'Pharmacy' },
-  { roleKey: 'lab', role: 'Lab Scientist', title: 'Lab Scientist', shortRole: 'Lab', clearanceLevel: 3, clearanceLabel: 'L3 Lab', department: 'Pathology' },
-  { roleKey: 'radiologist', role: 'Radiologist', title: 'Consultant Radiologist', shortRole: 'Radiology', clearanceLevel: 5, clearanceLabel: 'L5 Radiology', department: 'Radiology' },
-  { roleKey: 'records', role: 'Records Officer', title: 'Health Records Officer', shortRole: 'Records', clearanceLevel: 2, clearanceLabel: 'L2 Records', department: 'Medical Records' },
-  { roleKey: 'accountant', role: 'Finance Officer', title: 'Finance Officer', shortRole: 'Accounts', clearanceLevel: 3, clearanceLabel: 'L3 Finance', department: 'Billing & Finance' },
-  { roleKey: 'reception', role: 'Reception / Front Desk', title: 'Reception Officer', shortRole: 'Reception', clearanceLevel: 2, clearanceLabel: 'L2 Front Desk', department: 'Patient Reception' },
-  { roleKey: 'hospital_admin', role: 'Hospital Administrator', title: 'Hospital Administrator', shortRole: 'Admin', clearanceLevel: 5, clearanceLabel: 'L5 Executive', department: 'Administration' },
-  { roleKey: 'sysadmin', role: 'ICT / System Admin', title: 'System Administrator', shortRole: 'SysAdmin', clearanceLevel: 6, clearanceLabel: 'L6 SysAdmin', department: 'ICT' },
-];
+  // Clinical specialties — each maps to a scoped desk (not one shared unlimited doctor menu)
+  { roleKey: 'doctor', role: 'Medical Officer', title: 'Medical Officer (General / OPD)', shortRole: 'Doctor', clearanceLevel: 4, clearanceLabel: 'L4 Clinical', department: 'Internal Medicine', group: 'Clinical' },
+  { roleKey: 'surgeon', role: 'Consultant Surgeon', title: 'Consultant Surgeon', shortRole: 'Surgeon', clearanceLevel: 5, clearanceLabel: 'L5 Surgery', department: 'Surgery & Theatre', group: 'Clinical' },
+  { roleKey: 'radiologist', role: 'Radiologist', title: 'Consultant Radiologist', shortRole: 'Radiology', clearanceLevel: 5, clearanceLabel: 'L5 Radiology', department: 'Radiology', group: 'Clinical' },
+  { roleKey: 'lab', role: 'Lab Scientist', title: 'Lab Scientist / Pathologist', shortRole: 'Lab', clearanceLevel: 3, clearanceLabel: 'L3 Lab', department: 'Pathology', group: 'Clinical' },
+  { roleKey: 'pharmacist', role: 'Pharmacist', title: 'Pharmacist', shortRole: 'Pharmacist', clearanceLevel: 3, clearanceLabel: 'L3 Pharmacy', department: 'Pharmacy', group: 'Clinical' },
+  { roleKey: 'medical_director', role: 'Medical Director', title: 'Medical Director', shortRole: 'Director', clearanceLevel: 5, clearanceLabel: 'L5 Director', department: 'Clinical Directorate', group: 'Clinical' },
+  // Nursing
+  { roleKey: 'nurse', role: 'Nursing Officer', title: 'Nursing Officer', shortRole: 'Nurse', clearanceLevel: 3, clearanceLabel: 'L3 Nursing', department: 'Inpatient Wards', group: 'Nursing' },
+  { roleKey: 'midwife', role: 'Midwife', title: 'Midwife / Labour Ward', shortRole: 'Midwife', clearanceLevel: 3, clearanceLabel: 'L3 Midwifery', department: 'Maternity', group: 'Nursing' },
+  // Front desk & records
+  { roleKey: 'reception', role: 'Reception / Front Desk', title: 'Reception Officer', shortRole: 'Reception', clearanceLevel: 2, clearanceLabel: 'L2 Front Desk', department: 'Patient Reception', group: 'Front desk' },
+  { roleKey: 'records', role: 'Records Officer', title: 'Health Records Officer', shortRole: 'Records', clearanceLevel: 2, clearanceLabel: 'L2 Records', department: 'Medical Records', group: 'Front desk' },
+  // Support
+  { roleKey: 'accountant', role: 'Finance Officer', title: 'Finance / Accounts Officer', shortRole: 'Accounts', clearanceLevel: 3, clearanceLabel: 'L3 Finance', department: 'Billing & Finance', group: 'Support' },
+  { roleKey: 'biomedical', role: 'Biomedical Engineer', title: 'Biomedical Engineer', shortRole: 'Biomed', clearanceLevel: 3, clearanceLabel: 'L3 Biomed', department: 'Clinical Engineering', group: 'Support' },
+  // Admin
+  { roleKey: 'hospital_admin', role: 'Hospital Administrator', title: 'Hospital Administrator', shortRole: 'Admin', clearanceLevel: 5, clearanceLabel: 'L5 Executive', department: 'Administration', group: 'Admin' },
+  { roleKey: 'sysadmin', role: 'ICT / System Admin', title: 'System Administrator', shortRole: 'SysAdmin', clearanceLevel: 6, clearanceLabel: 'L6 SysAdmin', department: 'ICT', group: 'Admin' },
+]
 
 interface Props {
   session?: UserSession;
@@ -36,7 +44,7 @@ interface Props {
 
 export const StaffEnrolment: React.FC<Props> = ({ session }) => {
   const [fullName, setFullName] = useState('');
-  const [roleKey, setRoleKey] = useState('doctor');
+  const [roleKey, setRoleKey] = useState('');
   const lockedFacilityId = session?.hospitalId || HOSPITALS[0]?.id || 'IGH-EKT';
   const [facilityId, setFacilityId] = useState(lockedFacilityId);
   const [pin, setPin] = useState('1234');
@@ -68,7 +76,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
   }, [session?.hospitalId]);
 
   const roleMeta = useMemo(
-    () => ROLE_OPTIONS.find((r) => r.roleKey === roleKey) || ROLE_OPTIONS[0],
+    () => ROLE_OPTIONS.find((r) => r.roleKey === roleKey),
     [roleKey]
   );
   const facility =
@@ -82,6 +90,10 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
     setError('');
     if (!fullName.trim()) {
       setError('Enter staff full name.');
+      return;
+    }
+    if (!roleKey || !roleMeta) {
+      setError('Select a specialty / role — this locks which desk and modules they can open.');
       return;
     }
     // One hospital admin per facility only
@@ -112,7 +124,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         clearanceLabel: roleMeta.clearanceLabel,
         pin,
         shortRole: roleMeta.shortRole,
-        permissions: ['dashboard'],
+        permissions: defaultPermissionsForRole(roleMeta.roleKey),
       });
 
       // Never hang the UI on slow/blocked Firebase — local card is already issued
@@ -263,13 +275,25 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
                 style={{ display: 'block', width: '100%', marginTop: 6 }}
                 value={roleKey}
                 onChange={(e) => setRoleKey(e.target.value)}
+                required
               >
-                {ROLE_OPTIONS.map((r) => (
-                  <option key={r.roleKey} value={r.roleKey}>
-                    {r.title} ({r.clearanceLabel})
-                  </option>
+                <option value="">Select specialty / role *</option>
+                {['Clinical', 'Nursing', 'Front desk', 'Support', 'Admin'].map((g) => (
+                  <optgroup key={g} label={g}>
+                    {ROLE_OPTIONS.filter((r) => (r as { group?: string }).group === g).map((r) => (
+                      <option key={r.roleKey} value={r.roleKey}>
+                        {r.title} · {r.department}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
+              {roleMeta && (
+                <div style={{ marginTop: 8, fontSize: 12, color: '#0369A1', background: '#E0F2FE', borderRadius: 8, padding: '8px 10px', lineHeight: 1.45 }}>
+                  <strong>{roleMeta.shortRole}</strong> desk only — modules outside this specialty stay locked
+                  (e.g. radiologists get imaging, surgeons get theatre, reception gets front desk).
+                </div>
+              )}
             </label>
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
               Facility

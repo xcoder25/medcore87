@@ -188,7 +188,7 @@ export function startFacilitySyncLoop(
   };
 
   void tick();
-  timer = setInterval(tick, Math.max(intervalMs, 15000));
+  timer = setInterval(tick, Math.max(intervalMs, 2000));
 
   return () => {
     stopped = true;

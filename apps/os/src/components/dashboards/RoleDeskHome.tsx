@@ -126,7 +126,12 @@ export const RoleDeskHome: React.FC<Props> = ({ session, onNavigate, config, ext
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
-      <InBasketPanel facilityId={facilityId} roleKey={session.roleKey} onNavigate={onNavigate} />
+      <InBasketPanel
+        facilityId={facilityId}
+        roleKey={session.roleKey}
+        staffName={session.name}
+        onNavigate={onNavigate}
+      />
       <div
         className="mc-hero-fluid"
         style={{

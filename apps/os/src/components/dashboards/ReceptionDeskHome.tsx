@@ -212,6 +212,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
       <InBasketPanel
         facilityId={facilityId}
         roleKey="reception"
+        staffName={session.name}
         onNavigate={(k) => {
           if (k === 'patient-flow' || k === 'dashboard') onGo('queue');
           else if (k === 'patient-360') onGo('search');

@@ -212,59 +212,121 @@ export function ensureCardForSession(session: {
 /** Map role labels / badge middle segment → canonical roleKey */
 export function inferRoleKey(raw?: string, badgeId?: string): string {
   const s = String(raw || '').toLowerCase().trim();
-  if (s === 'doctor' || s === 'surgeon' || s === 'nurse' || s === 'midwife' ||
-      s === 'pharmacist' || s === 'lab' || s === 'radiologist' || s === 'reception' ||
-      s === 'records' || s === 'accountant' || s === 'sysadmin' || s === 'hospital_admin' ||
-      s === 'biomedical' || s === 'medical_director') return s;
-  // Badge pattern first when raw is weak — avoids reception IDs becoming "doctor"
-  const parts = String(badgeId || '').toUpperCase().split('-').filter(Boolean);
+  if (
+    s === 'doctor' || s === 'surgeon' || s === 'nurse' || s === 'midwife' ||
+    s === 'pharmacist' || s === 'lab' || s === 'radiologist' || s === 'reception' ||
+    s === 'records' || s === 'accountant' || s === 'sysadmin' || s === 'hospital_admin' ||
+    s === 'biomedical' || s === 'medical_director'
+  ) return s;
+
+  // Badge segment is authoritative — stops reception badges becoming "doctor"
+  const parts = String(badgeId || '').toUpperCase().split(/[-_/]/).filter(Boolean);
   const badgeMap: Record<string, string> = {
     DOC: 'doctor', SUR: 'surgeon', NUR: 'nurse', MID: 'midwife', PHA: 'pharmacist',
-    LAB: 'lab', RAD: 'radiologist', REC: 'reception', FRO: 'reception', DES: 'reception',
-    REO: 'records', ACC: 'accountant', SYS: 'sysadmin', ADM: 'hospital_admin', HOS: 'hospital_admin',
-    BIO: 'biomedical', DIR: 'medical_director', STF: 'records',
+    LAB: 'lab', RAD: 'radiologist', REC: 'reception', RCPT: 'reception', FRO: 'reception',
+    FRD: 'reception', DES: 'reception', FDK: 'reception', OPD: 'reception',
+    REO: 'records', ACC: 'accountant', CAS: 'accountant', SYS: 'sysadmin', ICT: 'sysadmin',
+    ADM: 'hospital_admin', HOS: 'hospital_admin', BIO: 'biomedical', DIR: 'medical_director',
+    STF: 'records',
   };
-  if (parts.length >= 2) {
-    for (let i = parts.length - 2; i >= 1; i--) {
+  if (parts.length >= 1) {
+    for (let i = parts.length - 2; i >= 0; i--) {
       if (badgeMap[parts[i]]) return badgeMap[parts[i]];
     }
     for (const p of parts) {
       if (badgeMap[p]) return badgeMap[p];
     }
   }
+
+  // Reception BEFORE clinical keywords
+  if (
+    s.includes('reception') || s.includes('receptionist') || s.includes('front desk') ||
+    s.includes('front-desk') || s.includes('frontdesk') || s.includes('front office') ||
+    s.includes('desk officer') || s.includes('desk clerk') || s.includes('patient service') ||
+    s.includes('patient liaison') || s.includes('appointment clerk') || s.includes('opd clerk') ||
+    s.includes('outpatient clerk') || s.includes('registration') || s.includes('cashier desk')
+  ) return 'reception';
+
   if (s.includes('surgeon')) return 'surgeon';
   if (s.includes('nurse')) return 'nurse';
   if (s.includes('midwife')) return 'midwife';
   if (s.includes('pharm')) return 'pharmacist';
   if (s.includes('lab') || s.includes('patholog') || s.includes('scientist')) return 'lab';
   if (s.includes('radio')) return 'radiologist';
-  if (s.includes('reception') || s.includes('front desk') || s.includes('front-desk') || s.includes('cashier desk')) return 'reception';
-  if (s.includes('record')) return 'records';
-  if (s.includes('account') || s.includes('finance') || s.includes('cashier')) return 'accountant';
+  if (s.includes('record') || s.includes('health information')) return 'records';
+  if (s.includes('account') || s.includes('finance') || s.includes('cashier') || s.includes('billing')) return 'accountant';
   if (s.includes('biomed')) return 'biomedical';
   if (s.includes('director') || s.includes('superintendent')) return 'medical_director';
   if (s.includes('hospital_admin') || (s.includes('administrator') && !s.includes('system'))) return 'hospital_admin';
   if (s.includes('sysadmin') || s.includes('ict') || s.includes('system admin')) return 'sysadmin';
-  if (s.includes('doctor') || s.includes('medical officer') || s.includes('physician') || s.includes('clinician')) return 'doctor';
-  // Unknown — do NOT default to doctor (that sent reception staff to Doctor Workspace)
+  if (s.includes('doctor') || s.includes('medical officer') || s.includes('physician') || s.includes('clinician') || s.includes('consultant')) return 'doctor';
+  // NEVER default to doctor (opened clinical desk for reception)
   return 'records';
 }
 
-/** Default module permissions when registry only has dashboard */
+/** True when this role should land on reception front-desk workspace */
+export function isReceptionRole(roleKey?: string, role?: string, title?: string, badgeId?: string): boolean {
+  return inferRoleKey(roleKey || role || title || '', badgeId) === 'reception';
+}
+
 export function defaultPermissionsForRole(roleKey: string): string[] {
   const map: Record<string, string[]> = {
-    reception: ['dashboard', 'patient-flow', 'patient-card', 'appointments', 'cashier', 'patient-360', 'ai'],
-    doctor: ['dashboard', 'doctor-portal', 'emr', 'patients', 'pharmacy', 'laboratory', 'radiology', 'beds', 'ai', 'm87-ai'],
-    nurse: ['dashboard', 'nursing', 'emr', 'beds', 'patients', 'ai'],
-    pharmacist: ['dashboard', 'pharmacy', 'emr', 'ai'],
-    lab: ['dashboard', 'laboratory', 'emr', 'ai'],
-    radiologist: ['dashboard', 'radiology', 'emr', 'ai'],
-    hospital_admin: ['dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing', 'enrolment', 'my-card', 'cashier', 'rbac', 'sysadmin', 'ai', 'm87-ai'],
-    accountant: ['dashboard', 'cashier', 'billing', 'ai'],
-    records: ['dashboard', 'patient-card', 'emr', 'patients', 'ai'],
-    sysadmin: ['dashboard', 'sysadmin', 'rbac', 'ai'],
+    reception: [
+      'dashboard', 'patient-flow', 'patient-card', 'appointments', 'cashier', 'billing',
+      'desk-settings', 'notifications', 'my-card',
+    ],
+    doctor: [
+      'dashboard', 'doctor-portal', 'patient-360', 'notifications', 'emr', 'pharmacy',
+      'laboratory', 'radiology', 'emergency', 'beds', 'nursing', 'icu', 'theatre',
+      'm87-ai', 'ai', 'patient-card', 'my-card',
+    ],
+    surgeon: [
+      'dashboard', 'theatre', 'doctor-portal', 'notifications', 'icu', 'beds', 'blood-bank',
+      'emergency', 'laboratory', 'radiology', 'emr', 'm87-ai', 'ai', 'patient-card', 'my-card',
+    ],
+    nurse: [
+      'dashboard', 'nursing', 'beds', 'notifications', 'patient-flow', 'emergency', 'pharmacy',
+      'blood-bank', 'maternity', 'paediatrics', 'icu', 'm87-ai', 'ai', 'patient-card', 'my-card', 'emr',
+    ],
+    midwife: [
+      'dashboard', 'maternity', 'paediatrics', 'notifications', 'beds', 'nursing', 'emergency',
+      'blood-bank', 'pharmacy', 'm87-ai', 'ai', 'patient-card', 'my-card', 'emr',
+    ],
+    pharmacist: [
+      'dashboard', 'pharmacy', 'formulary', 'notifications', 'cashier', 'emr', 'patient-flow',
+      'inventory', 'm87-ai', 'ai', 'patient-card', 'my-card',
+    ],
+    lab: [
+      'dashboard', 'laboratory', 'lab', 'notifications', 'blood-bank', 'emr', 'patient-card',
+      'my-card', 'm87-ai', 'ai',
+    ],
+    radiologist: [
+      'dashboard', 'radiology', 'notifications', 'emr', 'patient-card', 'my-card', 'm87-ai', 'ai',
+    ],
+    records: ['dashboard', 'patient-card', 'patient-flow', 'beds', 'emr', 'my-card', 'notifications'],
+    accountant: [
+      'dashboard', 'cashier', 'billing', 'claims', 'revenue-cycle', 'procurement', 'patient-card',
+      'analytics', 'my-card', 'notifications',
+    ],
+    biomedical: [
+      'dashboard', 'biomedical', 'iot-devices', 'facilities', 'environmental', 'inventory',
+      'my-card', 'notifications',
+    ],
+    medical_director: [
+      'dashboard', 'command', 'doctor-portal', 'm87-ai', 'ai', 'analytics', 'emergency', 'theatre',
+      'icu', 'pharmacy', 'laboratory', 'radiology', 'blood-bank', 'beds', 'nursing', 'notifications',
+      'my-card',
+    ],
+    hospital_admin: [
+      'dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing', 'enrolment', 'my-card',
+      'cashier', 'rbac', 'sysadmin', 'ai', 'm87-ai', 'notifications',
+    ],
+    sysadmin: [
+      'dashboard', 'staffing', 'analytics', 'ai', 'm87-ai', 'sysadmin', 'rbac', 'enrolment',
+      'facility', 'auth', 'my-card', 'notifications',
+    ],
   };
-  return map[roleKey] || ['dashboard'];
+  return map[roleKey] || ['dashboard', 'my-card'];
 }
 
 

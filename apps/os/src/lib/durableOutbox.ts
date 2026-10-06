@@ -16,6 +16,17 @@ import { pushFacilityData } from './hospitalSync';
 
 const OUTBOX_KEY = 'medcore_os_sync_outbox_v1';
 
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleFlush(delayMs = 60) {
+  if (typeof window === 'undefined') return;
+  if (flushTimer) clearTimeout(flushTimer);
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    void flushOutbox();
+  }, delayMs);
+}
+
+
 export type OutboxItem = {
   id: string;
   facilityId: string;
@@ -72,8 +83,8 @@ export function enqueueFacilitySync(
     attempts: 0,
   });
   writeOutbox(filtered);
-  // Opportunistic flush
-  void flushOutbox();
+  // Micro-batch then flush (keeps multi-key writes fast without stampeding)
+  scheduleFlush(typeof navigator !== 'undefined' && navigator.onLine ? 40 : 400);
 }
 
 export function getOutboxPendingCount(): number {
@@ -127,7 +138,7 @@ export async function flushOutbox(): Promise<{ synced: number; remaining: number
 }
 
 /** Start listeners: flush when network returns + periodic retry */
-export function startOutboxAutoFlush(intervalMs = 15000): () => void {
+export function startOutboxAutoFlush(intervalMs = 3000): () => void {
   if (typeof window === 'undefined') return () => {};
 
   const onOnline = () => {

@@ -23,6 +23,7 @@ import {
   dayStats,
   checkInPatient,
   updateVisitStatus,
+  assignVisitDoctor,
   subscribeReceptionOps,
   bookAppointment,
   listAppointments,
@@ -36,6 +37,8 @@ import {
   type ReceptionAppointment,
   type ReceptionPayment,
 } from '../../lib/receptionOpsStore';
+import { listStaffCards } from '../../lib/staffCardStore';
+import { pushNotification } from '../../lib/notificationEngine';
 import {
   AKWA_IBOM_LGAS,
   NIGERIA_INSURANCE,
@@ -57,6 +60,9 @@ import {
   type ArrivalIntent,
 } from '../../lib/receptionAiOrchestrator';
 import { ReceptionDeskHome } from './ReceptionDeskHome';
+import { PaystackBrandedCheckout } from '../reception/PaystackBrandedCheckout';
+import { hasPaystackKey } from '../../lib/paystackClient';
+import { markPatientOutstandingPaid } from '../../lib/patientBillingStore';
 import {
   subscribePresence,
   processPresenceArrival,
@@ -151,6 +157,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [ciAmount, setCiAmount] = useState('5000');
   const [ciReason, setCiReason] = useState('Consultation');
   const [posMethod, setPosMethod] = useState<PaymentMethod>('cash');
+  const [paystackOpen, setPaystackOpen] = useState(false);
   const [posAmount, setPosAmount] = useState('5000');
   const [posPurpose, setPosPurpose] = useState('OPD consultation');
   const [posPatient, setPosPatient] = useState<FacilityPatient | null>(null);
@@ -158,17 +165,30 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   // Appointment form
   const [apDept, setApDept] = useState('General OPD');
   const [apDoctor, setApDoctor] = useState('Any available');
+
+  /** Doctors on staff at this facility (for assignment dropdown) */
+  const facilityDoctors = useMemo(() => {
+    const CLINICAL = new Set(['doctor', 'surgeon', 'medical_director', 'consultant']);
+    return listStaffCards()
+      .filter(
+        (c) =>
+          (c.facilityId === facilityId || !c.facilityId) &&
+          c.status === 'ACTIVE' &&
+          (CLINICAL.has((c.roleKey || '').toLowerCase()) ||
+            /doctor|surgeon|consultant|physician/i.test(c.role || c.title || ''))
+      )
+      .map((c) => c.fullName)
+      .filter(Boolean);
+  }, [facilityId, patients.length, visits.length]);
   const [apDate, setApDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [apTime, setApTime] = useState('09:00');
   const [apReason, setApReason] = useState('Follow-up');
   const [apPatient, setApPatient] = useState<FacilityPatient | null>(null);
 
-  // POS is full-page only — never render embedded payment UI
+  // Stay on reception for payments — do not force-navigate away (that left buttons dead)
   useEffect(() => {
-    if ((view === 'payment' || initialView === 'payment') && onNavigate) {
-      onNavigate('cashier');
-    }
-  }, [view, initialView, onNavigate]);
+    if (initialView === 'payment') setView('payment');
+  }, [initialView]);
 
   const reload = useCallback(() => {
     setPatients(listPatients(facilityId));
@@ -370,6 +390,24 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     flash(`Registered ${fullName(patient)} · ${patient.hospitalNumber}`);
   };
 
+  const notifyDoctorAssignment = (visit: ReceptionVisit, patientLabel: string) => {
+    const assigned = (visit.doctor || '').trim();
+    const isPool = !assigned || /^any\b/i.test(assigned);
+    pushNotification({
+      facilityId,
+      level: 'important',
+      title: isPool ? 'New patient in clinic queue' : `Patient assigned to you`,
+      body: isPool
+        ? `${patientLabel} · ${visit.queueNumber} · ${visit.department} (open pool)`
+        : `${patientLabel} · Queue ${visit.queueNumber} · ${visit.department} — assigned by reception`,
+      module: 'doctor-portal',
+      patientId: visit.patientId,
+      roleHint: 'doctor',
+      targetStaff: isPool ? undefined : assigned,
+      visitId: visit.id,
+    });
+  };
+
   const doCheckIn = (p: FacilityPatient) => {
     const visit = checkInPatient({
       patient: p,
@@ -382,7 +420,11 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       amount: Number(ciAmount) || 0,
     });
     reload();
-    emitLiveAction(`Check-in ${visit.queueNumber} · ${p.lastName}`, { module: 'queue' });
+    emitLiveAction(
+      `Check-in ${visit.queueNumber} · ${p.lastName} → ${ciDoctor}`,
+      { module: 'queue' }
+    );
+    notifyDoctorAssignment(visit, fullName(p));
     try {
       printQueueTicket({
         queueNumber: visit.queueNumber,
@@ -399,15 +441,85 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       action: 'patient_checkin',
       entity: 'visit',
       entityId: visit.id,
-      detail: visit.queueNumber,
+      detail: `${visit.queueNumber} → ${ciDoctor}`,
     });
     if (p.phone) {
       void sendPatientAlert({
         phone: p.phone,
-        message: `MedCore: You are checked in at ${facilityName}. Queue ${visit.queueNumber} for ${ciDept}.`,
+        message: `MedCore: You are checked in at ${facilityName}. Queue ${visit.queueNumber} for ${ciDept}${ciDoctor && !/^any/i.test(ciDoctor) ? ` with ${ciDoctor}` : ''}.`,
       });
     }
-    flash(`Checked in · Queue ${visit.queueNumber}`);
+    flash(
+      ciDoctor && !/^any/i.test(ciDoctor)
+        ? `Checked in · Queue ${visit.queueNumber} · assigned to ${ciDoctor}`
+        : `Checked in · Queue ${visit.queueNumber}`
+    );
+  };
+
+
+  const settlePaystackPayment = (result: {
+    reference: string;
+    paystackRef: string;
+    amountNgn: number;
+    channel: string;
+  }) => {
+    const p = posPatient || selected;
+    if (!p) return;
+    const method =
+      result.channel === 'card'
+        ? ('card' as const)
+        : result.channel === 'bank_transfer' || result.channel === 'bank'
+          ? ('transfer' as const)
+          : ('pos' as const);
+    const activeVisit = visits.find(
+      (v) => v.patientId === p.id && v.status !== 'completed' && v.status !== 'cancelled'
+    );
+    const pay = recordPayment({
+      facilityId,
+      patientId: p.id,
+      hospitalNumber: p.hospitalNumber,
+      patientName: fullName(p),
+      amount: result.amountNgn,
+      method,
+      purpose: posPurpose || 'Hospital payment',
+      cashier: session.name || 'Reception',
+      reference: result.reference,
+      visitId: activeVisit?.id,
+    });
+    try {
+      markPatientOutstandingPaid(facilityId, p.id, {
+        via: 'paystack',
+        paidBy: session.name,
+        paymentRef: result.paystackRef || result.reference,
+      });
+    } catch { /* ignore */ }
+    emitLiveAction(`Paystack ${result.paystackRef} · ₦${result.amountNgn}`, { module: 'cashier' });
+    try {
+      printPaymentReceipt({
+        reference: result.reference,
+        patientName: fullName(p),
+        hospitalNumber: p.hospitalNumber,
+        amount: result.amountNgn,
+        method: 'paystack',
+        channel: result.channel,
+        purpose: posPurpose || 'Hospital payment',
+        facilityName: session.facility || session.hospitalId || 'Hospital',
+        cashier: session.name,
+        paystackRef: result.paystackRef,
+      });
+    } catch { /* ignore */ }
+    try {
+      appendAudit({
+        facilityId,
+        actor: session.name || 'Reception',
+        action: 'payment_paystack',
+        entity: 'payment',
+        detail: `${result.paystackRef} · ₦${result.amountNgn} · ${result.channel}`,
+      });
+    } catch { /* ignore */ }
+    setPayments(todayPayments(facilityId));
+    setPaystackOpen(false);
+    flash(`Paystack paid · ${result.paystackRef} · ₦${result.amountNgn.toLocaleString()}`);
   };
 
   const doPayment = () => {
@@ -421,8 +533,10 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       flash('Enter amount');
       return;
     }
-    const activeVisit = visits.find((v) => v.patientId === p.id && v.status !== 'completed' && v.status !== 'cancelled');
-    recordPayment({
+    const activeVisit = visits.find(
+      (v) => v.patientId === p.id && v.status !== 'completed' && v.status !== 'cancelled'
+    );
+    const pay = recordPayment({
       facilityId,
       patientId: p.id,
       patientName: fullName(p),
@@ -430,18 +544,19 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       visitId: activeVisit?.id,
       amount: amt,
       method: posMethod,
-      purpose: posPurpose,
+      purpose: posPurpose || 'Consultation',
       cashier: session.name,
     });
     reload();
+    emitLiveAction(`Payment ${pay.reference} · ₦${amt} · ${posMethod}`, { module: 'cashier' });
     try {
       printPaymentReceipt({
-        reference: `POS-${Date.now().toString(36).toUpperCase()}`,
+        reference: pay.reference,
         patientName: fullName(p),
         hospitalNumber: p.hospitalNumber,
         amount: amt,
         method: posMethod,
-        purpose: posPurpose,
+        purpose: posPurpose || 'Consultation',
         facilityName,
         cashier: session.name,
       });
@@ -452,9 +567,10 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       actorBadge: session.badgeId,
       action: 'payment_recorded',
       entity: 'payment',
-      detail: `${posMethod} ${amt}`,
+      entityId: pay.id,
+      detail: `${posMethod} ₦${amt} · ${pay.reference}`,
     });
-    flash(`Payment recorded · ₦${amt.toLocaleString()} · ${posMethod.toUpperCase()}`);
+    flash(`Payment recorded · ${pay.reference} · ₦${amt.toLocaleString()} · ${posMethod.toUpperCase()}`);
   };
 
   const doBookAppt = () => {
@@ -534,10 +650,11 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         actorBadge: session.badgeId,
         printTicket: false,
       });
+      notifyDoctorAssignment(visit, fullName(p));
       reload();
       setAiCard(null);
       setView('home');
-      flash(`Admitted · Queue ${visit.queueNumber} · confirmation sent`);
+      flash(`Admitted · Queue ${visit.queueNumber} · doctor notified`);
       return;
     }
     if (action === 'take_payment') {
@@ -638,11 +755,6 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
           appts={appts}
           stats={stats}
           onGo={(v) => {
-            if (v === 'payment') {
-              if (onNavigate) onNavigate('cashier');
-              else setView('payment');
-              return;
-            }
             if (v === 'home') setView('home');
             else setView(v as View);
           }}
@@ -1361,8 +1473,26 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   <option key={d}>{d}</option>
                 ))}
               </select>
-              <label style={labelStyle}>Preferred doctor</label>
-              <input style={inputStyle} value={ciDoctor} onChange={(e) => setCiDoctor(e.target.value)} />
+              <label style={labelStyle}>Assign to doctor *</label>
+              <select style={inputStyle} value={ciDoctor} onChange={(e) => setCiDoctor(e.target.value)}>
+                <option value="Any available">Any available (open pool)</option>
+                {facilityDoctors.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+              {facilityDoctors.length === 0 && (
+                <div style={{ fontSize: 11, color: '#D97706', marginTop: 4 }}>
+                  No enrolled doctors found — type is free-text below, or enrol clinicians under Staff.
+                </div>
+              )}
+              {facilityDoctors.length === 0 && (
+                <input
+                  style={{ ...inputStyle, marginTop: 6 }}
+                  placeholder="Doctor full name"
+                  value={ciDoctor === 'Any available' ? '' : ciDoctor}
+                  onChange={(e) => setCiDoctor(e.target.value || 'Any available')}
+                />
+              )}
               <label style={labelStyle}>Payment at desk</label>
               <select style={inputStyle} value={ciPay} onChange={(e) => setCiPay(e.target.value as ReceptionVisit['paymentStatus'])}>
                 <option value="pending">Pay later</option>
@@ -1461,8 +1591,21 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 <option key={d}>{d}</option>
               ))}
             </select>
-            <label style={{ ...labelStyle, marginTop: 8 }}>Doctor</label>
-            <input style={inputStyle} value={apDoctor} onChange={(e) => setApDoctor(e.target.value)} />
+            <label style={{ ...labelStyle, marginTop: 8 }}>Assign to doctor</label>
+            <select style={inputStyle} value={apDoctor} onChange={(e) => setApDoctor(e.target.value)}>
+              <option value="Any available">Any available (open pool)</option>
+              {facilityDoctors.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+            {facilityDoctors.length === 0 && (
+              <input
+                style={{ ...inputStyle, marginTop: 6 }}
+                placeholder="Doctor full name"
+                value={apDoctor === 'Any available' ? '' : apDoctor}
+                onChange={(e) => setApDoctor(e.target.value || 'Any available')}
+              />
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
               <div>
                 <label style={labelStyle}>Date</label>
@@ -1499,7 +1642,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       onClick={() => {
                         const p = patients.find((x) => x.id === a.patientId);
                         if (p) {
-                          checkInPatient({
+                          const visit = checkInPatient({
                             patient: p,
                             facilityId,
                             department: a.department,
@@ -1511,8 +1654,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                             appointmentId: a.id,
                             appointmentTime: a.scheduledAt.slice(11, 16),
                           });
+                          notifyDoctorAssignment(visit, fullName(p));
                           reload();
-                          flash('Appointment checked in');
+                          flash(
+                            a.doctor && !/^any/i.test(a.doctor)
+                              ? `Appointment checked in · assigned to ${a.doctor}`
+                              : 'Appointment checked in'
+                          );
                         }
                       }}
                       style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, border: 'none', background: C.teal, color: '#fff', cursor: 'pointer' }}
@@ -1537,9 +1685,404 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         </div>
       )}
 
-      {/* PAYMENT POS */}
+      {/* PAYMENT POS — active cash / POS / card / transfer / HMO / waiver */}
+      {view === 'payment' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 12,
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div>
+              <h2 style={{ margin: 0, fontWeight: 800, fontSize: 18, color: C.navy }}>Collect payment</h2>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: C.muted }}>
+                Cash, POS, card, transfer, HMO or waiver · receipt on confirm
+              </p>
+            </div>
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => onNavigate('cashier')}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 10,
+                  border: `1px solid ${C.border}`,
+                  background: '#fff',
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  color: C.blue,
+                }}
+              >
+                Open full POS desk →
+              </button>
+            )}
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(240px, 1fr) minmax(320px, 1.2fr)',
+              gap: 16,
+            }}
+          >
+            {/* Patient picker */}
+            <div
+              style={{
+                background: '#fff',
+                borderRadius: 16,
+                border: `1px solid ${C.border}`,
+                padding: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+              }}
+            >
+              <div style={{ fontWeight: 800, fontSize: 13 }}>Patient</div>
+              <input
+                style={inputStyle}
+                placeholder="Search name, hospital no., phone…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {(query.trim()
+                  ? patients.filter((p) => {
+                      const q = query.trim().toLowerCase();
+                      return (
+                        fullName(p).toLowerCase().includes(q) ||
+                        p.hospitalNumber.toLowerCase().includes(q) ||
+                        (p.phone || '').includes(q)
+                      );
+                    })
+                  : patients
+                )
+                  .slice(0, 25)
+                  .map((p) => {
+                    const on = (posPatient || selected)?.id === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setPosPatient(p);
+                          setSelected(p);
+                          const fee = CONSULT_FEES[ciDept] ?? 5000;
+                          setPosAmount(String(fee));
+                          setPosPurpose('OPD consultation');
+                        }}
+                        style={{
+                          textAlign: 'left',
+                          padding: '10px 12px',
+                          borderRadius: 10,
+                          border: on ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
+                          background: on ? '#E0F2FE' : '#F8FAFC',
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                          fontSize: 13,
+                          color: C.navy,
+                        }}
+                      >
+                        {fullName(p)}
+                        <div style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginTop: 2 }}>
+                          {p.hospitalNumber}
+                          {p.phone ? ` · ${p.phone}` : ''}
+                        </div>
+                      </button>
+                    );
+                  })}
+                {patients.length === 0 && (
+                  <div style={{ padding: 16, textAlign: 'center', color: C.muted, fontSize: 13 }}>
+                    No patients registered yet
+                  </div>
+                )}
+              </div>
+              {visits.filter(
+                (v) =>
+                  (v.paymentStatus === 'pending' || v.paymentStatus === 'partial') &&
+                  v.status !== 'completed' &&
+                  v.status !== 'cancelled'
+              ).length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 6 }}>
+                    UNPAID CHECK-INS
+                  </div>
+                  {visits
+                    .filter(
+                      (v) =>
+                        (v.paymentStatus === 'pending' || v.paymentStatus === 'partial') &&
+                        v.status !== 'completed' &&
+                        v.status !== 'cancelled'
+                    )
+                    .slice(0, 8)
+                    .map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => {
+                          const p = patients.find((x) => x.id === v.patientId);
+                          if (p) {
+                            setPosPatient(p);
+                            setSelected(p);
+                          }
+                          setPosAmount(String(v.amount || CONSULT_FEES[v.department] || 5000));
+                          setPosPurpose(`${v.department} consultation`);
+                        }}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: '8px 10px',
+                          marginBottom: 4,
+                          borderRadius: 8,
+                          border: `1px solid #FED7AA`,
+                          background: '#FFF7ED',
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: C.navy,
+                        }}
+                      >
+                        {v.queueNumber} · {v.patientName}
+                        <span style={{ color: C.muted, fontWeight: 600 }}>
+                          {' '}
+                          · ₦{(v.amount || 0).toLocaleString()} pending
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+
+            {/* Charge panel */}
+            <div
+              style={{
+                background: '#fff',
+                borderRadius: 16,
+                border: `1px solid ${C.border}`,
+                padding: 18,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 14,
+              }}
+            >
+              <div style={{ fontWeight: 800, fontSize: 13 }}>
+                {(posPatient || selected)
+                  ? `Charging · ${fullName(posPatient || selected!)}`
+                  : 'Select a patient, then choose method'}
+              </div>
+
+              <div>
+                <label style={labelStyle}>Amount (₦)</label>
+                <input
+                  style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }}
+                  type="number"
+                  min={0}
+                  value={posAmount}
+                  onChange={(e) => setPosAmount(e.target.value)}
+                  placeholder="5000"
+                />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  {Object.entries(CONSULT_FEES).slice(0, 6).map(([dept, fee]) => (
+                    <button
+                      key={dept}
+                      type="button"
+                      onClick={() => {
+                        setPosAmount(String(fee));
+                        setPosPurpose(`${dept} consultation`);
+                      }}
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: '5px 10px',
+                        borderRadius: 999,
+                        border: `1px solid ${C.border}`,
+                        background: '#F8FAFC',
+                        cursor: 'pointer',
+                        color: C.navy,
+                      }}
+                    >
+                      {dept} · ₦{(fee as number).toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Purpose</label>
+                <input
+                  style={inputStyle}
+                  value={posPurpose}
+                  onChange={(e) => setPosPurpose(e.target.value)}
+                  placeholder="OPD consultation"
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Payment method</label>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: 8,
+                    marginTop: 6,
+                  }}
+                >
+                  {(
+                    [
+                      { id: 'cash' as PaymentMethod, label: 'Cash' },
+                      { id: 'pos' as PaymentMethod, label: 'POS' },
+                      { id: 'card' as PaymentMethod, label: 'Card' },
+                      { id: 'transfer' as PaymentMethod, label: 'Transfer' },
+                      { id: 'hmo' as PaymentMethod, label: 'HMO' },
+                      { id: 'waiver' as PaymentMethod, label: 'Waiver' },
+                    ] as const
+                  ).map((m) => {
+                    const on = posMethod === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setPosMethod(m.id)}
+                        style={{
+                          padding: '12px 8px',
+                          borderRadius: 12,
+                          cursor: 'pointer',
+                          border: on ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
+                          background: on ? '#E0F2FE' : '#F8FAFC',
+                          color: on ? C.blue : C.navy,
+                          fontWeight: 800,
+                          fontSize: 13,
+                        }}
+                      >
+                        {m.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={!(posPatient || selected)}
+                onClick={() => {
+                  if (['card', 'transfer', 'pos'].includes(posMethod)) {
+                    const amt = Number(posAmount) || 0;
+                    if (amt < 1) {
+                      flash('Enter amount');
+                      return;
+                    }
+                    if (!hasPaystackKey()) {
+                      flash('Add Paystack public key in Admin settings first');
+                      return;
+                    }
+                    setPaystackOpen(true);
+                    return;
+                  }
+                  doPayment();
+                }}
+                style={{
+                  marginTop: 4,
+                  height: 52,
+                  borderRadius: 14,
+                  border: 'none',
+                  background: posPatient || selected
+                    ? 'linear-gradient(90deg, #0284C7 0%, #0D9488 100%)'
+                    : '#CBD5E1',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: 15,
+                  cursor: posPatient || selected ? 'pointer' : 'not-allowed',
+                  boxShadow: posPatient || selected ? '0 12px 28px rgba(2,132,199,0.3)' : 'none',
+                }}
+              >
+                {['card', 'transfer', 'pos'].includes(posMethod)
+                  ? `Pay with Paystack · ₦${(Number(posAmount) || 0).toLocaleString()}`
+                  : `Record ₦${(Number(posAmount) || 0).toLocaleString()} · ${posMethod.toUpperCase()}`}
+              </button>
+
+              {['card', 'transfer', 'pos'].includes(posMethod) && (
+                <button
+                  type="button"
+                  disabled={!(posPatient || selected)}
+                  onClick={doPayment}
+                  style={{
+                    height: 40,
+                    borderRadius: 12,
+                    border: `1px solid ${C.border}`,
+                    background: '#fff',
+                    color: C.navy,
+                    fontWeight: 700,
+                    fontSize: 12,
+                    cursor: posPatient || selected ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  Record offline (no Paystack)
+                </button>
+              )}
+
+              <div style={{ fontSize: 12, color: C.muted, textAlign: 'center' }}>
+                Paystack for card / transfer / POS · cash &amp; HMO still on desk · receipt + collections
+              </div>
+
+              {payments.length > 0 && (
+                <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12, marginTop: 4 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 8 }}>
+                    TODAY · {payments.length} payments · ₦
+                    {payments.reduce((s, p) => s + (p.amount || 0), 0).toLocaleString()}
+                  </div>
+                  {payments.slice(0, 6).map((pay) => (
+                    <div
+                      key={pay.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        fontSize: 12,
+                        padding: '6px 0',
+                        borderBottom: `1px solid ${C.border}`,
+                      }}
+                    >
+                      <span style={{ fontWeight: 700 }}>
+                        {pay.patientName}{' '}
+                        <span style={{ color: C.muted, fontWeight: 600 }}>· {pay.method}</span>
+                      </span>
+                      <span style={{ fontWeight: 800, color: '#059669' }}>
+                        ₦{pay.amount.toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* AI contextual check-in card — human must confirm */}
-      {aiCard && (
+            <PaystackBrandedCheckout
+        open={paystackOpen}
+        input={
+          paystackOpen && (posPatient || selected)
+            ? {
+                patientName: fullName(posPatient || selected!),
+                hospitalNumber: (posPatient || selected)!.hospitalNumber,
+                patientEmail: (posPatient || selected)!.email,
+                amountNgn: Number(posAmount) || 0,
+                purpose: posPurpose || 'Hospital payment',
+                facilityName: session.facility || session.hospitalId || 'Hospital',
+                facilityId,
+                cashierName: session.name,
+              }
+            : null
+        }
+        onClose={() => setPaystackOpen(false)}
+        onPaid={(r) => settlePaystackPayment(r)}
+      />
+
+{aiCard && (
         <div
           style={{
             position: 'fixed',

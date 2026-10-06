@@ -2,7 +2,7 @@
  * Per-role module + patient-data visibility — admin configures what each role can see.
  * Accounts share a dashboard by roleKey; this matrix gates modules and patient fields.
  */
-export const ROLE_PERMISSIONS_KEY = 'medcore_os_role_permissions_v3';
+export const ROLE_PERMISSIONS_KEY = 'medcore_os_role_permissions_v4';
 
 /** Modules + patient data scopes an admin can toggle */
 export const MODULE_CATALOG: { key: string; label: string; group: string }[] = [
@@ -113,74 +113,90 @@ const CLINICAL_PATIENT = [
   'patient.procedures',
 ];
 
-/** Default modules per role — mirrors sidebar menus; admin can narrow/widen in RBAC matrix */
+/** Default modules per role — specialty scopes (admin can widen in RBAC matrix) */
 const DEFAULTS: Record<string, string[]> = {
+  // General physician / MO — full clinical desk, not platform admin tools
   doctor: [
-    'dashboard', 'doctor-portal', 'm87-ai', 'ai', 'emr', 'emergency', 'nursing', 'pharmacy',
-    'beds', 'theatre', 'icu', 'radiology', 'laboratory', 'lab', 'patient-card', 'staffing', 'my-card',
+    'dashboard', 'doctor-portal', 'patient-360', 'notifications',
+    'emr', 'pharmacy', 'laboratory', 'lab', 'radiology',
+    'emergency', 'beds', 'nursing', 'icu', 'theatre',
+    'm87-ai', 'ai', 'patient-card', 'my-card',
     ...CLINICAL_PATIENT, 'patient.full_chart',
   ],
+  // Surgeons — OT-first; no general pharmacy inventory / finance / admin
   surgeon: [
-    'dashboard', 'theatre', 'm87-ai', 'ai', 'icu', 'blood-bank', 'emergency', 'beds',
-    'radiology', 'laboratory', 'lab', 'patient-card', 'emr', 'my-card',
+    'dashboard', 'theatre', 'doctor-portal', 'notifications',
+    'icu', 'beds', 'blood-bank', 'emergency',
+    'laboratory', 'lab', 'radiology', 'emr',
+    'm87-ai', 'ai', 'patient-card', 'my-card',
     ...CLINICAL_PATIENT, 'patient.procedures',
   ],
   nurse: [
-    'dashboard', 'nursing', 'beds', 'emergency', 'patient-flow', 'maternity', 'paediatrics',
-    'blood-bank', 'pharmacy', 'm87-ai', 'ai', 'staffing', 'iot-devices', 'patient-card', 'emr', 'my-card',
+    'dashboard', 'nursing', 'beds', 'notifications',
+    'patient-flow', 'emergency', 'pharmacy', 'blood-bank',
+    'maternity', 'paediatrics', 'icu',
+    'm87-ai', 'ai', 'patient-card', 'my-card', 'emr',
     'patient.identity', 'patient.contact', 'patient.vitals', 'patient.allergies',
     'patient.problems', 'patient.notes', 'patient.meds', 'patient.labs',
   ],
   midwife: [
-    'dashboard', 'maternity', 'paediatrics', 'nursing', 'blood-bank', 'beds', 'patient-flow',
-    'm87-ai', 'ai', 'patient-card', 'emr', 'my-card',
+    'dashboard', 'maternity', 'paediatrics', 'notifications',
+    'beds', 'nursing', 'emergency', 'blood-bank', 'pharmacy',
+    'm87-ai', 'ai', 'patient-card', 'my-card', 'emr',
     'patient.identity', 'patient.contact', 'patient.vitals', 'patient.allergies',
     'patient.problems', 'patient.notes', 'patient.meds',
   ],
+  // Pharmacists — dispense & formulary only (not theatre / ICU control)
   pharmacist: [
-    'dashboard', 'pharmacy', 'inventory', 'nursing', 'facilities', 'm87-ai', 'ai',
-    'patient-card', 'emr', 'my-card',
+    'dashboard', 'pharmacy', 'formulary', 'notifications',
+    'cashier', 'emr', 'patient-flow', 'inventory',
+    'm87-ai', 'ai', 'patient-card', 'my-card',
     'patient.identity', 'patient.allergies', 'patient.meds', 'patient.problems',
   ],
+  // Lab — LIS & specimens only
   lab: [
-    'dashboard', 'laboratory', 'lab', 'blood-bank', 'data-hub', 'iot-devices',
-    'patient-card', 'compliance', 'emr', 'my-card', 'ai',
+    'dashboard', 'laboratory', 'lab', 'notifications',
+    'blood-bank', 'emr', 'patient-card', 'my-card',
+    'm87-ai', 'ai',
     'patient.identity', 'patient.labs', 'patient.vitals',
   ],
+  // Radiologists — imaging only (not full OPD / prescribing)
   radiologist: [
-    'dashboard', 'radiology', 'm87-ai', 'ai', 'biomedical', 'data-hub', 'patient-card', 'emr', 'my-card',
+    'dashboard', 'radiology', 'notifications',
+    'emr', 'patient-card', 'my-card',
+    'm87-ai', 'ai',
     'patient.identity', 'patient.imaging', 'patient.problems',
   ],
   reception: [
     'dashboard', 'patient-flow', 'patient-card', 'appointments', 'cashier', 'billing',
-    'analytics', 'sysadmin', 'desk-settings', 'my-card',
+    'desk-settings', 'notifications', 'my-card',
     'patient.identity', 'patient.contact', 'patient.demographics', 'patient.billing', 'patient.insurance',
   ],
   records: [
-    'dashboard', 'patient-card', 'patient-flow', 'beds', 'claims', 'emr', 'my-card',
+    'dashboard', 'patient-card', 'patient-flow', 'beds', 'emr', 'my-card', 'notifications',
     'patient.identity', 'patient.contact', 'patient.demographics',
   ],
   accountant: [
     'dashboard', 'cashier', 'billing', 'claims', 'revenue-cycle', 'procurement',
-    'patient-card', 'command', 'analytics', 'my-card',
+    'patient-card', 'analytics', 'my-card', 'notifications',
     'patient.identity', 'patient.billing', 'patient.insurance', 'patient.demographics',
   ],
   biomedical: [
-    'dashboard', 'biomedical', 'iot-devices', 'facilities', 'environmental', 'inventory', 'my-card',
+    'dashboard', 'biomedical', 'iot-devices', 'facilities', 'environmental', 'inventory',
+    'my-card', 'notifications',
   ],
   medical_director: [
-    'dashboard', 'command', 'm87-ai', 'ai', 'analytics', 'emergency', 'theatre', 'icu',
-    'pharmacy', 'laboratory', 'lab', 'blood-bank', 'ambulance', 'revenue-cycle',
-    'compliance', 'rbac', 'sysadmin', 'my-card', 'patient.full_chart', ...CLINICAL_PATIENT,
+    'dashboard', 'command', 'doctor-portal', 'm87-ai', 'ai', 'analytics',
+    'emergency', 'theatre', 'icu', 'pharmacy', 'laboratory', 'lab', 'radiology',
+    'blood-bank', 'beds', 'nursing', 'ambulance', 'notifications',
+    'compliance', 'my-card', 'patient.full_chart', ...CLINICAL_PATIENT,
   ],
   sysadmin: [
     'dashboard', 'staffing', 'analytics', 'ai', 'm87-ai', 'sysadmin', 'rbac', 'enrolment',
-    'facility', 'auth', 'compliance', 'data-hub', 'my-card', 'patient.identity',
+    'facility', 'auth', 'fhir', 'data-hub', 'compliance', 'my-card', 'notifications',
   ],
   hospital_admin: ['*'],
 };
-
-export type RolePermissionsMap = Record<string, string[]>;
 
 export function getRolePermissionsMap(): RolePermissionsMap {
   if (typeof window === 'undefined') return { ...DEFAULTS };
