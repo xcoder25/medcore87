@@ -34,6 +34,7 @@ import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 // Specialty Suites
 import { AdminShell } from '../components/dashboards/AdminShell';
 import { OsAppShell } from '../components/layout/OsAppShell';
+import { ClinicalUxSuite } from '../components/clinical-ux/ClinicalUxSuite';
 import { KeyboardShortcutsHint } from '../components/layout/KeyboardShortcutsHint';
 import { listPatients } from '../lib/patientRegistryStore';
 import { ModulePageLoader } from '../components/layout/ModulePageLoader';
@@ -94,7 +95,7 @@ export type ModuleKey =
   | 'm87-ai' | 'ai'
   // Pillar 2: Core
   | 'emr' | 'emergency' | 'theatre' | 'icu' | 'pharmacy' | 'laboratory' | 'radiology'
-  | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'patient-card' | 'patient-360'
+  | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'patient-card' | 'patient-360' | 'clinical-ux'
   // Pillar 3: Operations
   | 'command' | 'beds' | 'patient-flow' | 'universal-queue' | 'appointments' | 'staffing' | 'ambulance' | 'notifications'
   | 'inventory' | 'biomedical' | 'facilities' | 'environmental'
@@ -233,6 +234,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           items: [
             { key: 'doctor-portal', icon: Stethoscope, label: 'Doctor Clinical Portal', badge: 'Live' },
             { key: 'patient-360', icon: Users, label: 'Patient 360°', badge: 'Chart' },
+            { key: 'clinical-ux', icon: Stethoscope, label: 'Clinical workspace', badge: 'Epic+' },
             { key: 'ambient-soap', icon: Stethoscope, label: 'Ambient SOAP' },
             { key: 'lis', icon: FlaskConical, label: 'LIS Barcode & TAT' },
             { key: 'formulary', icon: Pill, label: 'Formulary inventory' },
@@ -469,6 +471,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'appointments', icon: Calendar, label: 'Appointments' },
             { key: 'cashier', icon: CreditCard, label: 'Payments' },
             { key: 'patient-360', icon: Users, label: 'Patient 360°' },
+            { key: 'clinical-ux', icon: Stethoscope, label: 'Clinical workspace' },
             { key: 'patient-card', icon: FileText, label: 'Patient records' },
           ],
         },
@@ -762,6 +765,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   'blood-bank': BloodBankSuite,
   nursing: InpatientNursingSuite,
   'patient-card': DigitalPatientCard,
+  'clinical-ux': ClinicalUxSuite,
   'patient-360': Patient360View as any,
   command: CommandCentreDashboard,
   beds: BedManagement,
@@ -823,6 +827,7 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   nursing: { level: 3, label: 'L3 Clinical', roleDesc: 'Inpatient Ward Nurses & Sisters' },
   'patient-card': { level: 1, label: 'L2 Support', roleDesc: 'Records & Front Desk Officers' },
   'patient-360': { level: 2, label: 'L2 Clinical & Records', roleDesc: 'Longitudinal patient profile' },
+  'clinical-ux': { level: 2, label: 'L2 Clinical', roleDesc: 'Schedule, meds, notes, discharge' },
   command: { level: 2, label: 'L2 Support', roleDesc: 'General Hospital Staff & Floor Duty' },
   beds: { level: 3, label: 'L3 Clinical', roleDesc: 'Bed Managers & Ward Supervisors' },
   'patient-flow': { level: 1, label: 'L3 Clinical', roleDesc: 'Patient Flow Coordinators' },
