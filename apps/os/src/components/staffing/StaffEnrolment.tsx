@@ -6,7 +6,7 @@ import { pushActivity, setOpenPositions, getOpenPositions } from '../../lib/admi
  * Card is readable on Hospital OS and MedCore Clinic (same badgeId).
  */
 import React, { useMemo, useState, useEffect } from 'react';
-import { UserPlus, IdCard, CheckCircle2, Trash2 } from 'lucide-react';
+import { UserPlus, IdCard, CheckCircle2, Trash2, X } from 'lucide-react';
 import { LogoProgressBar } from '../realtime/LogoProgressBar';
 import { HOSPITALS } from '../auth/AuthScreen';
 import { enrolStaffAndIssueCard, listStaffCards, getStaffCard, deleteStaffMember, defaultPermissionsForRole } from '../../lib/staffCardStore';
@@ -69,7 +69,9 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
     (session.permissions || []).some((p) =>
       ['admin', 'enrolment', 'rbac', 'staff'].includes(String(p).toLowerCase())
     );
-
+  const [deleteTarget, setDeleteTarget] = useState<{ badgeId: string; fullName: string } | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (session?.hospitalId) setFacilityId(session.hospitalId);
@@ -127,7 +129,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         permissions: defaultPermissionsForRole(roleMeta.roleKey),
       });
 
-      // Never hang the UI on slow/blocked Firebase — local card is already issued
+      // Never hang the UI on slow network — local card is already issued
       const withTimeout = <T,>(p: Promise<T>, ms = 8000): Promise<T> =>
         Promise.race([
           p,
@@ -136,7 +138,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
           ),
         ]);
 
-      // Firebase Auth account for badge + PIN (same system as email/password)
+      // Sign-in account for badge + PIN
       const pinNorm = normalizeStaffPin(pin);
       try {
         await withTimeout(firebaseEnsureBadgeAccount(card.badgeId, pinNorm), 8000);
@@ -147,7 +149,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         );
       }
 
-      // Ensure Firestore has this staff before they try to sign in on another device
+      // Save staff profile so they can sign in on other devices
       try {
         const regRaw = localStorage.getItem('medcore_os_staff_registry');
         const reg = regRaw ? JSON.parse(regRaw) : [];
@@ -187,7 +189,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         console.warn('[enrol] firestore ensure', err);
       }
 
-      // Optional Firebase Auth account (email + PIN as password) for cloud login
+      // Optional email sign-in account for cloud login
       const mail = email.trim();
       if (mail) {
         if (!isEmailCredential(mail)) {
@@ -200,7 +202,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
             if (code !== 'auth/email-already-in-use') {
               console.warn('[enrol] firebaseSignUp', err);
               setError(
-                `Card issued. Firebase account note: ${err?.message || code || 'could not create account'}`
+                `Card issued. Sign-in setup note: please try again from Staff Access if login fails.`
               );
             }
           }
@@ -461,21 +463,8 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
                     title="Delete staff user"
                     onClick={(ev) => {
                       ev.stopPropagation();
-                      const ok = window.confirm(
-                        `Delete staff ${c.fullName || c.badgeId}?\n\nBadge: ${c.badgeId}\n\nThey will no longer be able to sign in. This cannot be undone.`
-                      );
-                      if (!ok) return;
-                      const done = deleteStaffMember(c.badgeId);
-                      if (done) {
-                        setCards(listStaffCards());
-                        if (issued?.badgeId === c.badgeId) setIssued(null);
-                        if (pendingConfirm?.card.badgeId === c.badgeId) setPendingConfirm(null);
-                        try {
-                          pushActivity(`Deleted staff · ${c.badgeId} · ${c.fullName || ''}`);
-                        } catch { /* ignore */ }
-                      } else {
-                        window.alert('Could not delete this staff member. Try again.');
-                      }
+                      setDeleteSuccess(null);
+                      setDeleteTarget({ badgeId: c.badgeId, fullName: c.fullName || c.badgeId });
                     }}
                     style={{
                       position: 'absolute',
@@ -502,6 +491,157 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
             ))}
           </div>
         </div>
+
+      {/* Delete confirmation modal — no browser/Firebase dialogs */}
+      {deleteTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10000,
+            background: 'rgba(15, 23, 42, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+          onClick={() => {
+            if (!deleteBusy) setDeleteTarget(null);
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              background: '#fff',
+              borderRadius: 16,
+              padding: 24,
+              boxShadow: '0 24px 48px rgba(0,0,0,0.18)',
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: 17, color: '#0F172A', marginBottom: 8 }}>
+              Remove staff account?
+            </div>
+            <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.55, margin: '0 0 16px' }}>
+              <strong style={{ color: '#0F172A' }}>{deleteTarget.fullName}</strong>
+              <br />
+              Staff ID: <span style={{ fontFamily: 'monospace' }}>{deleteTarget.badgeId}</span>
+              <br />
+              They will no longer be able to sign in. Their ID card will be deactivated. This cannot be undone.
+            </p>
+            {error && (
+              <div
+                style={{
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  borderRadius: 10,
+                  padding: '10px 12px',
+                  fontSize: 12,
+                  color: '#B91C1C',
+                  marginBottom: 12,
+                }}
+              >
+                {error}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => setDeleteTarget(null)}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: 10,
+                  border: '1px solid #E2E8F0',
+                  background: '#fff',
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => {
+                  setDeleteBusy(true);
+                  setError('');
+                  const id = deleteTarget.badgeId;
+                  const name = deleteTarget.fullName;
+                  try {
+                    const done = deleteStaffMember(id);
+                    if (done) {
+                      setCards(listStaffCards());
+                      if (issued?.badgeId === id) setIssued(null);
+                      if (pendingConfirm?.card.badgeId === id) setPendingConfirm(null);
+                      try {
+                        pushActivity(`Deleted staff · ${id} · ${name}`);
+                      } catch { /* ignore */ }
+                      setDeleteTarget(null);
+                      setDeleteSuccess(`${name} was removed. They can no longer sign in.`);
+                      setTimeout(() => setDeleteSuccess(null), 5000);
+                    } else {
+                      setError('Could not remove this staff member. Please try again.');
+                    }
+                  } catch {
+                    setError('Could not remove this staff member. Please try again.');
+                  } finally {
+                    setDeleteBusy(false);
+                  }
+                }}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: deleteBusy ? '#FCA5A5' : '#DC2626',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: deleteBusy ? 'wait' : 'pointer',
+                }}
+              >
+                {deleteBusy ? 'Removing…' : 'Yes, remove staff'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteSuccess && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            zIndex: 10001,
+            background: '#ECFDF5',
+            border: '1px solid #A7F3D0',
+            borderRadius: 12,
+            padding: '14px 18px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            maxWidth: 360,
+          }}
+        >
+          <CheckCircle2 size={20} color="#059669" />
+          <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#065F46' }}>{deleteSuccess}</div>
+          <button
+            type="button"
+            onClick={() => setDeleteSuccess(null)}
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#047857' }}
+            aria-label="Dismiss"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Staff Access Control — create accounts (issues ID card + Firebase auth) and manage access.
+ * Staff Access Control — create accounts (issues ID card + sign-in) and manage access.
  * Enrolment is merged here: creating an account auto-generates the staff ID card.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -97,6 +97,8 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     accessRow: AccessRecord;
     listed: boolean;
   } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ badgeId: string; name: string } | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -274,7 +276,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         const authRes = await withTimeout(
           firebaseEnsureBadgeAccount(card.badgeId, pinNorm),
           12000,
-          'Firebase badge Auth'
+          'Sign-in setup'
         );
         firebaseAuth = authRes?.email ? 'ok' : 'fail';
       } catch (err: any) {
@@ -284,7 +286,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
       if (mail && isEmailCredential(mail)) {
         try {
-          await withTimeout(firebaseEnsureEmailAccount(mail, pinNorm), 12000, 'Firebase email Auth');
+          await withTimeout(firebaseEnsureEmailAccount(mail, pinNorm), 12000, 'Email sign-in setup');
           emailAuth = 'ok';
         } catch (err: any) {
           console.warn('[access] email auth', err);
@@ -312,7 +314,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
             status: 'active',
           }),
           10000,
-          'Firestore upsert'
+          'Saving staff profile'
         );
         await withTimeout(
           firestorePushStaffDirectory(facilityId, {
@@ -320,7 +322,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
             staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
           }),
           10000,
-          'Firestore directory'
+          'Updating staff directory'
         );
         firestoreStatus = fsOk ? 'ok' : 'fail';
         try {
@@ -328,7 +330,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           const remote = await withTimeout(
             firestoreGetStaffByBadge(facilityId, card.badgeId),
             8000,
-            'Firestore verify'
+            'Verifying staff profile'
           );
           if (remote && remote.badgeId) firestoreStatus = 'ok';
         } catch {
@@ -377,14 +379,17 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const handleDelete = async (badgeId: string, name: string) => {
     const id = String(badgeId || '').toUpperCase();
     if (id === 'AKS-ADM-001' || id.includes('ADM-001')) {
-      setError('Cannot delete the platform administrator bootstrap account.');
+      setError('This main administrator account cannot be removed.');
       return;
     }
-    const ok = window.confirm(
-      `Delete staff account permanently?\n\n${name}\nBadge: ${id}\n\nThis removes access, ID card, and Firestore profile. They will not be able to sign in.`
-    );
-    if (!ok) return;
+    setDeleteSuccess(null);
+    setDeleteTarget({ badgeId: id, name });
+  };
 
+  const confirmDeleteStaff = async () => {
+    if (!deleteTarget) return;
+    const id = deleteTarget.badgeId;
+    const name = deleteTarget.name;
     setBusy(true);
     setError('');
     try {
@@ -398,7 +403,6 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       }
       if (confirmInfo?.badgeId?.toUpperCase() === id) setConfirmInfo(null);
 
-      // Extra firestore delete with session facility
       try {
         const { firestoreDeleteStaffMember, firestorePushStaffDirectory } = await import('../../lib/firebase');
         await firestoreDeleteStaffMember(facilityId, id);
@@ -406,16 +410,22 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           staffCards: listStaffCards(),
           staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
         });
-      } catch (e) {
-        console.warn('[access] delete cloud', e);
+      } catch {
+        /* cloud sync best-effort — local removal already done */
       }
 
       pushActivity(`Account deleted · ${name} · ${id}`);
       emitLiveAction(`Deleted staff ${id}`, { module: 'access' });
+      setDeleteTarget(null);
+      setDeleteSuccess(`${name} was removed. They can no longer sign in.`);
+      setTimeout(() => setDeleteSuccess(null), 5000);
+    } catch {
+      setError('Could not remove this staff member. Please try again.');
     } finally {
       setBusy(false);
     }
   };
+;
 
   return (
     <div className="os-module-layout" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -427,7 +437,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           </div>
           <div style={{ fontSize: '0.8rem', color: '#64748B', lineHeight: 1.55 }}>
             Create a staff account here to grant access and <strong>automatically issue</strong> their vertical staff ID card
-            (badge + PIN for Firebase login). Suspend or reactivate accounts without a separate enrolment screen.
+            (badge + PIN for sign-in). Suspend or reactivate accounts without a separate enrolment screen.
           </div>
         </div>
       </div>
@@ -626,7 +636,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           <button type="submit" disabled={busy} className="os-action-btn-primary" style={{ marginTop: 14 }}>
             <Plus size={16} /> {busy ? 'Creating…' : 'Create account & issue ID card'}
           </button>
-          <LogoProgressBar active={busy} label="Creating account, Firebase login & ID card…" />
+          <LogoProgressBar active={busy} label="Creating account, sign-in & ID card…" />
         </form>
       )}
 
@@ -665,16 +675,16 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                     width: 8, height: 8, borderRadius: '50%',
                     background: confirmInfo.firebaseAuth === 'ok' ? '#16A34A' : confirmInfo.firebaseAuth === 'fail' ? '#EF4444' : '#94A3B8',
                   }} />
-                  <strong>Firebase Auth (badge login):</strong>{' '}
+                  <strong>Sign-in (staff ID + PIN):</strong>{' '}
                   {confirmInfo.firebaseAuth === 'ok' ? 'Stored — can Sign in with ID No.' :
-                    confirmInfo.firebaseAuth === 'fail' ? 'Failed — check Email/Password provider in Firebase Console' : 'Skipped'}
+                    confirmInfo.firebaseAuth === 'fail' ? 'Could not set up sign-in — try again or contact ICT' : 'Skipped'}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{
                     width: 8, height: 8, borderRadius: '50%',
                     background: confirmInfo.firestore === 'ok' ? '#16A34A' : '#EF4444',
                   }} />
-                  <strong>Firestore profile:</strong>{' '}
+                  <strong>staff profile:</strong>{' '}
                   {confirmInfo.firestore === 'ok' ? 'Saved & verified on cloud' : 'Not verified — local card exists; cloud sync failed (check rules/network)'}
                 </div>
                 {confirmInfo.email && (
@@ -684,7 +694,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                       background: confirmInfo.emailAuth === 'ok' ? '#16A34A' : confirmInfo.emailAuth === 'fail' ? '#EF4444' : '#94A3B8',
                     }} />
                     <strong>Email login:</strong>{' '}
-                    {confirmInfo.emailAuth === 'ok' ? 'Firebase email account ready' :
+                    {confirmInfo.emailAuth === 'ok' ? 'Email sign-in ready' :
                       confirmInfo.emailAuth === 'fail' ? 'Email Auth failed' : 'Not used'}
                   </div>
                 )}
@@ -858,6 +868,77 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         </div>
       </div>
     </div>
+
+      {deleteTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10000,
+            background: 'rgba(15, 23, 42, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+          onClick={() => { if (!busy) setDeleteTarget(null); }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              background: '#fff',
+              borderRadius: 16,
+              padding: 24,
+              boxShadow: '0 24px 48px rgba(0,0,0,0.18)',
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: 17, color: '#0F172A', marginBottom: 8 }}>
+              Remove staff account?
+            </div>
+            <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.55, margin: '0 0 16px' }}>
+              <strong style={{ color: '#0F172A' }}>{deleteTarget.name}</strong>
+              <br />
+              Staff ID: <span style={{ fontFamily: 'monospace' }}>{deleteTarget.badgeId}</span>
+              <br />
+              Access and ID card will be removed. They will not be able to sign in. This cannot be undone.
+            </p>
+            {error && (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#B91C1C', marginBottom: 12 }}>
+                {error}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setDeleteTarget(null)}
+                style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid #E2E8F0', background: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void confirmDeleteStaff()}
+                style={{ padding: '10px 16px', borderRadius: 10, border: 'none', background: busy ? '#FCA5A5' : '#DC2626', color: '#fff', fontWeight: 700, fontSize: 13, cursor: busy ? 'wait' : 'pointer' }}
+              >
+                {busy ? 'Removing…' : 'Yes, remove staff'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {deleteSuccess && (
+        <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 10001, background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12, padding: '14px 18px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', gap: 10, maxWidth: 360, fontSize: 13, fontWeight: 600, color: '#065F46' }}>
+          {deleteSuccess}
+          <button type="button" onClick={() => setDeleteSuccess(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', marginLeft: 8, color: '#047857', fontWeight: 800 }}>×</button>
+        </div>
+      )}
+
   );
 };
 
