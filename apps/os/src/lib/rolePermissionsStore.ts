@@ -198,6 +198,8 @@ const DEFAULTS: Record<string, string[]> = {
   hospital_admin: ['*'],
 };
 
+export type RolePermissionsMap = Record<string, string[]>;
+
 export function getRolePermissionsMap(): RolePermissionsMap {
   if (typeof window === 'undefined') return { ...DEFAULTS };
   try {
