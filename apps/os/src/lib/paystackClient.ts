@@ -28,35 +28,22 @@ declare global {
 
 const SCRIPT_URL = 'https://js.paystack.co/v1/inline.js';
 
+/**
+ * Public key — env only (NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY).
+ * Never from localStorage / admin form (avoids key drift and leaks).
+ */
 export function getPaystackPublicKey(): string {
-  if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY) {
-    return String(process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY).trim();
-  }
-  if (typeof window !== 'undefined') {
-    try {
-      const raw = localStorage.getItem('medcore_os_front_desk_settings');
-      if (raw) {
-        const s = JSON.parse(raw);
-        if (s.paystackPublicKey?.trim()) return String(s.paystackPublicKey).trim();
-      }
-    } catch {
-      /* ignore */
-    }
-    try {
-      const raw = localStorage.getItem('medcore_os_paystack_public_key');
-      if (raw?.trim()) return raw.trim();
-    } catch {
-      /* ignore */
-    }
-  }
-  return '';
+  const fromEnv =
+    (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY) ||
+    (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PAYSTACK_KEY) ||
+    '';
+  return String(fromEnv || '').trim();
 }
 
-export function setPaystackPublicKeyLocal(key: string) {
-  try {
-    localStorage.setItem('medcore_os_paystack_public_key', key.trim());
-  } catch {
-    /* ignore */
+/** @deprecated Keys must come from env — no-op kept for call-site compatibility */
+export function setPaystackPublicKeyLocal(_key: string) {
+  if (typeof console !== 'undefined') {
+    console.warn('[Paystack] Public key must be set via NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY env, not localStorage');
   }
 }
 
@@ -64,8 +51,17 @@ export function hasPaystackKey(): boolean {
   return Boolean(getPaystackPublicKey());
 }
 
-/** Terminal device id from front desk settings */
+/**
+ * Terminal device id:
+ * 1) NEXT_PUBLIC_PAYSTACK_TERMINAL_ID (preferred)
+ * 2) Front desk POS terminal field (device id only — not a secret)
+ */
 export function getPaystackTerminalId(): string {
+  const fromEnv =
+    (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PAYSTACK_TERMINAL_ID) ||
+    (typeof process !== 'undefined' && process.env.PAYSTACK_TERMINAL_ID) ||
+    '';
+  if (String(fromEnv || '').trim()) return String(fromEnv).trim();
   if (typeof window === 'undefined') return '';
   try {
     const raw = localStorage.getItem('medcore_os_front_desk_settings');

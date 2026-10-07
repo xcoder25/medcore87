@@ -1,6 +1,10 @@
 /**
  * Server-only Paystack helpers. Secret key never reaches the browser.
  */
+/**
+ * Secret key — server env only. Never NEXT_PUBLIC_*.
+ * Set on Vercel: PAYSTACK_SECRET_KEY=sk_live_... or sk_test_...
+ */
 export function getPaystackSecretKey(): string {
   return (
     process.env.PAYSTACK_SECRET_KEY ||

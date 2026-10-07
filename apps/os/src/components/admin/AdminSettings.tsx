@@ -620,7 +620,7 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
               />
               <div style={{ fontSize: 11, color: '#64748B', marginTop: 6, lineHeight: 1.45 }}>
                 Card / bank transfer / USSD at reception. Prefer{' '}
-                <code>NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY</code> in production.
+                Keys come from environment only: <code>NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY</code> (public) and <code>PAYSTACK_SECRET_KEY</code> (server). Do not paste secret keys here.
                 {draft.paystackPublicKey?.trim() ? ' · Key saved in draft — click Save.' : ' · No Paystack key yet.'}
               </div>
             </div>

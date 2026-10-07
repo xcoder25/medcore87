@@ -142,7 +142,7 @@ export const PaystackBrandedCheckout: React.FC<Props> = ({ open, input, onClose,
   const startTransfer = useCallback(async () => {
     if (!input) return;
     if (!hasPaystackKey()) {
-      setError('Add Paystack public key in Admin / Front Desk settings (public key only — never the secret).');
+      setError('Set NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY in the deployment environment (public key only — never the secret).');
       return;
     }
     setBusy(true);
