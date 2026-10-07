@@ -275,30 +275,34 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         email: mail || undefined,
       };
 
-      // Cloud identity: badge Auth + optional email Auth + Firestore (retries)
+      // Cloud identity — hard cap so success screen always appears (local card already issued)
       try {
-        const cloud = await ensureStaffCloudIdentity({
-          facilityId,
-          badgeId,
-          pin: pinNorm,
-          email: mail || undefined,
-          profile: {
+        const cloud = await withTimeout(
+          ensureStaffCloudIdentity({
+            facilityId,
             badgeId,
-            name: nameSnap,
-            role: roleMeta.role,
-            roleKey: roleMeta.roleKey,
-            title: roleMeta.title,
-            department: roleMeta.department,
-            hospitalId: facilityId,
-            hospitalName: facilityName,
-            clearanceLevel: roleMeta.clearanceLevel,
-            clearanceLabel: roleMeta.clearanceLabel,
-            permissions: accessRow.permissions,
+            pin: pinNorm,
             email: mail || undefined,
-            authEmail: badgeAuthEmail(badgeId),
-            status: 'active',
-          },
-        });
+            profile: {
+              badgeId,
+              name: nameSnap,
+              role: roleMeta.role,
+              roleKey: roleMeta.roleKey,
+              title: roleMeta.title,
+              department: roleMeta.department,
+              hospitalId: facilityId,
+              hospitalName: facilityName,
+              clearanceLevel: roleMeta.clearanceLevel,
+              clearanceLabel: roleMeta.clearanceLabel,
+              permissions: accessRow.permissions,
+              email: mail || undefined,
+              authEmail: badgeAuthEmail(badgeId),
+              status: 'active',
+            },
+          }),
+          18000,
+          'Cloud identity'
+        );
         firebaseAuth = cloud.badgeAuth ? 'ok' : 'fail';
         emailAuth = mail ? (cloud.emailAuth ? 'ok' : 'fail') : 'skipped';
         firestoreStatus = cloud.firestore ? 'ok' : 'fail';
@@ -308,7 +312,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
             const { firestoreGetStaffByBadge } = await import('../../lib/firebase');
             const verified = await withTimeout(
               firestoreGetStaffByBadge(facilityId, badgeId),
-              8000,
+              5000,
               'Firestore verify staff'
             );
             if (!verified || !verified.roleKey) {
@@ -361,14 +365,16 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       setBusy(false);
       // Always show confirmation when we have a card — before listing in table
       if (card && accessRow) {
-        setIssued(card);
+        const issuedCard = card;
+        const row = accessRow;
+        setIssued(issuedCard);
         setShowCreate(false);
         // Auto-add to access list so badge login works immediately on this workstation
-        const nextAccess = [accessRow, ...getAccessRecords().filter((r) => r.id !== accessRow.id)];
+        const nextAccess = [row, ...getAccessRecords().filter((r) => r.id !== row.id)];
         setAccessRecords(nextAccess);
         setRecords(nextAccess);
         setConfirmInfo({
-          badgeId: card.badgeId,
+          badgeId: issuedCard.badgeId,
           name: nameSnap,
           role: roleMeta.role,
           roleKey: roleMeta.roleKey,
@@ -380,13 +386,13 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           firebaseAuth,
           firestore: firestoreStatus,
           emailAuth,
-          accessRow,
+          accessRow: row,
           listed: true,
         });
         setFullName('');
         setEmail('');
         setPhotoUrl('');
-        setSelectedId(card.badgeId);
+        setSelectedId(issuedCard.badgeId);
         setTimeout(() => {
           document.getElementById('staff-create-confirm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 80);
