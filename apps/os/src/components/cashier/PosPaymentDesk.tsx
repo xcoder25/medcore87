@@ -38,6 +38,7 @@ import {
   listPatientsWithOpenBills,
 } from '../../lib/patientBillingStore';
 import { verifyInsurance } from '../../lib/receptionConstants';
+import { printPaymentReceipt } from '../../lib/printService';
 
 const C = {
   blue: '#0284C7',
@@ -72,7 +73,7 @@ interface Props {
   onNavigate?: (key: string) => void;
 }
 
-export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
+export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate }) => {
   const facilityId = session?.hospitalId || 'IGH-EKT';
   const facilityName = session?.facility || 'Hospital';
   const cashier = session?.name || 'Cashier';
@@ -91,6 +92,14 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
   ]);
   const [toast, setToast] = useState<string | null>(null);
   const [lastReceipt, setLastReceipt] = useState<ReceptionPayment | null>(null);
+  /** Cash (and desk) post-payment ceremony: success → receipt → home */
+  const [payCeremony, setPayCeremony] = useState<null | {
+    phase: 'success' | 'receipt';
+    pay: ReceptionPayment;
+    patientName: string;
+    hospitalNumber: string;
+    purpose: string;
+  }>(null);
   const [insMsg, setInsMsg] = useState('');
   const [billTick, setBillTick] = useState(0);
 
@@ -249,6 +258,61 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
     reload();
     emitLiveAction(`POS ${pay.reference} · ₦${amt}`, { module: 'cashier' });
     const bal = patientBalance(facilityId, patient.id);
+
+    // Cash / desk methods: success screen → auto receipt → paid (already) → home
+    const deskMethod = method === 'cash' || method === 'pos' || method === 'transfer' || method === 'waiver';
+    if (deskMethod) {
+      const patientName = fullName(patient);
+      const hospNo = patient.hospitalNumber;
+      const purposeLabel = lines.map((l) => l.label).join(', ') || purpose;
+      setPayCeremony({
+        phase: 'success',
+        pay,
+        patientName,
+        hospitalNumber: hospNo,
+        purpose: purposeLabel,
+      });
+      // After 3s success → generate & print receipt
+      window.setTimeout(() => {
+        try {
+          printPaymentReceipt({
+            reference: pay.reference,
+            patientName,
+            hospitalNumber: hospNo,
+            amount: amt,
+            method: String(method).toUpperCase(),
+            purpose: purposeLabel,
+            facilityName,
+            facilityId,
+            patientId: patient.id,
+            cashier,
+            cashierBadge: session?.badgeId,
+            paymentId: pay.id,
+            visitId: open?.id,
+            print: true,
+          });
+        } catch (e) {
+          console.warn('[pos] receipt print', e);
+        }
+        setPayCeremony((prev) => (prev ? { ...prev, phase: 'receipt' } : prev));
+        // Clear form for next patient
+        setPatient(null);
+        setQuery('');
+        setAmount('5000');
+        // After receipt shown briefly → dashboard / check-in
+        window.setTimeout(() => {
+          setPayCeremony(null);
+          if (onNavigate) {
+            const role = session?.roleKey || '';
+            if (role === 'reception') onNavigate('patient-flow');
+            else if (role === 'accountant' || role === 'hospital_admin') onNavigate('dashboard');
+            else onNavigate('dashboard');
+          }
+        }, 2500);
+      }, 3000);
+      return;
+    }
+
     flash(
       `Recorded · ${pay.reference} · ₦${amt.toLocaleString()}` +
         (bal > 0 ? ` · Remaining bill ₦${bal.toLocaleString()}` : ' · Bill clear')
@@ -268,6 +332,7 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
   const displayAmount = Number(amount) || totalLines || 0;
 
   return (
+    <>
     <div className="pos-desk" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 28, maxWidth: 1280, margin: '0 auto' }}>
       {toast && (
         <div className="os-toast-in" style={{
@@ -767,7 +832,7 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
             </div>
           </div>
 
-          {lastReceipt && (
+          {lastReceipt && !payCeremony && (
             <div style={{
               padding: 14, borderRadius: 14, background: '#ECFDF5', border: '1px solid #A7F3D0',
             }}>
@@ -780,6 +845,126 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
         </div>
       </div>
     </div>
+
+      {payCeremony && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 12000,
+            background: 'rgba(15, 23, 42, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              borderRadius: 20,
+              background: '#fff',
+              padding: '28px 24px',
+              boxShadow: '0 24px 64px rgba(0,0,0,0.2)',
+              textAlign: 'center',
+            }}
+          >
+            {payCeremony.phase === 'success' ? (
+              <>
+                <div
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: '50%',
+                    margin: '0 auto 16px',
+                    background: 'linear-gradient(135deg,#16A34A,#0D9488)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <CheckCircle2 size={36} color="#fff" />
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 20, color: '#0F172A' }}>Payment successful</div>
+                <div style={{ marginTop: 8, fontSize: 14, color: '#64748B', lineHeight: 1.5 }}>
+                  ₦{payCeremony.pay.amount.toLocaleString()} · {String(payCeremony.pay.method).toUpperCase()}
+                  <br />
+                  {payCeremony.patientName}
+                </div>
+                <div style={{ marginTop: 16, fontSize: 13, fontWeight: 600, color: '#0D9488' }}>
+                  Preparing receipt…
+                </div>
+                <div
+                  style={{
+                    marginTop: 12,
+                    height: 4,
+                    borderRadius: 999,
+                    background: '#E2E8F0',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      width: '100%',
+                      background: 'linear-gradient(90deg,#0284C7,#0D9488)',
+                      animation: 'medcore-pay-progress 3s linear forwards',
+                    }}
+                  />
+                </div>
+                <style>{`@keyframes medcore-pay-progress { from { transform: scaleX(0); transform-origin: left; } to { transform: scaleX(1); transform-origin: left; } }`}</style>
+              </>
+            ) : (
+              <>
+                <div
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: '50%',
+                    margin: '0 auto 16px',
+                    background: 'linear-gradient(135deg,#0284C7,#0D9488)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Printer size={32} color="#fff" />
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 20, color: '#0F172A' }}>Receipt issued</div>
+                <div style={{ marginTop: 8, fontSize: 14, color: '#64748B', lineHeight: 1.5 }}>
+                  Ref: <strong style={{ color: '#0F172A' }}>{payCeremony.pay.reference}</strong>
+                  <br />
+                  Bill marked paid · returning to desk…
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPayCeremony(null);
+                    onNavigate?.(session?.roleKey === 'reception' ? 'patient-flow' : 'dashboard');
+                  }}
+                  style={{
+                    marginTop: 20,
+                    padding: '12px 20px',
+                    borderRadius: 12,
+                    border: 'none',
+                    background: 'linear-gradient(90deg,#0284C7,#0D9488)',
+                    color: '#fff',
+                    fontWeight: 800,
+                    fontSize: 14,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Continue
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
