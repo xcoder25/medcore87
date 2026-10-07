@@ -666,38 +666,57 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                     {confirmInfo.badgeId}
                   </span>
                 </div>
-                <div><strong>PIN:</strong> {confirmInfo.pin} <span style={{ color: '#64748B' }}>(give this to the staff member)</span></div>
+                <div><strong>PIN:</strong> <code style={{ fontWeight: 800, fontSize: '0.95rem' }}>{confirmInfo.pin}</code> <span style={{ color: '#64748B', marginLeft: 4 }}>(give this to the staff member)</span></div>
                 {confirmInfo.email && <div><strong>Email:</strong> {confirmInfo.email}</div>}
               </div>
-              <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.82rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{
-                    width: 8, height: 8, borderRadius: '50%',
-                    background: confirmInfo.firebaseAuth === 'ok' ? '#16A34A' : confirmInfo.firebaseAuth === 'fail' ? '#EF4444' : '#94A3B8',
-                  }} />
-                  <strong>Sign-in (staff ID + PIN):</strong>{' '}
-                  {confirmInfo.firebaseAuth === 'ok' ? 'Stored — can Sign in with ID No.' :
-                    confirmInfo.firebaseAuth === 'fail' ? 'Could not set up sign-in — try again or contact ICT' : 'Skipped'}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{
-                    width: 8, height: 8, borderRadius: '50%',
-                    background: confirmInfo.firestore === 'ok' ? '#16A34A' : '#EF4444',
-                  }} />
-                  <strong>staff profile:</strong>{' '}
-                  {confirmInfo.firestore === 'ok' ? 'Saved & verified on cloud' : 'Not verified — local card exists; cloud sync failed (check rules/network)'}
-                </div>
-                {confirmInfo.email && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{
-                      width: 8, height: 8, borderRadius: '50%',
-                      background: confirmInfo.emailAuth === 'ok' ? '#16A34A' : confirmInfo.emailAuth === 'fail' ? '#EF4444' : '#94A3B8',
-                    }} />
-                    <strong>Email login:</strong>{' '}
-                    {confirmInfo.emailAuth === 'ok' ? 'Email sign-in ready' :
-                      confirmInfo.emailAuth === 'fail' ? 'Email Auth failed' : 'Not used'}
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: '12px 14px',
+                  borderRadius: 12,
+                  background: '#FFFFFF',
+                  border: '1px solid #BBF7D0',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  fontSize: '0.84rem',
+                  color: '#0F172A',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16A34A', marginTop: 5, flexShrink: 0 }} />
+                  <div>
+                    <strong style={{ color: '#047857' }}>Ready to sign in</strong>
+                    <div style={{ color: '#64748B', marginTop: 2, lineHeight: 1.45 }}>
+                      Staff can log in with <strong>Staff ID No.</strong> using the badge and PIN above.
+                      Share these details with them privately.
+                    </div>
                   </div>
-                )}
+                </div>
+                {confirmInfo.email ? (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        background: confirmInfo.emailAuth === 'ok' ? '#16A34A' : '#F59E0B',
+                        marginTop: 5,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div>
+                      <strong style={{ color: confirmInfo.emailAuth === 'ok' ? '#047857' : '#B45309' }}>
+                        {confirmInfo.emailAuth === 'ok' ? 'Email sign-in ready' : 'Email sign-in optional'}
+                      </strong>
+                      <div style={{ color: '#64748B', marginTop: 2, lineHeight: 1.45 }}>
+                        {confirmInfo.emailAuth === 'ok'
+                          ? `They can also sign in with ${confirmInfo.email} and the same PIN.`
+                          : 'Badge + PIN works now. Email login can be set up later from Staff Access if needed.'}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
               <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                 {!confirmInfo.listed ? (
