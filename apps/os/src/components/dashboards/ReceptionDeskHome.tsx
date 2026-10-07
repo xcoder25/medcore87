@@ -535,12 +535,14 @@ export const ReceptionDeskHome: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* KPI row */}
+      {/* KPI row — single horizontal line */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
-          gap: 12,
+          gridTemplateColumns: `repeat(${kpi.length}, minmax(0, 1fr))`,
+          gap: 10,
+          alignItems: 'stretch',
+          width: '100%',
         }}
       >
         {kpi.map((k) => {
@@ -551,10 +553,12 @@ export const ReceptionDeskHome: React.FC<Props> = ({
               className="mc-kpi-card"
               style={{
                 background: '#fff',
-                borderRadius: 16,
+                borderRadius: 14,
                 border: `1px solid ${C.border}`,
-                padding: '14px 16px',
+                padding: '12px 12px',
                 boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+                minWidth: 0,
+                overflow: 'hidden',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
