@@ -20,6 +20,7 @@ import { ComplianceAuditLogs } from '../components/compliance/ComplianceAuditLog
 import { AICommandInsights } from '../components/ai-insights/AICommandInsights';
 import { CashierRevenue } from '../components/cashier/CashierRevenue';
 import { PosPaymentDesk } from '../components/cashier/PosPaymentDesk';
+import { AccountingWorkspace } from '../components/dashboards/AccountingWorkspace';
 import { FrontDeskSettings } from '../components/reception/FrontDeskSettings';
 import { FacilityOnboarding } from '../components/facility/FacilityOnboarding';
 import { AuthIdentity } from '../components/auth/AuthIdentity';
@@ -428,21 +429,18 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'accountant':
       return [
         {
-          label: 'Revenue & Finance Desk',
+          label: 'Accounting desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Finance desk', badge: 'Live' },
-            { key: 'cashier', icon: CreditCard, label: 'Cashier Shift Tills & POS', badge: 'POS' },
-            { key: 'billing', icon: CreditCard, label: 'Inpatient / Outpatient Billing', badge: 'Bill' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Accounts home', badge: 'Live' },
+            { key: 'cashier', icon: CreditCard, label: 'Collect payment', badge: 'POS' },
+            { key: 'billing', icon: CreditCard, label: 'Billing office', badge: 'Bill' },
           ],
         },
         {
-          label: 'Claims & Financial Ledger',
+          label: 'Claims & ledger',
           items: [
-            { key: 'claims', icon: ShieldCheck, label: 'Insurance & AKSHIA Claims', badge: 'HMO' },
-            { key: 'revenue-cycle', icon: BarChart3, label: 'Revenue Cycle & Accounting' },
-            { key: 'procurement', icon: Package, label: 'Procurement & Clinical Payroll' },
-            { key: 'patient-card', icon: FileText, label: 'NHIA / Insurance Eligibility' },
-            { key: 'command', icon: Activity, label: 'Hospital Operations Census' },
+            { key: 'claims', icon: ShieldCheck, label: 'Insurance & NHIS claims', badge: 'HMO' },
+            { key: 'revenue-cycle', icon: BarChart3, label: 'Revenue cycle' },
           ],
         },
       ];
@@ -476,17 +474,13 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'patient-flow', icon: Activity, label: 'Check-in & queue' },
             { key: 'patient-card', icon: FileText, label: 'Register / Find patient' },
             { key: 'appointments', icon: Calendar, label: 'Appointments' },
-            { key: 'cashier', icon: CreditCard, label: 'Payments' },
-            { key: 'patient-360', icon: Users, label: 'Patient 360°' },
-            { key: 'clinical-ux', icon: Stethoscope, label: 'Clinical workspace' },
-            { key: 'patient-card', icon: FileText, label: 'Patient records' },
+            { key: 'patient-360', icon: Users, label: 'Patient folder' },
           ],
         },
         {
-          label: 'Billing & finance',
+          label: 'After payment',
           items: [
-            { key: 'cashier', icon: CreditCard, label: 'Cashier / POS' },
-            { key: 'billing', icon: CreditCard, label: 'Billing office' },
+            { key: 'patient-flow', icon: Activity, label: 'Continue with receipt' },
           ],
         },
         {
@@ -706,7 +700,7 @@ const ROLE_THEMES: Record<string, RoleThemeConfig> = {
     gradient: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)',
     activeBg: 'linear-gradient(90deg, rgba(217, 119, 6, 0.28) 0%, rgba(245, 158, 11, 0.12) 100%)',
     icon: CreditCard,
-    workspaceTitle: 'Cashier Shift Tills & Billing',
+    workspaceTitle: 'Accounts · Cashier & Billing',
   },
   records: {
     label: 'Health Records & Triage',
@@ -2116,7 +2110,25 @@ const handleLockScreen = () => {
             {moduleLoading ? (
               <ModulePageLoader label="Opening workspace…" />
             ) : isModulePermitted(activeModule) ? (
-              activeModule === 'cashier' && userSession ? (
+              activeModule === 'dashboard' && userSession && (userSession.roleKey === 'accountant' || userSession.roleKey === 'cashier') ? (
+                <AccountingWorkspace
+                  session={userSession}
+                  onNavigate={(k) => handleModuleChange(k as ModuleKey)}
+                  initialView="home"
+                />
+              ) : activeModule === 'cashier' && userSession && (userSession.roleKey === 'accountant' || userSession.roleKey === 'cashier') ? (
+                <AccountingWorkspace
+                  session={userSession}
+                  onNavigate={(k) => handleModuleChange(k as ModuleKey)}
+                  initialView="payment"
+                />
+              ) : activeModule === 'billing' && userSession && (userSession.roleKey === 'accountant' || userSession.roleKey === 'cashier') ? (
+                <AccountingWorkspace
+                  session={userSession}
+                  onNavigate={(k) => handleModuleChange(k as ModuleKey)}
+                  initialView="billing"
+                />
+              ) : activeModule === 'cashier' && userSession ? (
                 <PosPaymentDesk session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} />
               ) : activeModule === 'dashboard' && userSession && isReceptionRole(userSession.roleKey, userSession.role, userSession.title, userSession.badgeId) ? (
                 <ReceptionWorkspace session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} initialView="home" />

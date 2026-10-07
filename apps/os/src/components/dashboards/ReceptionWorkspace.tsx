@@ -48,6 +48,12 @@ import {
   verifyInsurance,
 } from '../../lib/receptionConstants';
 import { emitLiveAction } from '../../lib/liveActions';
+import {
+  sendPaymentRequestToAccounts,
+  DEFAULT_REGISTRATION_FEE_NGN,
+  listAccountsRequests,
+  subscribeAccountsRequests,
+} from '../../lib/frontDeskAccountsBridge';
 import { printQueueTicket, printPaymentReceipt } from '../../lib/printService';
 import { appendAudit } from '../../lib/auditLogStore';
 import { sendPatientAlert } from '../../lib/integrations/gateways';
@@ -409,7 +415,32 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     setInsVerify(null);
     stopCam();
     emitLiveAction(`Patient registered · ${patient.hospitalNumber}`, { module: 'reception' });
-    flash(`Registered ${fullName(patient)} · ${patient.hospitalNumber}`);
+
+    // Digital handoff → Accounts: registration / folder fee for collection
+    const fee =
+      patient.category === 'NHIA' || patient.insuranceProvider
+        ? Math.round(DEFAULT_REGISTRATION_FEE_NGN * 0.5)
+        : DEFAULT_REGISTRATION_FEE_NGN;
+    try {
+      const req = sendPaymentRequestToAccounts({
+        facilityId,
+        facilityName,
+        patientId: patient.id,
+        hospitalNumber: patient.hospitalNumber,
+        patientName: fullName(patient),
+        amountNgn: fee,
+        purpose: 'New folder · Registration fee',
+        source: 'registration',
+        sentBy: session.name || 'Reception',
+        sentByBadge: session.badgeId,
+        note: 'Patient to pay at Accounts, then return to front desk with receipt',
+      });
+      flash(
+        `Folder opened · ${patient.hospitalNumber}. Invoice ₦${fee.toLocaleString()} sent to Accounts (${req.invoiceNumber}). Patient should pay, then return with receipt.`
+      );
+    } catch {
+      flash(`Registered ${fullName(patient)} · ${patient.hospitalNumber}`);
+    }
   };
 
   const notifyDoctorAssignment = (visit: ReceptionVisit, patientLabel: string) => {

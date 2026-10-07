@@ -39,6 +39,7 @@ import {
 } from '../../lib/patientBillingStore';
 import { verifyInsurance } from '../../lib/receptionConstants';
 import { printPaymentReceipt } from '../../lib/printService';
+import { syncAccountsRequestsForPatientPayment } from '../../lib/frontDeskAccountsBridge';
 
 const C = {
   blue: '#0284C7',
@@ -255,6 +256,15 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate }) => {
       }
     }
     setLastReceipt(pay);
+    try {
+      syncAccountsRequestsForPatientPayment(facilityId, patient.id, {
+        reference: pay.reference,
+        via: method === 'cash' ? 'cash' : String(method),
+        paidBy: cashier,
+      });
+    } catch {
+      /* ignore */
+    }
     reload();
     emitLiveAction(`POS ${pay.reference} · ₦${amt}`, { module: 'cashier' });
     const bal = patientBalance(facilityId, patient.id);
