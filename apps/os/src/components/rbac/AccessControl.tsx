@@ -667,169 +667,162 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       {confirmInfo && (
         <div
           id="staff-create-confirm"
-          className="os-card"
+          role="dialog"
+          aria-modal="true"
           style={{
-            padding: 20,
-            border: '2px solid #16A34A',
-            background: 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 50%, #F0F9FF 100%)',
-            boxShadow: '0 12px 40px rgba(22, 163, 74, 0.15)',
-            order: -1,
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            background: 'rgba(15, 23, 42, 0.55)',
+            backdropFilter: 'blur(4px)',
           }}
+          onClick={() => setConfirmInfo(null)}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#047857', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <CheckCircle2 size={20} /> Account created successfully
-              </div>
-              <div style={{ marginTop: 12, fontSize: '0.88rem', color: '#0F172A', lineHeight: 1.7 }}>
-                <div><strong>Name:</strong> {confirmInfo.name}</div>
-                <div><strong>Role:</strong> {confirmInfo.role} <span style={{ color: '#64748B' }}>({confirmInfo.roleKey})</span></div>
-                <div><strong>Department:</strong> {confirmInfo.department}</div>
-                <div><strong>Clearance:</strong> {confirmInfo.clearanceLabel}</div>
-                <div><strong>Hospital:</strong> {confirmInfo.facilityName}</div>
-                <div style={{ marginTop: 8, padding: '10px 12px', background: '#fff', borderRadius: 10, border: '1px solid #BBF7D0' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#047857', marginBottom: 4 }}>SIGN-IN DETAILS — share privately</div>
-                  <div>
-                    <strong>Staff ID / Badge:</strong>{' '}
-                    <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 800, color: '#0052D4', fontSize: '1rem' }}>
-                      {confirmInfo.badgeId}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => { try { void navigator.clipboard.writeText(confirmInfo.badgeId); } catch { /* */ } }}
-                      style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, border: '1px solid #CBD5E1', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', background: '#F8FAFC' }}
-                    >
-                      Copy
-                    </button>
-                  </div>
-                  <div style={{ marginTop: 4 }}>
-                    <strong>PIN:</strong>{' '}
-                    <code style={{ fontWeight: 800, fontSize: '1.05rem' }}>{confirmInfo.pin}</code>
-                    <button
-                      type="button"
-                      onClick={() => { try { void navigator.clipboard.writeText(confirmInfo.pin); } catch { /* */ } }}
-                      style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, border: '1px solid #CBD5E1', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', background: '#F8FAFC' }}
-                    >
-                      Copy
-                    </button>
-                  </div>
-                  {confirmInfo.email ? <div style={{ marginTop: 4 }}><strong>Email:</strong> {confirmInfo.email}</div> : null}
-                </div>
-                <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12 }}>
-                  <span style={{ padding: '4px 10px', borderRadius: 999, background: confirmInfo.firebaseAuth === 'ok' ? '#D1FAE5' : '#FEF3C7', color: confirmInfo.firebaseAuth === 'ok' ? '#047857' : '#B45309', fontWeight: 700 }}>
-                    Badge Auth · {confirmInfo.firebaseAuth}
-                  </span>
-                  <span style={{ padding: '4px 10px', borderRadius: 999, background: confirmInfo.firestore === 'ok' ? '#D1FAE5' : '#FEE2E2', color: confirmInfo.firestore === 'ok' ? '#047857' : '#B91C1C', fontWeight: 700 }}>
-                    Cloud profile · {confirmInfo.firestore}
-                  </span>
-                  {confirmInfo.email ? (
-                    <span style={{ padding: '4px 10px', borderRadius: 999, background: confirmInfo.emailAuth === 'ok' ? '#D1FAE5' : '#FEF3C7', color: confirmInfo.emailAuth === 'ok' ? '#047857' : '#B45309', fontWeight: 700 }}>
-                      Email Auth · {confirmInfo.emailAuth}
-                    </span>
-                  ) : null}
-                </div>
-                {confirmInfo.firestore !== 'ok' && (
-                  <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', fontSize: 12, fontWeight: 600 }}>
-                    Cloud profile did not save. This staff may open the wrong desk on another device. Check network, then create again or retry from Staff Access.
-                  </div>
-                )}
-              </div>
+          <div
+            className="os-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              padding: 0,
+              overflow: 'hidden',
+              borderRadius: 16,
+              border: '1px solid #E2E8F0',
+              boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)',
+              background: '#FFFFFF',
+            }}
+          >
+            <div
+              style={{
+                padding: '18px 20px 14px',
+                background: 'linear-gradient(135deg, #ECFDF5, #F0F9FF)',
+                borderBottom: '1px solid #E2E8F0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+              }}
+            >
               <div
                 style={{
-                  marginTop: 14,
-                  padding: '12px 14px',
-                  borderRadius: 12,
-                  background: '#FFFFFF',
-                  border: '1px solid #BBF7D0',
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: '#16A34A',
                   display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                  fontSize: '0.84rem',
-                  color: '#0F172A',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16A34A', marginTop: 5, flexShrink: 0 }} />
-                  <div>
-                    <strong style={{ color: '#047857' }}>Ready to sign in</strong>
-                    <div style={{ color: '#64748B', marginTop: 2, lineHeight: 1.45 }}>
-                      Staff can log in with <strong>Staff ID No.</strong> using the badge and PIN above.
-                      Share these details with them privately.
-                    </div>
-                  </div>
-                </div>
-                {confirmInfo.email ? (
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: '50%',
-                        background: confirmInfo.emailAuth === 'ok' ? '#16A34A' : '#F59E0B',
-                        marginTop: 5,
-                        flexShrink: 0,
-                      }}
-                    />
-                    <div>
-                      <strong style={{ color: confirmInfo.emailAuth === 'ok' ? '#047857' : '#B45309' }}>
-                        {confirmInfo.emailAuth === 'ok' ? 'Email sign-in ready' : 'Email sign-in optional'}
-                      </strong>
-                      <div style={{ color: '#64748B', marginTop: 2, lineHeight: 1.45 }}>
-                        {confirmInfo.emailAuth === 'ok'
-                          ? `They can also sign in with ${confirmInfo.email} and the same PIN.`
-                          : 'Badge + PIN works now. Email login can be set up later from Staff Access if needed.'}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
+                <CheckCircle2 size={20} color="#fff" />
               </div>
-              <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                {!confirmInfo.listed ? (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0F172A' }}>Account created</div>
+                <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>{confirmInfo.name}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmInfo(null)}
+                aria-label="Close"
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  fontSize: 20,
+                  lineHeight: 1,
+                  color: '#94A3B8',
+                  padding: 4,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: '16px 20px 20px' }}>
+              <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.55, marginBottom: 12 }}>
+                <div><span style={{ color: '#64748B' }}>Role</span> · {confirmInfo.role}</div>
+                <div><span style={{ color: '#64748B' }}>Dept</span> · {confirmInfo.department}</div>
+              </div>
+
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 12,
+                  background: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  marginBottom: 12,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', letterSpacing: '0.04em', marginBottom: 8 }}>
+                  SIGN-IN
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#94A3B8' }}>Badge</div>
+                    <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 800, color: '#0052D4', fontSize: 15 }}>
+                      {confirmInfo.badgeId}
+                    </div>
+                  </div>
                   <button
                     type="button"
-                    className="os-primary-btn"
-                    onClick={() => {
-                      const row = confirmInfo.accessRow;
-                      const nextAccess = [row, ...getAccessRecords().filter((r) => r.id !== row.id)];
-                      setAccessRecords(nextAccess);
-                      setRecords(nextAccess);
-                      setSelectedId(row.id);
-                      setConfirmInfo({ ...confirmInfo, listed: true });
-                      pushActivity(`Listed in access control · ${row.name} · ${row.id}`);
-                    }}
+                    onClick={() => { try { void navigator.clipboard.writeText(confirmInfo.badgeId); } catch { /* */ } }}
+                    style={{ fontSize: 11, fontWeight: 700, border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', background: '#fff' }}
                   >
-                    <CheckCircle2 size={16} /> Confirm — add to staff list
+                    Copy
                   </button>
-                ) : (
-                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#047857' }}>
-                    ✓ Added to staff list below
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#94A3B8' }}>PIN</div>
+                    <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 800, fontSize: 15 }}>{confirmInfo.pin}</div>
                   </div>
-                )}
-                <button
-                  type="button"
-                  className="os-ghost-btn"
-                  style={{ fontSize: 12 }}
-                  onClick={() => {
-                    // If never confirmed list, still persist access so badge login works from access store
-                    if (confirmInfo && !confirmInfo.listed) {
-                      const row = confirmInfo.accessRow;
-                      const nextAccess = [row, ...getAccessRecords().filter((r) => r.id !== row.id)];
-                      setAccessRecords(nextAccess);
-                      setRecords(nextAccess);
-                    }
-                    setConfirmInfo(null);
-                  }}
-                >
-                  {confirmInfo.listed ? 'Close' : 'Close (also add to list)'}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => { try { void navigator.clipboard.writeText(confirmInfo.pin); } catch { /* */ } }}
+                    style={{ fontSize: 11, fontWeight: 700, border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', background: '#fff' }}
+                  >
+                    Copy
+                  </button>
+                </div>
+                {confirmInfo.email ? (
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#64748B' }}>Email · {confirmInfo.email}</div>
+                ) : null}
               </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: confirmInfo.firebaseAuth === 'ok' ? '#D1FAE5' : '#FEF3C7', color: confirmInfo.firebaseAuth === 'ok' ? '#047857' : '#B45309' }}>
+                  Auth {confirmInfo.firebaseAuth}
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: confirmInfo.firestore === 'ok' ? '#D1FAE5' : '#FEE2E2', color: confirmInfo.firestore === 'ok' ? '#047857' : '#B91C1C' }}>
+                  Cloud {confirmInfo.firestore}
+                </span>
+              </div>
+
+              {confirmInfo.firestore !== 'ok' && (
+                <div style={{ fontSize: 12, color: '#991B1B', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '8px 10px', marginBottom: 12 }}>
+                  Cloud profile did not save. Other devices may not see this staff until you retry online.
+                </div>
+              )}
+
+              {issued && (
+                <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'center' }}>
+                  <StaffIdCardView card={issued} compact />
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="os-primary-btn"
+                style={{ width: '100%', justifyContent: 'center' }}
+                onClick={() => setConfirmInfo(null)}
+              >
+                Done
+              </button>
             </div>
-            {issued && (
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748B', marginBottom: 8 }}>Staff ID card</div>
-                <StaffIdCardView card={issued} compact />
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -839,9 +832,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           display: 'grid',
           gridTemplateColumns: 'minmax(0, 1fr) minmax(260px, 320px)',
           gap: 16,
-          opacity: confirmInfo && !confirmInfo.listed ? 0.45 : 1,
-          pointerEvents: confirmInfo && !confirmInfo.listed ? 'none' : undefined,
-          transition: 'opacity 0.2s ease',
+          /* success is modal overlay — table stays normal */
         }}
       >
         <div className="os-table-wrap">
