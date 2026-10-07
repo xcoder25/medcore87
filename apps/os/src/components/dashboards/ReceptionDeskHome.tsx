@@ -4,8 +4,9 @@
  * Front Desk Operations home — matches MedCore reception design system mockup.
  */
 import { InBasketPanel } from '../clinical-core/InBasketPanel';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
+import { listStaffCards, isReceptionRole } from '../../lib/staffCardStore';
 import type { FacilityPatient } from '../../lib/patientRegistryStore';
 import type { ReceptionVisit, ReceptionAppointment, ReceptionDayStats } from '../../lib/receptionOpsStore';
 import {
@@ -83,6 +84,66 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   const facilityId = session.hospitalId || 'IGH-EKT';
   const [deptFilter, setDeptFilter] = useState('all');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [activeFrontDesk, setActiveFrontDesk] = useState(0);
+
+  const recountFrontDeskStaff = useCallback(() => {
+    try {
+      const cards = listStaffCards().filter((c) => {
+        const sameFac =
+          !c.facilityId ||
+          String(c.facilityId).toUpperCase() === String(facilityId).toUpperCase();
+        if (!sameFac) return false;
+        const status = String((c as { status?: string }).status || 'ACTIVE').toUpperCase();
+        if (status === 'SUSPENDED' || status === 'INACTIVE') return false;
+        return isReceptionRole(c.roleKey, c.role, c.title, c.badgeId);
+      });
+      // Also count this session if reception (always at least current desk user when online)
+      let n = cards.length;
+      if (
+        n === 0 &&
+        isReceptionRole(session.roleKey, session.role, session.title, session.badgeId)
+      ) {
+        n = 1;
+      }
+      setActiveFrontDesk(n);
+    } catch {
+      setActiveFrontDesk(
+        isReceptionRole(session.roleKey, session.role, session.title, session.badgeId) ? 1 : 0
+      );
+    }
+  }, [facilityId, session.roleKey, session.role, session.title, session.badgeId]);
+
+  useEffect(() => {
+    recountFrontDeskStaff();
+    const bump = () => recountFrontDeskStaff();
+    window.addEventListener('medcore-staff-cards-updated', bump);
+    window.addEventListener('medcore-staff-registry-updated', bump);
+    window.addEventListener('medcore-admin-sync', bump);
+    window.addEventListener('storage', bump);
+
+    let unsub = () => {};
+    void (async () => {
+      try {
+        const { firestoreSubscribeStaffCollection } = await import('../../lib/firebase');
+        unsub = firestoreSubscribeStaffCollection(facilityId, () => {
+          // Cloud staff changes — recount from local mirror + any remote rows
+          recountFrontDeskStaff();
+        });
+      } catch {
+        /* offline */
+      }
+    })();
+
+    const tick = window.setInterval(bump, 15000);
+    return () => {
+      window.removeEventListener('medcore-staff-cards-updated', bump);
+      window.removeEventListener('medcore-staff-registry-updated', bump);
+      window.removeEventListener('medcore-admin-sync', bump);
+      window.removeEventListener('storage', bump);
+      unsub();
+      window.clearInterval(tick);
+    };
+  }, [facilityId, recountFrontDeskStaff]);
 
   const liveUpdate = async (id: string, status: ReceptionVisit['status']) => {
     setBusyId(id);
@@ -188,9 +249,9 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     },
     {
       label: 'Active Staff',
-      value: 1,
+      value: activeFrontDesk,
       sub: 'at front desk',
-      trend: '',
+      trend: 'Live',
       up: true,
       icon: Users,
       tint: '#F0F9FF',
