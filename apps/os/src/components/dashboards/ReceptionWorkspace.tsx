@@ -488,11 +488,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     const p = posPatient || selected;
     if (!p) return;
     const method =
-      result.channel === 'card'
+      result.channel === 'card' || result.channel === 'pos'
         ? ('card' as const)
-        : result.channel === 'bank_transfer' || result.channel === 'bank'
+        : result.channel === 'bank_transfer' || result.channel === 'bank' || result.channel === 'ussd'
           ? ('transfer' as const)
-          : ('pos' as const);
+          : posMethod === 'card'
+            ? ('card' as const)
+            : ('transfer' as const);
     const activeVisit = visits.find(
       (v) => v.patientId === p.id && v.status !== 'completed' && v.status !== 'cancelled'
     );
@@ -545,6 +547,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   };
 
   const doPayment = () => {
+    // Digital methods must go through Paystack verify — never manual PAID
+    if (posMethod === 'card' || posMethod === 'transfer') {
+      flash('Use Paystack Terminal or Transfer flow — payment is marked PAID only after verification');
+      setPaystackOpen(true);
+      return;
+    }
     const p = posPatient || selected;
     if (!p) {
       flash('Select a patient for payment');
@@ -2097,6 +2105,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 facilityName: session.facility || session.hospitalId || 'Hospital',
                 facilityId,
                 cashierName: session.name,
+                mode: posMethod === 'card' ? 'card_terminal' : 'transfer',
               }
             : null
         }

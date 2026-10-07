@@ -224,7 +224,7 @@ export const FrontDeskSettings: React.FC<Props> = ({ session }) => {
             <Toggle on={draft.promptCopayOnCheckIn} onChange={(v) => patch({ promptCopayOnCheckIn: v })} label="Prompt co-pay on check-in" />
             <Toggle on={draft.promptPastDueBalance} onChange={(v) => patch({ promptPastDueBalance: v })} label="Prompt past-due balance" />
             <Toggle on={draft.promptDeductibleEstimate} onChange={(v) => patch({ promptDeductibleEstimate: v })} label="Prompt deductible estimate" />
-            <Field label="POS TERMINAL ID"><input value={draft.posTerminalId} onChange={(e) => patch({ posTerminalId: e.target.value })} style={inputStyle} placeholder="POS-FRONT-01" /></Field>
+            <Field label="PAYSTACK TERMINAL DEVICE ID"><input value={draft.posTerminalId} onChange={(e) => patch({ posTerminalId: e.target.value })} style={inputStyle} placeholder="Paystack device_id for Card — Terminal" /></Field>
             <Field label="RECEIPT HEADER"><input value={draft.receiptHeader} onChange={(e) => patch({ receiptHeader: e.target.value })} style={inputStyle} /></Field>
             <Field label="RECEIPT FOOTER"><input value={draft.receiptFooter} onChange={(e) => patch({ receiptFooter: e.target.value })} style={inputStyle} /></Field>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
