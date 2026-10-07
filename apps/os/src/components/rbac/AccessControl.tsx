@@ -22,6 +22,7 @@ import {
   getStaffCard,
   deleteStaffMember,
   defaultPermissionsForRole,
+  purgeNonAdminStaffForFacility,
 } from '../../lib/staffCardStore';
 import {
   isEmailCredential,
@@ -124,12 +125,37 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   }, []);
 
   useEffect(() => {
+    // One-time: keep only admin accounts for Immanuel General Hospital, Eket
+    try {
+      if (facilityId === 'IGH-EKT' && typeof sessionStorage !== 'undefined') {
+        const key = 'medcore_purged_nonadmin_IGH-EKT';
+        if (!sessionStorage.getItem(key)) {
+          const removed = purgeNonAdminStaffForFacility('IGH-EKT');
+          sessionStorage.setItem(key, '1');
+          if (removed.length) {
+            void (async () => {
+              try {
+                const { firestoreDeleteStaffMember, firestorePushStaffDirectory } = await import('../../lib/firebase');
+                for (const bid of removed) {
+                  await firestoreDeleteStaffMember('IGH-EKT', bid);
+                }
+                await firestorePushStaffDirectory('IGH-EKT', {
+                  staffCards: listStaffCards(),
+                  staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
+                });
+              } catch { /* ignore */ }
+            })();
+            pushActivity(`Cleared ${removed.length} non-admin staff from Eket (admin kept)`);
+          }
+        }
+      }
+    } catch { /* ignore */ }
     reload();
     return subscribeAdminSync(() => {
       // Skip live reload while creating or while confirmation awaits "add to list"
       // (prevents row appearing before confirmation)
     });
-  }, [reload]);
+  }, [reload, facilityId]);
 
   // Refresh list only when not in confirmation-pending state
   useEffect(() => {
