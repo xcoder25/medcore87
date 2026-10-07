@@ -72,9 +72,11 @@ const PURPOSES = [
 interface Props {
   session?: UserSession;
   onNavigate?: (key: string) => void;
+  /** When true (Accounting desk), hide duplicate hero — parent provides chrome */
+  embedded?: boolean;
 }
 
-export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate }) => {
+export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded }) => {
   const facilityId = session?.hospitalId || 'IGH-EKT';
   const facilityName = session?.facility || 'Hospital';
   const cashier = session?.name || 'Cashier';
@@ -343,7 +345,7 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate }) => {
 
   return (
     <>
-    <div className="pos-desk" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 28, maxWidth: 1280, margin: '0 auto' }}>
+    <div className="pos-desk" style={{ display: 'flex', flexDirection: 'column', gap: embedded ? 12 : 16, padding: embedded ? '0 0 20px' : undefined, paddingBottom: 28, maxWidth: 1280, margin: '0 auto', background: embedded ? '#F8FAFC' : undefined }}>
       {toast && (
         <div className="os-toast-in" style={{
           position: 'fixed', bottom: 28, right: 28, zIndex: 120,
@@ -354,7 +356,8 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate }) => {
         </div>
       )}
 
-      {/* Hero */}
+      {/* Hero — full when standalone; compact bar when embedded in Accounting desk */}
+      {!embedded ? (
       <div style={{
         borderRadius: 20, overflow: 'hidden', color: '#fff', position: 'relative',
         background: 'linear-gradient(120deg, #0B1220 0%, #0C4A6E 42%, #0F766E 100%)',
@@ -366,10 +369,10 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate }) => {
             <Wallet size={14} /> POS · PAYMENT DESK
           </div>
           <h1 style={{ margin: '8px 0 0', fontSize: '1.45rem', fontWeight: 800, letterSpacing: '-0.03em' }}>
-            Front desk collections
+            Collect payment
           </h1>
           <p style={{ margin: '8px 0 0', fontSize: 13, opacity: 0.9, lineHeight: 1.45 }}>
-            {facilityName} · {cashier} · AI suggests amount & method — you confirm every charge
+            {facilityName} · {cashier} · confirm amount & method, then record
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
             <span style={{
@@ -378,11 +381,6 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate }) => {
             }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#34D399' }} /> Shift live
             </span>
-            <span style={{
-              padding: '5px 12px', borderRadius: 999, background: 'rgba(255,255,255,0.12)', fontSize: 12, fontWeight: 600,
-            }}>
-              Human confirm required
-            </span>
           </div>
         </div>
         <button type="button" onClick={reload} style={{
@@ -390,9 +388,25 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate }) => {
           padding: '11px 16px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.3)',
           background: 'rgba(255,255,255,0.12)', color: '#fff', fontWeight: 700, cursor: 'pointer',
         }}>
-          <RefreshCw size={15} /> Refresh desk
+          <RefreshCw size={15} /> Refresh
         </button>
       </div>
+      ) : (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+        padding: '12px 16px', background: '#fff', borderBottom: `1px solid ${C.border}`,
+      }}>
+        <div style={{ fontSize: 13, color: C.muted }}>
+          <strong style={{ color: C.navy }}>{cashier}</strong> · {facilityName} · shift live
+        </div>
+        <button type="button" onClick={reload} style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10,
+          border: `1px solid ${C.border}`, background: '#F8FAFC', fontWeight: 700, fontSize: 12, cursor: 'pointer', color: C.navy,
+        }}>
+          <RefreshCw size={14} /> Refresh
+        </button>
+      </div>
+      )}
 
       {/* KPIs */}
       <div className="os-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>

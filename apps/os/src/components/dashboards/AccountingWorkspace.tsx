@@ -237,21 +237,41 @@ export const AccountingWorkspace: React.FC<Props> = ({
             </span>
           </div>
         </div>
+        {/* Hero photo — same assets as Front Desk */}
         <div
+          aria-hidden
           style={{
             position: 'absolute',
             right: 0,
             top: 0,
             bottom: 0,
-            width: '48%',
-            backgroundImage: 'url(/hosos-clean.png), url(/auth-hero.png)',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            opacity: 0.35,
-            maskImage: 'linear-gradient(90deg, transparent, black 30%)',
-            WebkitMaskImage: 'linear-gradient(90deg, transparent, black 30%)',
+            width: '50%',
+            zIndex: 0,
+            pointerEvents: 'none',
+            overflow: 'hidden',
           }}
-        />
+        >
+          <img
+            src="/hosos-clean.png"
+            alt=""
+            onError={(e) => {
+              const el = e.currentTarget;
+              if (!el.dataset.fallback) {
+                el.dataset.fallback = '1';
+                el.src = '/auth-hero.png';
+              }
+            }}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              objectPosition: 'center',
+              opacity: 0.42,
+              WebkitMaskImage: 'linear-gradient(90deg, transparent 0%, black 28%)',
+              maskImage: 'linear-gradient(90deg, transparent 0%, black 28%)',
+            }}
+          />
+        </div>
         <div
           style={{
             position: 'absolute',
@@ -569,23 +589,89 @@ export const AccountingWorkspace: React.FC<Props> = ({
       )}
 
       {view === 'payment' && (
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: 12,
+              padding: '16px 18px',
+              borderRadius: 16,
+              background: 'linear-gradient(135deg, #0B3A6E 0%, #0E7490 50%, #0D9488 100%)',
+              color: '#fff',
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.85, letterSpacing: '0.04em' }}>
+                COLLECT PAYMENT
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>
+                {selectedReq
+                  ? selectedReq.patientName
+                  : 'Search patient or pick from awaiting queue'}
+              </div>
+              <div style={{ fontSize: 13, opacity: 0.9, marginTop: 4 }}>
+                {selectedReq
+                  ? `${selectedReq.hospitalNumber} · ${selectedReq.purpose} · ₦${selectedReq.amountNgn.toLocaleString()}`
+                  : 'Cash · POS · Transfer · then issue receipt for front desk'}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setView('home')}
+              style={{
+                padding: '10px 16px',
+                borderRadius: 12,
+                border: '1px solid rgba(255,255,255,0.35)',
+                background: 'rgba(255,255,255,0.12)',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              ← Accounts home
+            </button>
+          </div>
           {selectedReq && (
             <div
               style={{
-                marginBottom: 12,
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 10,
+                alignItems: 'center',
                 padding: '12px 14px',
-                borderRadius: 12,
+                borderRadius: 14,
                 background: '#FFFBEB',
                 border: '1px solid #FDE68A',
                 fontSize: 13,
               }}
             >
-              <strong>Collecting for:</strong> {selectedReq.patientName} · {selectedReq.hospitalNumber} ·{' '}
-              ₦{selectedReq.amountNgn.toLocaleString()} ({selectedReq.purpose})
+              <span style={{ fontWeight: 800, color: '#92400E' }}>From front desk</span>
+              <span style={{ color: '#78350F' }}>
+                {selectedReq.invoiceNumber || selectedReq.id} · sent by {selectedReq.sentBy}
+              </span>
+              <span style={{ marginLeft: 'auto', fontWeight: 800, color: '#B45309', fontSize: 16 }}>
+                ₦{selectedReq.amountNgn.toLocaleString()}
+              </span>
             </div>
           )}
-          <PosPaymentDesk session={session} onNavigate={(k) => (k === 'dashboard' ? setView('home') : onNavigate?.(k))} />
+          <div
+            style={{
+              borderRadius: 18,
+              border: '1px solid #E8EEF5',
+              overflow: 'hidden',
+              background: '#F8FAFC',
+              boxShadow: '0 4px 24px rgba(15,23,42,0.06)',
+            }}
+          >
+            <PosPaymentDesk
+              session={session}
+              embedded
+              onNavigate={(k) => (k === 'dashboard' ? setView('home') : onNavigate?.(k))}
+            />
+          </div>
         </div>
       )}
 
