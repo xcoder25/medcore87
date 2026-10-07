@@ -169,7 +169,8 @@ export async function firebaseEnsureBadgeAccount(
           await signOutSecondary(secAuth);
           return { email, uid: cred.user.uid, created: false };
         } catch {
-          throw err;
+          // Account exists (possibly different PIN) — enrol still OK; badge login works
+          return { email: email.trim(), created: false };
         }
       }
       throw err;
@@ -226,7 +227,8 @@ export async function firebaseEnsureEmailAccount(
           await signOutSecondary(secAuth);
           return { email: email.trim(), uid: cred.user.uid, created: false };
         } catch {
-          throw err;
+          // Account exists (possibly different PIN) — enrol still OK; badge login works
+          return { email: email.trim(), created: false };
         }
       }
       throw err;
@@ -260,6 +262,24 @@ export async function firebaseSignInWithBadge(
   }
 }
 
+/** Firestore rejects `undefined` field values — strip them (deep) before setDoc. */
+export function stripUndefinedDeep<T>(value: T): T {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => stripUndefinedDeep(v))
+      .filter((v) => v !== undefined) as T;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (v === undefined) continue;
+    out[k] = stripUndefinedDeep(v);
+  }
+  return out as T;
+}
+
 /** Path: facilities/{facilityId}/store/shared */
 export function facilityStoreRef(facilityId: string) {
   const id = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
@@ -275,10 +295,10 @@ export async function firestoreWriteFacility(
     const ref = facilityStoreRef(facilityId);
     await setDoc(
       ref,
-      {
+      stripUndefinedDeep({
         ...partial,
         updatedAt: new Date().toISOString(),
-      },
+      }),
       { merge: true }
     );
     return true;
@@ -365,12 +385,12 @@ export async function firestoreUpsertStaffMember(
   try {
     await enableFirestoreOffline();
     const badgeId = String(staff.badgeId);
-    const payload = {
+    const payload = stripUndefinedDeep({
       ...staff,
       badgeId,
       facilityId,
       updatedAt: new Date().toISOString(),
-    };
+    });
     await setDoc(staffMemberRef(facilityId, badgeId), payload, { merge: true });
     // Email index so any workstation can resolve work-email → badge
     const email = String(staff.email || staff.workEmail || '')
@@ -470,7 +490,7 @@ export async function ensureStaffCloudIdentity(opts: {
       const ok = await firestoreUpsertStaffMember(opts.facilityId, {
         ...opts.profile,
         badgeId: opts.badgeId,
-        email: mail || undefined,
+        ...(mail ? { email: mail } : {}),
         pin,
         authEmail: badgeAuthEmail(opts.badgeId),
         status: 'active',
@@ -570,10 +590,10 @@ export async function firestoreRecordLogin(
     await enableFirestoreOffline();
     await setDoc(
       staffMemberRef(facilityId, badgeId),
-      {
+      stripUndefinedDeep({
         lastLoginAt: new Date().toISOString(),
         lastLoginMeta: meta || {},
-      },
+      }),
       { merge: true }
     );
   } catch (e) {
