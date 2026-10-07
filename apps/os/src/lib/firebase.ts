@@ -459,32 +459,9 @@ export async function ensureStaffCloudIdentity(opts: {
   let badgeAuth = false;
   let emailAuth = false;
   let firestoreOk = false;
-
-  for (let attempt = 0; attempt < 3 && !badgeAuth; attempt++) {
-    try {
-      const res = await firebaseEnsureBadgeAccount(opts.badgeId, pin);
-      badgeAuth = Boolean(res?.email);
-    } catch (e) {
-      console.warn('[staff-cloud] badge auth attempt', attempt + 1, e);
-      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-    }
-  }
-
   const mail = (opts.email || '').trim().toLowerCase();
-  if (mail && isEmailCredential(mail)) {
-    for (let attempt = 0; attempt < 3 && !emailAuth; attempt++) {
-      try {
-        const res = await firebaseEnsureEmailAccount(mail, pin);
-        emailAuth = Boolean(res?.email);
-      } catch (e) {
-        console.warn('[staff-cloud] email auth attempt', attempt + 1, e);
-        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-      }
-    }
-  } else {
-    emailAuth = true; // not requested
-  }
 
+  // 1) Firestore profile FIRST — multi-workstation login depends on this, not Auth
   for (let attempt = 0; attempt < 3 && !firestoreOk; attempt++) {
     try {
       const ok = await firestoreUpsertStaffMember(opts.facilityId, {
@@ -494,10 +471,10 @@ export async function ensureStaffCloudIdentity(opts: {
         pin,
         authEmail: badgeAuthEmail(opts.badgeId),
         status: 'active',
+        roleKey: opts.profile.roleKey || opts.profile.role || '',
       });
       firestoreOk = ok;
       if (ok) {
-        // directory push is best-effort
         try {
           const cardsRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('medcore_staff_id_cards') : null;
           const regRaw =
@@ -515,8 +492,34 @@ export async function ensureStaffCloudIdentity(opts: {
       }
     } catch (e) {
       console.warn('[staff-cloud] firestore attempt', attempt + 1, e);
-      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
     }
+  }
+
+  // 2) Badge Auth (optional for desk routing; needed for Firebase-gated rules)
+  for (let attempt = 0; attempt < 2 && !badgeAuth; attempt++) {
+    try {
+      const res = await firebaseEnsureBadgeAccount(opts.badgeId, pin);
+      badgeAuth = Boolean(res?.email);
+    } catch (e) {
+      console.warn('[staff-cloud] badge auth attempt', attempt + 1, e);
+      await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+    }
+  }
+
+  // 3) Optional email Auth
+  if (mail && isEmailCredential(mail)) {
+    for (let attempt = 0; attempt < 2 && !emailAuth; attempt++) {
+      try {
+        const res = await firebaseEnsureEmailAccount(mail, pin);
+        emailAuth = Boolean(res?.email);
+      } catch (e) {
+        console.warn('[staff-cloud] email auth attempt', attempt + 1, e);
+        await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+      }
+    }
+  } else {
+    emailAuth = true;
   }
 
   return { badgeAuth, emailAuth: mail ? emailAuth : true, firestore: firestoreOk };
