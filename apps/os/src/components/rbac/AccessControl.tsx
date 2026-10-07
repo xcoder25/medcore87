@@ -297,16 +297,18 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         firebaseAuth = cloud.badgeAuth ? 'ok' : 'fail';
         emailAuth = mail ? (cloud.emailAuth ? 'ok' : 'fail') : 'skipped';
         firestoreStatus = cloud.firestore ? 'ok' : 'fail';
+        const badgeIdSnap = card.badgeId;
+        const permsSnap = accessRow.permissions;
         // Background retry if anything failed (network blip)
         if (!cloud.badgeAuth || (mail && !cloud.emailAuth) || !cloud.firestore) {
           window.setTimeout(() => {
             void ensureStaffCloudIdentity({
               facilityId,
-              badgeId: card.badgeId,
+              badgeId: badgeIdSnap,
               pin: pinNorm,
               email: mail || undefined,
               profile: {
-                badgeId: card.badgeId,
+                badgeId: badgeIdSnap,
                 name: nameSnap,
                 role: roleMeta.role,
                 roleKey: roleMeta.roleKey,
@@ -316,9 +318,9 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                 hospitalName: facilityName,
                 clearanceLevel: roleMeta.clearanceLevel,
                 clearanceLabel: roleMeta.clearanceLabel,
-                permissions: accessRow?.permissions || [],
+                permissions: permsSnap,
                 email: mail || undefined,
-                authEmail: badgeAuthEmail(card.badgeId),
+                authEmail: badgeAuthEmail(badgeIdSnap),
                 status: 'active',
               },
             });
