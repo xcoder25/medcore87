@@ -1,14 +1,15 @@
 /**
  * Staff presence — who is currently logged in (Facebook-style "active").
- * Heartbeat while session is open; offline on logout / close / timeout.
+ * Each user writes facilities/{fid}/presence/{badgeId} so multi-PC never clobbers.
+ * Live onSnapshot → local map → KPI without reload.
  */
-import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
+import { publishFacilityData } from './roleSyncBus';
 
 export const STAFF_PRESENCE_KEY = 'medcore_os_staff_presence_v1';
 export const STAFF_PRESENCE_EVENT = 'medcore-staff-presence';
 /** Consider online if heartbeat within this window */
-export const PRESENCE_TTL_MS = 90_000;
-const HEARTBEAT_MS = 25_000;
+export const PRESENCE_TTL_MS = 75_000;
+const HEARTBEAT_MS = 12_000;
 
 export type StaffPresence = {
   badgeId: string;
@@ -16,7 +17,7 @@ export type StaffPresence = {
   name: string;
   roleKey: string;
   role?: string;
-  lastSeen: number; // epoch ms
+  lastSeen: number;
   online: boolean;
 };
 
@@ -38,7 +39,6 @@ function readAll(): PresenceMap {
   }
 }
 
-/** Merge presence maps — keep newer lastSeen per badge (multi-PC safe) */
 export function mergePresenceMaps(a: PresenceMap, b: PresenceMap): PresenceMap {
   const out: PresenceMap = { ...a };
   for (const [k, row] of Object.entries(b || {})) {
@@ -46,16 +46,6 @@ export function mergePresenceMaps(a: PresenceMap, b: PresenceMap): PresenceMap {
     if (!prev || (row.lastSeen || 0) >= (prev.lastSeen || 0)) {
       out[k] = row;
     }
-  }
-  return out;
-}
-
-function pruneStale(map: PresenceMap, now = Date.now()): PresenceMap {
-  const out: PresenceMap = {};
-  for (const [k, row] of Object.entries(map)) {
-    // Keep offline marks briefly; drop very old offline entries (> 1 day)
-    if (!row.online && now - (row.lastSeen || 0) > 24 * 60 * 60 * 1000) continue;
-    out[k] = row;
   }
   return out;
 }
@@ -83,7 +73,35 @@ function isFresh(p: StaffPresence, now = Date.now()) {
   return Boolean(p.online) && now - (p.lastSeen || 0) < PRESENCE_TTL_MS;
 }
 
-/** Mark current staff online + merge-publish so other logged-in users stay visible */
+function rowFromCloud(r: Record<string, unknown>): StaffPresence | null {
+  const badgeId = String(r.badgeId || r.id || '')
+    .toUpperCase()
+    .replace(/\s+/g, '');
+  if (!badgeId) return null;
+  return {
+    badgeId,
+    facilityId: String(r.facilityId || '').toUpperCase(),
+    name: String(r.name || badgeId),
+    roleKey: String(r.roleKey || ''),
+    role: r.role ? String(r.role) : undefined,
+    lastSeen: Number(r.lastSeen || 0),
+    online: r.online !== false,
+  };
+}
+
+/** Apply cloud presence rows into local map (realtime KPI) */
+export function applyCloudPresenceRows(rows: Record<string, unknown>[]): void {
+  const remote: PresenceMap = {};
+  for (const r of rows) {
+    const row = rowFromCloud(r);
+    if (!row) continue;
+    remote[mapKey(row.facilityId, row.badgeId)] = row;
+  }
+  const merged = mergePresenceMaps(readAll(), remote);
+  writeAll(merged);
+}
+
+/** Mark current staff online — per-user Firestore doc (no map clobber) */
 export function markStaffOnline(opts: {
   badgeId: string;
   facilityId: string;
@@ -104,36 +122,69 @@ export function markStaffOnline(opts: {
     lastSeen: Date.now(),
     online: true,
   };
-  const map = pruneStale(mergePresenceMaps(readAll(), { [k]: self }));
+  const map = mergePresenceMaps(readAll(), { [k]: self });
   map[k] = self;
   writeAll(map);
+
+  // Cloud: one doc per user
+  void (async () => {
+    try {
+      const { firestoreUpsertPresence } = await import('./firebase');
+      await firestoreUpsertPresence(fid, { ...self });
+    } catch {
+      /* offline */
+    }
+  })();
+
+  // Legacy shared-map publish (best-effort, peers still get collection snapshot)
   try {
-    // Cloud field is the whole map — always merge-publish latest local (already includes peers from snapshot)
     publishFacilityData(fid, STAFF_PRESENCE_KEY, map);
   } catch {
     /* ignore */
   }
 }
 
-/** Mark offline (logout / tab close) */
 export function markStaffOffline(badgeId: string, facilityId: string): void {
   const badge = String(badgeId || '').toUpperCase().replace(/\s+/g, '');
   const fid = String(facilityId || '').toUpperCase();
   if (!badge) return;
-  const map = readAll();
   const k = mapKey(fid, badge);
-  if (map[k]) {
-    map[k] = { ...map[k], online: false, lastSeen: Date.now() };
-    writeAll(map);
+  const map = readAll();
+  const row: StaffPresence = {
+    badgeId: badge,
+    facilityId: fid,
+    name: map[k]?.name || badge,
+    roleKey: map[k]?.roleKey || '',
+    role: map[k]?.role,
+    lastSeen: Date.now(),
+    online: false,
+  };
+  map[k] = row;
+  writeAll(map);
+  void (async () => {
     try {
-      publishFacilityData(fid, STAFF_PRESENCE_KEY, map);
+      const { firestoreUpsertPresence } = await import('./firebase');
+      await firestoreUpsertPresence(fid, { ...row });
     } catch {
       /* ignore */
     }
+  })();
+  try {
+    publishFacilityData(fid, STAFF_PRESENCE_KEY, map);
+  } catch {
+    /* ignore */
   }
 }
 
-/** Active (online now) staff for a facility, optional role filter */
+function isFrontDeskRole(roleKey?: string, role?: string): boolean {
+  const rk = String(roleKey || '').toLowerCase();
+  const r = String(role || '').toLowerCase();
+  if (rk === 'reception' || rk === 'records') return true;
+  if (r.includes('reception') || r.includes('front desk') || r.includes('frontdesk')) return true;
+  if (r.includes('records') || r.includes('cashier')) return true;
+  return false;
+}
+
 export function listActiveStaff(facilityId: string, roleKeys?: string[]): StaffPresence[] {
   const fid = String(facilityId || '').toUpperCase();
   const now = Date.now();
@@ -144,7 +195,9 @@ export function listActiveStaff(facilityId: string, roleKeys?: string[]): StaffP
     if (!isFresh(p, now)) return false;
     if (roles && roles.length) {
       const rk = String(p.roleKey || '').toLowerCase();
-      if (!roles.includes(rk)) return false;
+      if (roles.includes(rk)) return true;
+      // also accept human role labels
+      return isFrontDeskRole(p.roleKey, p.role);
     }
     return true;
   });
@@ -154,7 +207,6 @@ export function countActiveStaff(facilityId: string, roleKeys?: string[]): numbe
   return listActiveStaff(facilityId, roleKeys).length;
 }
 
-/** Start heartbeat for a logged-in session; returns stop() */
 export function startStaffPresenceHeartbeat(opts: {
   badgeId: string;
   facilityId: string;
@@ -193,9 +245,28 @@ export function subscribeStaffPresence(cb: () => void): () => void {
   window.addEventListener(STAFF_PRESENCE_EVENT, wrap);
   window.addEventListener('storage', wrap);
   window.addEventListener('medcore-admin-sync', wrap);
+  window.addEventListener('medcore-facility-cloud', wrap);
   return () => {
     window.removeEventListener(STAFF_PRESENCE_EVENT, wrap);
     window.removeEventListener('storage', wrap);
     window.removeEventListener('medcore-admin-sync', wrap);
+    window.removeEventListener('medcore-facility-cloud', wrap);
   };
+}
+
+/** Live Firestore presence collection → local map (no browser reload) */
+export function startFacilityPresenceListener(facilityId: string): () => void {
+  if (typeof window === 'undefined' || !facilityId) return () => {};
+  let stop = () => {};
+  void (async () => {
+    try {
+      const { firestoreSubscribePresence } = await import('./firebase');
+      stop = firestoreSubscribePresence(facilityId, (rows) => {
+        applyCloudPresenceRows(rows);
+      });
+    } catch {
+      /* offline */
+    }
+  })();
+  return () => stop();
 }

@@ -46,6 +46,7 @@ import { enableFirestoreOffline } from '../lib/firebase';
 import { startHospitalCloudSync } from '../lib/facilityCloudSync';
 import {
   startStaffPresenceHeartbeat,
+  startFacilityPresenceListener,
   markStaffOffline,
 } from '../lib/staffPresenceStore';
 import { RoleDashboard } from '../components/dashboards/RoleDashboard';
@@ -1224,15 +1225,17 @@ export default function OSPage() {
     const badgeId = userSession?.badgeId;
     const hospitalId = userSession?.hospitalId;
     if (!hospitalId || !badgeId) return;
-    const stop = startStaffPresenceHeartbeat({
+    const stopHb = startStaffPresenceHeartbeat({
       badgeId,
       facilityId: hospitalId,
       name: userSession?.name || badgeId,
       roleKey: userSession?.roleKey || '',
       role: userSession?.role,
     });
+    const stopListen = startFacilityPresenceListener(hospitalId);
     return () => {
-      stop();
+      stopHb();
+      stopListen();
       try {
         markStaffOffline(badgeId, hospitalId);
       } catch {

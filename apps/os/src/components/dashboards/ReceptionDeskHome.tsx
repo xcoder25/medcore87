@@ -10,6 +10,7 @@ import { isReceptionRole } from '../../lib/staffCardStore';
 import {
   countActiveStaff,
   subscribeStaffPresence,
+  startFacilityPresenceListener,
   STAFF_PRESENCE_EVENT,
 } from '../../lib/staffPresenceStore';
 import type { FacilityPatient } from '../../lib/patientRegistryStore';
@@ -114,19 +115,23 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   useEffect(() => {
     recountFrontDeskStaff();
     const unsub = subscribeStaffPresence(() => recountFrontDeskStaff());
+    const stopCloud = startFacilityPresenceListener(facilityId);
     const bump = () => recountFrontDeskStaff();
     window.addEventListener(STAFF_PRESENCE_EVENT, bump);
     window.addEventListener('medcore-admin-sync', bump);
     window.addEventListener('storage', bump);
-    const tick = window.setInterval(bump, 15000);
+    window.addEventListener('medcore-facility-cloud', bump);
+    const tick = window.setInterval(bump, 8000);
     return () => {
       unsub();
+      stopCloud();
       window.removeEventListener(STAFF_PRESENCE_EVENT, bump);
       window.removeEventListener('medcore-admin-sync', bump);
       window.removeEventListener('storage', bump);
+      window.removeEventListener('medcore-facility-cloud', bump);
       window.clearInterval(tick);
     };
-  }, [recountFrontDeskStaff]);
+  }, [facilityId, recountFrontDeskStaff]);
 
   const liveUpdate = async (id: string, status: ReceptionVisit['status']) => {
     setBusyId(id);

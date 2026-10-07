@@ -371,6 +371,64 @@ export function firestoreSubscribeStaffDirectory(
   });
 }
 
+
+/** Per-user presence: facilities/{facilityId}/presence/{badgeId} — no clobber across PCs */
+export function staffPresenceRef(facilityId: string, badgeId: string) {
+  const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+  const bid = (badgeId || 'UNKNOWN').trim().toUpperCase().replace(/[\/#?]/g, '_');
+  return doc(getFirestore(), 'facilities', fid, 'presence', bid);
+}
+
+export async function firestoreUpsertPresence(
+  facilityId: string,
+  presence: Record<string, unknown> & { badgeId: string }
+): Promise<boolean> {
+  try {
+    await enableFirestoreOffline();
+    const badgeId = String(presence.badgeId);
+    await setDoc(
+      staffPresenceRef(facilityId, badgeId),
+      stripUndefinedDeep({
+        ...presence,
+        badgeId,
+        facilityId,
+        updatedAt: new Date().toISOString(),
+      }),
+      { merge: true }
+    );
+    return true;
+  } catch (e) {
+    fsWarn('upsert presence', e);
+    return false;
+  }
+}
+
+export function firestoreSubscribePresence(
+  facilityId: string,
+  onRows: (rows: Record<string, unknown>[]) => void
+): () => void {
+  let unsub = () => {};
+  void (async () => {
+    try {
+      await enableFirestoreOffline();
+      const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+      const col = collection(getFirestore(), 'facilities', fid, 'presence');
+      unsub = onSnapshot(
+        col,
+        (snap) => {
+          const rows: Record<string, unknown>[] = [];
+          snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+          onRows(rows);
+        },
+        (err) => fsWarn('presence snapshot', err)
+      );
+    } catch (e) {
+      fsWarn('presence subscribe', e);
+    }
+  })();
+  return () => unsub();
+}
+
 /** Per-staff doc: facilities/{facilityId}/staff/{badgeId} */
 export function staffMemberRef(facilityId: string, badgeId: string) {
   const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
