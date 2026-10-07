@@ -1,57 +1,60 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+/**
+ * Digital payments only via Paystack:
+ * - Card — Paystack Terminal (PIN/card on device, never on hospital PC)
+ * - Transfer — bank transfer / USSD collection
+ * PAID only after server verify.
+ */
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   openPaystackCheckout,
   hasPaystackKey,
   makePaystackReference,
   transferExpiryMs,
   formatCountdown,
-  type PaystackChannel,
+  verifyPaystackPayment,
+  chargePaystackTerminal,
+  getPaystackTerminalId,
   type PaystackSuccess,
 } from '../../lib/paystackClient';
-import { CreditCard, Building2, Smartphone, Landmark, X, Shield, Clock, CheckCircle2, Loader2 } from 'lucide-react';
+import { CreditCard, Building2, X, ShieldCheck, Loader2, Smartphone } from 'lucide-react';
 
 export type PaystackCheckoutInput = {
+  facilityId: string;
+  facilityName: string;
   patientName: string;
   hospitalNumber: string;
   patientEmail?: string;
   amountNgn: number;
   purpose: string;
-  facilityName: string;
-  facilityId: string;
   cashierName?: string;
+  /** card_terminal | transfer */
+  mode?: 'card_terminal' | 'transfer';
 };
 
 type Props = {
   open: boolean;
   input: PaystackCheckoutInput | null;
   onClose: () => void;
-  /** Called after successful Paystack charge — parent records payment + receipt */
   onPaid: (result: {
     reference: string;
     paystackRef: string;
     amountNgn: number;
     channel: string;
-    raw: PaystackSuccess;
+    raw?: PaystackSuccess | Record<string, unknown>;
   }) => void;
 };
 
-const CHANNELS: { id: PaystackChannel; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
-  { id: 'card', label: 'Card', icon: CreditCard },
-  { id: 'bank_transfer', label: 'Bank transfer', icon: Building2 },
-  { id: 'ussd', label: 'USSD', icon: Smartphone },
-  { id: 'bank', label: 'Bank', icon: Landmark },
-];
-
 export const PaystackBrandedCheckout: React.FC<Props> = ({ open, input, onClose, onPaid }) => {
-  const [channel, setChannel] = useState<PaystackChannel>('card');
+  const mode = input?.mode || 'transfer';
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [phase, setPhase] = useState<'ready' | 'paystack' | 'transfer_wait' | 'success'>('ready');
+  const [phase, setPhase] = useState<'ready' | 'waiting' | 'verifying' | 'success'>('ready');
   const [reference, setReference] = useState('');
   const [expiresAt, setExpiresAt] = useState(0);
   const [clock, setClock] = useState('--:--');
+  const [hint, setHint] = useState('');
 
   useEffect(() => {
     if (!open || !input) return;
@@ -60,40 +63,104 @@ export const PaystackBrandedCheckout: React.FC<Props> = ({ open, input, onClose,
     setPhase('ready');
     setReference(makePaystackReference('MC'));
     setExpiresAt(0);
-  }, [open, input?.hospitalNumber, input?.amountNgn]);
+    setHint('');
+  }, [open, input?.hospitalNumber, input?.amountNgn, input?.mode]);
 
   useEffect(() => {
-    if (phase !== 'transfer_wait' || !expiresAt) return;
+    if (phase !== 'waiting' || !expiresAt) return;
     const tick = () => setClock(formatCountdown(expiresAt));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [phase, expiresAt]);
 
-  const startPay = useCallback(async () => {
+  const confirmVerified = useCallback(
+    async (ref: string, fallbackChannel: string, raw?: PaystackSuccess | Record<string, unknown>) => {
+      if (!input) return;
+      setPhase('verifying');
+      setBusy(true);
+      setError('');
+      const v = await verifyPaystackPayment(ref);
+      if (!v.verified) {
+        setError(v.error || 'Payment not confirmed by Paystack yet. Wait for terminal/transfer to complete, then Verify again.');
+        setPhase('waiting');
+        setBusy(false);
+        return;
+      }
+      setPhase('success');
+      setBusy(false);
+      onPaid({
+        reference: ref,
+        paystackRef: v.reference || ref,
+        amountNgn: v.amountNgn || input.amountNgn,
+        channel: v.channel || fallbackChannel,
+        raw,
+      });
+    },
+    [input, onPaid]
+  );
+
+  const startTerminal = useCallback(async () => {
+    if (!input) return;
+    setBusy(true);
+    setError('');
+    const ref = reference || makePaystackReference('MC');
+    setReference(ref);
+    const email =
+      input.patientEmail?.trim() ||
+      `${input.hospitalNumber.replace(/\W/g, '').toLowerCase() || 'patient'}@medcore.pay`;
+    const terminalId = getPaystackTerminalId();
+    if (!terminalId) {
+      setError('Set Paystack Terminal device ID in Front Desk settings (POS Terminal ID). Card details are entered only on the terminal.');
+      setBusy(false);
+      return;
+    }
+    const res = await chargePaystackTerminal({
+      amountNgn: input.amountNgn,
+      email,
+      reference: ref,
+      deviceId: terminalId,
+      metadata: {
+        facilityId: input.facilityId,
+        patientName: input.patientName,
+        hospitalNumber: input.hospitalNumber,
+        purpose: input.purpose,
+        cashier: input.cashierName || '',
+      },
+    });
+    if (!res.ok) {
+      setError(res.error || 'Could not send charge to terminal');
+      setBusy(false);
+      return;
+    }
+    setHint(res.displayText || 'Patient should enter card and PIN on the Paystack Terminal only.');
+    setPhase('waiting');
+    setExpiresAt(transferExpiryMs(15));
+    setBusy(false);
+  }, [input, reference]);
+
+  const startTransfer = useCallback(async () => {
     if (!input) return;
     if (!hasPaystackKey()) {
-      setError('Add Paystack public key in Admin settings or NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY');
+      setError('Set NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY in the deployment environment (public key only — never the secret).');
       return;
     }
     setBusy(true);
     setError('');
-    setPhase('paystack');
     const ref = reference || makePaystackReference('MC');
     setReference(ref);
-    if (channel === 'bank_transfer') {
-      setExpiresAt(transferExpiryMs(30));
-      setPhase('transfer_wait');
-    }
+    setExpiresAt(transferExpiryMs(30));
+    setPhase('waiting');
+    setHint('Patient pays via bank transfer or USSD. No card numbers on this computer.');
+    const email =
+      input.patientEmail?.trim() ||
+      `${input.hospitalNumber.replace(/\W/g, '').toLowerCase() || 'patient'}@medcore.pay`;
     try {
-      const email =
-        input.patientEmail?.trim() ||
-        `${input.hospitalNumber.replace(/\W/g, '').toLowerCase() || 'patient'}@medcore.pay`;
       await openPaystackCheckout({
         email,
         amountNgn: input.amountNgn,
         reference: ref,
-        channels: [channel],
+        channels: ['bank_transfer', 'ussd', 'bank'],
         label: input.facilityName || 'MedCore Hospital',
         metadata: {
           facilityId: input.facilityId,
@@ -104,259 +171,184 @@ export const PaystackBrandedCheckout: React.FC<Props> = ({ open, input, onClose,
           cashier: input.cashierName || '',
         },
         onSuccess: (res) => {
-          setPhase('success');
-          setBusy(false);
-          onPaid({
-            reference: ref,
-            paystackRef: res.reference || res.trans || ref,
-            amountNgn: input.amountNgn,
-            channel,
-            raw: res,
-          });
+          void confirmVerified(res.reference || res.trans || ref, 'bank_transfer', res);
         },
         onClose: () => {
           setBusy(false);
-          if (phase !== 'success') setPhase(channel === 'bank_transfer' ? 'transfer_wait' : 'ready');
         },
       });
     } catch (e: any) {
-      setError(e?.message || 'Could not open Paystack');
-      setBusy(false);
+      setError(e?.message || 'Could not open transfer collection');
       setPhase('ready');
     }
-  }, [input, channel, reference, onPaid, phase]);
+    setBusy(false);
+  }, [input, reference, confirmVerified]);
 
   if (!open || !input) return null;
+
+  const isCard = mode === 'card_terminal';
 
   return (
     <div
       role="dialog"
-      aria-modal
+      aria-modal="true"
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 99999,
-        background: 'radial-gradient(ellipse at 20% 0%, #0B3D6E 0%, #061628 45%, #020b16 100%)',
+        zIndex: 10000,
+        background: 'rgba(15,23,42,0.55)',
+        backdropFilter: 'blur(4px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 16,
-        fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
       }}
+      onClick={onClose}
     >
-      {/* soft orbs */}
-      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-        <div style={{ position: 'absolute', width: 420, height: 420, borderRadius: '50%', background: 'rgba(13,148,136,0.12)', top: -80, right: -60, filter: 'blur(40px)' }} />
-        <div style={{ position: 'absolute', width: 320, height: 320, borderRadius: '50%', background: 'rgba(37,99,235,0.15)', bottom: -40, left: -40, filter: 'blur(40px)' }} />
-      </div>
-
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
-          position: 'relative',
           width: '100%',
-          maxWidth: 480,
-          borderRadius: 24,
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, #F8FAFC 100%)',
-          boxShadow: '0 32px 80px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.08)',
+          maxWidth: 440,
+          borderRadius: 18,
+          background: '#fff',
+          border: '1px solid #E2E8F0',
+          boxShadow: '0 24px 64px rgba(15,23,42,0.28)',
           overflow: 'hidden',
         }}
       >
-        {/* Brand header */}
         <div
           style={{
-            padding: '20px 22px 16px',
-            background: 'linear-gradient(135deg, #0A2540 0%, #0D4F8B 55%, #0D9488 100%)',
+            padding: '16px 18px',
+            background: 'linear-gradient(135deg,#0B1220,#1E3A8A)',
             color: '#fff',
-            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
           }}
         >
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              position: 'absolute',
-              top: 14,
-              right: 14,
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              border: '1px solid rgba(255,255,255,0.25)',
-              background: 'rgba(0,0,0,0.2)',
-              color: '#fff',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <X size={18} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>
+              {isCard ? 'Card — Paystack Terminal' : 'Transfer — Paystack'}
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
+              DIGITAL · no card data on hospital PC
+            </div>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer' }}>
+            <X size={20} />
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
-            <img src="/medcore-logo.png" alt="MedCore" style={{ height: 40, width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.25))' }} />
-            <div style={{ width: 1, height: 28, background: 'rgba(255,255,255,0.35)' }} />
-            <img src="/arise-logo.png" alt="Arise" style={{ height: 36, width: 'auto', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', opacity: 0.75 }}>
-            Secure hospital payment
-          </div>
-          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4, letterSpacing: '-0.02em' }}>
-            ₦{input.amountNgn.toLocaleString()}
-          </div>
-          <div style={{ fontSize: 13, opacity: 0.9, marginTop: 2 }}>{input.purpose}</div>
         </div>
 
-        <div style={{ padding: '18px 22px 22px' }}>
-          {/* Patient card */}
-          <div
-            style={{
-              background: '#F1F5F9',
-              borderRadius: 14,
-              padding: '12px 14px',
-              marginBottom: 16,
-              border: '1px solid #E2E8F0',
-            }}
-          >
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Patient
+        <div style={{ padding: 18 }}>
+          <div style={{ fontSize: 13, color: '#334155', marginBottom: 12, lineHeight: 1.5 }}>
+            <strong>{input.patientName}</strong>
+            <span style={{ color: '#94A3B8' }}> · {input.hospitalNumber}</span>
+            <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800, color: '#0F172A' }}>
+              ₦{input.amountNgn.toLocaleString()}
             </div>
-            <div style={{ fontWeight: 800, color: '#0A2540', fontSize: 16, marginTop: 2 }}>{input.patientName}</div>
-            <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
-              {input.hospitalNumber} · {input.facilityName}
-            </div>
-            {reference && (
-              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>
-                Ref · {reference}
-              </div>
-            )}
+            <div style={{ fontSize: 12, color: '#64748B' }}>{input.purpose}</div>
           </div>
 
-          {phase === 'success' ? (
-            <div style={{ textAlign: 'center', padding: '24px 8px' }}>
-              <CheckCircle2 size={48} color="#059669" style={{ margin: '0 auto 12px' }} />
-              <div style={{ fontWeight: 800, fontSize: 18, color: '#065F46' }}>Payment successful</div>
-              <div style={{ fontSize: 13, color: '#64748B', marginTop: 6 }}>Receipt is being prepared…</div>
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              padding: '10px 12px',
+              borderRadius: 12,
+              background: '#F0F9FF',
+              border: '1px solid #BAE6FD',
+              fontSize: 12,
+              color: '#0C4A6E',
+              marginBottom: 14,
+              alignItems: 'flex-start',
+            }}
+          >
+            <ShieldCheck size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+            <div>
+              {isCard
+                ? 'Patient enters card number and PIN only on the Paystack Terminal. This computer never sees card details.'
+                : 'Patient pays by bank transfer or USSD via Paystack. Marked PAID only after Paystack verification.'}
             </div>
-          ) : (
-            <>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748B', marginBottom: 8 }}>Pay with</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-                {CHANNELS.map((c) => {
-                  const Icon = c.icon;
-                  const active = channel === c.id;
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setChannel(c.id)}
-                      disabled={busy}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        padding: '12px 12px',
-                        borderRadius: 12,
-                        border: active ? '2px solid #0D9488' : '1px solid #E2E8F0',
-                        background: active ? '#F0FDFA' : '#fff',
-                        cursor: busy ? 'not-allowed' : 'pointer',
-                        fontWeight: 700,
-                        fontSize: 13,
-                        color: active ? '#0F766E' : '#334155',
-                      }}
-                    >
-                      <Icon size={16} />
-                      {c.label}
-                    </button>
-                  );
-                })}
-              </div>
+          </div>
 
-              {phase === 'transfer_wait' && (
-                <div
-                  style={{
-                    marginBottom: 14,
-                    padding: '12px 14px',
-                    borderRadius: 12,
-                    background: '#FFFBEB',
-                    border: '1px solid #FDE68A',
-                    display: 'flex',
-                    gap: 10,
-                    alignItems: 'flex-start',
-                  }}
-                >
-                  <Clock size={18} color="#B45309" style={{ flexShrink: 0, marginTop: 2 }} />
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: 13, color: '#92400E' }}>Bank transfer window</div>
-                    <div style={{ fontSize: 12, color: '#A16207', marginTop: 2, lineHeight: 1.45 }}>
-                      Complete the transfer in the Paystack sheet. Time remaining:{' '}
-                      <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{clock}</strong>
-                      . Details (account / amount) appear on the Paystack panel.
-                    </div>
-                  </div>
+          {error && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', borderRadius: 10, padding: '10px 12px', fontSize: 12, marginBottom: 12 }}>
+              {error}
+            </div>
+          )}
+
+          {phase === 'ready' && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => (isCard ? startTerminal() : startTransfer())}
+              style={{
+                width: '100%',
+                padding: '14px 16px',
+                borderRadius: 12,
+                border: 'none',
+                background: 'linear-gradient(90deg,#0052D4,#0D9488)',
+                color: '#fff',
+                fontWeight: 800,
+                fontSize: 14,
+                cursor: busy ? 'wait' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+              }}
+            >
+              {busy ? <Loader2 size={18} className="spin" /> : isCard ? <Smartphone size={18} /> : <Building2 size={18} />}
+              {isCard ? 'Send charge to Terminal' : 'Open Transfer / USSD'}
+            </button>
+          )}
+
+          {phase === 'waiting' && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 13, color: '#334155', marginBottom: 8 }}>{hint}</div>
+              {expiresAt > 0 && (
+                <div style={{ fontFamily: 'ui-monospace,monospace', fontWeight: 800, fontSize: 28, color: '#0F172A', marginBottom: 8 }}>
+                  {clock}
                 </div>
               )}
-
-              {error && (
-                <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 10, background: '#FEF2F2', color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>
-                  {error}
-                </div>
-              )}
-
+              <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 12 }}>Ref · {reference}</div>
               <button
                 type="button"
-                onClick={() => void startPay()}
-                disabled={busy || input.amountNgn < 1}
+                disabled={busy}
+                onClick={() => void confirmVerified(reference, isCard ? 'card' : 'bank_transfer')}
                 style={{
                   width: '100%',
-                  padding: '14px 16px',
-                  borderRadius: 14,
+                  padding: '12px 14px',
+                  borderRadius: 12,
                   border: 'none',
-                  background: busy
-                    ? '#94A3B8'
-                    : 'linear-gradient(135deg, #0D9488 0%, #0F766E 50%, #0A2540 100%)',
+                  background: '#059669',
                   color: '#fff',
                   fontWeight: 800,
-                  fontSize: 15,
                   cursor: busy ? 'wait' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  boxShadow: '0 8px 24px rgba(13,148,136,0.35)',
                 }}
               >
-                {busy ? <Loader2 size={18} className="spin" /> : <Shield size={18} />}
-                {busy ? 'Opening Paystack…' : `Pay ₦${input.amountNgn.toLocaleString()} securely`}
+                {busy ? 'Verifying…' : 'Verify payment with Paystack'}
               </button>
+              <p style={{ fontSize: 11, color: '#64748B', marginTop: 10 }}>
+                Receipt is generated only after successful verification.
+              </p>
+            </div>
+          )}
 
-              <div
-                style={{
-                  marginTop: 14,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  fontSize: 11,
-                  color: '#94A3B8',
-                }}
-              >
-                <Shield size={12} />
-                Powered by Paystack · Card · Transfer · USSD · Bank
-              </div>
-              <div style={{ marginTop: 6, textAlign: 'center', fontSize: 10, color: '#CBD5E1' }}>
-                MedCore OS · Arise Health
-              </div>
-            </>
+          {phase === 'verifying' && (
+            <div style={{ textAlign: 'center', padding: 16, color: '#64748B' }}>
+              <Loader2 size={24} /> Verifying with Paystack…
+            </div>
+          )}
+
+          {phase === 'success' && (
+            <div style={{ textAlign: 'center', padding: 12, color: '#047857', fontWeight: 800 }}>
+              Payment verified · receipt generating…
+            </div>
           )}
         </div>
       </div>
-
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spin { animation: spin 0.8s linear infinite; }
-      `}</style>
     </div>
   );
 };
-
-export default PaystackBrandedCheckout;

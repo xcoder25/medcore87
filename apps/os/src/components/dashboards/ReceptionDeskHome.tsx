@@ -4,8 +4,15 @@
  * Front Desk Operations home — matches MedCore reception design system mockup.
  */
 import { InBasketPanel } from '../clinical-core/InBasketPanel';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
+import { isReceptionRole } from '../../lib/staffCardStore';
+import {
+  countActiveStaff,
+  subscribeStaffPresence,
+  startFacilityPresenceListener,
+  STAFF_PRESENCE_EVENT,
+} from '../../lib/staffPresenceStore';
 import type { FacilityPatient } from '../../lib/patientRegistryStore';
 import type { ReceptionVisit, ReceptionAppointment, ReceptionDayStats } from '../../lib/receptionOpsStore';
 import {
@@ -83,6 +90,48 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   const facilityId = session.hospitalId || 'IGH-EKT';
   const [deptFilter, setDeptFilter] = useState('all');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [activeFrontDesk, setActiveFrontDesk] = useState(0);
+
+  const recountFrontDeskStaff = useCallback(() => {
+    try {
+      // Active = currently logged in (heartbeat fresh), front-desk roles only
+      const n = countActiveStaff(facilityId, ['reception', 'records']);
+      // Include self if this session is reception and somehow not in map yet
+      if (
+        n === 0 &&
+        isReceptionRole(session.roleKey, session.role, session.title, session.badgeId)
+      ) {
+        setActiveFrontDesk(1);
+        return;
+      }
+      setActiveFrontDesk(n);
+    } catch {
+      setActiveFrontDesk(
+        isReceptionRole(session.roleKey, session.role, session.title, session.badgeId) ? 1 : 0
+      );
+    }
+  }, [facilityId, session.roleKey, session.role, session.title, session.badgeId]);
+
+  useEffect(() => {
+    recountFrontDeskStaff();
+    const unsub = subscribeStaffPresence(() => recountFrontDeskStaff());
+    const stopCloud = startFacilityPresenceListener(facilityId);
+    const bump = () => recountFrontDeskStaff();
+    window.addEventListener(STAFF_PRESENCE_EVENT, bump);
+    window.addEventListener('medcore-admin-sync', bump);
+    window.addEventListener('storage', bump);
+    window.addEventListener('medcore-facility-cloud', bump);
+    const tick = window.setInterval(bump, 8000);
+    return () => {
+      unsub();
+      stopCloud();
+      window.removeEventListener(STAFF_PRESENCE_EVENT, bump);
+      window.removeEventListener('medcore-admin-sync', bump);
+      window.removeEventListener('storage', bump);
+      window.removeEventListener('medcore-facility-cloud', bump);
+      window.clearInterval(tick);
+    };
+  }, [facilityId, recountFrontDeskStaff]);
 
   const liveUpdate = async (id: string, status: ReceptionVisit['status']) => {
     setBusyId(id);
@@ -145,12 +194,22 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     return items.slice(0, 6);
   }, [visits, appts]);
 
+  const collectedToday = useMemo(() => {
+    try {
+      return visits
+        .filter((v) => v.paymentStatus === 'paid' || v.paymentStatus === 'hmo' || v.paymentStatus === 'waived')
+        .reduce((s, v) => s + (Number(v.amount) || 0), 0);
+    } catch {
+      return 0;
+    }
+  }, [visits]);
+
   const kpi = [
     {
       label: "Today's Check-ins",
       value: stats.checkIns,
-      sub: 'vs. yesterday',
-      trend: '+12%',
+      sub: `${stats.appointments} appt · ${Math.max(0, stats.checkIns - stats.appointments)} walk-in`,
+      trend: 'Live',
       up: true,
       icon: RefreshCw,
       tint: '#EFF6FF',
@@ -159,8 +218,8 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     {
       label: 'Waiting in Queue',
       value: stats.waiting,
-      sub: `Avg. wait time ${avgWait || 8} min`,
-      trend: '',
+      sub: avgWait > 0 ? `Avg. wait ${avgWait} min` : 'No one waiting',
+      trend: 'Live',
       up: true,
       icon: Users,
       tint: '#ECFDF5',
@@ -168,29 +227,43 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     },
     {
       label: 'Completed Today',
-      value: completed.length,
-      sub: 'vs. yesterday',
-      trend: '+9%',
+      value: stats.completed || completed.length,
+      sub: `${withProv.length} with provider`,
+      trend: 'Live',
       up: true,
       icon: CheckCircle2,
       tint: '#F5F3FF',
       iconColor: '#7C3AED',
     },
     {
-      label: 'Missed Appointments',
-      value: missedAppts,
-      sub: 'vs. yesterday',
-      trend: missedAppts ? '-50%' : '0%',
-      up: false,
+      label: 'Appointments',
+      value: stats.bookedToday || appts.filter((a) => a.status === 'booked' || a.status === 'arrived').length,
+      sub: missedAppts ? `${missedAppts} missed/cancelled` : 'Booked today',
+      trend: 'Live',
+      up: missedAppts === 0,
       icon: Calendar,
       tint: '#FEF2F2',
       iconColor: '#DC2626',
     },
     {
+      label: 'Collected today',
+      value: stats.collected > 0
+        ? `₦${Math.round(stats.collected).toLocaleString()}`
+        : collectedToday > 0
+          ? `₦${Math.round(collectedToday).toLocaleString()}`
+          : '₦0',
+      sub: 'POS · cash · transfer',
+      trend: 'Live',
+      up: true,
+      icon: CreditCard,
+      tint: '#ECFDF5',
+      iconColor: '#059669',
+    },
+    {
       label: 'Active Staff',
-      value: 1,
-      sub: 'at front desk',
-      trend: '',
+      value: activeFrontDesk,
+      sub: 'logged in now',
+      trend: 'Live',
       up: true,
       icon: Users,
       tint: '#F0F9FF',
@@ -316,12 +389,14 @@ export const ReceptionDeskHome: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* KPI row */}
+      {/* KPI row — single horizontal line */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
-          gap: 12,
+          gridTemplateColumns: `repeat(${kpi.length}, minmax(0, 1fr))`,
+          gap: 10,
+          alignItems: 'stretch',
+          width: '100%',
         }}
       >
         {kpi.map((k) => {
@@ -332,10 +407,12 @@ export const ReceptionDeskHome: React.FC<Props> = ({
               className="mc-kpi-card"
               style={{
                 background: '#fff',
-                borderRadius: 16,
+                borderRadius: 14,
                 border: `1px solid ${C.border}`,
-                padding: '14px 16px',
+                padding: '12px 12px',
                 boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+                minWidth: 0,
+                overflow: 'hidden',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>

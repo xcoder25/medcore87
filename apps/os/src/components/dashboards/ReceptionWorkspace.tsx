@@ -202,9 +202,31 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     reload();
     const u1 = subscribePatients(reload);
     const u2 = subscribeReceptionOps(reload);
+    const bump = () => reload();
+    window.addEventListener('medcore-reception-ops', bump);
+    window.addEventListener('medcore-patients-updated', bump);
+    window.addEventListener('medcore-admin-sync', bump);
+    window.addEventListener('medcore-billing', bump);
+    window.addEventListener('medcore-staff-cards-updated', bump);
+    window.addEventListener('storage', bump);
+    // Cross-tab
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('medcore_reception');
+      bc.onmessage = () => reload();
+    } catch { /* ignore */ }
+    const poll = window.setInterval(reload, 12000);
     return () => {
       u1();
       u2();
+      window.removeEventListener('medcore-reception-ops', bump);
+      window.removeEventListener('medcore-patients-updated', bump);
+      window.removeEventListener('medcore-admin-sync', bump);
+      window.removeEventListener('medcore-billing', bump);
+      window.removeEventListener('medcore-staff-cards-updated', bump);
+      window.removeEventListener('storage', bump);
+      try { bc?.close(); } catch { /* */ }
+      window.clearInterval(poll);
     };
   }, [reload]);
 
@@ -466,11 +488,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     const p = posPatient || selected;
     if (!p) return;
     const method =
-      result.channel === 'card'
+      result.channel === 'card' || result.channel === 'pos'
         ? ('card' as const)
-        : result.channel === 'bank_transfer' || result.channel === 'bank'
+        : result.channel === 'bank_transfer' || result.channel === 'bank' || result.channel === 'ussd'
           ? ('transfer' as const)
-          : ('pos' as const);
+          : posMethod === 'card'
+            ? ('card' as const)
+            : ('transfer' as const);
     const activeVisit = visits.find(
       (v) => v.patientId === p.id && v.status !== 'completed' && v.status !== 'cancelled'
     );
@@ -504,8 +528,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         channel: result.channel,
         purpose: posPurpose || 'Hospital payment',
         facilityName: session.facility || session.hospitalId || 'Hospital',
+        facilityId,
+        patientId: p.id,
         cashier: session.name,
+        cashierBadge: session.badgeId,
         paystackRef: result.paystackRef,
+        visitId: activeVisit?.id,
       });
     } catch { /* ignore */ }
     try {
@@ -523,6 +551,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   };
 
   const doPayment = () => {
+    // Digital methods must go through Paystack verify — never manual PAID
+    if (posMethod === 'card' || posMethod === 'transfer') {
+      flash('Use Paystack Terminal or Transfer flow — payment is marked PAID only after verification');
+      setPaystackOpen(true);
+      return;
+    }
     const p = posPatient || selected;
     if (!p) {
       flash('Select a patient for payment');
@@ -558,7 +592,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         method: posMethod,
         purpose: posPurpose || 'Consultation',
         facilityName,
+        facilityId,
+        patientId: p.id,
         cashier: session.name,
+        cashierBadge: session.badgeId,
+        paymentId: pay.id,
+        visitId: activeVisit?.id,
       });
     } catch { /* ignore */ }
     appendAudit({
@@ -1700,7 +1739,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
             <div>
               <h2 style={{ margin: 0, fontWeight: 800, fontSize: 18, color: C.navy }}>Collect payment</h2>
               <p style={{ margin: '4px 0 0', fontSize: 13, color: C.muted }}>
-                Cash, POS, card, transfer, HMO or waiver · receipt on confirm
+                Digital: Card (Paystack Terminal) & Transfer · Desk: Cash, HMO, Waiver
               </p>
             </div>
             {onNavigate && (
@@ -1923,20 +1962,47 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
               <div>
                 <label style={labelStyle}>Payment method</label>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(3, 1fr)',
-                    gap: 8,
-                    marginTop: 6,
-                  }}
-                >
+                <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, letterSpacing: '0.06em', marginTop: 10, marginBottom: 6 }}>
+                  DIGITAL · PAYSTACK
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {(
+                    [
+                      { id: 'card' as PaymentMethod, label: 'Card — Paystack Terminal', sub: 'PIN on terminal only' },
+                      { id: 'transfer' as PaymentMethod, label: 'Transfer', sub: 'Bank transfer / USSD' },
+                    ] as const
+                  ).map((m) => {
+                    const on = posMethod === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setPosMethod(m.id)}
+                        style={{
+                          padding: '12px 10px',
+                          borderRadius: 12,
+                          cursor: 'pointer',
+                          border: on ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
+                          background: on ? '#E0F2FE' : '#F8FAFC',
+                          color: on ? C.blue : C.navy,
+                          fontWeight: 800,
+                          fontSize: 12,
+                          textAlign: 'left' as const,
+                        }}
+                      >
+                        <div>{m.label}</div>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: on ? '#0369A1' : C.muted, marginTop: 4 }}>{m.sub}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, letterSpacing: '0.06em', marginTop: 14, marginBottom: 6 }}>
+                  HOSPITAL DESK
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                   {(
                     [
                       { id: 'cash' as PaymentMethod, label: 'Cash' },
-                      { id: 'pos' as PaymentMethod, label: 'POS' },
-                      { id: 'card' as PaymentMethod, label: 'Card' },
-                      { id: 'transfer' as PaymentMethod, label: 'Transfer' },
                       { id: 'hmo' as PaymentMethod, label: 'HMO' },
                       { id: 'waiver' as PaymentMethod, label: 'Waiver' },
                     ] as const
@@ -1969,14 +2035,14 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 type="button"
                 disabled={!(posPatient || selected)}
                 onClick={() => {
-                  if (['card', 'transfer', 'pos'].includes(posMethod)) {
+                  if (posMethod === 'card' || posMethod === 'transfer') {
                     const amt = Number(posAmount) || 0;
                     if (amt < 1) {
                       flash('Enter amount');
                       return;
                     }
-                    if (!hasPaystackKey()) {
-                      flash('Add Paystack public key in Admin settings first');
+                    if (posMethod === 'transfer' && !hasPaystackKey()) {
+                      flash('Set NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY in environment (public key only)');
                       return;
                     }
                     setPaystackOpen(true);
@@ -1999,12 +2065,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   boxShadow: posPatient || selected ? '0 12px 28px rgba(2,132,199,0.3)' : 'none',
                 }}
               >
-                {['card', 'transfer', 'pos'].includes(posMethod)
+                {['card', 'transfer'].includes(posMethod)
                   ? `Pay with Paystack · ₦${(Number(posAmount) || 0).toLocaleString()}`
                   : `Record ₦${(Number(posAmount) || 0).toLocaleString()} · ${posMethod.toUpperCase()}`}
               </button>
 
-              {['card', 'transfer', 'pos'].includes(posMethod) && (
+              {['card', 'transfer'].includes(posMethod) && (
                 <button
                   type="button"
                   disabled={!(posPatient || selected)}
@@ -2025,7 +2091,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               )}
 
               <div style={{ fontSize: 12, color: C.muted, textAlign: 'center' }}>
-                Paystack for card / transfer / POS · cash &amp; HMO still on desk · receipt + collections
+                Digital: Card Terminal &amp; Transfer (Paystack) · Desk: Cash, HMO, Waiver · receipt after confirm/verify
               </div>
 
               {payments.length > 0 && (
@@ -2075,6 +2141,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 facilityName: session.facility || session.hospitalId || 'Hospital',
                 facilityId,
                 cashierName: session.name,
+                mode: posMethod === 'card' ? 'card_terminal' : 'transfer',
               }
             : null
         }

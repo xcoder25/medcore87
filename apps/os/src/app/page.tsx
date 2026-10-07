@@ -44,6 +44,12 @@ import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { startOutboxAutoFlush } from '../lib/durableOutbox';
 import { enableFirestoreOffline } from '../lib/firebase';
 import { startHospitalCloudSync } from '../lib/facilityCloudSync';
+import {
+  startStaffPresenceHeartbeat,
+  startFacilityPresenceListener,
+  markStaffOffline,
+} from '../lib/staffPresenceStore';
+import { startNetworkNotificationListener } from '../lib/notificationEngine';
 import { RoleDashboard } from '../components/dashboards/RoleDashboard';
 import { DoctorPortal } from '../components/dashboards/DoctorPortal';
 import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
@@ -1192,6 +1198,13 @@ export default function OSPage() {
 
   const handleLogout = () => {
     try {
+      if (userSession?.badgeId && userSession?.hospitalId) {
+        markStaffOffline(userSession.badgeId, userSession.hospitalId);
+      }
+    } catch {
+      // ignore
+    }
+    try {
       localStorage.removeItem('medcore_os_session');
     } catch {
       // ignore
@@ -1207,6 +1220,38 @@ export default function OSPage() {
     const stop = startHospitalCloudSync(userSession.hospitalId);
     return () => stop();
   }, [userSession?.hospitalId]);
+
+  // Staff presence (active = currently logged in, Facebook-style)
+  useEffect(() => {
+    const badgeId = userSession?.badgeId;
+    const hospitalId = userSession?.hospitalId;
+    if (!hospitalId || !badgeId) return;
+    const stopHb = startStaffPresenceHeartbeat({
+      badgeId,
+      facilityId: hospitalId,
+      name: userSession?.name || badgeId,
+      roleKey: userSession?.roleKey || '',
+      role: userSession?.role,
+    });
+    const stopListen = startFacilityPresenceListener(hospitalId);
+    const stopNotif = startNetworkNotificationListener(hospitalId);
+    return () => {
+      stopHb();
+      stopListen();
+      stopNotif();
+      try {
+        markStaffOffline(badgeId, hospitalId);
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [
+    userSession?.badgeId,
+    userSession?.hospitalId,
+    userSession?.name,
+    userSession?.roleKey,
+    userSession?.role,
+  ]);
 
 const handleLockScreen = () => {
     setIsLocked(true);

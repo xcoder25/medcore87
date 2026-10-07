@@ -22,6 +22,7 @@ import {
   getStaffCard,
   deleteStaffMember,
   defaultPermissionsForRole,
+  purgeNonAdminStaffForFacility,
 } from '../../lib/staffCardStore';
 import {
   isEmailCredential,
@@ -86,6 +87,10 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     badgeId: string;
     name: string;
     role: string;
+    roleKey: string;
+    department: string;
+    clearanceLabel: string;
+    facilityName: string;
     pin: string;
     email?: string;
     firebaseAuth: 'ok' | 'fail' | 'skipped';
@@ -94,6 +99,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     accessRow: AccessRecord;
     listed: boolean;
   } | null>(null);
+  const [createFail, setCreateFail] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ badgeId: string; name: string } | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -119,12 +125,37 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   }, []);
 
   useEffect(() => {
+    // One-time: keep only admin accounts for Immanuel General Hospital, Eket
+    try {
+      if (facilityId === 'IGH-EKT' && typeof sessionStorage !== 'undefined') {
+        const key = 'medcore_purged_nonadmin_IGH-EKT';
+        if (!sessionStorage.getItem(key)) {
+          const removed = purgeNonAdminStaffForFacility('IGH-EKT');
+          sessionStorage.setItem(key, '1');
+          if (removed.length) {
+            void (async () => {
+              try {
+                const { firestoreDeleteStaffMember, firestorePushStaffDirectory } = await import('../../lib/firebase');
+                for (const bid of removed) {
+                  await firestoreDeleteStaffMember('IGH-EKT', bid);
+                }
+                await firestorePushStaffDirectory('IGH-EKT', {
+                  staffCards: listStaffCards(),
+                  staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
+                });
+              } catch { /* ignore */ }
+            })();
+            pushActivity(`Cleared ${removed.length} non-admin staff from Eket (admin kept)`);
+          }
+        }
+      }
+    } catch { /* ignore */ }
     reload();
     return subscribeAdminSync(() => {
       // Skip live reload while creating or while confirmation awaits "add to list"
       // (prevents row appearing before confirmation)
     });
-  }, [reload]);
+  }, [reload, facilityId]);
 
   // Refresh list only when not in confirmation-pending state
   useEffect(() => {
@@ -257,9 +288,10 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         email: mail || undefined,
       });
       card = issued.card;
+      const badgeId = card.badgeId;
 
       accessRow = {
-        id: card.badgeId,
+        id: badgeId,
         name: nameSnap,
         role: roleMeta.role,
         department: roleMeta.department,
@@ -270,45 +302,64 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         email: mail || undefined,
       };
 
-      // Cloud identity: badge Auth + optional email Auth + Firestore (retries)
+      // Cloud identity — hard cap so success screen always appears (local card already issued)
       try {
-        const cloud = await ensureStaffCloudIdentity({
-          facilityId,
-          badgeId: card.badgeId,
-          pin: pinNorm,
-          email: mail || undefined,
-          profile: {
-            badgeId: card.badgeId,
-            name: nameSnap,
-            role: roleMeta.role,
-            roleKey: roleMeta.roleKey,
-            title: roleMeta.title,
-            department: roleMeta.department,
-            hospitalId: facilityId,
-            hospitalName: facilityName,
-            clearanceLevel: roleMeta.clearanceLevel,
-            clearanceLabel: roleMeta.clearanceLabel,
-            permissions: accessRow.permissions,
+        const cloud = await withTimeout(
+          ensureStaffCloudIdentity({
+            facilityId,
+            badgeId,
+            pin: pinNorm,
             email: mail || undefined,
-            authEmail: badgeAuthEmail(card.badgeId),
-            status: 'active',
-          },
-        });
+            profile: {
+              badgeId,
+              name: nameSnap,
+              role: roleMeta.role,
+              roleKey: roleMeta.roleKey,
+              title: roleMeta.title,
+              department: roleMeta.department,
+              hospitalId: facilityId,
+              hospitalName: facilityName,
+              clearanceLevel: roleMeta.clearanceLevel,
+              clearanceLabel: roleMeta.clearanceLabel,
+              permissions: accessRow.permissions,
+              email: mail || undefined,
+              authEmail: badgeAuthEmail(badgeId),
+              status: 'active',
+            },
+          }),
+          18000,
+          'Cloud identity'
+        );
         firebaseAuth = cloud.badgeAuth ? 'ok' : 'fail';
         emailAuth = mail ? (cloud.emailAuth ? 'ok' : 'fail') : 'skipped';
         firestoreStatus = cloud.firestore ? 'ok' : 'fail';
-        const badgeIdSnap = card.badgeId;
+        // Verify peer-readable staff doc (other Chrome profiles depend on this)
+        if (firestoreStatus === 'ok') {
+          try {
+            const { firestoreGetStaffByBadge } = await import('../../lib/firebase');
+            const verified = await withTimeout(
+              firestoreGetStaffByBadge(facilityId, badgeId),
+              5000,
+              'Firestore verify staff'
+            );
+            if (!verified || !verified.roleKey) {
+              firestoreStatus = 'fail';
+            }
+          } catch {
+            firestoreStatus = 'fail';
+          }
+        }
         const permsSnap = accessRow.permissions;
         // Background retry if anything failed (network blip)
         if (!cloud.badgeAuth || (mail && !cloud.emailAuth) || !cloud.firestore) {
           window.setTimeout(() => {
             void ensureStaffCloudIdentity({
               facilityId,
-              badgeId: badgeIdSnap,
+              badgeId,
               pin: pinNorm,
               email: mail || undefined,
               profile: {
-                badgeId: badgeIdSnap,
+                badgeId,
                 name: nameSnap,
                 role: roleMeta.role,
                 roleKey: roleMeta.roleKey,
@@ -320,12 +371,13 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                 clearanceLabel: roleMeta.clearanceLabel,
                 permissions: permsSnap,
                 email: mail || undefined,
-                authEmail: badgeAuthEmail(badgeIdSnap),
+                authEmail: badgeAuthEmail(badgeId),
                 status: 'active',
               },
             });
           }, 2500);
         }
+
       } catch (err) {
         console.warn('[access] cloud identity', err);
         firebaseAuth = 'fail';
@@ -333,37 +385,65 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         firestoreStatus = 'fail';
       }
 
-            pushActivity(`Account created · ${nameSnap} · ${card.badgeId} · ID card issued`);
-      emitLiveAction(`Account + ID card · ${card.badgeId}`, { module: 'access' });
+      pushActivity(`Account created · ${nameSnap} · ${badgeId} · ID card issued`);
+      emitLiveAction(`Account + ID card · ${badgeId}`, { module: 'access' });
     } catch (err: any) {
       console.error('[access] create failed', err);
       setError(err?.message || 'Account creation failed.');
     } finally {
       setBusy(false);
-      // Always show confirmation when we have a card — before listing in table
-      if (card && accessRow) {
-        setIssued(card);
+      // Success only when cloud profile saved — otherwise roll back ID (no orphan badges)
+      if (card && accessRow && firestoreStatus === 'ok') {
+        const issuedCard = card;
+        const row = accessRow;
+        setIssued(issuedCard);
         setShowCreate(false);
+        setCreateFail(null);
+        const nextAccess = [row, ...getAccessRecords().filter((r) => r.id !== row.id)];
+        setAccessRecords(nextAccess);
+        setRecords(nextAccess);
         setConfirmInfo({
-          badgeId: card.badgeId,
+          badgeId: issuedCard.badgeId,
           name: nameSnap,
           role: roleMeta.role,
+          roleKey: roleMeta.roleKey,
+          department: roleMeta.department,
+          clearanceLabel: roleMeta.clearanceLabel,
+          facilityName,
           pin: pinNorm,
           email: mail || undefined,
           firebaseAuth,
           firestore: firestoreStatus,
           emailAuth,
-          accessRow,
-          listed: false,
+          accessRow: row,
+          listed: true,
         });
         setFullName('');
         setEmail('');
         setPhotoUrl('');
-        setSelectedId(null);
-        // IMPORTANT: do not setRecords / setAccessRecords here — wait for Confirm button
-        setTimeout(() => {
-          document.getElementById('staff-create-confirm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 80);
+        setSelectedId(issuedCard.badgeId);
+      } else if (card) {
+        // Roll back local ID so failed creates leave no badge
+        const badId = card.badgeId;
+        try {
+          deleteStaffMember(badId);
+        } catch { /* ignore */ }
+        try {
+          const next = getAccessRecords().filter((r) => String(r.id).toUpperCase() !== badId.toUpperCase());
+          setAccessRecords(next);
+          setRecords(next);
+        } catch { /* ignore */ }
+        try {
+          const { firestoreDeleteStaffMember } = await import('../../lib/firebase');
+          void firestoreDeleteStaffMember(facilityId, badId);
+        } catch { /* ignore */ }
+        setIssued(null);
+        setConfirmInfo(null);
+        setCreateFail(
+          firestoreStatus !== 'ok'
+            ? 'Account was not created. Cloud profile could not be saved — no Staff ID was issued. Check network / Firebase and try again.'
+            : 'Account was not created. No Staff ID was issued.'
+        );
       }
     }
   };
@@ -632,131 +712,221 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         </form>
       )}
 
+
+      {createFail && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            background: 'rgba(15, 23, 42, 0.55)',
+            backdropFilter: 'blur(4px)',
+          }}
+          onClick={() => setCreateFail(null)}
+        >
+          <div
+            className="os-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 400,
+              padding: 0,
+              borderRadius: 16,
+              overflow: 'hidden',
+              border: '1px solid #FECACA',
+              boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)',
+              background: '#fff',
+            }}
+          >
+            <div style={{ padding: '18px 20px', background: '#FEF2F2', borderBottom: '1px solid #FECACA', display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <XCircle size={20} color="#fff" />
+              </div>
+              <div style={{ fontWeight: 800, fontSize: '1rem', color: '#991B1B' }}>Creation failed</div>
+            </div>
+            <div style={{ padding: '16px 20px 20px' }}>
+              <p style={{ margin: 0, fontSize: 13, color: '#334155', lineHeight: 1.55 }}>{createFail}</p>
+              <p style={{ margin: '10px 0 0', fontSize: 12, color: '#64748B' }}>
+                No Staff ID was generated. You can try again when online.
+              </p>
+              <button
+                type="button"
+                className="os-primary-btn"
+                style={{ width: '100%', justifyContent: 'center', marginTop: 16 }}
+                onClick={() => setCreateFail(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmInfo && (
         <div
           id="staff-create-confirm"
-          className="os-card"
+          role="dialog"
+          aria-modal="true"
           style={{
-            padding: 20,
-            border: '2px solid #16A34A',
-            background: 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 50%, #F0F9FF 100%)',
-            boxShadow: '0 12px 40px rgba(22, 163, 74, 0.15)',
-            order: -1,
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            background: 'rgba(15, 23, 42, 0.55)',
+            backdropFilter: 'blur(4px)',
           }}
+          onClick={() => setConfirmInfo(null)}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#047857', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <CheckCircle2 size={20} /> Account created successfully
-              </div>
-              <div style={{ marginTop: 10, fontSize: '0.88rem', color: '#0F172A', lineHeight: 1.6 }}>
-                <div><strong>Name:</strong> {confirmInfo.name}</div>
-                <div><strong>Role:</strong> {confirmInfo.role}</div>
-                <div>
-                  <strong>Badge ID:</strong>{' '}
-                  <span style={{ fontFamily: 'var(--os-font-mono)', fontWeight: 800, color: '#0052D4' }}>
-                    {confirmInfo.badgeId}
-                  </span>
-                </div>
-                <div><strong>PIN:</strong> <code style={{ fontWeight: 800, fontSize: '0.95rem' }}>{confirmInfo.pin}</code> <span style={{ color: '#64748B', marginLeft: 4 }}>(give this to the staff member)</span></div>
-                {confirmInfo.email && <div><strong>Email:</strong> {confirmInfo.email}</div>}
-              </div>
+          <div
+            className="os-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              padding: 0,
+              overflow: 'hidden',
+              borderRadius: 16,
+              border: '1px solid #E2E8F0',
+              boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)',
+              background: '#FFFFFF',
+            }}
+          >
+            <div
+              style={{
+                padding: '18px 20px 14px',
+                background: 'linear-gradient(135deg, #ECFDF5, #F0F9FF)',
+                borderBottom: '1px solid #E2E8F0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+              }}
+            >
               <div
                 style={{
-                  marginTop: 14,
-                  padding: '12px 14px',
-                  borderRadius: 12,
-                  background: '#FFFFFF',
-                  border: '1px solid #BBF7D0',
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: '#16A34A',
                   display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                  fontSize: '0.84rem',
-                  color: '#0F172A',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16A34A', marginTop: 5, flexShrink: 0 }} />
-                  <div>
-                    <strong style={{ color: '#047857' }}>Ready to sign in</strong>
-                    <div style={{ color: '#64748B', marginTop: 2, lineHeight: 1.45 }}>
-                      Staff can log in with <strong>Staff ID No.</strong> using the badge and PIN above.
-                      Share these details with them privately.
-                    </div>
-                  </div>
-                </div>
-                {confirmInfo.email ? (
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: '50%',
-                        background: confirmInfo.emailAuth === 'ok' ? '#16A34A' : '#F59E0B',
-                        marginTop: 5,
-                        flexShrink: 0,
-                      }}
-                    />
-                    <div>
-                      <strong style={{ color: confirmInfo.emailAuth === 'ok' ? '#047857' : '#B45309' }}>
-                        {confirmInfo.emailAuth === 'ok' ? 'Email sign-in ready' : 'Email sign-in optional'}
-                      </strong>
-                      <div style={{ color: '#64748B', marginTop: 2, lineHeight: 1.45 }}>
-                        {confirmInfo.emailAuth === 'ok'
-                          ? `They can also sign in with ${confirmInfo.email} and the same PIN.`
-                          : 'Badge + PIN works now. Email login can be set up later from Staff Access if needed.'}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
+                <CheckCircle2 size={20} color="#fff" />
               </div>
-              <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                {!confirmInfo.listed ? (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0F172A' }}>Account created</div>
+                <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>{confirmInfo.name}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmInfo(null)}
+                aria-label="Close"
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  fontSize: 20,
+                  lineHeight: 1,
+                  color: '#94A3B8',
+                  padding: 4,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: '16px 20px 20px' }}>
+              <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.55, marginBottom: 12 }}>
+                <div><span style={{ color: '#64748B' }}>Role</span> · {confirmInfo.role}</div>
+                <div><span style={{ color: '#64748B' }}>Dept</span> · {confirmInfo.department}</div>
+              </div>
+
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 12,
+                  background: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  marginBottom: 12,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', letterSpacing: '0.04em', marginBottom: 8 }}>
+                  SIGN-IN
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#94A3B8' }}>Badge</div>
+                    <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 800, color: '#0052D4', fontSize: 15 }}>
+                      {confirmInfo.badgeId}
+                    </div>
+                  </div>
                   <button
                     type="button"
-                    className="os-primary-btn"
-                    onClick={() => {
-                      const row = confirmInfo.accessRow;
-                      const nextAccess = [row, ...getAccessRecords().filter((r) => r.id !== row.id)];
-                      setAccessRecords(nextAccess);
-                      setRecords(nextAccess);
-                      setSelectedId(row.id);
-                      setConfirmInfo({ ...confirmInfo, listed: true });
-                      pushActivity(`Listed in access control · ${row.name} · ${row.id}`);
-                    }}
+                    onClick={() => { try { void navigator.clipboard.writeText(confirmInfo.badgeId); } catch { /* */ } }}
+                    style={{ fontSize: 11, fontWeight: 700, border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', background: '#fff' }}
                   >
-                    <CheckCircle2 size={16} /> Confirm — add to staff list
+                    Copy
                   </button>
-                ) : (
-                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#047857' }}>
-                    ✓ Added to staff list below
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#94A3B8' }}>PIN</div>
+                    <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 800, fontSize: 15 }}>{confirmInfo.pin}</div>
                   </div>
-                )}
-                <button
-                  type="button"
-                  className="os-ghost-btn"
-                  style={{ fontSize: 12 }}
-                  onClick={() => {
-                    // If never confirmed list, still persist access so badge login works from access store
-                    if (confirmInfo && !confirmInfo.listed) {
-                      const row = confirmInfo.accessRow;
-                      const nextAccess = [row, ...getAccessRecords().filter((r) => r.id !== row.id)];
-                      setAccessRecords(nextAccess);
-                      setRecords(nextAccess);
-                    }
-                    setConfirmInfo(null);
-                  }}
-                >
-                  {confirmInfo.listed ? 'Close' : 'Close (also add to list)'}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => { try { void navigator.clipboard.writeText(confirmInfo.pin); } catch { /* */ } }}
+                    style={{ fontSize: 11, fontWeight: 700, border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', background: '#fff' }}
+                  >
+                    Copy
+                  </button>
+                </div>
+                {confirmInfo.email ? (
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#64748B' }}>Email · {confirmInfo.email}</div>
+                ) : null}
               </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: confirmInfo.firebaseAuth === 'ok' ? '#D1FAE5' : '#FEF3C7', color: confirmInfo.firebaseAuth === 'ok' ? '#047857' : '#B45309' }}>
+                  Auth {confirmInfo.firebaseAuth}
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: confirmInfo.firestore === 'ok' ? '#D1FAE5' : '#FEE2E2', color: confirmInfo.firestore === 'ok' ? '#047857' : '#B91C1C' }}>
+                  Cloud {confirmInfo.firestore}
+                </span>
+              </div>
+
+              {confirmInfo.firestore !== 'ok' && (
+                <div style={{ fontSize: 12, color: '#991B1B', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '8px 10px', marginBottom: 12 }}>
+                  Cloud profile did not save. Other devices may not see this staff until you retry online.
+                </div>
+              )}
+
+              {issued && (
+                <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'center' }}>
+                  <StaffIdCardView card={issued} compact />
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="os-primary-btn"
+                style={{ width: '100%', justifyContent: 'center' }}
+                onClick={() => setConfirmInfo(null)}
+              >
+                Done
+              </button>
             </div>
-            {issued && (
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748B', marginBottom: 8 }}>Staff ID card</div>
-                <StaffIdCardView card={issued} compact />
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -766,9 +936,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           display: 'grid',
           gridTemplateColumns: 'minmax(0, 1fr) minmax(260px, 320px)',
           gap: 16,
-          opacity: confirmInfo && !confirmInfo.listed ? 0.45 : 1,
-          pointerEvents: confirmInfo && !confirmInfo.listed ? 'none' : undefined,
-          transition: 'opacity 0.2s ease',
+          /* success is modal overlay — table stays normal */
         }}
       >
         <div className="os-table-wrap">

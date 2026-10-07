@@ -439,7 +439,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         return;
       }
 
-      const { resolveStaffByBadge, normalizeBadgeId, inferRoleKey } = await import('../../lib/staffCardStore');
+      const { resolveStaffByBadge, normalizeBadgeId, inferRoleKey, defaultPermissionsForRole } = await import('../../lib/staffCardStore');
       const {
         firestoreGetStaffByBadge,
         firestoreRecordLogin,
@@ -448,23 +448,39 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         normalizeStaffPin,
       } = await import('../../lib/firebase');
 
-      const mapProfile = (raw: Record<string, unknown>): PresetStaff => ({
-        badgeId: normalizeBadgeId(String(raw.badgeId || raw.id || badgeQuery)),
-        name: String(raw.name || raw.fullName || 'Staff'),
-        role: String(raw.role || 'Staff'),
-        shortRole: String(raw.shortRole || raw.role || 'Staff'),
-        title: String(raw.title || raw.role || 'Staff'),
-        roleKey: inferRoleKey(String(raw.roleKey || raw.role || ''), String(raw.badgeId || raw.id || badgeQuery)),
-        clearanceLevel: Number(raw.clearanceLevel ?? 2),
-        clearanceLabel: String(raw.clearanceLabel || 'L2'),
-        department: String(raw.department || ''),
-        initials: String(raw.initials || 'ST'),
-        permissions: (raw.permissions as string[]) || ['dashboard'],
-        pin: String(raw.pin || pinQuery),
-        hospitalId: String(raw.hospitalId || raw.facilityId || effectiveHospital.id),
-        hospitalName: String(raw.hospitalName || raw.facilityName || effectiveHospital.name),
-        color: '#0052D4',
-      });
+      const mapProfile = (raw: Record<string, unknown>): PresetStaff => {
+        const badge = normalizeBadgeId(String(raw.badgeId || raw.id || badgeQuery));
+        // Prefer stored roleKey exactly — never upgrade a doctor/nurse into hospital_admin via inference
+        const storedKey = String(raw.roleKey || '').trim();
+        const roleKey = storedKey
+          ? inferRoleKey(storedKey, badge)
+          : inferRoleKey(String(raw.role || raw.title || ''), badge);
+        let permissions = (raw.permissions as string[]) || [];
+        if (!permissions.length || (permissions.includes('*') && roleKey !== 'hospital_admin' && roleKey !== 'sysadmin')) {
+          permissions = defaultPermissionsForRole(roleKey);
+        }
+        // Never grant admin permissions unless role is truly hospital_admin/sysadmin
+        if (roleKey !== 'hospital_admin' && roleKey !== 'sysadmin') {
+          permissions = permissions.filter((x) => x !== '*' && x !== 'rbac' && x !== 'sysadmin');
+        }
+        return {
+          badgeId: badge,
+          name: String(raw.name || raw.fullName || 'Staff'),
+          role: String(raw.role || 'Staff'),
+          shortRole: String(raw.shortRole || raw.role || 'Staff'),
+          title: String(raw.title || raw.role || 'Staff'),
+          roleKey,
+          clearanceLevel: Number(raw.clearanceLevel ?? 2),
+          clearanceLabel: String(raw.clearanceLabel || 'L2'),
+          department: String(raw.department || ''),
+          initials: String(raw.initials || 'ST'),
+          permissions,
+          pin: String(raw.pin || pinQuery),
+          hospitalId: String(raw.hospitalId || raw.facilityId || effectiveHospital.id),
+          hospitalName: String(raw.hospitalName || raw.facilityName || effectiveHospital.name),
+          color: '#0052D4',
+        };
+      };
 
       // 0) Platform admin + empty (or claimable) hospital → auto-create facility admin FIRST
       //    so selecting a new hospital always gets its own admin badge (e.g. GH-IKE-ADM-001).
@@ -517,14 +533,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               }
             }
           } else {
-            // Hospital already has admin — log platform claim into that facility admin if badge is bootstrap
+            // Hospital already has admin — only reuse that profile when THIS badge is the admin badge
             const cards = listStaffCards();
             const existing = cards.find(
               (c) =>
                 String(c.facilityId || '').toUpperCase() === effectiveHospital.id.toUpperCase() &&
                 c.roleKey === 'hospital_admin'
             );
-            if (existing) {
+            if (
+              existing &&
+              normalizeBadgeId(existing.badgeId) === badgeQuery
+            ) {
               const created = resolveStaffByBadge(existing.badgeId);
               if (created) {
                 profile = mapProfile(created as unknown as Record<string, unknown>);
@@ -535,50 +554,74 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 };
               }
             }
+            // Platform bootstrap on a hospital that already has admin: use platform admin session,
+            // never silently open hospital_admin under a different staff badge.
           }
         }
       } catch (claimErr) {
         console.warn('[auth] facility claim', claimErr);
       }
 
-      // 1) Local resolution (registry + cards + access) — same browser as admin create
-      if (!profile) {
-      const local = resolveStaffByBadge(badgeQuery);
-      if (local) {
-        profile = mapProfile(local as unknown as Record<string, unknown>);
-      }
+      // CLOUD-FIRST when online — avoids stale local admin/doctor mismatch on other devices
+      const online = typeof navigator === 'undefined' || navigator.onLine;
+
+      // 1) Firestore staff profile (source of truth online)
+      if (!profile && online) {
+        try {
+          let remote = await withTimeout(
+            firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery),
+            6000
+          );
+          if (!remote) {
+            for (const h of HOSPITALS.slice(0, 5)) {
+              if (h.id === effectiveHospital.id) continue;
+              try {
+                remote = await withTimeout(firestoreGetStaffByBadge(h.id, badgeQuery), 2500);
+              } catch {
+                remote = null;
+              }
+              if (remote) break;
+            }
+          }
+          if (remote && (remote.badgeId || remote.id)) {
+            profile = mapProfile(remote);
+            // Mirror cloud → local so this browser stays aligned
+            try {
+              const { defaultPermissionsForRole: dpr } = await import('../../lib/staffCardStore');
+              const entry = {
+                ...remote,
+                badgeId: profile.badgeId,
+                roleKey: profile.roleKey,
+                permissions: profile.permissions?.length ? profile.permissions : dpr(profile.roleKey),
+              };
+              const regRaw = localStorage.getItem('medcore_os_staff_registry');
+              const reg = regRaw ? JSON.parse(regRaw) : [];
+              const next = Array.isArray(reg)
+                ? [entry, ...reg.filter((r: any) => String(r.badgeId || r.id).toUpperCase() !== profile!.badgeId)]
+                : [entry];
+              localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
+              localStorage.setItem('medcore_staff_registry', JSON.stringify(next));
+            } catch { /* ignore */ }
+          }
+        } catch (e) {
+          console.warn('[auth] firestore badge (cloud-first)', e);
+        }
       }
 
-      // 2) In-memory registry
+      // 2) Local resolution — offline or cloud miss
+      if (!profile) {
+        const local = resolveStaffByBadge(badgeQuery);
+        if (local) {
+          profile = mapProfile(local as unknown as Record<string, unknown>);
+        }
+      }
+
+      // 3) In-memory registry (Auth screen subscription)
       if (!profile) {
         const hit = staffRegistry.find(
           (s) => normalizeBadgeId(s.badgeId) === badgeQuery
         );
         if (hit) profile = hit;
-      }
-
-      // 3) Firestore — selected hospital (timed); brief peer scan
-      try {
-        let remote = await withTimeout(
-          firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery),
-          4000
-        );
-        if (!remote) {
-          for (const h of HOSPITALS.slice(0, 5)) {
-            if (h.id === effectiveHospital.id) continue;
-            try {
-              remote = await withTimeout(firestoreGetStaffByBadge(h.id, badgeQuery), 2000);
-            } catch {
-              remote = null;
-            }
-            if (remote) break;
-          }
-        }
-        if (remote && (remote.badgeId || remote.id)) {
-          profile = mapProfile(remote);
-        }
-      } catch (e) {
-        console.warn('[auth] firestore badge', e);
       }
 
       // 4) If still no profile, try Firebase Auth — account may exist from admin create
@@ -588,16 +631,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       if (!profile) {
         try {
           fbUser = await withTimeout(firebaseSignInWithBadge(badgeQuery, pinNorm), 6000);
-          // Auth worked — build minimal session profile
-          profile = mapProfile({
-            badgeId: badgeQuery,
-            name: badgeQuery,
-            role: 'Staff',
-            roleKey: inferRoleKey('', badgeQuery),
-            pin: pinNorm,
-            hospitalId: effectiveHospital.id,
-            hospitalName: effectiveHospital.name,
-          });
+          // Auth ok but no staff profile yet — re-fetch Firestore (eventual consistency)
+          try {
+            const retry = await withTimeout(
+              firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery),
+              5000
+            );
+            if (retry && (retry.badgeId || retry.id)) {
+              profile = mapProfile(retry);
+            }
+          } catch { /* ignore */ }
+          if (!profile) {
+            setError(
+              'This Staff ID has a sign-in account but no hospital profile in the cloud yet. Ask admin to open Staff Access Control and create/save the account again so role and desk sync.'
+            );
+            setLoading(false);
+            return;
+          }
         } catch {
           // 5) First login to an empty facility → auto-provision facility admin
           //    (only when using platform bootstrap credentials, so facilities stay claimable securely)
@@ -909,7 +959,40 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           }
         }
 
-        // Match enrolled staff by work email in registry
+        // CLOUD-FIRST: work email → staff profile (online)
+        if (!matchedStaff && (typeof navigator === 'undefined' || navigator.onLine)) {
+          try {
+            const { firestoreGetStaffByEmail } = await import('../../lib/firebase');
+            const remote = await withTimeout(
+              firestoreGetStaffByEmail(effectiveHospital.id, email),
+              6000
+            );
+            if (remote && (remote.badgeId || remote.id)) {
+              const bid = String(remote.badgeId || remote.id);
+              matchedStaff = {
+                badgeId: bid,
+                name: String(remote.name || remote.fullName || email),
+                role: String(remote.role || 'Staff'),
+                shortRole: String(remote.shortRole || remote.role || 'Staff'),
+                title: String(remote.title || remote.role || 'Staff'),
+                roleKey: inferRoleKey(String(remote.roleKey || remote.role || ''), bid),
+                clearanceLevel: Number(remote.clearanceLevel ?? 2),
+                clearanceLabel: String(remote.clearanceLabel || 'L2'),
+                department: String(remote.department || ''),
+                initials: String(remote.initials || 'ST'),
+                permissions: (remote.permissions as string[]) || ['dashboard'],
+                pin: String(remote.pin || pass),
+                hospitalId: effectiveHospital.id,
+                hospitalName: effectiveHospital.name,
+                color: '#0052D4',
+              };
+            }
+          } catch (e) {
+            console.warn('[auth] firestore email cloud-first', e);
+          }
+        }
+
+        // Local registry (offline / cloud miss)
         if (!matchedStaff) {
           try {
             const raw = localStorage.getItem('medcore_os_staff_registry');
@@ -942,39 +1025,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               }
             }
           } catch { /* ignore */ }
-        }
-
-        // Cloud lookup by work email (other workstation enrolled them)
-        if (!matchedStaff) {
-          try {
-            const { firestoreGetStaffByEmail } = await import('../../lib/firebase');
-            const remote = await withTimeout(
-              firestoreGetStaffByEmail(effectiveHospital.id, email),
-              6000
-            );
-            if (remote && (remote.badgeId || remote.id)) {
-              const bid = String(remote.badgeId || remote.id);
-              matchedStaff = {
-                badgeId: bid,
-                name: String(remote.name || remote.fullName || email),
-                role: String(remote.role || 'Staff'),
-                shortRole: String(remote.shortRole || remote.role || 'Staff'),
-                title: String(remote.title || remote.role || 'Staff'),
-                roleKey: inferRoleKey(String(remote.roleKey || remote.role || ''), bid),
-                clearanceLevel: Number(remote.clearanceLevel ?? 2),
-                clearanceLabel: String(remote.clearanceLabel || 'L2'),
-                department: String(remote.department || ''),
-                initials: String(remote.initials || 'ST'),
-                permissions: (remote.permissions as string[]) || ['dashboard'],
-                pin: String(remote.pin || pass),
-                hospitalId: effectiveHospital.id,
-                hospitalName: effectiveHospital.name,
-                color: '#0052D4',
-              };
-            }
-          } catch {
-            /* offline ok */
-          }
         }
 
         if (!matchedStaff && (isBootstrapAdmin || facilityEmpty || fbUser)) {

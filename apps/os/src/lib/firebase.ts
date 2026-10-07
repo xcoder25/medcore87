@@ -169,7 +169,8 @@ export async function firebaseEnsureBadgeAccount(
           await signOutSecondary(secAuth);
           return { email, uid: cred.user.uid, created: false };
         } catch {
-          throw err;
+          // Account exists (possibly different PIN) — enrol still OK; badge login works
+          return { email: email.trim(), created: false };
         }
       }
       throw err;
@@ -226,7 +227,8 @@ export async function firebaseEnsureEmailAccount(
           await signOutSecondary(secAuth);
           return { email: email.trim(), uid: cred.user.uid, created: false };
         } catch {
-          throw err;
+          // Account exists (possibly different PIN) — enrol still OK; badge login works
+          return { email: email.trim(), created: false };
         }
       }
       throw err;
@@ -260,6 +262,24 @@ export async function firebaseSignInWithBadge(
   }
 }
 
+/** Firestore rejects `undefined` field values — strip them (deep) before setDoc. */
+export function stripUndefinedDeep<T>(value: T): T {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => stripUndefinedDeep(v))
+      .filter((v) => v !== undefined) as T;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (v === undefined) continue;
+    out[k] = stripUndefinedDeep(v);
+  }
+  return out as T;
+}
+
 /** Path: facilities/{facilityId}/store/shared */
 export function facilityStoreRef(facilityId: string) {
   const id = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
@@ -275,10 +295,10 @@ export async function firestoreWriteFacility(
     const ref = facilityStoreRef(facilityId);
     await setDoc(
       ref,
-      {
+      stripUndefinedDeep({
         ...partial,
         updatedAt: new Date().toISOString(),
-      },
+      }),
       { merge: true }
     );
     return true;
@@ -351,6 +371,180 @@ export function firestoreSubscribeStaffDirectory(
   });
 }
 
+
+
+/** Cross-facility staff transfers — global collection (visible to from + to hospitals) */
+export function networkTransferRef(transferId: string) {
+  const id = (transferId || 'UNKNOWN').replace(/[\/#?]/g, '_');
+  return doc(getFirestore(), 'staffTransfers', id);
+}
+
+export async function firestoreUpsertNetworkTransfer(
+  transfer: Record<string, unknown> & { id: string }
+): Promise<boolean> {
+  try {
+    await enableFirestoreOffline();
+    await setDoc(
+      networkTransferRef(String(transfer.id)),
+      stripUndefinedDeep({
+        ...transfer,
+        updatedAt: new Date().toISOString(),
+      }),
+      { merge: true }
+    );
+    return true;
+  } catch (e) {
+    fsWarn('upsert network transfer', e);
+    return false;
+  }
+}
+
+export function firestoreSubscribeNetworkTransfers(
+  onRows: (rows: Record<string, unknown>[]) => void
+): () => void {
+  let unsub = () => {};
+  void (async () => {
+    try {
+      await enableFirestoreOffline();
+      const col = collection(getFirestore(), 'staffTransfers');
+      unsub = onSnapshot(
+        col,
+        (snap) => {
+          const rows: Record<string, unknown>[] = [];
+          snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+          onRows(rows);
+        },
+        (err) => fsWarn('network transfers snapshot', err)
+      );
+    } catch (e) {
+      fsWarn('network transfers subscribe', e);
+    }
+  })();
+  return () => unsub();
+}
+
+/** Cross-facility notifications — collection with facilityId on each doc */
+export function networkNotificationRef(notifId: string) {
+  const id = (notifId || 'UNKNOWN').replace(/[\/#?]/g, '_');
+  return doc(getFirestore(), 'networkNotifications', id);
+}
+
+export async function firestoreUpsertNetworkNotification(
+  notif: Record<string, unknown> & { id: string; facilityId: string }
+): Promise<boolean> {
+  try {
+    await enableFirestoreOffline();
+    await setDoc(
+      networkNotificationRef(String(notif.id)),
+      stripUndefinedDeep({
+        ...notif,
+        updatedAt: new Date().toISOString(),
+      }),
+      { merge: true }
+    );
+    return true;
+  } catch (e) {
+    fsWarn('upsert network notification', e);
+    return false;
+  }
+}
+
+export function firestoreSubscribeNetworkNotifications(
+  facilityId: string,
+  onRows: (rows: Record<string, unknown>[]) => void
+): () => void {
+  let unsub = () => {};
+  void (async () => {
+    try {
+      await enableFirestoreOffline();
+      // Client filter: subscribe all and filter (avoids composite index requirement)
+      const col = collection(getFirestore(), 'networkNotifications');
+      unsub = onSnapshot(
+        col,
+        (snap) => {
+          const fid = String(facilityId || '').toUpperCase();
+          const rows: Record<string, unknown>[] = [];
+          snap.forEach((d) => {
+            const data = { id: d.id, ...d.data() } as Record<string, unknown>;
+            const nFid = String(data.facilityId || '').toUpperCase();
+            // Deliver to target facility, or multi-facility flags
+            if (
+              !fid ||
+              nFid === fid ||
+              String(data.toFacilityId || '').toUpperCase() === fid ||
+              String(data.fromFacilityId || '').toUpperCase() === fid
+            ) {
+              rows.push(data);
+            }
+          });
+          onRows(rows);
+        },
+        (err) => fsWarn('network notifications snapshot', err)
+      );
+    } catch (e) {
+      fsWarn('network notifications subscribe', e);
+    }
+  })();
+  return () => unsub();
+}
+
+/** Per-user presence: facilities/{facilityId}/presence/{badgeId} — no clobber across PCs */
+export function staffPresenceRef(facilityId: string, badgeId: string) {
+  const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+  const bid = (badgeId || 'UNKNOWN').trim().toUpperCase().replace(/[\/#?]/g, '_');
+  return doc(getFirestore(), 'facilities', fid, 'presence', bid);
+}
+
+export async function firestoreUpsertPresence(
+  facilityId: string,
+  presence: Record<string, unknown> & { badgeId: string }
+): Promise<boolean> {
+  try {
+    await enableFirestoreOffline();
+    const badgeId = String(presence.badgeId);
+    await setDoc(
+      staffPresenceRef(facilityId, badgeId),
+      stripUndefinedDeep({
+        ...presence,
+        badgeId,
+        facilityId,
+        updatedAt: new Date().toISOString(),
+      }),
+      { merge: true }
+    );
+    return true;
+  } catch (e) {
+    fsWarn('upsert presence', e);
+    return false;
+  }
+}
+
+export function firestoreSubscribePresence(
+  facilityId: string,
+  onRows: (rows: Record<string, unknown>[]) => void
+): () => void {
+  let unsub = () => {};
+  void (async () => {
+    try {
+      await enableFirestoreOffline();
+      const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+      const col = collection(getFirestore(), 'facilities', fid, 'presence');
+      unsub = onSnapshot(
+        col,
+        (snap) => {
+          const rows: Record<string, unknown>[] = [];
+          snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+          onRows(rows);
+        },
+        (err) => fsWarn('presence snapshot', err)
+      );
+    } catch (e) {
+      fsWarn('presence subscribe', e);
+    }
+  })();
+  return () => unsub();
+}
+
 /** Per-staff doc: facilities/{facilityId}/staff/{badgeId} */
 export function staffMemberRef(facilityId: string, badgeId: string) {
   const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
@@ -365,12 +559,12 @@ export async function firestoreUpsertStaffMember(
   try {
     await enableFirestoreOffline();
     const badgeId = String(staff.badgeId);
-    const payload = {
+    const payload = stripUndefinedDeep({
       ...staff,
       badgeId,
       facilityId,
       updatedAt: new Date().toISOString(),
-    };
+    });
     await setDoc(staffMemberRef(facilityId, badgeId), payload, { merge: true });
     // Email index so any workstation can resolve work-email → badge
     const email = String(staff.email || staff.workEmail || '')
@@ -439,45 +633,40 @@ export async function ensureStaffCloudIdentity(opts: {
   let badgeAuth = false;
   let emailAuth = false;
   let firestoreOk = false;
+  const mail = (opts.email || '').trim().toLowerCase();
 
-  for (let attempt = 0; attempt < 3 && !badgeAuth; attempt++) {
+  // 1) Create badge Auth account (secondary app), then sign in on PRIMARY so Firestore rules allow write
+  for (let attempt = 0; attempt < 2 && !badgeAuth; attempt++) {
     try {
       const res = await firebaseEnsureBadgeAccount(opts.badgeId, pin);
-      badgeAuth = Boolean(res?.email);
+      if (res?.email) {
+        try {
+          await firebaseSignInWithBadge(opts.badgeId, pin);
+        } catch {
+          /* primary sign-in may fail if already signed in as admin — still try write */
+        }
+        badgeAuth = true;
+      }
     } catch (e) {
       console.warn('[staff-cloud] badge auth attempt', attempt + 1, e);
-      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
     }
   }
 
-  const mail = (opts.email || '').trim().toLowerCase();
-  if (mail && isEmailCredential(mail)) {
-    for (let attempt = 0; attempt < 3 && !emailAuth; attempt++) {
-      try {
-        const res = await firebaseEnsureEmailAccount(mail, pin);
-        emailAuth = Boolean(res?.email);
-      } catch (e) {
-        console.warn('[staff-cloud] email auth attempt', attempt + 1, e);
-        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-      }
-    }
-  } else {
-    emailAuth = true; // not requested
-  }
-
+  // 2) Firestore staff profile (needs Auth for typical security rules)
   for (let attempt = 0; attempt < 3 && !firestoreOk; attempt++) {
     try {
       const ok = await firestoreUpsertStaffMember(opts.facilityId, {
         ...opts.profile,
         badgeId: opts.badgeId,
-        email: mail || undefined,
+        ...(mail ? { email: mail } : {}),
         pin,
         authEmail: badgeAuthEmail(opts.badgeId),
         status: 'active',
+        roleKey: opts.profile.roleKey || opts.profile.role || '',
       });
       firestoreOk = ok;
       if (ok) {
-        // directory push is best-effort
         try {
           const cardsRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('medcore_staff_id_cards') : null;
           const regRaw =
@@ -495,8 +684,23 @@ export async function ensureStaffCloudIdentity(opts: {
       }
     } catch (e) {
       console.warn('[staff-cloud] firestore attempt', attempt + 1, e);
-      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
     }
+  }
+
+  // 3) Optional email Auth
+  if (mail && isEmailCredential(mail)) {
+    for (let attempt = 0; attempt < 2 && !emailAuth; attempt++) {
+      try {
+        const res = await firebaseEnsureEmailAccount(mail, pin);
+        emailAuth = Boolean(res?.email);
+      } catch (e) {
+        console.warn('[staff-cloud] email auth attempt', attempt + 1, e);
+        await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+      }
+    }
+  } else {
+    emailAuth = true;
   }
 
   return { badgeAuth, emailAuth: mail ? emailAuth : true, firestore: firestoreOk };
@@ -570,10 +774,10 @@ export async function firestoreRecordLogin(
     await enableFirestoreOffline();
     await setDoc(
       staffMemberRef(facilityId, badgeId),
-      {
+      stripUndefinedDeep({
         lastLoginAt: new Date().toISOString(),
         lastLoginMeta: meta || {},
-      },
+      }),
       { merge: true }
     );
   } catch (e) {

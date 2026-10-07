@@ -40,7 +40,65 @@ function write(list: HospitalNotification[]) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(KEY, JSON.stringify(list.slice(0, 500)));
   window.dispatchEvent(new CustomEvent(EVT, { detail: list }));
-  publishFacilityData(list[0]?.facilityId || 'IGH-EKT', KEY, list);
+  // Publish to every facilityId present in the batch (cross-facility inbox)
+  const fids = new Set(
+    list
+      .map((n) => String(n.facilityId || '').trim())
+      .filter(Boolean)
+  );
+  if (fids.size === 0) fids.add('IGH-EKT');
+  for (const fid of fids) {
+    try {
+      const subset = list.filter((n) => !n.facilityId || n.facilityId === fid);
+      publishFacilityData(fid, KEY, subset.length ? subset : list);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function mergeNotifications(local: HospitalNotification[], remote: HospitalNotification[]): HospitalNotification[] {
+  const byId = new Map<string, HospitalNotification>();
+  for (const n of local) byId.set(n.id, n);
+  for (const n of remote) {
+    const prev = byId.get(n.id);
+    if (!prev || (n.createdAt || '') >= (prev.createdAt || '')) {
+      byId.set(n.id, { ...prev, ...n });
+    }
+  }
+  return Array.from(byId.values())
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+    .slice(0, 500);
+}
+
+/** Apply remote/network notification rows into local list (live, no reload) */
+export function applyRemoteNotifications(rows: unknown[]): void {
+  if (typeof window === 'undefined' || !Array.isArray(rows)) return;
+  const remote = rows
+    .filter((r) => r && typeof r === 'object')
+    .map((r) => r as HospitalNotification)
+    .filter((n) => n.id);
+  if (!remote.length) return;
+  const merged = mergeNotifications(read(), remote);
+  localStorage.setItem(KEY, JSON.stringify(merged));
+  window.dispatchEvent(new CustomEvent(EVT, { detail: merged }));
+}
+
+/** Start live network notification listener for this hospital */
+export function startNetworkNotificationListener(facilityId: string): () => void {
+  if (typeof window === 'undefined' || !facilityId) return () => {};
+  let stop = () => {};
+  void (async () => {
+    try {
+      const { firestoreSubscribeNetworkNotifications } = await import('./firebase');
+      stop = firestoreSubscribeNetworkNotifications(facilityId, (rows) => {
+        applyRemoteNotifications(rows);
+      });
+    } catch {
+      /* offline */
+    }
+  })();
+  return () => stop();
 }
 
 export function pushNotification(
@@ -63,7 +121,39 @@ export function pushNotification(
     createdAt: new Date().toISOString(),
   };
   write([n, ...read()]);
+  // Network collection — other facilities / workstations pick up via snapshot
+  void (async () => {
+    try {
+      const { firestoreUpsertNetworkNotification } = await import('./firebase');
+      await firestoreUpsertNetworkNotification({
+        ...n,
+        facilityId: n.facilityId,
+        toFacilityId: (input as { toFacilityId?: string }).toFacilityId,
+        fromFacilityId: (input as { fromFacilityId?: string }).fromFacilityId,
+      });
+    } catch {
+      /* offline */
+    }
+  })();
   return n;
+}
+
+/** Push the same notification to one or more facilities (cross-hospital transfer inbox) */
+export function pushNotificationCrossFacility(
+  input: Omit<HospitalNotification, 'id' | 'read' | 'createdAt'>,
+  facilityIds: string[]
+): HospitalNotification[] {
+  const out: HospitalNotification[] = [];
+  const unique = Array.from(new Set(facilityIds.map((f) => String(f || '').trim()).filter(Boolean)));
+  for (const fid of unique) {
+    out.push(
+      pushNotification({
+        ...input,
+        facilityId: fid,
+      })
+    );
+  }
+  return out;
 }
 
 function normName(s: string): string {

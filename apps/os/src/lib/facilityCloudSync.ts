@@ -10,6 +10,7 @@ import { firestoreSubscribeFacility, enableFirestoreOffline } from './firebase';
 import { startFacilitySyncLoop, probeHospitalApi } from './hospitalSync';
 import { startOutboxAutoFlush, flushOutbox } from './durableOutbox';
 import { FACILITY_KEYS } from './roleSyncBus';
+import { mergePresenceMaps, STAFF_PRESENCE_KEY } from './staffPresenceStore';
 
 /** Map storage keys → CustomEvents so existing subscribe*() hooks refresh live */
 const KEY_EVENTS: Record<string, string[]> = {
@@ -22,6 +23,9 @@ const KEY_EVENTS: Record<string, string[]> = {
   [FACILITY_KEYS.staff]: ['medcore-staff-cards-updated', 'medcore-admin-sync'],
   medcore_staff_id_cards: ['medcore-staff-cards-updated', 'medcore-admin-sync'],
   [FACILITY_KEYS.notifications]: ['medcore-notifications', 'medcore-admin-sync'],
+  medcore_os_staff_presence_v1: ['medcore-staff-presence', 'medcore-admin-sync'],
+  medcore_os_transfers: ['medcore-transfers-updated', 'medcore-admin-sync'],
+  medcore_os_payment_receipts_v1: ['medcore-payment-receipts', 'medcore-admin-sync'],
   [FACILITY_KEYS.audit]: ['medcore-admin-sync'],
   [FACILITY_KEYS.facilityCatalog]: ['medcore-facility-catalog', 'medcore-admin-sync'],
 };
@@ -51,6 +55,25 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
   if (value === undefined || value === null) return;
   if (key === 'updatedAt' || key === 'resetAt') return;
   try {
+    // Presence maps must MERGE (not replace) so multi-PC logins all stay visible
+    if (key === STAFF_PRESENCE_KEY && value && typeof value === 'object') {
+      let local: Record<string, unknown> = {};
+      try {
+        local = JSON.parse(localStorage.getItem(key) || '{}') || {};
+      } catch {
+        local = {};
+      }
+      const merged = mergePresenceMaps(
+        local as Parameters<typeof mergePresenceMaps>[0],
+        value as Parameters<typeof mergePresenceMaps>[0]
+      );
+      const next = JSON.stringify(merged);
+      const prev = localStorage.getItem(key);
+      if (prev === next) return;
+      localStorage.setItem(key, next);
+      emitForKey(key, merged);
+      return;
+    }
     const next = JSON.stringify(value);
     const prev = localStorage.getItem(key);
     if (prev === next) return;
@@ -69,16 +92,33 @@ export function startHospitalCloudSync(facilityId: string): () => void {
   if (typeof window === 'undefined' || !facilityId) return () => {};
 
   void enableFirestoreOffline();
+  const applyKey = (key: string, value: unknown) => applyFacilityRemoteKey(key, value);
+
+  // CLOUD-FIRST bootstrap: pull shared facility doc before relying on local cache
+  void (async () => {
+    try {
+      const { firestoreReadFacility } = await import('./firebase');
+      if (typeof navigator === 'undefined' || navigator.onLine) {
+        const data = await firestoreReadFacility(facilityId);
+        if (data) {
+          for (const [k, v] of Object.entries(data)) {
+            applyKey(k, v);
+          }
+        }
+      }
+    } catch {
+      /* offline / deny */
+    }
+  })();
+
   const stopOutbox = startOutboxAutoFlush(2500);
   void flushOutbox();
-
-  const applyKey = (key: string, value: unknown) => applyFacilityRemoteKey(key, value);
 
   // LAN hub (when available on hospital network)
   const stopLan = startFacilitySyncLoop(facilityId, applyKey, 2500);
   void probeHospitalApi();
 
-  // Cloud realtime — other PCs / phones on same hospital
+  // Cloud realtime — other PCs / phones on same hospital (overrides local when newer)
   const stopFs = firestoreSubscribeFacility(facilityId, (data) => {
     for (const [k, v] of Object.entries(data || {})) {
       applyKey(k, v);
