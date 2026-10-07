@@ -17,6 +17,7 @@ import {
   ArrowRight,
   RefreshCw,
   Banknote,
+  TrendingUp,
 } from 'lucide-react';
 import {
   listAccountsRequests,
@@ -127,41 +128,212 @@ export const AccountingWorkspace: React.FC<Props> = ({
     bump();
   };
 
+  const firstName = (session.name || 'Cashier').split(' ')[0];
+
+  const kpi = [
+    {
+      label: 'Awaiting payment',
+      value: String(awaiting.length),
+      icon: Clock,
+      tint: '#FEF3C7',
+      iconColor: '#B45309',
+      trend: awaiting.length ? 'Live' : undefined,
+      up: true,
+    },
+    {
+      label: 'Paid today',
+      value: String(paidToday.length),
+      icon: CheckCircle2,
+      tint: '#DCFCE7',
+      iconColor: '#16A34A',
+    },
+    {
+      label: 'Collected today',
+      value: `₦${(stats.collected || 0).toLocaleString()}`,
+      icon: Wallet,
+      tint: '#E0F2FE',
+      iconColor: '#0284C7',
+    },
+    {
+      label: 'Open bills',
+      value: String(openBills.length),
+      icon: FileText,
+      tint: '#F3E8FF',
+      iconColor: '#7C3AED',
+    },
+  ];
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: '70vh' }}>
-      {/* Desk header */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: '70vh', paddingBottom: 24 }}>
+      {/* Hero — same pattern as Front Desk */}
       <div
+        className="mc-hero-fluid"
         style={{
+          borderRadius: 20,
+          overflow: 'hidden',
+          color: '#fff',
+          position: 'relative',
+          minHeight: 148,
           display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: 12,
-          padding: '14px 16px',
-          borderRadius: 16,
-          background: 'linear-gradient(135deg,#FFFBEB 0%,#FFF7ED 50%,#F0FDFA 100%)',
-          border: '1px solid #FDE68A',
+          alignItems: 'stretch',
         }}
       >
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: C.amber, letterSpacing: '0.06em' }}>
-            ACCOUNTING · CASHIER DESK
+        <div style={{ padding: '22px 28px', flex: 1, zIndex: 1, maxWidth: '62%' }}>
+          <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 4 }}>
+            Welcome back, {firstName} 👋
           </div>
-          <div style={{ fontWeight: 800, fontSize: 18, color: C.navy, marginTop: 2 }}>
-            {session.name || 'Cashier'} · {facilityName}
+          <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: -0.4, marginBottom: 6 }}>
+            Accounting &amp; Cashier Desk
           </div>
-          <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
-            Front desk sends folder invoices here. Collect payment, issue receipt — patient returns to reception.
+          <div style={{ fontSize: 13, opacity: 0.88, maxWidth: 440, lineHeight: 1.45 }}>
+            Collect payments from front-desk invoices, manage billing, and issue receipts — patients return to reception for the next step.
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'rgba(255,255,255,0.18)',
+                border: '1px solid rgba(255,255,255,0.25)',
+                borderRadius: 999,
+                padding: '5px 12px',
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: '#4ADE80',
+                  boxShadow: '0 0 0 3px rgba(74,222,128,0.35)',
+                }}
+              />
+              System Online
+            </span>
+            <span
+              style={{
+                background: 'rgba(255,255,255,0.12)',
+                borderRadius: 999,
+                padding: '5px 12px',
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              {facilityName}
+            </span>
+            <span
+              style={{
+                background: 'rgba(255,255,255,0.12)',
+                borderRadius: 999,
+                padding: '5px 12px',
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              {awaiting.length} awaiting payment
+            </span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Kpi label="Awaiting pay" value={String(awaiting.length)} tone="#B45309" />
-          <Kpi label="Paid today" value={String(paidToday.length)} tone="#047857" />
-          <Kpi
-            label="Cash today"
-            value={`₦${(stats.collected || 0).toLocaleString()}`}
-            tone="#0284C7"
-          />
+        <div
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: '48%',
+            backgroundImage: 'url(/hosos-clean.png), url(/auth-hero.png)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.35,
+            maskImage: 'linear-gradient(90deg, transparent, black 30%)',
+            WebkitMaskImage: 'linear-gradient(90deg, transparent, black 30%)',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            right: 28,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            textAlign: 'right',
+            zIndex: 2,
+            maxWidth: 180,
+          }}
+        >
+          <div style={{ fontSize: 13, fontStyle: 'italic', opacity: 0.95, lineHeight: 1.4 }}>
+            “ Better Care.
+            <br />
+            Smarter Systems.”
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, marginTop: 8, opacity: 0.85 }}>MedCore</div>
         </div>
+      </div>
+
+      {/* KPI row — same cards as front desk */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${kpi.length}, minmax(0, 1fr))`,
+          gap: 10,
+          alignItems: 'stretch',
+          width: '100%',
+        }}
+      >
+        {kpi.map((k) => {
+          const Icon = k.icon;
+          return (
+            <div
+              key={k.label}
+              className="mc-kpi-card"
+              style={{
+                background: '#fff',
+                borderRadius: 14,
+                border: `1px solid ${C.border}`,
+                padding: '12px 12px',
+                boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+                minWidth: 0,
+                overflow: 'hidden',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    background: k.tint,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: k.iconColor,
+                  }}
+                >
+                  <Icon size={18} />
+                </div>
+                {k.trend && (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: k.up ? '#16A34A' : '#DC2626',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2,
+                    }}
+                  >
+                    <TrendingUp size={12} />
+                    {k.trend}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 10, fontWeight: 600 }}>{k.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: C.navy, letterSpacing: -0.5 }}>{k.value}</div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Sub-nav */}
