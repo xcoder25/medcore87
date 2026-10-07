@@ -425,9 +425,9 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       setBusy(false);
     }
   };
-;
 
   return (
+    <>
     <div className="os-module-layout" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div className="os-insight-banner">
         <Shield size={18} style={{ color: '#0066FF', flexShrink: 0, marginTop: 2 }} />
@@ -938,7 +938,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           <button type="button" onClick={() => setDeleteSuccess(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', marginLeft: 8, color: '#047857', fontWeight: 800 }}>×</button>
         </div>
       )}
-
+    </>
   );
 };
 

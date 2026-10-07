@@ -238,6 +238,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
   };
 
   return (
+    <>
     <div className="os-module-layout">
       <div className="os-insight-banner">
         <IdCard size={18} style={{ color: '#0066FF', flexShrink: 0, marginTop: 2 }} />
@@ -491,6 +492,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
             ))}
           </div>
         </div>
+    </div>
 
       {/* Delete confirmation modal — no browser/Firebase dialogs */}
       {deleteTarget && (
@@ -641,9 +643,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
           </button>
         </div>
       )}
-
-      )}
-    </div>
+    </>
   );
 };
 
