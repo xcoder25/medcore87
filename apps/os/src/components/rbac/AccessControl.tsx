@@ -257,9 +257,10 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         email: mail || undefined,
       });
       card = issued.card;
+      const badgeId = card.badgeId;
 
       accessRow = {
-        id: card.badgeId,
+        id: badgeId,
         name: nameSnap,
         role: roleMeta.role,
         department: roleMeta.department,
@@ -274,11 +275,11 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       try {
         const cloud = await ensureStaffCloudIdentity({
           facilityId,
-          badgeId: card.badgeId,
+          badgeId,
           pin: pinNorm,
           email: mail || undefined,
           profile: {
-            badgeId: card.badgeId,
+            badgeId,
             name: nameSnap,
             role: roleMeta.role,
             roleKey: roleMeta.roleKey,
@@ -290,7 +291,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
             clearanceLabel: roleMeta.clearanceLabel,
             permissions: accessRow.permissions,
             email: mail || undefined,
-            authEmail: badgeAuthEmail(card.badgeId),
+            authEmail: badgeAuthEmail(badgeId),
             status: 'active',
           },
         });
@@ -302,11 +303,11 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           window.setTimeout(() => {
             void ensureStaffCloudIdentity({
               facilityId,
-              badgeId: card.badgeId,
+              badgeId,
               pin: pinNorm,
               email: mail || undefined,
               profile: {
-                badgeId: card.badgeId,
+                badgeId,
                 name: nameSnap,
                 role: roleMeta.role,
                 roleKey: roleMeta.roleKey,
@@ -318,7 +319,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                 clearanceLabel: roleMeta.clearanceLabel,
                 permissions: accessRow?.permissions || [],
                 email: mail || undefined,
-                authEmail: badgeAuthEmail(card.badgeId),
+                authEmail: badgeAuthEmail(badgeId),
                 status: 'active',
               },
             });
