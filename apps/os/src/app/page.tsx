@@ -1221,18 +1221,20 @@ export default function OSPage() {
 
   // Staff presence (active = currently logged in, Facebook-style)
   useEffect(() => {
-    if (!userSession?.hospitalId || !userSession?.badgeId) return;
+    const badgeId = userSession?.badgeId;
+    const hospitalId = userSession?.hospitalId;
+    if (!hospitalId || !badgeId) return;
     const stop = startStaffPresenceHeartbeat({
-      badgeId: userSession.badgeId,
-      facilityId: userSession.hospitalId,
-      name: userSession.name || userSession.badgeId,
-      roleKey: userSession.roleKey || '',
-      role: userSession.role,
+      badgeId,
+      facilityId: hospitalId,
+      name: userSession?.name || badgeId,
+      roleKey: userSession?.roleKey || '',
+      role: userSession?.role,
     });
     return () => {
       stop();
       try {
-        markStaffOffline(userSession.badgeId, userSession.hospitalId);
+        markStaffOffline(badgeId, hospitalId);
       } catch {
         /* ignore */
       }
