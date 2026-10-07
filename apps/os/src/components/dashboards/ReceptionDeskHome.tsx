@@ -145,6 +145,29 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     };
   }, [facilityId, recountFrontDeskStaff]);
 
+  // Live ops cards — parent reload on reception/patient/billing events
+  useEffect(() => {
+    const bump = () => {
+      try {
+        onRefresh();
+      } catch {
+        /* */
+      }
+    };
+    window.addEventListener('medcore-reception-ops', bump);
+    window.addEventListener('medcore-patients-updated', bump);
+    window.addEventListener('medcore-admin-sync', bump);
+    window.addEventListener('medcore-billing', bump);
+    const id = window.setInterval(bump, 10000);
+    return () => {
+      window.removeEventListener('medcore-reception-ops', bump);
+      window.removeEventListener('medcore-patients-updated', bump);
+      window.removeEventListener('medcore-admin-sync', bump);
+      window.removeEventListener('medcore-billing', bump);
+      window.clearInterval(id);
+    };
+  }, [onRefresh]);
+
   const liveUpdate = async (id: string, status: ReceptionVisit['status']) => {
     setBusyId(id);
     onUpdateVisit(id, status);
@@ -206,12 +229,22 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     return items.slice(0, 6);
   }, [visits, appts]);
 
+  const collectedToday = useMemo(() => {
+    try {
+      return visits
+        .filter((v) => v.paymentStatus === 'paid' || v.paymentStatus === 'hmo' || v.paymentStatus === 'waived')
+        .reduce((s, v) => s + (Number(v.amount) || 0), 0);
+    } catch {
+      return 0;
+    }
+  }, [visits]);
+
   const kpi = [
     {
       label: "Today's Check-ins",
       value: stats.checkIns,
-      sub: 'vs. yesterday',
-      trend: '+12%',
+      sub: `${stats.appointments} appt · ${Math.max(0, stats.checkIns - stats.appointments)} walk-in`,
+      trend: 'Live',
       up: true,
       icon: RefreshCw,
       tint: '#EFF6FF',
@@ -220,8 +253,8 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     {
       label: 'Waiting in Queue',
       value: stats.waiting,
-      sub: `Avg. wait time ${avgWait || 8} min`,
-      trend: '',
+      sub: avgWait > 0 ? `Avg. wait ${avgWait} min` : 'No one waiting',
+      trend: 'Live',
       up: true,
       icon: Users,
       tint: '#ECFDF5',
@@ -229,23 +262,37 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     },
     {
       label: 'Completed Today',
-      value: completed.length,
-      sub: 'vs. yesterday',
-      trend: '+9%',
+      value: stats.completed || completed.length,
+      sub: `${withProv.length} with provider`,
+      trend: 'Live',
       up: true,
       icon: CheckCircle2,
       tint: '#F5F3FF',
       iconColor: '#7C3AED',
     },
     {
-      label: 'Missed Appointments',
-      value: missedAppts,
-      sub: 'vs. yesterday',
-      trend: missedAppts ? '-50%' : '0%',
-      up: false,
+      label: 'Appointments',
+      value: stats.bookedToday || appts.filter((a) => a.status === 'booked' || a.status === 'arrived').length,
+      sub: missedAppts ? `${missedAppts} missed/cancelled` : 'Booked today',
+      trend: 'Live',
+      up: missedAppts === 0,
       icon: Calendar,
       tint: '#FEF2F2',
       iconColor: '#DC2626',
+    },
+    {
+      label: 'Collected today',
+      value: stats.collected > 0
+        ? `₦${Math.round(stats.collected).toLocaleString()}`
+        : collectedToday > 0
+          ? `₦${Math.round(collectedToday).toLocaleString()}`
+          : '₦0',
+      sub: 'POS · cash · transfer',
+      trend: 'Live',
+      up: true,
+      icon: CreditCard,
+      tint: '#ECFDF5',
+      iconColor: '#059669',
     },
     {
       label: 'Active Staff',

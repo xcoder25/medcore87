@@ -202,9 +202,31 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     reload();
     const u1 = subscribePatients(reload);
     const u2 = subscribeReceptionOps(reload);
+    const bump = () => reload();
+    window.addEventListener('medcore-reception-ops', bump);
+    window.addEventListener('medcore-patients-updated', bump);
+    window.addEventListener('medcore-admin-sync', bump);
+    window.addEventListener('medcore-billing', bump);
+    window.addEventListener('medcore-staff-cards-updated', bump);
+    window.addEventListener('storage', bump);
+    // Cross-tab
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('medcore_reception');
+      bc.onmessage = () => reload();
+    } catch { /* ignore */ }
+    const poll = window.setInterval(reload, 12000);
     return () => {
       u1();
       u2();
+      window.removeEventListener('medcore-reception-ops', bump);
+      window.removeEventListener('medcore-patients-updated', bump);
+      window.removeEventListener('medcore-admin-sync', bump);
+      window.removeEventListener('medcore-billing', bump);
+      window.removeEventListener('medcore-staff-cards-updated', bump);
+      window.removeEventListener('storage', bump);
+      try { bc?.close(); } catch { /* */ }
+      window.clearInterval(poll);
     };
   }, [reload]);
 
