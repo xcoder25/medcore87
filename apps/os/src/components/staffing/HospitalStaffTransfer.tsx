@@ -121,23 +121,83 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
     };
   };
 
-  // Sync with localStorage on mount
+  // Sync with localStorage on mount + live cross-facility transfer snapshot
   useEffect(() => {
-    try {
-      const savedStaff = localStorage.getItem('medcore_os_staff_registry');
-      if (savedStaff) {
-        const parsed = JSON.parse(savedStaff);
-        const list = Array.isArray(parsed) ? parsed : [];
-        setStaff(list.map((r: Record<string, unknown>) => normalizeStaff(r || {})));
+    const loadLocal = () => {
+      try {
+        const savedStaff = localStorage.getItem('medcore_os_staff_registry');
+        if (savedStaff) {
+          const parsed = JSON.parse(savedStaff);
+          const list = Array.isArray(parsed) ? parsed : [];
+          setStaff(list.map((r: Record<string, unknown>) => normalizeStaff(r || {})));
+        }
+        const savedTransfers = localStorage.getItem('medcore_os_transfers');
+        if (savedTransfers) {
+          const parsed = JSON.parse(savedTransfers);
+          setTransfers(Array.isArray(parsed) ? parsed : []);
+        }
+      } catch (e) {
+        console.error(e);
       }
-      const savedTransfers = localStorage.getItem('medcore_os_transfers');
-      if (savedTransfers) {
-        const parsed = JSON.parse(savedTransfers);
-        setTransfers(Array.isArray(parsed) ? parsed : []);
-      }
-    } catch (e) {
-      console.error(e);
-    }
+    };
+    loadLocal();
+
+    const onSync = () => loadLocal();
+    window.addEventListener('medcore-admin-sync', onSync);
+    window.addEventListener('medcore-transfers-updated', onSync);
+    window.addEventListener('storage', onSync);
+
+    let stopCloud = () => {};
+    void (async () => {
+      try {
+        const { firestoreSubscribeNetworkTransfers } = await import('../../lib/firebase');
+        stopCloud = firestoreSubscribeNetworkTransfers((rows) => {
+          try {
+            const remote = (rows || []).map((r) => ({
+              id: String(r.id || ''),
+              staffId: String(r.staffId || ''),
+              staffName: String(r.staffName || ''),
+              role: String(r.role || ''),
+              fromHospitalId: String(r.fromHospitalId || ''),
+              fromHospitalName: String(r.fromHospitalName || ''),
+              toHospitalId: String(r.toHospitalId || ''),
+              toHospitalName: String(r.toHospitalName || ''),
+              effectiveDate: String(r.effectiveDate || ''),
+              requestedBy: String(r.requestedBy || ''),
+              status: (r.status as TransferRecord['status']) || 'pending',
+              reason: String(r.reason || ''),
+              requestedAt: String(r.requestedAt || ''),
+            })).filter((tr) => tr.id);
+            if (!remote.length) return;
+            setTransfers((prev) => {
+              const byId = new Map<string, TransferRecord>();
+              for (const tr of prev) byId.set(tr.id, tr);
+              for (const tr of remote) {
+                const old = byId.get(tr.id);
+                // Prefer remote when status advanced or newer request
+                if (!old || (tr.requestedAt || '') >= (old.requestedAt || '') || tr.status !== old.status) {
+                  byId.set(tr.id, { ...old, ...tr });
+                }
+              }
+              const next = Array.from(byId.values());
+              try {
+                localStorage.setItem('medcore_os_transfers', JSON.stringify(next));
+              } catch { /* ignore */ }
+              return next;
+            });
+          } catch (e) {
+            console.error(e);
+          }
+        });
+      } catch { /* offline */ }
+    })();
+
+    return () => {
+      window.removeEventListener('medcore-admin-sync', onSync);
+      window.removeEventListener('medcore-transfers-updated', onSync);
+      window.removeEventListener('storage', onSync);
+      stopCloud();
+    };
   }, []);
 
   const persistData = (updatedStaff: StaffMember[], updatedTransfers: TransferRecord[]) => {
@@ -158,16 +218,40 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
       const list = raw ? JSON.parse(raw) : [];
       const next = [tr, ...list.filter((x: TransferRecord) => x.id !== tr.id)];
       localStorage.setItem(key, JSON.stringify(next));
-      // Shared mirror for same browser multi-tab
       localStorage.setItem('medcore_os_transfers', JSON.stringify([tr, ...transfers.filter((x) => x.id !== tr.id)]));
     } catch { /* ignore */ }
+    // Live notification to BOTH hospitals (snapshot, no reload)
     try {
-      const { firestoreWriteFacility } = await import('../../lib/firebase');
+      const { pushNotificationCrossFacility } = await import('../../lib/notificationEngine');
+      pushNotificationCrossFacility(
+        {
+          facilityId: tr.toHospitalId,
+          level: 'important',
+          title: 'Incoming staff transfer',
+          body: `${tr.staffName} (${tr.role}) from ${tr.fromHospitalName} → ${tr.toHospitalName}. Effective ${tr.effectiveDate}.`,
+          module: 'transfer',
+          roleHint: 'hospital_admin',
+          fromFacilityId: tr.fromHospitalId,
+          toFacilityId: tr.toHospitalId,
+        } as any,
+        [tr.fromHospitalId, tr.toHospitalId].filter(Boolean)
+      );
+    } catch { /* ignore */ }
+    try {
+      const { firestoreWriteFacility, firestoreUpsertNetworkTransfer } = await import('../../lib/firebase');
       await firestoreWriteFacility(tr.toHospitalId, {
         transferInbox: {
           [tr.id]: { ...tr, notifiedAt: new Date().toISOString() },
         },
       });
+      if (tr.fromHospitalId) {
+        await firestoreWriteFacility(tr.fromHospitalId, {
+          transferInbox: {
+            [tr.id]: { ...tr, notifiedAt: new Date().toISOString() },
+          },
+        });
+      }
+      await firestoreUpsertNetworkTransfer({ ...tr });
     } catch { /* offline */ }
   };
 

@@ -372,6 +372,122 @@ export function firestoreSubscribeStaffDirectory(
 }
 
 
+
+/** Cross-facility staff transfers — global collection (visible to from + to hospitals) */
+export function networkTransferRef(transferId: string) {
+  const id = (transferId || 'UNKNOWN').replace(/[\/#?]/g, '_');
+  return doc(getFirestore(), 'staffTransfers', id);
+}
+
+export async function firestoreUpsertNetworkTransfer(
+  transfer: Record<string, unknown> & { id: string }
+): Promise<boolean> {
+  try {
+    await enableFirestoreOffline();
+    await setDoc(
+      networkTransferRef(String(transfer.id)),
+      stripUndefinedDeep({
+        ...transfer,
+        updatedAt: new Date().toISOString(),
+      }),
+      { merge: true }
+    );
+    return true;
+  } catch (e) {
+    fsWarn('upsert network transfer', e);
+    return false;
+  }
+}
+
+export function firestoreSubscribeNetworkTransfers(
+  onRows: (rows: Record<string, unknown>[]) => void
+): () => void {
+  let unsub = () => {};
+  void (async () => {
+    try {
+      await enableFirestoreOffline();
+      const col = collection(getFirestore(), 'staffTransfers');
+      unsub = onSnapshot(
+        col,
+        (snap) => {
+          const rows: Record<string, unknown>[] = [];
+          snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+          onRows(rows);
+        },
+        (err) => fsWarn('network transfers snapshot', err)
+      );
+    } catch (e) {
+      fsWarn('network transfers subscribe', e);
+    }
+  })();
+  return () => unsub();
+}
+
+/** Cross-facility notifications — collection with facilityId on each doc */
+export function networkNotificationRef(notifId: string) {
+  const id = (notifId || 'UNKNOWN').replace(/[\/#?]/g, '_');
+  return doc(getFirestore(), 'networkNotifications', id);
+}
+
+export async function firestoreUpsertNetworkNotification(
+  notif: Record<string, unknown> & { id: string; facilityId: string }
+): Promise<boolean> {
+  try {
+    await enableFirestoreOffline();
+    await setDoc(
+      networkNotificationRef(String(notif.id)),
+      stripUndefinedDeep({
+        ...notif,
+        updatedAt: new Date().toISOString(),
+      }),
+      { merge: true }
+    );
+    return true;
+  } catch (e) {
+    fsWarn('upsert network notification', e);
+    return false;
+  }
+}
+
+export function firestoreSubscribeNetworkNotifications(
+  facilityId: string,
+  onRows: (rows: Record<string, unknown>[]) => void
+): () => void {
+  let unsub = () => {};
+  void (async () => {
+    try {
+      await enableFirestoreOffline();
+      // Client filter: subscribe all and filter (avoids composite index requirement)
+      const col = collection(getFirestore(), 'networkNotifications');
+      unsub = onSnapshot(
+        col,
+        (snap) => {
+          const fid = String(facilityId || '').toUpperCase();
+          const rows: Record<string, unknown>[] = [];
+          snap.forEach((d) => {
+            const data = { id: d.id, ...d.data() } as Record<string, unknown>;
+            const nFid = String(data.facilityId || '').toUpperCase();
+            // Deliver to target facility, or multi-facility flags
+            if (
+              !fid ||
+              nFid === fid ||
+              String(data.toFacilityId || '').toUpperCase() === fid ||
+              String(data.fromFacilityId || '').toUpperCase() === fid
+            ) {
+              rows.push(data);
+            }
+          });
+          onRows(rows);
+        },
+        (err) => fsWarn('network notifications snapshot', err)
+      );
+    } catch (e) {
+      fsWarn('network notifications subscribe', e);
+    }
+  })();
+  return () => unsub();
+}
+
 /** Per-user presence: facilities/{facilityId}/presence/{badgeId} — no clobber across PCs */
 export function staffPresenceRef(facilityId: string, badgeId: string) {
   const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');

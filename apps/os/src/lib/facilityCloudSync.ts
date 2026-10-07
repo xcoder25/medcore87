@@ -24,6 +24,8 @@ const KEY_EVENTS: Record<string, string[]> = {
   medcore_staff_id_cards: ['medcore-staff-cards-updated', 'medcore-admin-sync'],
   [FACILITY_KEYS.notifications]: ['medcore-notifications', 'medcore-admin-sync'],
   medcore_os_staff_presence_v1: ['medcore-staff-presence', 'medcore-admin-sync'],
+  medcore_os_transfers: ['medcore-transfers-updated', 'medcore-admin-sync'],
+  medcore_os_notifications_v1: ['medcore-notifications', 'medcore-admin-sync'],
   [FACILITY_KEYS.audit]: ['medcore-admin-sync'],
   [FACILITY_KEYS.facilityCatalog]: ['medcore-facility-catalog', 'medcore-admin-sync'],
 };

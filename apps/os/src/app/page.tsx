@@ -49,6 +49,7 @@ import {
   startFacilityPresenceListener,
   markStaffOffline,
 } from '../lib/staffPresenceStore';
+import { startNetworkNotificationListener } from '../lib/notificationEngine';
 import { RoleDashboard } from '../components/dashboards/RoleDashboard';
 import { DoctorPortal } from '../components/dashboards/DoctorPortal';
 import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
@@ -1233,9 +1234,11 @@ export default function OSPage() {
       role: userSession?.role,
     });
     const stopListen = startFacilityPresenceListener(hospitalId);
+    const stopNotif = startNetworkNotificationListener(hospitalId);
     return () => {
       stopHb();
       stopListen();
+      stopNotif();
       try {
         markStaffOffline(badgeId, hospitalId);
       } catch {
