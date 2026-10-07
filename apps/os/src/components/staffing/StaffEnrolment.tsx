@@ -10,7 +10,7 @@ import { UserPlus, IdCard, CheckCircle2, Trash2, X } from 'lucide-react';
 import { LogoProgressBar } from '../realtime/LogoProgressBar';
 import { HOSPITALS } from '../auth/AuthScreen';
 import { enrolStaffAndIssueCard, listStaffCards, getStaffCard, deleteStaffMember, defaultPermissionsForRole } from '../../lib/staffCardStore';
-import { firebaseSignUp, isEmailCredential, firestoreUpsertStaffMember, firestorePushStaffDirectory, firebaseEnsureBadgeAccount, badgeAuthEmail, normalizeStaffPin } from '../../lib/firebase';
+import { isEmailCredential, normalizeStaffPin, ensureStaffCloudIdentity } from '../../lib/firebase';
 import { emitLiveAction } from '../../lib/liveActions';
 import { StaffIdCardView } from './StaffIdCardView';
 import type { StaffCardRecord } from '@medcore/types';
@@ -114,6 +114,13 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
     }
     setBusy(true);
     try {
+      const mail = email.trim().toLowerCase();
+      if (mail && !isEmailCredential(mail)) {
+        setError('Enter a valid work email, or leave email blank and use Staff ID only.');
+        setBusy(false);
+        return;
+      }
+
       const { card } = enrolStaffAndIssueCard({
         fullName: fullName.trim(),
         role: roleMeta.role,
@@ -127,86 +134,60 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         pin,
         shortRole: roleMeta.shortRole,
         permissions: defaultPermissionsForRole(roleMeta.roleKey),
+        email: mail || undefined,
       });
 
-      // Never hang the UI on slow network — local card is already issued
-      const withTimeout = <T,>(p: Promise<T>, ms = 8000): Promise<T> =>
-        Promise.race([
-          p,
-          new Promise<T>((_, reject) =>
-            setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms)
-          ),
-        ]);
-
-      // Sign-in account for badge + PIN
       const pinNorm = normalizeStaffPin(pin);
       try {
-        await withTimeout(firebaseEnsureBadgeAccount(card.badgeId, pinNorm), 8000);
-      } catch (err: any) {
-        console.warn('[enrol] badge Firebase Auth', err);
-        setError(
-          `Card issued locally. Cloud login setup pending: ${err?.message || err?.code || 'network/timeout'}. Staff can still use badge + PIN on this device.`
-        );
-      }
-
-      // Save staff profile so they can sign in on other devices
-      try {
-        const regRaw = localStorage.getItem('medcore_os_staff_registry');
-        const reg = regRaw ? JSON.parse(regRaw) : [];
-        const entry = Array.isArray(reg)
-          ? reg.find((r: any) => String(r.badgeId || '').toUpperCase() === card.badgeId.toUpperCase())
-          : null;
-        const enriched = entry
-          ? {
-              ...entry,
-              badgeId: card.badgeId.toUpperCase(),
+        const cloud = await ensureStaffCloudIdentity({
+          facilityId: facility.id,
+          badgeId: card.badgeId,
+          pin: pinNorm,
+          email: mail || undefined,
+          profile: {
+            badgeId: card.badgeId,
+            name: fullName.trim(),
+            role: roleMeta.role,
+            roleKey: roleMeta.roleKey,
+            title: roleMeta.title,
+            department: roleMeta.department,
+            hospitalId: facility.id,
+            hospitalName: facility.name,
+            clearanceLevel: roleMeta.clearanceLevel,
+            clearanceLabel: roleMeta.clearanceLabel,
+            permissions: defaultPermissionsForRole(roleMeta.roleKey),
+            email: mail || undefined,
+            status: 'active',
+          },
+        });
+        if (!cloud.badgeAuth || (mail && !cloud.emailAuth) || !cloud.firestore) {
+          // Silent background retry — local card already works on this device
+          window.setTimeout(() => {
+            void ensureStaffCloudIdentity({
+              facilityId: facility.id,
+              badgeId: card.badgeId,
               pin: pinNorm,
-              authEmail: badgeAuthEmail(card.badgeId),
-            }
-          : {
-              badgeId: card.badgeId.toUpperCase(),
-              name: fullName.trim(),
-              pin: pinNorm,
-              authEmail: badgeAuthEmail(card.badgeId),
-              roleKey: roleMeta.roleKey,
-              role: roleMeta.role,
-              hospitalId: facility.id,
-              hospitalName: facility.name,
-            };
-        await withTimeout(firestoreUpsertStaffMember(facility.id, enriched), 8000);
-        await withTimeout(
-          firestorePushStaffDirectory(facility.id, {
-            staffCards: JSON.parse(localStorage.getItem('medcore_staff_id_cards') || '[]'),
-            staffRegistry: Array.isArray(reg)
-              ? reg.map((r: any) =>
-                  String(r.badgeId || '').toUpperCase() === card.badgeId.toUpperCase() ? enriched : r
-                )
-              : [enriched],
-          }),
-          8000
-        );
-      } catch (err) {
-        console.warn('[enrol] firestore ensure', err);
-      }
-
-      // Optional email sign-in account for cloud login
-      const mail = email.trim();
-      if (mail) {
-        if (!isEmailCredential(mail)) {
-          setError('Invalid email — card was issued; you can add a valid email later.');
-        } else {
-          try {
-            await withTimeout(firebaseSignUp(mail, pin || '123456'), 8000);
-          } catch (err: any) {
-            const code = err?.code || '';
-            if (code !== 'auth/email-already-in-use') {
-              console.warn('[enrol] firebaseSignUp', err);
-              setError(
-                `Card issued. Sign-in setup note: please try again from Staff Access if login fails.`
-              );
-            }
-          }
+              email: mail || undefined,
+              profile: {
+                badgeId: card.badgeId,
+                name: fullName.trim(),
+                role: roleMeta.role,
+                roleKey: roleMeta.roleKey,
+                title: roleMeta.title,
+                department: roleMeta.department,
+                hospitalId: facility.id,
+                hospitalName: facility.name,
+                clearanceLevel: roleMeta.clearanceLevel,
+                clearanceLabel: roleMeta.clearanceLabel,
+                permissions: defaultPermissionsForRole(roleMeta.roleKey),
+                email: mail || undefined,
+                status: 'active',
+              },
+            });
+          }, 2500);
         }
+      } catch (err) {
+        console.warn('[enrol] cloud identity', err);
       }
 
       try {

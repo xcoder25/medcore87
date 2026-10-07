@@ -85,6 +85,7 @@ export function enrolStaffAndIssueCard(
       hospitalId: input.facilityId,
       hospitalName: input.facilityName,
       status: 'active',
+      email: (input.email || '').trim().toLowerCase() || undefined,
     };
     const next = Array.isArray(reg)
       ? [entry, ...reg.filter((r: { id?: string; badgeId?: string }) => r.id !== id && r.badgeId !== id)]
@@ -111,6 +112,35 @@ export function enrolStaffAndIssueCard(
   return { card, badgeId: id };
 }
 
+
+
+/** Find enrolled staff by work email (local registry) */
+export function findStaffByEmail(email: string, facilityId?: string) {
+  const mail = (email || '').trim().toLowerCase();
+  if (!mail) return null;
+  try {
+    const keys = [STAFF_REGISTRY_STORAGE_KEY, 'medcore_os_staff_registry'];
+    for (const key of keys) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) continue;
+      const hit = arr.find((r: any) => {
+        const e = String(r.email || r.workEmail || '').toLowerCase();
+        if (e !== mail) return false;
+        if (facilityId) {
+          const hid = String(r.hospitalId || r.facilityId || '').toUpperCase();
+          if (hid && hid !== facilityId.toUpperCase()) return false;
+        }
+        return true;
+      });
+      if (hit) return hit;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
 
 /** Admin: permanently remove staff from cards, registry, and cloud */
 export function deleteStaffMember(badgeId: string): boolean {

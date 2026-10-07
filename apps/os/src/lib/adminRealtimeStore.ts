@@ -43,6 +43,7 @@ export type AccessRecord = {
   status: 'active' | 'suspended' | 'pending';
   lastLogin: string;
   permissions: string[];
+  email?: string;
 };
 
 export type ComplianceItem = {

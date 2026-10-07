@@ -49,6 +49,8 @@ export interface StaffEnrolmentInput {
   permissions?: string[];
   /** Staff photo as data URL or remote URL */
   photoUrl?: string;
+  /** Work email — optional second login method (same PIN) */
+  email?: string;
 }
 
 /** Pick visual template from role / clearance */

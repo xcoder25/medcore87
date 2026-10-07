@@ -365,22 +365,143 @@ export async function firestoreUpsertStaffMember(
   try {
     await enableFirestoreOffline();
     const badgeId = String(staff.badgeId);
-    await setDoc(
-      staffMemberRef(facilityId, badgeId),
-      {
-        ...staff,
-        badgeId,
-        facilityId,
-        updatedAt: new Date().toISOString(),
-      },
-      { merge: true }
-    );
+    const payload = {
+      ...staff,
+      badgeId,
+      facilityId,
+      updatedAt: new Date().toISOString(),
+    };
+    await setDoc(staffMemberRef(facilityId, badgeId), payload, { merge: true });
+    // Email index so any workstation can resolve work-email → badge
+    const email = String(staff.email || staff.workEmail || '')
+      .trim()
+      .toLowerCase();
+    if (email && email.includes('@')) {
+      const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+      const emailKey = email.replace(/[\/#?]/g, '_');
+      await setDoc(
+        doc(getFirestore(), 'facilities', fid, 'staffByEmail', emailKey),
+        {
+          email,
+          badgeId,
+          facilityId,
+          name: staff.name || staff.fullName || '',
+          roleKey: staff.roleKey || '',
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    }
     return true;
   } catch (e) {
     fsWarn('upsert staff', e);
     return false;
   }
 }
+
+/** Lookup staff badge by work email (cloud) */
+export async function firestoreGetStaffByEmail(
+  facilityId: string,
+  email: string
+): Promise<Record<string, unknown> | null> {
+  try {
+    await enableFirestoreOffline();
+    const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+    const emailKey = email.trim().toLowerCase().replace(/[\/#?]/g, '_');
+    if (!emailKey) return null;
+    const snap = await getDoc(doc(getFirestore(), 'facilities', fid, 'staffByEmail', emailKey));
+    if (!snap.exists()) return null;
+    const data = snap.data() as Record<string, unknown>;
+    const badgeId = String(data.badgeId || '');
+    if (badgeId) {
+      const full = await firestoreGetStaffByBadge(facilityId, badgeId);
+      if (full) return full;
+    }
+    return { id: snap.id, ...data };
+  } catch (e) {
+    fsWarn('get staff by email', e);
+    return null;
+  }
+}
+
+/**
+ * Full cloud identity for a staff member: Auth (badge + optional email) + Firestore profile.
+ * Retries so transient network blips do not leave accounts half-created.
+ */
+export async function ensureStaffCloudIdentity(opts: {
+  facilityId: string;
+  badgeId: string;
+  pin: string;
+  email?: string;
+  profile: Record<string, unknown>;
+}): Promise<{ badgeAuth: boolean; emailAuth: boolean; firestore: boolean }> {
+  const pin = normalizeStaffPin(opts.pin);
+  let badgeAuth = false;
+  let emailAuth = false;
+  let firestoreOk = false;
+
+  for (let attempt = 0; attempt < 3 && !badgeAuth; attempt++) {
+    try {
+      const res = await firebaseEnsureBadgeAccount(opts.badgeId, pin);
+      badgeAuth = Boolean(res?.email);
+    } catch (e) {
+      console.warn('[staff-cloud] badge auth attempt', attempt + 1, e);
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+    }
+  }
+
+  const mail = (opts.email || '').trim().toLowerCase();
+  if (mail && isEmailCredential(mail)) {
+    for (let attempt = 0; attempt < 3 && !emailAuth; attempt++) {
+      try {
+        const res = await firebaseEnsureEmailAccount(mail, pin);
+        emailAuth = Boolean(res?.email);
+      } catch (e) {
+        console.warn('[staff-cloud] email auth attempt', attempt + 1, e);
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      }
+    }
+  } else {
+    emailAuth = true; // not requested
+  }
+
+  for (let attempt = 0; attempt < 3 && !firestoreOk; attempt++) {
+    try {
+      const ok = await firestoreUpsertStaffMember(opts.facilityId, {
+        ...opts.profile,
+        badgeId: opts.badgeId,
+        email: mail || undefined,
+        pin,
+        authEmail: badgeAuthEmail(opts.badgeId),
+        status: 'active',
+      });
+      firestoreOk = ok;
+      if (ok) {
+        // directory push is best-effort
+        try {
+          const cardsRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('medcore_staff_id_cards') : null;
+          const regRaw =
+            typeof localStorage !== 'undefined'
+              ? localStorage.getItem('medcore_os_staff_registry') ||
+                localStorage.getItem('medcore_staff_registry')
+              : null;
+          await firestorePushStaffDirectory(opts.facilityId, {
+            staffCards: cardsRaw ? JSON.parse(cardsRaw) : [],
+            staffRegistry: regRaw ? JSON.parse(regRaw) : [],
+          });
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch (e) {
+      console.warn('[staff-cloud] firestore attempt', attempt + 1, e);
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+    }
+  }
+
+  return { badgeAuth, emailAuth: mail ? emailAuth : true, firestore: firestoreOk };
+}
+
 
 
 export async function firestoreDeleteStaffMember(

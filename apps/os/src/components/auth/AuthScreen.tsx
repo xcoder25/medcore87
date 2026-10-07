@@ -944,6 +944,39 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           } catch { /* ignore */ }
         }
 
+        // Cloud lookup by work email (other workstation enrolled them)
+        if (!matchedStaff) {
+          try {
+            const { firestoreGetStaffByEmail } = await import('../../lib/firebase');
+            const remote = await withTimeout(
+              firestoreGetStaffByEmail(effectiveHospital.id, email),
+              6000
+            );
+            if (remote && (remote.badgeId || remote.id)) {
+              const bid = String(remote.badgeId || remote.id);
+              matchedStaff = {
+                badgeId: bid,
+                name: String(remote.name || remote.fullName || email),
+                role: String(remote.role || 'Staff'),
+                shortRole: String(remote.shortRole || remote.role || 'Staff'),
+                title: String(remote.title || remote.role || 'Staff'),
+                roleKey: inferRoleKey(String(remote.roleKey || remote.role || ''), bid),
+                clearanceLevel: Number(remote.clearanceLevel ?? 2),
+                clearanceLabel: String(remote.clearanceLabel || 'L2'),
+                department: String(remote.department || ''),
+                initials: String(remote.initials || 'ST'),
+                permissions: (remote.permissions as string[]) || ['dashboard'],
+                pin: String(remote.pin || pass),
+                hospitalId: effectiveHospital.id,
+                hospitalName: effectiveHospital.name,
+                color: '#0052D4',
+              };
+            }
+          } catch {
+            /* offline ok */
+          }
+        }
+
         if (!matchedStaff && (isBootstrapAdmin || facilityEmpty || fbUser)) {
           matchedStaff = {
             badgeId: `${effectiveHospital.id.toUpperCase()}-ADM-001`,

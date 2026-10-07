@@ -24,13 +24,10 @@ import {
   defaultPermissionsForRole,
 } from '../../lib/staffCardStore';
 import {
-  firebaseEnsureEmailAccount,
   isEmailCredential,
-  firestoreUpsertStaffMember,
-  firestorePushStaffDirectory,
-  firebaseEnsureBadgeAccount,
   badgeAuthEmail,
   normalizeStaffPin,
+  ensureStaffCloudIdentity,
 } from '../../lib/firebase';
 import { emitLiveAction } from '../../lib/liveActions';
 import { StaffIdCardView } from '../staffing/StaffIdCardView';
@@ -257,6 +254,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         shortRole: roleMeta.shortRole,
         permissions: defaultPermissionsForRole(roleMeta.roleKey),
         photoUrl: photoUrl || undefined,
+        email: mail || undefined,
       });
       card = issued.card;
 
@@ -269,79 +267,71 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         status: 'active',
         lastLogin: 'Never',
         permissions: defaultPermissionsForRole(roleMeta.roleKey),
+        email: mail || undefined,
       };
 
-      // Firebase Auth (secondary app) — hard timeout so UI never sticks on Creating…
+      // Cloud identity: badge Auth + optional email Auth + Firestore (retries)
       try {
-        const authRes = await withTimeout(
-          firebaseEnsureBadgeAccount(card.badgeId, pinNorm),
-          12000,
-          'Sign-in setup'
-        );
-        firebaseAuth = authRes?.email ? 'ok' : 'fail';
-      } catch (err: any) {
-        console.warn('[access] badge auth', err);
-        firebaseAuth = 'fail';
-      }
-
-      if (mail && isEmailCredential(mail)) {
-        try {
-          await withTimeout(firebaseEnsureEmailAccount(mail, pinNorm), 12000, 'Email sign-in setup');
-          emailAuth = 'ok';
-        } catch (err: any) {
-          console.warn('[access] email auth', err);
-          emailAuth = 'fail';
-        }
-      }
-
-      // Firestore — timeout; do not block confirmation
-      try {
-        const fsOk = await withTimeout(
-          firestoreUpsertStaffMember(facilityId, {
+        const cloud = await ensureStaffCloudIdentity({
+          facilityId,
+          badgeId: card.badgeId,
+          pin: pinNorm,
+          email: mail || undefined,
+          profile: {
             badgeId: card.badgeId,
             name: nameSnap,
             role: roleMeta.role,
             roleKey: roleMeta.roleKey,
             title: roleMeta.title,
             department: roleMeta.department,
-            pin: pinNorm,
-            authEmail: badgeAuthEmail(card.badgeId),
             hospitalId: facilityId,
             hospitalName: facilityName,
             clearanceLevel: roleMeta.clearanceLevel,
             clearanceLabel: roleMeta.clearanceLabel,
             permissions: accessRow.permissions,
+            email: mail || undefined,
+            authEmail: badgeAuthEmail(card.badgeId),
             status: 'active',
-          }),
-          10000,
-          'Saving staff profile'
-        );
-        await withTimeout(
-          firestorePushStaffDirectory(facilityId, {
-            staffCards: listStaffCards(),
-            staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
-          }),
-          10000,
-          'Updating staff directory'
-        );
-        firestoreStatus = fsOk ? 'ok' : 'fail';
-        try {
-          const { firestoreGetStaffByBadge } = await import('../../lib/firebase');
-          const remote = await withTimeout(
-            firestoreGetStaffByBadge(facilityId, card.badgeId),
-            8000,
-            'Verifying staff profile'
-          );
-          if (remote && remote.badgeId) firestoreStatus = 'ok';
-        } catch {
-          /* keep fsOk status */
+          },
+        });
+        firebaseAuth = cloud.badgeAuth ? 'ok' : 'fail';
+        emailAuth = mail ? (cloud.emailAuth ? 'ok' : 'fail') : 'skipped';
+        firestoreStatus = cloud.firestore ? 'ok' : 'fail';
+        // Background retry if anything failed (network blip)
+        if (!cloud.badgeAuth || (mail && !cloud.emailAuth) || !cloud.firestore) {
+          window.setTimeout(() => {
+            void ensureStaffCloudIdentity({
+              facilityId,
+              badgeId: card.badgeId,
+              pin: pinNorm,
+              email: mail || undefined,
+              profile: {
+                badgeId: card.badgeId,
+                name: nameSnap,
+                role: roleMeta.role,
+                roleKey: roleMeta.roleKey,
+                title: roleMeta.title,
+                department: roleMeta.department,
+                hospitalId: facilityId,
+                hospitalName: facilityName,
+                clearanceLevel: roleMeta.clearanceLevel,
+                clearanceLabel: roleMeta.clearanceLabel,
+                permissions: accessRow?.permissions || [],
+                email: mail || undefined,
+                authEmail: badgeAuthEmail(card.badgeId),
+                status: 'active',
+              },
+            });
+          }, 2500);
         }
       } catch (err) {
-        console.warn('[access] firestore', err);
+        console.warn('[access] cloud identity', err);
+        firebaseAuth = 'fail';
+        if (mail) emailAuth = 'fail';
         firestoreStatus = 'fail';
       }
 
-      pushActivity(`Account created · ${nameSnap} · ${card.badgeId} · ID card issued`);
+            pushActivity(`Account created · ${nameSnap} · ${card.badgeId} · ID card issued`);
       emitLiveAction(`Account + ID card · ${card.badgeId}`, { module: 'access' });
     } catch (err: any) {
       console.error('[access] create failed', err);
