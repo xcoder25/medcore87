@@ -32,10 +32,32 @@ function readAll(): PresenceMap {
     const raw = localStorage.getItem(STAFF_PRESENCE_KEY);
     if (!raw) return {};
     const p = JSON.parse(raw);
-    return p && typeof p === 'object' ? p : {};
+    return p && typeof p === 'object' ? (p as PresenceMap) : {};
   } catch {
     return {};
   }
+}
+
+/** Merge presence maps — keep newer lastSeen per badge (multi-PC safe) */
+export function mergePresenceMaps(a: PresenceMap, b: PresenceMap): PresenceMap {
+  const out: PresenceMap = { ...a };
+  for (const [k, row] of Object.entries(b || {})) {
+    const prev = out[k];
+    if (!prev || (row.lastSeen || 0) >= (prev.lastSeen || 0)) {
+      out[k] = row;
+    }
+  }
+  return out;
+}
+
+function pruneStale(map: PresenceMap, now = Date.now()): PresenceMap {
+  const out: PresenceMap = {};
+  for (const [k, row] of Object.entries(map)) {
+    // Keep offline marks briefly; drop very old offline entries (> 1 day)
+    if (!row.online && now - (row.lastSeen || 0) > 24 * 60 * 60 * 1000) continue;
+    out[k] = row;
+  }
+  return out;
 }
 
 function writeAll(map: PresenceMap) {
@@ -61,7 +83,7 @@ function isFresh(p: StaffPresence, now = Date.now()) {
   return Boolean(p.online) && now - (p.lastSeen || 0) < PRESENCE_TTL_MS;
 }
 
-/** Mark current staff online + optional cloud publish */
+/** Mark current staff online + merge-publish so other logged-in users stay visible */
 export function markStaffOnline(opts: {
   badgeId: string;
   facilityId: string;
@@ -72,9 +94,8 @@ export function markStaffOnline(opts: {
   const badge = String(opts.badgeId || '').toUpperCase().replace(/\s+/g, '');
   const fid = String(opts.facilityId || '').toUpperCase();
   if (!badge || !fid) return;
-  const map = readAll();
   const k = mapKey(fid, badge);
-  map[k] = {
+  const self: StaffPresence = {
     badgeId: badge,
     facilityId: fid,
     name: opts.name || badge,
@@ -83,8 +104,11 @@ export function markStaffOnline(opts: {
     lastSeen: Date.now(),
     online: true,
   };
+  const map = pruneStale(mergePresenceMaps(readAll(), { [k]: self }));
+  map[k] = self;
   writeAll(map);
   try {
+    // Cloud field is the whole map — always merge-publish latest local (already includes peers from snapshot)
     publishFacilityData(fid, STAFF_PRESENCE_KEY, map);
   } catch {
     /* ignore */

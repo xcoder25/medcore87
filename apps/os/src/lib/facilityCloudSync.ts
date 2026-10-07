@@ -10,6 +10,7 @@ import { firestoreSubscribeFacility, enableFirestoreOffline } from './firebase';
 import { startFacilitySyncLoop, probeHospitalApi } from './hospitalSync';
 import { startOutboxAutoFlush, flushOutbox } from './durableOutbox';
 import { FACILITY_KEYS } from './roleSyncBus';
+import { mergePresenceMaps, STAFF_PRESENCE_KEY } from './staffPresenceStore';
 
 /** Map storage keys → CustomEvents so existing subscribe*() hooks refresh live */
 const KEY_EVENTS: Record<string, string[]> = {
@@ -52,6 +53,25 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
   if (value === undefined || value === null) return;
   if (key === 'updatedAt' || key === 'resetAt') return;
   try {
+    // Presence maps must MERGE (not replace) so multi-PC logins all stay visible
+    if (key === STAFF_PRESENCE_KEY && value && typeof value === 'object') {
+      let local: Record<string, unknown> = {};
+      try {
+        local = JSON.parse(localStorage.getItem(key) || '{}') || {};
+      } catch {
+        local = {};
+      }
+      const merged = mergePresenceMaps(
+        local as Parameters<typeof mergePresenceMaps>[0],
+        value as Parameters<typeof mergePresenceMaps>[0]
+      );
+      const next = JSON.stringify(merged);
+      const prev = localStorage.getItem(key);
+      if (prev === next) return;
+      localStorage.setItem(key, next);
+      emitForKey(key, merged);
+      return;
+    }
     const next = JSON.stringify(value);
     const prev = localStorage.getItem(key);
     if (prev === next) return;
