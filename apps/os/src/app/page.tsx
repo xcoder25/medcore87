@@ -44,6 +44,10 @@ import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { startOutboxAutoFlush } from '../lib/durableOutbox';
 import { enableFirestoreOffline } from '../lib/firebase';
 import { startHospitalCloudSync } from '../lib/facilityCloudSync';
+import {
+  startStaffPresenceHeartbeat,
+  markStaffOffline,
+} from '../lib/staffPresenceStore';
 import { RoleDashboard } from '../components/dashboards/RoleDashboard';
 import { DoctorPortal } from '../components/dashboards/DoctorPortal';
 import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
@@ -1192,6 +1196,13 @@ export default function OSPage() {
 
   const handleLogout = () => {
     try {
+      if (userSession?.badgeId && userSession?.hospitalId) {
+        markStaffOffline(userSession.badgeId, userSession.hospitalId);
+      }
+    } catch {
+      // ignore
+    }
+    try {
       localStorage.removeItem('medcore_os_session');
     } catch {
       // ignore
@@ -1207,6 +1218,32 @@ export default function OSPage() {
     const stop = startHospitalCloudSync(userSession.hospitalId);
     return () => stop();
   }, [userSession?.hospitalId]);
+
+  // Staff presence (active = currently logged in, Facebook-style)
+  useEffect(() => {
+    if (!userSession?.hospitalId || !userSession?.badgeId) return;
+    const stop = startStaffPresenceHeartbeat({
+      badgeId: userSession.badgeId,
+      facilityId: userSession.hospitalId,
+      name: userSession.name || userSession.badgeId,
+      roleKey: userSession.roleKey || '',
+      role: userSession.role,
+    });
+    return () => {
+      stop();
+      try {
+        markStaffOffline(userSession.badgeId, userSession.hospitalId);
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [
+    userSession?.badgeId,
+    userSession?.hospitalId,
+    userSession?.name,
+    userSession?.roleKey,
+    userSession?.role,
+  ]);
 
 const handleLockScreen = () => {
     setIsLocked(true);
