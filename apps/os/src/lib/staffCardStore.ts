@@ -99,7 +99,7 @@ export function enrolStaffAndIssueCard(
     } catch {
       /* ignore */
     }
-    // Realtime Firebase (facility shared store) — non-blocking
+    // CLOUD-FIRST staff directory + member doc (online peers need this before local-only login)
     void firestorePushStaffDirectory(input.facilityId, {
       staffCards: cards,
       staffRegistry: next,

@@ -2,11 +2,15 @@
  * Cross-role sync bus — every clinical/admin write should publish here
  * so Reception, Doctors, Lab, Pharmacy, Admin, and other PCs stay aligned.
  *
- * Layers:
- *  1. localStorage (same browser, instant)
- *  2. window CustomEvent (same tab subscribers)
- *  3. BroadcastChannel (same origin tabs / same PC)
- *  4. durable outbox → LAN hub → Firestore (other PCs / offline recovery)
+ * ONLINE (cloud-first):
+ *  1. Firestore write immediately (other hospital PCs)
+ *  2. localStorage + events (this browser)
+ *  3. BroadcastChannel (same PC tabs)
+ *  4. durable outbox (retry if cloud write failed)
+ *
+ * OFFLINE:
+ *  1. localStorage + events
+ *  2. outbox queues until online → then cloud
  */
 
 import { broadcastLocal } from './hospitalSync';
@@ -25,24 +29,25 @@ export const FACILITY_KEYS = {
   notifications: 'medcore_os_notifications_v1',
 } as const;
 
-/** Publish a facility-scoped payload to LAN/cloud peers + other tabs (fast path). */
+/** Publish facility data. Online = cloud first, then local peers. Offline = local + queue. */
 export function publishFacilityData(facilityId: string, key: string, value: unknown) {
   if (typeof window === 'undefined' || !facilityId) return;
-  // 1) Same-origin tabs / same PC — instant
+  const online = typeof navigator === 'undefined' || navigator.onLine;
+  // 1) CLOUD FIRST when online — source of truth for other workstations
+  if (online) {
+    try {
+      void firestoreWriteFacility(facilityId, { [key]: value });
+    } catch {
+      /* ignore */
+    }
+  }
+  // 2) Same-origin tabs / same PC
   try {
     broadcastLocal(facilityId, key, value);
   } catch {
     /* ignore */
   }
-  // 2) Fast path: push to Firestore immediately when online (sub-second peer updates)
-  try {
-    if (typeof navigator === 'undefined' || navigator.onLine) {
-      void firestoreWriteFacility(facilityId, { [key]: value });
-    }
-  } catch {
-    /* ignore */
-  }
-  // 3) Durable outbox — retries if the fast write failed / offline
+  // 3) Durable outbox (always) — retries failed cloud writes / offline catch-up
   try {
     void enqueueFacilitySync(facilityId, key, value);
   } catch {

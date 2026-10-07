@@ -562,44 +562,66 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         console.warn('[auth] facility claim', claimErr);
       }
 
-      // 1) Local resolution (registry + cards + access) — same browser as admin create
-      if (!profile) {
-      const local = resolveStaffByBadge(badgeQuery);
-      if (local) {
-        profile = mapProfile(local as unknown as Record<string, unknown>);
-      }
+      // CLOUD-FIRST when online — avoids stale local admin/doctor mismatch on other devices
+      const online = typeof navigator === 'undefined' || navigator.onLine;
+
+      // 1) Firestore staff profile (source of truth online)
+      if (!profile && online) {
+        try {
+          let remote = await withTimeout(
+            firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery),
+            6000
+          );
+          if (!remote) {
+            for (const h of HOSPITALS.slice(0, 5)) {
+              if (h.id === effectiveHospital.id) continue;
+              try {
+                remote = await withTimeout(firestoreGetStaffByBadge(h.id, badgeQuery), 2500);
+              } catch {
+                remote = null;
+              }
+              if (remote) break;
+            }
+          }
+          if (remote && (remote.badgeId || remote.id)) {
+            profile = mapProfile(remote);
+            // Mirror cloud → local so this browser stays aligned
+            try {
+              const { defaultPermissionsForRole: dpr } = await import('../../lib/staffCardStore');
+              const entry = {
+                ...remote,
+                badgeId: profile.badgeId,
+                roleKey: profile.roleKey,
+                permissions: profile.permissions?.length ? profile.permissions : dpr(profile.roleKey),
+              };
+              const regRaw = localStorage.getItem('medcore_os_staff_registry');
+              const reg = regRaw ? JSON.parse(regRaw) : [];
+              const next = Array.isArray(reg)
+                ? [entry, ...reg.filter((r: any) => String(r.badgeId || r.id).toUpperCase() !== profile!.badgeId)]
+                : [entry];
+              localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
+              localStorage.setItem('medcore_staff_registry', JSON.stringify(next));
+            } catch { /* ignore */ }
+          }
+        } catch (e) {
+          console.warn('[auth] firestore badge (cloud-first)', e);
+        }
       }
 
-      // 2) In-memory registry
+      // 2) Local resolution — offline or cloud miss
+      if (!profile) {
+        const local = resolveStaffByBadge(badgeQuery);
+        if (local) {
+          profile = mapProfile(local as unknown as Record<string, unknown>);
+        }
+      }
+
+      // 3) In-memory registry (Auth screen subscription)
       if (!profile) {
         const hit = staffRegistry.find(
           (s) => normalizeBadgeId(s.badgeId) === badgeQuery
         );
         if (hit) profile = hit;
-      }
-
-      // 3) Firestore — selected hospital (timed); brief peer scan
-      try {
-        let remote = await withTimeout(
-          firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery),
-          4000
-        );
-        if (!remote) {
-          for (const h of HOSPITALS.slice(0, 5)) {
-            if (h.id === effectiveHospital.id) continue;
-            try {
-              remote = await withTimeout(firestoreGetStaffByBadge(h.id, badgeQuery), 2000);
-            } catch {
-              remote = null;
-            }
-            if (remote) break;
-          }
-        }
-        if (remote && (remote.badgeId || remote.id)) {
-          profile = mapProfile(remote);
-        }
-      } catch (e) {
-        console.warn('[auth] firestore badge', e);
       }
 
       // 4) If still no profile, try Firebase Auth — account may exist from admin create
@@ -937,7 +959,40 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           }
         }
 
-        // Match enrolled staff by work email in registry
+        // CLOUD-FIRST: work email → staff profile (online)
+        if (!matchedStaff && (typeof navigator === 'undefined' || navigator.onLine)) {
+          try {
+            const { firestoreGetStaffByEmail } = await import('../../lib/firebase');
+            const remote = await withTimeout(
+              firestoreGetStaffByEmail(effectiveHospital.id, email),
+              6000
+            );
+            if (remote && (remote.badgeId || remote.id)) {
+              const bid = String(remote.badgeId || remote.id);
+              matchedStaff = {
+                badgeId: bid,
+                name: String(remote.name || remote.fullName || email),
+                role: String(remote.role || 'Staff'),
+                shortRole: String(remote.shortRole || remote.role || 'Staff'),
+                title: String(remote.title || remote.role || 'Staff'),
+                roleKey: inferRoleKey(String(remote.roleKey || remote.role || ''), bid),
+                clearanceLevel: Number(remote.clearanceLevel ?? 2),
+                clearanceLabel: String(remote.clearanceLabel || 'L2'),
+                department: String(remote.department || ''),
+                initials: String(remote.initials || 'ST'),
+                permissions: (remote.permissions as string[]) || ['dashboard'],
+                pin: String(remote.pin || pass),
+                hospitalId: effectiveHospital.id,
+                hospitalName: effectiveHospital.name,
+                color: '#0052D4',
+              };
+            }
+          } catch (e) {
+            console.warn('[auth] firestore email cloud-first', e);
+          }
+        }
+
+        // Local registry (offline / cloud miss)
         if (!matchedStaff) {
           try {
             const raw = localStorage.getItem('medcore_os_staff_registry');

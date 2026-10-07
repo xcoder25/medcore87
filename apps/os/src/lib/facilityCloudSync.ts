@@ -69,16 +69,33 @@ export function startHospitalCloudSync(facilityId: string): () => void {
   if (typeof window === 'undefined' || !facilityId) return () => {};
 
   void enableFirestoreOffline();
+  const applyKey = (key: string, value: unknown) => applyFacilityRemoteKey(key, value);
+
+  // CLOUD-FIRST bootstrap: pull shared facility doc before relying on local cache
+  void (async () => {
+    try {
+      const { firestoreReadFacility } = await import('./firebase');
+      if (typeof navigator === 'undefined' || navigator.onLine) {
+        const data = await firestoreReadFacility(facilityId);
+        if (data) {
+          for (const [k, v] of Object.entries(data)) {
+            applyKey(k, v);
+          }
+        }
+      }
+    } catch {
+      /* offline / deny */
+    }
+  })();
+
   const stopOutbox = startOutboxAutoFlush(2500);
   void flushOutbox();
-
-  const applyKey = (key: string, value: unknown) => applyFacilityRemoteKey(key, value);
 
   // LAN hub (when available on hospital network)
   const stopLan = startFacilitySyncLoop(facilityId, applyKey, 2500);
   void probeHospitalApi();
 
-  // Cloud realtime — other PCs / phones on same hospital
+  // Cloud realtime — other PCs / phones on same hospital (overrides local when newer)
   const stopFs = firestoreSubscribeFacility(facilityId, (data) => {
     for (const [k, v] of Object.entries(data || {})) {
       applyKey(k, v);
