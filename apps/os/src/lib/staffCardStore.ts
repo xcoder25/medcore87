@@ -610,3 +610,58 @@ export function provisionFacilityAdmin(
     return { ok: false, error: e?.message || 'Failed to provision facility admin' };
   }
 }
+
+
+/** Remove all non-admin staff for a facility (local cards + registry). Returns removed badge IDs. */
+export function purgeNonAdminStaffForFacility(facilityId: string): string[] {
+  const fid = String(facilityId || '').toUpperCase();
+  if (!fid || typeof window === 'undefined') return [];
+  const removed: string[] = [];
+  const isAdmin = (roleKey?: string, badge?: string, role?: string) => {
+    const rk = String(roleKey || '').toLowerCase();
+    const b = String(badge || '').toUpperCase();
+    const r = String(role || '').toLowerCase();
+    return (
+      rk === 'hospital_admin' ||
+      rk === 'sysadmin' ||
+      b.includes('-ADM-') ||
+      b === 'AKS-ADM-001' ||
+      (r.includes('administrator') && !r.includes('system'))
+    );
+  };
+  try {
+    const cards = readCards();
+    const keptCards = cards.filter((c) => {
+      const sameFac = String(c.facilityId || '').toUpperCase() === fid;
+      if (!sameFac) return true;
+      if (isAdmin(c.roleKey, c.badgeId, c.role)) return true;
+      removed.push(c.badgeId);
+      return false;
+    });
+    writeCards(keptCards);
+
+    for (const key of [STAFF_REGISTRY_STORAGE_KEY, 'medcore_os_staff_registry', 'medcore_staff_registry']) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const reg = JSON.parse(raw);
+        if (!Array.isArray(reg)) continue;
+        const next = reg.filter((r: any) => {
+          const hid = String(r.hospitalId || r.facilityId || '').toUpperCase();
+          if (hid && hid !== fid) return true;
+          const badge = String(r.badgeId || r.id || '');
+          if (isAdmin(r.roleKey, badge, r.role)) return true;
+          if (!removed.includes(badge)) removed.push(badge);
+          return false;
+        });
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch { /* ignore */ }
+    }
+    window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated'));
+    window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated'));
+    window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } }));
+  } catch {
+    /* ignore */
+  }
+  return removed;
+}

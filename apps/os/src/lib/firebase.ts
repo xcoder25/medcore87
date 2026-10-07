@@ -461,7 +461,25 @@ export async function ensureStaffCloudIdentity(opts: {
   let firestoreOk = false;
   const mail = (opts.email || '').trim().toLowerCase();
 
-  // 1) Firestore profile FIRST — multi-workstation login depends on this, not Auth
+  // 1) Create badge Auth account (secondary app), then sign in on PRIMARY so Firestore rules allow write
+  for (let attempt = 0; attempt < 2 && !badgeAuth; attempt++) {
+    try {
+      const res = await firebaseEnsureBadgeAccount(opts.badgeId, pin);
+      if (res?.email) {
+        try {
+          await firebaseSignInWithBadge(opts.badgeId, pin);
+        } catch {
+          /* primary sign-in may fail if already signed in as admin — still try write */
+        }
+        badgeAuth = true;
+      }
+    } catch (e) {
+      console.warn('[staff-cloud] badge auth attempt', attempt + 1, e);
+      await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+    }
+  }
+
+  // 2) Firestore staff profile (needs Auth for typical security rules)
   for (let attempt = 0; attempt < 3 && !firestoreOk; attempt++) {
     try {
       const ok = await firestoreUpsertStaffMember(opts.facilityId, {
@@ -492,17 +510,6 @@ export async function ensureStaffCloudIdentity(opts: {
       }
     } catch (e) {
       console.warn('[staff-cloud] firestore attempt', attempt + 1, e);
-      await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
-    }
-  }
-
-  // 2) Badge Auth (optional for desk routing; needed for Firebase-gated rules)
-  for (let attempt = 0; attempt < 2 && !badgeAuth; attempt++) {
-    try {
-      const res = await firebaseEnsureBadgeAccount(opts.badgeId, pin);
-      badgeAuth = Boolean(res?.email);
-    } catch (e) {
-      console.warn('[staff-cloud] badge auth attempt', attempt + 1, e);
       await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
     }
   }

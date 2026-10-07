@@ -98,6 +98,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     accessRow: AccessRecord;
     listed: boolean;
   } | null>(null);
+  const [createFail, setCreateFail] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ badgeId: string; name: string } | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -363,13 +364,13 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       setError(err?.message || 'Account creation failed.');
     } finally {
       setBusy(false);
-      // Always show confirmation when we have a card — before listing in table
-      if (card && accessRow) {
+      // Success only when cloud profile saved — otherwise roll back ID (no orphan badges)
+      if (card && accessRow && firestoreStatus === 'ok') {
         const issuedCard = card;
         const row = accessRow;
         setIssued(issuedCard);
         setShowCreate(false);
-        // Auto-add to access list so badge login works immediately on this workstation
+        setCreateFail(null);
         const nextAccess = [row, ...getAccessRecords().filter((r) => r.id !== row.id)];
         setAccessRecords(nextAccess);
         setRecords(nextAccess);
@@ -393,9 +394,28 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         setEmail('');
         setPhotoUrl('');
         setSelectedId(issuedCard.badgeId);
-        setTimeout(() => {
-          document.getElementById('staff-create-confirm')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 80);
+      } else if (card) {
+        // Roll back local ID so failed creates leave no badge
+        const badId = card.badgeId;
+        try {
+          deleteStaffMember(badId);
+        } catch { /* ignore */ }
+        try {
+          const next = getAccessRecords().filter((r) => String(r.id).toUpperCase() !== badId.toUpperCase());
+          setAccessRecords(next);
+          setRecords(next);
+        } catch { /* ignore */ }
+        try {
+          const { firestoreDeleteStaffMember } = await import('../../lib/firebase');
+          void firestoreDeleteStaffMember(facilityId, badId);
+        } catch { /* ignore */ }
+        setIssued(null);
+        setConfirmInfo(null);
+        setCreateFail(
+          firestoreStatus !== 'ok'
+            ? 'Account was not created. Cloud profile could not be saved — no Staff ID was issued. Check network / Firebase and try again.'
+            : 'Account was not created. No Staff ID was issued.'
+        );
       }
     }
   };
@@ -662,6 +682,62 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           </button>
           <LogoProgressBar active={busy} label="Creating account, sign-in & ID card…" />
         </form>
+      )}
+
+
+      {createFail && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            background: 'rgba(15, 23, 42, 0.55)',
+            backdropFilter: 'blur(4px)',
+          }}
+          onClick={() => setCreateFail(null)}
+        >
+          <div
+            className="os-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 400,
+              padding: 0,
+              borderRadius: 16,
+              overflow: 'hidden',
+              border: '1px solid #FECACA',
+              boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)',
+              background: '#fff',
+            }}
+          >
+            <div style={{ padding: '18px 20px', background: '#FEF2F2', borderBottom: '1px solid #FECACA', display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <XCircle size={20} color="#fff" />
+              </div>
+              <div style={{ fontWeight: 800, fontSize: '1rem', color: '#991B1B' }}>Creation failed</div>
+            </div>
+            <div style={{ padding: '16px 20px 20px' }}>
+              <p style={{ margin: 0, fontSize: 13, color: '#334155', lineHeight: 1.55 }}>{createFail}</p>
+              <p style={{ margin: '10px 0 0', fontSize: 12, color: '#64748B' }}>
+                No Staff ID was generated. You can try again when online.
+              </p>
+              <button
+                type="button"
+                className="os-primary-btn"
+                style={{ width: '100%', justifyContent: 'center', marginTop: 16 }}
+                onClick={() => setCreateFail(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {confirmInfo && (
