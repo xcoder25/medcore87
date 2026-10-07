@@ -492,6 +492,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
             ))}
           </div>
         </div>
+      )}
     </div>
 
       {/* Delete confirmation modal — no browser/Firebase dialogs */}
