@@ -5,7 +5,7 @@
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 
 export type BillLineStatus = 'unpaid' | 'paid' | 'hmo' | 'waived' | 'partial';
-export type BillLineSource = 'pharmacy' | 'lab' | 'consult' | 'other' | 'opd';
+export type BillLineSource = 'pharmacy' | 'lab' | 'consult' | 'other' | 'opd' | 'billing' | 'imaging';
 
 export interface PatientBillLine {
   id: string;
@@ -180,6 +180,12 @@ export function markLinePaid(
     updatedAt: new Date().toISOString(),
   };
   write(list);
+  // Mirror settlement onto billing-office invoice when this line came from an invoice
+  try {
+    syncInvoiceFromBillLine(list[i]);
+  } catch {
+    /* ignore */
+  }
   return list[i];
 }
 
@@ -268,7 +274,22 @@ export function markPatientOutstandingPaid(
       updatedAt: now,
     };
   });
-  if (changed) write(updated);
+  if (changed) {
+    write(updated);
+    for (const l of updated) {
+      if (
+        l.facilityId === facilityId &&
+        (l.patientId === patientId || l.hospitalNumber === patientId) &&
+        l.paymentRef === opts.paymentRef
+      ) {
+        try {
+          syncInvoiceFromBillLine(l);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
   return updated.filter(
     (l) =>
       l.facilityId === facilityId &&
@@ -276,3 +297,138 @@ export function markPatientOutstandingPaid(
       l.paymentRef === opts.paymentRef
   );
 }
+
+
+/** Billing office invoice storage — kept in sync with patient bill lines */
+export const BILLING_INVOICE_STORAGE_KEY = 'ibom_os_billing_invoices';
+
+function readInvoices(): Array<Record<string, unknown>> {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(BILLING_INVOICE_STORAGE_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeInvoices(list: Array<Record<string, unknown>>) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(BILLING_INVOICE_STORAGE_KEY, JSON.stringify(list.slice(0, 2000)));
+  window.dispatchEvent(new CustomEvent('medcore-billing-invoices', { detail: list }));
+  window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: BILLING_INVOICE_STORAGE_KEY } }));
+}
+
+/** When cashier pays a bill line that belongs to a billing-office invoice, mark invoice settled */
+function syncInvoiceFromBillLine(line: PatientBillLine) {
+  if (line.source !== 'billing' && !String(line.orderId || '').startsWith('INV-')) return;
+  if (line.status !== 'paid' && line.status !== 'hmo' && line.status !== 'waived') return;
+  const invKey = String(line.orderId || '');
+  const list = readInvoices();
+  let changed = false;
+  const next = list.map((inv) => {
+    const id = String(inv.id || '');
+    const num = String(inv.invoiceNumber || '');
+    if (id !== invKey && num !== invKey && `INV-${num}` !== invKey) return inv;
+    changed = true;
+    const copay = Number(inv.patientCopayNgn || inv.totalChargesNgn || line.amountNgn) || line.amountNgn;
+    return {
+      ...inv,
+      status: 'settled',
+      amountPaidNgn: copay,
+      paymentMethod:
+        line.paidVia === 'paystack'
+          ? `Paystack · ${line.paymentRef || ''}`
+          : line.paidVia === 'hmo'
+            ? 'HMO / NHIS'
+            : line.paidVia === 'waiver'
+              ? 'Waiver'
+              : `Cashier · ${line.paymentRef || line.paidBy || ''}`.trim(),
+      settledAt: line.paidAt || new Date().toISOString(),
+      settledVia: line.paidVia || 'cashier',
+    };
+  });
+  if (changed) writeInvoices(next);
+}
+
+/**
+ * Post a billing-office invoice to the shared ledger so Cashier / POS can collect.
+ * Patient portion (copay) is what cashier sees as due.
+ */
+export function postInvoiceForPayment(input: {
+  facilityId: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  patientId: string;
+  hospitalNumber?: string;
+  patientName: string;
+  patientCopayNgn: number;
+  totalChargesNgn?: number;
+  hmoCoveredNgn?: number;
+  department?: string;
+  items?: Array<{ name: string; cost: number }>;
+}): PatientBillLine {
+  const orderId = input.invoiceId.startsWith('INV-') ? input.invoiceId : `INV-${input.invoiceId}`;
+  const existing = getLineForOrder(orderId) || getLineForOrder(input.invoiceNumber);
+  if (existing && (existing.status === 'unpaid' || existing.status === 'partial')) {
+    return existing;
+  }
+  if (existing && existing.status === 'paid') {
+    return existing;
+  }
+  const itemNote =
+    input.items && input.items.length
+      ? input.items.map((it) => it.name).filter(Boolean).slice(0, 4).join(', ')
+      : input.department || 'Hospital bill';
+  const amount = Math.max(0, Number(input.patientCopayNgn) || 0);
+  return addBillLine({
+    facilityId: input.facilityId,
+    patientId: input.patientId,
+    hospitalNumber: input.hospitalNumber || input.patientId,
+    patientName: input.patientName,
+    source: 'billing',
+    description: `${input.invoiceNumber} · ${itemNote}`,
+    amountNgn: amount,
+    orderId,
+    status: amount > 0 ? 'unpaid' : 'paid',
+  });
+}
+
+/** Void / remove open ledger line when billing voids an invoice */
+export function voidInvoiceBillLine(invoiceId: string, invoiceNumber?: string): void {
+  const keys = [invoiceId, invoiceNumber, invoiceId.startsWith('INV-') ? invoiceId : `INV-${invoiceId}`].filter(
+    Boolean
+  ) as string[];
+  const list = read().filter((l) => {
+    if (l.source !== 'billing') return true;
+    if (keys.includes(String(l.orderId || ''))) return false;
+    return true;
+  });
+  write(list);
+}
+
+/** All patients with open balances — for cashier queue */
+export function listPatientsWithOpenBills(facilityId: string): Array<{
+  patientId: string;
+  hospitalNumber: string;
+  patientName: string;
+  balanceNgn: number;
+  lines: PatientBillLine[];
+}> {
+  const open = listBillLines(facilityId).filter((l) => l.status === 'unpaid' || l.status === 'partial');
+  const map = new Map<string, PatientBillLine[]>();
+  for (const l of open) {
+    const key = l.patientId || l.hospitalNumber;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(l);
+  }
+  return Array.from(map.entries()).map(([patientId, lines]) => ({
+    patientId,
+    hospitalNumber: lines[0]?.hospitalNumber || patientId,
+    patientName: lines[0]?.patientName || patientId,
+    balanceNgn: lines.reduce((s, l) => s + l.amountNgn, 0),
+    lines,
+  }));
+}
+

@@ -8,6 +8,14 @@ import {
   Building2, User, Calendar, Receipt
 } from 'lucide-react';
 import type { BillingInvoice } from '@medcore/types';
+import {
+  postInvoiceForPayment,
+  voidInvoiceBillLine,
+  subscribeBills,
+  listBillLines,
+  markLinePaid,
+  BILLING_INVOICE_STORAGE_KEY,
+} from '../../lib/patientBillingStore';
 
 interface ExtendedInvoice extends BillingInvoice {
   department?: string;
@@ -58,6 +66,23 @@ export const BillingInvoicingSuite: React.FC = () => {
       // ignore
     }
   }, []);
+
+  // When cashier pays a billing line, invoices refresh to "settled"
+  useEffect(() => {
+    const reload = () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(BILLING_INVOICE_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) setInvoices(parsed);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    return subscribeBills(reload);
+  }, []);
+
 
   const saveInvoices = (newInvoices: ExtendedInvoice[]) => {
     setInvoices(newInvoices);
@@ -143,8 +168,40 @@ export const BillingInvoicingSuite: React.FC = () => {
 
     const updated = [newInvoice, ...invoices];
     saveInvoices(updated);
+
+    // Ready for payment → shared ledger → Cashier / POS
+    const facilityId =
+      (typeof window !== 'undefined' &&
+        (localStorage.getItem('medcore_active_facility_id') ||
+          localStorage.getItem('medcore_os_facility_id'))) ||
+      'IGH-EKT';
+    if (formStatus === 'pending_payment' && formPatientCopay > 0) {
+      try {
+        postInvoiceForPayment({
+          facilityId: String(facilityId),
+          invoiceId: newInvoice.id,
+          invoiceNumber: invNum,
+          patientId: pId,
+          hospitalNumber: pId,
+          patientName: formPatientName.trim(),
+          patientCopayNgn: formPatientCopay,
+          totalChargesNgn: activeFormTotal,
+          hmoCoveredNgn: formHmoCovered,
+          department: formDepartment,
+          items: newInvoice.items,
+        });
+        showToast(
+          `Invoice ${invNum} ready for payment · ₦${formPatientCopay.toLocaleString()} on Cashier desk`
+        );
+      } catch {
+        showToast(`Invoice ${invNum} created — open Cashier if it does not appear`);
+      }
+    } else if (formStatus === 'settled') {
+      showToast(`Invoice ${invNum} recorded as already settled`);
+    } else {
+      showToast(`Invoice ${invNum} created for ${formPatientName}!`);
+    }
     setShowAddModal(false);
-    showToast(`Invoice ${invNum} created successfully for ${formPatientName}!`);
 
     // Reset Form
     setFormPatientId('');
@@ -163,20 +220,44 @@ export const BillingInvoicingSuite: React.FC = () => {
           ...item,
           status: 'settled' as const,
           amountPaidNgn: item.patientCopayNgn,
-          paymentMethod: 'POS Terminal (Till 1) - Cleared',
+          paymentMethod: 'Billing office · manual settle',
         };
       }
       return item;
     });
     saveInvoices(updated);
-    showToast(`Discharge Clearance Issued: ${inv.invoiceNumber} has been marked as fully SETTLED.`);
+    // Keep shared ledger in sync
+    try {
+      const fid =
+        localStorage.getItem('medcore_active_facility_id') ||
+        localStorage.getItem('medcore_os_facility_id') ||
+        'IGH-EKT';
+      const orderId = inv.id.startsWith('INV-') ? inv.id : `INV-${inv.id}`;
+      const lines = listBillLines(String(fid), { orderId });
+      const alt = listBillLines(String(fid)).filter(
+        (l) => l.orderId === inv.invoiceNumber || l.description.includes(inv.invoiceNumber)
+      );
+      for (const line of [...lines, ...alt]) {
+        if (line.status === 'unpaid' || line.status === 'partial') {
+          markLinePaid(line.id, { via: 'cashier', paidBy: 'Billing office', status: 'paid' });
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    showToast(`Settled · ${inv.invoiceNumber} — cashier queue updated`);
   };
 
   const handleDeleteInvoice = (invId: string, invNum: string) => {
-    if (window.confirm(`Are you sure you want to void and remove invoice ${invNum}?`)) {
+    if (window.confirm(`Void and remove invoice ${invNum}? It will leave the cashier queue.`)) {
       const updated = invoices.filter(item => item.id !== invId);
       saveInvoices(updated);
-      showToast(`Invoice ${invNum} voided.`);
+      try {
+        voidInvoiceBillLine(invId, invNum);
+      } catch {
+        /* ignore */
+      }
+      showToast(`Invoice ${invNum} voided`);
     }
   };
 

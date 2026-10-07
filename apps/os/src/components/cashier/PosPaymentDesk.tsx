@@ -32,8 +32,10 @@ import { emitLiveAction } from '../../lib/liveActions';
 import {
   listBillLines,
   markLinePaid,
+  markPatientOutstandingPaid,
   subscribeBills,
   patientBalance,
+  listPatientsWithOpenBills,
 } from '../../lib/patientBillingStore';
 import { verifyInsurance } from '../../lib/receptionConstants';
 
@@ -90,6 +92,7 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
   const [toast, setToast] = useState<string | null>(null);
   const [lastReceipt, setLastReceipt] = useState<ReceptionPayment | null>(null);
   const [insMsg, setInsMsg] = useState('');
+  const [billTick, setBillTick] = useState(0);
 
   const reload = useCallback(() => {
     setPatients(listPatients(facilityId));
@@ -102,11 +105,28 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
     reload();
     const u1 = subscribePatients(reload);
     const u2 = subscribeReceptionOps(reload);
+    const u3 = subscribeBills(() => setBillTick((n) => n + 1));
     return () => {
       u1();
       u2();
+      u3();
     };
   }, [reload]);
+
+  // Default charge to open hospital bill when patient selected
+  useEffect(() => {
+    if (!patient) return;
+    const bal = patientBalance(facilityId, patient.id);
+    const bal2 = patient.hospitalNumber
+      ? patientBalance(facilityId, patient.hospitalNumber)
+      : 0;
+    const due = Math.max(bal, bal2);
+    if (due > 0) {
+      setAmount(String(due));
+      setPurpose('Hospital bill');
+      setLines([{ label: 'Hospital bill (open charges)', amount: due }]);
+    }
+  }, [patient?.id, facilityId]);
 
   const deskAi = useMemo(() => orchestratePosDesk(payments, visits), [payments, visits]);
   const patientAi = useMemo(
@@ -134,6 +154,8 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
       v.status !== 'completed' &&
       v.status !== 'cancelled'
   );
+
+  const openBillPatients = useMemo(() => listPatientsWithOpenBills(facilityId), [facilityId, billTick, payments, visits, patients]);
 
   const flash = (m: string) => {
     setToast(m);
@@ -189,20 +211,35 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
       purpose: lines.map((l) => l.label).join(', ') || purpose,
       cashier,
     });
-    // Settle unpaid pharmacy (and other) bill lines on this patient when paying at cashier
+    // Settle ALL open bill lines (pharmacy, lab, billing-office invoices, etc.)
+    const via =
+      method === 'hmo' ? 'hmo' : method === 'waiver' ? 'waiver' : method === 'pos' || method === 'transfer' ? 'paystack' : 'cashier';
+    const status = method === 'hmo' ? 'hmo' : method === 'waiver' ? 'waived' : 'paid';
     const unpaid = listBillLines(facilityId, { patientId: patient.id }).filter(
       (l) => l.status === 'unpaid' || l.status === 'partial'
     );
-    const settlePharmacy =
+    const settleAll =
+      purpose === 'Hospital bill' ||
+      purpose === 'All charges' ||
       purpose === 'Pharmacy' ||
-      lines.some((l) => /pharm/i.test(l.label)) ||
-      unpaid.some((l) => l.source === 'pharmacy');
-    if (settlePharmacy || method === 'hmo' || method === 'waiver') {
+      purpose === 'Lab' ||
+      unpaid.length > 0;
+    if (settleAll) {
       for (const line of unpaid) {
+        // Pharmacy-only purpose: only settle pharmacy lines
         if (purpose === 'Pharmacy' && line.source !== 'pharmacy') continue;
+        if (purpose === 'Lab' && line.source !== 'lab') continue;
         markLinePaid(line.id, {
-          via: method === 'hmo' ? 'hmo' : method === 'waiver' ? 'waiver' : 'cashier',
-          status: method === 'hmo' ? 'hmo' : method === 'waiver' ? 'waived' : 'paid',
+          via: via as 'cashier' | 'pharmacy' | 'hmo' | 'waiver' | 'paystack',
+          status: status as 'paid' | 'hmo' | 'waived',
+          paidBy: cashier,
+          paymentRef: pay.reference,
+        });
+      }
+      // Also run bulk settle for billing-office invoice sync
+      if (purpose !== 'Pharmacy' && purpose !== 'Lab') {
+        markPatientOutstandingPaid(facilityId, patient.id, {
+          via: via as 'cashier' | 'pharmacy' | 'hmo' | 'waiver' | 'paystack',
           paidBy: cashier,
           paymentRef: pay.reference,
         });
@@ -476,6 +513,20 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
               </div>
             )}
 
+            
+            {/* Open hospital bill (shared ledger — billing office + clinical) */}
+            {patient && (
+              <OpenBillsPanel
+                facilityId={facilityId}
+                patientId={patient.id}
+                hospitalNumber={patient.hospitalNumber}
+                onUseBalance={(bal) => {
+                  setAmount(String(bal));
+                  setPurpose('Hospital bill');
+                }}
+              />
+            )}
+
             {/* Amount + purpose */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
@@ -599,12 +650,46 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
               }}>{deskAi.unpaidTickets}</span>
             </div>
             <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-              {visits.filter((v) => v.paymentStatus === 'pending' || v.paymentStatus === 'partial').length === 0 ? (
+              {visits.filter((v) => v.paymentStatus === 'pending' || v.paymentStatus === 'partial').length === 0 &&
+              openBillPatients.length === 0 ? (
                 <div style={{ padding: 28, textAlign: 'center', color: C.muted, fontSize: 13 }}>
-                  No unpaid tickets — queue is clear
+                  No unpaid tickets or billing invoices — queue is clear
                 </div>
               ) : (
-                visits
+                <>
+                {openBillPatients.slice(0, 8).map((ob) => (
+                  <button
+                    key={`bill-${ob.patientId}`}
+                    type="button"
+                    onClick={() => {
+                      const p = patients.find(
+                        (x) => x.id === ob.patientId || x.hospitalNumber === ob.hospitalNumber
+                      );
+                      if (p) {
+                        setPatient(p);
+                        setQuery(`${p.firstName} ${p.lastName}`);
+                      } else {
+                        setQuery(ob.patientName);
+                        setAmount(String(ob.balanceNgn));
+                        setPurpose('Hospital bill');
+                        setLines([{ label: 'Hospital bill', amount: ob.balanceNgn }]);
+                      }
+                    }}
+                    style={{
+                      width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none',
+                      borderBottom: '1px solid #E2E8F0', background: '#ECFEFF', cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <span style={{ fontWeight: 700, color: '#0F172A', fontSize: 13 }}>{ob.patientName}</span>
+                      <span style={{ fontWeight: 800, color: '#0D9488' }}>₦{ob.balanceNgn.toLocaleString()}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                      Billing / clinical · {ob.lines.length} open line{ob.lines.length === 1 ? '' : 's'}
+                    </div>
+                  </button>
+                ))}
+                {visits
                   .filter((v) => v.paymentStatus === 'pending' || v.paymentStatus === 'partial')
                   .slice(0, 12)
                   .map((v) => {
@@ -641,6 +726,7 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
                       </button>
                     );
                   })
+                </>
               )}
             </div>
           </div>
@@ -699,4 +785,112 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
 
 
 
+
+
+/** Open charges from billing office + clinical auto-bills */
+function OpenBillsPanel({
+  facilityId,
+  patientId,
+  hospitalNumber,
+  onUseBalance,
+}: {
+  facilityId: string;
+  patientId: string;
+  hospitalNumber?: string;
+  onUseBalance: (bal: number) => void;
+}) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => subscribeBills(() => setTick((n) => n + 1)), []);
+  const lines = useMemo(() => {
+    void tick;
+    const a = listBillLines(facilityId, { patientId }).filter(
+      (l) => l.status === 'unpaid' || l.status === 'partial'
+    );
+    const b = hospitalNumber
+      ? listBillLines(facilityId, { patientId: hospitalNumber }).filter(
+          (l) => l.status === 'unpaid' || l.status === 'partial'
+        )
+      : [];
+    const byId = new Map<string, (typeof a)[0]>();
+    for (const l of [...a, ...b]) byId.set(l.id, l);
+    return Array.from(byId.values());
+  }, [facilityId, patientId, hospitalNumber, tick]);
+  const bal = lines.reduce((s, l) => s + l.amountNgn, 0);
+  if (lines.length === 0) {
+    return (
+      <div
+        style={{
+          padding: '12px 14px',
+          borderRadius: 12,
+          border: '1px dashed #CBD5E1',
+          background: '#F8FAFC',
+          fontSize: 13,
+          color: '#64748B',
+        }}
+      >
+        No open hospital bill lines for this patient. Billing office invoices marked
+        &quot;pending payment&quot; and clinical charges appear here.
+      </div>
+    );
+  }
+  return (
+    <div
+      style={{
+        borderRadius: 14,
+        border: '1px solid #A5F3FC',
+        background: 'linear-gradient(135deg,#ECFEFF,#F0FDF4)',
+        padding: 14,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+        <div style={{ fontWeight: 800, fontSize: 13, color: '#0F172A' }}>
+          Open bill · ₦{bal.toLocaleString()}
+        </div>
+        <button
+          type="button"
+          onClick={() => onUseBalance(bal)}
+          style={{
+            border: 'none',
+            background: '#0D9488',
+            color: '#fff',
+            borderRadius: 8,
+            padding: '6px 12px',
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          Use balance
+        </button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 140, overflowY: 'auto' }}>
+        {lines.map((l) => (
+          <div
+            key={l.id}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 8,
+              fontSize: 12,
+              padding: '6px 8px',
+              borderRadius: 8,
+              background: '#fff',
+              border: '1px solid #E2E8F0',
+            }}
+          >
+            <span style={{ color: '#334155', fontWeight: 600 }}>
+              {l.source === 'billing' ? 'Billing · ' : ''}
+              {l.description}
+            </span>
+            <span style={{ fontWeight: 800, color: '#0F172A', whiteSpace: 'nowrap' }}>
+              ₦{l.amountNgn.toLocaleString()}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default PosPaymentDesk;
+
