@@ -53,7 +53,9 @@ import {
   DEFAULT_REGISTRATION_FEE_NGN,
   listAccountsRequests,
   subscribeAccountsRequests,
+  type FrontDeskAccountsRequest,
 } from '../../lib/frontDeskAccountsBridge';
+import { patientBalance } from '../../lib/patientBillingStore';
 import { printQueueTicket, printPaymentReceipt } from '../../lib/printService';
 import { appendAudit } from '../../lib/auditLogStore';
 import { sendPatientAlert } from '../../lib/integrations/gateways';
@@ -126,6 +128,63 @@ const C = {
   border: '#E2E8F0',
   bg: '#F0F9FF',
 };
+
+
+/** Front desk: patient may enter clinical queue only after Accounts payment (or no open fee) */
+function getPaymentGate(
+  facilityId: string,
+  patientId: string,
+  hospitalNumber: string
+): {
+  cleared: boolean;
+  label: string;
+  tone: 'ok' | 'wait' | 'none';
+  awaiting?: FrontDeskAccountsRequest[];
+  balanceNgn: number;
+} {
+  const awaiting = listAccountsRequests(facilityId, {
+    status: 'awaiting_payment',
+    patientId,
+  }).filter(
+    (r) => r.patientId === patientId || r.hospitalNumber === hospitalNumber
+  );
+  const also = listAccountsRequests(facilityId, { status: 'awaiting_payment' }).filter(
+    (r) => r.hospitalNumber === hospitalNumber || r.patientId === patientId
+  );
+  const openReq = [...awaiting, ...also].filter(
+    (r, i, arr) => arr.findIndex((x) => x.id === r.id) === i
+  );
+  const bal =
+    patientBalance(facilityId, patientId) || patientBalance(facilityId, hospitalNumber);
+  if (openReq.length > 0 || bal > 0) {
+    const amt = openReq.reduce((s, r) => s + r.amountNgn, 0) || bal;
+    return {
+      cleared: false,
+      label: `Unpaid · ₦${amt.toLocaleString()} — send patient to Accounts, return with receipt`,
+      tone: 'wait',
+      awaiting: openReq,
+      balanceNgn: amt,
+    };
+  }
+  const paid = listAccountsRequests(facilityId, { status: 'paid', patientId }).filter(
+    (r) => r.patientId === patientId || r.hospitalNumber === hospitalNumber
+  );
+  if (paid.length > 0) {
+    const last = paid[0];
+    return {
+      cleared: true,
+      label: `Paid · ${last.paidReference || last.invoiceNumber || 'receipt'} · may check in`,
+      tone: 'ok',
+      balanceNgn: 0,
+    };
+  }
+  return {
+    cleared: true,
+    label: 'No open account charge — may check in',
+    tone: 'none',
+    balanceNgn: 0,
+  };
+}
 
 export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'home', onNavigate }) => {
   const facilityId = session.hospitalId || 'IGH-EKT';
@@ -462,6 +521,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   };
 
   const doCheckIn = (p: FacilityPatient) => {
+    const gate = getPaymentGate(facilityId, p.id, p.hospitalNumber);
+    if (!gate.cleared) {
+      flash(gate.label);
+      setSelected(p);
+      setPanelOpen(true);
+      return;
+    }
     const visit = checkInPatient({
       patient: p,
       facilityId,
@@ -469,7 +535,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       doctor: ciDoctor,
       visitType: ciType,
       reason: ciReason,
-      paymentStatus: ciPay,
+      paymentStatus: gate.tone === 'ok' ? 'paid' : ciPay,
       amount: Number(ciAmount) || 0,
     });
     reload();
@@ -709,6 +775,15 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       return;
     }
     if (action === 'admit' || action === 'start_walkin') {
+      const gateP = getPaymentGate(
+        facilityId,
+        card.patientId || '',
+        card.hospitalNumber || card.patientId || ''
+      );
+      if (!gateP.cleared) {
+        flash(gateP.label);
+        return;
+      }
       const visit = admitFromPresence({
         patient: p,
         facilityId,
@@ -2399,28 +2474,67 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   <span style={{ fontWeight: 600, color: C.navy, textAlign: 'right' }}>{v}</span>
                 </div>
               ))}
+              {(() => {
+                const gate = getPaymentGate(facilityId, selected.id, selected.hospitalNumber);
+                return (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: '10px 12px',
+                      borderRadius: 10,
+                      background: gate.tone === 'wait' ? '#FFFBEB' : gate.tone === 'ok' ? '#ECFDF5' : '#F8FAFC',
+                      border: `1px solid ${gate.tone === 'wait' ? '#FDE68A' : gate.tone === 'ok' ? '#A7F3D0' : C.border}`,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: gate.tone === 'wait' ? '#92400E' : gate.tone === 'ok' ? '#047857' : C.muted,
+                    }}
+                  >
+                    {gate.tone === 'wait' ? '⏳ ' : gate.tone === 'ok' ? '✓ ' : ''}
+                    {gate.label}
+                    {gate.tone === 'wait' && (
+                      <div style={{ marginTop: 6, fontWeight: 500 }}>
+                        Patient pays at Accounts desk, then returns here with receipt.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
                 <button
                   type="button"
+                  disabled={!getPaymentGate(facilityId, selected.id, selected.hospitalNumber).cleared}
                   onClick={() => {
                     doCheckIn(selected);
                     setPanelOpen(false);
                     setView('queue');
                   }}
-                  style={{ padding: 12, borderRadius: 10, border: 'none', background: C.blue, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
+                  style={{
+                    padding: 12,
+                    borderRadius: 10,
+                    border: 'none',
+                    background: getPaymentGate(facilityId, selected.id, selected.hospitalNumber).cleared
+                      ? C.blue
+                      : '#94A3B8',
+                    color: '#fff',
+                    fontWeight: 800,
+                    cursor: getPaymentGate(facilityId, selected.id, selected.hospitalNumber).cleared
+                      ? 'pointer'
+                      : 'not-allowed',
+                  }}
                 >
-                  Check in
+                  {getPaymentGate(facilityId, selected.id, selected.hospitalNumber).cleared
+                    ? 'Check in'
+                    : 'Pay at Accounts first'}
                 </button>
                 <button
                   type="button"
                   onClick={() => {
-                    setPosPatient(selected);
+                    flash('Send patient to Accounts desk with hospital number. After payment, return here to check in.');
                     setPanelOpen(false);
-                    setView('payment');
                   }}
                   style={{ padding: 12, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
                 >
-                  Take payment
+                  Send to Accounts
                 </button>
                 <button
                   type="button"

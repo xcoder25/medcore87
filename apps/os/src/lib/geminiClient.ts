@@ -1,5 +1,5 @@
 /**
- * Gemini client for M87 — uses NEXT_PUBLIC_GEMINI_API_KEY or admin settings.
+ * Gemini client for M87 — NEXT_PUBLIC_GEMINI_API_KEY (env) preferred; admin settings fallback only.
  */
 import { getAdminSettings } from './adminSettingsStore';
 
@@ -8,21 +8,20 @@ export async function geminiGenerate(
   systemHint?: string,
   ragContext?: string
 ): Promise<{ ok: boolean; text: string; usedGemini: boolean }> {
+  // Prefer env (Vercel / .env). Admin UI key is fallback only when env is empty.
   let key = '';
   try {
-    key =
-      (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_GEMINI_API_KEY) ||
-      '';
+    key = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_GEMINI_API_KEY?.trim()) || '';
   } catch {
     key = '';
   }
-  try {
-    const s = getAdminSettings();
-    if (s.geminiApiKey?.trim()) {
-      key = s.geminiApiKey.trim();
+  if (!key) {
+    try {
+      const s = getAdminSettings();
+      if (s.geminiApiKey?.trim()) key = s.geminiApiKey.trim();
+    } catch {
+      /* ignore */
     }
-  } catch {
-    /* ignore */
   }
 
   if (!key) {
