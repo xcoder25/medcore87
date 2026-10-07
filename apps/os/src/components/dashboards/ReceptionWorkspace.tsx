@@ -528,8 +528,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         channel: result.channel,
         purpose: posPurpose || 'Hospital payment',
         facilityName: session.facility || session.hospitalId || 'Hospital',
+        facilityId,
+        patientId: p.id,
         cashier: session.name,
+        cashierBadge: session.badgeId,
         paystackRef: result.paystackRef,
+        visitId: activeVisit?.id,
       });
     } catch { /* ignore */ }
     try {
@@ -588,7 +592,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         method: posMethod,
         purpose: posPurpose || 'Consultation',
         facilityName,
+        facilityId,
+        patientId: p.id,
         cashier: session.name,
+        cashierBadge: session.badgeId,
+        paymentId: pay.id,
+        visitId: activeVisit?.id,
       });
     } catch { /* ignore */ }
     appendAudit({

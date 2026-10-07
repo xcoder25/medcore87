@@ -1,3 +1,4 @@
+import { issuePaymentReceipt } from './paymentReceiptModule';
 /** Simple browser print helpers — queue ticket, receipt, staff note */
 
 export function printHtml(title: string, bodyHtml: string) {
@@ -50,32 +51,35 @@ export function printPaymentReceipt(input: {
   method: string;
   purpose: string;
   facilityName: string;
+  facilityId?: string;
+  patientId?: string;
   cashier?: string;
+  cashierBadge?: string;
   paystackRef?: string;
   channel?: string;
+  paymentId?: string;
+  visitId?: string;
+  print?: boolean;
 }) {
-  const methodLabel = [input.method, input.channel].filter(Boolean).join(' · ').toUpperCase();
-  printHtml(
-    `Receipt ${input.reference}`,
-    `<div style="text-align:center;margin-bottom:12px">
-       <img src="/medcore-logo.png" alt="MedCore" style="height:36px;vertical-align:middle;margin-right:10px" />
-       <img src="/arise-logo.png" alt="Arise" style="height:32px;vertical-align:middle" />
-     </div>
-     <h1>${input.facilityName}</h1>
-     <div class="muted">Payment receipt · MedCore OS</div>
-     <div class="box">
-       <table>
-         <tr><td>Patient</td><td><strong>${input.patientName}</strong></td></tr>
-         <tr><td>Hospital no.</td><td>${input.hospitalNumber}</td></tr>
-         <tr><td>Purpose</td><td>${input.purpose}</td></tr>
-         <tr><td>Method</td><td>${methodLabel}</td></tr>
-         <tr><td>Amount</td><td><strong>₦${input.amount.toLocaleString()}</strong></td></tr>
-         <tr><td>Reference</td><td>${input.reference}</td></tr>
-         ${input.paystackRef ? `<tr><td>Paystack</td><td>${input.paystackRef}</td></tr>` : ''}
-         ${input.cashier ? `<tr><td>Cashier</td><td>${input.cashier}</td></tr>` : ''}
-         <tr><td>Date</td><td>${new Date().toLocaleString()}</td></tr>
-       </table>
-     </div>
-     <div class="muted" style="margin-top:12px;text-align:center">Thank you · Arise Health × MedCore</div>`
+  return issuePaymentReceipt(
+    {
+      facilityId: input.facilityId || 'IGH-EKT',
+      facilityName: input.facilityName,
+      patientId: input.patientId,
+      patientName: input.patientName,
+      hospitalNumber: input.hospitalNumber,
+      amountNgn: input.amount,
+      method: input.method,
+      channel: input.channel,
+      purpose: input.purpose,
+      reference: input.reference,
+      paystackRef: input.paystackRef,
+      paymentId: input.paymentId,
+      visitId: input.visitId,
+      cashier: input.cashier,
+      cashierBadge: input.cashierBadge,
+    },
+    { print: input.print !== false }
   );
 }
+
