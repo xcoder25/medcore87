@@ -725,7 +725,7 @@ export const PosPaymentDesk: React.FC<Props> = ({ session }) => {
                         <div style={{ fontSize: 11, color: C.muted }}>{v.department}</div>
                       </button>
                     );
-                  })
+                  })}
                 </>
               )}
             </div>
