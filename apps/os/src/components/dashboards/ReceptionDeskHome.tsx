@@ -6,7 +6,7 @@
 import { InBasketPanel } from '../clinical-core/InBasketPanel';
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
-import { listStaffCards, isReceptionRole } from '../../lib/staffCardStore';
+import { listStaffCards, isReceptionRole, inferRoleKey } from '../../lib/staffCardStore';
 import type { FacilityPatient } from '../../lib/patientRegistryStore';
 import type { ReceptionVisit, ReceptionAppointment, ReceptionDayStats } from '../../lib/receptionOpsStore';
 import {
@@ -85,33 +85,144 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   const [deptFilter, setDeptFilter] = useState('all');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activeFrontDesk, setActiveFrontDesk] = useState(0);
+  const [cloudStaffRows, setCloudStaffRows] = useState<Record<string, unknown>[]>([]);
 
-  const recountFrontDeskStaff = useCallback(() => {
-    try {
-      const cards = listStaffCards().filter((c) => {
-        const sameFac =
-          !c.facilityId ||
-          String(c.facilityId).toUpperCase() === String(facilityId).toUpperCase();
-        if (!sameFac) return false;
-        const status = String((c as { status?: string }).status || 'ACTIVE').toUpperCase();
-        if (status === 'SUSPENDED' || status === 'INACTIVE') return false;
-        return isReceptionRole(c.roleKey, c.role, c.title, c.badgeId);
-      });
-      // Also count this session if reception (always at least current desk user when online)
-      let n = cards.length;
-      if (
-        n === 0 &&
-        isReceptionRole(session.roleKey, session.role, session.title, session.badgeId)
-      ) {
-        n = 1;
+  const recountFrontDeskStaff = useCallback(
+    (remoteRows?: Record<string, unknown>[]) => {
+      try {
+        const fid = String(facilityId || '').toUpperCase();
+        const byBadge = new Map<string, { roleKey?: string; role?: string; title?: string; badgeId: string; status?: string; facilityId?: string }>();
+
+        const isFrontDesk = (roleKey?: string, role?: string, title?: string, badgeId?: string) => {
+          if (isReceptionRole(roleKey, role, title, badgeId)) return true;
+          const rk = inferRoleKey(String(roleKey || role || title || ''), badgeId);
+          if (rk === 'reception' || rk === 'records') return true;
+          const blob = `${roleKey || ''} ${role || ''} ${title || ''}`.toLowerCase();
+          return (
+            blob.includes('reception') ||
+            blob.includes('front desk') ||
+            blob.includes('front-desk') ||
+            blob.includes('frontdesk') ||
+            blob.includes('cashier desk') ||
+            blob.includes('patient service')
+          );
+        };
+
+        const consider = (row: {
+          badgeId?: string;
+          id?: string;
+          roleKey?: string;
+          role?: string;
+          title?: string;
+          status?: string;
+          facilityId?: string;
+          hospitalId?: string;
+        }) => {
+          const badge = String(row.badgeId || row.id || '')
+            .toUpperCase()
+            .replace(/\s+/g, '');
+          if (!badge) return;
+          const fac = String(row.facilityId || row.hospitalId || fid).toUpperCase();
+          if (fac && fac !== fid) return;
+          const st = String(row.status || 'ACTIVE').toUpperCase();
+          if (st === 'SUSPENDED' || st === 'INACTIVE' || st === 'DELETED') return;
+          if (!isFrontDesk(row.roleKey, row.role, row.title, badge)) return;
+          byBadge.set(badge, {
+            badgeId: badge,
+            roleKey: row.roleKey,
+            role: row.role,
+            title: row.title,
+            status: st,
+            facilityId: fac,
+          });
+        };
+
+        // 1) ID cards
+        for (const c of listStaffCards()) {
+          consider({
+            badgeId: c.badgeId,
+            roleKey: c.roleKey,
+            role: c.role,
+            title: c.title,
+            status: (c as { status?: string }).status,
+            facilityId: c.facilityId,
+          });
+        }
+
+        // 2) Staff registry (may exist without card mirror on this PC)
+        for (const key of ['medcore_os_staff_registry', 'medcore_staff_registry']) {
+          try {
+            const raw = localStorage.getItem(key);
+            if (!raw) continue;
+            const arr = JSON.parse(raw);
+            if (!Array.isArray(arr)) continue;
+            for (const r of arr) consider(r);
+          } catch {
+            /* ignore */
+          }
+        }
+
+        // 3) Access records (active reception accounts)
+        try {
+          const raw = localStorage.getItem('medcore_os_access_control') || localStorage.getItem('medcore_os_access_records');
+          if (raw) {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) {
+              for (const r of arr) {
+                if (String(r.status || 'active').toLowerCase() === 'suspended') continue;
+                consider({
+                  badgeId: r.id || r.badgeId,
+                  role: r.role,
+                  roleKey: r.roleKey,
+                  status: r.status,
+                });
+              }
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+
+        // 4) Cloud staff collection snapshot
+        const rows = remoteRows || cloudStaffRows;
+        for (const r of rows) {
+          consider({
+            badgeId: String(r.badgeId || r.id || ''),
+            roleKey: String(r.roleKey || ''),
+            role: String(r.role || ''),
+            title: String(r.title || ''),
+            status: String(r.status || 'ACTIVE'),
+            facilityId: String(r.facilityId || r.hospitalId || fid),
+            hospitalId: String(r.hospitalId || ''),
+          });
+        }
+
+        // 5) Always include current session user if on front desk
+        if (isReceptionRole(session.roleKey, session.role, session.title, session.badgeId)) {
+          const me = String(session.badgeId || session.id || '')
+            .toUpperCase()
+            .replace(/\s+/g, '');
+          if (me) {
+            byBadge.set(me, {
+              badgeId: me,
+              roleKey: session.roleKey,
+              role: session.role,
+              title: session.title,
+              status: 'ACTIVE',
+              facilityId: fid,
+            });
+          }
+        }
+
+        setActiveFrontDesk(byBadge.size);
+      } catch {
+        setActiveFrontDesk(
+          isReceptionRole(session.roleKey, session.role, session.title, session.badgeId) ? 1 : 0
+        );
       }
-      setActiveFrontDesk(n);
-    } catch {
-      setActiveFrontDesk(
-        isReceptionRole(session.roleKey, session.role, session.title, session.badgeId) ? 1 : 0
-      );
-    }
-  }, [facilityId, session.roleKey, session.role, session.title, session.badgeId]);
+    },
+    [facilityId, session.roleKey, session.role, session.title, session.badgeId, session.id, cloudStaffRows]
+  );
 
   useEffect(() => {
     recountFrontDeskStaff();
@@ -125,16 +236,16 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     void (async () => {
       try {
         const { firestoreSubscribeStaffCollection } = await import('../../lib/firebase');
-        unsub = firestoreSubscribeStaffCollection(facilityId, () => {
-          // Cloud staff changes — recount from local mirror + any remote rows
-          recountFrontDeskStaff();
+        unsub = firestoreSubscribeStaffCollection(facilityId, (rows) => {
+          setCloudStaffRows(rows);
+          recountFrontDeskStaff(rows);
         });
       } catch {
         /* offline */
       }
     })();
 
-    const tick = window.setInterval(bump, 15000);
+    const tick = window.setInterval(bump, 10000);
     return () => {
       window.removeEventListener('medcore-staff-cards-updated', bump);
       window.removeEventListener('medcore-staff-registry-updated', bump);
