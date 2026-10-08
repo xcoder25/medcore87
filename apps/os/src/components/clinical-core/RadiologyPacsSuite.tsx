@@ -1,17 +1,62 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   FileText, Search, ZoomIn, ZoomOut, RotateCw, Contrast,
   Layers, CheckCircle2, ShieldAlert, Eye, User, Calendar,
-  Plus, X, Edit3, Send
+  Plus, X, Edit3, Send, Sparkles, RefreshCw
 } from 'lucide-react';
 import type { RadiologyStudy } from '@medcore/types';
+import {
+  listOrders,
+  subscribeOrders,
+  updateOrderStatus,
+  type ClinicalOrder,
+} from '../../lib/clinicalEventBus';
+import { loadGatewayConfig } from '../../lib/deviceGatewayStore';
+import {
+  draftImagingReport,
+  hasImagingAiAssist,
+  type MedGemmaModality,
+} from '../../lib/medgemmaClient';
+import {
+  saveAssistDraft,
+  getLatestAssist,
+  setAssistStatus,
+  subscribeMedgemmaAssist,
+  type ImagingAiAssist,
+} from '../../lib/medgemmaAssistStore';
 
 const INITIAL_STUDIES: RadiologyStudy[] = [];
 
+function facilityIdGuess(): string {
+  try {
+    return (
+      localStorage.getItem('medcore_active_facility_id') ||
+      localStorage.getItem('medcore_os_facility_id') ||
+      'IGH-EKT'
+    );
+  } catch {
+    return 'IGH-EKT';
+  }
+}
+
+function modalityFromName(name: string): MedGemmaModality {
+  const u = name.toUpperCase();
+  if (u.includes('CT')) return 'CT';
+  if (u.includes('MRI') || u.includes('MR ')) return 'MRI';
+  if (u.includes('US') || u.includes('ULTRASOUND')) return 'US';
+  if (u.includes('XR') || u.includes('X-RAY') || u.includes('XRAY') || u.includes('CHEST')) return 'XR';
+  return 'OTHER';
+}
+
 export const RadiologyPacsSuite: React.FC = () => {
+  const facilityId = facilityIdGuess();
   const [studies, setStudies] = useState<RadiologyStudy[]>(INITIAL_STUDIES);
+  const [busOrders, setBusOrders] = useState<ClinicalOrder[]>([]);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiDraft, setAiDraft] = useState<ImagingAiAssist | null>(null);
+  const [assistTick, setAssistTick] = useState(0);
   const [selectedId, setSelectedId] = useState<string>('');
   const [zoomLevel, setZoomLevel] = useState(100);
   const [windowPreset, setWindowPreset] = useState<'lung' | 'bone' | 'soft_tissue'>('lung');
@@ -38,6 +83,83 @@ export const RadiologyPacsSuite: React.FC = () => {
 
   const selectedStudy = studies.find(s => s.id === selectedId) || studies[0];
 
+  const reloadBus = () => {
+    setBusOrders(listOrders(facilityId).filter((o) => o.type === 'imaging'));
+  };
+
+  useEffect(() => {
+    reloadBus();
+    return subscribeOrders(reloadBus);
+  }, [facilityId]);
+
+  useEffect(() => {
+    return subscribeMedgemmaAssist(() => setAssistTick((n) => n + 1));
+  }, []);
+
+  const selectedBusOrder = useMemo(() => {
+    void assistTick;
+    if (!selectedId) return busOrders[0];
+    return busOrders.find((o) => o.id === selectedId) || busOrders[0];
+  }, [busOrders, selectedId, assistTick]);
+
+  useEffect(() => {
+    if (selectedBusOrder) {
+      setAiDraft(getLatestAssist(facilityId, selectedBusOrder.id) || null);
+    }
+  }, [selectedBusOrder?.id, facilityId, assistTick]);
+
+  const gateway = useMemo(() => loadGatewayConfig(facilityId), [facilityId, assistTick]);
+
+  const runMedGemma = async (order?: ClinicalOrder) => {
+    const o = order || selectedBusOrder;
+    if (!o) {
+      showNotification('Select or create an imaging order first');
+      return;
+    }
+    if (!hasImagingAiAssist()) {
+      showNotification('Set NEXT_PUBLIC_MEDGEMMA_API_URL or NEXT_PUBLIC_GEMINI_API_KEY for AI assist');
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const mod = modalityFromName(o.name);
+      const result = await draftImagingReport({
+        modality: mod,
+        studyName: o.name,
+        clinicalContext: o.notes || `Patient ${o.patientName} (${o.hospitalNumber}). Priority ${o.priority}.`,
+        orthancUrl: gateway.orthancEnabled ? gateway.orthancUrl : undefined,
+      });
+      if (!result.ok) {
+        showNotification(result.text || 'AI assist failed');
+        return;
+      }
+      const row = saveAssistDraft({
+        facilityId,
+        orderId: o.id,
+        patientId: o.patientId,
+        patientName: o.patientName,
+        studyName: o.name,
+        modality: mod,
+        result,
+        orthancUrl: gateway.orthancUrl,
+        actorName: 'Radiology desk',
+      });
+      setAiDraft(row);
+      setReportFindings(result.text);
+      showNotification(`MedGemma draft ready (${result.provider}) — review before signing`);
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const acceptAiIntoReport = () => {
+    if (!aiDraft) return;
+    setReportFindings(aiDraft.draftText);
+    setAssistStatus(aiDraft.id, 'accepted');
+    setShowReportModal(true);
+    showNotification('AI draft loaded into report form — edit & sign');
+  };
+
   const handleSignReport = (id: string, findingsText?: string) => {
     const finalFindings = findingsText || selectedStudy.findings || 'Normal radiological examination. No focal acute pathology.';
     setStudies(prev => prev.map(s => {
@@ -51,7 +173,21 @@ export const RadiologyPacsSuite: React.FC = () => {
       }
       return s;
     }));
-    showNotification(`Radiology report for ${selectedStudy.patientName} signed & dispatched to EHR.`);
+    showNotification(`Radiology report for ${selectedStudy?.patientName || 'patient'} signed & dispatched to EHR.`);
+    // Mirror to clinical bus when order id matches
+    try {
+      const bus = busOrders.find((o) => o.id === id);
+      if (bus) {
+        updateOrderStatus(id, 'resulted', {
+          resultSummary: finalFindings,
+          resultedBy: 'Radiologist',
+        });
+        reloadBus();
+      }
+      if (aiDraft && aiDraft.orderId === id) {
+        setAssistStatus(aiDraft.id, 'accepted');
+      }
+    } catch { /* ignore */ }
   };
 
   const handleSaveReportForm = (e: React.FormEvent) => {
@@ -106,6 +242,130 @@ export const RadiologyPacsSuite: React.FC = () => {
         }}>
           <CheckCircle2 size={18} color="#10B981" />
           <span>{notice}</span>
+        </div>
+      )}
+
+      
+      {/* MedGemma + Orthanc assist layer */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center',
+        padding: '14px 16px', borderRadius: 14,
+        background: 'linear-gradient(90deg, #F5F3FF, #ECFEFF)',
+        border: '1px solid #DDD6FE',
+      }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+          background: 'linear-gradient(135deg, #7C3AED, #0D9488)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Sparkles size={18} color="#fff" />
+        </div>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: '#0F172A' }}>
+            MedGemma imaging assist · Orthanc remains image source of truth
+          </div>
+          <div style={{ fontSize: 12, color: '#64748B', marginTop: 4, lineHeight: 1.45 }}>
+            {hasImagingAiAssist()
+              ? 'Generate a draft report from clinical context (and image when provided). Human must sign.'
+              : 'Configure NEXT_PUBLIC_MEDGEMMA_API_URL (preferred) or NEXT_PUBLIC_GEMINI_API_KEY for assist.'}
+            {gateway.orthancEnabled ? ` · PACS: ${gateway.orthancUrl}` : ' · Orthanc disabled in gateway'}
+            {' · Live imaging orders: '}{busOrders.length}
+          </div>
+          {aiDraft && (
+            <div style={{ marginTop: 8, fontSize: 12, color: '#5B21B6', fontWeight: 600 }}>
+              Latest draft for {aiDraft.studyName}: {aiDraft.status} · {aiDraft.provider}
+              {aiDraft.latencyMs ? ` · ${aiDraft.latencyMs}ms` : ''}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={aiBusy}
+          onClick={() => void runMedGemma()}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '10px 14px', borderRadius: 12, border: 'none',
+            background: 'linear-gradient(90deg,#7C3AED,#0D9488)', color: '#fff',
+            fontWeight: 800, fontSize: 12, cursor: aiBusy ? 'wait' : 'pointer',
+          }}
+        >
+          <Sparkles size={14} /> {aiBusy ? 'MedGemma…' : 'Run MedGemma draft'}
+        </button>
+        {aiDraft && (
+          <button
+            type="button"
+            onClick={acceptAiIntoReport}
+            style={{
+              padding: '10px 14px', borderRadius: 12, border: '1px solid #C4B5FD',
+              background: '#fff', color: '#5B21B6', fontWeight: 700, fontSize: 12, cursor: 'pointer',
+            }}
+          >
+            Use draft in report
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={reloadBus}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '10px 12px', borderRadius: 12, border: '1px solid #E2E8F0',
+            background: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer',
+          }}
+        >
+          <RefreshCw size={14} /> Orders
+        </button>
+      </div>
+
+      {aiDraft && aiDraft.status === 'draft' && (
+        <div className="os-card" style={{ padding: 16, borderLeft: '4px solid #7C3AED' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontWeight: 800, fontSize: 13 }}>AI draft (not signed)</span>
+            <span style={{ fontSize: 11, color: '#64748B' }}>{aiDraft.disclaimer.slice(0, 80)}…</span>
+          </div>
+          <pre style={{
+            whiteSpace: 'pre-wrap', fontFamily: 'ui-sans-serif,system-ui', fontSize: 13,
+            color: '#0F172A', margin: 0, lineHeight: 1.5, maxHeight: 220, overflow: 'auto',
+          }}>{aiDraft.draftText}</pre>
+        </div>
+      )}
+
+      {/* Live clinical bus imaging worklist */}
+      {busOrders.length > 0 && (
+        <div className="os-card" style={{ padding: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10, color: '#0F172A' }}>
+            Live imaging orders (doctor → radiology bus)
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {busOrders.slice(0, 12).map((o) => (
+              <div
+                key={o.id}
+                onClick={() => setSelectedId(o.id)}
+                style={{
+                  display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center',
+                  padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+                  border: selectedId === o.id ? '2px solid #7C3AED' : '1px solid #E2E8F0',
+                  background: selectedId === o.id ? '#F5F3FF' : '#F8FAFC',
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{o.patientName} · {o.name}</div>
+                  <div style={{ fontSize: 11, color: '#64748B' }}>
+                    {o.hospitalNumber} · {o.status} · {o.priority} · {o.orderedBy}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); void runMedGemma(o); }}
+                  style={{
+                    padding: '6px 10px', borderRadius: 8, border: 'none',
+                    background: '#7C3AED', color: '#fff', fontWeight: 700, fontSize: 11, cursor: 'pointer',
+                  }}
+                >
+                  AI draft
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
