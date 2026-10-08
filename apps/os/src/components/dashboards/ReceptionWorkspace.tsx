@@ -16,6 +16,8 @@ import {
   upsertPatient,
   subscribePatients,
   generateHospitalNumber,
+  searchPatients,
+  countPatients,
   type FacilityPatient,
 } from '../../lib/patientRegistryStore';
 import {
