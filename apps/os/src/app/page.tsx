@@ -74,6 +74,7 @@ import { EnvironmentalSafetySuite } from '../components/operations/Environmental
 import { BillingInvoicingSuite } from '../components/finance/BillingInvoicingSuite';
 import { InsuranceHmoClaimsSuite } from '../components/finance/InsuranceHmoClaimsSuite';
 import { RevenueCycleAccountingSuite } from '../components/finance/RevenueCycleAccountingSuite';
+import { AccountingArDesk } from '../components/finance/AccountingArDesk';
 import { ProcurementHrSuite } from '../components/finance/ProcurementHrSuite';
 import { FhirHl7GatewaySuite } from '../components/interop/FhirHl7GatewaySuite';
 import { ConnectedDevicesSuite } from '../components/interop/ConnectedDevicesSuite';
@@ -440,7 +441,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: 'Claims & ledger',
           items: [
             { key: 'claims', icon: ShieldCheck, label: 'Insurance & NHIS claims', badge: 'HMO' },
-            { key: 'revenue-cycle', icon: BarChart3, label: 'Revenue cycle' },
+            { key: 'revenue-cycle', icon: BarChart3, label: 'AR / Revenue cycle', badge: 'AR' },
           ],
         },
       ];

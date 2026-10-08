@@ -29,9 +29,11 @@ import { patientBalance, listPatientsWithOpenBills, subscribeBills } from '../..
 import { todayPayments, dayStats, subscribeReceptionOps } from '../../lib/receptionOpsStore';
 import { PosPaymentDesk } from '../cashier/PosPaymentDesk';
 import { BillingInvoicingSuite } from '../finance/BillingInvoicingSuite';
+import { AccountingArDesk } from '../finance/AccountingArDesk';
+import { InsuranceHmoClaimsSuite } from '../finance/InsuranceHmoClaimsSuite';
 import { emitLiveAction } from '../../lib/liveActions';
 
-type AccView = 'home' | 'payment' | 'billing' | 'receipts';
+type AccView = 'home' | 'payment' | 'billing' | 'receipts' | 'ar' | 'claims';
 
 interface Props {
   session: UserSession;
@@ -105,9 +107,11 @@ export const AccountingWorkspace: React.FC<Props> = ({
   }, [facilityId, tick]);
 
   const nav: { id: AccView; label: string; icon: React.ElementType; badge?: number }[] = [
-    { id: 'home', label: 'Accounts desk', icon: LayoutDashboard, badge: awaiting.length || undefined },
+    { id: 'home', label: 'Accounts home', icon: LayoutDashboard, badge: awaiting.length || undefined },
+    { id: 'ar', label: 'AR desk', icon: Wallet, badge: awaiting.length || undefined },
     { id: 'payment', label: 'Collect payment', icon: CreditCard },
     { id: 'billing', label: 'Billing office', icon: FileText },
+    { id: 'claims', label: 'HMO / NHIA claims', icon: FileText },
     { id: 'receipts', label: 'Today receipts', icon: Wallet },
   ];
 
@@ -562,6 +566,23 @@ export const AccountingWorkspace: React.FC<Props> = ({
               >
                 Open payment desk
               </button>
+              <button
+                type="button"
+                onClick={() => setView('ar')}
+                style={{
+                  marginTop: 8,
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: 10,
+                  border: '1px solid #FDE68A',
+                  background: '#FFFBEB',
+                  color: '#92400E',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Open full AR desk (debtors · aging · claims)
+              </button>
             </div>
 
             <div
@@ -672,6 +693,16 @@ export const AccountingWorkspace: React.FC<Props> = ({
               onNavigate={(k) => (k === 'dashboard' ? setView('home') : onNavigate?.(k))}
             />
           </div>
+        </div>
+      )}
+
+      {view === 'ar' && (
+        <AccountingArDesk session={session} onCollectPayment={() => setView('payment')} />
+      )}
+
+      {view === 'claims' && (
+        <div>
+          <InsuranceHmoClaimsSuite />
         </div>
       )}
 
