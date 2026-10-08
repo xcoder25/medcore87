@@ -63,14 +63,31 @@ function readAll(): FacilityPatient[] {
 
 function writeAll(list: FacilityPatient[]) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(PATIENT_REGISTRY_KEY, JSON.stringify(list));
+  const payload = JSON.stringify(list);
+  // localStorage ~5MB; keep headroom for bills/visits
+  if (payload.length > 4_500_000) {
+    console.warn(
+      `[MedCore] Patient registry ~${(payload.length / 1e6).toFixed(1)}MB — nearing browser storage limit. Prefer Firestore for multi-thousand archives.`
+    );
+  }
+  try {
+    localStorage.setItem(PATIENT_REGISTRY_KEY, payload);
+  } catch (e) {
+    console.error('[MedCore] Patient registry write failed (quota?).', e);
+    throw e;
+  }
   window.dispatchEvent(new CustomEvent('medcore-patients-updated', { detail: list }));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: PATIENT_REGISTRY_KEY } }));
   const fid = list[0]?.facilityId || 'IGH-EKT';
-  publishFacilityData(fid, FACILITY_KEYS.patients, list);
+  // Sync summary only on bus (not full 10k dump to every tab every time)
+  publishFacilityData(fid, FACILITY_KEYS.patients, list.length > 2000 ? list.slice(0, 2000) : list);
   try {
     const bc = new BroadcastChannel('medcore_patients');
-    bc.postMessage({ type: 'patients', list });
+    if (list.length <= 2000) {
+      bc.postMessage({ type: 'patients', list });
+    } else {
+      bc.postMessage({ type: 'patients_meta', count: list.length, facilityId: fid });
+    }
     bc.close();
   } catch { /* ignore */ }
 }
@@ -89,12 +106,14 @@ export function upsertPatient(patient: FacilityPatient): FacilityPatient {
   const all = readAll();
   const next = [patient, ...all.filter((p) => p.id !== patient.id)];
   writeAll(next);
-  // Cloud mirror (non-blocking)
+  // Cloud mirror (non-blocking) — single patient upsert, not full registry dump
   void (async () => {
     try {
       const { firestoreWriteFacility } = await import('./firebase');
+      const count = listPatients(patient.facilityId).length;
       await firestoreWriteFacility(patient.facilityId, {
-        patients: listPatients(patient.facilityId),
+        [`patient_${patient.id}`]: patient,
+        patientsCount: count,
         patientsUpdatedAt: new Date().toISOString(),
       });
     } catch {
@@ -120,6 +139,96 @@ export function deletePatient(id: string, facilityId?: string) {
       }
     })();
   }
+}
+
+
+/** Count patients for a facility (O(n) scan — OK to ~10k) */
+export function countPatients(facilityId: string): number {
+  return listPatients(facilityId).length;
+}
+
+/**
+ * Search patients without rendering the full registry.
+ * Default limit 50 — suitable for typeahead at 1,000–10,000 patients.
+ */
+export function searchPatients(
+  facilityId: string,
+  query: string,
+  limit = 50
+): FacilityPatient[] {
+  const q = (query || '').trim().toLowerCase();
+  const all = listPatients(facilityId);
+  if (!q) {
+    // Most recent first (registry stores newest at front on upsert)
+    return all.slice(0, limit);
+  }
+  const out: FacilityPatient[] = [];
+  for (const p of all) {
+    const blob = [
+      p.firstName,
+      p.middleName,
+      p.lastName,
+      p.hospitalNumber,
+      p.phone,
+      p.nin,
+      p.nhiaNumber,
+      p.email,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    if (blob.includes(q)) {
+      out.push(p);
+      if (out.length >= limit) break;
+    }
+  }
+  return out;
+}
+
+/** Paginated list for admin exports / large desks */
+export function listPatientsPage(
+  facilityId: string,
+  page: number,
+  pageSize = 50
+): { rows: FacilityPatient[]; total: number; page: number; pageSize: number } {
+  const all = listPatients(facilityId);
+  const total = all.length;
+  const start = Math.max(0, page * pageSize);
+  return {
+    rows: all.slice(start, start + pageSize),
+    total,
+    page,
+    pageSize,
+  };
+}
+
+export function getPatientByHospitalNumber(
+  facilityId: string,
+  hospitalNumber: string
+): FacilityPatient | undefined {
+  const hn = (hospitalNumber || '').trim().toLowerCase();
+  if (!hn) return undefined;
+  return listPatients(facilityId).find((p) => p.hospitalNumber.toLowerCase() === hn);
+}
+
+/** Scale probe for ops / QA */
+export function probePatientRegistryScale(facilityId: string): {
+  count: number;
+  approxBytes: number;
+  approxMb: number;
+  localStorageHeadroom: 'ok' | 'tight' | 'critical';
+} {
+  const all = listPatients(facilityId);
+  let approxBytes = 0;
+  try {
+    approxBytes = new Blob([JSON.stringify(all)]).size;
+  } catch {
+    approxBytes = JSON.stringify(all).length;
+  }
+  const approxMb = approxBytes / (1024 * 1024);
+  const localStorageHeadroom =
+    approxMb < 2 ? 'ok' : approxMb < 4 ? 'tight' : 'critical';
+  return { count: all.length, approxBytes, approxMb, localStorageHeadroom };
 }
 
 export function generateHospitalNumber(facilityId: string): string {

@@ -47,7 +47,7 @@ function read(): PatientBillLine[] {
 
 function write(list: PatientBillLine[]) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(KEY, JSON.stringify(list.slice(0, 3000)));
+  localStorage.setItem(KEY, JSON.stringify(list.slice(0, 15000)));
   window.dispatchEvent(new CustomEvent(EVT, { detail: list }));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: KEY } }));
   const fid = list[0]?.facilityId || 'IGH-EKT';

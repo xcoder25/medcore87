@@ -53,7 +53,7 @@ function read(): ClinicalOrder[] {
 
 function write(list: ClinicalOrder[]) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(KEY, JSON.stringify(list.slice(0, 500)));
+  localStorage.setItem(KEY, JSON.stringify(list.slice(0, 8000)));
   window.dispatchEvent(new CustomEvent('medcore-clinical-orders', { detail: list }));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: KEY } }));
   const fid = list[0]?.facilityId || 'IGH-EKT';

@@ -1724,7 +1724,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               onChange={(e) => setApPatient(patients.find((p) => p.id === e.target.value) || null)}
             >
               <option value="">Select patient…</option>
-              {patients.map((p) => (
+              {searchPatients(facilityId, '', 200).map((p) => (
                 <option key={p.id} value={p.id}>
                   {fullName(p)} · {p.hospitalNumber}
                 </option>
