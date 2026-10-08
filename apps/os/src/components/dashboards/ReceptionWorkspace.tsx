@@ -502,6 +502,16 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         sentByBadge: session.badgeId,
         note: 'Patient to pay at Accounts, then return to front desk with receipt',
       });
+      try {
+        pushNotification({
+          facilityId,
+          level: 'important',
+          title: 'Registration fee — pay at Accounts',
+          body: `${fullName(patient)} · ₦${fee.toLocaleString()} · ${req.invoiceNumber} · New folder`,
+          module: 'cashier',
+          roleHint: 'accountant',
+        });
+      } catch { /* ignore */ }
       flash(
         `Folder opened · ${patient.hospitalNumber}. Invoice ₦${fee.toLocaleString()} sent to Accounts (${req.invoiceNumber}). Patient should pay, then return with receipt.`
       );
@@ -653,6 +663,72 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     setPayments(todayPayments(facilityId));
     setPaystackOpen(false);
     flash(`Paystack paid · ${result.paystackRef} · ₦${result.amountNgn.toLocaleString()}`);
+  };
+
+
+  /** Front desk does not collect money — hand financial data to Accounting */
+  const sendToAccountingDesk = () => {
+    const p = posPatient || selected;
+    if (!p) {
+      flash('Select a patient first');
+      return;
+    }
+    const amt = Number(posAmount) || 0;
+    if (amt <= 0) {
+      flash('Enter amount for the invoice');
+      return;
+    }
+    try {
+      const req = sendPaymentRequestToAccounts({
+        facilityId,
+        facilityName,
+        patientId: p.id,
+        hospitalNumber: p.hospitalNumber,
+        patientName: fullName(p),
+        amountNgn: amt,
+        purpose: posPurpose || 'OPD / front desk fee',
+        source: 'reception',
+        sentBy: session.name || 'Reception',
+        sentByBadge: session.badgeId,
+        note: 'Patient directed to Accounting desk. Return to Front Desk with receipt for clinical queue.',
+      });
+      try {
+        pushNotification({
+          facilityId,
+          level: 'important',
+          title: 'New payment request from Front Desk',
+          body: `${fullName(p)} · ₦${amt.toLocaleString()} · ${req.purpose} · ${req.invoiceNumber || req.id}`,
+          module: 'cashier',
+          roleHint: 'accountant',
+        });
+        pushNotification({
+          facilityId,
+          level: 'important',
+          title: 'New payment request from Front Desk',
+          body: `${fullName(p)} · ₦${amt.toLocaleString()} · ${req.purpose}`,
+          module: 'cashier',
+          roleHint: 'cashier',
+        });
+      } catch { /* ignore */ }
+      emitLiveAction(`FD → Accounts · ${req.invoiceNumber} · ₦${amt}`, { module: 'reception' });
+      try {
+        appendAudit({
+          facilityId,
+          actor: session.name || 'Reception',
+          actorBadge: session.badgeId,
+          action: 'send_to_accounts',
+          entity: 'accounts_request',
+          entityId: req.id,
+          detail: `${fullName(p)} ₦${amt} · ${req.invoiceNumber}`,
+        });
+      } catch { /* ignore */ }
+      flash(
+        `Sent to Accounting · ${req.invoiceNumber || req.id} · ₦${amt.toLocaleString()}. Patient pays at Accounts, then returns with receipt.`
+      );
+      setPosAmount('5000');
+    } catch (e: any) {
+      flash(e?.message || 'Could not send to Accounts');
+    }
   };
 
   const doPayment = () => {
@@ -1857,9 +1933,9 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
             }}
           >
             <div>
-              <h2 style={{ margin: 0, fontWeight: 800, fontSize: 18, color: C.navy }}>Collect payment</h2>
+              <h2 style={{ margin: 0, fontWeight: 800, fontSize: 18, color: C.navy }}>Send to Accounting</h2>
               <p style={{ margin: '4px 0 0', fontSize: 13, color: C.muted }}>
-                Digital: Card (Paystack Terminal) & Transfer · Desk: Cash, HMO, Waiver
+                Front Desk opens the invoice · patient pays at Accounting desk · returns with receipt for clinical care
               </p>
             </div>
             {onNavigate && (
@@ -1877,7 +1953,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   color: C.blue,
                 }}
               >
-                Open full POS desk →
+                Open Accounting / Cashier →
               </button>
             )}
           </div>
@@ -1968,7 +2044,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               ).length > 0 && (
                 <div style={{ marginTop: 8 }}>
                   <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 6 }}>
-                    UNPAID CHECK-INS
+                    AWAITING ACCOUNTS INVOICE
                   </div>
                   {visits
                     .filter(
@@ -2080,139 +2156,63 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 />
               </div>
 
-              <div>
-                <label style={labelStyle}>Payment method</label>
-                <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, letterSpacing: '0.06em', marginTop: 10, marginBottom: 6 }}>
-                  DIGITAL · PAYSTACK
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  {(
-                    [
-                      { id: 'card' as PaymentMethod, label: 'Card — Paystack Terminal', sub: 'PIN on terminal only' },
-                      { id: 'transfer' as PaymentMethod, label: 'Transfer', sub: 'Bank transfer / USSD' },
-                    ] as const
-                  ).map((m) => {
-                    const on = posMethod === m.id;
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setPosMethod(m.id)}
-                        style={{
-                          padding: '12px 10px',
-                          borderRadius: 12,
-                          cursor: 'pointer',
-                          border: on ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
-                          background: on ? '#E0F2FE' : '#F8FAFC',
-                          color: on ? C.blue : C.navy,
-                          fontWeight: 800,
-                          fontSize: 12,
-                          textAlign: 'left' as const,
-                        }}
-                      >
-                        <div>{m.label}</div>
-                        <div style={{ fontSize: 10, fontWeight: 600, color: on ? '#0369A1' : C.muted, marginTop: 4 }}>{m.sub}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, letterSpacing: '0.06em', marginTop: 14, marginBottom: 6 }}>
-                  HOSPITAL DESK
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                  {(
-                    [
-                      { id: 'cash' as PaymentMethod, label: 'Cash' },
-                      { id: 'hmo' as PaymentMethod, label: 'HMO' },
-                      { id: 'waiver' as PaymentMethod, label: 'Waiver' },
-                    ] as const
-                  ).map((m) => {
-                    const on = posMethod === m.id;
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setPosMethod(m.id)}
-                        style={{
-                          padding: '12px 8px',
-                          borderRadius: 12,
-                          cursor: 'pointer',
-                          border: on ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
-                          background: on ? '#E0F2FE' : '#F8FAFC',
-                          color: on ? C.blue : C.navy,
-                          fontWeight: 800,
-                          fontSize: 13,
-                        }}
-                      >
-                        {m.label}
-                      </button>
-                    );
-                  })}
-                </div>
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 12,
+                  background: '#F0F9FF',
+                  border: '1px solid #BAE6FD',
+                  fontSize: 12,
+                  color: '#0C4A6E',
+                  lineHeight: 1.5,
+                }}
+              >
+                <strong>Front Desk does not collect money.</strong> This creates an invoice on the Accounting desk queue.
+                After payment, the patient returns here with the receipt for check-in / clinical queue.
               </div>
 
               <button
                 type="button"
                 disabled={!(posPatient || selected)}
-                onClick={() => {
-                  if (posMethod === 'card' || posMethod === 'transfer') {
-                    const amt = Number(posAmount) || 0;
-                    if (amt < 1) {
-                      flash('Enter amount');
-                      return;
-                    }
-                    if (posMethod === 'transfer' && !hasPaystackKey()) {
-                      flash('Set NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY in environment (public key only)');
-                      return;
-                    }
-                    setPaystackOpen(true);
-                    return;
-                  }
-                  doPayment();
-                }}
+                onClick={sendToAccountingDesk}
+                className="mc-btn-live"
                 style={{
                   marginTop: 4,
                   height: 52,
                   borderRadius: 14,
                   border: 'none',
-                  background: posPatient || selected
-                    ? 'linear-gradient(90deg, #0284C7 0%, #0D9488 100%)'
-                    : '#CBD5E1',
+                  background:
+                    posPatient || selected
+                      ? 'linear-gradient(135deg,#0052D4,#0D9488)'
+                      : '#CBD5E1',
                   color: '#fff',
                   fontWeight: 800,
-                  fontSize: 15,
+                  fontSize: 14,
                   cursor: posPatient || selected ? 'pointer' : 'not-allowed',
                   boxShadow: posPatient || selected ? '0 12px 28px rgba(2,132,199,0.3)' : 'none',
                 }}
               >
-                {['card', 'transfer'].includes(posMethod)
-                  ? `Pay with Paystack · ₦${(Number(posAmount) || 0).toLocaleString()}`
-                  : `Record ₦${(Number(posAmount) || 0).toLocaleString()} · ${posMethod.toUpperCase()}`}
+                Send invoice to Accounting · ₦{(Number(posAmount) || 0).toLocaleString()}
               </button>
 
-              {['card', 'transfer'].includes(posMethod) && (
+              {onNavigate && (
                 <button
                   type="button"
-                  disabled={!(posPatient || selected)}
-                  onClick={doPayment}
+                  onClick={() => onNavigate('cashier')}
                   style={{
                     height: 40,
                     borderRadius: 12,
                     border: `1px solid ${C.border}`,
                     background: '#fff',
-                    color: C.navy,
                     fontWeight: 700,
                     fontSize: 12,
-                    cursor: posPatient || selected ? 'pointer' : 'not-allowed',
+                    cursor: 'pointer',
+                    color: C.blue,
                   }}
                 >
-                  Record offline (no Paystack)
+                  Jump to Accounting desk (if you work both roles) →
                 </button>
               )}
-
-              <div style={{ fontSize: 12, color: C.muted, textAlign: 'center' }}>
-                Digital: Card Terminal &amp; Transfer (Paystack) · Desk: Cash, HMO, Waiver · receipt after confirm/verify
-              </div>
 
               {payments.length > 0 && (
                 <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12, marginTop: 4 }}>
