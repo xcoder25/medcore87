@@ -37,6 +37,7 @@ import {
   patientBalance,
   listPatientsWithOpenBills,
 } from '../../lib/patientBillingStore';
+import { applyPaystackSuccess } from '../../lib/paystackLedgerStore';
 import { verifyInsurance } from '../../lib/receptionConstants';
 import { printPaymentReceipt } from '../../lib/printService';
 import { syncAccountsRequestsForPatientPayment } from '../../lib/frontDeskAccountsBridge';
@@ -266,6 +267,22 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
       });
     } catch {
       /* ignore */
+    }
+    if (method === 'pos' || method === 'transfer' || method === 'card') {
+      try {
+        applyPaystackSuccess({
+          facilityId,
+          reference: pay.reference,
+          amountNgn: amt,
+          channel: method === 'transfer' ? 'bank' : 'card',
+          patientId: patient.id,
+          hospitalNumber: patient.hospitalNumber,
+          patientName: fullName(patient),
+          purpose: lines.map((l) => l.label).join(', ') || purpose,
+          actorName: cashier,
+          source: 'manual',
+        });
+      } catch { /* ignore */ }
     }
     reload();
     emitLiveAction(`POS ${pay.reference} · ₦${amt}`, { module: 'cashier' });

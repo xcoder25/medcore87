@@ -26,6 +26,13 @@ import {
   subscribeMedgemmaAssist,
   type ImagingAiAssist,
 } from '../../lib/medgemmaAssistStore';
+import {
+  fetchOrthancStudies,
+  linkStudyToOrder,
+  linkSimulatedStudy,
+  getLinkForOrder,
+  type OrthancStudyRef,
+} from '../../lib/orthancClient';
 
 const INITIAL_STUDIES: RadiologyStudy[] = [];
 
@@ -57,6 +64,9 @@ export const RadiologyPacsSuite: React.FC = () => {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiDraft, setAiDraft] = useState<ImagingAiAssist | null>(null);
   const [assistTick, setAssistTick] = useState(0);
+  const [orthancStudies, setOrthancStudies] = useState<OrthancStudyRef[]>([]);
+  const [orthancMsg, setOrthancMsg] = useState('');
+  const [orthancBusy, setOrthancBusy] = useState(false);
   const [selectedId, setSelectedId] = useState<string>('');
   const [zoomLevel, setZoomLevel] = useState(100);
   const [windowPreset, setWindowPreset] = useState<'lung' | 'bone' | 'soft_tissue'>('lung');
@@ -150,6 +160,29 @@ export const RadiologyPacsSuite: React.FC = () => {
     } finally {
       setAiBusy(false);
     }
+  };
+
+  const loadOrthanc = async () => {
+    setOrthancBusy(true);
+    try {
+      const r = await fetchOrthancStudies(facilityId);
+      setOrthancStudies(r.studies);
+      setOrthancMsg(r.message);
+      showNotification(r.message);
+    } finally {
+      setOrthancBusy(false);
+    }
+  };
+
+  const linkSelectedStudy = (study: OrthancStudyRef) => {
+    const o = selectedBusOrder;
+    if (!o) {
+      showNotification('Select a live imaging order first');
+      return;
+    }
+    linkStudyToOrder({ facilityId, orderId: o.id, study, actorName: 'Radiology' });
+    showNotification(`Linked study ${study.id} → ${o.id}`);
+    setAssistTick((n) => n + 1);
   };
 
   const acceptAiIntoReport = () => {
@@ -328,6 +361,81 @@ export const RadiologyPacsSuite: React.FC = () => {
           }}>{aiDraft.draftText}</pre>
         </div>
       )}
+
+      
+      {/* Orthanc live studies */}
+      <div className="os-card" style={{ padding: 16 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, flex: 1 }}>Orthanc / PACS studies</div>
+          <button
+            type="button"
+            disabled={orthancBusy}
+            onClick={() => void loadOrthanc()}
+            style={{
+              padding: '8px 12px', borderRadius: 10, border: 'none',
+              background: '#0F172A', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer',
+            }}
+          >
+            {orthancBusy ? 'Loading…' : 'Fetch from Orthanc'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const o = selectedBusOrder;
+              if (!o) {
+                showNotification('Select imaging order first');
+                return;
+              }
+              linkSimulatedStudy({ facilityId, order: o, actorName: 'Radiology' });
+              showNotification('Simulated study linked (hub offline path)');
+              setAssistTick((n) => n + 1);
+            }}
+            style={{
+              padding: '8px 12px', borderRadius: 10, border: '1px solid #E2E8F0',
+              background: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer',
+            }}
+          >
+            Link simulated study
+          </button>
+        </div>
+        {orthancMsg && <div style={{ fontSize: 12, color: '#64748B', marginBottom: 8 }}>{orthancMsg}</div>}
+        {selectedBusOrder && getLinkForOrder(selectedBusOrder.id) && (
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#0D9488', marginBottom: 8 }}>
+            Linked: {getLinkForOrder(selectedBusOrder.id)?.studyId} ·{' '}
+            <a href={getLinkForOrder(selectedBusOrder.id)?.viewerUrl} target="_blank" rel="noreferrer">
+              Open viewer
+            </a>
+          </div>
+        )}
+        {orthancStudies.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {orthancStudies.slice(0, 15).map((s) => (
+              <div
+                key={s.id}
+                style={{
+                  display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center',
+                  padding: '8px 10px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#F8FAFC',
+                }}
+              >
+                <div style={{ fontSize: 12 }}>
+                  <strong>{s.studyDescription || s.id}</strong>
+                  <div style={{ color: '#64748B' }}>{s.patientName} · {s.studyDate}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => linkSelectedStudy(s)}
+                  style={{
+                    padding: '6px 10px', borderRadius: 8, border: 'none',
+                    background: '#0D9488', color: '#fff', fontWeight: 700, fontSize: 11, cursor: 'pointer',
+                  }}
+                >
+                  Link to order
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Live clinical bus imaging worklist */}
       {busOrders.length > 0 && (

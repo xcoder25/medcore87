@@ -30,6 +30,7 @@ import {
   FileCheck, ShieldCheck, HeartPulse,
   ChevronsRight, LifeBuoy, UserCheck, ExternalLink
 } from 'lucide-react';
+import { AmbientSoapPanel } from '../clinical-core/AmbientSoapPanel';
 
 interface DoctorPortalProps {
   session: UserSession;
@@ -638,7 +639,7 @@ const PatientsView: React.FC = () => {
 
 // -- CONSULTATION (SOAP) -------------------------------------------------------
 
-const ConsultationView: React.FC = () => {
+const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
   const [step, setStep] = useState<'select' | 'consult'>('select');
   const [patient, setPatient] = useState<Patient | null>(null);
   const [chiefComplaint, setChiefComplaint] = useState('');
@@ -734,6 +735,20 @@ const ConsultationView: React.FC = () => {
           {soapTab === 'P' && ta('Management Plan (Investigations, Treatment, Follow-up)', plan, setPlan, 10)}
         </div>
       </div>
+      <AmbientSoapPanel
+        facilityId={session?.hospitalId || 'IGH-EKT'}
+        patientId={patient?.id}
+        patientName={patient?.name}
+        hospitalNumber={patient?.id}
+        onSoapReady={(soap) => {
+          if (soap.subjective) setHpi(soap.subjective);
+          if (soap.objective) setExamination(soap.objective);
+          if (soap.assessment) setAssessment(soap.assessment);
+          if (soap.plan) setPlan(soap.plan);
+          if (soap.subjective && !chiefComplaint) setChiefComplaint(soap.subjective.slice(0, 120));
+        }}
+      />
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
         {patient && (
           <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px' }}>
@@ -1822,7 +1837,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate 
           />
         );
       case 'patients':         return <PatientsViewLive session={session} onNavigate={onNavigate} />;
-      case 'consultation':     return <ConsultationView />;
+      case 'consultation':     return <ConsultationView session={session} />;
       case 'prescriptions':    return <PrescriptionsView session={session} />;
       case 'lab-orders':       return <LabOrdersView session={session} />;
       case 'ward-round':       return <WardRoundView />;
