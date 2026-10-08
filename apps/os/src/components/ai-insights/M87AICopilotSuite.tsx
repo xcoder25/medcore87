@@ -6,6 +6,7 @@ import { addFeedback, getModelState, subscribeM87Learn } from '../../lib/m87Lear
 import { liveAlert } from '../../lib/manualActions';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { pauseAnimationsWhenHidden } from '../../lib/motion';
 import type { UserSession } from '../auth/AuthScreen';
 import {
   parseStaffAutomationIntent,
@@ -75,6 +76,14 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
   const [engineReady, setEngineReady] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+
+  // Pause aurora / gradient loops when M87 is off-screen or tab hidden
+  useEffect(() => {
+    const el = shellRef.current;
+    if (!el) return;
+    return pauseAnimationsWhenHidden(el);
+  }, []);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
@@ -316,7 +325,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
   ];
 
   return (
-    <div className="m87-chat-shell">
+    <div className="m87-chat-shell" ref={shellRef}>
       {/* Ambient brand aurora */}
       <div className="m87-aurora" aria-hidden />
       <div className="m87-aurora m87-aurora-2" aria-hidden />

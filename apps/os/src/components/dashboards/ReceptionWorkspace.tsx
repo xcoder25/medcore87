@@ -59,6 +59,7 @@ import {
 } from '../../lib/frontDeskAccountsBridge';
 import { patientBalance } from '../../lib/patientBillingStore';
 import { printQueueTicket, printPaymentReceipt } from '../../lib/printService';
+import { withViewTransition, measureRect, flipElement } from '../../lib/motion';
 import { appendAudit } from '../../lib/auditLogStore';
 import { sendPatientAlert } from '../../lib/integrations/gateways';
 import {
@@ -194,6 +195,10 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const firstName = (session.name || 'Reception').split(' ')[0];
 
   const [view, setView] = useState<View>(initialView);
+  /** Navigate with View Transition when browser supports it */
+  const goView = useCallback((next: View) => {
+    withViewTransition(() => setView(next));
+  }, []);
   const [patients, setPatients] = useState<FacilityPatient[]>([]);
   const [visits, setVisits] = useState<ReceptionVisit[]>([]);
   const [appts, setAppts] = useState<ReceptionAppointment[]>([]);
@@ -225,6 +230,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [ciReason, setCiReason] = useState('Consultation');
   const [posMethod, setPosMethod] = useState<PaymentMethod>('cash');
   const [paystackOpen, setPaystackOpen] = useState(false);
+  const payMethodBoxRef = useRef<HTMLDivElement>(null);
   const [posAmount, setPosAmount] = useState('5000');
   const [posPurpose, setPosPurpose] = useState('OPD consultation');
   const [posPatient, setPosPatient] = useState<FacilityPatient | null>(null);
@@ -254,7 +260,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
   // Stay on reception for payments — do not force-navigate away (that left buttons dead)
   useEffect(() => {
-    if (initialView === 'payment') setView('payment');
+    if (initialView === 'payment') goView('payment');
   }, [initialView]);
 
   const reload = useCallback(() => {
@@ -470,7 +476,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     upsertPatient(patient);
     setSelected(patient);
     setPanelOpen(true);
-    setView('home');
+    goView('home');
     setReg(emptyReg);
     setRegStep(1);
     setInsVerify(null);
@@ -800,14 +806,14 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       notifyDoctorAssignment(visit, fullName(p));
       reload();
       setAiCard(null);
-      setView('home');
+      goView('home');
       flash(`Admitted · Queue ${visit.queueNumber} · doctor notified`);
       return;
     }
     if (action === 'take_payment') {
       setPosPatient(p);
       setAiCard(null);
-      setView('payment');
+      goView('payment');
       return;
     }
     if (action === 'complete_registration' || action === 'review') {
@@ -819,12 +825,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     if (action === 'find_appointment') {
       setApPatient(p);
       setAiCard(null);
-      setView('appointments');
+      goView('appointments');
       return;
     }
     if (action === 'verify_insurance') {
       setSelected(p);
-      setView('register');
+      goView('register');
       setAiCard(null);
       flash('Open insurance step for this patient or re-register details');
       return;
@@ -902,8 +908,8 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
           appts={appts}
           stats={stats}
           onGo={(v) => {
-            if (v === 'home') setView('home');
-            else setView(v as View);
+            if (v === 'home') goView('home');
+            else goView(v as View);
           }}
           onCheckIn={(p) => doCheckIn(p)}
           onUpdateVisit={(id, status) => {
@@ -925,7 +931,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-            <button type="button" onClick={() => setView('home')} style={{ ...inputStyle, width: 'auto', cursor: 'pointer' }}>
+            <button type="button" onClick={() => goView('home')} style={{ ...inputStyle, width: 'auto', cursor: 'pointer' }}>
               Close
             </button>
           </div>
@@ -958,7 +964,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
             {searchHits.length === 0 && (
               <div style={{ color: C.muted, padding: 20 }}>
                 No matches.{' '}
-                <button type="button" onClick={() => setView('register')} style={{ color: C.blue, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer' }}>
+                <button type="button" onClick={() => goView('register')} style={{ color: C.blue, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer' }}>
                   Register new patient
                 </button>
               </div>
@@ -975,7 +981,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               <div style={{ fontWeight: 800, fontSize: 16 }}>Patient registration</div>
               <div style={{ fontSize: 12, opacity: 0.9 }}>Step {regStep} of 4 · NIN quick-reg available</div>
             </div>
-            <button type="button" onClick={() => setView('home')} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
+            <button type="button" onClick={() => goView('home')} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
               Cancel
             </button>
           </div>
@@ -1302,7 +1308,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               <div style={{ fontSize: 13, color: C.muted }}>Call · skip · complete · overtime alerts · by department</div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => { setCiType('walkin'); setView('walkin'); }} style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: C.blue, color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: 12 }}>
+              <button type="button" onClick={() => { setCiType('walkin'); goView('walkin'); }} style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: C.blue, color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: 12 }}>
                 + Walk-in check-in
               </button>
               <button type="button" onClick={reload} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
@@ -1383,7 +1389,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                             {v.paymentStatus === 'pending' && (
                               <button type="button" onClick={() => {
                                 const p = patients.find((x) => x.id === v.patientId);
-                                if (p) { setSelected(p); setPosPatient(p); setView('payment'); }
+                                if (p) { setSelected(p); setPosPatient(p); goView('payment'); }
                               }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: '#FEF3C7', color: '#B45309', cursor: 'pointer' }}>Pay</button>
                             )}
                           </div>
@@ -1500,7 +1506,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                     flash(`Matched · ${fullName(hit)}`);
                   } else {
                     flash('No match — register new patient');
-                    setView('register');
+                    goView('register');
                   }
                 }}
                 style={{ padding: '12px 18px', borderRadius: 10, border: 'none', background: C.blue, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
@@ -1511,7 +1517,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 type="button"
                 onClick={() => {
                   setScanCode('');
-                  setView('register');
+                  goView('register');
                 }}
                 style={{ padding: '12px 18px', borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', fontWeight: 700, cursor: 'pointer' }}
               >
@@ -1519,7 +1525,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               </button>
               <button
                 type="button"
-                onClick={() => setView('search')}
+                onClick={() => goView('search')}
                 style={{ padding: '12px 18px', borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', fontWeight: 700, cursor: 'pointer' }}
               >
                 Manual search
@@ -1543,7 +1549,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   onClick={() => {
                     setCiType('appointment');
                     doCheckIn(selected);
-                    setView('queue');
+                    goView('queue');
                   }}
                   style={{ marginTop: 10, width: '100%', padding: 10, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
                 >
@@ -1574,7 +1580,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               <button
                 type="button"
                 onClick={() => {
-                  setView('search');
+                  goView('search');
                   flash('Find existing patient, then return to Walk-in or Check in from panel');
                 }}
                 style={{ padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: '#F8FAFC', textAlign: 'left', cursor: 'pointer', fontWeight: 700 }}
@@ -1584,7 +1590,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               <button
                 type="button"
                 onClick={() => {
-                  setView('scan');
+                  goView('scan');
                   flash('Scan card for walk-in');
                 }}
                 style={{ padding: 14, borderRadius: 12, border: `1px solid ${C.border}`, background: '#F8FAFC', textAlign: 'left', cursor: 'pointer', fontWeight: 700 }}
@@ -1593,7 +1599,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               </button>
               <button
                 type="button"
-                onClick={() => setView('register')}
+                onClick={() => goView('register')}
                 style={{ padding: 14, borderRadius: 12, border: 'none', background: C.blue, color: '#fff', textAlign: 'left', cursor: 'pointer', fontWeight: 800 }}
               >
                 New patient · register first
@@ -1679,7 +1685,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   setCiType('walkin');
                   doCheckIn(selected);
                   setWalkStep(1);
-                  setView('queue');
+                  goView('queue');
                 }}
                 style={{ width: '100%', padding: 14, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
               >
@@ -2070,6 +2076,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
               <div>
                 <label style={labelStyle}>Payment method</label>
+                <div ref={payMethodBoxRef} className="mc-flip-target">
                 <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, letterSpacing: '0.06em', marginTop: 10, marginBottom: 6 }}>
                   DIGITAL · PAYSTACK
                 </div>
@@ -2085,7 +2092,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       <button
                         key={m.id}
                         type="button"
-                        onClick={() => setPosMethod(m.id)}
+                        onClick={() => {
+                          const first = measureRect(payMethodBoxRef.current);
+                          setPosMethod(m.id);
+                          requestAnimationFrame(() => {
+                            requestAnimationFrame(() => flipElement(payMethodBoxRef.current, first));
+                          });
+                        }}
                         style={{
                           padding: '12px 10px',
                           borderRadius: 12,
@@ -2120,7 +2133,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       <button
                         key={m.id}
                         type="button"
-                        onClick={() => setPosMethod(m.id)}
+                        onClick={() => {
+                          const first = measureRect(payMethodBoxRef.current);
+                          setPosMethod(m.id);
+                          requestAnimationFrame(() => {
+                            requestAnimationFrame(() => flipElement(payMethodBoxRef.current, first));
+                          });
+                        }}
                         style={{
                           padding: '12px 8px',
                           borderRadius: 12,
@@ -2136,6 +2155,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       </button>
                     );
                   })}
+                </div>
                 </div>
               </div>
 
@@ -2508,7 +2528,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   onClick={() => {
                     doCheckIn(selected);
                     setPanelOpen(false);
-                    setView('queue');
+                    goView('queue');
                   }}
                   style={{
                     padding: 12,
@@ -2543,7 +2563,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   onClick={() => {
                     setApPatient(selected);
                     setPanelOpen(false);
-                    setView('appointments');
+                    goView('appointments');
                   }}
                   style={{ padding: 12, borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', fontWeight: 700, cursor: 'pointer', gridColumn: '1 / -1' }}
                 >

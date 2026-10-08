@@ -6794,3 +6794,86 @@ img, .os-top-hud-avatar {
   filter: brightness(1.06);
   transform: translateY(-1px);
 }
+
+
+/* ═══════════════════════════════════════════════════════════════
+   Advanced motion system — View Transitions, scroll-driven, a11y
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Same-document view transitions (reception module switches) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+::view-transition-old(root) {
+  animation-name: mcVtFadeOut;
+}
+::view-transition-new(root) {
+  animation-name: mcVtFadeIn;
+}
+@keyframes mcVtFadeOut {
+  to { opacity: 0; transform: translateY(-6px) scale(0.992); }
+}
+@keyframes mcVtFadeIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.992); }
+}
+
+/* Scroll-driven KPI / card reveal (progressive enhancement) */
+@supports (animation-timeline: view()) {
+  .mc-kpi-card,
+  .mc-scroll-reveal {
+    animation: mcCardLiftIn linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 40%;
+  }
+  .mc-stagger-desk > * {
+    animation: mcCardLiftIn linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 45%;
+  }
+}
+
+/* Payment method expand FLIP helper class */
+.mc-flip-target {
+  will-change: transform;
+}
+
+/* Global reduced motion — kill continuous + entrance motion */
+@media (prefers-reduced-motion: reduce) {
+  .m87-aurora,
+  .m87-aurora-2,
+  .m87-avatar-ring,
+  .m87-send,
+  .m87-bubble-user,
+  .m87-chat-header,
+  .m87-empty-orb,
+  .m87-live-dot,
+  .mc-gradient-fluid,
+  .mc-hero-fluid,
+  .mc-btn-brand,
+  .mc-btn-live.is-busy,
+  .mc-typing-dots span,
+  .mc-stream-cursor {
+    animation: none !important;
+  }
+  .mc-kpi-card,
+  .mc-scroll-reveal,
+  .mc-stagger-desk > *,
+  .mc-ai-msg-in,
+  .mc-user-msg-in,
+  .m87-chip {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+  .mc-btn-live:hover:not(:disabled),
+  .m87-send:hover:not(:disabled),
+  .m87-chip:hover {
+    transform: none !important;
+  }
+}
