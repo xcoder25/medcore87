@@ -263,7 +263,11 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
       });
     } catch { /* ignore */ }
     try {
-      syncAccountsRequestsForPatientPayment(facilityId, patient.id, pay.reference);
+      syncAccountsRequestsForPatientPayment(facilityId, patient.id, {
+        reference: result.paystackRef || result.reference || pay.reference,
+        via: 'paystack',
+        paidBy: cashier,
+      });
     } catch { /* ignore */ }
     emitLiveAction(`Paystack ${result.paystackRef} · ₦${result.amountNgn}`, { module: 'cashier' });
     setPaystackOpen(false);

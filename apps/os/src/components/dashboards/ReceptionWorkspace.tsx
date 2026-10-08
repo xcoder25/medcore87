@@ -259,6 +259,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [apPatient, setApPatient] = useState<FacilityPatient | null>(null);
 
   // Stay on reception for payments — do not force-navigate away (that left buttons dead)
+
+  useEffect(() => {
+    return subscribeAccountsRequests(() => {
+      try { reload(); } catch { /* ignore */ }
+    });
+  }, [facilityId]);
+
   useEffect(() => {
     if (initialView === 'payment') goView('payment');
   }, [initialView]);
