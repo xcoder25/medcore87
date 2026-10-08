@@ -40,6 +40,8 @@ import {
 import { applyPaystackSuccess } from '../../lib/paystackLedgerStore';
 import { verifyInsurance } from '../../lib/receptionConstants';
 import { printPaymentReceipt } from '../../lib/printService';
+import { PaystackBrandedCheckout } from '../reception/PaystackBrandedCheckout';
+import { hasPaystackKey } from '../../lib/paystackClient';
 import { syncAccountsRequestsForPatientPayment } from '../../lib/frontDeskAccountsBridge';
 
 const C = {
@@ -50,11 +52,12 @@ const C = {
   border: '#E2E8F0',
 };
 
-const METHODS: { id: PaymentMethod; label: string; icon: React.ElementType }[] = [
+const DIGITAL_METHODS: { id: PaymentMethod; label: string; sub: string; icon: React.ElementType }[] = [
+  { id: 'card', label: 'Card — Paystack Terminal', sub: 'PIN on terminal only', icon: CreditCard },
+  { id: 'transfer', label: 'Transfer', sub: 'Bank transfer / USSD', icon: Building2 },
+];
+const DESK_METHODS: { id: PaymentMethod; label: string; icon: React.ElementType }[] = [
   { id: 'cash', label: 'Cash', icon: Banknote },
-  { id: 'pos', label: 'POS', icon: CreditCard },
-  { id: 'card', label: 'Card', icon: CreditCard },
-  { id: 'transfer', label: 'Transfer', icon: Building2 },
   { id: 'hmo', label: 'HMO', icon: ShieldCheck },
   { id: 'waiver', label: 'Waiver', icon: CheckCircle2 },
 ];
@@ -89,7 +92,8 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
   const [query, setQuery] = useState('');
   const [patient, setPatient] = useState<FacilityPatient | null>(null);
   const [amount, setAmount] = useState('5000');
-  const [method, setMethod] = useState<PaymentMethod>('pos');
+  const [method, setMethod] = useState<PaymentMethod>('cash');
+  const [paystackOpen, setPaystackOpen] = useState(false);
   const [purpose, setPurpose] = useState('Consultation');
   const [lines, setLines] = useState<{ label: string; amount: number }[]>([
     { label: 'Consultation', amount: 5000 },
@@ -194,6 +198,82 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
     setAmount(String(next.reduce((s, l) => s + l.amount, 0)));
   };
 
+
+  const settlePaystackPayment = (result: {
+    reference: string;
+    paystackRef: string;
+    amountNgn: number;
+    channel: string;
+  }) => {
+    if (!patient) return;
+    const methodPaid: PaymentMethod =
+      result.channel === 'card' || method === 'card' ? 'card' : 'transfer';
+    const open = visits.find(
+      (v) => v.patientId === patient.id && v.status !== 'completed' && v.status !== 'cancelled'
+    );
+    const pay = recordPayment({
+      facilityId,
+      patientId: patient.id,
+      patientName: fullName(patient),
+      hospitalNumber: patient.hospitalNumber,
+      visitId: open?.id,
+      amount: result.amountNgn,
+      method: methodPaid,
+      purpose: lines.map((l) => l.label).join(', ') || purpose,
+      cashier,
+      reference: result.reference,
+    });
+    try {
+      markPatientOutstandingPaid(facilityId, patient.id, {
+        via: 'paystack',
+        paidBy: cashier,
+        paymentRef: result.paystackRef || result.reference,
+      });
+    } catch { /* ignore */ }
+    try {
+      applyPaystackSuccess({
+        facilityId,
+        patientId: patient.id,
+        hospitalNumber: patient.hospitalNumber,
+        patientName: fullName(patient),
+        amountNgn: result.amountNgn,
+        channel: result.channel === 'card' ? 'card' : 'bank',
+        reference: result.paystackRef || result.reference,
+        purpose: purpose || 'Hospital payment',
+        actorName: cashier,
+        source: 'verify',
+      });
+    } catch { /* ignore */ }
+    try {
+      printPaymentReceipt({
+        reference: result.reference,
+        patientName: fullName(patient),
+        hospitalNumber: patient.hospitalNumber,
+        amount: result.amountNgn,
+        method: 'paystack',
+        channel: result.channel,
+        purpose: purpose || 'Hospital payment',
+        facilityName,
+        facilityId,
+        patientId: patient.id,
+        cashier,
+        paystackRef: result.paystackRef,
+        paymentId: pay.id,
+        visitId: open?.id,
+      });
+    } catch { /* ignore */ }
+    try {
+      syncAccountsRequestsForPatientPayment(facilityId, patient.id, pay.reference);
+    } catch { /* ignore */ }
+    emitLiveAction(`Paystack ${result.paystackRef} · ₦${result.amountNgn}`, { module: 'cashier' });
+    setPaystackOpen(false);
+    flash(`Verified · receipt ${pay.reference} · ₦${result.amountNgn.toLocaleString()}`);
+    // refresh lists
+    try {
+      setPayments(todayPayments(facilityId));
+    } catch { /* ignore */ }
+  };
+
   const doCharge = () => {
     if (!patient) {
       flash('Select a patient first');
@@ -202,6 +282,15 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
     const amt = Number(amount) || 0;
     if (amt <= 0 && method !== 'waiver') {
       flash('Enter a valid amount');
+      return;
+    }
+    // DIGITAL → Paystack only (PAID after verify)
+    if (method === 'card' || method === 'transfer') {
+      if (method === 'transfer' && !hasPaystackKey()) {
+        flash('Set NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY in environment');
+        return;
+      }
+      setPaystackOpen(true);
       return;
     }
     if (patientAi?.risk === 'high') {
@@ -663,11 +752,42 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
               </div>
             </div>
 
-            {/* Methods */}
+            {/* Methods — DIGITAL (Paystack) + HOSPITAL DESK */}
             <div>
               <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: '0.04em' }}>PAYMENT METHOD</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 8 }}>
-                {METHODS.map((m) => {
+              <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, letterSpacing: '0.06em', marginTop: 10, marginBottom: 6 }}>
+                DIGITAL · PAYSTACK
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {DIGITAL_METHODS.map((m) => {
+                  const Icon = m.icon;
+                  const on = method === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setMethod(m.id)}
+                      style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4,
+                        padding: '12px 10px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+                        border: on ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
+                        background: on ? '#E0F2FE' : '#F8FAFC',
+                        color: on ? C.blue : C.navy, fontWeight: 800, fontSize: 12,
+                      }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Icon size={16} /> {m.label}
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: on ? '#0369A1' : C.muted }}>{m.sub}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, letterSpacing: '0.06em', marginTop: 14, marginBottom: 6 }}>
+                HOSPITAL DESK
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {DESK_METHODS.map((m) => {
                   const Icon = m.icon;
                   const on = method === m.id;
                   return (
@@ -681,7 +801,6 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
                         border: on ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
                         background: on ? '#E0F2FE' : '#F8FAFC',
                         color: on ? C.blue : C.navy, fontWeight: 700, fontSize: 12,
-                        transition: 'all 0.15s ease',
                       }}
                     >
                       <Icon size={18} />
@@ -729,7 +848,7 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
               }}
             >
               <CheckCircle2 size={18} />
-              Record ₦{displayAmount.toLocaleString()} · {method.toUpperCase()}
+              {['card','transfer'].includes(method) ? `Collect via Paystack · ₦${displayAmount.toLocaleString()}` : `Record ₦${displayAmount.toLocaleString()} · ${method.toUpperCase()}`}
               <ArrowRight size={18} />
             </button>
             <div style={{ fontSize: 11, color: C.muted, textAlign: 'center' }}>
@@ -1006,6 +1125,27 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
         </div>
       )}
     </>
+
+      <PaystackBrandedCheckout
+        open={paystackOpen}
+        input={
+          paystackOpen && patient
+            ? {
+                patientName: fullName(patient),
+                hospitalNumber: patient.hospitalNumber,
+                patientEmail: patient.email,
+                amountNgn: Number(amount) || 0,
+                purpose: lines.map((l) => l.label).join(', ') || purpose,
+                facilityName,
+                facilityId,
+                cashierName: cashier,
+                mode: method === 'card' ? 'card_terminal' : 'transfer',
+              }
+            : null
+        }
+        onClose={() => setPaystackOpen(false)}
+        onPaid={(r) => settlePaystackPayment(r)}
+      />
   );
 };
 
