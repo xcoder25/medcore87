@@ -14,9 +14,7 @@ import {
 } from '../../lib/staffAutomation';
 import { emitLiveAction } from '../../lib/liveActions';
 import {
-  Brain, Send, Sparkles, AlertTriangle, TrendingUp,
-  ShieldCheck, Activity, DollarSign, Stethoscope, RefreshCw,
-  Clock, CheckCircle2, User, ChevronRight, Zap
+  Brain, Send, Sparkles,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -71,13 +69,12 @@ function StreamingText({ text, animate }: { text: string; animate: boolean }) {
 export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputPrompt, setInputPrompt] = useState('');
-  const [activeAITab, setActiveAITab] = useState<'copilot' | 'forecasting' | 'anomalies' | 'orchestrator'>('copilot');
   const [isThinking, setIsThinking] = useState(false);
   const [streamingId, setStreamingId] = useState<string | null>(null);
-  const [trainSummary, setTrainSummary] = useState<string | null>(null);
   const [modelVer, setModelVer] = useState<string | null>(() => getModelState()?.version || null);
-  const [isTraining, setIsTraining] = useState(false);
+  const [engineReady, setEngineReady] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
@@ -88,6 +85,35 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
     sync();
     return subscribeM87Learn(sync);
   }, []);
+
+  // Background engine: train + harvest (no UI tabs for Forecast / Alerts / Train)
+  useEffect(() => {
+    const fid = session?.hospitalId || 'IGH-EKT';
+    let cancelled = false;
+    const run = () => {
+      try {
+        const { summary, model } = runM87Training(fid);
+        if (cancelled) return;
+        setModelVer(model?.version || getModelState()?.version || null);
+        setEngineReady(true);
+        if (summary) {
+          try {
+            liveAlert(summary, 'm87-ai', fid);
+          } catch {
+            /* quiet */
+          }
+        }
+      } catch {
+        if (!cancelled) setEngineReady(true);
+      }
+    };
+    // Defer so chat paints first
+    const t = window.setTimeout(run, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [session?.hospitalId]);
 
   useEffect(() => {
     if (isThinking) return;
@@ -236,7 +262,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
       reply = gemini.text;
       cat = 'clinical';
     } else if (localHits[0]) {
-      reply = localHits[0].idealOutput + '\n\n— M87 local model (train for fresher live data)';
+      reply = localHits[0].idealOutput + '\n\n— M87 local model (from local hospital knowledge)';
       cat = 'operational';
     } else {
       const lower = query.toLowerCase();
@@ -268,29 +294,6 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
   };
 
 
-  const handleTrainM87 = () => {
-    setIsTraining(true);
-    try {
-      const fid = session?.hospitalId || 'IGH-EKT';
-      const { summary, model } = runM87Training(fid);
-      setTrainSummary(summary);
-      setModelVer(model.version);
-      liveAlert(summary, 'm87-ai', fid);
-      emitLiveAction(summary, { module: 'm87-ai' });
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `msg-train-${Date.now()}`,
-          sender: 'm87',
-          text: `🧠 Training complete\n\n${summary}\n\nI will use harvested OPD/lab/bed facts and your 👍 feedback on future answers.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          category: 'operational',
-        },
-      ]);
-    } finally {
-      setIsTraining(false);
-    }
-  };
 
   const rateMessage = (msg: ChatMessage, rating: 1 | -1) => {
     const fid = session?.hospitalId || 'IGH-EKT';
@@ -305,355 +308,159 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
     liveAlert(rating === 1 ? 'Thanks — saved to M87 training set' : 'Feedback noted', 'm87-ai', fid);
   };
 
+  const suggestions = [
+    'Who is waiting in OPD queue?',
+    'Summarise unpaid bills today',
+    'Help me enrol a new nurse',
+    'What needs attention right now?',
+  ];
+
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        minHeight: 420,
-        gap: 0,
-        background: 'transparent',
-      }}
-    >
-      {/* Context chips */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 0 12px' }}>
-        {[
-          { id: 'copilot' as const, label: 'Chat' },
-          { id: 'forecasting' as const, label: 'Forecast' },
-          { id: 'anomalies' as const, label: 'Alerts' },
-          { id: 'orchestrator' as const, label: 'Ops' },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveAITab(tab.id)}
-            style={{
-              padding: '6px 12px',
-              borderRadius: 999,
-              border: activeAITab === tab.id ? 'none' : '1px solid #E2E8F0',
-              background:
-                activeAITab === tab.id
-                  ? 'linear-gradient(135deg, #7C3AED, #0284C7)'
-                  : '#fff',
-              color: activeAITab === tab.id ? '#fff' : '#64748B',
-              fontWeight: 700,
-              fontSize: 12,
-              cursor: 'pointer',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          className="mc-btn-live"
-          onClick={handleTrainM87}
-          disabled={isTraining}
-          style={{
-            marginLeft: 'auto',
-            padding: '6px 14px',
-            borderRadius: 999,
-            border: 'none',
-            background: isTraining ? '#94A3B8' : 'linear-gradient(135deg, #0D9488, #2563EB)',
-            color: '#fff',
-            fontWeight: 700,
-            fontSize: 12,
-            cursor: isTraining ? 'wait' : 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          <Sparkles size={14} />
-          {isTraining ? 'Training…' : 'Train M87'}
-        </button>
-      </div>
-      {modelVer && (
-        <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8 }}>
-          Local model: <strong>{modelVer}</strong>
-          {trainSummary ? ` · ${trainSummary.slice(0, 80)}…` : ' · Run Train to harvest live hospital data'}
-          {hasGeminiKey() ? ' · Gemini key detected' : ' · Set NEXT_PUBLIC_GEMINI_API_KEY for cloud ML'}
-        </div>
-      )}
+    <div className="m87-chat-shell">
+      {/* Ambient brand aurora */}
+      <div className="m87-aurora" aria-hidden />
+      <div className="m87-aurora m87-aurora-2" aria-hidden />
 
-      {activeAITab === 'copilot' && (
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            minHeight: 0,
-            borderRadius: 16,
-            border: '1px solid #E2E8F0',
-            background: 'linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 40%)',
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            ref={listRef}
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12,
-            }}
-          >
-            {messages.length === 0 && !isThinking && (
-              <div style={{ textAlign: 'center', padding: '28px 12px' }}>
-                <div
-                  style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: 16,
-                    margin: '0 auto 12px',
-                    background: 'linear-gradient(135deg, #7C3AED, #0284C7)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 8px 24px rgba(124, 58, 237, 0.35)',
-                  }}
-                >
-                  <Sparkles size={26} color="#fff" />
-                </div>
-                <div style={{ fontWeight: 800, fontSize: 16, color: '#0F172A' }}>M87 Assistant</div>
-                <div style={{ fontSize: 13, color: '#64748B', marginTop: 6, lineHeight: 1.5 }}>
-                  Ask about patients, queue, staff access, or beds.
-                  {session?.roleKey === 'reception'
-                    ? ' Reception: check-in, walk-in, and payment guidance.'
-                    : ' Admin: enrol staff, role visibility, bulk accounts.'}
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 16 }}>
-                  {(session?.roleKey === 'reception'
-                    ? ['How do I check in a walk-in?', 'Unpaid patients in queue', 'Book appointment tips']
-                    : ['enrol nurse Ada Okon pin 123456', 'allow reception patient-card cashier', 'Bed capacity overview']
-                  ).map((q) => (
-                    <button
-                      key={q}
-                      type="button"
-                      onClick={() => setInputPrompt(q)}
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: 999,
-                        border: '1px solid #E2E8F0',
-                        background: '#fff',
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: '#334155',
-                        cursor: 'pointer',
-                        boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
-                      }}
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {messages.map((msg) => {
-              const mine = msg.sender === 'user';
-              return (
-                <div
-                  key={msg.id}
-                  style={{
-                    display: 'flex',
-                    justifyContent: mine ? 'flex-end' : 'flex-start',
-                    gap: 8,
-                  }}
-                >
-                  {!mine && (
-                    <div
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 8,
-                        background: 'linear-gradient(135deg, #7C3AED, #0284C7)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                        marginTop: 4,
-                      }}
-                    >
-                      <Brain size={14} color="#fff" />
-                    </div>
-                  )}
-                  <div
-                    style={{
-                      maxWidth: '85%',
-                      padding: '10px 14px',
-                      borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                      background: mine
-                        ? 'linear-gradient(135deg, #0284C7, #0D9488)'
-                        : '#fff',
-                      color: mine ? '#fff' : '#0F172A',
-                      border: mine ? 'none' : '1px solid #E2E8F0',
-                      boxShadow: mine
-                        ? '0 4px 14px rgba(2,132,199,0.25)'
-                        : '0 2px 8px rgba(15,23,42,0.04)',
-                      fontSize: 13,
-                      lineHeight: 1.55,
-                      whiteSpace: 'pre-wrap',
-                    }}
-                  >
-                    {msg.sender === 'm87' ? (
-                      <>
-                        <StreamingText text={msg.text} animate={msg.id === streamingId} />
-                        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                          <button
-                            type="button"
-                            className="mc-btn-live"
-                            onClick={() => rateMessage(msg, 1)}
-                            style={{
-                              fontSize: 11,
-                              padding: '2px 8px',
-                              borderRadius: 6,
-                              border: '1px solid #E2E8F0',
-                              background: '#fff',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            👍 Teach
-                          </button>
-                          <button
-                            type="button"
-                            className="mc-btn-live"
-                            onClick={() => rateMessage(msg, -1)}
-                            style={{
-                              fontSize: 11,
-                              padding: '2px 8px',
-                              borderRadius: 6,
-                              border: '1px solid #E2E8F0',
-                              background: '#fff',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            👎
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      msg.text
-                    )}
-                    <div
-                      style={{
-                        fontSize: 10,
-                        marginTop: 6,
-                        opacity: 0.7,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {msg.timestamp}
-                      {msg.category ? ` · ${msg.category}` : ''}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {isThinking && (
-              <div className="mc-ai-msg-in" style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748B', fontSize: 13 }}>
-                <div
-                  className="mc-gradient-fluid"
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 8,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Sparkles size={14} color="#fff" />
-                </div>
-                <div className="mc-typing-dots" aria-label="M87 is thinking">
-                  <span /><span /><span />
-                </div>
-                <span style={{ fontWeight: 600 }}>M87 is composing…</span>
-              </div>
-            )}
+      {/* Header */}
+      <header className="m87-chat-header">
+        <div className="m87-avatar-ring">
+          <div className="m87-avatar-core">
+            <Brain size={22} color="#fff" />
           </div>
+        </div>
+        <div className="m87-header-text">
+          <div className="m87-title-row">
+            <h1 className="m87-title">M87</h1>
+            <span className="m87-live-dot" title="Engine online" />
+            <span className="m87-live-label">{engineReady ? 'Live' : 'Warming up'}</span>
+          </div>
+          <p className="m87-subtitle">
+            MedCore · Arise intelligence
+            {modelVer ? ` · ${modelVer}` : ''}
+            {hasGeminiKey() ? ' · Gemini' : ''}
+          </p>
+        </div>
+      </header>
 
-          <form
-            onSubmit={handleSend}
-            style={{
-              padding: 12,
-              borderTop: '1px solid #E2E8F0',
-              background: '#fff',
-              display: 'flex',
-              gap: 8,
-              alignItems: 'flex-end',
-            }}
-          >
-            <input
-              value={inputPrompt}
-              onChange={(e) => setInputPrompt(e.target.value)}
-              placeholder="Message M87…"
-              style={{
-                flex: 1,
-                padding: '12px 14px',
-                borderRadius: 14,
-                border: '1px solid #E2E8F0',
-                fontSize: 14,
-                outline: 'none',
-                background: '#F8FAFC',
-              }}
-            />
-            <button
-              type="submit"
-              disabled={isThinking || !inputPrompt.trim()}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 14,
-                border: 'none',
-                background:
-                  isThinking || !inputPrompt.trim()
-                    ? '#CBD5E1'
-                    : 'linear-gradient(135deg, #7C3AED, #0284C7)',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: isThinking || !inputPrompt.trim() ? 'not-allowed' : 'pointer',
-                boxShadow: '0 4px 14px rgba(124,58,237,0.3)',
-              }}
+      {/* Messages */}
+      <div className="m87-messages" ref={listRef}>
+        {messages.length === 0 && !isThinking && (
+          <div className="m87-empty">
+            <div className="m87-empty-orb">
+              <Sparkles size={28} color="#fff" />
+            </div>
+            <h2 className="m87-empty-title">How can I help your hospital today?</h2>
+            <p className="m87-empty-sub">
+              Ask about queues, billing, staff, or clinical ops. Forecasts, alerts, and training run quietly in the background.
+            </p>
+            <div className="m87-suggestions">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className="m87-chip mc-btn-live"
+                  onClick={() => {
+                    setInputPrompt(s);
+                    inputRef.current?.focus();
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map((msg) => {
+          const mine = msg.sender === 'user';
+          return (
+            <div
+              key={msg.id}
+              className={mine ? 'm87-row m87-row-user mc-user-msg-in' : 'm87-row m87-row-ai mc-ai-msg-in'}
             >
-              <Send size={18} />
-            </button>
-          </form>
-        </div>
-      )}
+              {!mine && (
+                <div className="m87-msg-avatar">
+                  <Brain size={14} color="#fff" />
+                </div>
+              )}
+              <div className={mine ? 'm87-bubble m87-bubble-user' : 'm87-bubble m87-bubble-ai'}>
+                {msg.sender === 'm87' ? (
+                  <>
+                    <StreamingText text={msg.text} animate={msg.id === streamingId} />
+                    <div className="m87-feedback">
+                      <button type="button" className="m87-fb mc-btn-live" onClick={() => rateMessage(msg, 1)} title="Teach M87">
+                        👍
+                      </button>
+                      <button type="button" className="m87-fb mc-btn-live" onClick={() => rateMessage(msg, -1)} title="Not helpful">
+                        👎
+                      </button>
+                      <span className="m87-time">{msg.timestamp}</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {msg.text}
+                    <div className="m87-time m87-time-user">{msg.timestamp}</div>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
 
-      {activeAITab === 'forecasting' && (
-        <div style={{ padding: 16, borderRadius: 16, border: '1px solid #E2E8F0', background: '#fff' }}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Operational forecast</div>
-          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.5, margin: 0 }}>
-            Live bed and surge models use facility data as it accumulates. Open Bed & Ward Occupancy and the reception queue for current numbers — M87 will not invent occupancy figures.
-          </p>
-        </div>
-      )}
+        {isThinking && (
+          <div className="m87-row m87-row-ai mc-ai-msg-in">
+            <div className="m87-msg-avatar">
+              <Brain size={14} color="#fff" />
+            </div>
+            <div className="m87-bubble m87-bubble-ai m87-thinking">
+              <div className="mc-typing-dots">
+                <span />
+                <span />
+                <span />
+              </div>
+              <span className="m87-thinking-label">Thinking…</span>
+            </div>
+          </div>
+        )}
+      </div>
 
-      {activeAITab === 'anomalies' && (
-        <div style={{ padding: 16, borderRadius: 16, border: '1px solid #E2E8F0', background: '#fff' }}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Desk alerts</div>
-          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.5, margin: 0 }}>
-            Unpaid queue tickets, long waits, and POS risk flags surface on the reception and payment desks. Ask in Chat for guidance on the next action.
-          </p>
+      {/* Composer */}
+      <form
+        className="m87-composer"
+        onSubmit={(e) => {
+          void handleSend(e);
+        }}
+      >
+        <div className="m87-composer-inner">
+          <textarea
+            ref={inputRef}
+            className="m87-input"
+            rows={1}
+            placeholder="Message M87…"
+            value={inputPrompt}
+            onChange={(e) => setInputPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                void handleSend(e as unknown as React.FormEvent);
+              }
+            }}
+            disabled={isThinking}
+          />
+          <button
+            type="submit"
+            className={`m87-send mc-btn-live${isThinking ? ' is-busy' : ''}`}
+            disabled={isThinking || !inputPrompt.trim()}
+            aria-label="Send"
+          >
+            <Send size={18} />
+          </button>
         </div>
-      )}
-
-      {activeAITab === 'orchestrator' && (
-        <div style={{ padding: 16, borderRadius: 16, border: '1px solid #E2E8F0', background: '#fff' }}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Ops automation</div>
-          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.5, margin: '0 0 10px' }}>
-            Try in Chat: enrol staff, bulk enrol, allow/deny role modules. Changes write through controlled EMR APIs — never silent clinical writes.
-          </p>
+        <div className="m87-composer-hint">
+          Enter to send · Shift+Enter for new line · Powered by MedCore + Arise
         </div>
-      )}
+      </form>
     </div>
   );
 };
