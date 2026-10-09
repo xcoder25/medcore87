@@ -70,6 +70,17 @@ export function getLineForOrder(orderId: string): PatientBillLine | undefined {
   return read().find((l) => l.orderId === orderId);
 }
 
+/** Lab/Rx/Imaging may release results only when linked bill is paid/waived/hmo (or no bill) */
+export function isOrderBillCleared(orderId: string): { cleared: boolean; amountNgn: number; status?: BillLineStatus } {
+  const line = getLineForOrder(orderId);
+  if (!line) return { cleared: true, amountNgn: 0 };
+  if (line.status === 'paid' || line.status === 'waived' || line.status === 'hmo') {
+    return { cleared: true, amountNgn: line.amountNgn, status: line.status };
+  }
+  return { cleared: false, amountNgn: line.amountNgn, status: line.status };
+}
+
+
 export function addBillLine(
   input: Omit<PatientBillLine, 'id' | 'createdAt' | 'updatedAt' | 'status'> & { status?: BillLineStatus }
 ): PatientBillLine {

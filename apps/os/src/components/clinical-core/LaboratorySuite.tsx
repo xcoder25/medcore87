@@ -10,7 +10,7 @@ import type { LabOrder } from '@medcore/types';
 import {
   listOrders,
   placeOrder,
-  postLabResult,
+  postLabResult, canReleaseOrder,
   updateOrderStatus,
   subscribeOrders,
   type ClinicalOrder,
@@ -148,6 +148,12 @@ export const LaboratorySuite: React.FC = () => {
     e.preventDefault();
     if (!resultInput.trim() || !selectedOrder) return;
 
+    const gate = canReleaseOrder(selectedOrder.id);
+    if (!gate.ok) {
+      showNotification(gate.reason || 'Payment required at Accounts before release');
+      return;
+    }
+
     setOrders(prev => prev.map(o => {
       if (o.id === selectedOrder.id) {
         return {
@@ -160,7 +166,12 @@ export const LaboratorySuite: React.FC = () => {
       return o;
     }));
 
-    postLabResult(selectedOrder.id, resultInput.trim(), 'Lab scientist');
+    try {
+      postLabResult(selectedOrder.id, resultInput.trim(), 'Lab scientist');
+    } catch (err: any) {
+      showNotification(err?.message || 'Cannot release result');
+      return;
+    }
     emitLiveAction(`Lab result entered · ${selectedOrder.patientName}`, { module: 'laboratory' });
     setShowResultModal(false);
     showNotification(`Results updated and validated for ${selectedOrder.patientName}.`);

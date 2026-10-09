@@ -1,4 +1,5 @@
-import { billPharmacyRx, billLabOrder, billImagingOrder } from './patientBillingStore';
+import { billPharmacyRx, billLabOrder, billImagingOrder, isOrderBillCleared } from './patientBillingStore';
+import { sendPaymentRequestToAccounts } from './frontDeskAccountsBridge';
 import { enqueue } from './universalQueue';
 import { pushNotification } from './notificationEngine';
 import { checkPrescriptionSafety } from './pharmacySafety';
@@ -119,6 +120,34 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
       });
     } catch { /* ignore */ }
   }
+  // Financial handoff → Accounts (same pipeline as Front Desk folder fee)
+  if (order.type === 'lab' || order.type === 'rx' || order.type === 'imaging') {
+    try {
+      const fee =
+        order.type === 'lab' ? 3500 : order.type === 'rx' ? 2500 : 8000;
+      sendPaymentRequestToAccounts({
+        facilityId: order.facilityId,
+        facilityName: order.facilityId,
+        patientId: order.patientId,
+        hospitalNumber: order.hospitalNumber,
+        patientName: order.patientName,
+        amountNgn: fee,
+        purpose: `${order.type.toUpperCase()} · ${order.name}`,
+        source: 'billing_office',
+        sentBy: order.orderedBy || 'Clinical',
+        sentByBadge: order.orderedByBadge,
+        note: `Order ${order.id} — pay at Accounts before result/dispense release`,
+      });
+      pushNotification({
+        facilityId: order.facilityId,
+        level: 'important',
+        title: `New ${order.type} charge — Accounts`,
+        body: `${order.patientName} · ${order.name} · pay before release`,
+        module: 'cashier',
+        roleHint: 'accountant',
+      });
+    } catch { /* ignore */ }
+  }
   try {
     const dept =
       order.type === 'lab' ? 'lab' : order.type === 'rx' ? 'pharmacy' : order.type === 'imaging' ? 'radiology' : 'opd';
@@ -217,13 +246,41 @@ export function postLabResult(
   summary: string,
   by: string
 ): ClinicalOrder | undefined {
+  const pay = isOrderBillCleared(orderId);
+  if (!pay.cleared) {
+    throw new Error(
+      `Payment required · ₦${pay.amountNgn.toLocaleString()} — patient must pay at Accounts before result release`
+    );
+  }
   const order = updateOrderStatus(orderId, 'resulted', { resultSummary: summary, resultedBy: by });
   if (order) {
     try {
       evaluateResultForCritical(order);
     } catch { /* assistive only */ }
+    try {
+      pushNotification({
+        facilityId: order.facilityId,
+        level: 'important',
+        title: 'Lab result ready',
+        body: `${order.patientName} · ${order.name} · ${summary.slice(0, 80)}`,
+        module: 'doctor-portal',
+      });
+    } catch { /* ignore */ }
   }
   return order;
+}
+
+/** Can this order's result/dispense be released? */
+export function canReleaseOrder(orderId: string): { ok: boolean; reason?: string; amountNgn?: number } {
+  const pay = isOrderBillCleared(orderId);
+  if (!pay.cleared) {
+    return {
+      ok: false,
+      reason: `Awaiting payment · ₦${pay.amountNgn.toLocaleString()} at Accounts`,
+      amountNgn: pay.amountNgn,
+    };
+  }
+  return { ok: true };
 }
 
 /** Pre-order BPA (Epic-style) — call before placeOrder; non-blocking unless hard_stop handled by UI */

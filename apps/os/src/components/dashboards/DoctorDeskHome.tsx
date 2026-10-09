@@ -22,6 +22,7 @@ import {
   listNotifications,
   subscribeNotifications,
   markRead,
+  pushNotification,
 } from '../../lib/notificationEngine';
 import {
   ORDER_SETS,
@@ -179,10 +180,36 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     { label: 'AI assistant', desc: 'M87 clinical help', icon: Brain, go: 'm87-ai' },
   ];
 
+  const callPatient = (v: ReceptionVisit) => {
+    setBusyId(v.id);
+    updateVisitStatus(v.id, 'called');
+    emitLiveAction(`Called ${v.patientName} · ${v.queueNumber}`, { module: 'doctor-portal' });
+    try {
+      pushNotification({
+        facilityId,
+        level: 'info',
+        title: 'Patient called',
+        body: `${v.patientName} · ${v.queueNumber} · ${v.department}`,
+        module: 'reception',
+      });
+    } catch { /* ignore */ }
+    setTimeout(() => setBusyId(null), 400);
+    reload();
+  };
+
   const takePatient = (v: ReceptionVisit) => {
     setBusyId(v.id);
     updateVisitStatus(v.id, 'with_provider');
     emitLiveAction(`Seeing ${v.patientName}`, { module: 'doctor-portal' });
+    try {
+      pushNotification({
+        facilityId,
+        level: 'info',
+        title: 'Consult started',
+        body: `${v.patientName} · with provider · ${v.department}`,
+        module: 'reception',
+      });
+    } catch { /* ignore */ }
     setTimeout(() => setBusyId(null), 400);
     reload();
   };
@@ -191,6 +218,15 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     setBusyId(v.id);
     updateVisitStatus(v.id, 'completed');
     emitLiveAction(`Completed ${v.patientName}`, { module: 'doctor-portal' });
+    try {
+      pushNotification({
+        facilityId,
+        level: 'info',
+        title: 'Visit completed',
+        body: `${v.patientName} · ${v.queueNumber || ''} · done`,
+        module: 'reception',
+      });
+    } catch { /* ignore */ }
     setTimeout(() => setBusyId(null), 400);
     reload();
   };
@@ -712,6 +748,25 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                       </td>
                       <td style={{ padding: '12px 10px' }}>
                         <div style={{ display: 'flex', gap: 4 }}>
+                          {v.status === 'waiting' && (
+                            <button
+                              type="button"
+                              className={`mc-btn-live${busyId === v.id ? ' is-busy' : ''}`}
+                              onClick={() => callPatient(v)}
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 700,
+                                padding: '4px 8px',
+                                borderRadius: 6,
+                                border: 'none',
+                                background: '#ECFDF5',
+                                color: '#047857',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Call
+                            </button>
+                          )}
                           {(v.status === 'waiting' || v.status === 'called') && (
                             <button
                               type="button"

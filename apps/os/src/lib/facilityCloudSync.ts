@@ -27,6 +27,7 @@ const KEY_EVENTS: Record<string, string[]> = {
   medcore_os_transfers: ['medcore-transfers-updated', 'medcore-admin-sync'],
   medcore_os_payment_receipts_v1: ['medcore-payment-receipts', 'medcore-admin-sync'],
   medcore_os_fd_accounts_requests_v1: ['medcore-fd-accounts', 'medcore-admin-sync'],
+  medcore_os_patient_bills_v1: ['medcore-patient-bills', 'medcore-admin-sync'],
   [FACILITY_KEYS.audit]: ['medcore-admin-sync'],
   [FACILITY_KEYS.facilityCatalog]: ['medcore-facility-catalog', 'medcore-admin-sync'],
 };
