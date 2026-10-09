@@ -1128,8 +1128,6 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
           </div>
         </div>
       )}
-    </>
-
       <PaystackBrandedCheckout
         open={paystackOpen}
         input={
@@ -1150,6 +1148,7 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
         onClose={() => setPaystackOpen(false)}
         onPaid={(r) => settlePaystackPayment(r)}
       />
+    </>
   );
 };
 
