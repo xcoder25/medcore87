@@ -310,6 +310,30 @@ export function recordPayment(input: Omit<ReceptionPayment, 'id' | 'createdAt' |
   return pay;
 }
 
+
+/** When Accounts clears a patient, flip pending visits → paid (Front Desk queue badges) */
+export function markVisitsPaidForPatient(
+  facilityId: string,
+  patientId: string,
+  opts?: { hospitalNumber?: string; method?: PaymentStatus }
+): void {
+  const state = load();
+  const method = opts?.method || 'paid';
+  let changed = false;
+  state.visits = state.visits.map((v) => {
+    if (v.facilityId !== facilityId) return v;
+    const match =
+      v.patientId === patientId ||
+      (!!opts?.hospitalNumber && v.hospitalNumber === opts.hospitalNumber);
+    if (!match) return v;
+    if (v.paymentStatus === 'paid' || v.paymentStatus === 'hmo' || v.paymentStatus === 'waived') return v;
+    if (v.status === 'completed' || v.status === 'cancelled') return v;
+    changed = true;
+    return { ...v, paymentStatus: method };
+  });
+  if (changed) save(state);
+}
+
 export function todayPayments(facilityId: string): ReceptionPayment[] {
   const day = new Date().toISOString().slice(0, 10);
   return load().payments.filter(

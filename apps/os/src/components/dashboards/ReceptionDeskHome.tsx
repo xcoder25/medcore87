@@ -15,6 +15,7 @@ import {
 } from '../../lib/staffPresenceStore';
 import type { FacilityPatient } from '../../lib/patientRegistryStore';
 import type { ReceptionVisit, ReceptionAppointment, ReceptionDayStats } from '../../lib/receptionOpsStore';
+import { listAccountsRequests } from '../../lib/frontDeskAccountsBridge';
 import {
   Search, UserPlus, CreditCard, Calendar, QrCode, Users, Clock,
   Activity, CheckCircle2, AlertTriangle, RefreshCw, ChevronRight,
@@ -89,6 +90,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   onRefresh,
 }) => {
   const facilityId = session.hospitalId || 'IGH-EKT';
+  const accountsPending = listAccountsRequests(facilityId, { status: 'awaiting_payment' });
   const [deptFilter, setDeptFilter] = useState('all');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activeFrontDesk, setActiveFrontDesk] = useState(0);
@@ -389,6 +391,53 @@ export const ReceptionDeskHome: React.FC<Props> = ({
           <div style={{ fontSize: 11, fontWeight: 700, marginTop: 8, opacity: 0.85 }}>MedCore</div>
         </div>
       </div>
+
+      
+      {/* Accounts PENDING — live from Accounting desk */}
+      {accountsPending.length > 0 && (
+        <div
+          style={{
+            borderRadius: 16,
+            border: '1px solid #FDE68A',
+            background: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)',
+            padding: '14px 16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ fontWeight: 800, color: '#92400E', fontSize: 14 }}>
+              PENDING at Accounts · {accountsPending.length}
+            </div>
+            <div style={{ fontSize: 12, color: '#B45309', fontWeight: 600 }}>
+              Live · clears to PAID when Accounting collects
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 140, overflowY: 'auto' }}>
+            {accountsPending.slice(0, 6).map((r) => (
+              <div
+                key={r.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  fontSize: 13,
+                  padding: '8px 10px',
+                  borderRadius: 10,
+                  background: 'rgba(255,255,255,0.7)',
+                }}
+              >
+                <span style={{ fontWeight: 700, color: '#0F172A' }}>
+                  {r.patientName}{' '}
+                  <span style={{ fontWeight: 600, color: '#64748B' }}>· {r.hospitalNumber}</span>
+                </span>
+                <span style={{ fontWeight: 800, color: '#B45309' }}>₦{r.amountNgn.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* KPI row — single horizontal line */}
       <div

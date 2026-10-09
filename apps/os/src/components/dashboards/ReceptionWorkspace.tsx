@@ -163,7 +163,7 @@ function getPaymentGate(
     const amt = openReq.reduce((s, r) => s + r.amountNgn, 0) || bal;
     return {
       cleared: false,
-      label: `Unpaid · ₦${amt.toLocaleString()} — send patient to Accounts, return with receipt`,
+      label: `PENDING · ₦${amt.toLocaleString()} at Accounts — patient pays, then returns here`,
       tone: 'wait',
       awaiting: openReq,
       balanceNgn: amt,
@@ -176,7 +176,7 @@ function getPaymentGate(
     const last = paid[0];
     return {
       cleared: true,
-      label: `Paid · ${last.paidReference || last.invoiceNumber || 'receipt'} · may check in`,
+      label: `PAID · ${last.paidReference || last.invoiceNumber || 'receipt'} · continue check-in`,
       tone: 'ok',
       balanceNgn: 0,
     };
@@ -262,9 +262,11 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
   useEffect(() => {
     return subscribeAccountsRequests(() => {
-      try { reload(); } catch { /* ignore */ }
+      try {
+        reload();
+      } catch { /* ignore */ }
     });
-  }, [facilityId]);
+  }, [facilityId, reload]);
 
   useEffect(() => {
     if (initialView === 'payment') goView('payment');
@@ -520,7 +522,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         });
       } catch { /* ignore */ }
       flash(
-        `Folder opened · ${patient.hospitalNumber}. Invoice ₦${fee.toLocaleString()} sent to Accounts (${req.invoiceNumber}). Patient should pay, then return with receipt.`
+        `Enrolled · ${patient.hospitalNumber} · PENDING ₦${fee.toLocaleString()} → Accounts (${req.invoiceNumber}). After PAID, continue check-in here.`
       );
     } catch {
       flash(`Registered ${fullName(patient)} · ${patient.hospitalNumber}`);
@@ -2503,9 +2505,10 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   <div
                     style={{
                       marginTop: 8,
-                      padding: '10px 12px',
-                      borderRadius: 10,
-                      background: gate.tone === 'wait' ? '#FFFBEB' : gate.tone === 'ok' ? '#ECFDF5' : '#F8FAFC',
+                      padding: '12px 14px',
+                      borderRadius: 12,
+                      border: gate.tone === 'wait' ? '1px solid #FDE68A' : gate.tone === 'ok' ? '1px solid #A7F3D0' : `1px solid ${C.border}`,
+                      background: gate.tone === 'wait' ? 'linear-gradient(135deg,#FFFBEB,#FEF3C7)' : gate.tone === 'ok' ? 'linear-gradient(135deg,#ECFDF5,#D1FAE5)' : '#F8FAFC',
                       border: `1px solid ${gate.tone === 'wait' ? '#FDE68A' : gate.tone === 'ok' ? '#A7F3D0' : C.border}`,
                       fontSize: 12,
                       fontWeight: 600,
@@ -2552,12 +2555,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 <button
                   type="button"
                   onClick={() => {
-                    flash('Send patient to Accounts desk with hospital number. After payment, return here to check in.');
+                    setPosPatient(selected);
                     setPanelOpen(false);
+                    goView('payment');
                   }}
                   style={{ padding: 12, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
                 >
-                  Send to Accounts
+                  Invoice → Accounts
                 </button>
                 <button
                   type="button"
