@@ -23,7 +23,12 @@ import {
   deleteStaffMember,
   defaultPermissionsForRole,
   purgeNonAdminStaffForFacility,
+  applyCloudStaffDirectory,
 } from '../../lib/staffCardStore';
+import {
+  firestoreSubscribeStaffDirectory,
+  firestoreSubscribeStaffCollection,
+} from '../../lib/firebase';
 import {
   isEmailCredential,
   badgeAuthEmail,
@@ -125,37 +130,75 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   }, []);
 
   useEffect(() => {
-    // One-time: keep only admin accounts for Immanuel General Hospital, Eket
-    try {
-      if (facilityId === 'IGH-EKT' && typeof sessionStorage !== 'undefined') {
-        const key = 'medcore_purged_nonadmin_IGH-EKT';
-        if (!sessionStorage.getItem(key)) {
-          const removed = purgeNonAdminStaffForFacility('IGH-EKT');
-          sessionStorage.setItem(key, '1');
-          if (removed.length) {
-            void (async () => {
-              try {
-                const { firestoreDeleteStaffMember, firestorePushStaffDirectory } = await import('../../lib/firebase');
-                for (const bid of removed) {
-                  await firestoreDeleteStaffMember('IGH-EKT', bid);
-                }
-                await firestorePushStaffDirectory('IGH-EKT', {
-                  staffCards: listStaffCards(),
-                  staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
-                });
-              } catch { /* ignore */ }
-            })();
-            pushActivity(`Cleared ${removed.length} non-admin staff from Eket (admin kept)`);
-          }
-        }
-      }
-    } catch { /* ignore */ }
     reload();
-    return subscribeAdminSync(() => {
-      // Skip live reload while creating or while confirmation awaits "add to list"
-      // (prevents row appearing before confirmation)
+
+    const safeReload = () => {
+      if (busy) return;
+      // Keep confirmation modal stable until listed
+      if (confirmInfo && !confirmInfo.listed) return;
+      reload();
+    };
+
+    const unsubAdmin = subscribeAdminSync(safeReload);
+
+    // Live Firestore facility directory (staffCards + staffRegistry)
+    const unsubDir = firestoreSubscribeStaffDirectory(facilityId, (data) => {
+      try {
+        applyCloudStaffDirectory({
+          staffCards: data.staffCards,
+          staffRegistry: data.staffRegistry,
+        });
+      } catch {
+        /* ignore */
+      }
+      safeReload();
     });
-  }, [reload, facilityId]);
+
+    // Live per-member staff collection (authoritative roster from cloud)
+    const unsubCol = firestoreSubscribeStaffCollection(facilityId, (staffRows) => {
+      try {
+        const registry = staffRows.map((s) => {
+          const badgeId = String(s.badgeId || s.id || '')
+            .toUpperCase()
+            .replace(/\s+/g, '');
+          return {
+            id: badgeId,
+            badgeId,
+            name: s.name || s.fullName || badgeId,
+            fullName: s.fullName || s.name,
+            role: s.role || s.shortRole || s.roleKey || 'Staff',
+            shortRole: s.shortRole,
+            roleKey: s.roleKey,
+            title: s.title,
+            department: s.department || '—',
+            clearanceLevel: Number(s.clearanceLevel || 2),
+            clearanceLabel: s.clearanceLabel,
+            permissions: Array.isArray(s.permissions) ? s.permissions : [],
+            hospitalId: s.hospitalId || s.facilityId || facilityId,
+            facilityId: s.facilityId || facilityId,
+            status: s.status || 'active',
+            email: s.email || s.workEmail,
+            lastLoginAt: s.lastLoginAt || s.lastLogin,
+          };
+        });
+        applyCloudStaffDirectory({ staffRegistry: registry });
+      } catch {
+        /* ignore */
+      }
+      safeReload();
+    });
+
+    window.addEventListener('medcore-staff-cards-updated', safeReload);
+    window.addEventListener('medcore-staff-registry-updated', safeReload);
+
+    return () => {
+      unsubAdmin();
+      unsubDir();
+      unsubCol();
+      window.removeEventListener('medcore-staff-cards-updated', safeReload);
+      window.removeEventListener('medcore-staff-registry-updated', safeReload);
+    };
+  }, [reload, facilityId, busy, confirmInfo]);
 
   // Refresh list only when not in confirmation-pending state
   useEffect(() => {

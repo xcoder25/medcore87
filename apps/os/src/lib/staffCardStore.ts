@@ -150,6 +150,89 @@ export function findStaffByEmail(email: string, facilityId?: string) {
 }
 
 /** Admin: permanently remove staff from cards, registry, and cloud */
+
+/**
+ * Apply Firestore staff directory onto local cards + registry + access control.
+ * Used by Access Control so every workstation sees the same live list.
+ */
+export function applyCloudStaffDirectory(payload: {
+  staffCards?: unknown[];
+  staffRegistry?: unknown[];
+}): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (Array.isArray(payload.staffCards) && payload.staffCards.length >= 0) {
+      const cards = payload.staffCards as StaffCardRecord[];
+      // Only replace when cloud has data OR we need to clear orphans — prefer merge by badgeId
+      const local = readCards();
+      const byId = new Map<string, StaffCardRecord>();
+      for (const c of local) {
+        const id = String(c.badgeId || '').toUpperCase();
+        if (id) byId.set(id, c);
+      }
+      for (const c of cards) {
+        const id = String(c?.badgeId || '').toUpperCase();
+        if (!id) continue;
+        byId.set(id, { ...byId.get(id), ...c } as StaffCardRecord);
+      }
+      // If cloud explicitly sent the full directory, prefer cloud set when non-empty
+      if (cards.length > 0) {
+        writeCards(Array.from(byId.values()));
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (Array.isArray(payload.staffRegistry)) {
+      localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(payload.staffRegistry));
+      localStorage.setItem('medcore_os_staff_registry', JSON.stringify(payload.staffRegistry));
+      window.dispatchEvent(
+        new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } })
+      );
+      window.dispatchEvent(
+        new CustomEvent('medcore-staff-registry-updated', { detail: payload.staffRegistry })
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+  // Rebuild access control rows from registry so Access UI matches DB
+  try {
+    const regRaw = localStorage.getItem('medcore_os_staff_registry');
+    const reg = regRaw ? JSON.parse(regRaw) : [];
+    if (!Array.isArray(reg)) return;
+    const access = reg
+      .map((s: any) => {
+        const id = String(s.badgeId || s.id || '')
+          .toUpperCase()
+          .replace(/\s+/g, '');
+        if (!id) return null;
+        const st = String(s.status || 'active').toLowerCase();
+        const status =
+          st === 'suspended' ? 'suspended' : st === 'pending' ? 'pending' : 'active';
+        return {
+          id,
+          name: s.name || s.fullName || id,
+          role: s.role || s.shortRole || s.roleKey || 'Staff',
+          department: s.department || '—',
+          clearance: Number(s.clearanceLevel || 2),
+          status,
+          lastLogin: s.lastLoginAt || s.lastLogin || '—',
+          permissions: Array.isArray(s.permissions) ? s.permissions : [],
+          email: s.email || s.workEmail || undefined,
+        };
+      })
+      .filter(Boolean);
+    localStorage.setItem('medcore_os_access_control', JSON.stringify(access));
+    window.dispatchEvent(
+      new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_access_control' } })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
 export function deleteStaffMember(badgeId: string): boolean {
   const id = String(badgeId || '').toUpperCase().replace(/\s+/g, '');
   if (!id) return false;
