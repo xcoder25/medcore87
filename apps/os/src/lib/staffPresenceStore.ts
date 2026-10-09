@@ -9,6 +9,37 @@ export const STAFF_PRESENCE_KEY = 'medcore_os_staff_presence_v1';
 export const STAFF_PRESENCE_EVENT = 'medcore-staff-presence';
 export const REVOKED_STAFF_KEY = 'medcore_os_revoked_staff_v1';
 export const REVOKED_STAFF_EVENT = 'medcore-staff-revoked';
+export const HIDDEN_STAFF_NAMES_KEY = 'medcore_os_hidden_staff_names_v1';
+
+export function hideStaffName(facilityId: string, name: string): void {
+  if (typeof window === 'undefined') return;
+  const fid = String(facilityId || '').toUpperCase();
+  const n = String(name || '').trim().toLowerCase();
+  if (!fid || !n) return;
+  try {
+    const raw = localStorage.getItem(HIDDEN_STAFF_NAMES_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    const list: string[] = Array.isArray(map[fid]) ? map[fid] : [];
+    if (!list.includes(n)) list.push(n);
+    map[fid] = list;
+    localStorage.setItem(HIDDEN_STAFF_NAMES_KEY, JSON.stringify(map));
+  } catch { /* ignore */ }
+}
+
+export function isStaffNameHidden(facilityId: string, name: string): boolean {
+  if (typeof window === 'undefined') return false;
+  const fid = String(facilityId || '').toUpperCase();
+  const n = String(name || '').trim().toLowerCase();
+  try {
+    const raw = localStorage.getItem(HIDDEN_STAFF_NAMES_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    const list: string[] = Array.isArray(map[fid]) ? map[fid] : [];
+    return list.some((h) => n === h || n.includes(h) || h.includes(n));
+  } catch {
+    return false;
+  }
+}
+
 /** Consider online if heartbeat within this window */
 export const PRESENCE_TTL_MS = 120_000; // 2 min — stable KPI (heartbeat ~12s)
 const HEARTBEAT_MS = 12_000;

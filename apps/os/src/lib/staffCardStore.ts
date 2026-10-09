@@ -773,3 +773,63 @@ export function purgeNonAdminStaffForFacility(facilityId: string): string[] {
   }
   return removed;
 }
+
+/** Remove staff whose name matches (case-insensitive contains) for a facility. */
+export function purgeStaffByNameForFacility(facilityId: string, nameQuery: string): string[] {
+  const fid = String(facilityId || '').toUpperCase();
+  const q = String(nameQuery || '').trim().toLowerCase();
+  if (!fid || !q || typeof window === 'undefined') return [];
+
+  const targets = new Set<string>();
+
+  const consider = (badge: string, name: string, facility?: string) => {
+    const bid = String(badge || '').toUpperCase().replace(/\s+/g, '');
+    const nm = String(name || '').toLowerCase();
+    const hid = String(facility || fid).toUpperCase();
+    if (!bid || !nm) return;
+    if (hid && hid !== fid) return;
+    if (nm === q || nm.includes(q) || q.includes(nm)) targets.add(bid);
+  };
+
+  try {
+    for (const c of readCards()) {
+      consider(c.badgeId, String((c as any).fullName || (c as any).name || ''), c.facilityId);
+    }
+  } catch { /* ignore */ }
+
+  try {
+    for (const key of [STAFF_REGISTRY_STORAGE_KEY, 'medcore_os_staff_registry', 'medcore_staff_registry']) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const reg = JSON.parse(raw);
+      if (!Array.isArray(reg)) continue;
+      for (const r of reg) {
+        consider(
+          String(r.badgeId || r.id || ''),
+          String(r.name || r.fullName || ''),
+          String(r.hospitalId || r.facilityId || '')
+        );
+      }
+    }
+  } catch { /* ignore */ }
+
+  try {
+    const accessRaw = localStorage.getItem('medcore_os_access_control');
+    const access = accessRaw ? JSON.parse(accessRaw) : [];
+    if (Array.isArray(access)) {
+      for (const a of access) {
+        consider(String(a.id || ''), String(a.name || ''), fid);
+      }
+    }
+  } catch { /* ignore */ }
+
+  const removed: string[] = [];
+  for (const bid of targets) {
+    try {
+      if (deleteStaffMember(bid)) removed.push(bid);
+    } catch {
+      removed.push(bid);
+    }
+  }
+  return removed;
+}

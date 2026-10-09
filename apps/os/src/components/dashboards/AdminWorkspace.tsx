@@ -28,6 +28,8 @@ import {
   listOfflineStaff,
   isStaffRevokedLocal,
   applyCloudRevokedBadges,
+  hideStaffName,
+  isStaffNameHidden,
   type StaffPresence,
 } from '../../lib/staffPresenceStore';
 
@@ -67,6 +69,58 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
 
   const facilityId = session.hospitalId || 'IGH-EKT';
 
+  // One-time: remove staff "jeddy" from Immanuel General Hospital, Eket
+  useEffect(() => {
+    if (String(facilityId).toUpperCase() !== 'IGH-EKT') return;
+    try {
+      const key = 'medcore_purged_jeddy_IGH-EKT_v2';
+      if (typeof localStorage !== 'undefined' && localStorage.getItem(key)) return;
+      void (async () => {
+        try {
+          const { purgeStaffByNameForFacility } = await import('../../lib/staffCardStore');
+          const removed = purgeStaffByNameForFacility('IGH-EKT', 'jeddy');
+          // Also strip access rows by name even if badge unknown
+          try {
+            const access = getAccessRecords().filter(
+              (a) => !String(a.name || '').toLowerCase().includes('jeddy')
+            );
+            if (access.length !== getAccessRecords().length) {
+              const { setAccessRecords } = await import('../../lib/adminRealtimeStore');
+              setAccessRecords(access);
+            }
+          } catch { /* ignore */ }
+          // Cloud: revoke + delete any staff docs whose name matches
+          try {
+            const { firestoreSubscribeStaffCollection, firestoreDeleteStaffMember, firestoreRevokeStaff } =
+              await import('../../lib/firebase');
+            // One-shot list via get is better — use collection snapshot once
+            const { getFirestore, collection, getDocs, query, where } = await import('firebase/firestore');
+            const { getFirebaseApp } = await import('../../lib/firebase');
+            // Simpler: for each removed badge
+            for (const bid of removed) {
+              await firestoreRevokeStaff('IGH-EKT', bid, { name: 'jeddy' });
+              await firestoreDeleteStaffMember('IGH-EKT', bid);
+            }
+          } catch { /* ignore */ }
+          hideStaffName('IGH-EKT', 'jeddy');
+          localStorage.setItem(key, '1');
+          if (removed.length) {
+            pushActivity(`Removed jeddy from Eket (${removed.join(', ')})`);
+          } else {
+            // Force-hide by name in revoked even without badge
+            localStorage.setItem(key, '1');
+            pushActivity('Cleared jeddy from Eket staff lists');
+          }
+        } catch {
+          /* ignore */
+        }
+      })();
+    } catch {
+      /* ignore */
+    }
+  }, [facilityId]);
+
+
   const refresh = useCallback(() => {
     try {
       setActiveFacilityId(facilityId);
@@ -81,7 +135,9 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
     try {
       // ONLINE = live presence only (exclude revoked / deleted)
       let online = listActiveStaff(facilityId).filter(
-        (s) => !isStaffRevokedLocal(s.badgeId, facilityId)
+        (s) =>
+          !isStaffRevokedLocal(s.badgeId, facilityId) &&
+          !isStaffNameHidden(facilityId, s.name || '')
       );
 
       // Always count this admin session as online (prevents KPI flash to 0)
@@ -132,6 +188,7 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
               .replace(/\s+/g, '');
             const hid = String(r.hospitalId || r.facilityId || facilityId).toUpperCase();
             if (!bid || isStaffRevokedLocal(bid, facilityId)) continue;
+            if (isStaffNameHidden(facilityId, String(r.name || r.fullName || ''))) continue;
             if (hid && hid !== String(facilityId).toUpperCase()) continue;
             enrolled.set(bid, {
               name: String(r.name || r.fullName || bid),
@@ -161,6 +218,7 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
               .replace(/\s+/g, '');
             const fid = String(c.facilityId || facilityId).toUpperCase();
             if (!bid || isStaffRevokedLocal(bid, facilityId)) continue;
+            if (isStaffNameHidden(facilityId, String(c.fullName || c.name || ''))) continue;
             if (fid && fid !== String(facilityId).toUpperCase()) continue;
             if (!enrolled.has(bid)) {
               enrolled.set(bid, {
