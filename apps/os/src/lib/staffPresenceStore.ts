@@ -238,21 +238,13 @@ export function listActiveStaff(facilityId: string, roleKeys?: string[]): StaffP
   const fid = String(facilityId || '').toUpperCase();
   const now = Date.now();
   const map = readAll();
-  // Persist normalized offline so admin sees accurate offline set
-  let dirty = false;
-  for (const [k, row] of Object.entries(map)) {
-    const n = normalizePresence(row, now);
-    if (n.online !== row.online) {
-      map[k] = n;
-      dirty = true;
-    }
-  }
-  if (dirty) writeAll(map);
+  // Read-only: do not writeAll here (would re-fire presence events → UI refresh loops)
 
   const roles = roleKeys?.map((r) => r.toLowerCase());
   return Object.values(map).filter((p) => {
-    if (String(p.facilityId || '').toUpperCase() !== fid) return false;
-    if (!isFresh(p, now)) return false;
+    const row = normalizePresence(p, now);
+    if (String(row.facilityId || '').toUpperCase() !== fid) return false;
+    if (!isFresh(row, now)) return false;
     if (roles && roles.length) {
       const rk = String(p.roleKey || '').toLowerCase();
       if (roles.includes(rk)) return true;

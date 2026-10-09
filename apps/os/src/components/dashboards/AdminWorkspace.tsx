@@ -70,37 +70,33 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
     } catch {
       /* ignore */
     }
-    setSnap(buildAdminSnapshot());
     try {
-      const known = new Set(
-        (getAccessRecords().filter((a) => a.status === 'active') || []).map((a) =>
-          String(a.id || '')
-            .toUpperCase()
-            .replace(/\s+/g, '')
-        ).filter(Boolean)
-      );
-      let online = listActiveStaff(facilityId);
-      if (known.size > 0) {
-        online = online.filter((s) => known.has(s.badgeId.toUpperCase()));
-      }
+      setSnap(buildAdminSnapshot());
+    } catch {
+      /* ignore */
+    }
+    try {
+      // Presence is source of truth for ONLINE (same as Front Desk Active Staff)
+      const online = listActiveStaff(facilityId);
       setOnlineStaff(online);
-      const onlineIds = new Set(online.map((s) => s.badgeId.toUpperCase()));
-      // Presence offline + roster/access members not currently online
-      const fromPresence = listOfflineStaff(facilityId).filter(
-        (s) => !onlineIds.has(s.badgeId.toUpperCase())
+      const onlineIds = new Set(
+        online.map((s) => String(s.badgeId || '').toUpperCase().replace(/\s+/g, ''))
       );
-      const snapNow = buildAdminSnapshot();
-      const rosterOffline: StaffPresence[] = [];
-      for (const a of snapNow.perms || []) {
-        if (a.status !== 'active') continue;
+
+      const access = getAccessRecords().filter((a) => a.status === 'active');
+      const offline: StaffPresence[] = [];
+      const seen = new Set<string>();
+
+      // Roster/access not currently online → offline
+      for (const a of access) {
         const bid = String(a.id || '')
           .toUpperCase()
           .replace(/\s+/g, '');
-        if (!bid || onlineIds.has(bid)) continue;
-        if (fromPresence.some((p) => p.badgeId === bid)) continue;
-        rosterOffline.push({
+        if (!bid || onlineIds.has(bid) || seen.has(bid)) continue;
+        seen.add(bid);
+        offline.push({
           badgeId: bid,
-          facilityId: facilityId.toUpperCase(),
+          facilityId: String(facilityId).toUpperCase(),
           name: a.name || bid,
           roleKey: '',
           role: a.role,
@@ -108,7 +104,22 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
           online: false,
         });
       }
-      setOfflineStaff([...fromPresence, ...rosterOffline]);
+
+      // Presence rows that went offline (had heartbeat, now stale)
+      try {
+        for (const p of listOfflineStaff(facilityId)) {
+          const bid = String(p.badgeId || '')
+            .toUpperCase()
+            .replace(/\s+/g, '');
+          if (!bid || onlineIds.has(bid) || seen.has(bid)) continue;
+          seen.add(bid);
+          offline.push({ ...p, online: false });
+        }
+      } catch {
+        /* ignore */
+      }
+
+      setOfflineStaff(offline);
     } catch {
       setOnlineStaff([]);
       setOfflineStaff([]);
@@ -134,10 +145,13 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
     window.addEventListener('medcore-admin-sync', bump);
     window.addEventListener('storage', bump);
     window.addEventListener('medcore-facility-cloud', bump);
+    window.addEventListener('medcore-staff-cards-updated', bump);
+    window.addEventListener('medcore-staff-registry-updated', bump);
+    // Faster poll so Online/Offline tracks heartbeats without waiting 8s
     const iv = setInterval(() => {
       setTick((t) => t + 1);
       refresh();
-    }, 8000);
+    }, 4000);
     return () => {
       unsub();
       unsubPresence();
@@ -146,6 +160,8 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
       window.removeEventListener('medcore-admin-sync', bump);
       window.removeEventListener('storage', bump);
       window.removeEventListener('medcore-facility-cloud', bump);
+      window.removeEventListener('medcore-staff-cards-updated', bump);
+      window.removeEventListener('medcore-staff-registry-updated', bump);
       clearInterval(iv);
     };
   }, [refresh, facilityId]);
@@ -168,7 +184,7 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
   }
 
   const kpis = [
-    { key: 'staff', label: 'Active Staff', value: String(snap.activeStaff), trend: 'Logged in now · live', tone: 'blue', icon: Users, nav: 'staffing' },
+    { key: 'staff', label: 'Active Staff', value: String(onlineStaff.length), trend: 'Logged in now · live', tone: 'blue', icon: Users, nav: 'staffing' },
     { key: 'open', label: 'Open Positions', value: String(snap.openPositions), trend: 'Recruitment', tone: 'sky', icon: UserPlus, nav: 'rbac' },
     { key: 'transfer', label: 'Pending Transfer', value: String(snap.pendingTransfers), trend: snap.pendingTransfers ? 'Needs review' : 'Clear', tone: 'amber', icon: ArrowRightLeft, nav: 'transfer' },
     { key: 'logged', label: 'Staff Logged In', value: String(snap.staffLoggedIn), trend: connected ? 'Live' : 'Active', tone: 'teal', icon: UserCheck, nav: 'staffing' },
