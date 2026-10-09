@@ -729,8 +729,8 @@ export async function ensureStaffCloudIdentity(opts: {
 
 /**
  * Delete Firebase Auth account for a staff badge (and optional work email).
- * Uses secondary app so the admin session stays signed in.
- * Requires known PIN to sign in then deleteUser (client SDK cannot delete others without Admin).
+ * 1) Prefer server Admin SDK via /api/staff/delete-auth (FIREBASE_SERVICE_ACCOUNT_JSON).
+ * 2) Fallback: secondary client app sign-in with PIN then deleteUser.
  */
 export async function deleteStaffFirebaseAuth(opts: {
   badgeId: string;
@@ -742,6 +742,38 @@ export async function deleteStaffFirebaseAuth(opts: {
   let badgeDeleted = false;
   let emailDeleted = false;
   if (!badge) return { badgeDeleted, emailDeleted };
+
+  // Admin SDK path (no PIN required)
+  try {
+    const res = await fetch('/api/staff/delete-auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        badgeId: badge,
+        email: opts.email || undefined,
+      }),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        ok?: boolean;
+        deleted?: string[];
+        missing?: string[];
+      };
+      const deleted = data.deleted || [];
+      const badgeMail = badgeAuthEmail(badge).toLowerCase();
+      badgeDeleted = deleted.some((e) => e.toLowerCase() === badgeMail);
+      if (opts.email) {
+        emailDeleted = deleted.some(
+          (e) => e.toLowerCase() === String(opts.email).trim().toLowerCase()
+        );
+      }
+      if (data.ok || deleted.length > 0) {
+        return { badgeDeleted: badgeDeleted || deleted.length > 0, emailDeleted };
+      }
+    }
+  } catch {
+    /* fall through to client PIN path */
+  }
 
   const secondaryName = `StaffDelete_${Date.now()}`;
   let secondary: FirebaseApp | undefined;
