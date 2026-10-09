@@ -133,6 +133,92 @@ const C = {
 };
 
 
+
+/** Hospital journey stages after enroll — drives Front Desk strip */
+type JourneyStageId = 'enrolled' | 'pending' | 'paid' | 'queued' | 'consult' | 'done';
+
+function getPatientJourney(
+  facilityId: string,
+  patient: { id: string; hospitalNumber: string },
+  visits: ReceptionVisit[]
+): {
+  stage: JourneyStageId;
+  index: number;
+  steps: { id: JourneyStageId; label: string }[];
+  detail: string;
+  visit?: ReceptionVisit;
+} {
+  const steps: { id: JourneyStageId; label: string }[] = [
+    { id: 'enrolled', label: 'Enrolled' },
+    { id: 'pending', label: 'Pending pay' },
+    { id: 'paid', label: 'Paid' },
+    { id: 'queued', label: 'Queued' },
+    { id: 'consult', label: 'In consult' },
+    { id: 'done', label: 'Done' },
+  ];
+  const gate = getPaymentGate(facilityId, patient.id, patient.hospitalNumber);
+  const today = visits
+    .filter(
+      (v) =>
+        (v.patientId === patient.id || v.hospitalNumber === patient.hospitalNumber) &&
+        v.status !== 'cancelled'
+    )
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  const visit = today[0];
+
+  if (visit && (visit.status === 'completed' || visit.status === 'no_show')) {
+    return {
+      stage: 'done',
+      index: 5,
+      steps,
+      detail: visit.status === 'no_show' ? 'Marked no-show' : `Visit complete · ${visit.queueNumber || ''}`.trim(),
+      visit,
+    };
+  }
+  if (visit && visit.status === 'with_provider') {
+    return {
+      stage: 'consult',
+      index: 4,
+      steps,
+      detail: `With clinician · ${visit.department || ''} · ${visit.queueNumber || ''}`.trim(),
+      visit,
+    };
+  }
+  if (visit && (visit.status === 'waiting' || visit.status === 'called')) {
+    return {
+      stage: 'queued',
+      index: 3,
+      steps,
+      detail: `In queue · ${visit.department || 'OPD'} · ${visit.queueNumber || ''}`.trim(),
+      visit,
+    };
+  }
+  if (!gate.cleared || gate.tone === 'wait') {
+    return {
+      stage: 'pending',
+      index: 1,
+      steps,
+      detail: gate.label,
+      visit,
+    };
+  }
+  if (gate.tone === 'ok' || gate.cleared) {
+    // Paid (or no fee) but not yet on queue
+    const hasPaidEvidence = gate.tone === 'ok';
+    return {
+      stage: hasPaidEvidence || !visit ? 'paid' : 'enrolled',
+      index: hasPaidEvidence || gate.cleared ? 2 : 0,
+      steps,
+      detail: hasPaidEvidence
+        ? gate.label
+        : 'Ready — check in to place on clinical queue',
+      visit,
+    };
+  }
+  return { stage: 'enrolled', index: 0, steps, detail: 'Folder open', visit };
+}
+
+
 /** Front desk: patient may enter clinical queue only after Accounts payment (or no open fee) */
 function getPaymentGate(
   facilityId: string,
@@ -2499,6 +2585,94 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   <span style={{ fontWeight: 600, color: C.navy, textAlign: 'right' }}>{v}</span>
                 </div>
               ))}
+
+              {(() => {
+                const j = getPatientJourney(facilityId, selected, visits);
+                return (
+                  <div
+                    style={{
+                      marginTop: 4,
+                      marginBottom: 10,
+                      padding: '14px 12px',
+                      borderRadius: 14,
+                      background: 'linear-gradient(180deg,#F8FAFC,#fff)',
+                      border: `1px solid ${C.border}`,
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: '0.06em', marginBottom: 10 }}>
+                      PATIENT JOURNEY
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 0, overflowX: 'auto', paddingBottom: 4 }}>
+                      {j.steps.map((s, i) => {
+                        const done = i < j.index;
+                        const cur = i === j.index;
+                        return (
+                          <div key={s.id} style={{ display: 'flex', alignItems: 'center', flex: '1 1 0', minWidth: 52 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+                              <div
+                                style={{
+                                  width: 22,
+                                  height: 22,
+                                  borderRadius: '50%',
+                                  background: cur
+                                    ? 'linear-gradient(135deg,#0052D4,#0D9488)'
+                                    : done
+                                      ? '#10B981'
+                                      : '#E2E8F0',
+                                  color: cur || done ? '#fff' : '#94A3B8',
+                                  fontSize: 10,
+                                  fontWeight: 800,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  boxShadow: cur ? '0 0 0 3px rgba(2,132,199,0.25)' : 'none',
+                                }}
+                              >
+                                {done ? '✓' : i + 1}
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 6,
+                                  fontSize: 9,
+                                  fontWeight: cur ? 800 : 600,
+                                  color: cur ? C.navy : C.muted,
+                                  textAlign: 'center',
+                                  lineHeight: 1.2,
+                                }}
+                              >
+                                {s.label}
+                              </div>
+                            </div>
+                            {i < j.steps.length - 1 && (
+                              <div
+                                style={{
+                                  height: 2,
+                                  width: 8,
+                                  flexShrink: 0,
+                                  background: i < j.index ? '#10B981' : '#E2E8F0',
+                                  marginBottom: 16,
+                                }}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 10,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: j.stage === 'pending' ? '#92400E' : j.stage === 'paid' || j.stage === 'queued' ? '#047857' : C.navy,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {j.detail}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {(() => {
                 const gate = getPaymentGate(facilityId, selected.id, selected.hospitalNumber);
                 return (
