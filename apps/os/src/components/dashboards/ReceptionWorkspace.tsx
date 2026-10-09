@@ -163,7 +163,7 @@ function getPatientJourney(
         (v.patientId === patient.id || v.hospitalNumber === patient.hospitalNumber) &&
         v.status !== 'cancelled'
     )
-    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    .sort((a, b) => (b.checkedInAt || '').localeCompare(a.checkedInAt || ''));
   const visit = today[0];
 
   if (visit && (visit.status === 'completed' || visit.status === 'no_show')) {
@@ -346,13 +346,6 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
   // Stay on reception for payments — do not force-navigate away (that left buttons dead)
 
-  useEffect(() => {
-    return subscribeAccountsRequests(() => {
-      try {
-        reload();
-      } catch { /* ignore */ }
-    });
-  }, [facilityId, reload]);
 
   useEffect(() => {
     if (initialView === 'payment') goView('payment');
@@ -365,6 +358,16 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     setPayments(todayPayments(facilityId));
     setStats(dayStats(facilityId));
   }, [facilityId]);
+
+  useEffect(() => {
+    return subscribeAccountsRequests(() => {
+      try {
+        reload();
+      } catch {
+        /* ignore */
+      }
+    });
+  }, [facilityId, reload]);
 
   useEffect(() => {
     reload();
