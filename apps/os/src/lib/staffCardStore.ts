@@ -165,7 +165,7 @@ export function deleteStaffMember(badgeId: string): boolean {
         facilityId = c.facilityId || facilityId;
         savedPin = String((c as any).pin || '');
         savedEmail = String((c as any).email || '');
-        savedName = String(c.name || (c as any).fullName || '');
+        savedName = String(c.fullName || (c as any).name || '');
         break;
       }
     }
