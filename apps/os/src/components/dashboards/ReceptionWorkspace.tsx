@@ -2686,7 +2686,6 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       borderRadius: 12,
                       border: gate.tone === 'wait' ? '1px solid #FDE68A' : gate.tone === 'ok' ? '1px solid #A7F3D0' : `1px solid ${C.border}`,
                       background: gate.tone === 'wait' ? 'linear-gradient(135deg,#FFFBEB,#FEF3C7)' : gate.tone === 'ok' ? 'linear-gradient(135deg,#ECFDF5,#D1FAE5)' : '#F8FAFC',
-                      border: `1px solid ${gate.tone === 'wait' ? '#FDE68A' : gate.tone === 'ok' ? '#A7F3D0' : C.border}`,
                       fontSize: 12,
                       fontWeight: 600,
                       color: gate.tone === 'wait' ? '#92400E' : gate.tone === 'ok' ? '#047857' : C.muted,
