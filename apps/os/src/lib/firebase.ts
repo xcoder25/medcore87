@@ -726,6 +726,160 @@ export async function ensureStaffCloudIdentity(opts: {
 
 
 
+
+/**
+ * Delete Firebase Auth account for a staff badge (and optional work email).
+ * Uses secondary app so the admin session stays signed in.
+ * Requires known PIN to sign in then deleteUser (client SDK cannot delete others without Admin).
+ */
+export async function deleteStaffFirebaseAuth(opts: {
+  badgeId: string;
+  pin?: string;
+  email?: string;
+}): Promise<{ badgeDeleted: boolean; emailDeleted: boolean }> {
+  const badge = String(opts.badgeId || '').toUpperCase().replace(/\s+/g, '');
+  const pin = normalizeStaffPin(opts.pin || '');
+  let badgeDeleted = false;
+  let emailDeleted = false;
+  if (!badge) return { badgeDeleted, emailDeleted };
+
+  const secondaryName = `StaffDelete_${Date.now()}`;
+  let secondary: FirebaseApp | undefined;
+  try {
+    secondary = initializeApp(
+      {
+        apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyAOLWLpM0vzIljUeXOnSQbppzuaHhfmXyI',
+        authDomain:
+          process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'naija-bites-1s3y1.firebaseapp.com',
+        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'naija-bites-1s3y1',
+        storageBucket:
+          process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'naija-bites-1s3y1.firebasestorage.app',
+        messagingSenderId:
+          process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '667802678337',
+        appId:
+          process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:667802678337:web:2018efd10f6ca9dbe742c0',
+      },
+      secondaryName
+    );
+    const {
+      getAuth: getAuthSecondary,
+      signInWithEmailAndPassword: signInSecondary,
+      deleteUser,
+      signOut: signOutSecondary,
+    } = await import('firebase/auth');
+    const secAuth = getAuthSecondary(secondary);
+
+    const tryDelete = async (email: string, password: string) => {
+      if (!email || !password || password.length < 6) return false;
+      try {
+        const cred = await signInSecondary(secAuth, email, password);
+        await deleteUser(cred.user);
+        try {
+          await signOutSecondary(secAuth);
+        } catch {
+          /* already deleted */
+        }
+        return true;
+      } catch {
+        try {
+          await signOutSecondary(secAuth);
+        } catch {
+          /* ignore */
+        }
+        return false;
+      }
+    };
+
+    if (pin) {
+      badgeDeleted = await tryDelete(badgeAuthEmail(badge), pin);
+      const mail = (opts.email || '').trim().toLowerCase();
+      if (mail) {
+        emailDeleted = await tryDelete(mail, pin);
+      }
+    }
+  } catch (e) {
+    fsWarn('delete staff auth', e);
+  } finally {
+    if (secondary) {
+      try {
+        const { deleteApp } = await import('firebase/app');
+        await deleteApp(secondary);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return { badgeDeleted, emailDeleted };
+}
+
+/** Mark badge revoked so any open session must log out and cannot sign in again */
+export async function firestoreRevokeStaff(
+  facilityId: string,
+  badgeId: string,
+  meta?: { name?: string; revokedBy?: string }
+): Promise<boolean> {
+  try {
+    await enableFirestoreOffline();
+    const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+    const bid = String(badgeId || '').toUpperCase().replace(/\s+/g, '');
+    if (!fid || !bid) return false;
+    await setDoc(
+      doc(getFirestore(), 'facilities', fid, 'revokedStaff', bid),
+      stripUndefinedDeep({
+        badgeId: bid,
+        facilityId: fid,
+        revokedAt: new Date().toISOString(),
+        name: meta?.name,
+        revokedBy: meta?.revokedBy,
+      }),
+      { merge: true }
+    );
+    // Also clear staffByEmail if we only have badge path — best-effort leave to deleteStaffMember
+    return true;
+  } catch (e) {
+    fsWarn('revoke staff', e);
+    return false;
+  }
+}
+
+export async function isStaffRevoked(facilityId: string, badgeId: string): Promise<boolean> {
+  try {
+    await enableFirestoreOffline();
+    const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+    const bid = String(badgeId || '').toUpperCase().replace(/\s+/g, '');
+    if (!fid || !bid) return false;
+    const snap = await getDoc(doc(getFirestore(), 'facilities', fid, 'revokedStaff', bid));
+    return snap.exists();
+  } catch {
+    return false;
+  }
+}
+
+export function firestoreSubscribeRevokedStaff(
+  facilityId: string,
+  onIds: (badgeIds: string[]) => void
+): () => void {
+  let unsub = () => {};
+  void (async () => {
+    try {
+      await enableFirestoreOffline();
+      const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+      const col = collection(getFirestore(), 'facilities', fid, 'revokedStaff');
+      unsub = onSnapshot(
+        col,
+        (snap) => {
+          const ids = snap.docs.map((d) => String(d.id || '').toUpperCase());
+          onIds(ids);
+        },
+        (err) => fsWarn('revoked staff snapshot', err)
+      );
+    } catch (e) {
+      fsWarn('revoked subscribe', e);
+    }
+  })();
+  return () => unsub();
+}
+
 export async function firestoreDeleteStaffMember(
   facilityId: string,
   badgeId: string

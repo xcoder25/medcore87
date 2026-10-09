@@ -8,7 +8,13 @@ import {
   STAFF_REGISTRY_STORAGE_KEY,
   issueStaffCardFromEnrolment,
 } from '@medcore/types';
-import { firestorePushStaffDirectory, firestoreUpsertStaffMember, firestoreDeleteStaffMember } from './firebase';
+import {
+  firestorePushStaffDirectory,
+  firestoreUpsertStaffMember,
+  firestoreDeleteStaffMember,
+  deleteStaffFirebaseAuth,
+  firestoreRevokeStaff,
+} from './firebase';
 import { removeStaffPresence } from './staffPresenceStore';
 
 function readCards(): StaffCardRecord[] {
@@ -149,7 +155,39 @@ export function deleteStaffMember(badgeId: string): boolean {
   if (!id) return false;
 
   let facilityId = '';
+  let savedPin = '';
+  let savedEmail = '';
+  let savedName = '';
   try {
+    // Capture credentials BEFORE removing card (needed to delete Firebase Auth)
+    for (const c of readCards()) {
+      if (c.badgeId.toUpperCase().replace(/\s+/g, '') === id) {
+        facilityId = c.facilityId || facilityId;
+        savedPin = String((c as any).pin || '');
+        savedEmail = String((c as any).email || '');
+        savedName = String(c.name || (c as any).fullName || '');
+        break;
+      }
+    }
+    try {
+      const regRaw = localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY);
+      const reg = regRaw ? JSON.parse(regRaw) : [];
+      if (Array.isArray(reg)) {
+        const hit = reg.find(
+          (r: any) => String(r.badgeId || r.id || '').toUpperCase().replace(/\s+/g, '') === id
+        );
+        if (hit) {
+          if (!savedPin && hit.pin) savedPin = String(hit.pin);
+          if (!savedEmail && (hit.email || hit.workEmail))
+            savedEmail = String(hit.email || hit.workEmail || '');
+          if (!savedName && hit.name) savedName = String(hit.name);
+          facilityId = hit.hospitalId || hit.facilityId || facilityId;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
     const cards = readCards().filter((c) => {
       if (c.badgeId.toUpperCase().replace(/\s+/g, '') === id) {
         facilityId = c.facilityId || facilityId;
@@ -204,6 +242,23 @@ export function deleteStaffMember(badgeId: string): boolean {
       } catch {
         /* ignore */
       }
+      // Firebase Auth delete (badge synthetic email + optional work email) + force-logout signal
+      void (async () => {
+        try {
+          await firestoreRevokeStaff(facilityId, id, { name: savedName });
+        } catch {
+          /* ignore */
+        }
+        try {
+          await deleteStaffFirebaseAuth({
+            badgeId: id,
+            pin: savedPin || undefined,
+            email: savedEmail || undefined,
+          });
+        } catch {
+          /* Auth delete best-effort when PIN known */
+        }
+      })();
       void firestorePushStaffDirectory(facilityId, {
         staffCards: cards,
         staffRegistry: next,

@@ -565,6 +565,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       // CLOUD-FIRST when online — avoids stale local admin/doctor mismatch on other devices
       const online = typeof navigator === 'undefined' || navigator.onLine;
 
+      if (online) {
+        try {
+          const { isStaffRevoked } = await import('../../lib/firebase');
+          if (await withTimeout(isStaffRevoked(effectiveHospital.id, badgeQuery), 4000)) {
+            setError('This staff account was removed by an administrator. Sign-in is disabled.');
+            setLoading(false);
+            return;
+          }
+        } catch {
+          /* offline / timeout — continue */
+        }
+      }
+
       // 1) Firestore staff profile (source of truth online)
       if (!profile && online) {
         try {

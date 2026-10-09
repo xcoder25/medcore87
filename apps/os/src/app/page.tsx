@@ -49,6 +49,7 @@ import {
   startStaffPresenceHeartbeat,
   startFacilityPresenceListener,
   markStaffOffline,
+
 } from '../lib/staffPresenceStore';
 import { startNetworkNotificationListener } from '../lib/notificationEngine';
 import { RoleDashboard } from '../components/dashboards/RoleDashboard';
@@ -1215,6 +1216,43 @@ export default function OSPage() {
     const stop = startHospitalCloudSync(userSession.hospitalId);
     return () => stop();
   }, [userSession?.hospitalId]);
+
+  // If this badge was deleted/revoked at the facility → force logout everywhere
+  useEffect(() => {
+    const badgeId = userSession?.badgeId;
+    const hospitalId = userSession?.hospitalId;
+    if (!hospitalId || !badgeId) return;
+    let stop = () => {};
+    void (async () => {
+      try {
+        const { firestoreSubscribeRevokedStaff, firebaseSignOut } = await import('../lib/firebase');
+        stop = firestoreSubscribeRevokedStaff(hospitalId, (ids) => {
+          const me = String(badgeId).toUpperCase().replace(/\s+/g, '');
+          if (!ids.some((id) => String(id).toUpperCase().replace(/\s+/g, '') === me)) return;
+          try {
+            markStaffOffline(badgeId, hospitalId);
+          } catch {
+            /* ignore */
+          }
+          try {
+            localStorage.removeItem('medcore_os_session');
+          } catch {
+            /* ignore */
+          }
+          void firebaseSignOut().catch(() => {});
+          setUserSession(null);
+          try {
+            window.alert('Your staff account was removed by an administrator. You have been signed out.');
+          } catch {
+            /* ignore */
+          }
+        });
+      } catch {
+        /* offline */
+      }
+    })();
+    return () => stop();
+  }, [userSession?.badgeId, userSession?.hospitalId]);
 
   // Staff presence (active = currently logged in, Facebook-style)
   useEffect(() => {
