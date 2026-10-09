@@ -23,8 +23,11 @@ import {
   subscribeStaffPresence,
   startFacilityPresenceListener,
   STAFF_PRESENCE_EVENT,
+  REVOKED_STAFF_EVENT,
   listActiveStaff,
   listOfflineStaff,
+  isStaffRevokedLocal,
+  applyCloudRevokedBadges,
   type StaffPresence,
 } from '../../lib/staffPresenceStore';
 
@@ -76,55 +79,140 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
       /* ignore */
     }
     try {
-      // Presence is source of truth for ONLINE (same as Front Desk Active Staff)
-      const online = listActiveStaff(facilityId);
-      setOnlineStaff(online);
+      // ONLINE = live presence only (exclude revoked / deleted)
+      let online = listActiveStaff(facilityId).filter(
+        (s) => !isStaffRevokedLocal(s.badgeId, facilityId)
+      );
+
+      // Always count this admin session as online (prevents KPI flash to 0)
+      const selfBadge = String(session.badgeId || '')
+        .toUpperCase()
+        .replace(/\s+/g, '');
+      if (selfBadge && !online.some((s) => s.badgeId.toUpperCase() === selfBadge)) {
+        if (!isStaffRevokedLocal(selfBadge, facilityId)) {
+          online = [
+            {
+              badgeId: selfBadge,
+              facilityId: String(facilityId).toUpperCase(),
+              name: session.name || selfBadge,
+              roleKey: session.roleKey || 'hospital_admin',
+              role: session.role,
+              lastSeen: Date.now(),
+              online: true,
+            },
+            ...online,
+          ];
+        }
+      }
+
+      // Stable update: only setState when content actually changes (stops KPI shake)
+      setOnlineStaff((prev) => {
+        const nextIds = online.map((s) => s.badgeId).sort().join('|');
+        const prevIds = prev.map((s) => s.badgeId).sort().join('|');
+        if (nextIds === prevIds && prev.length === online.length) {
+          // refresh lastSeen names if same set
+          if (prev.length === 0 && online.length === 0) return prev;
+          if (nextIds === prevIds) return online.length ? online : prev;
+        }
+        return online;
+      });
+
       const onlineIds = new Set(
         online.map((s) => String(s.badgeId || '').toUpperCase().replace(/\s+/g, ''))
       );
 
-      const access = getAccessRecords().filter((a) => a.status === 'active');
-      const offline: StaffPresence[] = [];
-      const seen = new Set<string>();
-
-      // Roster/access not currently online → offline
-      for (const a of access) {
-        const bid = String(a.id || '')
-          .toUpperCase()
-          .replace(/\s+/g, '');
-        if (!bid || onlineIds.has(bid) || seen.has(bid)) continue;
-        seen.add(bid);
-        offline.push({
-          badgeId: bid,
-          facilityId: String(facilityId).toUpperCase(),
-          name: a.name || bid,
-          roleKey: '',
-          role: a.role,
-          lastSeen: 0,
-          online: false,
-        });
-      }
-
-      // Presence rows that went offline (had heartbeat, now stale)
+      // Enrolled staff only: registry + cards for this facility (not bare access ghosts)
+      const enrolled = new Map<string, { name: string; role: string; roleKey: string }>();
       try {
-        for (const p of listOfflineStaff(facilityId)) {
-          const bid = String(p.badgeId || '')
+        const reg = JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]');
+        if (Array.isArray(reg)) {
+          for (const r of reg) {
+            const bid = String(r.badgeId || r.id || '')
+              .toUpperCase()
+              .replace(/\s+/g, '');
+            const hid = String(r.hospitalId || r.facilityId || facilityId).toUpperCase();
+            if (!bid || isStaffRevokedLocal(bid, facilityId)) continue;
+            if (hid && hid !== String(facilityId).toUpperCase()) continue;
+            enrolled.set(bid, {
+              name: String(r.name || r.fullName || bid),
+              role: String(r.role || ''),
+              roleKey: String(r.roleKey || ''),
+            });
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
+        const cards = JSON.parse(localStorage.getItem('medcore_staff_cards') || localStorage.getItem('medcore_os_staff_cards') || '[]');
+        // try both keys
+      } catch {
+        /* ignore */
+      }
+      try {
+        for (const key of ['medcore_os_staff_cards', 'medcore_staff_cards', 'medcore_staff_id_cards']) {
+          const raw = localStorage.getItem(key);
+          if (!raw) continue;
+          const cards = JSON.parse(raw);
+          if (!Array.isArray(cards)) continue;
+          for (const c of cards) {
+            const bid = String(c.badgeId || c.id || '')
+              .toUpperCase()
+              .replace(/\s+/g, '');
+            const fid = String(c.facilityId || facilityId).toUpperCase();
+            if (!bid || isStaffRevokedLocal(bid, facilityId)) continue;
+            if (fid && fid !== String(facilityId).toUpperCase()) continue;
+            if (!enrolled.has(bid)) {
+              enrolled.set(bid, {
+                name: String(c.fullName || c.name || bid),
+                role: String(c.role || c.title || ''),
+                roleKey: String(c.roleKey || ''),
+              });
+            }
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      // Access only if badge still enrolled (skip deleted leftovers)
+      try {
+        for (const a of getAccessRecords().filter((x) => x.status === 'active')) {
+          const bid = String(a.id || '')
             .toUpperCase()
             .replace(/\s+/g, '');
-          if (!bid || onlineIds.has(bid) || seen.has(bid)) continue;
-          seen.add(bid);
-          offline.push({ ...p, online: false });
+          if (!bid || isStaffRevokedLocal(bid, facilityId)) continue;
+          if (!enrolled.has(bid)) continue; // not on roster/cards → deleted residue, hide
         }
       } catch {
         /* ignore */
       }
 
-      setOfflineStaff(offline);
+      const offline: StaffPresence[] = [];
+      const seen = new Set<string>();
+      for (const [bid, meta] of enrolled) {
+        if (onlineIds.has(bid) || seen.has(bid)) continue;
+        seen.add(bid);
+        offline.push({
+          badgeId: bid,
+          facilityId: String(facilityId).toUpperCase(),
+          name: meta.name,
+          roleKey: meta.roleKey,
+          role: meta.role,
+          lastSeen: 0,
+          online: false,
+        });
+      }
+
+      setOfflineStaff((prev) => {
+        const nextIds = offline.map((s) => s.badgeId).sort().join('|');
+        const prevIds = prev.map((s) => s.badgeId).sort().join('|');
+        if (nextIds === prevIds) return prev;
+        return offline;
+      });
     } catch {
-      setOnlineStaff([]);
-      setOfflineStaff([]);
+      /* keep previous lists on error — never flash to 0 */
     }
-  }, [facilityId]);
+  }, [facilityId, session.badgeId, session.name, session.roleKey, session.role]);
 
   const { connected } = useRealtimeEvents({
     app: 'MEDCORE_OS_ADMIN',
@@ -137,26 +225,63 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
 
   useEffect(() => {
     refresh();
-    const unsub = subscribeAdminSync(refresh);
-    const unsubPresence = subscribeStaffPresence(refresh);
+    let debounceTimer: number | null = null;
+    const bump = () => {
+      // Debounce bursts (presence + storage + admin-sync) so KPI does not shake
+      if (debounceTimer != null) window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => {
+        refresh();
+        debounceTimer = null;
+      }, 300);
+    };
+    const unsub = subscribeAdminSync(bump);
+    const unsubPresence = subscribeStaffPresence(bump);
     const stopCloud = startFacilityPresenceListener(facilityId);
-    const bump = () => refresh();
+    let stopRevoked = () => {};
+    void (async () => {
+      try {
+        const { firestoreSubscribeRevokedStaff } = await import('../../lib/firebase');
+        stopRevoked = firestoreSubscribeRevokedStaff(facilityId, (ids) => {
+          applyCloudRevokedBadges(facilityId, ids);
+          // Strip revoked from access so they never reappear offline
+          try {
+            const next = getAccessRecords().filter((a) => {
+              const bid = String(a.id || '')
+                .toUpperCase()
+                .replace(/\s+/g, '');
+              return !ids.some((id) => String(id).toUpperCase().replace(/\s+/g, '') === bid);
+            });
+            if (next.length < getAccessRecords().length) {
+              void import('../../lib/adminRealtimeStore').then((m) => m.setAccessRecords(next));
+            }
+          } catch {
+            /* ignore */
+          }
+          bump();
+        });
+      } catch {
+        /* offline */
+      }
+    })();
     window.addEventListener(STAFF_PRESENCE_EVENT, bump);
+    window.addEventListener(REVOKED_STAFF_EVENT, bump);
     window.addEventListener('medcore-admin-sync', bump);
     window.addEventListener('storage', bump);
     window.addEventListener('medcore-facility-cloud', bump);
     window.addEventListener('medcore-staff-cards-updated', bump);
     window.addEventListener('medcore-staff-registry-updated', bump);
-    // Faster poll so Online/Offline tracks heartbeats without waiting 8s
     const iv = setInterval(() => {
       setTick((t) => t + 1);
       refresh();
-    }, 4000);
+    }, 10000);
     return () => {
       unsub();
       unsubPresence();
       stopCloud();
+      stopRevoked();
+      if (debounceTimer != null) window.clearTimeout(debounceTimer);
       window.removeEventListener(STAFF_PRESENCE_EVENT, bump);
+      window.removeEventListener(REVOKED_STAFF_EVENT, bump);
       window.removeEventListener('medcore-admin-sync', bump);
       window.removeEventListener('storage', bump);
       window.removeEventListener('medcore-facility-cloud', bump);

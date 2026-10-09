@@ -7,9 +7,80 @@ import { publishFacilityData } from './roleSyncBus';
 
 export const STAFF_PRESENCE_KEY = 'medcore_os_staff_presence_v1';
 export const STAFF_PRESENCE_EVENT = 'medcore-staff-presence';
+export const REVOKED_STAFF_KEY = 'medcore_os_revoked_staff_v1';
+export const REVOKED_STAFF_EVENT = 'medcore-staff-revoked';
 /** Consider online if heartbeat within this window */
-export const PRESENCE_TTL_MS = 75_000;
+export const PRESENCE_TTL_MS = 120_000; // 2 min — stable KPI (heartbeat ~12s)
 const HEARTBEAT_MS = 12_000;
+
+function readRevoked(): Record<string, true> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(REVOKED_STAFF_KEY);
+    if (!raw) return {};
+    const p = JSON.parse(raw);
+    return p && typeof p === 'object' ? (p as Record<string, true>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeRevoked(map: Record<string, true>) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(REVOKED_STAFF_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(REVOKED_STAFF_EVENT, { detail: map }));
+  } catch {
+    /* ignore */
+  }
+}
+
+function revokedKey(facilityId: string, badgeId: string) {
+  return `${String(facilityId).toUpperCase()}::${String(badgeId).toUpperCase().replace(/\s+/g, '')}`;
+}
+
+export function markStaffRevokedLocal(badgeId: string, facilityId: string): void {
+  const k = revokedKey(facilityId, badgeId);
+  if (!k.includes('::') || k.endsWith('::')) return;
+  const map = readRevoked();
+  map[k] = true;
+  writeRevoked(map);
+}
+
+export function isStaffRevokedLocal(badgeId: string, facilityId: string): boolean {
+  return Boolean(readRevoked()[revokedKey(facilityId, badgeId)]);
+}
+
+export function listRevokedBadges(facilityId: string): string[] {
+  const fid = String(facilityId || '').toUpperCase();
+  const out: string[] = [];
+  for (const k of Object.keys(readRevoked())) {
+    if (k.startsWith(fid + '::')) out.push(k.slice(fid.length + 2));
+  }
+  return out;
+}
+
+/** Merge cloud revoked ids into local set */
+export function applyCloudRevokedBadges(facilityId: string, badgeIds: string[]): void {
+  const fid = String(facilityId || '').toUpperCase();
+  const map = readRevoked();
+  let dirty = false;
+  for (const b of badgeIds) {
+    const bid = String(b || '').toUpperCase().replace(/\s+/g, '');
+    if (!bid) continue;
+    const k = revokedKey(fid, bid);
+    if (!map[k]) {
+      map[k] = true;
+      dirty = true;
+    }
+  }
+  if (dirty) writeRevoked(map);
+}
+
 
 export type StaffPresence = {
   badgeId: string;
@@ -163,6 +234,11 @@ export function removeStaffPresence(badgeId: string, facilityId: string): void {
   const badge = String(badgeId || '').toUpperCase().replace(/\s+/g, '');
   const fid = String(facilityId || '').toUpperCase();
   if (!badge) return;
+  try {
+    markStaffRevokedLocal(badge, fid);
+  } catch {
+    /* ignore */
+  }
   const k = mapKey(fid, badge);
   const map = readAll();
   if (map[k]) {
@@ -244,6 +320,7 @@ export function listActiveStaff(facilityId: string, roleKeys?: string[]): StaffP
   return Object.values(map).filter((p) => {
     const row = normalizePresence(p, now);
     if (String(row.facilityId || '').toUpperCase() !== fid) return false;
+    if (isStaffRevokedLocal(row.badgeId, fid)) return false;
     if (!isFresh(row, now)) return false;
     if (roles && roles.length) {
       const rk = String(p.roleKey || '').toLowerCase();
@@ -266,7 +343,12 @@ export function listOfflineStaff(facilityId: string): StaffPresence[] {
   const map = readAll();
   return Object.values(map)
     .map((p) => normalizePresence(p, now))
-    .filter((p) => String(p.facilityId || '').toUpperCase() === fid && !isFresh(p, now));
+    .filter(
+      (p) =>
+        String(p.facilityId || '').toUpperCase() === fid &&
+        !isFresh(p, now) &&
+        !isStaffRevokedLocal(p.badgeId, fid)
+    );
 }
 
 /** All presence known for facility (online + offline), normalized */

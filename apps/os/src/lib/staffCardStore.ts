@@ -15,7 +15,7 @@ import {
   deleteStaffFirebaseAuth,
   firestoreRevokeStaff,
 } from './firebase';
-import { removeStaffPresence } from './staffPresenceStore';
+import { removeStaffPresence, markStaffRevokedLocal } from './staffPresenceStore';
 
 function readCards(): StaffCardRecord[] {
   if (typeof window === 'undefined') return [];
@@ -218,7 +218,12 @@ export function deleteStaffMember(badgeId: string): boolean {
     window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: next }));
     window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: cards }));
 
-    // Drop access control row so staffing / admin offline list cannot resurrect them
+    // Drop access control row + mark revoked so offline list cannot resurrect them
+    try {
+      markStaffRevokedLocal(id, facilityId || 'IGH-EKT');
+    } catch {
+      /* ignore */
+    }
     try {
       const accessRaw = localStorage.getItem('medcore_os_access_control');
       const access = accessRaw ? JSON.parse(accessRaw) : [];
@@ -231,6 +236,15 @@ export function deleteStaffMember(badgeId: string): boolean {
         window.dispatchEvent(
           new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_access_control' } })
         );
+        void import('./adminRealtimeStore')
+          .then((m) => {
+            try {
+              m.setAccessRecords(filtered);
+            } catch {
+              /* ignore */
+            }
+          })
+          .catch(() => {});
       }
     } catch {
       /* ignore */
