@@ -73,6 +73,14 @@ function isFresh(p: StaffPresence, now = Date.now()) {
   return Boolean(p.online) && now - (p.lastSeen || 0) < PRESENCE_TTL_MS;
 }
 
+/** Treat stale heartbeats as offline (admin + KPI accuracy) */
+function normalizePresence(p: StaffPresence, now = Date.now()): StaffPresence {
+  if (p.online && !isFresh(p, now)) {
+    return { ...p, online: false };
+  }
+  return p;
+}
+
 function rowFromCloud(r: Record<string, unknown>): StaffPresence | null {
   const badgeId = String(r.badgeId || r.id || '')
     .toUpperCase()
