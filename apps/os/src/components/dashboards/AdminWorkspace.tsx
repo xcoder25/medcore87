@@ -14,9 +14,16 @@ import {
   buildAdminSnapshot,
   subscribeAdminSync,
   pushActivity,
+  setActiveFacilityId,
   type AdminSnapshot,
 } from '../../lib/adminRealtimeStore';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
+import {
+  countActiveStaff,
+  subscribeStaffPresence,
+  startFacilityPresenceListener,
+  STAFF_PRESENCE_EVENT,
+} from '../../lib/staffPresenceStore';
 
 interface Props {
   session: UserSession;
@@ -63,18 +70,38 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
     },
   });
 
+  const facilityId = session.hospitalId || 'IGH-EKT';
+
   useEffect(() => {
+    try {
+      setActiveFacilityId(facilityId);
+    } catch {
+      /* ignore */
+    }
     refresh();
     const unsub = subscribeAdminSync(refresh);
+    const unsubPresence = subscribeStaffPresence(refresh);
+    const stopCloud = startFacilityPresenceListener(facilityId);
+    const bump = () => refresh();
+    window.addEventListener(STAFF_PRESENCE_EVENT, bump);
+    window.addEventListener('medcore-admin-sync', bump);
+    window.addEventListener('storage', bump);
+    window.addEventListener('medcore-facility-cloud', bump);
     const iv = setInterval(() => {
       setTick((t) => t + 1);
       refresh();
     }, 8000);
     return () => {
       unsub();
+      unsubPresence();
+      stopCloud();
+      window.removeEventListener(STAFF_PRESENCE_EVENT, bump);
+      window.removeEventListener('medcore-admin-sync', bump);
+      window.removeEventListener('storage', bump);
+      window.removeEventListener('medcore-facility-cloud', bump);
       clearInterval(iv);
     };
-  }, [refresh]);
+  }, [refresh, facilityId]);
 
   const notify = (msg: string, nav?: string) => {
     setToast(msg);
@@ -94,7 +121,7 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
   }
 
   const kpis = [
-    { key: 'staff', label: 'Active Staff', value: String(snap.activeStaff), trend: 'Live roster', tone: 'blue', icon: Users, nav: 'staffing' },
+    { key: 'staff', label: 'Active Staff', value: String(snap.activeStaff), trend: 'Logged in now · live', tone: 'blue', icon: Users, nav: 'staffing' },
     { key: 'open', label: 'Open Positions', value: String(snap.openPositions), trend: 'Recruitment', tone: 'sky', icon: UserPlus, nav: 'rbac' },
     { key: 'transfer', label: 'Pending Transfer', value: String(snap.pendingTransfers), trend: snap.pendingTransfers ? 'Needs review' : 'Clear', tone: 'amber', icon: ArrowRightLeft, nav: 'transfer' },
     { key: 'logged', label: 'Staff Logged In', value: String(snap.staffLoggedIn), trend: connected ? 'Live' : 'Active', tone: 'teal', icon: UserCheck, nav: 'staffing' },
@@ -231,7 +258,7 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
           </div>
           <div className="admin-staff-total">
             <span className="big">{snap.activeStaff}</span>
-            <span className="muted">Active staff</span>
+            <span className="muted">Logged in now (live presence)</span>
           </div>
           <ul className="admin-dept-list">
             {snap.depts.map((d) => (

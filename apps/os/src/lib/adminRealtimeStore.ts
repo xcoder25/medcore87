@@ -6,6 +6,7 @@
 
 import { broadcastLocal } from './hospitalSync';
 import { enqueueFacilitySync } from './durableOutbox';
+import { countActiveStaff } from './staffPresenceStore';
 
 /** Active facility for multi-workstation share (set from session) */
 let activeFacilityId = 'DEFAULT-HOSPITAL';
@@ -234,12 +235,19 @@ export function buildAdminSnapshot(): AdminSnapshot {
   const openPositions = getOpenPositions();
 
   const pendingTransfers = transfers.filter((t: any) => t.status === 'pending').length;
-  const activeStaff =
-    staff.length > 0
-      ? staff.filter((s: any) => s.status !== 'on-leave').length
-      : access.filter((a) => a.status === 'active').length;
+  // Active staff = currently logged-in (presence heartbeat), same as Front Desk KPI
+  let activeStaff = 0;
+  try {
+    activeStaff = countActiveStaff(activeFacilityId);
+  } catch {
+    activeStaff = 0;
+  }
+  // Fallback only if presence empty and we have no live signal yet
+  if (activeStaff === 0) {
+    /* keep 0 — do not inflate with full roster (roster ≠ online) */
+  }
   const onLeave = staff.filter((s: any) => s.status === 'on-leave').length;
-  const staffLoggedIn = 0; // session-based in production; pilot starts at 0
+  const staffLoggedIn = activeStaff;
 
   const accessPending = access.filter((a) => a.status === 'pending').length;
   const accessSuspended = access.filter((a) => a.status === 'suspended').length;
