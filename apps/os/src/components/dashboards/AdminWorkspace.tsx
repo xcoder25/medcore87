@@ -71,8 +71,33 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
     }
     setSnap(buildAdminSnapshot());
     try {
-      setOnlineStaff(listActiveStaff(facilityId));
-      setOfflineStaff(listOfflineStaff(facilityId));
+      const online = listActiveStaff(facilityId);
+      setOnlineStaff(online);
+      const onlineIds = new Set(online.map((s) => s.badgeId.toUpperCase()));
+      // Presence offline + roster/access members not currently online
+      const fromPresence = listOfflineStaff(facilityId).filter(
+        (s) => !onlineIds.has(s.badgeId.toUpperCase())
+      );
+      const snapNow = buildAdminSnapshot();
+      const rosterOffline: StaffPresence[] = [];
+      for (const a of snapNow.perms || []) {
+        if (a.status !== 'active') continue;
+        const bid = String(a.id || '')
+          .toUpperCase()
+          .replace(/\s+/g, '');
+        if (!bid || onlineIds.has(bid)) continue;
+        if (fromPresence.some((p) => p.badgeId === bid)) continue;
+        rosterOffline.push({
+          badgeId: bid,
+          facilityId: facilityId.toUpperCase(),
+          name: a.name || bid,
+          roleKey: '',
+          role: a.role,
+          lastSeen: 0,
+          online: false,
+        });
+      }
+      setOfflineStaff([...fromPresence, ...rosterOffline]);
     } catch {
       setOnlineStaff([]);
       setOfflineStaff([]);
