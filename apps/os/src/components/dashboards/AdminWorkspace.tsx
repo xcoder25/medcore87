@@ -19,7 +19,6 @@ import {
 } from '../../lib/adminRealtimeStore';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import {
-  countActiveStaff,
   subscribeStaffPresence,
   startFacilityPresenceListener,
   STAFF_PRESENCE_EVENT,
