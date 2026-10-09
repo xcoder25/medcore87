@@ -22,6 +22,9 @@ import {
   subscribeStaffPresence,
   startFacilityPresenceListener,
   STAFF_PRESENCE_EVENT,
+  listActiveStaff,
+  listOfflineStaff,
+  type StaffPresence,
 } from '../../lib/staffPresenceStore';
 
 interface Props {
@@ -52,13 +55,29 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
   const [snap, setSnap] = useState<AdminSnapshot | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [onlineStaff, setOnlineStaff] = useState<StaffPresence[]>([]);
+  const [offlineStaff, setOfflineStaff] = useState<StaffPresence[]>([]);
 
   const facility = session.facility || 'Immanuel General Hospital, Eket';
   const firstName = (session.name || 'Administrator').split(' ')[0];
 
+  const facilityId = session.hospitalId || 'IGH-EKT';
+
   const refresh = useCallback(() => {
+    try {
+      setActiveFacilityId(facilityId);
+    } catch {
+      /* ignore */
+    }
     setSnap(buildAdminSnapshot());
-  }, []);
+    try {
+      setOnlineStaff(listActiveStaff(facilityId));
+      setOfflineStaff(listOfflineStaff(facilityId));
+    } catch {
+      setOnlineStaff([]);
+      setOfflineStaff([]);
+    }
+  }, [facilityId]);
 
   const { connected } = useRealtimeEvents({
     app: 'MEDCORE_OS_ADMIN',
@@ -69,14 +88,7 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
     },
   });
 
-  const facilityId = session.hospitalId || 'IGH-EKT';
-
   useEffect(() => {
-    try {
-      setActiveFacilityId(facilityId);
-    } catch {
-      /* ignore */
-    }
     refresh();
     const unsub = subscribeAdminSync(refresh);
     const unsubPresence = subscribeStaffPresence(refresh);
@@ -255,9 +267,66 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
               View staff <ChevronRight size={14} />
             </button>
           </div>
-          <div className="admin-staff-total">
-            <span className="big">{snap.activeStaff}</span>
-            <span className="muted">Logged in now (live presence)</span>
+          <div className="admin-staff-total" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <div>
+              <span className="big" style={{ color: '#16A34A' }}>{onlineStaff.length}</span>
+              <span className="muted">Online now</span>
+            </div>
+            <div>
+              <span className="big" style={{ color: '#64748B' }}>{offlineStaff.length}</span>
+              <span className="muted">Offline (this facility)</span>
+            </div>
+          </div>
+          <div style={{ marginTop: 12, maxHeight: 180, overflowY: 'auto' }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#16A34A', marginBottom: 6 }}>ONLINE</div>
+            {onlineStaff.length === 0 ? (
+              <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 10 }}>No one logged in</div>
+            ) : (
+              onlineStaff.slice(0, 12).map((s) => (
+                <div
+                  key={`on-${s.badgeId}`}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    fontSize: 12,
+                    padding: '4px 0',
+                    borderBottom: '1px solid #F1F5F9',
+                  }}
+                >
+                  <span style={{ fontWeight: 700 }}>
+                    <span style={{ color: '#16A34A', marginRight: 6 }}>●</span>
+                    {s.name}
+                  </span>
+                  <span style={{ color: '#64748B' }}>{s.roleKey || s.role || '—'}</span>
+                </div>
+              ))
+            )}
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#64748B', margin: '12px 0 6px' }}>OFFLINE</div>
+            {offlineStaff.length === 0 ? (
+              <div style={{ fontSize: 12, color: '#94A3B8' }}>No offline presence yet</div>
+            ) : (
+              offlineStaff.slice(0, 12).map((s) => (
+                <div
+                  key={`off-${s.badgeId}`}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    fontSize: 12,
+                    padding: '4px 0',
+                    borderBottom: '1px solid #F1F5F9',
+                    opacity: 0.85,
+                  }}
+                >
+                  <span style={{ fontWeight: 600, color: '#475569' }}>
+                    <span style={{ color: '#94A3B8', marginRight: 6 }}>○</span>
+                    {s.name}
+                  </span>
+                  <span style={{ color: '#94A3B8' }}>{s.roleKey || s.role || '—'}</span>
+                </div>
+              ))
+            )}
           </div>
           <ul className="admin-dept-list">
             {snap.depts.map((d) => (

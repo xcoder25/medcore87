@@ -85,19 +85,25 @@ function rowFromCloud(r: Record<string, unknown>): StaffPresence | null {
     roleKey: String(r.roleKey || ''),
     role: r.role ? String(r.role) : undefined,
     lastSeen: Number(r.lastSeen || 0),
-    online: r.online !== false,
+    online: r.online === true || r.online === 'true',
   };
 }
 
 /** Apply cloud presence rows into local map (realtime KPI) */
 export function applyCloudPresenceRows(rows: Record<string, unknown>[]): void {
+  const now = Date.now();
   const remote: PresenceMap = {};
   for (const r of rows) {
     const row = rowFromCloud(r);
     if (!row) continue;
-    remote[mapKey(row.facilityId, row.badgeId)] = row;
+    // Stale online from crashed tabs → offline for this facility
+    remote[mapKey(row.facilityId, row.badgeId)] = normalizePresence(row, now);
   }
   const merged = mergePresenceMaps(readAll(), remote);
+  // Re-normalize entire map after merge
+  for (const k of Object.keys(merged)) {
+    merged[k] = normalizePresence(merged[k], now);
+  }
   writeAll(merged);
 }
 
@@ -189,6 +195,17 @@ export function listActiveStaff(facilityId: string, roleKeys?: string[]): StaffP
   const fid = String(facilityId || '').toUpperCase();
   const now = Date.now();
   const map = readAll();
+  // Persist normalized offline so admin sees accurate offline set
+  let dirty = false;
+  for (const [k, row] of Object.entries(map)) {
+    const n = normalizePresence(row, now);
+    if (n.online !== row.online) {
+      map[k] = n;
+      dirty = true;
+    }
+  }
+  if (dirty) writeAll(map);
+
   const roles = roleKeys?.map((r) => r.toLowerCase());
   return Object.values(map).filter((p) => {
     if (String(p.facilityId || '').toUpperCase() !== fid) return false;
@@ -207,6 +224,26 @@ export function countActiveStaff(facilityId: string, roleKeys?: string[]): numbe
   return listActiveStaff(facilityId, roleKeys).length;
 }
 
+/** Presence rows for facility that are NOT currently online (logged out or stale) */
+export function listOfflineStaff(facilityId: string): StaffPresence[] {
+  const fid = String(facilityId || '').toUpperCase();
+  const now = Date.now();
+  const map = readAll();
+  return Object.values(map)
+    .map((p) => normalizePresence(p, now))
+    .filter((p) => String(p.facilityId || '').toUpperCase() === fid && !isFresh(p, now));
+}
+
+/** All presence known for facility (online + offline), normalized */
+export function listFacilityPresence(facilityId: string): StaffPresence[] {
+  const fid = String(facilityId || '').toUpperCase();
+  const now = Date.now();
+  return Object.values(readAll())
+    .map((p) => normalizePresence(p, now))
+    .filter((p) => String(p.facilityId || '').toUpperCase() === fid)
+    .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+}
+
 export function startStaffPresenceHeartbeat(opts: {
   badgeId: string;
   facilityId: string;
@@ -215,27 +252,65 @@ export function startStaffPresenceHeartbeat(opts: {
   role?: string;
 }): () => void {
   if (typeof window === 'undefined') return () => {};
-  const tick = () => markStaffOnline(opts);
-  tick();
-  const id = window.setInterval(tick, HEARTBEAT_MS);
-  const onVis = () => {
-    if (document.visibilityState === 'visible') tick();
+  let id: number | null = null;
+  let hiddenTimer: number | null = null;
+
+  const clearHb = () => {
+    if (id != null) {
+      window.clearInterval(id);
+      id = null;
+    }
   };
-  const onUnload = () => {
+
+  const startHb = () => {
+    clearHb();
+    const tick = () => markStaffOnline(opts);
+    tick();
+    id = window.setInterval(tick, HEARTBEAT_MS);
+  };
+
+  const goOffline = () => {
     try {
       markStaffOffline(opts.badgeId, opts.facilityId);
     } catch {
       /* ignore */
     }
   };
+
+  const onVis = () => {
+    if (document.visibilityState === 'visible') {
+      if (hiddenTimer != null) {
+        window.clearTimeout(hiddenTimer);
+        hiddenTimer = null;
+      }
+      startHb();
+    } else {
+      // Tab hidden / minimized — stop heartbeats; after short delay mark offline
+      clearHb();
+      if (hiddenTimer != null) window.clearTimeout(hiddenTimer);
+      hiddenTimer = window.setTimeout(() => {
+        goOffline();
+        hiddenTimer = null;
+      }, 15_000);
+    }
+  };
+
+  const onUnload = () => {
+    clearHb();
+    goOffline();
+  };
+
+  startHb();
   document.addEventListener('visibilitychange', onVis);
   window.addEventListener('beforeunload', onUnload);
   window.addEventListener('pagehide', onUnload);
   return () => {
-    window.clearInterval(id);
+    clearHb();
+    if (hiddenTimer != null) window.clearTimeout(hiddenTimer);
     document.removeEventListener('visibilitychange', onVis);
     window.removeEventListener('beforeunload', onUnload);
     window.removeEventListener('pagehide', onUnload);
+    goOffline();
   };
 }
 
