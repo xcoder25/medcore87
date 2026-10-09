@@ -318,8 +318,9 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
       cashier,
     });
     // Settle ALL open bill lines (pharmacy, lab, billing-office invoices, etc.)
+    // card/transfer already returned above → Paystack flow only
     const via =
-      method === 'hmo' ? 'hmo' : method === 'waiver' ? 'waiver' : method === 'pos' || method === 'transfer' ? 'paystack' : 'cashier';
+      method === 'hmo' ? 'hmo' : method === 'waiver' ? 'waiver' : method === 'pos' ? 'paystack' : 'cashier';
     const status = method === 'hmo' ? 'hmo' : method === 'waiver' ? 'waived' : 'paid';
     const unpaid = listBillLines(facilityId, { patientId: patient.id }).filter(
       (l) => l.status === 'unpaid' || l.status === 'partial'
@@ -361,13 +362,14 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
     } catch {
       /* ignore */
     }
-    if (method === 'pos' || method === 'transfer' || method === 'card') {
+    // Legacy POS terminal method (not Paystack inline) — rare
+    if (method === 'pos') {
       try {
         applyPaystackSuccess({
           facilityId,
           reference: pay.reference,
           amountNgn: amt,
-          channel: method === 'transfer' ? 'bank' : 'card',
+          channel: 'card',
           patientId: patient.id,
           hospitalNumber: patient.hospitalNumber,
           patientName: fullName(patient),
@@ -381,8 +383,8 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
     emitLiveAction(`POS ${pay.reference} · ₦${amt}`, { module: 'cashier' });
     const bal = patientBalance(facilityId, patient.id);
 
-    // Cash / desk methods: success screen → auto receipt → paid (already) → home
-    const deskMethod = method === 'cash' || method === 'pos' || method === 'transfer' || method === 'waiver';
+    // Desk methods: success screen → auto receipt → paid → home
+    const deskMethod = method === 'cash' || method === 'pos' || method === 'hmo' || method === 'waiver';
     if (deskMethod) {
       const patientName = fullName(patient);
       const hospNo = patient.hospitalNumber;
