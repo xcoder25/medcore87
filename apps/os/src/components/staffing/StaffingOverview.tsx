@@ -96,9 +96,10 @@ function buildRows(facilityId: string): StaffRow[] {
 
   const rows: StaffRow[] = [];
 
-  // 1) Everyone currently online = on duty
+  // 1) Online presence — only if still on facility roster/access (deleted staff excluded)
   for (const p of online) {
-    const meta = byId.get(p.badgeId.toUpperCase()) || {};
+    const meta = byId.get(p.badgeId.toUpperCase());
+    if (!meta) continue; // deleted from facility — ignore ghost presence
     rows.push({
       id: p.badgeId,
       name: p.name || meta.name || p.badgeId,
@@ -133,27 +134,7 @@ function buildRows(facilityId: string): StaffRow[] {
     });
   }
 
-  // 3) Presence offline only (logged in before, no roster row)
-  try {
-    for (const p of listOfflineStaff(fid)) {
-      if (onlineIds.has(p.badgeId.toUpperCase())) continue;
-      if (byId.has(p.badgeId.toUpperCase())) continue;
-      rows.push({
-        id: p.badgeId,
-        name: p.name || p.badgeId,
-        role: normalizeRole(p.roleKey, p.role),
-        specialty: p.role || p.roleKey || '—',
-        ward: '—',
-        shift: '—',
-        status: 'off-duty',
-        since: formatSince(p.lastSeen),
-        phone: '—',
-        fromPresence: true,
-      });
-    }
-  } catch {
-    /* ignore */
-  }
+  // Ghost presence (no roster) intentionally omitted — deleted staff must not reappear
 
   return rows.sort((a, b) => {
     if (a.status === 'on-duty' && b.status !== 'on-duty') return -1;

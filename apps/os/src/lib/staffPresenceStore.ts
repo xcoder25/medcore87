@@ -158,6 +158,41 @@ export function markStaffOnline(opts: {
   }
 }
 
+/** Fully remove presence (staff deleted from facility — not merely offline) */
+export function removeStaffPresence(badgeId: string, facilityId: string): void {
+  const badge = String(badgeId || '').toUpperCase().replace(/\s+/g, '');
+  const fid = String(facilityId || '').toUpperCase();
+  if (!badge) return;
+  const k = mapKey(fid, badge);
+  const map = readAll();
+  if (map[k]) {
+    delete map[k];
+    writeAll(map);
+  }
+  // Also drop any key variants
+  for (const key of Object.keys(map)) {
+    if (key.endsWith('::' + badge) || map[key]?.badgeId === badge) {
+      if (String(map[key]?.facilityId || '').toUpperCase() === fid || key.startsWith(fid + '::')) {
+        delete map[key];
+      }
+    }
+  }
+  writeAll(map);
+  void (async () => {
+    try {
+      const { firestoreDeletePresence } = await import('./firebase');
+      await firestoreDeletePresence(fid, badge);
+    } catch {
+      /* ignore */
+    }
+  })();
+  try {
+    publishFacilityData(fid, STAFF_PRESENCE_KEY, readAll());
+  } catch {
+    /* ignore */
+  }
+}
+
 export function markStaffOffline(badgeId: string, facilityId: string): void {
   const badge = String(badgeId || '').toUpperCase().replace(/\s+/g, '');
   const fid = String(facilityId || '').toUpperCase();

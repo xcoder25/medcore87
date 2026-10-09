@@ -9,6 +9,7 @@ import {
   issueStaffCardFromEnrolment,
 } from '@medcore/types';
 import { firestorePushStaffDirectory, firestoreUpsertStaffMember, firestoreDeleteStaffMember } from './firebase';
+import { removeStaffPresence } from './staffPresenceStore';
 
 function readCards(): StaffCardRecord[] {
   if (typeof window === 'undefined') return [];
@@ -179,12 +180,50 @@ export function deleteStaffMember(badgeId: string): boolean {
     window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: next }));
     window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: cards }));
 
+    // Drop access control row so staffing / admin offline list cannot resurrect them
+    try {
+      const accessRaw = localStorage.getItem('medcore_os_access_control');
+      const access = accessRaw ? JSON.parse(accessRaw) : [];
+      if (Array.isArray(access)) {
+        const filtered = access.filter(
+          (r: { id?: string }) =>
+            String(r.id || '').toUpperCase().replace(/\s+/g, '') !== id
+        );
+        localStorage.setItem('medcore_os_access_control', JSON.stringify(filtered));
+        window.dispatchEvent(
+          new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_access_control' } })
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+
     if (facilityId) {
+      try {
+        removeStaffPresence(id, facilityId);
+      } catch {
+        /* ignore */
+      }
       void firestorePushStaffDirectory(facilityId, {
         staffCards: cards,
         staffRegistry: next,
       });
       void firestoreDeleteStaffMember(facilityId, id);
+    } else {
+      // Unknown facility — still clear local presence for all matching keys
+      try {
+        const mapRaw = localStorage.getItem('medcore_os_staff_presence_v1');
+        const map = mapRaw ? JSON.parse(mapRaw) : {};
+        if (map && typeof map === 'object') {
+          for (const key of Object.keys(map)) {
+            if (key.includes(id) || map[key]?.badgeId === id) delete map[key];
+          }
+          localStorage.setItem('medcore_os_staff_presence_v1', JSON.stringify(map));
+          window.dispatchEvent(new CustomEvent('medcore-staff-presence', { detail: map }));
+        }
+      } catch {
+        /* ignore */
+      }
     }
     return true;
   } catch (e) {

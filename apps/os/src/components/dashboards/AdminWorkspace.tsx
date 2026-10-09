@@ -71,7 +71,17 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
     }
     setSnap(buildAdminSnapshot());
     try {
-      const online = listActiveStaff(facilityId);
+      const known = new Set(
+        (getAccessRecords().filter((a) => a.status === 'active') || []).map((a) =>
+          String(a.id || '')
+            .toUpperCase()
+            .replace(/\s+/g, '')
+        ).filter(Boolean)
+      );
+      let online = listActiveStaff(facilityId);
+      if (known.size > 0) {
+        online = online.filter((s) => known.has(s.badgeId.toUpperCase()));
+      }
       setOnlineStaff(online);
       const onlineIds = new Set(online.map((s) => s.badgeId.toUpperCase()));
       // Presence offline + roster/access members not currently online

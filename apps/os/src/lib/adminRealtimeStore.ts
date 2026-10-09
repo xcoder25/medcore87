@@ -6,7 +6,7 @@
 
 import { broadcastLocal } from './hospitalSync';
 import { enqueueFacilitySync } from './durableOutbox';
-import { countActiveStaff } from './staffPresenceStore';
+import { countActiveStaff, listActiveStaff } from './staffPresenceStore';
 
 /** Active facility for multi-workstation share (set from session) */
 let activeFacilityId = 'DEFAULT-HOSPITAL';
@@ -235,16 +235,36 @@ export function buildAdminSnapshot(): AdminSnapshot {
   const openPositions = getOpenPositions();
 
   const pendingTransfers = transfers.filter((t: any) => t.status === 'pending').length;
-  // Active staff = currently logged-in (presence heartbeat), same as Front Desk KPI
+  // Active staff = logged-in presence that still exists on access/roster (deleted staff excluded)
   let activeStaff = 0;
   try {
-    activeStaff = countActiveStaff(activeFacilityId);
+    const known = new Set(
+      access
+        .filter((a) => a.status === 'active')
+        .map((a) => String(a.id || '').toUpperCase().replace(/\s+/g, ''))
+        .filter(Boolean)
+    );
+    for (const s of staff) {
+      const b = String((s as any).badgeId || (s as any).id || '')
+        .toUpperCase()
+        .replace(/\s+/g, '');
+      if (b) known.add(b);
+    }
+    const online = countActiveStaff(activeFacilityId);
+    if (known.size === 0) {
+      activeStaff = online;
+    } else {
+      // recount with filter via list — import listActiveStaff dynamically not needed if we use count
+      activeStaff = listActiveStaff(activeFacilityId).filter((p) =>
+        known.has(String(p.badgeId || '').toUpperCase())
+      ).length;
+    }
   } catch {
-    activeStaff = 0;
-  }
-  // Fallback only if presence empty and we have no live signal yet
-  if (activeStaff === 0) {
-    /* keep 0 — do not inflate with full roster (roster ≠ online) */
+    try {
+      activeStaff = countActiveStaff(activeFacilityId);
+    } catch {
+      activeStaff = 0;
+    }
   }
   const onLeave = staff.filter((s: any) => s.status === 'on-leave').length;
   const staffLoggedIn = activeStaff;

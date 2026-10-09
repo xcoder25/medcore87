@@ -519,6 +519,24 @@ export async function firestoreUpsertPresence(
   }
 }
 
+/** Remove presence doc when staff is deleted from facility */
+export async function firestoreDeletePresence(
+  facilityId: string,
+  badgeId: string
+): Promise<boolean> {
+  try {
+    await enableFirestoreOffline();
+    const bid = String(badgeId || '').toUpperCase().replace(/\s+/g, '');
+    if (!facilityId || !bid) return false;
+    await deleteDoc(staffPresenceRef(facilityId, bid));
+    return true;
+  } catch (e) {
+    fsWarn('delete presence', e);
+    return false;
+  }
+}
+
+
 export function firestoreSubscribePresence(
   facilityId: string,
   onRows: (rows: Record<string, unknown>[]) => void
