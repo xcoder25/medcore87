@@ -15,6 +15,7 @@ import {
   subscribeAdminSync,
   pushActivity,
   setActiveFacilityId,
+  getAccessRecords,
   type AdminSnapshot,
 } from '../../lib/adminRealtimeStore';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
