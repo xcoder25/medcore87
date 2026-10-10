@@ -76,6 +76,7 @@ import { FacilitiesUtilitiesSuite } from '../components/operations/FacilitiesUti
 import { EnvironmentalSafetySuite } from '../components/operations/EnvironmentalSafetySuite';
 import { BillingInvoicingSuite } from '../components/finance/BillingInvoicingSuite';
 import { InsuranceHmoClaimsSuite } from '../components/finance/InsuranceHmoClaimsSuite';
+import { AkwaIbomStateSuite } from '../components/interop/AkwaIbomStateSuite';
 import { RevenueCycleAccountingSuite } from '../components/finance/RevenueCycleAccountingSuite';
 import { AccountingArDesk } from '../components/finance/AccountingArDesk';
 import { ProcurementHrSuite } from '../components/finance/ProcurementHrSuite';
@@ -115,7 +116,7 @@ export type ModuleKey =
   // Pillar 4: Finance
   | 'billing' | 'cashier' | 'claims' | 'revenue-cycle' | 'procurement'
   // Pillar 5: Data & Interop
-  | 'data-hub' | 'fhir' | 'analytics' | 'ambient-soap' | 'lis' | 'formulary' | 'mfa-sso' | 'knowledge-graph' | 'predictive-staffing' | 'infection' | 'hie' | 'pacs-advanced'
+  | 'aks-state' | 'data-hub' | 'fhir' | 'analytics' | 'ambient-soap' | 'lis' | 'formulary' | 'mfa-sso' | 'knowledge-graph' | 'predictive-staffing' | 'infection' | 'hie' | 'pacs-advanced'
   // Pillar 6: Connected IoT
   | 'iot-devices'
   // Pillar 7: Security & Governance
@@ -194,6 +195,7 @@ const MASTER_PILLARS: NavSection[] = [
   {
     label: '5. Data & Interoperability',
     items: [
+      { key: 'aks-state', icon: Building2, label: 'Akwa Ibom State (AKSHIA · UPI · DHIS2)', badge: 'AKS' },
       { key: 'data-hub', icon: Database, label: 'Central Telemetry Data Hub' },
       { key: 'device-gateway', icon: Server, label: 'Device gateway', badge: 'Hub' },
             { key: 'fhir', icon: FileCode, label: 'FHIR R4 & HL7 Message Gateway', badge: 'R4' },
@@ -787,6 +789,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   billing: BillingInvoicingSuite,
   cashier: PosPaymentDesk as any,
   claims: InsuranceHmoClaimsSuite,
+  'aks-state': AkwaIbomStateSuite,
   'revenue-cycle': RevenueCycleAccountingSuite,
   procurement: ProcurementHrSuite,
   'ambient-soap': (props: any) => <AdvancedHospitalSuites {...props} mode="ambient-soap" />,
@@ -850,6 +853,7 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   billing: { level: 2, label: 'L2 Finance', roleDesc: 'Hospital Billing Accountants' },
   cashier: { level: 2, label: 'L2 Finance', roleDesc: 'Revenue Collectors & Cashiers' },
   claims: { level: 2, label: 'L2 Finance', roleDesc: 'AKSHIA & HMO Adjudicators' },
+  'aks-state': { level: 3, label: 'L3 Operations', roleDesc: 'State readiness · AKSHIA · UPI · DHIS2' },
   'revenue-cycle': { level: 2, label: 'L2 Finance', roleDesc: 'Finance Directors & Revenue Officers' },
   procurement: { level: 2, label: 'L2 Finance', roleDesc: 'Procurement & HR Officers' },
   'ambient-soap': { level: 3, label: 'L3 Advanced', roleDesc: 'Clinical & operations advanced module' },

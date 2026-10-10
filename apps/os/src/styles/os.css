@@ -7299,3 +7299,16 @@ img, .os-top-hud-avatar {
   box-shadow: 0 0 6px rgba(248, 113, 113, 0.5);
   animation: none !important;
 }
+
+/* Tablet / ward-friendly touch targets */
+@media (max-width: 900px) {
+  .os-sidebar { width: 64px !important; }
+  .m87-chip, .mc-btn-live, button.os-primary {
+    min-height: 44px;
+    padding: 10px 14px;
+  }
+  .aks-state-suite input, .aks-state-suite select, .aks-state-suite button {
+    min-height: 44px;
+    font-size: 16px !important; /* reduce iOS zoom */
+  }
+}

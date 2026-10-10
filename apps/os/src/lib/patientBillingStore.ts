@@ -3,6 +3,7 @@
  * Default: pay at main cashier; pharmacy can also take payment.
  */
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
+import { tryAutoDeduct } from './patientWalletStore';
 
 export type BillLineStatus = 'unpaid' | 'paid' | 'hmo' | 'waived' | 'partial';
 export type BillLineSource = 'pharmacy' | 'lab' | 'consult' | 'other' | 'opd' | 'billing' | 'imaging';
@@ -92,6 +93,32 @@ export function addBillLine(
     createdAt: now,
     updatedAt: now,
   };
+  // Auto-deduct from patient wallet when funded (removes multi-cashier trips)
+  try {
+    const ded = tryAutoDeduct({
+      facilityId: line.facilityId,
+      patientId: line.patientId,
+      hospitalNumber: line.hospitalNumber,
+      patientName: line.patientName,
+      amountNgn: line.amountNgn,
+      orderId: line.orderId,
+      billLineId: line.id,
+      note: line.description,
+    });
+    if (ded.deducted) {
+      line = {
+        ...line,
+        status: 'paid',
+        paidAt: new Date().toISOString(),
+        paidVia: 'cashier',
+        paymentRef: ded.txn?.id,
+        paidBy: 'wallet-auto',
+        updatedAt: new Date().toISOString(),
+      };
+    }
+  } catch {
+    /* wallet optional */
+  }
   write([line, ...read()]);
   return line;
 }
