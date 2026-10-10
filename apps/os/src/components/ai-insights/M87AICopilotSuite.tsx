@@ -4,6 +4,15 @@ import { geminiGenerate, hasGeminiKey } from '../../lib/geminiClient';
 import { runM87Training, buildM87RagContext, retrieveRelevantExamples } from '../../lib/m87Train';
 import { addFeedback, getModelState, subscribeM87Learn } from '../../lib/m87LearningStore';
 import { liveAlert } from '../../lib/manualActions';
+import {
+  normalizeRoleKey,
+  refuseIfOutOfRole,
+  canAutomateStaff,
+  canChangeRoleVisibility,
+  staffAutomationRefusal,
+  roleVisibilityRefusal,
+  buildCelestiaSystemPrompt,
+} from '../../lib/celestiaRoleGuard';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { pauseAnimationsWhenHidden } from '../../lib/motion';
@@ -205,6 +214,24 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
 
     const facilityId = session?.hospitalId || 'IGH-EKT';
     const facilityName = session?.facility || 'Hospital';
+    const actorRole = normalizeRoleKey(session);
+
+    // Hard stop: out-of-role requests
+    const refusal = refuseIfOutOfRole(query, actorRole);
+    if (refusal) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-${Date.now()}-ai`,
+          sender: 'm87',
+          text: refusal,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          category: 'operational',
+        },
+      ]);
+      setIsThinking(false);
+      return;
+    }
 
     // Role visibility automation
     const lowerQ = query.toLowerCase();
@@ -215,6 +242,20 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
       lowerQ.includes('enable module') ||
       lowerQ.includes('set role')
     ) {
+      if (!canChangeRoleVisibility(actorRole)) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: roleVisibilityRefusal(actorRole),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+        setIsThinking(false);
+        return;
+      }
       try {
         const { applyRoleModules, setRoleModule, getModulesForRole, CONFIGURABLE_ROLES, MODULE_CATALOG } = await import('../../lib/rolePermissionsStore');
         let reply = '';
@@ -283,6 +324,21 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
     if (staffIntent.handled) {
       let reply = staffIntent.replyIfEmpty || '';
       let cat: ChatMessage['category'] = 'operational';
+      if (!canAutomateStaff(actorRole)) {
+        reply = staffAutomationRefusal(actorRole);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: reply,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+        setIsThinking(false);
+        return;
+      }
       try {
         if (staffIntent.jobs.length === 1) {
           const r = await createStaffAccountWithCard(staffIntent.jobs[0]);
@@ -320,7 +376,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
     const localHits = retrieveRelevantExamples(query, fid, 1);
     const gemini = await geminiGenerate(
       query,
-      `You are Celestia, MedCore hospital OS copilot. Facility context: staff assistant. Keep answers short. Never invent patient identifiers. Prefer learned hospital knowledge when provided.`,
+      buildCelestiaSystemPrompt(session),
       rag
     );
     if (gemini.ok && gemini.text) {
@@ -339,8 +395,9 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
         reply = 'Financial Intelligence: Open Revenue & Cashier for live tills. I automate staff access accounts, not payment posting.';
         cat = 'financial';
       } else if (lower.includes('access') || lower.includes('id card') || lower.includes('badge')) {
-        reply =
-          'Access Control: Say “enrol doctor Full Name pin 123456” or “bulk enrol: Name role; Name role” and I will create accounts + ID cards automatically.';
+        reply = canAutomateStaff(actorRole)
+          ? 'Access Control: Say “enrol doctor Full Name pin 123456” or “bulk enrol: Name role; Name role” and I will create accounts + ID cards automatically.'
+          : staffAutomationRefusal(actorRole);
         cat = 'operational';
       } else if (gemini.usedGemini && gemini.text) {
         reply = gemini.text + '\n\n(Falling back — check Gemini API key if this persists.)';
