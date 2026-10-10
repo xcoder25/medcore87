@@ -83,6 +83,7 @@ export type FrontDeskAction =
   | { type: 'registry_list' }
   | { type: 'registry_count' }
   | { type: 'open_card'; patientRef: string }
+  | { type: 'payment_status'; patientRef: string }
   | { type: 'confirm_pending' }
   | { type: 'none' };
 
@@ -114,6 +115,33 @@ export function resolveFrontDeskAction(
       return { type: 'send_accounts', patientRef: lastPt };
     }
     return { type: 'confirm_pending' };
+  }
+
+  // Payment status — "has he paid", "has michael james paid"
+  if (
+    /\b(has\s+(he|she|they|patient)\s+paid|did\s+(he|she|they)\s+pay|payment\s+status|has\s+.+\s+paid|paid\s+yet|is\s+(it|he|she)\s+paid)\b/i.test(
+      lower
+    ) ||
+    (/\bpaid\b/i.test(lower) && /\b(has|did|yet|status|check)\b/i.test(lower))
+  ) {
+    let ref =
+      extractHospitalNo(q) ||
+      extractHospitalNo(combined) ||
+      lastPt ||
+      undefined;
+    // "has michael james paid"
+    const namePaid = q.match(
+      /\b(?:has|did)\s+([A-Za-z][A-Za-z\s'.-]{1,40}?)\s+paid\b/i
+    );
+    if (namePaid?.[1]) {
+      const n = namePaid[1]
+        .replace(/\b(he|she|they|the|patient|already)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (n.length > 1) ref = n;
+    }
+    if (ref) return { type: 'payment_status', patientRef: ref };
+    if (lastPt) return { type: 'payment_status', patientRef: lastPt };
   }
 
   // Bare hospital number
@@ -489,4 +517,53 @@ export function openPatientCardRequest(facilityId: string, patientRef: string): 
     `Opening **${name}** · ${p.hospitalNumber} on **Patient Card**.\n` +
     `Demographics, visits, and billing are available there.`
   );
+}
+
+
+export function paymentStatusSummary(facilityId: string, patientRef: string): string {
+  const p = resolvePatientRef(facilityId, patientRef);
+  if (!p) {
+    return `I couldn't find **${patientRef}** on this facility registry.`;
+  }
+  const name = [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ');
+  const reqs = listAccountsRequests(facilityId, { patientId: p.id });
+  const unpaidLines = listBillLines(facilityId, { patientId: p.id }).filter(
+    (l) => l.status === 'unpaid' || l.status === 'partial'
+  );
+  const bal = unpaidLines.reduce((s, l) => s + (Number(l.amountNgn) || 0), 0);
+  const latest = reqs[0];
+  const paidReqs = reqs.filter((r) => r.status === 'paid');
+  const awaiting = reqs.filter((r) => r.status === 'awaiting_payment');
+
+  if (awaiting.length === 0 && bal <= 0 && (paidReqs.length > 0 || !latest)) {
+    const top = paidReqs[0];
+    if (top) {
+      return (
+        `**Yes — ${name}** (${p.hospitalNumber}) is **PAID**.\n\n` +
+        `• Invoice **${top.invoiceNumber}** · ₦${top.amountNgn.toLocaleString()}\n` +
+        (top.paidAt ? `• Paid at ${new Date(top.paidAt).toLocaleString()}\n` : '') +
+        (top.paidReference ? `• Ref: ${top.paidReference}\n` : '') +
+        `\nYou can **check in** and put them on the OPD queue.`
+      );
+    }
+    return `**${name}** (${p.hospitalNumber}) has **no open balance** on the desk ledger. Safe to check in.`;
+  }
+
+  if (awaiting.length > 0) {
+    const top = awaiting[0];
+    return (
+      `**Not yet.** **${name}** (${p.hospitalNumber}) is still **awaiting payment** at Accounts.\n\n` +
+      `• Invoice **${top.invoiceNumber}** · ₦${top.amountNgn.toLocaleString()} · ${top.purpose}\n` +
+      `Cashier must collect before check-in continues.`
+    );
+  }
+
+  if (bal > 0) {
+    return (
+      `**${name}** (${p.hospitalNumber}) still has **₦${bal.toLocaleString()}** open on the bill ledger ` +
+      `(${unpaidLines.length} line(s)). Not fully paid.`
+    );
+  }
+
+  return `**${name}** (${p.hospitalNumber}) — no awaiting Accounts request; ledger looks clear.`;
 }

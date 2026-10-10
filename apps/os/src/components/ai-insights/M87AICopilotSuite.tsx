@@ -16,6 +16,7 @@ import {
   assignDoctorByRef,
   bookAppointmentByRef,
   openPatientCardRequest,
+  paymentStatusSummary,
   type ReceptionRegJob,
   type ChatTurn,
 } from '../../lib/frontDeskAutomation';
@@ -283,6 +284,60 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
 
 
 
+
+  // When Accounts marks PAID for the patient Celestia was discussing — announce live
+  useEffect(() => {
+    const onPaid = (ev: Event) => {
+      const d = (ev as CustomEvent).detail as {
+        hospitalNumber?: string;
+        patientId?: string;
+        patientName?: string;
+        invoiceNumber?: string;
+        amountNgn?: number;
+        reference?: string;
+        facilityId?: string;
+      } | null;
+      if (!d) return;
+      const fid = session?.hospitalId || 'IGH-EKT';
+      if (d.facilityId && d.facilityId !== fid) return;
+      const hn = (d.hospitalNumber || '').toUpperCase();
+      const last = (lastPatientRef || '').toUpperCase();
+      const matches =
+        (hn && last && hn === last) ||
+        (d.patientId && last && last === d.patientId) ||
+        (hn && lastPatientRef) ||
+        Boolean(d.hospitalNumber);
+      // Always notify if we have lastPatientRef match; also if name matches recent context
+      if (last && hn && hn !== last && d.patientId !== lastPatientRef) {
+        // still allow if no last ref specificity — only announce for matching patient
+        if (hn !== last) return;
+      }
+      if (last && hn && hn !== last) return;
+
+      const name = d.patientName || hn || 'Patient';
+      const text =
+        `**Payment received** — **${name}** (${d.hospitalNumber || '—'}).\n\n` +
+        (d.invoiceNumber ? `• Invoice **${d.invoiceNumber}**` : '') +
+        (d.amountNgn != null ? ` · ₦${Number(d.amountNgn).toLocaleString()}` : '') +
+        ` · **PAID**\n` +
+        (d.reference ? `• Ref: ${d.reference}\n` : '') +
+        `\nYou can **check in** ${name.split(' ')[0] || 'them'} to the OPD queue now.`;
+      if (d.hospitalNumber) setLastPatientRef(d.hospitalNumber);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-paid-${Date.now()}`,
+          sender: 'm87',
+          text,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          category: 'operational',
+        },
+      ]);
+    };
+    window.addEventListener('medcore-accounts-paid', onPaid as EventListener);
+    return () => window.removeEventListener('medcore-accounts-paid', onPaid as EventListener);
+  }, [session?.hospitalId, lastPatientRef]);
+
   const naturalDeskReply = (query: string): string | null => {
     const q = query.trim().toLowerCase();
     const first = (session?.name || 'there').split(/\s+/)[0] || 'there';
@@ -503,6 +558,16 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
               async () => {
                 setLastPatientRef(ref);
                 return openPatientCardRequest(facilityId, ref);
+              }
+            );
+          } else if (action.type === 'payment_status') {
+            const ref = action.patientRef;
+            reply = await runSteps(
+              'Celestia Payment Status',
+              ['Initiating MedCore Celestial Power…', `Checking payment for ${ref}…`, 'Done'],
+              async () => {
+                setLastPatientRef(ref);
+                return paymentStatusSummary(facilityId, ref);
               }
             );
           } else if (action.type === 'send_accounts_need_patient') {

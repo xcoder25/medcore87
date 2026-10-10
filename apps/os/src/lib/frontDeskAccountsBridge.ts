@@ -200,6 +200,26 @@ export function markAccountsRequestPaid(
   } catch {
     /* ignore */
   }
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('medcore-accounts-paid', {
+          detail: {
+            facilityId: list[i].facilityId,
+            patientId: list[i].patientId,
+            hospitalNumber: list[i].hospitalNumber,
+            patientName: list[i].patientName,
+            invoiceNumber: list[i].invoiceNumber,
+            amountNgn: list[i].amountNgn,
+            reference: opts.reference,
+            paidAt: list[i].paidAt,
+          },
+        })
+      );
+    }
+  } catch {
+    /* ignore */
+  }
   return list[i];
 }
 
@@ -227,6 +247,34 @@ export function syncAccountsRequestsForPatientPayment(
   });
   if (changed) {
     write(next);
+    try {
+      if (typeof window !== 'undefined') {
+        const row = next.find(
+          (r) =>
+            r.facilityId === facilityId &&
+            (r.patientId === patientId || r.hospitalNumber === patientId) &&
+            r.status === 'paid'
+        );
+        if (row) {
+          window.dispatchEvent(
+            new CustomEvent('medcore-accounts-paid', {
+              detail: {
+                facilityId: row.facilityId,
+                patientId: row.patientId,
+                hospitalNumber: row.hospitalNumber,
+                patientName: row.patientName,
+                invoiceNumber: row.invoiceNumber,
+                amountNgn: row.amountNgn,
+                reference: opts.reference,
+                paidAt: row.paidAt,
+              },
+            })
+          );
+        }
+      }
+    } catch {
+      /* ignore */
+    }
     try {
       markVisitsPaidForPatient(facilityId, patientId, {
         method: opts.via === 'hmo' ? 'hmo' : opts.via === 'waiver' ? 'waived' : 'paid',
