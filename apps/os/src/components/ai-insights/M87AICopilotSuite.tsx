@@ -192,17 +192,11 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
     let cancelled = false;
     const run = () => {
       try {
-        const { summary, model } = runM87Training(fid);
+        const { model } = runM87Training(fid);
         if (cancelled) return;
         setModelVer(model?.version || getModelState()?.version || null);
         setEngineReady(true);
-        if (summary) {
-          try {
-            liveAlert(summary, 'm87-ai', fid);
-          } catch {
-            /* quiet */
-          }
-        }
+        // Training stays silent — no toast noise on open
       } catch {
         if (!cancelled) setEngineReady(true);
       }
