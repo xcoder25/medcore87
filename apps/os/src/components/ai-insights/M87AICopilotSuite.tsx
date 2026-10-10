@@ -505,7 +505,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
         cat = 'operational';
       } else {
         reply =
-          '**Celestia offline**\n\nThe cloud model is unreachable right now. I can still:\n• Automate staff enrolment (admin)\n• Point you to beds, revenue, and queue modules\n• Use this facility's learned knowledge when available\n\nTry again later, or ask me to **enrol** staff / check **beds** / **revenue**.';
+          "**Celestia offline**\n\nThe cloud model is unreachable right now. I can still:\n• Automate staff enrolment (admin)\n• Point you to beds, revenue, and queue modules\n• Use this facility's learned knowledge when available\n\nTry again later, or ask me to **enrol** staff / check **beds** / **revenue**.";
         cat = 'operational';
       }
     }
