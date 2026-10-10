@@ -6,9 +6,8 @@
 import { InBasketPanel } from '../clinical-core/InBasketPanel';
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
-import { isReceptionRole } from '../../lib/staffCardStore';
 import {
-  countActiveStaff,
+  listActiveStaff,
   subscribeStaffPresence,
   startFacilityPresenceListener,
   STAFF_PRESENCE_EVENT,
@@ -97,23 +96,24 @@ export const ReceptionDeskHome: React.FC<Props> = ({
 
   const recountFrontDeskStaff = useCallback(() => {
     try {
-      // Active = currently logged in (heartbeat fresh), front-desk roles only
-      const n = countActiveStaff(facilityId, ['reception', 'records']);
-      // Include self if this session is reception and somehow not in map yet
+      // Live presence for this hospital — all roles currently logged in (fresh heartbeat)
+      const live = listActiveStaff(facilityId);
+      let n = live.length;
+      const selfBadge = String(session.badgeId || '')
+        .toUpperCase()
+        .replace(/\s+/g, '');
       if (
-        n === 0 &&
-        isReceptionRole(session.roleKey, session.role, session.title, session.badgeId)
+        selfBadge &&
+        !live.some((p) => String(p.badgeId).toUpperCase().replace(/\s+/g, '') === selfBadge)
       ) {
-        setActiveFrontDesk(1);
-        return;
+        // Self session is online even if presence map not yet written
+        n += 1;
       }
       setActiveFrontDesk(n);
     } catch {
-      setActiveFrontDesk(
-        isReceptionRole(session.roleKey, session.role, session.title, session.badgeId) ? 1 : 0
-      );
+      setActiveFrontDesk(session.badgeId ? 1 : 0);
     }
-  }, [facilityId, session.roleKey, session.role, session.title, session.badgeId]);
+  }, [facilityId, session.badgeId]);
 
   useEffect(() => {
     recountFrontDeskStaff();
@@ -124,7 +124,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     window.addEventListener('medcore-admin-sync', bump);
     window.addEventListener('storage', bump);
     window.addEventListener('medcore-facility-cloud', bump);
-    const tick = window.setInterval(bump, 8000);
+    const tick = window.setInterval(bump, 4000);
     return () => {
       unsub();
       stopCloud();
@@ -197,16 +197,6 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     return items.slice(0, 6);
   }, [visits, appts]);
 
-  const collectedToday = useMemo(() => {
-    try {
-      return visits
-        .filter((v) => v.paymentStatus === 'paid' || v.paymentStatus === 'hmo' || v.paymentStatus === 'waived')
-        .reduce((s, v) => s + (Number(v.amount) || 0), 0);
-    } catch {
-      return 0;
-    }
-  }, [visits]);
-
   const kpi = [
     {
       label: "Today's Check-ins",
@@ -249,23 +239,9 @@ export const ReceptionDeskHome: React.FC<Props> = ({
       iconColor: '#DC2626',
     },
     {
-      label: 'Collected today',
-      value: stats.collected > 0
-        ? `₦${Math.round(stats.collected).toLocaleString()}`
-        : collectedToday > 0
-          ? `₦${Math.round(collectedToday).toLocaleString()}`
-          : '₦0',
-      sub: 'POS · cash · transfer',
-      trend: 'Live',
-      up: true,
-      icon: CreditCard,
-      tint: '#ECFDF5',
-      iconColor: '#059669',
-    },
-    {
       label: 'Active Staff',
       value: activeFrontDesk,
-      sub: 'logged in now',
+      sub: 'Logged in now · live',
       trend: 'Live',
       up: true,
       icon: Users,
