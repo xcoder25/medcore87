@@ -892,6 +892,26 @@ export default function OSPage() {
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const { criticalAlert, dismissCriticalAlert } = useRealtimeEvents({ app: 'MEDCORE_OS', facilityId: userSession?.facility });
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard');
+
+  // Celestia: open patient card module for a given patient
+  useEffect(() => {
+    const onOpen = (ev: Event) => {
+      const d = (ev as CustomEvent).detail as {
+        patientId?: string;
+        hospitalNumber?: string;
+      } | null;
+      if (!d) return;
+      try {
+        if (d.patientId) sessionStorage.setItem('medcore_open_patient_id', d.patientId);
+        if (d.hospitalNumber) sessionStorage.setItem('medcore_open_patient_hn', d.hospitalNumber);
+      } catch {
+        /* ignore */
+      }
+      setActiveModule('patient-card');
+    };
+    window.addEventListener('medcore-celestia-open-patient', onOpen as EventListener);
+    return () => window.removeEventListener('medcore-celestia-open-patient', onOpen as EventListener);
+  }, []);
   const [moduleLoading, setModuleLoading] = useState(false);
   const [globalToast, setGlobalToast] = useState<string | null>(null);
   const [moduleKey, setModuleKey] = useState(0);

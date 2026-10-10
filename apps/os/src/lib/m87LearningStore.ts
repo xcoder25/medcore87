@@ -145,6 +145,18 @@ export function subscribeM87Learn(cb: () => void): () => void {
 /** Seed Nigerian / Akwa Ibom hospital domain cards (always available). */
 export const M87_SEED_CARDS: M87DomainCard[] = [
   {
+    id: 'seed-send-accounts-name',
+    title: 'Send patient to Accounts by name',
+    body: 'If staff say "send Michael James to account", resolve the patient by name on the facility registry and hand off the folder/registration fee to Accounts. Do not ask for hospital number when the name uniquely matches. Follow-ups like just "Michael James" after "send to account" complete the same action.',
+    tags: ['accounts', 'send', 'reception', 'billing', 'name'],
+  },
+  {
+    id: 'seed-open-card',
+    title: 'Open patient card',
+    body: 'When staff say open his/her card after discussing a patient, open the Digital Patient Card for that last patient. Use hospital number or name from context.',
+    tags: ['patient-card', 'reception', 'open'],
+  },
+  {
     id: 'seed-registry-count',
     title: 'Facility patient registry',
     body: 'When staff ask how many patients or who is on the registry, use live facility data (count + names + hospital numbers). Never invent patients. After a count, if they ask who/names, list the actual registry entries.',

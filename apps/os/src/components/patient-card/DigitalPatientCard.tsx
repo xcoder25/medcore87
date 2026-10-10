@@ -58,6 +58,22 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
   const [patients, setPatients] = useState<FacilityPatient[]>([]);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const id = sessionStorage.getItem('medcore_open_patient_id');
+      const hn = sessionStorage.getItem('medcore_open_patient_hn');
+      sessionStorage.removeItem('medcore_open_patient_id');
+      sessionStorage.removeItem('medcore_open_patient_hn');
+      if (id) setSelectedId(id);
+      else if (hn) {
+        // resolve on next tick when patients loaded — store hn for search
+        sessionStorage.setItem('medcore_patient_card_search', hn);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
   const [showRegister, setShowRegister] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [busy, setBusy] = useState(false);

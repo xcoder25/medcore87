@@ -7,6 +7,7 @@ import {
   getPatientByHospitalNumber,
   searchPatients,
   getPatient,
+  listPatients,
   type FacilityPatient,
   type PatientSex,
 } from './patientRegistryStore';
@@ -374,18 +375,44 @@ export function resolvePatientRef(
   const byHn = getPatientByHospitalNumber(facilityId, r);
   if (byHn) return byHn;
   const byId = getPatient(r);
-  if (byId && byId.facilityId === facilityId) return byId;
-  const hits = searchPatients(facilityId, r, 5);
+  if (byId && (!byId.facilityId || byId.facilityId === facilityId)) return byId;
+
+  const lower = r.toLowerCase().replace(/\s+/g, ' ').trim();
+  const all = listPatients(facilityId);
+
+  const exact = all.find((p) => {
+    const a = `${p.firstName} ${p.lastName}`.toLowerCase();
+    const b = `${p.firstName} ${p.middleName || ''} ${p.lastName}`.replace(/\s+/g, ' ').trim().toLowerCase();
+    return a === lower || b === lower;
+  });
+  if (exact) return exact;
+
+  const parts = lower.split(' ').filter(Boolean);
+  if (parts.length >= 2) {
+    const hit = all.find((p) => {
+      const fn = (p.firstName || '').toLowerCase();
+      const ln = (p.lastName || '').toLowerCase();
+      return fn === parts[0] && ln === parts[parts.length - 1];
+    });
+    if (hit) return hit;
+  }
+
+  if (parts.length === 1) {
+    const matches = all.filter(
+      (p) =>
+        (p.firstName || '').toLowerCase() === parts[0] ||
+        (p.lastName || '').toLowerCase() === parts[0]
+    );
+    if (matches.length === 1) return matches[0];
+  }
+
+  const hits = searchPatients(facilityId, r, 8);
   if (hits.length === 1) return hits[0];
-  // Exact full name match preferred
-  const lower = r.toLowerCase();
-  const exact = hits.find(
-    (p) =>
-      `${p.firstName} ${p.lastName}`.toLowerCase() === lower ||
-      `${p.firstName} ${p.middleName || ''} ${p.lastName}`.replace(/\s+/g, ' ').trim().toLowerCase() ===
-        lower
-  );
-  return exact || hits[0];
+  const soft = hits.find((p) => {
+    const a = `${p.firstName} ${p.lastName}`.toLowerCase();
+    return a.includes(lower) || lower.includes(a);
+  });
+  return soft || hits[0];
 }
 
 export type SendAccountsResult = {
@@ -519,7 +546,6 @@ export function parseSendAccountsIntent(query: string): ParseSendAccountsResult 
   const q = query.trim();
   const lower = q.toLowerCase();
 
-  // Bare hospital number / patient id as follow-up
   if (/^[A-Z0-9][A-Z0-9-]{4,24}$/i.test(q) && /PT|IGH|HSP|FD|INV/i.test(q)) {
     return { handled: true, patientRef: q.toUpperCase() };
   }
@@ -528,12 +554,11 @@ export function parseSendAccountsIntent(query: string): ParseSendAccountsResult 
     /\b(send|route|forward|push|hand\s*off|handoff)\b/i.test(lower) &&
     /\b(account|accounts|cashier|billing|invoice|payment|pos)\b/i.test(lower);
   const toAccounts =
-    /\b(to\s+accounts?|to\s+cashier|to\s+billing|send\s+invoice|bill\s+to\s+accounts?)\b/i.test(
+    /\b(to\s+accounts?|to\s+account|to\s+cashier|to\s+billing|send\s+invoice|bill\s+to\s+accounts?)\b/i.test(
       lower
     );
 
   if (!sendLike && !toAccounts) {
-    // "accounts for IGH-PT-xxx" / "invoice IGH-PT-xxx"
     if (/\b(accounts?|cashier|invoice)\b/i.test(lower) && /\b[A-Z0-9-]{6,}\b/i.test(q)) {
       const ref = q.match(/\b([A-Z]{2,5}-PT-[A-Z0-9]+|[A-Z]{2,5}-[A-Z0-9-]{4,})\b/i);
       if (ref) return { handled: true, patientRef: ref[1].toUpperCase() };
@@ -541,13 +566,25 @@ export function parseSendAccountsIntent(query: string): ParseSendAccountsResult 
     return { handled: false };
   }
 
-  const refMatch =
-    q.match(/\b([A-Z]{2,5}-PT-[A-Z0-9]+)\b/i) ||
-    q.match(/\b(?:patient|folder|id|no|number)\s*[:#]?\s*([A-Z0-9-]{5,})\b/i) ||
-    q.match(/\bfor\s+([A-Za-z][A-Za-z\s'.-]{1,40}?)(?:\s*$|,)/i);
+  const hn = q.match(/\b([A-Z]{2,5}-PT-[A-Z0-9]+)\b/i);
+  if (hn) return { handled: true, patientRef: hn[1].toUpperCase() };
 
-  if (refMatch?.[1]) {
-    return { handled: true, patientRef: refMatch[1].trim() };
+  // "send michael james to account" / "send patient Ada to accounts"
+  const namePatterns = [
+    /\bsend\s+(?:patient\s+)?([A-Za-z][A-Za-z\s'.-]{1,40}?)\s+to\s+(?:the\s+)?(?:accounts?|account|cashier|billing)\b/i,
+    /\b(?:route|forward|push)\s+([A-Za-z][A-Za-z\s'.-]{1,40}?)\s+to\s+(?:the\s+)?(?:accounts?|account|cashier)\b/i,
+    /\b(?:accounts?|cashier)\s+for\s+([A-Za-z][A-Za-z\s'.-]{1,40})$/i,
+    /\b(?:to\s+accounts?|to\s+account|to\s+cashier)\s+([A-Za-z][A-Za-z\s'.-]{1,40})$/i,
+  ];
+  for (const re of namePatterns) {
+    const m = q.match(re);
+    if (m?.[1]) {
+      const name = m[1]
+        .replace(/\b(patient|the|a|an|please)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (name.length >= 2) return { handled: true, patientRef: name };
+    }
   }
 
   return { handled: true, needsPatient: true };

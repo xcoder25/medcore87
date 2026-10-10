@@ -82,6 +82,7 @@ export type FrontDeskAction =
   | { type: 'queue_list' }
   | { type: 'registry_list' }
   | { type: 'registry_count' }
+  | { type: 'open_card'; patientRef: string }
   | { type: 'confirm_pending' }
   | { type: 'none' };
 
@@ -125,6 +126,37 @@ export function resolveFrontDeskAction(
       return { type: 'check_in', patientRef: ref };
     }
     return { type: 'lookup', patientRef: ref };
+  }
+
+  // Bare person name (follow-up after send to accounts / open card)
+  if (/^[A-Za-z][A-Za-z'.-]+(?:\s+[A-Za-z][A-Za-z'.-]+){0,3}$/.test(q) && !/^(yes|no|ok|okay|hi|hello|thanks|thank you)$/i.test(q)) {
+    if (opts.pendingSendAccounts || /\b(send|account|cashier|invoice)/i.test(ctx)) {
+      return { type: 'send_accounts', patientRef: q };
+    }
+    if (/\b(open|card|file|profile)/i.test(ctx)) {
+      return { type: 'open_card', patientRef: q };
+    }
+    if (/\b(check\s*-?in|queue)/i.test(ctx)) {
+      return { type: 'check_in', patientRef: q };
+    }
+    // Name alone after registry talk → lookup
+    if (/\b(patient|registry|who|names?|michael|registered)\b/i.test(ctx) || opts.lastPatientRef) {
+      return { type: 'lookup', patientRef: q };
+    }
+  }
+
+  // Open patient card
+  if (/\b(open\s+(his|her|their|the)?\s*card|open\s+patient\s+card|show\s+(his|her|the)\s+card|patient\s+card|open\s+file)\b/i.test(lower)) {
+    const ref =
+      extractHospitalNo(q) ||
+      extractHospitalNo(combined) ||
+      lastPt ||
+      q
+        .replace(/\b(open|his|her|their|the|patient|card|file|show|please)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (ref && ref.length > 1) return { type: 'open_card', patientRef: ref };
+    if (lastPt) return { type: 'open_card', patientRef: lastPt };
   }
 
   // Facility registry — count / names / who is registered
@@ -429,4 +461,32 @@ export function registryListSummary(facilityId: string, limit = 25): string {
   });
   const more = n > limit ? `\n…and **${n - limit}** more (search by name or hospital no.).` : '';
   return `**${n} patient${n === 1 ? '' : 's'}** on the registry:\n${lines.join('\n')}${more}`;
+}
+
+
+/** Ask the shell to open Digital Patient Card for a patient */
+export function openPatientCardRequest(facilityId: string, patientRef: string): string {
+  const p = resolvePatientRef(facilityId, patientRef);
+  if (!p) return `No patient matched **${patientRef}** on this facility.`;
+  const name = [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ');
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('medcore-celestia-open-patient', {
+          detail: {
+            patientId: p.id,
+            hospitalNumber: p.hospitalNumber,
+            facilityId,
+            name,
+          },
+        })
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+  return (
+    `Opening **${name}** · ${p.hospitalNumber} on **Patient Card**.\n` +
+    `Demographics, visits, and billing are available there.`
+  );
 }

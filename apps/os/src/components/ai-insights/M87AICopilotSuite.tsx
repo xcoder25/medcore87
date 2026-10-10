@@ -15,6 +15,7 @@ import {
   checkInPatientByRef,
   assignDoctorByRef,
   bookAppointmentByRef,
+  openPatientCardRequest,
   type ReceptionRegJob,
   type ChatTurn,
 } from '../../lib/frontDeskAutomation';
@@ -492,6 +493,16 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
               async () => {
                 setLastPatientRef(ref);
                 return lookupPatientSummary(facilityId, ref);
+              }
+            );
+          } else if (action.type === 'open_card') {
+            const ref = action.patientRef;
+            reply = await runSteps(
+              'Celestia Patient Card',
+              ['Initiating MedCore Celestial Power…', `Opening card for ${ref}…`, 'Done'],
+              async () => {
+                setLastPatientRef(ref);
+                return openPatientCardRequest(facilityId, ref);
               }
             );
           } else if (action.type === 'send_accounts_need_patient') {
