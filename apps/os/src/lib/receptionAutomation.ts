@@ -4,11 +4,16 @@
 import {
   upsertPatient,
   generateHospitalNumber,
+  getPatientByHospitalNumber,
+  searchPatients,
+  getPatient,
   type FacilityPatient,
   type PatientSex,
 } from './patientRegistryStore';
+import { listBillLines } from './patientBillingStore';
 import {
   sendPaymentRequestToAccounts,
+  listAccountsRequests,
   DEFAULT_REGISTRATION_FEE_NGN,
 } from './frontDeskAccountsBridge';
 import { pushNotification } from './notificationEngine';
@@ -357,4 +362,193 @@ export function registerNewPatientWithFolderFee(input: {
   } catch (e) {
     return { ok: false, error: (e as Error)?.message || 'Registration failed' };
   }
+}
+
+/** Resolve patient by hospital number, id, or name */
+export function resolvePatientRef(
+  facilityId: string,
+  ref: string
+): FacilityPatient | undefined {
+  const r = (ref || '').trim();
+  if (!r) return undefined;
+  const byHn = getPatientByHospitalNumber(facilityId, r);
+  if (byHn) return byHn;
+  const byId = getPatient(r);
+  if (byId && byId.facilityId === facilityId) return byId;
+  const hits = searchPatients(facilityId, r, 5);
+  if (hits.length === 1) return hits[0];
+  // Exact full name match preferred
+  const lower = r.toLowerCase();
+  const exact = hits.find(
+    (p) =>
+      `${p.firstName} ${p.lastName}`.toLowerCase() === lower ||
+      `${p.firstName} ${p.middleName || ''} ${p.lastName}`.replace(/\s+/g, ' ').trim().toLowerCase() ===
+        lower
+  );
+  return exact || hits[0];
+}
+
+export type SendAccountsResult = {
+  ok: boolean;
+  alreadySent?: boolean;
+  invoiceNumber?: string;
+  amountNgn?: number;
+  patientName?: string;
+  hospitalNumber?: string;
+  message: string;
+  error?: string;
+};
+
+/** Send or re-confirm folder/registration fee to Accounts for a known patient */
+export function sendPatientToAccounts(input: {
+  facilityId: string;
+  facilityName: string;
+  patientRef: string;
+  actorName?: string;
+  actorBadge?: string;
+  amountNgn?: number;
+  purpose?: string;
+}): SendAccountsResult {
+  const patient = resolvePatientRef(input.facilityId, input.patientRef);
+  if (!patient) {
+    return {
+      ok: false,
+      error: 'not_found',
+      message: `I couldn't find patient **${input.patientRef}** on this facility registry.`,
+    };
+  }
+  const fullName = [patient.firstName, patient.middleName, patient.lastName]
+    .filter(Boolean)
+    .join(' ');
+
+  // Already awaiting payment at Accounts?
+  const awaiting = listAccountsRequests(input.facilityId, { patientId: patient.id }).filter(
+    (r) => r.status === 'awaiting_payment'
+  );
+  if (awaiting.length > 0) {
+    const top = awaiting[0];
+    return {
+      ok: true,
+      alreadySent: true,
+      invoiceNumber: top.invoiceNumber,
+      amountNgn: top.amountNgn,
+      patientName: fullName,
+      hospitalNumber: patient.hospitalNumber,
+      message:
+        `**${fullName}** (${patient.hospitalNumber}) is already at Accounts.\n\n` +
+        `• Invoice **${top.invoiceNumber}** · ₦${top.amountNgn.toLocaleString()} · ${top.status.replace(/_/g, ' ')}\n` +
+        `• Purpose: ${top.purpose}\n\n` +
+        `Cashier can collect; after PAID, continue check-in here.`,
+    };
+  }
+
+  const unpaid = listBillLines(input.facilityId, { patientId: patient.id }).filter(
+    (l) => l.status === 'unpaid' || l.status === 'partial'
+  );
+  const balance = unpaid.reduce((s, l) => s + (Number(l.amountNgn) || 0), 0);
+  const settings = (() => {
+    try {
+      return getAdminSettings(input.facilityId);
+    } catch {
+      return null;
+    }
+  })();
+  const fee =
+    input.amountNgn && input.amountNgn > 0
+      ? input.amountNgn
+      : balance > 0
+        ? balance
+        : settings?.defaultOpdFeeNgn && settings.defaultOpdFeeNgn > 0
+          ? settings.defaultOpdFeeNgn
+          : DEFAULT_REGISTRATION_FEE_NGN;
+
+  const purpose =
+    input.purpose ||
+    (balance > 0 ? unpaid[0]?.description || 'Hospital charges' : 'New folder · Registration fee');
+
+  const req = sendPaymentRequestToAccounts({
+    facilityId: input.facilityId,
+    facilityName: input.facilityName,
+    patientId: patient.id,
+    hospitalNumber: patient.hospitalNumber,
+    patientName: fullName,
+    amountNgn: fee,
+    purpose,
+    source: 'registration',
+    sentBy: input.actorName || 'Celestia / Front Desk',
+    sentByBadge: input.actorBadge,
+    note: 'Sent from Celestia front-desk chat',
+  });
+  try {
+    pushNotification({
+      facilityId: input.facilityId,
+      level: 'important',
+      title: 'Payment request — Accounts',
+      body: `${fullName} · ₦${fee.toLocaleString()} · ${req.invoiceNumber}`,
+      module: 'cashier',
+      roleHint: 'accountant',
+    });
+  } catch {
+    /* ignore */
+  }
+
+  return {
+    ok: true,
+    alreadySent: false,
+    invoiceNumber: req.invoiceNumber,
+    amountNgn: fee,
+    patientName: fullName,
+    hospitalNumber: patient.hospitalNumber,
+    message:
+      `Sent **${fullName}** (${patient.hospitalNumber}) to Accounts.\n\n` +
+      `• Invoice **${req.invoiceNumber}** · ₦${fee.toLocaleString()} · PENDING\n` +
+      `• ${purpose}\n\n` +
+      `Patient pays at Cashier, then returns for check-in.`,
+  };
+}
+
+export type ParseSendAccountsResult = {
+  handled: boolean;
+  patientRef?: string;
+  /** User asked to send but didn't name who — use last patient */
+  needsPatient?: boolean;
+  confirmOnly?: boolean;
+};
+
+export function parseSendAccountsIntent(query: string): ParseSendAccountsResult {
+  const q = query.trim();
+  const lower = q.toLowerCase();
+
+  // Bare hospital number / patient id as follow-up
+  if (/^[A-Z0-9][A-Z0-9-]{4,24}$/i.test(q) && /PT|IGH|HSP|FD|INV/i.test(q)) {
+    return { handled: true, patientRef: q.toUpperCase() };
+  }
+
+  const sendLike =
+    /\b(send|route|forward|push|hand\s*off|handoff)\b/i.test(lower) &&
+    /\b(account|accounts|cashier|billing|invoice|payment|pos)\b/i.test(lower);
+  const toAccounts =
+    /\b(to\s+accounts?|to\s+cashier|to\s+billing|send\s+invoice|bill\s+to\s+accounts?)\b/i.test(
+      lower
+    );
+
+  if (!sendLike && !toAccounts) {
+    // "accounts for IGH-PT-xxx" / "invoice IGH-PT-xxx"
+    if (/\b(accounts?|cashier|invoice)\b/i.test(lower) && /\b[A-Z0-9-]{6,}\b/i.test(q)) {
+      const ref = q.match(/\b([A-Z]{2,5}-PT-[A-Z0-9]+|[A-Z]{2,5}-[A-Z0-9-]{4,})\b/i);
+      if (ref) return { handled: true, patientRef: ref[1].toUpperCase() };
+    }
+    return { handled: false };
+  }
+
+  const refMatch =
+    q.match(/\b([A-Z]{2,5}-PT-[A-Z0-9]+)\b/i) ||
+    q.match(/\b(?:patient|folder|id|no|number)\s*[:#]?\s*([A-Z0-9-]{5,})\b/i) ||
+    q.match(/\bfor\s+([A-Za-z][A-Za-z\s'.-]{1,40}?)(?:\s*$|,)/i);
+
+  if (refMatch?.[1]) {
+    return { handled: true, patientRef: refMatch[1].trim() };
+  }
+
+  return { handled: true, needsPatient: true };
 }

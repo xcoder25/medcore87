@@ -5,6 +5,8 @@ import {
   parseReceptionAutomationIntent,
   extractReceptionJobWithAI,
   registerNewPatientWithFolderFee,
+  parseSendAccountsIntent,
+  sendPatientToAccounts,
   canAutomateReception,
   receptionAutomationRefusal,
   type ReceptionRegJob,
@@ -150,6 +152,8 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
   const [isThinking, setIsThinking] = useState(false);
   const [taskRun, setTaskRun] = useState<{ title: string; steps: TaskStep[] } | null>(null);
   const [pendingReceptionJob, setPendingReceptionJob] = useState<ReceptionRegJob | null>(null);
+  const [lastPatientRef, setLastPatientRef] = useState<string | null>(null);
+  const [pendingSendAccounts, setPendingSendAccounts] = useState(false);
   const [geminiOnline, setGeminiOnline] = useState<boolean | null>(null);
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [modelVer, setModelVer] = useState<string | null>(() => getModelState()?.version || null);
@@ -303,6 +307,139 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
       return;
     }
 
+
+
+    // Front desk: send / re-send patient invoice to Accounts
+    {
+      let sendIntent = parseSendAccountsIntent(query);
+      // Hospital number only while waiting for "who to send"
+      if (
+        !sendIntent.handled &&
+        pendingSendAccounts &&
+        /^[A-Za-z0-9][A-Za-z0-9-]{4,24}$/.test(query.trim())
+      ) {
+        sendIntent = { handled: true, patientRef: query.trim().toUpperCase() };
+      }
+      if (sendIntent.handled) {
+        if (!canAutomateReception(actorRole)) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg-${Date.now()}-ai`,
+              sender: 'm87',
+              text: receptionAutomationRefusal(actorRole),
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              category: 'operational',
+            },
+          ]);
+          setIsThinking(false);
+          return;
+        }
+
+        let ref = sendIntent.patientRef || undefined;
+        if (!ref && sendIntent.needsPatient && lastPatientRef) {
+          ref = lastPatientRef;
+        }
+        if (!ref && sendIntent.needsPatient) {
+          setPendingSendAccounts(true);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg-${Date.now()}-ai`,
+              sender: 'm87',
+              text: 'Which patient? Name or hospital number (e.g. IGH-PT-2CKAR3).',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              category: 'operational',
+            },
+          ]);
+          setIsThinking(false);
+          return;
+        }
+        if (!ref) {
+          setIsThinking(false);
+          return;
+        }
+
+        const steps: TaskStep[] = [
+          { id: 'power', label: 'Initiating MedCore Celestial Power…', status: 'pending' },
+          { id: 'find', label: `Looking up ${ref}…`, status: 'pending' },
+          { id: 'ledger', label: 'Checking open charges & prior handoffs…', status: 'pending' },
+          { id: 'send', label: 'Routing to Accounts / Cashier…', status: 'pending' },
+          { id: 'done', label: 'Confirming desk handoff…', status: 'pending' },
+        ];
+        setTaskRun({ title: 'Celestia → Accounts', steps });
+        const mark = (id: string, status: TaskStepStatus) => {
+          setTaskRun((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              steps: prev.steps.map((s) => {
+                if (s.id === id) return { ...s, status };
+                if (status === 'active' && s.status === 'active') return { ...s, status: 'done' };
+                return s;
+              }),
+            };
+          });
+        };
+
+        let reply = '';
+        try {
+          mark('power', 'active');
+          await sleep(350);
+          mark('power', 'done');
+          mark('find', 'active');
+          await sleep(250);
+          mark('find', 'done');
+          mark('ledger', 'active');
+          await sleep(250);
+          const result = sendPatientToAccounts({
+            facilityId,
+            facilityName,
+            patientRef: ref,
+            actorName: session?.name,
+            actorBadge: session?.badgeId,
+          });
+          mark('ledger', 'done');
+          if (result.ok) {
+            mark('send', 'active');
+            await sleep(300);
+            mark('send', 'done');
+            mark('done', 'active');
+            await sleep(200);
+            mark('done', 'done');
+            reply = result.message;
+            if (result.hospitalNumber) setLastPatientRef(result.hospitalNumber);
+            setPendingSendAccounts(false);
+            try {
+              emitLiveAction(`Celestia → Accounts ${result.hospitalNumber || ref}`, {
+                module: 'reception',
+              });
+            } catch {
+              /* ignore */
+            }
+          } else {
+            mark('send', 'error');
+            reply = result.message || result.error || 'Could not send to Accounts.';
+          }
+        } catch (err: unknown) {
+          reply = `Accounts handoff error: ${(err as Error)?.message || 'failed'}`;
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: reply,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+        setIsThinking(false);
+        window.setTimeout(() => setTaskRun(null), 2200);
+        return;
+      }
+    }
 
     // Front desk: register patient + folder fee → Accounts
     {
@@ -464,6 +601,8 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
               /* ignore */
             }
             setPendingReceptionJob(null);
+    setLastPatientRef(null);
+    setPendingSendAccounts(false);
           } else {
             mark('registry', 'error');
             reply = `Could not register: ${r.error || 'unknown error'}`;
