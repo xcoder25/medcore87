@@ -45,6 +45,7 @@ import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { startOutboxAutoFlush } from '../lib/durableOutbox';
 import { enableFirestoreOffline } from '../lib/firebase';
 import { startHospitalCloudSync } from '../lib/facilityCloudSync';
+import { startClinicalPaymentListeners } from '../lib/clinicalEventBus';
 import {
   startStaffPresenceHeartbeat,
   startFacilityPresenceListener,
@@ -884,8 +885,9 @@ export default function OSPage() {
       /* ignore */
     }
     void enableFirestoreOffline();
+    const stopClinicalPay = startClinicalPaymentListeners();
     const stopOutbox = startOutboxAutoFlush(12000);
-    return () => stopOutbox();
+    return () => { stopOutbox(); try { stopClinicalPay(); } catch { /* */ } };
   }, []);
 
   const [appState, setAppState] = useState<'splash' | 'auth' | 'app'>('splash');

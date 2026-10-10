@@ -38,6 +38,11 @@ export interface ClinicalOrder {
   resultSummary?: string;
   resultAt?: string;
   resultedBy?: string;
+  /** Nigerian pay-before-service: false until Accounts PAID */
+  paymentCleared?: boolean;
+  releasedAt?: string;
+  dispensedAt?: string;
+  dispensedBy?: string;
 }
 
 const KEY = 'medcore_os_clinical_orders_v1';
@@ -81,6 +86,7 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
     ...input,
     id: `ORD-${Date.now().toString(36).toUpperCase()}`,
     status: 'ordered',
+    paymentCleared: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -295,15 +301,99 @@ export function postLabResult(
 
 /** Can this order's result/dispense be released? */
 export function canReleaseOrder(orderId: string): { ok: boolean; reason?: string; amountNgn?: number } {
-  const pay = isOrderBillCleared(orderId);
-  if (!pay.cleared) {
-    return {
-      ok: false,
-      reason: `Awaiting payment · ₦${pay.amountNgn.toLocaleString()} at Accounts`,
-      amountNgn: pay.amountNgn,
-    };
+  const order = read().find((o) => o.id === orderId);
+  if (!order) return { ok: false, reason: 'Order not found' };
+  if (order.paymentCleared) return { ok: true };
+  try {
+    if (isOrderBillCleared(orderId)) return { ok: true };
+  } catch {
+    /* ignore */
   }
-  return { ok: true };
+  return {
+    ok: false,
+    reason: 'Awaiting Accounts payment (pay-before-service)',
+  };
+}
+
+/** Release all billable orders for a patient after Accounts PAID */
+export function releaseOrdersForPatient(
+  facilityId: string,
+  patientRef: string
+): ClinicalOrder[] {
+  const ref = (patientRef || '').toLowerCase();
+  const list = read();
+  const released: ClinicalOrder[] = [];
+  const next = list.map((o) => {
+    if (o.facilityId !== facilityId) return o;
+    const match =
+      o.patientId.toLowerCase() === ref || o.hospitalNumber.toLowerCase() === ref;
+    if (!match) return o;
+    if (o.paymentCleared) return o;
+    const row: ClinicalOrder = {
+      ...o,
+      paymentCleared: true,
+      releasedAt: new Date().toISOString(),
+      status: o.status === 'ordered' ? 'accepted' : o.status,
+      updatedAt: new Date().toISOString(),
+    };
+    released.push(row);
+    return row;
+  });
+  if (released.length) {
+    write(next);
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('medcore-orders-released', {
+            detail: { facilityId, patientRef, count: released.length, orders: released },
+          })
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      pushNotification({
+        facilityId,
+        level: 'info',
+        title: 'Orders released',
+        body: `${released.length} order(s) cleared for service (lab / Rx / imaging)`,
+        module: 'laboratory',
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+  return released;
+}
+
+/** Pharmacy closes the Rx loop after payment + dispense */
+export function dispenseOrder(
+  orderId: string,
+  by?: string
+): ClinicalOrder | undefined {
+  const list = read();
+  const idx = list.findIndex((o) => o.id === orderId);
+  if (idx < 0) return undefined;
+  const o = list[idx];
+  if (o.type !== 'rx') return undefined;
+  if (!o.paymentCleared && !isOrderBillCleared(orderId)) {
+    return undefined;
+  }
+  const next: ClinicalOrder = {
+    ...o,
+    paymentCleared: true,
+    status: 'resulted',
+    resultSummary: o.resultSummary || 'Dispensed at pharmacy',
+    resultAt: new Date().toISOString(),
+    resultedBy: by || 'Pharmacy',
+    dispensedAt: new Date().toISOString(),
+    dispensedBy: by || 'Pharmacy',
+    updatedAt: new Date().toISOString(),
+  };
+  list[idx] = next;
+  write(list);
+  return next;
 }
 
 /** Pre-order BPA (Epic-style) — call before placeOrder; non-blocking unless hard_stop handled by UI */
@@ -334,5 +424,52 @@ export function subscribeOrders(cb: () => void): () => void {
     window.removeEventListener('storage', fn);
     window.removeEventListener('medcore-admin-sync', fn);
     try { bc?.close(); } catch { /* ignore */ }
+  };
+}
+
+
+/** Wire pay-before-service: Accounts PAID → release patient orders */
+export function startClinicalPaymentListeners(): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const onAccountsPaid = (ev: Event) => {
+    const d = (ev as CustomEvent).detail as {
+      facilityId?: string;
+      patientId?: string;
+      hospitalNumber?: string;
+    } | null;
+    if (!d?.facilityId) return;
+    try {
+      if (d.patientId) releaseOrdersForPatient(d.facilityId, d.patientId);
+      if (d.hospitalNumber) releaseOrdersForPatient(d.facilityId, d.hospitalNumber);
+    } catch {
+      /* ignore */
+    }
+  };
+  const onOrderPaid = (ev: Event) => {
+    const d = (ev as CustomEvent).detail as { orderId?: string } | null;
+    if (!d?.orderId) return;
+    try {
+      const list = read();
+      const idx = list.findIndex((o) => o.id === d.orderId);
+      if (idx < 0) return;
+      const o = list[idx];
+      if (o.paymentCleared) return;
+      list[idx] = {
+        ...o,
+        paymentCleared: true,
+        releasedAt: new Date().toISOString(),
+        status: o.status === 'ordered' ? 'accepted' : o.status,
+        updatedAt: new Date().toISOString(),
+      };
+      write(list);
+    } catch {
+      /* ignore */
+    }
+  };
+  window.addEventListener('medcore-accounts-paid', onAccountsPaid as EventListener);
+  window.addEventListener('medcore-order-paid', onOrderPaid as EventListener);
+  return () => {
+    window.removeEventListener('medcore-accounts-paid', onAccountsPaid as EventListener);
+    window.removeEventListener('medcore-order-paid', onOrderPaid as EventListener);
   };
 }

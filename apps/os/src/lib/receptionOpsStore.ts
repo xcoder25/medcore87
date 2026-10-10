@@ -444,3 +444,30 @@ export function subscribeReceptionOps(cb: () => void): () => void {
 export function resetReceptionOps() {
   save({ visits: [], queueSeq: {}, appointments: [], payments: [] });
 }
+
+
+/** Disposition: complete visit with optional reason (home / referral / other) */
+export function dischargePatientVisit(
+  facilityId: string,
+  patientRef: string,
+  disposition: 'home' | 'referral' | 'left' | 'other' = 'home'
+): ReceptionVisit | null {
+  const v = markPatientConsultComplete(facilityId, patientRef);
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('medcore-opd-stage', {
+          detail: {
+            facilityId,
+            patientRef,
+            stage: 'disposition',
+            disposition,
+          },
+        })
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+  return v;
+}

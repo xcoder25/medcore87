@@ -212,6 +212,14 @@ export function markOrderPaid(
   const line = getLineForOrder(orderId);
   if (!line) return undefined;
   return markLinePaid(line.id, opts);
+
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('medcore-order-paid', { detail: { orderId } })
+      );
+    }
+  } catch { /* ignore */ }
 }
 
 export function canDispenseOrder(orderId: string): {

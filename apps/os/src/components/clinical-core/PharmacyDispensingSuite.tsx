@@ -59,6 +59,8 @@ import {
   listOrders,
   updateOrderStatus,
   subscribeOrders,
+  dispenseOrder,
+  canReleaseOrder,
 } from '../../lib/clinicalEventBus';
 import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
 import { emitLiveAction } from '../../lib/liveActions';
@@ -148,7 +150,12 @@ export const PharmacyDispensingSuite: React.FC = () => {
   }, [facilityId]);
 
   const handleLegacyDispense = (id: string, opts?: { emergency?: boolean }) => {
+    const payGate = canReleaseOrder(id);
     const gate = canDispenseOrder(id);
+    if (!payGate.ok && !opts?.emergency) {
+      liveAlert((payGate.reason || 'Awaiting Accounts payment') + ' · Or Emergency override', 'pharmacy', facilityId);
+      return;
+    }
     if (!gate.ok && !opts?.emergency) {
       liveAlert(gate.reason + ' · Or use Emergency override', 'pharmacy', facilityId);
       return;
@@ -160,12 +167,15 @@ export const PharmacyDispensingSuite: React.FC = () => {
     const drugName = rx?.medication || '';
     const stockOk = drugName ? depleteStock(facilityId, drugName, 1) : false;
     setPrescriptions(prev => prev.map(p => p.id === id ? { ...p, status: 'dispensed' } : p));
-    updateOrderStatus(id, 'resulted', {
-      resultSummary: stockOk
-        ? `Dispensed at pharmacy · stock decremented`
-        : `Dispensed at pharmacy · stock not matched (check formulary)`,
-      resultedBy: 'Pharmacist',
-    });
+    const d = dispenseOrder(id, 'Pharmacist');
+    if (!d) {
+      updateOrderStatus(id, 'resulted', {
+        resultSummary: stockOk
+          ? `Dispensed at pharmacy · stock decremented`
+          : `Dispensed at pharmacy · stock not matched (check formulary)`,
+        resultedBy: 'Pharmacist',
+      });
+    }
     emitLiveAction(`Dispensed ${id}${stockOk ? ' · stock −1' : ' · no stock match'}`, { module: 'pharmacy' });
     liveAlert(
       stockOk

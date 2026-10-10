@@ -206,6 +206,7 @@ export function markAccountsRequestPaid(
   } catch {
     /* ignore */
   }
+  // Orders release: clinicalEventBus listens to medcore-accounts-paid
   try {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
