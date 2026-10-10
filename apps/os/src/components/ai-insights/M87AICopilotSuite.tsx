@@ -131,19 +131,20 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
   }, [isThinking]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputPrompt.trim() || isThinking) return;
+  const handleSend = async (e?: React.FormEvent, overrideText?: string) => {
+    e?.preventDefault?.();
+    const text = (overrideText ?? inputPrompt).trim();
+    if (!text || isThinking) return;
 
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       sender: 'user',
-      text: inputPrompt,
+      text,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
     setMessages((prev) => [...prev, userMsg]);
-    const query = inputPrompt;
+    const query = text;
     setInputPrompt('');
     setIsThinking(true);
 
@@ -325,47 +326,44 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
   ];
 
   return (
-    <div className="m87-chat-shell celestia-cosmic" ref={shellRef}>
-      <div className="celestia-stars" aria-hidden />
-      <div className="celestia-nebula" aria-hidden />
-      <div className="celestia-planet" aria-hidden />
-      <div className="m87-aurora" aria-hidden />
-      <div className="m87-aurora m87-aurora-2" aria-hidden />
+    <div className="m87-chat-shell celestia-cosmic celestia-grok" ref={shellRef}>
+      {/* Looping cosmic logo video background */}
+      <video
+        className="celestia-bg-video"
+        src="/celestia-bg.mp4"
+        autoPlay
+        muted
+        loop
+        playsInline
+        aria-hidden
+      />
+      <div className="celestia-bg-veil" aria-hidden />
 
-      <header className="m87-chat-header celestia-header">
-        <div className="celestia-logo-orbit">
-          <div className="celestia-orbit-ring" />
-          <div className="celestia-orbit-ring celestia-orbit-ring-2" />
-          <div className="celestia-star-core">
-            <Sparkles size={18} color="#fff" />
+      {messages.length > 0 && (
+        <header className="m87-chat-header celestia-header celestia-header-slim">
+          <img src="/celestia-logo.png" alt="" className="celestia-logo-img celestia-logo-sm" />
+          <div className="m87-header-text">
+            <div className="m87-title-row">
+              <h1 className="m87-title celestia-wordmark">celestia</h1>
+              <span className="m87-live-dot" title="Online" />
+              <span className="m87-live-label">{engineReady ? 'Online' : 'Warming up'}</span>
+            </div>
           </div>
-        </div>
-        <div className="m87-header-text">
-          <div className="m87-title-row">
-            <h1 className="m87-title">Celestia</h1>
-            <span className="m87-live-dot" title="Online" />
-            <span className="m87-live-label">{engineReady ? 'Online' : 'Warming up'}</span>
-          </div>
-          <p className="m87-subtitle">Your hospital AI companion, beyond.</p>
-        </div>
-      </header>
+        </header>
+      )}
 
       <div className="m87-messages celestia-messages" ref={listRef}>
         {messages.length === 0 && !isThinking && (
-          <div className="m87-empty celestia-hero">
-            <div className="celestia-hero-logo">
-              <div className="celestia-orbit-ring celestia-orbit-lg" />
-              <div className="celestia-orbit-ring celestia-orbit-lg celestia-orbit-ring-2" />
-              <div className="celestia-star-core celestia-star-lg">
-                <Sparkles size={28} color="#fff" />
-              </div>
-              <div className="celestia-horizon" />
-            </div>
-            <h2 className="m87-empty-title">Hello, I&apos;m Celestia</h2>
+          <div className="m87-empty celestia-hero celestia-empty-grok">
+            <img
+              src="/celestia-logo.png"
+              alt="Celestia"
+              className="celestia-logo-img celestia-logo-hero"
+            />
+            <h2 className="m87-empty-title celestia-hello">Hello, I&apos;m Celestia</h2>
             <p className="m87-empty-sub">
-              I&apos;m here to help your hospital explore queues, billing, staff, and clinical ops — clearly and in real time.
+              Your hospital AI companion. Ask about queues, billing, staff, or clinical care.
             </p>
-            <div className="celestia-try-label">Try asking me about…</div>
             <div className="m87-suggestions">
               {suggestions.map((s) => {
                 const Icon = s.icon;
@@ -375,8 +373,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
                     type="button"
                     className="m87-chip mc-btn-live"
                     onClick={() => {
-                      setInputPrompt(s.label);
-                      inputRef.current?.focus();
+                      void handleSend(undefined, s.label);
                     }}
                   >
                     <Icon size={14} style={{ opacity: 0.9 }} />
@@ -396,9 +393,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
               className={mine ? 'm87-row m87-row-user mc-user-msg-in' : 'm87-row m87-row-ai mc-ai-msg-in'}
             >
               {!mine && (
-                <div className="m87-msg-avatar celestia-msg-star">
-                  <Sparkles size={12} color="#fff" />
-                </div>
+                <img src="/celestia-logo.png" alt="" className="celestia-logo-img celestia-logo-msg" />
               )}
               <div className={mine ? 'm87-bubble m87-bubble-user' : 'm87-bubble m87-bubble-ai'}>
                 {!mine ? (
@@ -427,9 +422,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
 
         {isThinking && (
           <div className="m87-row m87-row-ai mc-ai-msg-in">
-            <div className="m87-msg-avatar celestia-msg-star">
-              <Sparkles size={12} color="#fff" />
-            </div>
+            <img src="/celestia-logo.png" alt="" className="celestia-logo-img celestia-logo-msg" />
             <div className="m87-bubble m87-bubble-ai m87-thinking">
               <div className="mc-typing-dots">
                 <span />
@@ -476,7 +469,6 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
             <Send size={18} />
           </button>
         </div>
-        <div className="m87-composer-hint">Enter to send · MedCore Hospital OS · Celestia</div>
       </form>
     </div>
   );
