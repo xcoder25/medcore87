@@ -57,6 +57,7 @@ import {
   listAccountsRequests,
   subscribeAccountsRequests,
   type FrontDeskAccountsRequest,
+  reconcileAllVisitPayments,
 } from '../../lib/frontDeskAccountsBridge';
 import { patientBalance } from '../../lib/patientBillingStore';
 import { printQueueTicket, printPaymentReceipt } from '../../lib/printService';
@@ -383,6 +384,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   }, [initialView]);
 
   const reload = useCallback(() => {
+    try {
+      reconcileAllVisitPayments(facilityId);
+    } catch {
+      /* ignore */
+    }
+
     setPatients(listPatients(facilityId));
     setVisits(todayVisits(facilityId));
     setAppts(listAppointments(facilityId));

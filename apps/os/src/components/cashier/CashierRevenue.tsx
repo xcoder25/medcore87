@@ -1,10 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   CreditCard, DollarSign, Receipt, Clock, CheckCircle2,
   AlertCircle, Search, Plus, Printer, X, Check, Trash2
 } from 'lucide-react';
+import {
+  listAccountsRequests,
+  markAccountsRequestPaid,
+  subscribeAccountsRequests,
+  type FrontDeskAccountsRequest,
+} from '../../lib/frontDeskAccountsBridge';
+import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
+import { listBillLines, subscribeBills } from '../../lib/patientBillingStore';
 
 type BillStatus = 'pending' | 'paid' | 'insurance' | 'waived' | 'outstanding';
 
@@ -19,6 +27,8 @@ interface BillRecord {
   paymentMethod?: string;
   nhia?: boolean;
   receiptNo?: string;
+  /** Front Desk accounts request id */
+  _fdId?: string;
 }
 
 const STORAGE_KEY = 'ibom_os_cashier_bills';
@@ -56,20 +66,58 @@ export const CashierRevenue: React.FC = () => {
   const [nhia, setNhia] = useState(false);
   const [formError, setFormError] = useState('');
 
-  // Load persisted bills
-  useEffect(() => {
+  const facilityId = (typeof window !== 'undefined' && getActiveFacilityId()) || 'IGH-EKT';
+
+  const mapFdToBill = useCallback((r: FrontDeskAccountsRequest): BillRecord => {
+    const st: BillStatus =
+      r.status === 'paid'
+        ? 'paid'
+        : r.status === 'waived'
+          ? 'waived'
+          : r.status === 'hmo'
+            ? 'insurance'
+            : 'pending';
+    return {
+      id: r.invoiceNumber || r.id,
+      patientId: r.hospitalNumber || r.patientId,
+      patientName: r.patientName,
+      date: (r.paidAt || r.createdAt || '').slice(0, 10),
+      services: [r.purpose || 'Hospital charge'],
+      totalNaira: Number(r.amountNgn) || 0,
+      status: st,
+      paymentMethod: r.paidVia || undefined,
+      receiptNo: r.paidReference || r.invoiceNumber,
+      _fdId: r.id,
+    } as BillRecord & { _fdId?: string };
+  }, []);
+
+  const pullLive = useCallback(() => {
+    const fd = listAccountsRequests(facilityId).map(mapFdToBill);
+    let manual: BillRecord[] = [];
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setBills(parsed);
-        }
+        if (Array.isArray(parsed)) manual = parsed;
       }
     } catch {
-      // ignore
+      /* ignore */
     }
-  }, []);
+    // FD first (live Nigerian pay-before-service pipeline)
+    const ids = new Set(fd.map((b) => b.id));
+    const merged = [...fd, ...manual.filter((b) => !ids.has(b.id))];
+    setBills(merged);
+  }, [facilityId, mapFdToBill]);
+
+  useEffect(() => {
+    pullLive();
+    const unsubA = subscribeAccountsRequests(pullLive);
+    const unsubB = subscribeBills(pullLive);
+    return () => {
+      unsubA();
+      unsubB();
+    };
+  }, [pullLive]);
 
   const saveBills = (newBills: BillRecord[]) => {
     setBills(newBills);
@@ -83,6 +131,33 @@ export const CashierRevenue: React.FC = () => {
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const collectFdBill = (bill: BillRecord) => {
+    const fdId = (bill as BillRecord & { _fdId?: string })._fdId;
+    if (fdId) {
+      markAccountsRequestPaid(fdId, {
+        reference: `CASH-${Date.now().toString(36).toUpperCase()}`,
+        via: 'cashier',
+        paidBy: 'Admin Revenue',
+      });
+      pullLive();
+      showToast(`Collected ${bill.id} · ${formatNaira(bill.totalNaira)}`);
+      return;
+    }
+    // Manual local bill
+    const next = bills.map((b) =>
+      b.id === bill.id
+        ? {
+            ...b,
+            status: 'paid' as BillStatus /* collectFd preferred */,
+            paymentMethod: 'Cash',
+            receiptNo: `RCP-${Date.now().toString(36).toUpperCase()}`,
+          }
+        : b
+    );
+    saveBills(next);
+    showToast(`Marked paid ${bill.id}`);
   };
 
   const handleAddServiceItem = () => {
@@ -153,6 +228,12 @@ export const CashierRevenue: React.FC = () => {
   };
 
   const handleCollectPayment = (bill: BillRecord) => {
+    // Front Desk / clinical invoices live in Accounts requests — collect there
+    const fdId = (bill as BillRecord & { _fdId?: string })._fdId;
+    if (fdId) {
+      collectFdBill(bill);
+      return;
+    }
     const now = new Date();
     const receiptNo = `RCP-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${bill.id.replace('BL-', '')}`;
     const updated = bills.map(b => {

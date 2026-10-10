@@ -7,7 +7,7 @@
  */
 import { publishFacilityData } from './roleSyncBus';
 import { postInvoiceForPayment, markPatientOutstandingPaid } from './patientBillingStore';
-import { markVisitsPaidForPatient, syncVisitPaymentFromAccounts } from './receptionOpsStore';
+import { markVisitsPaidForPatient, syncVisitPaymentFromAccounts, reconcileVisitPaymentsFromAccounts } from './receptionOpsStore';
 
 export const FD_ACCOUNTS_KEY = 'medcore_os_fd_accounts_requests_v1';
 export const FD_ACCOUNTS_EVENT = 'medcore-fd-accounts';
@@ -203,6 +203,7 @@ export function markAccountsRequestPaid(
   try {
     syncVisitPaymentFromAccounts(row.facilityId, row.patientId, 'paid');
     syncVisitPaymentFromAccounts(row.facilityId, row.hospitalNumber, 'paid');
+    reconcileVisitPaymentsFromAccounts(row.facilityId, [row.patientId, row.hospitalNumber]);
   } catch {
     /* ignore */
   }
@@ -307,3 +308,13 @@ export function subscribeAccountsRequests(cb: () => void): () => void {
 
 /** Default folder-opening / registration fee (NGN) — adjustable later in settings */
 export const DEFAULT_REGISTRATION_FEE_NGN = 2000;
+
+
+/** Scan all PAID accounts requests and flip matching visits → paid */
+export function reconcileAllVisitPayments(facilityId: string): number {
+  const paid = read().filter(
+    (r) => r.facilityId === facilityId && r.status === 'paid'
+  );
+  const refs = paid.flatMap((r) => [r.patientId, r.hospitalNumber]);
+  return reconcileVisitPaymentsFromAccounts(facilityId, refs);
+}

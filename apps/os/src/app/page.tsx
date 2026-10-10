@@ -46,6 +46,7 @@ import { startOutboxAutoFlush } from '../lib/durableOutbox';
 import { enableFirestoreOffline } from '../lib/firebase';
 import { startHospitalCloudSync } from '../lib/facilityCloudSync';
 import { startClinicalPaymentListeners } from '../lib/clinicalEventBus';
+import { reconcileAllVisitPayments } from '../lib/frontDeskAccountsBridge';
 import {
   startStaffPresenceHeartbeat,
   startFacilityPresenceListener,
@@ -886,6 +887,15 @@ export default function OSPage() {
     }
     void enableFirestoreOffline();
     const stopClinicalPay = startClinicalPaymentListeners();
+    try {
+      const fid =
+        (typeof window !== 'undefined' &&
+          (window as unknown as { __medcoreFacilityId?: string }).__medcoreFacilityId) ||
+        'IGH-EKT';
+      reconcileAllVisitPayments(fid);
+    } catch {
+      /* ignore */
+    }
     const stopOutbox = startOutboxAutoFlush(12000);
     return () => { stopOutbox(); try { stopClinicalPay(); } catch { /* */ } };
   }, []);

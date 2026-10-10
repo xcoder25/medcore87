@@ -471,3 +471,31 @@ export function dischargePatientVisit(
   }
   return v;
 }
+
+
+/** Align visit paymentStatus with Accounts PAID rows (fixes stale pending badges) */
+export function reconcileVisitPaymentsFromAccounts(
+  facilityId: string,
+  paidPatientRefs: string[]
+): number {
+  const refs = new Set(
+    paidPatientRefs.map((r) => String(r || '').toLowerCase()).filter(Boolean)
+  );
+  if (!refs.size) return 0;
+  const state = load();
+  let n = 0;
+  state.visits = state.visits.map((v) => {
+    if (v.facilityId !== facilityId) return v;
+    const hit =
+      refs.has(v.patientId.toLowerCase()) ||
+      refs.has(v.hospitalNumber.toLowerCase());
+    if (!hit) return v;
+    if (v.paymentStatus === 'paid' || v.paymentStatus === 'hmo' || v.paymentStatus === 'waived') {
+      return v;
+    }
+    n += 1;
+    return { ...v, paymentStatus: 'paid' as PaymentStatus };
+  });
+  if (n) save(state);
+  return n;
+}
