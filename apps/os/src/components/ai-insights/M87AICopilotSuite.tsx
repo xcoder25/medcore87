@@ -15,7 +15,7 @@ import {
 } from '../../lib/staffAutomation';
 import { emitLiveAction } from '../../lib/liveActions';
 import {
-  Brain, Send, Sparkles,
+  Brain, Send, Sparkles, Plus, Activity, Users, Wallet, Stethoscope,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -318,64 +318,72 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
   };
 
   const suggestions = [
-    'Who is waiting in OPD queue?',
-    'Summarise unpaid bills today',
-    'Help me enrol a new nurse',
-    'What needs attention right now?',
+    { label: 'Who is waiting in OPD?', icon: Users },
+    { label: 'Unpaid bills today', icon: Wallet },
+    { label: 'Enrol a new nurse', icon: Activity },
+    { label: 'What needs attention?', icon: Stethoscope },
   ];
 
   return (
-    <div className="m87-chat-shell" ref={shellRef}>
-      {/* Ambient brand aurora */}
+    <div className="m87-chat-shell celestia-cosmic" ref={shellRef}>
+      <div className="celestia-stars" aria-hidden />
+      <div className="celestia-nebula" aria-hidden />
+      <div className="celestia-planet" aria-hidden />
       <div className="m87-aurora" aria-hidden />
       <div className="m87-aurora m87-aurora-2" aria-hidden />
 
-      {/* Header */}
-      <header className="m87-chat-header">
-        <div className="m87-avatar-ring">
-          <div className="m87-avatar-core">
-            <Brain size={22} color="#fff" />
+      <header className="m87-chat-header celestia-header">
+        <div className="celestia-logo-orbit">
+          <div className="celestia-orbit-ring" />
+          <div className="celestia-orbit-ring celestia-orbit-ring-2" />
+          <div className="celestia-star-core">
+            <Sparkles size={18} color="#fff" />
           </div>
         </div>
         <div className="m87-header-text">
           <div className="m87-title-row">
             <h1 className="m87-title">Celestia</h1>
-            <span className="m87-live-dot" title="Engine online" />
-            <span className="m87-live-label">{engineReady ? 'Live' : 'Warming up'}</span>
+            <span className="m87-live-dot" title="Online" />
+            <span className="m87-live-label">{engineReady ? 'Online' : 'Warming up'}</span>
           </div>
-          <p className="m87-subtitle">
-            MedCore · Arise intelligence
-            {modelVer ? ` · ${modelVer}` : ''}
-            {hasGeminiKey() ? ' · Gemini' : ''}
-          </p>
+          <p className="m87-subtitle">Your hospital AI companion, beyond.</p>
         </div>
       </header>
 
-      {/* Messages */}
-      <div className="m87-messages" ref={listRef}>
+      <div className="m87-messages celestia-messages" ref={listRef}>
         {messages.length === 0 && !isThinking && (
-          <div className="m87-empty">
-            <div className="m87-empty-orb">
-              <Sparkles size={28} color="#fff" />
+          <div className="m87-empty celestia-hero">
+            <div className="celestia-hero-logo">
+              <div className="celestia-orbit-ring celestia-orbit-lg" />
+              <div className="celestia-orbit-ring celestia-orbit-lg celestia-orbit-ring-2" />
+              <div className="celestia-star-core celestia-star-lg">
+                <Sparkles size={28} color="#fff" />
+              </div>
+              <div className="celestia-horizon" />
             </div>
-            <h2 className="m87-empty-title">How can I help your hospital today?</h2>
+            <h2 className="m87-empty-title">Hello, I&apos;m Celestia</h2>
             <p className="m87-empty-sub">
-              Ask about queues, billing, staff, or clinical ops. Forecasts, alerts, and training run quietly in the background.
+              I&apos;m here to help your hospital explore queues, billing, staff, and clinical ops — clearly and in real time.
             </p>
+            <div className="celestia-try-label">Try asking me about…</div>
             <div className="m87-suggestions">
-              {suggestions.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  className="m87-chip mc-btn-live"
-                  onClick={() => {
-                    setInputPrompt(s);
-                    inputRef.current?.focus();
-                  }}
-                >
-                  {s}
-                </button>
-              ))}
+              {suggestions.map((s) => {
+                const Icon = s.icon;
+                return (
+                  <button
+                    key={s.label}
+                    type="button"
+                    className="m87-chip mc-btn-live"
+                    onClick={() => {
+                      setInputPrompt(s.label);
+                      inputRef.current?.focus();
+                    }}
+                  >
+                    <Icon size={14} style={{ opacity: 0.9 }} />
+                    {s.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -388,14 +396,14 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
               className={mine ? 'm87-row m87-row-user mc-user-msg-in' : 'm87-row m87-row-ai mc-ai-msg-in'}
             >
               {!mine && (
-                <div className="m87-msg-avatar">
-                  <Brain size={14} color="#fff" />
+                <div className="m87-msg-avatar celestia-msg-star">
+                  <Sparkles size={12} color="#fff" />
                 </div>
               )}
               <div className={mine ? 'm87-bubble m87-bubble-user' : 'm87-bubble m87-bubble-ai'}>
-                {msg.sender === 'm87' ? (
+                {!mine ? (
                   <>
-                    <StreamingText text={msg.text} animate={msg.id === streamingId} />
+                    <StreamingText text={msg.text} animate={streamingId === msg.id} />
                     <div className="m87-feedback">
                       <button type="button" className="m87-fb mc-btn-live" onClick={() => rateMessage(msg, 1)} title="Teach Celestia">
                         👍
@@ -419,8 +427,8 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
 
         {isThinking && (
           <div className="m87-row m87-row-ai mc-ai-msg-in">
-            <div className="m87-msg-avatar">
-              <Brain size={14} color="#fff" />
+            <div className="m87-msg-avatar celestia-msg-star">
+              <Sparkles size={12} color="#fff" />
             </div>
             <div className="m87-bubble m87-bubble-ai m87-thinking">
               <div className="mc-typing-dots">
@@ -428,20 +436,22 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
                 <span />
                 <span />
               </div>
-              <span className="m87-thinking-label">Thinking…</span>
+              <span className="m87-thinking-label">Celestia is thinking…</span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Composer */}
       <form
-        className="m87-composer"
+        className="m87-composer celestia-composer"
         onSubmit={(e) => {
           void handleSend(e);
         }}
       >
         <div className="m87-composer-inner">
+          <button type="button" className="celestia-plus" aria-label="More" tabIndex={-1}>
+            <Plus size={18} />
+          </button>
           <textarea
             ref={inputRef}
             className="m87-input"
@@ -466,14 +476,11 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
             <Send size={18} />
           </button>
         </div>
-        <div className="m87-composer-hint">
-          Enter to send · Shift+Enter for new line · Powered by MedCore + Arise
-        </div>
+        <div className="m87-composer-hint">Enter to send · MedCore Hospital OS · Celestia</div>
       </form>
     </div>
   );
 };
-
 
 
 /** @deprecated use Celestia naming — same component */
