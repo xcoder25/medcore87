@@ -119,6 +119,7 @@ function formatNow(): string {
 
 export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [module, setModule] = useState<AdminModule>('dashboard');
+  const [moduleHistory, setModuleHistory] = useState<AdminModule[]>([]);
   const [moduleLoading, setModuleLoading] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [clock, setClock] = useState(formatNow);
@@ -131,8 +132,23 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const goModule = (key: AdminModule) => {
     if (key === module) return;
     setModuleLoading(true);
+    setModuleHistory((h) => [...h.slice(-19), module]);
     setModule(key);
     window.setTimeout(() => setModuleLoading(false), 420);
+  };
+
+  const goBack = () => {
+    setModuleHistory((h) => {
+      if (!h.length) {
+        setModule('dashboard');
+        return h;
+      }
+      const prev = h[h.length - 1];
+      setModuleLoading(true);
+      setModule(prev);
+      window.setTimeout(() => setModuleLoading(false), 420);
+      return h.slice(0, -1);
+    });
   };
 
   useEffect(() => {
@@ -286,6 +302,20 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       <div className="admin-shell-main">
         <header className="admin-shell-top">
           <div className="admin-shell-top-left">
+            <button
+              type="button"
+              className="admin-shell-icon-btn"
+              onClick={goBack}
+              title="Back"
+              aria-label="Go back"
+              disabled={moduleHistory.length === 0 && module === 'dashboard'}
+              style={{
+                opacity: moduleHistory.length === 0 && module === 'dashboard' ? 0.35 : 1,
+                marginRight: 4,
+              }}
+            >
+              <ChevronLeft size={18} />
+            </button>
             <div className="admin-shell-facility">
               <Building2 size={14} />
               <span>{facility}</span>

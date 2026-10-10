@@ -282,11 +282,30 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const firstName = (session.name || 'Reception').split(' ')[0];
 
   const [view, setView] = useState<View>(initialView);
+  const [viewHistory, setViewHistory] = useState<View[]>([]);
   /** Navigate with View Transition when browser supports it */
   const goView = useCallback((next: View) => {
     // Collect payment lives on Accounting desk only — front desk only sends invoices
     const mapped: View = next === 'payment' || (next as string) === 'cashier' ? 'send-accounts' : next;
-    withViewTransition(() => setView(mapped));
+    withViewTransition(() => {
+      setView((prev) => {
+        if (prev !== mapped) {
+          setViewHistory((h) => [...h.slice(-19), prev]);
+        }
+        return mapped;
+      });
+    });
+  }, []);
+  const goBackView = useCallback(() => {
+    setViewHistory((h) => {
+      if (!h.length) {
+        withViewTransition(() => setView('home'));
+        return h;
+      }
+      const prev = h[h.length - 1];
+      withViewTransition(() => setView(prev));
+      return h.slice(0, -1);
+    });
   }, []);
   const [patients, setPatients] = useState<FacilityPatient[]>([]);
   const [visits, setVisits] = useState<ReceptionVisit[]>([]);
@@ -1215,7 +1234,47 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         </div>
       )}
 
-      {/* Compact tool strip — only when not on design-system home */}
+      {/* Back to previous reception screen */}
+      {view !== 'home' && (
+        <div
+          className="recep-back-bar"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 16px',
+            borderBottom: `1px solid ${C.border}`,
+            background: '#fff',
+            position: 'sticky',
+            top: 0,
+            zIndex: 20,
+          }}
+        >
+          <button
+            type="button"
+            onClick={goBackView}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              borderRadius: 10,
+              border: `1px solid ${C.border}`,
+              background: '#F8FAFC',
+              fontWeight: 700,
+              fontSize: 12,
+              cursor: 'pointer',
+              color: C.navy,
+            }}
+            title="Back"
+          >
+            ← Back
+          </button>
+          <span style={{ fontSize: 12, color: C.muted, fontWeight: 600, textTransform: 'capitalize' }}>
+            {String(view).replace(/-/g, ' ')}
+          </span>
+        </div>
+      )}
       {/* HOME — MedCore Front Desk design */}
       {view === 'home' && (
         <ReceptionDeskHome

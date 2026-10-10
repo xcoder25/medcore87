@@ -34,6 +34,8 @@ interface Props {
   onOpenAssistant?: () => void;
   onOpenSearch?: () => void;
   onAlert?: () => void;
+  onBack?: () => void;
+  canGoBack?: boolean;
   roleBadge?: string;
   children: React.ReactNode;
 }
@@ -65,6 +67,8 @@ export const OsAppShell: React.FC<Props> = ({
   onOpenAssistant,
   onOpenSearch,
   onAlert,
+  onBack,
+  canGoBack,
   roleBadge,
   children,
 }) => {
@@ -171,6 +175,19 @@ export const OsAppShell: React.FC<Props> = ({
       <div className="admin-shell-main">
         <header className="admin-shell-top">
           <div className="admin-shell-top-left">
+            {onBack && (
+              <button
+                type="button"
+                className="admin-shell-icon-btn"
+                onClick={onBack}
+                title="Back"
+                aria-label="Go back"
+                disabled={canGoBack === false}
+                style={{ opacity: canGoBack === false ? 0.35 : 1, marginRight: 4 }}
+              >
+                <ChevronLeft size={18} />
+              </button>
+            )}
             <div className="admin-shell-facility">
               <Building2 size={14} />
               <span>{facility}</span>

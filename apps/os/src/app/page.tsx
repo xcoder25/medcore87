@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import '../styles/os.css';
 
 // Splash & Auth Components
@@ -89,7 +89,7 @@ import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
 // Icons
 import {
   Clock, Bell,
-  Activity, Shield, Lock, Unlock, LogOut, ChevronLeft, ChevronRight,
+  Activity, Shield, Lock, Unlock, LogOut, ChevronLeft, ArrowLeft, ChevronRight,
   AlertTriangle, Building2, Users, BedDouble, RefreshCw, BarChart3, Settings,
   CreditCard, FileText, Stethoscope, Calendar, HeartPulse, Database, Brain, Sparkles, Flame,
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
@@ -892,6 +892,29 @@ export default function OSPage() {
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const { criticalAlert, dismissCriticalAlert } = useRealtimeEvents({ app: 'MEDCORE_OS', facilityId: userSession?.facility });
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard');
+  const [moduleHistory, setModuleHistory] = useState<ModuleKey[]>([]);
+
+  const navigateModule = useCallback((key: ModuleKey | string) => {
+    const next = key as ModuleKey;
+    setActiveModule((prev) => {
+      if (prev === next) return prev;
+      setModuleHistory((h) => (prev ? [...h.slice(-19), prev] : h));
+      return next;
+    });
+  }, []);
+
+  const goModuleBack = useCallback(() => {
+    setModuleHistory((h) => {
+      if (!h.length) {
+        setActiveModule('dashboard');
+        return h;
+      }
+      const prev = h[h.length - 1];
+      setActiveModule(prev);
+      return h.slice(0, -1);
+    });
+  }, []);
+
 
   // Celestia: open patient card module for a given patient
   useEffect(() => {
@@ -907,7 +930,7 @@ export default function OSPage() {
       } catch {
         /* ignore */
       }
-      setActiveModule('patient-card');
+      navigateModule('patient-card');
     };
     window.addEventListener('medcore-celestia-open-patient', onOpen as EventListener);
     return () => window.removeEventListener('medcore-celestia-open-patient', onOpen as EventListener);
@@ -1335,6 +1358,7 @@ const handleLockScreen = () => {
   const handleModuleChange = (key: ModuleKey) => {
     if (key === activeModule) return;
     setModuleLoading(true);
+    setModuleHistory((h) => [...h.slice(-19), activeModule]);
     setActiveModule(key);
     setModuleKey(prev => prev + 1);
     window.setTimeout(() => setModuleLoading(false), 420);
@@ -2004,7 +2028,21 @@ const handleLockScreen = () => {
               <span className="os-top-hud-time">{currentTime || '—'}</span>
             </div>
 
-            <span className="os-top-hud-live">
+            
+            <button
+              type="button"
+              className="os-top-hud-icon-btn"
+              title="Back"
+              aria-label="Go back"
+              onClick={() => goModuleBack()}
+              disabled={moduleHistory.length === 0 && activeModule === 'dashboard'}
+              style={{
+                opacity: moduleHistory.length === 0 && activeModule === 'dashboard' ? 0.35 : 1,
+              }}
+            >
+              <ArrowLeft size={17} strokeWidth={2.25} />
+            </button>
+<span className="os-top-hud-live">
               <span className="os-top-hud-live-dot" />
               Live
             </span>
