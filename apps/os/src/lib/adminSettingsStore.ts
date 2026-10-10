@@ -32,7 +32,7 @@ export interface AdminFacilitySettings {
   allowWalkInWithoutNin: boolean;
   /** Soft notice on dashboards */
   maintenanceMessage: string;
-  /** Optional Gemini API key (facility) — prefer NEXT_PUBLIC_GEMINI_API_KEY in production */
+  /** Optional facility fallback only — production must use server GEMINI_API_KEY */
   geminiApiKey: string;
   /** Paystack public key (pk_live_… / pk_test_…) for reception payments */
   paystackPublicKey: string;

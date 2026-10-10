@@ -1,100 +1,62 @@
 /**
- * Gemini client for Celestia — NEXT_PUBLIC_GEMINI_API_KEY (env) preferred; admin settings fallback only.
+ * Celestia Gemini client — browser calls /api/gemini only.
+ * Server reads GEMINI_API_KEY (never NEXT_PUBLIC_GEMINI_API_KEY).
  */
-import { getAdminSettings } from './adminSettingsStore';
 
 export async function geminiGenerate(
   prompt: string,
   systemHint?: string,
   ragContext?: string
 ): Promise<{ ok: boolean; text: string; usedGemini: boolean }> {
-  // Prefer env (Vercel / .env). Admin UI key is fallback only when env is empty.
-  let key = '';
   try {
-    key = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_GEMINI_API_KEY?.trim()) || '';
-  } catch {
-    key = '';
-  }
-  if (!key) {
-    try {
-      const s = getAdminSettings();
-      if (s.geminiApiKey?.trim()) key = s.geminiApiKey.trim();
-    } catch {
-      /* ignore */
-    }
-  }
-
-  if (!key) {
-    return {
-      ok: false,
-      usedGemini: false,
-      text: '',
+    const res = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        systemHint: systemHint || undefined,
+        ragContext: ragContext || undefined,
+      }),
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      text?: string;
+      usedGemini?: boolean;
     };
-  }
-
-  const body = {
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          {
-            text: [
-              systemHint ||
-                'You are Celestia, MedCore hospital OS copilot for Nigerian public hospitals (Akwa Ibom). Be concise, actionable, never invent patient data. Prefer operational next steps.',
-              ragContext ? `\n${ragContext}\n` : '',
-              '',
-              prompt,
-            ].filter(Boolean).join('\n'),
-          },
-        ],
-      },
-    ],
-    generationConfig: {
-      temperature: 0.4,
-      maxOutputTokens: 1024,
-    },
-  };
-
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }
-    );
-    if (!res.ok) {
-      const err = await res.text();
-      return { ok: false, usedGemini: true, text: `Gemini error (${res.status}): ${err.slice(0, 200)}` };
-    }
-    const json = await res.json();
-    const text =
-      json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text).join('') ||
-      json?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      '';
-    if (!text) {
-      return { ok: false, usedGemini: true, text: 'Gemini returned an empty response.' };
-    }
-    return { ok: true, usedGemini: true, text: String(text).trim() };
+    return {
+      ok: Boolean(json.ok),
+      usedGemini: Boolean(json.usedGemini),
+      text: String(json.text || ''),
+    };
   } catch (e) {
     return {
       ok: false,
-      usedGemini: true,
-      text: `Gemini network error: ${(e as Error)?.message || 'failed'}`,
+      usedGemini: false,
+      text: `Celestia could not reach Gemini: ${(e as Error)?.message || 'network error'}`,
     };
   }
 }
 
+/** True if server reports GEMINI_API_KEY is configured (no key in the browser). */
 export function hasGeminiKey(): boolean {
-  try {
-    if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_GEMINI_API_KEY) return true;
-  } catch {
-    /* ignore */
+  // Sync callers: optimistic true in browser; actual check is async via probeGeminiConfigured
+  if (typeof window === 'undefined') {
+    return Boolean(
+      (process.env.GEMINI_API_KEY || '').trim() || (process.env.GOOGLE_GEMINI_API_KEY || '').trim()
+    );
   }
+  return (window as unknown as { __celestiaGeminiConfigured?: boolean }).__celestiaGeminiConfigured === true;
+}
+
+export async function probeGeminiConfigured(): Promise<boolean> {
   try {
-    const s = getAdminSettings();
-    return Boolean(s.geminiApiKey?.trim());
+    const res = await fetch('/api/gemini', { method: 'GET' });
+    const json = (await res.json().catch(() => ({}))) as { configured?: boolean };
+    const ok = Boolean(json.configured);
+    if (typeof window !== 'undefined') {
+      (window as unknown as { __celestiaGeminiConfigured?: boolean }).__celestiaGeminiConfigured = ok;
+    }
+    return ok;
   } catch {
     return false;
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import { geminiGenerate, hasGeminiKey } from '../../lib/geminiClient';
+import { geminiGenerate, hasGeminiKey, probeGeminiConfigured } from '../../lib/geminiClient';
 import { runM87Training, buildM87RagContext, retrieveRelevantExamples } from '../../lib/m87Train';
 import { addFeedback, getModelState, subscribeM87Learn } from '../../lib/m87LearningStore';
 import { liveAlert } from '../../lib/manualActions';
@@ -187,6 +187,10 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
       window.clearTimeout(t);
     };
   }, [session?.hospitalId]);
+
+  useEffect(() => {
+    void probeGeminiConfigured();
+  }, []);
 
   useEffect(() => {
     if (isThinking) return;

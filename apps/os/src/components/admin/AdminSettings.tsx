@@ -579,7 +579,7 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
                 }}
                 value={draft.geminiApiKey || ''}
                 onChange={(e) => patch({ geminiApiKey: e.target.value })}
-                placeholder="Paste Gemini API key — or set NEXT_PUBLIC_GEMINI_API_KEY on Vercel"
+                placeholder="Facility fallback only — prefer GEMINI_API_KEY on Vercel (server)"
               />
               <div
                 style={{
@@ -595,7 +595,7 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
               >
                 <Bell size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
                 Facility key is stored in hospital settings (local + sync). Prefer{' '}
-                <code>NEXT_PUBLIC_GEMINI_API_KEY</code> on Vercel for production. EMR remains source of
+                <code>GEMINI_API_KEY</code> on Vercel (server-only, not NEXT_PUBLIC). EMR remains source of
                 truth — AI only recommends.
                 {draft.geminiApiKey?.trim() ? ' · Key saved in draft — click Save.' : ' · No facility key yet.'}
               </div>
