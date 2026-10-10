@@ -27,6 +27,7 @@ export type DeskNav =
   | 'register'
   | 'appointments'
   | 'payment'
+  | 'send-accounts'
   | 'cashier'
   | 'search'
   | 'scan'
@@ -256,7 +257,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     { label: 'Register', desc: 'New patient registration', icon: UserPlus, go: 'register' as DeskNav },
     { label: 'Walk-in', desc: 'No appointment', icon: Users, go: 'walkin' as DeskNav },
     { label: 'Appointments', desc: 'Book · Confirm · Arrive', icon: Calendar, go: 'appointments' as DeskNav },
-    { label: 'Send to Accounts', desc: 'Invoice for Accounting desk', icon: CreditCard, go: 'payment' as DeskNav },
+    { label: 'Send to Accounts', desc: 'Queue / flow → Accounting desk', icon: CreditCard, go: 'send-accounts' as DeskNav },
   ];
 
   return (

@@ -40,6 +40,7 @@ import {
   type ReceptionPayment,
 } from '../../lib/receptionOpsStore';
 import { listStaffCards } from '../../lib/staffCardStore';
+import { listActiveStaff, type StaffPresence } from '../../lib/staffPresenceStore';
 import { pushNotification } from '../../lib/notificationEngine';
 import {
   AKWA_IBOM_LGAS,
@@ -92,7 +93,7 @@ type View =
   | 'register'
   | 'queue'
   | 'appointments'
-  | 'payment'
+  | 'payment' | 'send-accounts'
   | 'search'
   | 'scan'
   | 'walkin';
@@ -283,7 +284,9 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [view, setView] = useState<View>(initialView);
   /** Navigate with View Transition when browser supports it */
   const goView = useCallback((next: View) => {
-    withViewTransition(() => setView(next));
+    // Collect payment lives on Accounting desk only — front desk only sends invoices
+    const mapped: View = next === 'payment' || (next as string) === 'cashier' ? 'send-accounts' : next;
+    withViewTransition(() => setView(mapped));
   }, []);
   const [patients, setPatients] = useState<FacilityPatient[]>([]);
   const [visits, setVisits] = useState<ReceptionVisit[]>([]);
@@ -320,6 +323,9 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [posAmount, setPosAmount] = useState('5000');
   const [posPurpose, setPosPurpose] = useState('OPD consultation');
   const [posPatient, setPosPatient] = useState<FacilityPatient | null>(null);
+  const [acctTargetBadge, setAcctTargetBadge] = useState('');
+  const [acctTargetName, setAcctTargetName] = useState('');
+  const [sendAcctTab, setSendAcctTab] = useState<'queue' | 'flow'>('queue');
 
   // Appointment form
   const [apDept, setApDept] = useState('General OPD');
@@ -348,7 +354,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
 
   useEffect(() => {
-    if (initialView === 'payment') goView('payment');
+    if (initialView === 'payment' || initialView === 'send-accounts') goView('send-accounts');
   }, [initialView]);
 
   const reload = useCallback(() => {
@@ -765,8 +771,8 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
 
   /** Front desk does not collect money — hand financial data to Accounting */
-  const sendToAccountingDesk = () => {
-    const p = posPatient || selected;
+  const sendToAccountingDesk = (overridePatient?: FacilityPatient | null) => {
+    const p = overridePatient || posPatient || selected;
     if (!p) {
       flash('Select a patient first');
       return;
@@ -788,14 +794,18 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         source: 'reception',
         sentBy: session.name || 'Reception',
         sentByBadge: session.badgeId,
-        note: 'Patient directed to Accounting desk. Return to Front Desk with receipt for clinical queue.',
+        note: acctTargetName
+          ? `Assigned to ${acctTargetName}. Patient pays at Accounts, then returns with receipt.`
+          : 'Patient directed to Accounting desk. Return to Front Desk with receipt for clinical queue.',
+        assignedAccountantBadge: acctTargetBadge || undefined,
+        assignedAccountantName: acctTargetName || undefined,
       });
       try {
         pushNotification({
           facilityId,
           level: 'important',
           title: 'New payment request from Front Desk',
-          body: `${fullName(p)} · ₦${amt.toLocaleString()} · ${req.purpose} · ${req.invoiceNumber || req.id}`,
+          body: `${fullName(p)} · ₦${amt.toLocaleString()} · ${req.purpose} · ${req.invoiceNumber || req.id}${acctTargetName ? ` · desk: ${acctTargetName}` : ''}`,
           module: 'cashier',
           roleHint: 'accountant',
         });
@@ -821,7 +831,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         });
       } catch { /* ignore */ }
       flash(
-        `Sent to Accounting · ${req.invoiceNumber || req.id} · ₦${amt.toLocaleString()}. Patient pays at Accounts, then returns with receipt.`
+        `Sent to Accounting${acctTargetName ? ` · ${acctTargetName}` : ''} · ${req.invoiceNumber || req.id} · ₦${amt.toLocaleString()}. Patient pays at Accounts, then returns with receipt.`
       );
       setPosAmount('5000');
     } catch (e: any) {
@@ -987,7 +997,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     if (action === 'take_payment') {
       setPosPatient(p);
       setAiCard(null);
-      goView('payment');
+      goView('send-accounts');
       return;
     }
     if (action === 'complete_registration' || action === 'review') {
@@ -1568,7 +1578,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                             {v.paymentStatus === 'pending' && (
                               <button type="button" onClick={() => {
                                 const p = patients.find((x) => x.id === v.patientId);
-                                if (p) { setSelected(p); setPosPatient(p); goView('payment'); }
+                                if (p) { setSelected(p); setPosPatient(p); goView('send-accounts'); }
                               }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: '#FEF3C7', color: '#B45309', cursor: 'pointer' }}>Pay</button>
                             )}
                           </div>
@@ -2019,331 +2029,296 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
 
       {/* PAYMENT POS — active cash / POS / card / transfer / HMO / waiver */}
-      {view === 'payment' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 12,
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div>
-              <h2 style={{ margin: 0, fontWeight: 800, fontSize: 18, color: C.navy }}>Send to Accounting</h2>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: C.muted }}>
-                Front Desk opens the invoice · patient pays at Accounting desk · returns with receipt for clinical care
-              </p>
+      {view === 'send-accounts' && (() => {
+        const queueVisits = visits.filter(
+          (v) =>
+            v.status !== 'completed' &&
+            v.status !== 'cancelled' &&
+            (v.paymentStatus === 'pending' || v.paymentStatus === 'partial' || !v.paymentStatus)
+        );
+        const activeAcct = listActiveStaff(facilityId).filter((p) => {
+          const rk = String(p.roleKey || '').toLowerCase();
+          const r = String(p.role || '').toLowerCase();
+          return (
+            rk === 'accountant' ||
+            rk === 'cashier' ||
+            rk === 'hospital_admin' ||
+            r.includes('account') ||
+            r.includes('cashier') ||
+            r.includes('finance') ||
+            r.includes('billing')
+          );
+        });
+        const flowPatients = patients.slice(0, 80);
+        const rows: {
+          key: string;
+          patient: FacilityPatient | null;
+          patientId: string;
+          hospitalNumber: string;
+          name: string;
+          status: string;
+          dept: string;
+          amountHint: number;
+        }[] =
+          sendAcctTab === 'queue'
+            ? queueVisits.map((v) => {
+                const p = patients.find((x) => x.id === v.patientId || x.hospitalNumber === v.hospitalNumber) || null;
+                return {
+                  key: v.id,
+                  patient: p,
+                  patientId: v.patientId || p?.id || '',
+                  hospitalNumber: v.hospitalNumber,
+                  name: v.patientName || (p ? fullName(p) : v.hospitalNumber),
+                  status: `${v.status} · ${v.paymentStatus || 'pending'}`,
+                  dept: v.department || '—',
+                  amountHint: Number(v.amount) || CONSULT_FEES[v.department || ''] || 5000,
+                };
+              })
+            : flowPatients.map((p) => ({
+                key: p.id,
+                patient: p,
+                patientId: p.id,
+                hospitalNumber: p.hospitalNumber,
+                name: fullName(p),
+                status: p.status || 'registered',
+                dept: p.category || '—',
+                amountHint: 5000,
+              }));
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 18, color: C.navy }}>Send to Accounts</div>
+                <p style={{ margin: '4px 0 0', fontSize: 13, color: C.muted, maxWidth: 520 }}>
+                  Pick a patient from the live queue or hospital flow, choose an active Accounting desk, then send the invoice.
+                  Payment is collected only at Accounting — not on this desk.
+                </p>
+              </div>
+              <button type="button" onClick={() => goView('home')} style={{ padding: '8px 12px', borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                ← Front desk home
+              </button>
             </div>
-            {onNavigate && (
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <button
                 type="button"
-                onClick={() => onNavigate('cashier')}
+                onClick={() => setSendAcctTab('queue')}
                 style={{
-                  padding: '8px 14px',
-                  borderRadius: 10,
-                  border: `1px solid ${C.border}`,
-                  background: '#fff',
-                  fontWeight: 700,
-                  fontSize: 12,
-                  cursor: 'pointer',
-                  color: C.blue,
+                  padding: '8px 14px', borderRadius: 999, border: 'none', fontWeight: 800, fontSize: 12, cursor: 'pointer',
+                  background: sendAcctTab === 'queue' ? C.blue : '#F1F5F9', color: sendAcctTab === 'queue' ? '#fff' : C.muted,
                 }}
               >
-                Open Accounting / Cashier →
+                In queue · {queueVisits.length}
               </button>
-            )}
-          </div>
+              <button
+                type="button"
+                onClick={() => setSendAcctTab('flow')}
+                style={{
+                  padding: '8px 14px', borderRadius: 999, border: 'none', fontWeight: 800, fontSize: 12, cursor: 'pointer',
+                  background: sendAcctTab === 'flow' ? C.blue : '#F1F5F9', color: sendAcctTab === 'flow' ? '#fff' : C.muted,
+                }}
+              >
+                Hospital flow · {flowPatients.length}
+              </button>
+              <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
+                Active Accounting desks · {activeAcct.length || 'none online'}
+              </span>
+            </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(240px, 1fr) minmax(320px, 1.2fr)',
-              gap: 16,
-            }}
-          >
-            {/* Patient picker */}
             <div
               style={{
                 background: '#fff',
                 borderRadius: 16,
                 border: `1px solid ${C.border}`,
-                padding: 16,
+                padding: 14,
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 10,
               }}
             >
-              <div style={{ fontWeight: 800, fontSize: 13 }}>Patient</div>
-              <input
-                style={inputStyle}
-                placeholder="Search name, hospital no., phone…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {(query.trim()
-                  ? patients.filter((p) => {
-                      const q = query.trim().toLowerCase();
-                      return (
-                        fullName(p).toLowerCase().includes(q) ||
-                        p.hospitalNumber.toLowerCase().includes(q) ||
-                        (p.phone || '').includes(q)
-                      );
-                    })
-                  : patients
-                )
-                  .slice(0, 25)
-                  .map((p) => {
-                    const on = (posPatient || selected)?.id === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => {
-                          setPosPatient(p);
-                          setSelected(p);
-                          const fee = CONSULT_FEES[ciDept] ?? 5000;
-                          setPosAmount(String(fee));
-                          setPosPurpose('OPD consultation');
-                        }}
-                        style={{
-                          textAlign: 'left',
-                          padding: '10px 12px',
-                          borderRadius: 10,
-                          border: on ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
-                          background: on ? '#E0F2FE' : '#F8FAFC',
-                          cursor: 'pointer',
-                          fontWeight: 700,
-                          fontSize: 13,
-                          color: C.navy,
-                        }}
-                      >
-                        {fullName(p)}
-                        <div style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginTop: 2 }}>
-                          {p.hospitalNumber}
-                          {p.phone ? ` · ${p.phone}` : ''}
-                        </div>
-                      </button>
-                    );
-                  })}
-                {patients.length === 0 && (
-                  <div style={{ padding: 16, textAlign: 'center', color: C.muted, fontSize: 13 }}>
-                    No patients registered yet
+              <div style={{ fontWeight: 800, fontSize: 13, color: C.navy }}>Route to desk</div>
+              <select
+                style={{ ...inputStyle, maxWidth: 360 }}
+                value={acctTargetBadge}
+                onChange={(e) => {
+                  const badge = e.target.value;
+                  setAcctTargetBadge(badge);
+                  const hit = activeAcct.find((a) => a.badgeId === badge);
+                  setAcctTargetName(hit?.name || '');
+                }}
+              >
+                <option value="">Any available Accounting desk</option>
+                {activeAcct.map((a) => (
+                  <option key={a.badgeId} value={a.badgeId}>
+                    {a.name} · {a.role || a.roleKey || 'Accounts'} · online
+                  </option>
+                ))}
+              </select>
+              {activeAcct.length === 0 && (
+                <div style={{ fontSize: 12, color: '#B45309', fontWeight: 600 }}>
+                  No accountant online right now — invoice still queues for Accounts when they sign in.
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: C.muted, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  Amount (₦)
+                  <input style={{ ...inputStyle, width: 140 }} value={posAmount} onChange={(e) => setPosAmount(e.target.value.replace(/[^\d]/g, ''))} />
+                </label>
+                <label style={{ fontSize: 12, fontWeight: 700, color: C.muted, display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 180 }}>
+                  Purpose
+                  <input style={inputStyle} value={posPurpose} onChange={(e) => setPosPurpose(e.target.value)} placeholder="OPD consultation · folder fee…" />
+                </label>
+              </div>
+            </div>
+
+            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, fontWeight: 800, fontSize: 13 }}>
+                {sendAcctTab === 'queue' ? 'Live queue — unpaid / pending' : 'Patients in hospital flow'}
+              </div>
+              <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                {rows.length === 0 && (
+                  <div style={{ padding: 24, textAlign: 'center', color: C.muted, fontSize: 13 }}>
+                    {sendAcctTab === 'queue' ? 'No pending-payment patients in queue' : 'No patients registered yet'}
                   </div>
                 )}
-              </div>
-              {visits.filter(
-                (v) =>
-                  (v.paymentStatus === 'pending' || v.paymentStatus === 'partial') &&
-                  v.status !== 'completed' &&
-                  v.status !== 'cancelled'
-              ).length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 6 }}>
-                    AWAITING ACCOUNTS INVOICE
-                  </div>
-                  {visits
-                    .filter(
-                      (v) =>
-                        (v.paymentStatus === 'pending' || v.paymentStatus === 'partial') &&
-                        v.status !== 'completed' &&
-                        v.status !== 'cancelled'
-                    )
-                    .slice(0, 8)
-                    .map((v) => (
-                      <button
-                        key={v.id}
-                        type="button"
-                        onClick={() => {
-                          const p = patients.find((x) => x.id === v.patientId);
-                          if (p) {
-                            setPosPatient(p);
-                            setSelected(p);
-                          }
-                          setPosAmount(String(v.amount || CONSULT_FEES[v.department] || 5000));
-                          setPosPurpose(`${v.department} consultation`);
-                        }}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '8px 10px',
-                          marginBottom: 4,
-                          borderRadius: 8,
-                          border: `1px solid #FED7AA`,
-                          background: '#FFF7ED',
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: C.navy,
-                        }}
-                      >
-                        {v.queueNumber} · {v.patientName}
-                        <span style={{ color: C.muted, fontWeight: 600 }}>
-                          {' '}
-                          · ₦{(v.amount || 0).toLocaleString()} pending
-                        </span>
-                      </button>
-                    ))}
-                </div>
-              )}
-            </div>
-
-            {/* Charge panel */}
-            <div
-              style={{
-                background: '#fff',
-                borderRadius: 16,
-                border: `1px solid ${C.border}`,
-                padding: 18,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 14,
-              }}
-            >
-              <div style={{ fontWeight: 800, fontSize: 13 }}>
-                {(posPatient || selected)
-                  ? `Charging · ${fullName(posPatient || selected!)}`
-                  : 'Select a patient, then choose method'}
-              </div>
-
-              <div>
-                <label style={labelStyle}>Amount (₦)</label>
-                <input
-                  style={{ ...inputStyle, fontSize: 20, fontWeight: 800 }}
-                  type="number"
-                  min={0}
-                  value={posAmount}
-                  onChange={(e) => setPosAmount(e.target.value)}
-                  placeholder="5000"
-                />
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                  {Object.entries(CONSULT_FEES).slice(0, 6).map(([dept, fee]) => (
-                    <button
-                      key={dept}
-                      type="button"
-                      onClick={() => {
-                        setPosAmount(String(fee));
-                        setPosPurpose(`${dept} consultation`);
-                      }}
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: '5px 10px',
-                        borderRadius: 999,
-                        border: `1px solid ${C.border}`,
-                        background: '#F8FAFC',
-                        cursor: 'pointer',
-                        color: C.navy,
-                      }}
-                    >
-                      {dept} · ₦{(fee as number).toLocaleString()}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label style={labelStyle}>Purpose</label>
-                <input
-                  style={inputStyle}
-                  value={posPurpose}
-                  onChange={(e) => setPosPurpose(e.target.value)}
-                  placeholder="OPD consultation"
-                />
-              </div>
-
-              <div
-                style={{
-                  padding: '12px 14px',
-                  borderRadius: 12,
-                  background: '#F0F9FF',
-                  border: '1px solid #BAE6FD',
-                  fontSize: 12,
-                  color: '#0C4A6E',
-                  lineHeight: 1.5,
-                }}
-              >
-                <strong>Front Desk does not collect money.</strong> This creates an invoice on the Accounting desk queue.
-                After payment, the patient returns here with the receipt for check-in / clinical queue.
-              </div>
-
-              <button
-                type="button"
-                disabled={!(posPatient || selected)}
-                onClick={sendToAccountingDesk}
-                className="mc-btn-live"
-                style={{
-                  marginTop: 4,
-                  height: 52,
-                  borderRadius: 14,
-                  border: 'none',
-                  background:
-                    posPatient || selected
-                      ? 'linear-gradient(135deg,#0052D4,#0D9488)'
-                      : '#CBD5E1',
-                  color: '#fff',
-                  fontWeight: 800,
-                  fontSize: 14,
-                  cursor: posPatient || selected ? 'pointer' : 'not-allowed',
-                  boxShadow: posPatient || selected ? '0 12px 28px rgba(2,132,199,0.3)' : 'none',
-                }}
-              >
-                Send invoice to Accounting · ₦{(Number(posAmount) || 0).toLocaleString()}
-              </button>
-
-              {onNavigate && (
-                <button
-                  type="button"
-                  onClick={() => onNavigate('cashier')}
-                  style={{
-                    height: 40,
-                    borderRadius: 12,
-                    border: `1px solid ${C.border}`,
-                    background: '#fff',
-                    fontWeight: 700,
-                    fontSize: 12,
-                    cursor: 'pointer',
-                    color: C.blue,
-                  }}
-                >
-                  Jump to Accounting desk (if you work both roles) →
-                </button>
-              )}
-
-              {payments.length > 0 && (
-                <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12, marginTop: 4 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, marginBottom: 8 }}>
-                    TODAY · {payments.length} payments · ₦
-                    {payments.reduce((s, p) => s + (p.amount || 0), 0).toLocaleString()}
-                  </div>
-                  {payments.slice(0, 6).map((pay) => (
+                {rows.map((row) => {
+                  const selectedRow =
+                    (posPatient || selected)?.id === row.patientId ||
+                    (posPatient || selected)?.hospitalNumber === row.hospitalNumber;
+                  return (
                     <div
-                      key={pay.id}
+                      key={row.key}
                       style={{
                         display: 'flex',
-                        justifyContent: 'space-between',
-                        fontSize: 12,
-                        padding: '6px 0',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '10px 14px',
                         borderBottom: `1px solid ${C.border}`,
+                        background: selectedRow ? '#F0F9FF' : '#fff',
                       }}
                     >
-                      <span style={{ fontWeight: 700 }}>
-                        {pay.patientName}{' '}
-                        <span style={{ color: C.muted, fontWeight: 600 }}>· {pay.method}</span>
-                      </span>
-                      <span style={{ fontWeight: 800, color: '#059669' }}>
-                        ₦{pay.amount.toLocaleString()}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (row.patient) {
+                            setPosPatient(row.patient);
+                            setSelected(row.patient);
+                          } else if (row.patientId) {
+                            const p = patients.find((x) => x.id === row.patientId);
+                            if (p) {
+                              setPosPatient(p);
+                              setSelected(p);
+                            }
+                          }
+                          setPosAmount(String(row.amountHint || 5000));
+                        }}
+                        style={{
+                          flex: 1,
+                          textAlign: 'left',
+                          border: 'none',
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          padding: 0,
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, fontSize: 13, color: C.navy }}>{row.name}</div>
+                        <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginTop: 2 }}>
+                          {row.hospitalNumber} · {row.dept} · {row.status}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (row.patient) {
+                            setPosPatient(row.patient);
+                            setSelected(row.patient);
+                          } else {
+                            const p = patients.find((x) => x.id === row.patientId || x.hospitalNumber === row.hospitalNumber);
+                            if (p) {
+                              setPosPatient(p);
+                              setSelected(p);
+                            } else {
+                              flash('Patient record not found — open search and select the patient');
+                              return;
+                            }
+                          }
+                          setPosAmount(String(row.amountHint || posAmount || 5000));
+                          if (row.patient) {
+                            sendToAccountingDesk(row.patient);
+                          } else {
+                            const p = patients.find((x) => x.id === row.patientId || x.hospitalNumber === row.hospitalNumber);
+                            if (p) sendToAccountingDesk(p);
+                            else flash('Patient record not found — open search and select the patient');
+                          }
+                        }}
+                        style={{
+                          padding: '7px 12px',
+                          borderRadius: 10,
+                          border: 'none',
+                          background: 'linear-gradient(135deg,#0D9488,#0284C7)',
+                          color: '#fff',
+                          fontWeight: 800,
+                          fontSize: 11,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          boxShadow: '0 4px 12px rgba(13,148,136,0.25)',
+                        }}
+                      >
+                        Send to Accounts
+                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
+                  );
+                })}
+              </div>
             </div>
+
+            {(posPatient || selected) && (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                  padding: 14,
+                  borderRadius: 14,
+                  background: 'linear-gradient(135deg,#ECFDF5,#F0F9FF)',
+                  border: `1px solid #A7F3D0`,
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: C.navy }}>
+                    {fullName(posPatient || selected!)} · {(posPatient || selected)!.hospitalNumber}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                    ₦{(Number(posAmount) || 0).toLocaleString()} · {posPurpose || 'Fee'}
+                    {acctTargetName ? ` · → ${acctTargetName}` : ''}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={sendToAccountingDesk}
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: 12,
+                    border: 'none',
+                    background: 'linear-gradient(135deg,#0D9488,#0284C7)',
+                    color: '#fff',
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    boxShadow: '0 8px 20px rgba(2,132,199,0.25)',
+                  }}
+                >
+                  Confirm send to Accounts
+                </button>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
+
 
       {/* AI contextual check-in card — human must confirm */}
             <PaystackBrandedCheckout
@@ -2733,7 +2708,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   onClick={() => {
                     setPosPatient(selected);
                     setPanelOpen(false);
-                    goView('payment');
+                    goView('send-accounts');
                   }}
                   style={{ padding: 12, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
                 >

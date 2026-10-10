@@ -49,6 +49,9 @@ export interface FrontDeskAccountsRequest {
   paidBy?: string;
   /** Front desk notes for cashier */
   note?: string;
+  /** Preferred active Accounting desk staff */
+  assignedAccountantBadge?: string;
+  assignedAccountantName?: string;
 }
 
 function read(): FrontDeskAccountsRequest[] {
@@ -112,6 +115,8 @@ export function sendPaymentRequestToAccounts(input: {
   sentBy: string;
   sentByBadge?: string;
   note?: string;
+  assignedAccountantBadge?: string;
+  assignedAccountantName?: string;
 }): FrontDeskAccountsRequest {
   const invId = `INV-FD-${Date.now().toString(36).toUpperCase()}`;
   const invNum = `FD-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
@@ -152,6 +157,8 @@ export function sendPaymentRequestToAccounts(input: {
     sentByBadge: input.sentByBadge,
     sentAt: new Date().toISOString(),
     note: input.note,
+    assignedAccountantBadge: input.assignedAccountantBadge,
+    assignedAccountantName: input.assignedAccountantName,
   };
 
   write([row, ...read().filter((r) => r.id !== row.id)]);
