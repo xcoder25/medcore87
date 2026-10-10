@@ -1,5 +1,9 @@
 /**
- * Server-only Gemini proxy — GEMINI_API_KEY (never NEXT_PUBLIC_*).
+ * Server-only Gemini proxy.
+ * Key order:
+ *  1) Vercel/server env (GEMINI_API_KEY, …)
+ *  2) Facility Admin Settings in Firestore (geminiApiKey) — works when Vercel env UI fails
+ * Never use NEXT_PUBLIC_* keys.
  */
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -15,8 +19,7 @@ const GEMINI_ENV_NAMES = [
   'AI_GOOGLE_API_KEY',
 ] as const;
 
-/** Strip whitespace / surrounding quotes people paste into Vercel */
-function cleanKey(raw: string | undefined): string {
+function cleanKey(raw: string | undefined | null): string {
   let k = String(raw || '').trim();
   if (
     (k.startsWith('"') && k.endsWith('"')) ||
@@ -24,25 +27,69 @@ function cleanKey(raw: string | undefined): string {
   ) {
     k = k.slice(1, -1).trim();
   }
-  // Common paste artifact: "Bearer xxx"
   if (k.toLowerCase().startsWith('bearer ')) k = k.slice(7).trim();
   return k;
 }
 
-function getServerGeminiKey(): string {
+/** Runtime-only env read (avoid build-time empty inlining) */
+function getEnvGeminiKey(): string {
+  const env = process.env as Record<string, string | undefined>;
   for (const name of GEMINI_ENV_NAMES) {
-    const k = cleanKey(process.env[name]);
+    const k = cleanKey(env[name]);
     if (k) return k;
   }
-  // Last resort: any env whose name contains GEMINI and API (not NEXT_PUBLIC)
-  for (const [name, val] of Object.entries(process.env)) {
+  for (const name of Object.keys(env)) {
     if (name.startsWith('NEXT_PUBLIC_')) continue;
     if (!/GEMINI/i.test(name)) continue;
     if (!/KEY|API/i.test(name)) continue;
-    const k = cleanKey(val);
+    const k = cleanKey(env[name]);
     if (k) return k;
   }
   return '';
+}
+
+async function getFacilityGeminiKey(facilityId: string): Promise<string> {
+  const fid = String(facilityId || '').trim();
+  if (!fid) return '';
+  try {
+    // Lazy import so build does not require Firebase at module load
+    const { firestoreReadFacility } = await import('../../../lib/firebase');
+    const data = await firestoreReadFacility(fid);
+    if (!data) return '';
+    const settingsKeys = [
+      'medcore_os_admin_settings_v1',
+      `medcore_os_admin_settings_v1:${fid}`,
+      `medcore_os_admin_settings_v1:${fid.toUpperCase()}`,
+    ];
+    for (const sk of settingsKeys) {
+      const block = data[sk];
+      if (block && typeof block === 'object') {
+        const k = cleanKey((block as { geminiApiKey?: string }).geminiApiKey);
+        if (k) return k;
+      }
+    }
+    // Flat field on shared doc
+    const flat = cleanKey(data.geminiApiKey as string | undefined);
+    if (flat) return flat;
+  } catch {
+    /* offline / rules */
+  }
+  return '';
+}
+
+async function resolveGeminiKey(facilityId?: string): Promise<{ key: string; source: string }> {
+  const fromEnv = getEnvGeminiKey();
+  if (fromEnv) return { key: fromEnv, source: 'env' };
+  if (facilityId) {
+    const fromFs = await getFacilityGeminiKey(facilityId);
+    if (fromFs) return { key: fromFs, source: 'firestore_facility_settings' };
+  }
+  // Try common Eket id if none passed
+  for (const fid of ['IGH-EKT', 'IGH_EKT', 'DEFAULT-HOSPITAL']) {
+    const fromFs = await getFacilityGeminiKey(fid);
+    if (fromFs) return { key: fromFs, source: `firestore:${fid}` };
+  }
+  return { key: '', source: 'none' };
 }
 
 const MODELS = [
@@ -53,30 +100,36 @@ const MODELS = [
   'gemini-1.5-pro',
 ];
 
-export async function GET() {
-  const key = getServerGeminiKey();
+export async function GET(req: NextRequest) {
+  const facilityId =
+    req.nextUrl.searchParams.get('facilityId') ||
+    req.headers.get('x-facility-id') ||
+    '';
+  const resolved = await resolveGeminiKey(facilityId || undefined);
+  const env = process.env as Record<string, string | undefined>;
   const present: Record<string, { set: boolean; length: number }> = {};
   for (const name of GEMINI_ENV_NAMES) {
-    const k = cleanKey(process.env[name]);
+    const k = cleanKey(env[name]);
     present[name] = { set: Boolean(k), length: k.length };
   }
-  // Flag mistaken NEXT_PUBLIC_ so user can fix naming
   const publicMistaken = Boolean(
-    cleanKey(process.env.NEXT_PUBLIC_GEMINI_API_KEY) ||
-      cleanKey(process.env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY)
+    cleanKey(env.NEXT_PUBLIC_GEMINI_API_KEY) ||
+      cleanKey(env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY)
   );
   return NextResponse.json({
-    configured: Boolean(key),
-    keyLength: key ? key.length : 0,
+    configured: Boolean(resolved.key),
+    keyLength: resolved.key ? resolved.key.length : 0,
+    keySource: resolved.source,
     vercelEnv: process.env.VERCEL_ENV || null,
     nodeEnv: process.env.NODE_ENV || null,
     present,
     publicKeyMistakenlySet: publicMistaken,
-    hint: key
-      ? 'Server key is loaded.'
+    facilityIdTried: facilityId || null,
+    hint: resolved.key
+      ? `Gemini key loaded from ${resolved.source}.`
       : publicMistaken
-        ? 'You set NEXT_PUBLIC_GEMINI_API_KEY — that is ignored (browser-exposed). Add server-only GEMINI_API_KEY, then Redeploy.'
-        : 'No server Gemini key found. Vercel → Settings → Environment Variables → GEMINI_API_KEY for Production AND Preview → Save → Deployments → Redeploy (or push a new commit).',
+        ? 'NEXT_PUBLIC_GEMINI_API_KEY is set but ignored. Use server GEMINI_API_KEY, or save key in Admin Settings (synced to Firestore).'
+        : 'No key on Vercel env. Either: (1) Fix Vercel GEMINI_API_KEY for Production, or (2) Admin → Settings → paste Gemini API key → Save (uses Firestore fallback).',
   });
 }
 
@@ -113,25 +166,36 @@ async function callGemini(
 }
 
 export async function POST(req: NextRequest) {
-  const key = getServerGeminiKey();
-  if (!key) {
+  let body: {
+    prompt?: string;
+    systemHint?: string;
+    ragContext?: string;
+    facilityId?: string;
+  };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ ok: false, usedGemini: false, text: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const facilityId =
+    String(body.facilityId || '').trim() ||
+    req.headers.get('x-facility-id') ||
+    '';
+
+  const resolved = await resolveGeminiKey(facilityId || undefined);
+  if (!resolved.key) {
     return NextResponse.json(
       {
         ok: false,
         usedGemini: false,
         configured: false,
+        keySource: 'none',
         text:
-          'Server is missing GEMINI_API_KEY. In Vercel → Project → Settings → Environment Variables, add GEMINI_API_KEY (Production + Preview), then Redeploy. Do not use NEXT_PUBLIC_.',
+          'No Gemini API key on the server. Add GEMINI_API_KEY in Vercel (Production), OR open Admin → Settings, paste your Google AI Studio key into Gemini API key, Save, then retry chat.',
       },
       { status: 503 }
     );
-  }
-
-  let body: { prompt?: string; systemHint?: string; ragContext?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ ok: false, usedGemini: false, text: 'Invalid JSON body' }, { status: 400 });
   }
 
   const prompt = String(body.prompt || '').trim();
@@ -164,25 +228,26 @@ export async function POST(req: NextRequest) {
   const errors: string[] = [];
   try {
     for (const model of MODELS) {
-      const result = await callGemini(key, model, payload);
+      const result = await callGemini(resolved.key, model, payload);
       if (result.ok) {
         return NextResponse.json({
           ok: true,
           usedGemini: true,
           configured: true,
+          keySource: resolved.source,
           model,
           text: result.text,
         });
       }
       errors.push(`${model}: HTTP ${result.status} ${result.text.slice(0, 120)}`);
-      // 400 on model name → try next; 403/401 → stop (bad key)
       if (result.status === 401 || result.status === 403) {
         return NextResponse.json(
           {
             ok: false,
             usedGemini: true,
             configured: true,
-            text: `Gemini rejected the API key (${result.status}). Check GEMINI_API_KEY in Vercel and that the Generative Language API is enabled.`,
+            keySource: resolved.source,
+            text: `Gemini rejected the API key (${result.status}). Create a new key at https://aistudio.google.com/apikey and update Vercel or Admin Settings.`,
           },
           { status: 502 }
         );
@@ -193,6 +258,7 @@ export async function POST(req: NextRequest) {
         ok: false,
         usedGemini: true,
         configured: true,
+        keySource: resolved.source,
         text: `Gemini models failed.\n${errors.slice(0, 3).join('\n')}`,
       },
       { status: 502 }
@@ -201,9 +267,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        usedGemini: true,
+        usedGemini: false,
         configured: true,
-        text: `Gemini network error: ${(e as Error)?.message || 'failed'}`,
+        keySource: resolved.source,
+        text: `Gemini network error: ${(e as Error)?.message || 'unknown'}`,
       },
       { status: 502 }
     );

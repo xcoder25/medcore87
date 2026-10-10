@@ -10,19 +10,39 @@ export type GeminiResult = {
   configured?: boolean;
 };
 
+function resolveFacilityId(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const s = localStorage.getItem('medcore_os_session');
+    if (s) {
+      const j = JSON.parse(s);
+      if (j?.hospitalId) return String(j.hospitalId);
+    }
+  } catch {
+    /* ignore */
+  }
+  return '';
+}
+
 export async function geminiGenerate(
   prompt: string,
   systemHint?: string,
-  ragContext?: string
+  ragContext?: string,
+  facilityId?: string
 ): Promise<GeminiResult> {
   try {
+    const fid = facilityId || resolveFacilityId();
     const res = await fetch('/api/gemini', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(fid ? { 'x-facility-id': fid } : {}),
+      },
       body: JSON.stringify({
         prompt,
         systemHint: systemHint || undefined,
         ragContext: ragContext || undefined,
+        facilityId: fid || undefined,
       }),
     });
     const json = (await res.json().catch(() => ({}))) as {
