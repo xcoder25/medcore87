@@ -2298,7 +2298,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 </div>
                 <button
                   type="button"
-                  onClick={sendToAccountingDesk}
+                  onClick={() => sendToAccountingDesk()}
                   style={{
                     padding: '10px 18px',
                     borderRadius: 12,
