@@ -125,7 +125,7 @@ export async function checkAkshiaEligibility(memberId: string, facilityId?: stri
       return empty(json.message || `AKSHIA eligibility failed (HTTP ${res.status})`, 'error');
     }
     return {
-      ok: Boolean(json.ok ?? json.status === 'active'),
+      ok: Boolean(json.ok ?? (json.status === 'active')),
       mode: 'live',
       memberId: String(json.memberId || id),
       status: (json.status as AkshiaMemberStatus) || 'unknown',
@@ -172,7 +172,7 @@ export async function requestAkshiaPreAuth(req: AkshiaPreAuthRequest): Promise<A
       return fail(json.message || `Pre-auth failed (HTTP ${res.status})`, 'error');
     }
     return {
-      ok: Boolean(json.ok ?? json.status === 'approved' || json.status === 'pending'),
+      ok: Boolean(json.ok ?? (json.status === 'approved' || json.status === 'pending')),
       mode: 'live',
       authCode: String(json.authCode || json.authorizationCode || ''),
       status: (json.status as AkshiaPreAuthResult['status']) || 'pending',

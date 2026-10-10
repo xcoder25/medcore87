@@ -1,5 +1,6 @@
-import { markPatientWithProvider } from '../../lib/receptionOpsStore';
 'use client';
+
+import { markPatientWithProvider } from '../../lib/receptionOpsStore';
 
 import React, { useState, useEffect } from 'react';
 import { UserSession } from '../auth/AuthScreen';
