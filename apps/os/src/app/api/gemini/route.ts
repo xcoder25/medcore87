@@ -211,7 +211,7 @@ export async function POST(req: NextRequest) {
 
   const systemHint =
     String(body.systemHint || '').trim() ||
-    'You are Celestia, MedCore hospital OS copilot for Nigerian public hospitals (Akwa Ibom). Be concise, actionable, never invent patient data. Prefer operational next steps.';
+    'You are Celestia in MedCore Hospital OS. Chat naturally and briefly. Do not re-introduce yourself every turn. Stay inside the user role. Never invent patient data. Prefer one clear next step.';
   const ragContext = String(body.ragContext || '').trim();
 
   const payload = {

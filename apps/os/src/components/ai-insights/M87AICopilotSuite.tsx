@@ -208,6 +208,35 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
   }, [isThinking]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
+
+  const naturalDeskReply = (query: string): string | null => {
+    const q = query.trim().toLowerCase();
+    const first = (session?.name || 'there').split(/\s+/)[0] || 'there';
+    const rk = normalizeRoleKey(session);
+    if (/^(hi|hello|hey|good morning|good afternoon|good evening|gm|morning)[!., ]*$/i.test(q)) {
+      const tips =
+        rk === 'reception' || rk === 'records'
+          ? 'What are we doing — register, check-in, or queue?'
+          : rk === 'hospital_admin' || rk === 'admin'
+            ? 'What do you need — staff, beds, or the desk?'
+            : 'What do you need on the desk?';
+      return `Hey ${first}. ${tips}`;
+    }
+    if (/^(ok|okay|k|alright|cool|fine|sure|got it|noted)[!., ]*$/i.test(q)) {
+      return 'Alright — say when you need the next step.';
+    }
+    if (/^(thanks|thank you|thx|ty)[!., ]*$/i.test(q)) {
+      return 'Anytime.';
+    }
+    if (/^(yes|yep|yeah|y)[!., ]*$/i.test(q)) {
+      return 'Okay — go ahead with the details when ready.';
+    }
+    if (/^(no|nope|nah)[!., ]*$/i.test(q)) {
+      return 'No problem. What else?';
+    }
+    return null;
+  };
+
   const handleSend = async (e?: React.FormEvent, overrideText?: string) => {
     e?.preventDefault?.();
     const text = (overrideText ?? inputPrompt).trim();
@@ -239,6 +268,24 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
           id: `msg-${Date.now()}-ai`,
           sender: 'm87',
           text: refusal,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          category: 'operational',
+        },
+      ]);
+      setIsThinking(false);
+      return;
+    }
+
+    
+    // Tiny chat — natural one-liners
+    const tiny = naturalDeskReply(query);
+    if (tiny) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-${Date.now()}-ai`,
+          sender: 'm87',
+          text: tiny,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           category: 'operational',
         },
@@ -464,7 +511,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
 
     // Gemini when available → else Celestia offline (local hospital knowledge)
     let reply =
-      'Celestia offline. I can still automate hospital admin tasks:\n• enrol nurse Ada Okon pin 123456\n• bulk enrol: Emeka doctor; Chioma reception; Amaka nurse\n• create 5 nurses\n\nOr ask about beds, revenue, or desk ops.';
+      'Celestia is offline for full chat right now. Ask about beds, revenue, or the queue — or if you are admin, say enrol nurse Ada Okon pin 123456.';
     let cat: ChatMessage['category'] = 'clinical';
     let offlineMode = false;
 
@@ -488,24 +535,24 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
         cat = 'operational';
       } else if (lower.includes('bed') || lower.includes('surge') || lower.includes('capacity') || lower.includes('ward')) {
         reply =
-          '**Celestia offline**\n\nReview **Bed & Ward Occupancy** for live counts and alerts. Open that module for ward >90% and long-stay patients.';
+          'Beds are under **Bed & Ward Occupancy** — live counts, >90% wards, and long-stay. Open that screen for the board.';
         cat = 'operational';
       } else if (lower.includes('money') || lower.includes('revenue') || lower.includes('hmo') || lower.includes('billing') || lower.includes('payment')) {
         reply =
-          '**Celestia offline**\n\nOpen **Accounts / Cashier** for live tills, unpaid bills, and payment status. Front desk enrolment still queues patients for payment in realtime.';
+          'For money and unpaid bills, open **Accounts / Cashier**. Front desk still queues payment in realtime after enrolment.';
         cat = 'financial';
       } else if (lower.includes('access') || lower.includes('id card') || lower.includes('badge') || lower.includes('enrol') || lower.includes('staff')) {
         reply = canAutomateStaff(actorRole)
-          ? '**Celestia offline** (chat model unavailable) — automation still works.\n\nSay `enrol doctor Full Name pin 123456` and I will run Access Automation with live steps.'
+          ? 'Chat model is offline, but enrolment automation still works. Say enrol doctor Full Name pin 123456 and I will run the steps.'
           : staffAutomationRefusal(actorRole);
         cat = 'operational';
       } else if (lower.includes('queue') || lower.includes('opd') || lower.includes('waiting')) {
         reply =
-          '**Celestia offline**\n\nOpen **Reception / Front Desk** for the live OPD queue. Active visits and payment gates update without reload.';
+          'Live OPD queue is on **Reception / Front Desk** — visits and payment gates update without reload.';
         cat = 'operational';
       } else {
         reply =
-          "**Celestia offline**\n\nThe cloud model is unreachable right now. I can still:\n• Automate staff enrolment (admin)\n• Point you to beds, revenue, and queue modules\n• Use this facility's learned knowledge when available\n\nTry again later, or ask me to **enrol** staff / check **beds** / **revenue**.";
+          "I'm offline for deep chat right now. I can still point you to beds, revenue, or the queue — or run staff enrolment if you are admin. What do you need?";
         cat = 'operational';
       }
     }
