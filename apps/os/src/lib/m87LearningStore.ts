@@ -143,14 +143,13 @@ export function subscribeM87Learn(cb: () => void): () => void {
 }
 
 /** Seed Nigerian / Akwa Ibom hospital domain cards (always available). */
-export const M87_SEED_CARDS: M87DomainCard[
+export const M87_SEED_CARDS: M87DomainCard[] = [
   {
     id: 'seed-registry-count',
     title: 'Facility patient registry',
     body: 'When staff ask how many patients or who is on the registry, use live facility data (count + names + hospital numbers). Never invent patients. After a count, if they ask who/names, list the actual registry entries.',
     tags: ['registry', 'patients', 'reception', 'names', 'count'],
   },
-] = [
   {
     id: 'seed-nhis',
     title: 'NHIS / HMO at reception',
