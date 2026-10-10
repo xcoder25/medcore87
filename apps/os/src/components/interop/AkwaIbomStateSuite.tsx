@@ -5,6 +5,7 @@ import {
   checkAkshiaEligibility,
   requestAkshiaPreAuth,
   listTariff,
+  fetchAkshiaTariff,
   computeCopay,
   type AkshiaEligibility,
 } from '../../lib/akshiaGateway';
@@ -195,7 +196,17 @@ export const AkwaIbomStateSuite: React.FC<{ session?: any }> = ({ session }) => 
             </div>
           )}
           <div style={{ marginTop: 16 }}>
-            <strong>Tariff ({listTariff().length} items)</strong>
+            <button
+              type="button"
+              style={{ ...btn, marginBottom: 8 }}
+              onClick={async () => {
+                const r = await fetchAkshiaTariff();
+                setMsg(r.message);
+              }}
+            >
+              Load live AKSHIA tariff
+            </button>
+            <strong>Tariff ({listTariff().length} items from agency)</strong>
             <ul style={{ fontSize: 12, color: '#475569', maxHeight: 160, overflow: 'auto' }}>
               {listTariff().map((t) => (
                 <li key={t.code}>
@@ -204,6 +215,9 @@ export const AkwaIbomStateSuite: React.FC<{ session?: any }> = ({ session }) => 
                 </li>
               ))}
             </ul>
+            {listTariff().length === 0 && (
+              <p style={{ fontSize: 12, color: '#B45309' }}>No local tariff — load from live AKSHIA API only.</p>
+            )}
           </div>
         </div>
       )}

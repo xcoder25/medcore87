@@ -181,35 +181,41 @@ export async function sendReminderSms(input: {
   patientName: string;
   when: string;
   facilityName: string;
-}): Promise<{ ok: boolean; mode: 'live' | 'queued'; message: string; body: string }> {
+}): Promise<{ ok: boolean; mode: 'live' | 'error' | 'unconfigured'; message: string; body: string }> {
   const body = smsBody(input.lang, input.kind, input.patientName, input.when, input.facilityName);
+  if (!String(input.phone || '').trim()) {
+    return { ok: false, mode: 'error', message: 'Phone number required', body };
+  }
   try {
     const res = await fetch('/api/sms/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ to: input.phone, body, lang: input.lang }),
     });
-    if (res.ok) {
-      const json = await res.json();
-      return { ok: true, mode: json.mode || 'live', message: json.message || 'SMS sent', body };
+    const json = await res.json().catch(() => ({}));
+    if (res.status === 503 || json.mode === 'unconfigured') {
+      return {
+        ok: false,
+        mode: 'unconfigured',
+        message: json.message || 'SMS gateway not configured. Set SMS_API_URL and SMS_API_KEY on the server.',
+        body,
+      };
     }
-  } catch {
-    /* queue local */
-  }
-  if (typeof window !== 'undefined') {
-    try {
-      const key = 'medcore_sms_outbox_v1';
-      const prev = JSON.parse(localStorage.getItem(key) || '[]');
-      prev.unshift({ ...input, body, at: new Date().toISOString() });
-      localStorage.setItem(key, JSON.stringify(prev.slice(0, 2000)));
-    } catch {
-      /* ignore */
+    if (!res.ok || json.ok === false) {
+      return {
+        ok: false,
+        mode: 'error',
+        message: json.message || `SMS gateway error (HTTP ${res.status})`,
+        body,
+      };
     }
+    return { ok: true, mode: 'live', message: json.message || 'SMS sent', body };
+  } catch (e) {
+    return {
+      ok: false,
+      mode: 'error',
+      message: `SMS network error: ${(e as Error).message}`,
+      body,
+    };
   }
-  return {
-    ok: true,
-    mode: 'queued',
-    message: 'SMS queued offline — set SMS_API_URL / SMS_API_KEY on server for live gateway',
-    body,
-  };
 }
