@@ -18,6 +18,7 @@ import {
 import { todayVisits } from './receptionOpsStore';
 import { listOrders } from './clinicalEventBus';
 import { listPatients, countPatients } from './patientRegistryStore';
+import { NIGERIAN_OPD_SUMMARY } from './nigerianOpdFlow';
 import { listBeds } from './bedBoardStore';
 import { getStaffRegistry } from './adminRealtimeStore';
 
@@ -191,7 +192,7 @@ export function buildM87RagContext(query: string, facilityId: string): string {
     return c.tags.some((t) => q.includes(t)) || c.title.toLowerCase().split(' ').some((w) => q.includes(w));
   }).slice(0, 3);
 
-  const parts: string[] = ['### Celestia learned knowledge (use if relevant, do not invent patients)'];
+  const parts: string[] = ['### Celestia learned knowledge (use if relevant, do not invent patients)', '### Nigerian OPD pathway\n' + NIGERIAN_OPD_SUMMARY];
   // Live registry facts so answers about "how many / who" stay accurate
   try {
     const n = countPatients(facilityId);

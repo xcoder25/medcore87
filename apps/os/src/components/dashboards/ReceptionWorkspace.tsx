@@ -60,6 +60,7 @@ import {
 } from '../../lib/frontDeskAccountsBridge';
 import { patientBalance } from '../../lib/patientBillingStore';
 import { printQueueTicket, printPaymentReceipt } from '../../lib/printService';
+import { opdStageHint } from '../../lib/nigerianOpdFlow';
 import { PaystackBrandedCheckout } from '../reception/PaystackBrandedCheckout';
 import { hasPaystackKey } from '../../lib/paystackClient';
 import { withViewTransition, measureRect, flipElement } from '../../lib/motion';
@@ -1769,7 +1770,10 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                           }}>{v.paymentStatus}</span>
                         </td>
                         <td style={{ padding: 10 }}>
+                          <div>
                           <span style={{ fontSize: 11, fontWeight: 700 }}>{v.status}{v.aiReminderSent ? ' 🔔' : ''}</span>
+                          <div style={{ fontSize: 10, color: C.muted, marginTop: 2, maxWidth: 160 }}>{opdStageHint(v.status, v.paymentStatus)}</div>
+                        </div>
                         </td>
                         <td style={{ padding: 10 }}>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>

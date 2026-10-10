@@ -145,6 +145,24 @@ export function subscribeM87Learn(cb: () => void): () => void {
 /** Seed Nigerian / Akwa Ibom hospital domain cards (always available). */
 export const M87_SEED_CARDS: M87DomainCard[] = [
   {
+    id: 'seed-nigerian-opd-pathway',
+    title: 'Nigerian OPD pathway (MedCore)',
+    body: 'Arrival/registration at Front Desk → folder fee at Accounts (pay-before-service) → triage/vitals at nursing when available → waiting queue → Call next → doctor consult → CPOE orders generate bills and pending lab/Rx → Accounts PAID releases ancillary and pharmacy → disposition (discharge, referral, or admit). Desk does not click Done/Pay for clinical progress; stages move from doctor and payment events.',
+    tags: ['opd', 'nigeria', 'reception', 'workflow', 'queue', 'emr'],
+  },
+  {
+    id: 'seed-pay-before-service',
+    title: 'Pay-before-service interlock',
+    body: 'Nigerian core checkpoint: folder fee and post-consult lab/Rx/imaging bills go to Accounts. Orders stay Pending Payment until Cashier marks PAID, then Lab/Radiology/Pharmacy worklists unlock. Front Desk only routes invoices (To Accounts), never settles clinical fees as Done on the queue row.',
+    tags: ['billing', 'accounts', 'cashier', 'nigeria', 'orders'],
+  },
+  {
+    id: 'seed-opd-auto-route',
+    title: 'OPD auto-routing triggers',
+    body: 'Check-in → waiting. Call next → called. Doctor opens consult → with_provider. Place Rx/lab/imaging order → visit completed for consult stage + bills to Accounts. Accounts PAID → visit paymentStatus paid and order release. Vitals save (when implemented) → doctor queue with urgency flags.',
+    tags: ['queue', 'automation', 'clinical', 'opd'],
+  },
+  {
     id: 'seed-send-accounts-name',
     title: 'Send patient to Accounts by name',
     body: 'If staff say "send Michael James to account", resolve the patient by name on the facility registry and hand off the folder/registration fee to Accounts. Do not ask for hospital number when the name uniquely matches. Follow-ups like just "Michael James" after "send to account" complete the same action.',
