@@ -142,7 +142,7 @@ const MASTER_PILLARS: NavSection[] = [
   {
     label: '1. Clinical tools',
     items: [
-      { key: 'm87-ai', icon: Brain, label: 'Clinical assistant', badge: 'AI' },
+      { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
       { key: 'ai', icon: Sparkles, label: 'Decision support', badge: 'AI' },
     ],
   },
@@ -273,7 +273,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Assist',
           items: [
-            { key: 'm87-ai', icon: Brain, label: 'Clinical assistant', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
             { key: 'patient-card', icon: FileText, label: 'Patient health card' },
           ],
         },
@@ -305,7 +305,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'laboratory', icon: FlaskConical, label: 'Pre-op labs' },
             { key: 'radiology', icon: Layers, label: 'Pre-op imaging', badge: 'PACS' },
             { key: 'emr', icon: FileText, label: 'EMR & notes' },
-            { key: 'm87-ai', icon: Brain, label: 'Surgical assistant', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
           ],
         },
       ];
@@ -336,7 +336,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'maternity', icon: Stethoscope, label: 'Maternity / labour' },
             { key: 'paediatrics', icon: Baby, label: 'Paediatrics / NICU' },
             { key: 'icu', icon: Wind, label: 'ICU', badge: 'ICU' },
-            { key: 'm87-ai', icon: Brain, label: 'Nursing assistant', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
           ],
         },
       ];
@@ -360,7 +360,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'emergency', icon: Flame, label: 'Obstetric emergency' },
             { key: 'blood-bank', icon: Droplet, label: 'Blood bank' },
             { key: 'pharmacy', icon: Pill, label: 'Pharmacy requests' },
-            { key: 'm87-ai', icon: Brain, label: 'Midwifery assistant', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
           ],
         },
       ];
@@ -382,7 +382,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'cashier', icon: CreditCard, label: 'Payments / POS' },
             { key: 'emr', icon: FileText, label: 'Patient records' },
             { key: 'patient-flow', icon: RefreshCw, label: 'Clinic queue' },
-            { key: 'm87-ai', icon: Brain, label: 'Pharmacy assistant', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
           ],
         },
       ];
@@ -403,7 +403,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'blood-bank', icon: Droplet, label: 'Blood bank', badge: 'ABO' },
             { key: 'patient-card', icon: FileText, label: 'Patient records' },
             { key: 'emr', icon: FileText, label: 'EMR' },
-            { key: 'm87-ai', icon: Brain, label: 'Lab assistant', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
           ],
         },
       ];
@@ -423,7 +423,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           items: [
             { key: 'emr', icon: FileText, label: 'Clinical records' },
             { key: 'patient-card', icon: FileText, label: 'Patient imaging history' },
-            { key: 'm87-ai', icon: Brain, label: 'Imaging assistant', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
           ],
         },
       ];
@@ -520,7 +520,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Medical director home', badge: 'L5' },
             { key: 'command', icon: Activity, label: 'Hospital Operations Hub & Census' },
-            { key: 'm87-ai', icon: Brain, label: 'Hospital insights', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
             { key: 'analytics', icon: BarChart3, label: 'Clinical Performance Analytics' },
           ],
         },
@@ -1729,11 +1729,11 @@ const handleLockScreen = () => {
         </div>
       )}
 
-      {/* ── M87 Assistant panel ── */}
+      {/* ── Celestia Assistant panel ── */}
       {aiDrawerOpen && (
         <div
           role="dialog"
-          aria-label="M87 Assistant"
+          aria-label="Celestia Assistant"
           style={{
             position: 'fixed',
             top: 0,
@@ -1775,7 +1775,7 @@ const handleLockScreen = () => {
               <Sparkles size={20} color="#fff" />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A' }}>M87 Assistant</div>
+              <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A' }}>Celestia Assistant</div>
               <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>
                 {userSession?.roleKey === 'reception' ? 'Reception copilot' : 'Hospital OS · AI'}
                 {' · '}
@@ -1814,8 +1814,8 @@ const handleLockScreen = () => {
           type="button"
           className="os-ai-fab"
           onClick={() => setAiDrawerOpen(true)}
-          title="Open M87 Assistant"
-          aria-label="Open M87 Assistant"
+          title="Open Celestia Assistant"
+          aria-label="Open Celestia Assistant"
         >
           <Sparkles size={22} color="#fff" />
           <span className="os-ai-fab-pulse" />

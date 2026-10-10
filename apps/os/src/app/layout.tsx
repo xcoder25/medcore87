@@ -3,7 +3,7 @@ import '../styles/os.css';
 
 export const metadata: Metadata = {
   title: 'MedCore OS • Intelligent Hospital Command Centre',
-  description: 'Enterprise operational command centre unifying bed management, patient flow telemetry, hospital staffing, and M87 predictive AI insights.',
+  description: 'Enterprise operational command centre unifying bed management, patient flow telemetry, hospital staffing, and Celestia predictive AI insights.',
   icons: {
     icon: [{ url: '/medcore-logo.png', type: 'image/png' }],
     shortcut: '/medcore-logo.png',

@@ -9,8 +9,8 @@ export const MODULE_CATALOG: { key: string; label: string; group: string }[] = [
   // Core
   { key: 'dashboard', label: 'Role dashboard (home)', group: 'Core' },
   { key: 'my-card', label: 'My staff ID card', group: 'Core' },
-  { key: 'ai', label: 'M87 AI assistant (chat)', group: 'Core' },
-  { key: 'm87-ai', label: 'M87 AI suite / insights', group: 'Core' },
+  { key: 'ai', label: 'Celestia assistant (chat)', group: 'Core' },
+  { key: 'm87-ai', label: 'Celestia suite / insights', group: 'Core' },
   { key: 'doctor-portal', label: 'Doctor clinical portal', group: 'Core' },
 
   // Clinical & wards

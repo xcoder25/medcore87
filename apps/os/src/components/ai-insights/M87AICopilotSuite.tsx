@@ -78,7 +78,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
 
-  // Pause aurora / gradient loops when M87 is off-screen or tab hidden
+  // Pause aurora / gradient loops when Celestia is off-screen or tab hidden
   useEffect(() => {
     const el = shellRef.current;
     if (!el) return;
@@ -182,17 +182,17 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
           const rk = roleWord(allow[1]);
           const mods = parseMods(allow[2]);
           mods.forEach((m) => setRoleModule(rk, m, true));
-          reply = `M87 Role Visibility: enabled for **${rk}**: ${mods.join(', ')}. Current: ${getModulesForRole(rk).join(', ')}`;
+          reply = `Celestia Role Visibility: enabled for **${rk}**: ${mods.join(', ')}. Current: ${getModulesForRole(rk).join(', ')}`;
         } else if (deny) {
           const rk = roleWord(deny[1]);
           const mods = parseMods(deny[2]);
           mods.forEach((m) => setRoleModule(rk, m, false));
-          reply = `M87 Role Visibility: disabled for **${rk}**: ${mods.join(', ')}. Current: ${getModulesForRole(rk).join(', ')}`;
+          reply = `Celestia Role Visibility: disabled for **${rk}**: ${mods.join(', ')}. Current: ${getModulesForRole(rk).join(', ')}`;
         } else if (setAll) {
           const rk = roleWord(setAll[1]);
           const mods = parseMods(setAll[2]);
           applyRoleModules(rk, mods);
-          reply = `M87 Role Visibility: **${rk}** modules set to: ${getModulesForRole(rk).join(', ')}`;
+          reply = `Celestia Role Visibility: **${rk}** modules set to: ${getModulesForRole(rk).join(', ')}`;
         } else {
           reply =
             'Role visibility commands:\n• allow nurse emr beds\n• deny doctor analytics\n• set role reception to dashboard patient-card patient-flow cashier\n\nOr open Role Visibility page for tick boxes.';
@@ -231,16 +231,16 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
         if (staffIntent.jobs.length === 1) {
           const r = await createStaffAccountWithCard(staffIntent.jobs[0]);
           reply = r.ok
-            ? `M87 Access Automation: Account created and ID card issued.\n\n• Name: ${staffIntent.jobs[0].fullName}\n• Badge: ${r.badgeId}\n• Role: ${staffIntent.jobs[0].roleKey}\n• PIN: (as specified / default 123456)\n\nStaff can Sign in with ID No. using badge + PIN. Open Staff Access Control to view the card.`
-            : `M87 could not create account: ${r.error || 'unknown error'}`;
-          if (r.ok) emitLiveAction(`M87 enrolled ${r.badgeId}`, { module: 'ai-access' });
+            ? `Celestia Access Automation: Account created and ID card issued.\n\n• Name: ${staffIntent.jobs[0].fullName}\n• Badge: ${r.badgeId}\n• Role: ${staffIntent.jobs[0].roleKey}\n• PIN: (as specified / default 123456)\n\nStaff can Sign in with ID No. using badge + PIN. Open Staff Access Control to view the card.`
+            : `Celestia could not create account: ${r.error || 'unknown error'}`;
+          if (r.ok) emitLiveAction(`Celestia enrolled ${r.badgeId}`, { module: 'ai-access' });
         } else if (staffIntent.jobs.length > 1) {
           const { summary } = await bulkCreateStaff(staffIntent.jobs);
-          reply = `M87 Bulk Access Automation\n\n${summary}\n\nAll successful accounts have ID cards and badge login. Review under Staff Access Control.`;
-          emitLiveAction(`M87 bulk enrol ×${staffIntent.jobs.length}`, { module: 'ai-access' });
+          reply = `Celestia Bulk Access Automation\n\n${summary}\n\nAll successful accounts have ID cards and badge login. Review under Staff Access Control.`;
+          emitLiveAction(`Celestia bulk enrol ×${staffIntent.jobs.length}`, { module: 'ai-access' });
         }
       } catch (err: unknown) {
-        reply = `M87 automation error: ${(err as Error)?.message || 'failed'}`;
+        reply = `Celestia automation error: ${(err as Error)?.message || 'failed'}`;
       }
       const aiMsg: ChatMessage = {
         id: `msg-${Date.now()}-ai`,
@@ -256,7 +256,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
 
     // Gemini (when key configured) → else local advisory
     let reply =
-      'M87: I can automate hospital admin tasks. Try:\n• enrol nurse Ada Okon pin 123456\n• bulk enrol: Emeka doctor; Chioma reception; Amaka nurse\n• create 5 nurses\n\nOr ask about beds, revenue, or clinical topics.';
+      'Celestia: I can automate hospital admin tasks. Try:\n• enrol nurse Ada Okon pin 123456\n• bulk enrol: Emeka doctor; Chioma reception; Amaka nurse\n• create 5 nurses\n\nOr ask about beds, revenue, or clinical topics.';
     let cat: ChatMessage['category'] = 'clinical';
 
     const fid = session?.hospitalId || 'IGH-EKT';
@@ -264,14 +264,14 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
     const localHits = retrieveRelevantExamples(query, fid, 1);
     const gemini = await geminiGenerate(
       query,
-      `You are M87, MedCore hospital OS copilot. Facility context: staff assistant. Keep answers short. Never invent patient identifiers. Prefer learned hospital knowledge when provided.`,
+      `You are Celestia, MedCore hospital OS copilot. Facility context: staff assistant. Keep answers short. Never invent patient identifiers. Prefer learned hospital knowledge when provided.`,
       rag
     );
     if (gemini.ok && gemini.text) {
       reply = gemini.text;
       cat = 'clinical';
     } else if (localHits[0]) {
-      reply = localHits[0].idealOutput + '\n\n— M87 local model (from local hospital knowledge)';
+      reply = localHits[0].idealOutput + '\n\n— Celestia local model (from local hospital knowledge)';
       cat = 'operational';
     } else {
       const lower = query.toLowerCase();
@@ -314,7 +314,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
       response: msg.text,
       rating,
     });
-    liveAlert(rating === 1 ? 'Thanks — saved to M87 training set' : 'Feedback noted', 'm87-ai', fid);
+    liveAlert(rating === 1 ? 'Thanks — saved to Celestia training set' : 'Feedback noted', 'm87-ai', fid);
   };
 
   const suggestions = [
@@ -339,7 +339,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
         </div>
         <div className="m87-header-text">
           <div className="m87-title-row">
-            <h1 className="m87-title">M87</h1>
+            <h1 className="m87-title">Celestia</h1>
             <span className="m87-live-dot" title="Engine online" />
             <span className="m87-live-label">{engineReady ? 'Live' : 'Warming up'}</span>
           </div>
@@ -397,7 +397,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
                   <>
                     <StreamingText text={msg.text} animate={msg.id === streamingId} />
                     <div className="m87-feedback">
-                      <button type="button" className="m87-fb mc-btn-live" onClick={() => rateMessage(msg, 1)} title="Teach M87">
+                      <button type="button" className="m87-fb mc-btn-live" onClick={() => rateMessage(msg, 1)} title="Teach Celestia">
                         👍
                       </button>
                       <button type="button" className="m87-fb mc-btn-live" onClick={() => rateMessage(msg, -1)} title="Not helpful">
@@ -446,7 +446,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
             ref={inputRef}
             className="m87-input"
             rows={1}
-            placeholder="Message M87…"
+            placeholder="Message Celestia…"
             value={inputPrompt}
             onChange={(e) => setInputPrompt(e.target.value)}
             onKeyDown={(e) => {
@@ -474,3 +474,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
   );
 };
 
+
+
+/** @deprecated use Celestia naming — same component */
+export const CelestiaAICopilotSuite = M87AICopilotSuite;

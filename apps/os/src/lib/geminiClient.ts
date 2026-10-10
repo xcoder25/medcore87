@@ -1,5 +1,5 @@
 /**
- * Gemini client for M87 — NEXT_PUBLIC_GEMINI_API_KEY (env) preferred; admin settings fallback only.
+ * Gemini client for Celestia — NEXT_PUBLIC_GEMINI_API_KEY (env) preferred; admin settings fallback only.
  */
 import { getAdminSettings } from './adminSettingsStore';
 
@@ -40,7 +40,7 @@ export async function geminiGenerate(
           {
             text: [
               systemHint ||
-                'You are M87, MedCore hospital OS copilot for Nigerian public hospitals (Akwa Ibom). Be concise, actionable, never invent patient data. Prefer operational next steps.',
+                'You are Celestia, MedCore hospital OS copilot for Nigerian public hospitals (Akwa Ibom). Be concise, actionable, never invent patient data. Prefer operational next steps.',
               ragContext ? `\n${ragContext}\n` : '',
               '',
               prompt,

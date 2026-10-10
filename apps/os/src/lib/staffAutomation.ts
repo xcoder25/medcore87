@@ -1,5 +1,5 @@
 /**
- * M87 / admin automation — create staff accounts + ID cards (single or bulk).
+ * Celestia / admin automation — create staff accounts + ID cards (single or bulk).
  */
 import { enrolStaffAndIssueCard, listStaffCards } from './staffCardStore';
 import {
@@ -137,7 +137,7 @@ export async function createStaffAccountWithCard(
       /* offline ok */
     }
 
-    pushActivity(`M87 auto-enrol · ${input.fullName.trim()} · ${card.badgeId}`);
+    pushActivity(`Celestia auto-enrol · ${input.fullName.trim()} · ${card.badgeId}`);
     return { ok: true, badgeId: card.badgeId, card };
   } catch (e: unknown) {
     return { ok: false, error: (e as Error)?.message || 'Enrol failed' };
@@ -161,7 +161,7 @@ export async function bulkCreateStaff(
     .filter((c) => c.ok)
     .map((c) => `• ${c.card?.fullName || 'Staff'} → ${c.badgeId}`)
     .join('\n');
-  const summary = `M87 bulk enrol complete: ${ok} created${fail ? `, ${fail} failed` : ''}.\n${lines}`;
+  const summary = `Celestia bulk enrol complete: ${ok} created${fail ? `, ${fail} failed` : ''}.\n${lines}`;
   return { created, summary };
 }
 

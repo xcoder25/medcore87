@@ -177,7 +177,7 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     { label: 'Lab orders', desc: 'Order & track', icon: FlaskConical, go: 'laboratory' },
     { label: 'Prescribe', desc: 'e-Prescription', icon: Pill, go: 'pharmacy' },
     { label: 'Imaging', desc: 'Radiology / PACS', icon: Layers, go: 'radiology' },
-    { label: 'AI assistant', desc: 'M87 clinical help', icon: Brain, go: 'm87-ai' },
+    { label: 'AI assistant', desc: 'Celestia clinical help', icon: Brain, go: 'm87-ai' },
   ];
 
   const callPatient = (v: ReceptionVisit) => {

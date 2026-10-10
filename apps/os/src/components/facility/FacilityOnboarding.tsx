@@ -3,7 +3,7 @@
 /**
  * Clinical EMR facility profile — service lines, orderables, and bed capacity
  * for patient placement. Not a CMMS/IWMS (no HVAC, estates, or plant maintenance).
- * Agentic ward/bed layout via M87 for clinical census only.
+ * Agentic ward/bed layout via Celestia for clinical census only.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -113,7 +113,7 @@ async function suggestWardLayout(catalog: FacilityCatalog): Promise<{
 }> {
   const total = Math.max(catalog.targetTotalBeds || 40, 8);
   const system =
-    'You are M87, MedCore hospital OS for Nigerian public hospitals. ' +
+    'You are Celestia, MedCore hospital OS for Nigerian public hospitals. ' +
     'Return ONLY JSON (no markdown): {"wards":[{"ward":"Male Medical","prefix":"MM","count":12,"category":"general"}],' +
     '"icuBeds":4,"hduBeds":2,"nicuCots":2,"isolationBeds":2,"emergencyBays":6,"deliverySuites":2,"theatreCount":2}. ' +
     'Categories: general|maternity|paediatric|icu|hdu|isolation|emergency|surgical|other. Counts ~ totalBeds.';
@@ -156,7 +156,7 @@ Services on: ${Object.entries(catalog.services || {})
           if (rows.length) {
             return {
               rows,
-              note: `M87 suggested ${rows.length} wards · ${rows.reduce((s, r) => s + r.count, 0)} beds`,
+              note: `Celestia suggested ${rows.length} wards · ${rows.reduce((s, r) => s + r.count, 0)} beds`,
             };
           }
         }
@@ -347,7 +347,7 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
 
       // full or prompt — try Gemini, then offline cascade
       const system =
-        'You are M87, MedCore hospital OS for Nigerian public hospitals. ' +
+        'You are Celestia, MedCore hospital OS for Nigerian public hospitals. ' +
         'Return ONLY JSON (no markdown) matching FacilityCatalog partial fields: ' +
         '{"name","type","tier","targetTotalBeds","icuBeds","hduBeds","nicuCots","isolationBeds","emergencyBays","deliverySuites","theatreCount","ambulanceCount",' +
         '"wards":[{"ward","prefix","count","category"}],"theatres":[{"name","type","hasLaminarFlow"}],' +
@@ -369,7 +369,7 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
             const cleaned = res.text.replace(/```json|```/g, '').trim();
             const parsed = JSON.parse(cleaned);
             setCatalog((c) => mergeAiFacilityPatch(c, parsed));
-            setAiNote('M87 AI applied full catalog patch (realtime-ready — Save to sync peers)');
+            setAiNote('Celestia applied full catalog patch (realtime-ready — Save to sync peers)');
             applied = true;
           } catch {
             /* fall through */
@@ -516,7 +516,7 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
             <Sparkles size={18} color="#7C3AED" />
-            <strong style={{ color: '#0A2540', fontSize: '0.9rem' }}>M87 AI Assist</strong>
+            <strong style={{ color: '#0A2540', fontSize: '0.9rem' }}>Celestia Assist</strong>
             <span style={{ fontSize: '0.78rem', color: '#64748B', flex: 1 }}>
               Draft clinical service lines, wards for patient placement, lab/Rx/imaging orderables (single or bulk). Review before save — not building/estates management.
             </span>
@@ -620,7 +620,7 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
             cursor: 'pointer',
           }}
         >
-          <Sparkles size={14} /> Show M87 AI Assist
+          <Sparkles size={14} /> Show Celestia Assist
         </button>
       )}
 
@@ -789,7 +789,7 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
                 }}
               >
                 {aiLoading ? <Loader2 size={14} /> : <Sparkles size={14} />}
-                {aiLoading ? 'Suggesting…' : 'M87 suggest layout'}
+                {aiLoading ? 'Suggesting…' : 'Celestia suggest layout'}
               </button>
             </div>
 

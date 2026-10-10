@@ -1,8 +1,8 @@
 /**
- * M87 super training script — harvest hospital live data, score examples,
+ * Celestia super training script — harvest hospital live data, score examples,
  * rebuild local vocabulary model, produce RAG pack for Gemini.
  *
- * Run from UI ("Train M87") or call runM87Training(facilityId) from code.
+ * Run from UI ("Train Celestia") or call runM87Training(facilityId) from code.
  */
 
 import {
@@ -156,7 +156,7 @@ export function runM87Training(facilityId: string): {
 } {
   const harvested = harvestHospitalKnowledge(facilityId);
   const model = trainLocalModel(facilityId);
-  const summary = `M87 trained · v${model.version} · ${model.exampleCount} examples · ${model.feedbackCount} positive feedback · harvested ${harvested.length} live facts · ${Object.keys(model.vocabulary).length} terms`;
+  const summary = `Celestia trained · v${model.version} · ${model.exampleCount} examples · ${model.feedbackCount} positive feedback · harvested ${harvested.length} live facts · ${Object.keys(model.vocabulary).length} terms`;
   return { harvested: harvested.length, model, summary };
 }
 
@@ -191,7 +191,7 @@ export function buildM87RagContext(query: string, facilityId: string): string {
     return c.tags.some((t) => q.includes(t)) || c.title.toLowerCase().split(' ').some((w) => q.includes(w));
   }).slice(0, 3);
 
-  const parts: string[] = ['### M87 learned knowledge (use if relevant, do not invent patients)'];
+  const parts: string[] = ['### Celestia learned knowledge (use if relevant, do not invent patients)'];
   for (const h of hits) {
     parts.push(`Q: ${h.input}\nA: ${h.idealOutput}`);
   }

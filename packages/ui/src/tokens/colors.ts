@@ -1,11 +1,11 @@
 export const MedCoreColors = {
-  // Brand M87 Identity
+  // Brand Celestia Identity
   brand: {
     primary: '#0F766E',      // Deep Clinical Teal
     primaryHover: '#0D9488',
     primaryLight: '#CCFBF1',
     accent: '#2563EB',       // Modern Hospital Cobalt
-    accentPurple: '#7C3AED', // M87 AI Intelligence Accent
+    accentPurple: '#7C3AED', // Celestia Intelligence Accent
   },
   // Dark Command Centre Palette
   osDark: {

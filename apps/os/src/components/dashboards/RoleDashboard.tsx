@@ -63,7 +63,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
 
 
   const deskForRole = (key: string): RoleDeskConfig | null => {
-    const ai = { label: 'M87 AI', desc: 'Assistant', icon: Brain, go: 'm87-ai' };
+    const ai = { label: 'Celestia', desc: 'Assistant', icon: Brain, go: 'm87-ai' };
     switch (key) {
       case 'nurse':
       case 'midwife':
@@ -517,7 +517,7 @@ function DoctorDashboardBody({ onNavigate, triggerAction, activeTab }: any) {
   return (
     <RoleHome
       title="Physician workspace"
-      subtitle="All doctors share this dashboard. Open EMR, wards, theatre, or M87 from here."
+      subtitle="All doctors share this dashboard. Open EMR, wards, theatre, or Celestia from here."
       metrics={[
         { label: 'Role', value: 'Doctor', sub: 'Shared clinical desk', tone: 'green' },
         { label: 'Queue', value: 'Live', sub: 'From EMR / flow modules' },
@@ -528,7 +528,7 @@ function DoctorDashboardBody({ onNavigate, triggerAction, activeTab }: any) {
         { label: 'Patient card', nav: 'patient-card', msg: 'Patient registration / card' },
         { label: 'Bed census', nav: 'beds', msg: 'Ward bed board' },
         { label: 'Theatre list', nav: 'theatre', msg: 'Operating theatre' },
-        { label: 'M87 AI', nav: 'm87-ai', msg: 'Clinical AI assistant' },
+        { label: 'Celestia', nav: 'm87-ai', msg: 'Clinical AI assistant' },
         { label: 'Pharmacy / Rx', nav: 'pharmacy', msg: 'e-Prescription' },
       ]}
       triggerAction={triggerAction}
@@ -554,7 +554,7 @@ function SurgeonDashboardBody({ onNavigate, triggerAction }: any) {
         { label: 'Theatre schedule', nav: 'theatre', msg: 'Opening theatre', primary: true },
         { label: 'Open EMR', nav: 'emr', msg: 'Surgical notes / EMR' },
         { label: 'ICU', nav: 'icu', msg: 'Critical care' },
-        { label: 'M87 AI', nav: 'm87-ai', msg: 'Surgical AI helper' },
+        { label: 'Celestia', nav: 'm87-ai', msg: 'Surgical AI helper' },
       ]}
       triggerAction={triggerAction}
     />
@@ -580,7 +580,7 @@ function NurseDashboardBody({ onNavigate, triggerAction }: any) {
         { label: 'Open EMR', nav: 'emr', msg: 'Clinical record' },
         { label: 'Bed board', nav: 'beds', msg: 'Bed occupancy' },
         { label: 'Patient flow', nav: 'patient-flow', msg: 'Flow board' },
-        { label: 'M87 AI', nav: 'm87-ai', msg: 'Nursing AI' },
+        { label: 'Celestia', nav: 'm87-ai', msg: 'Nursing AI' },
       ]}
       triggerAction={triggerAction}
     />
@@ -605,7 +605,7 @@ function MidwifeDashboardBody({ onNavigate, triggerAction }: any) {
         { label: 'Maternity / wards', nav: 'nursing', msg: 'Maternity nursing', primary: true },
         { label: 'Open EMR', nav: 'emr', msg: 'Maternity EMR' },
         { label: 'Bed board', nav: 'beds', msg: 'Beds' },
-        { label: 'M87 AI', nav: 'm87-ai', msg: 'AI assistant' },
+        { label: 'Celestia', nav: 'm87-ai', msg: 'AI assistant' },
       ]}
       triggerAction={triggerAction}
     />
@@ -630,7 +630,7 @@ function PharmacistDashboardBody({ onNavigate, triggerAction }: any) {
         { label: 'Dispense / pharmacy', nav: 'pharmacy', msg: 'Pharmacy', primary: true },
         { label: 'Open EMR', nav: 'emr', msg: 'Medication history' },
         { label: 'Inventory', nav: 'inventory', msg: 'Medical store' },
-        { label: 'M87 AI', nav: 'm87-ai', msg: 'Drug safety AI' },
+        { label: 'Celestia', nav: 'm87-ai', msg: 'Drug safety AI' },
       ]}
       triggerAction={triggerAction}
     />
@@ -655,7 +655,7 @@ function LabDashboardBody({ onNavigate, triggerAction }: any) {
         { label: 'Lab LIS', nav: 'laboratory', msg: 'Laboratory', primary: true },
         { label: 'Open EMR', nav: 'emr', msg: 'Lab results / EMR' },
         { label: 'Blood bank', nav: 'blood-bank', msg: 'Blood bank' },
-        { label: 'M87 AI', nav: 'm87-ai', msg: 'AI assistant' },
+        { label: 'Celestia', nav: 'm87-ai', msg: 'AI assistant' },
       ]}
       triggerAction={triggerAction}
     />
@@ -679,7 +679,7 @@ function RadiologistDashboardBody({ onNavigate, triggerAction }: any) {
       actions={[
         { label: 'Radiology / PACS', nav: 'radiology', msg: 'Radiology', primary: true },
         { label: 'Open EMR', nav: 'emr', msg: 'Reports in EMR' },
-        { label: 'M87 AI', nav: 'm87-ai', msg: 'Imaging AI' },
+        { label: 'Celestia', nav: 'm87-ai', msg: 'Imaging AI' },
       ]}
       triggerAction={triggerAction}
     />
@@ -906,7 +906,7 @@ function SysadminDashboardBody({ onNavigate, triggerAction }: any) {
       actions={[
         { label: 'System admin', nav: 'system-admin', msg: 'System administration', primary: true },
         { label: 'Data hub', nav: 'data-hub', msg: 'Data hub' },
-        { label: 'M87 AI', nav: 'm87-ai', msg: 'AI' },
+        { label: 'Celestia', nav: 'm87-ai', msg: 'AI' },
       ]}
       triggerAction={triggerAction}
     />

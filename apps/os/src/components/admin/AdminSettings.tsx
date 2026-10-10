@@ -563,7 +563,7 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
             />
             <div style={{ marginTop: 12 }}>
               <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 6 }}>
-                Gemini API key (M87 / all AI assistants)
+                Gemini API key (Celestia / all AI assistants)
               </label>
               <input
                 type="password"

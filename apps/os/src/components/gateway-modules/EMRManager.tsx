@@ -329,7 +329,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
           setObjective(`Vitals: ${d.objective?.vitals || `BP ${selectedPatient?.vitals?.bp}, HR ${selectedPatient?.vitals?.pulse} bpm, SpO2 ${selectedPatient?.vitals?.spo2}%`}\nExam: ${d.objective?.systemicExamination || 'Lungs vesicular, S1 S2 present, no murmurs.'}\nLabs: Fasting BGL 7.8, normal renal profile.`);
           setAssessment(`1. Primary: ${d.assessment?.primaryDiagnosis || selectedPatient.diagnoses[0] || 'Under Evaluation'}\n2. Differentials: ${d.assessment?.differentialDiagnoses || 'Resolving acute coronary episode'}\n3. Problem List: ${d.assessment?.problemList || selectedPatient.diagnoses.join(', ')}`);
           setPlan(`Investigations: ${d.plan?.investigations || 'Serial Troponin I, repeat fasting lipid'}\nRx: ${d.plan?.medications || 'Continue dual antiplatelets, low-dose diuretic'}\nFollow-Up: ${d.plan?.followUp || 'Review in 2 weeks in clinic'}`);
-          showToast(`✨ M87 AI Engine synthesized SOAP Note (${json.data.confidence || 92}% confidence)`);
+          showToast(`✨ Celestia Engine synthesized SOAP Note (${json.data.confidence || 92}% confidence)`);
           return;
         }
       }
@@ -337,7 +337,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
       // Graceful fallback to client-side synthesis when AI engine is booting
     }
 
-    showToast('✨ M87 Ambient AI synthesized clinical consultation into structured SOAP Note');
+    showToast('✨ Celestia Ambient AI synthesized clinical consultation into structured SOAP Note');
     setSubjective('Patient reports complete resolution of acute substernal chest tightness following sublingual nitrate administration. Mild post-event fatigue noted. Denies exertional dyspnea, presyncope, or palpitations.');
     setObjective('Alert and oriented x3. Vital Signs: BP 132/82 mmHg, HR 76 bpm regular, SpO2 98% on room air, RR 16/min, Temp 36.8°C. Cardiovascular: S1, S2 present, no murmurs. Lungs: Clear to auscultation bilaterally. No peripheral edema.');
     setAssessment('1. Non-ST Elevation Myocardial Infarction (NSTEMI) — Post-stabilization Day 2. Resolving chest symptoms.\n2. Essential Hypertension — controlled on current regimen.\n3. Mild anxiety related to cardiac diagnosis.');
@@ -366,7 +366,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
     showToast(`🚀 Executed: ${bundle.name} (${bundle.orders.length} orders dispatched to Lab LIS, Rx & Nursing)`);
   };
 
-  // M87 Natural Language Assistant Inquiries (Connected to AI Engine Differential Dx & Drug Interactions)
+  // Celestia Natural Language Assistant Inquiries (Connected to AI Engine Differential Dx & Drug Interactions)
   const handleAiConsultQuery = async (queryText: string) => {
     setAiLoading(true);
     setAiAssistantQuery(queryText);
@@ -386,7 +386,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
             const { interactions, hasInteractions, checkedCount } = json.data;
             if (!hasInteractions || interactions.length === 0) {
               setAiResponse(
-                `**M87 Drug Interaction Safety Screen:**\n` +
+                `**Celestia Drug Interaction Safety Screen:**\n` +
                 `• Checked ${checkedCount} active medications for ${selectedPatient.name}.\n` +
                 `• Result: No major adverse pharmacokinetic interactions detected.\n` +
                 `• Allergy Check: Documented allergies (${selectedPatient.allergies.join(', ') || 'NKDA'}) cross-checked against AKS-EML.`
@@ -394,7 +394,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               return;
             } else {
               setAiResponse(
-                `**M87 Drug Interaction Alert (${interactions.length} detected):**\n` +
+                `**Celestia Drug Interaction Alert (${interactions.length} detected):**\n` +
                 interactions.map((i: any) => `• [${i.severity.toUpperCase()}] ${i.drugs.join(' + ')}: ${i.description}\n  Management: ${i.recommendation || i.management}`).join('\n')
               );
               return;
@@ -429,7 +429,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
           if (json.differentials && json.differentials.length > 0) {
             setAiLoading(false);
             setAiResponse(
-              `**M87 AI Differential Diagnoses for ${selectedPatient.name}:**\n` +
+              `**Celestia Differential Diagnoses for ${selectedPatient.name}:**\n` +
               json.differentials.slice(0, 3).map((d: any, idx: number) =>
                 `${idx + 1}. **${d.condition}** (${d.probability}% match)\n   Key features: ${d.matchingFeatures?.join(', ') || 'Clinical presentation'}\n   Suggested test: ${d.recommendedInvestigations?.[0] || 'Targeted panel'}`
               ).join('\n\n')
@@ -470,7 +470,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
         );
       } else {
         setAiResponse(
-          `**M87 Clinical Synthesis for ${selectedPatient.name}:**\n` +
+          `**Celestia Clinical Synthesis for ${selectedPatient.name}:**\n` +
           '• Chart indicates stable vital trends with no active drug-drug contraindications.\n' +
           '• Renal and hepatic indices support current dosing schedule.\n' +
           '• Allergy profile: No penicillin or beta-lactam exposure observed in recent encounters.'
@@ -2206,7 +2206,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
         </div>
       </div>
 
-      {/* ── COLUMN 3: M87 AI Copilot & Quick Order Suite (Right Pane) ───────────── */}
+      {/* ── COLUMN 3: Celestia Copilot & Quick Order Suite (Right Pane) ───────────── */}
       <div style={{
         width: 360, flexShrink: 0, borderLeft: '1px solid #1E293B',
         background: '#0B1322', display: 'flex', flexDirection: 'column',
@@ -2218,7 +2218,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
               <Brain size={16} color="#FFF" />
             </div>
             <div>
-              <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#F8FAFC' }}>M87 Clinical AI Copilot</div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#F8FAFC' }}>Celestia Clinical Copilot</div>
               <div style={{ fontSize: '0.66rem', color: '#34D399', fontWeight: 600 }}>Active Decision Support</div>
             </div>
           </div>
@@ -2249,7 +2249,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                   } else {
                     setIsListening(true);
                     setAmbientTranscript([]);
-                    showToast('🎙️ M87 Ambient Listening activated. Capturing consultation audio...');
+                    showToast('🎙️ Celestia Ambient Listening activated. Capturing consultation audio...');
                   }
                 }}
                 style={{
@@ -2356,7 +2356,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
             </div>
           </div>
 
-          {/* M87 Natural Language Assistant */}
+          {/* Celestia Natural Language Assistant */}
           <div style={{ background: '#0F172A', border: '1px solid #1E293B', borderRadius: 12, padding: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
               <Compass size={15} color="#5EEAD4" />
@@ -2388,7 +2388,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
 
             {aiLoading && (
               <div style={{ textAlign: 'center', padding: 10, fontSize: '0.72rem', color: '#5EEAD4' }}>
-                Querying M87 Clinical Intelligence Core...
+                Querying Celestia Clinical Intelligence Core...
               </div>
             )}
 

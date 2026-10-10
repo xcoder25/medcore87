@@ -50,7 +50,7 @@ export const AICommandInsights: React.FC = () => {
       <div className="os-insight-banner">
         <Brain size={18} style={{ color: '#0066FF', flexShrink: 0, marginTop: 2 }} />
         <div>
-          <div style={{ fontWeight: 700, color: '#0F172A', fontSize: '0.88rem', marginBottom: 4 }}>Clinical Decision Support · M87</div>
+          <div style={{ fontWeight: 700, color: '#0F172A', fontSize: '0.88rem', marginBottom: 4 }}>Clinical Decision Support · Celestia</div>
           <div style={{ fontSize: '0.8rem', color: '#64748B', lineHeight: 1.55 }}>
             Computer-assisted suggestions from vitals, labs, and meds. Validate every recommendation before acting — HITL required.
           </div>

@@ -1,5 +1,5 @@
 /**
- * M87 super-learning store — local-first memory the model trains / retrieves from.
+ * Celestia super-learning store — local-first memory the model trains / retrieves from.
  * Not a neural net weights file: supervised examples + feedback + domain cards
  * that are injected into Gemini (RAG) and used by the local scorer.
  */

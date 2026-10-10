@@ -292,7 +292,7 @@ export const RoleDeskHome: React.FC<Props> = ({ session, onNavigate, config, ext
             >
               <Brain size={18} />
             </div>
-            <div style={{ fontSize: 12, fontWeight: 700 }}>M87 AI</div>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>Celestia</div>
             <div style={{ fontSize: 10, color: C.muted }}>Assistant</div>
           </button>
         </div>

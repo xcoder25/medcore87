@@ -206,7 +206,7 @@ export const AccountingArDesk: React.FC<Props> = ({ session, onCollectPayment })
       >
         <Sparkles size={18} color={C.amber} />
         <div style={{ flex: 1, minWidth: 200, fontSize: 13, color: C.navy, lineHeight: 1.45 }}>
-          <strong>M87 AR intelligence</strong> · {aiText.slice(0, 220)}
+          <strong>Celestia AR intelligence</strong> · {aiText.slice(0, 220)}
           {aiText.length > 220 ? '…' : ''}
         </div>
         <button
