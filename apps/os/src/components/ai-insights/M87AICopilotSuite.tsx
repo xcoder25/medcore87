@@ -787,7 +787,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
               ref={inputRef}
               className="m87-input"
               rows={1}
-              placeholder="Message Celestia… (e.g. 'Who is in OPD?' or 'enrol nurse Ada pin 1234')"
+              placeholder="Message Celestia…"
               value={inputPrompt}
               onChange={(e) => handleInputChange(e.target.value)}
               onKeyDown={(e) => {
@@ -806,9 +806,6 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
             >
               <Send size={16} />
             </button>
-          </div>
-          <div className="celestia-composer-footer">
-            Enter to send · Shift+Enter for newline · Celestia Hospital OS
           </div>
         </div>
       </form>
