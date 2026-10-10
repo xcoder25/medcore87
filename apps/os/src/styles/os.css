@@ -7059,10 +7059,6 @@ img, .os-top-hud-avatar {
   font-weight: 500;
   letter-spacing: 0.01em;
 }
-  animation: none;
-  background: #334155;
-  box-shadow: none;
-}
 .m87-composer-hint {
   margin-top: 8px;
   text-align: center;
