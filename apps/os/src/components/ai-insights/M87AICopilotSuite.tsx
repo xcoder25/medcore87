@@ -1,6 +1,13 @@
 'use client';
 
 import { geminiGenerate, hasGeminiKey, probeGeminiConfigured } from '../../lib/geminiClient';
+import {
+  parseReceptionAutomationIntent,
+  registerNewPatientWithFolderFee,
+  canAutomateReception,
+  receptionAutomationRefusal,
+  type ReceptionRegJob,
+} from '../../lib/receptionAutomation';
 import { runM87Training, buildM87RagContext, retrieveRelevantExamples } from '../../lib/m87Train';
 import { addFeedback, getModelState, subscribeM87Learn } from '../../lib/m87LearningStore';
 import { liveAlert } from '../../lib/manualActions';
@@ -141,6 +148,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
   const [inputPrompt, setInputPrompt] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [taskRun, setTaskRun] = useState<{ title: string; steps: TaskStep[] } | null>(null);
+  const [pendingReceptionJob, setPendingReceptionJob] = useState<ReceptionRegJob | null>(null);
   const [geminiOnline, setGeminiOnline] = useState<boolean | null>(null);
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [modelVer, setModelVer] = useState<string | null>(() => getModelState()?.version || null);
@@ -292,6 +300,168 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
       ]);
       setIsThinking(false);
       return;
+    }
+
+
+    // Front desk: register patient + folder fee → Accounts
+    {
+      let receptionIntent = parseReceptionAutomationIntent(query);
+      let job = receptionIntent.job;
+      if (receptionIntent.confirmOnly && pendingReceptionJob) {
+        job = pendingReceptionJob;
+        receptionIntent = { handled: true, job };
+      } else if (receptionIntent.confirmOnly && !pendingReceptionJob) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: 'What should I do? e.g. **register Michael James, male, folder fee first**.',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+        setIsThinking(false);
+        return;
+      }
+
+      if (receptionIntent.handled) {
+        if (!canAutomateReception(actorRole)) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg-${Date.now()}-ai`,
+              sender: 'm87',
+              text: receptionAutomationRefusal(actorRole),
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              category: 'operational',
+            },
+          ]);
+          setIsThinking(false);
+          return;
+        }
+
+        if (!job) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg-${Date.now()}-ai`,
+              sender: 'm87',
+              text:
+                receptionIntent.replyIfEmpty ||
+                'Tell me the patient name and sex, e.g. **register Michael James, male, folder fee first**.',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              category: 'operational',
+            },
+          ]);
+          setIsThinking(false);
+          return;
+        }
+
+        // Store for "do it for me" follow-up; run automation now
+        setPendingReceptionJob(job);
+
+        const steps: TaskStep[] = [
+          { id: 'power', label: 'Initiating MedCore Celestial Power…', status: 'pending' },
+          { id: 'parse', label: `Opening folder for ${job.firstName} ${job.lastName}…`, status: 'pending' },
+          { id: 'registry', label: 'Writing patient to facility registry…', status: 'pending' },
+          { id: 'fee', label: 'Creating registration / folder fee…', status: 'pending' },
+          { id: 'accounts', label: 'Sending invoice to Accounts / Cashier…', status: 'pending' },
+          { id: 'done', label: 'Finalizing front-desk handoff…', status: 'pending' },
+        ];
+        setTaskRun({ title: 'Celestia Front Desk Automation', steps });
+
+        const mark = (id: string, status: TaskStepStatus) => {
+          setTaskRun((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              steps: prev.steps.map((s) => {
+                if (s.id === id) return { ...s, status };
+                if (status === 'active' && s.status === 'active') return { ...s, status: 'done' };
+                return s;
+              }),
+            };
+          });
+        };
+
+        let reply = '';
+        try {
+          mark('power', 'active');
+          await sleep(400);
+          mark('power', 'done');
+          mark('parse', 'active');
+          await sleep(300);
+          mark('parse', 'done');
+          mark('registry', 'active');
+          await sleep(200);
+
+          const r = registerNewPatientWithFolderFee({
+            job,
+            facilityId,
+            facilityName,
+            actorName: session?.name,
+            actorBadge: session?.badgeId,
+          });
+
+          if (r.ok) {
+            mark('registry', 'done');
+            mark('fee', 'active');
+            await sleep(350);
+            mark('fee', 'done');
+            mark('accounts', 'active');
+            await sleep(350);
+            mark('accounts', 'done');
+            mark('done', 'active');
+            await sleep(250);
+            mark('done', 'done');
+            const full = [job.firstName, job.middleName, job.lastName].filter(Boolean).join(' ');
+            reply =
+              `Done — **${full}** is on the registry.\n\n` +
+              `• Hospital No: **${r.hospitalNumber}**\n` +
+              `• Sex: ${job.sex}\n` +
+              (r.invoiceNumber
+                ? `• Folder fee: **₦${(r.amountNgn || 0).toLocaleString()}** · Invoice **${r.invoiceNumber}** → Accounts (PENDING)\n\n` +
+                  `Patient pays at Cashier, then returns here for check-in / queue.`
+                : `\nFolder opened. Continue on Patient Flow when ready.`);
+            try {
+              emitLiveAction(`Celestia registered ${r.hospitalNumber}`, { module: 'reception' });
+            } catch {
+              /* ignore */
+            }
+            setPendingReceptionJob(null);
+          } else {
+            mark('registry', 'error');
+            reply = `Could not register: ${r.error || 'unknown error'}`;
+          }
+        } catch (err: unknown) {
+          setTaskRun((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  steps: prev.steps.map((s) =>
+                    s.status === 'active' ? { ...s, status: 'error' as const } : s
+                  ),
+                }
+              : prev
+          );
+          reply = `Registration automation error: ${(err as Error)?.message || 'failed'}`;
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: reply,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+        setIsThinking(false);
+        window.setTimeout(() => setTaskRun(null), 2200);
+        return;
+      }
     }
 
     // Role visibility automation
