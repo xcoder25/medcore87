@@ -29,7 +29,12 @@ import {
 import { listAccountsRequests } from './frontDeskAccountsBridge';
 import { listBillLines } from './patientBillingStore';
 import type { FacilityPatient } from './patientRegistryStore';
-import { searchPatients, getPatientByHospitalNumber } from './patientRegistryStore';
+import {
+  searchPatients,
+  getPatientByHospitalNumber,
+  listPatients,
+  countPatients,
+} from './patientRegistryStore';
 import { pushNotification } from './notificationEngine';
 
 export {
@@ -75,6 +80,8 @@ export type FrontDeskAction =
   | { type: 'book_appointment'; patientRef: string; department?: string; doctor?: string; when?: string }
   | { type: 'lookup'; patientRef: string }
   | { type: 'queue_list' }
+  | { type: 'registry_list' }
+  | { type: 'registry_count' }
   | { type: 'confirm_pending' }
   | { type: 'none' };
 
@@ -118,6 +125,33 @@ export function resolveFrontDeskAction(
       return { type: 'check_in', patientRef: ref };
     }
     return { type: 'lookup', patientRef: ref };
+  }
+
+  // Facility registry — count / names / who is registered
+  if (
+    /\b(how\s+many\s+patients?|patient\s+count|number\s+of\s+patients?|count\s+(the\s+)?patients?)\b/i.test(
+      lower
+    )
+  ) {
+    return { type: 'registry_count' };
+  }
+  if (
+    /\b(what\s+are\s+their\s+names|their\s+names|list\s+(the\s+)?patients?|who\s+(is|are)\s+(on\s+)?(the\s+)?registry|patients?\s+in\s+(our\s+)?registry|who\s+do\s+we\s+have|show\s+(me\s+)?(the\s+)?patients?|which\s+(of\s+the\s+)?patients?)\b/i.test(
+      lower
+    ) ||
+    (/\b(who\s+is\s+it|who\s+are\s+they|name\s+them|list\s+them)\b/i.test(lower) &&
+      /\b(patient|registry|registered|folder)\b/i.test(ctx + ' ' + lower))
+  ) {
+    return { type: 'registry_list' };
+  }
+  // Follow-up after count: "who is it" / "names"
+  if (
+    /\b(who\s+is\s+it|who\s+are\s+they|what\s+are\s+their\s+names|name\s+them|list\s+them|which\s+ones?)\b/i.test(
+      lower
+    ) &&
+    /\b(patient|registry|how\s+many|registered)\b/i.test(ctx)
+  ) {
+    return { type: 'registry_list' };
   }
 
   // Queue list
@@ -371,4 +405,28 @@ export function bookAppointmentByRef(input: {
       `• ${appt.department} · ${appt.doctor}\n` +
       `• ${new Date(appt.scheduledAt).toLocaleString()}`,
   };
+}
+
+export function registryCountSummary(facilityId: string): string {
+  const n = countPatients(facilityId);
+  if (n === 0) return 'Registry is empty — no patients enrolled on this facility yet.';
+  if (n === 1) return '**1 patient** on the facility registry. Want the name, or register someone new?';
+  return `**${n} patients** on the facility registry. Ask for **names** or a hospital number to open one.`;
+}
+
+export function registryListSummary(facilityId: string, limit = 25): string {
+  const all = listPatients(facilityId);
+  const n = all.length;
+  if (n === 0) return 'Registry is empty — no patients on this facility yet.';
+  // Newest first if registeredAt present
+  const sorted = [...all].sort((a, b) =>
+    String(b.registeredAt || '').localeCompare(String(a.registeredAt || ''))
+  );
+  const top = sorted.slice(0, limit);
+  const lines = top.map((p, i) => {
+    const name = [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ');
+    return `• ${name} · **${p.hospitalNumber}** · ${p.sex}${p.phone ? ` · ${p.phone}` : ''}`;
+  });
+  const more = n > limit ? `\n…and **${n - limit}** more (search by name or hospital no.).` : '';
+  return `**${n} patient${n === 1 ? '' : 's'}** on the registry:\n${lines.join('\n')}${more}`;
 }

@@ -17,7 +17,7 @@ import {
 } from './m87LearningStore';
 import { todayVisits } from './receptionOpsStore';
 import { listOrders } from './clinicalEventBus';
-import { listPatients } from './patientRegistryStore';
+import { listPatients, countPatients } from './patientRegistryStore';
 import { listBeds } from './bedBoardStore';
 import { getStaffRegistry } from './adminRealtimeStore';
 
@@ -192,6 +192,22 @@ export function buildM87RagContext(query: string, facilityId: string): string {
   }).slice(0, 3);
 
   const parts: string[] = ['### Celestia learned knowledge (use if relevant, do not invent patients)'];
+  // Live registry facts so answers about "how many / who" stay accurate
+  try {
+    const n = countPatients(facilityId);
+    const sample = listPatients(facilityId)
+      .slice(0, 15)
+      .map((p) => {
+        const name = [p.firstName, p.lastName].filter(Boolean).join(' ');
+        return `${name} (${p.hospitalNumber})`;
+      });
+    parts.push(
+      `### Live facility registry\nCount: ${n}\n` +
+        (sample.length ? `Patients: ${sample.join('; ')}` : 'Patients: (none)')
+    );
+  } catch {
+    /* ignore */
+  }
   for (const h of hits) {
     parts.push(`Q: ${h.input}\nA: ${h.idealOutput}`);
   }

@@ -10,6 +10,8 @@ import {
   receptionAutomationRefusal,
   lookupPatientSummary,
   listWaitingQueueSummary,
+  registryCountSummary,
+  registryListSummary,
   checkInPatientByRef,
   assignDoctorByRef,
   bookAppointmentByRef,
@@ -410,6 +412,18 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
               'Celestia Queue',
               ['Initiating MedCore Celestial Power…', 'Reading live OPD queue…', 'Done'],
               async () => listWaitingQueueSummary(facilityId)
+            );
+          } else if (action.type === 'registry_count') {
+            reply = await runSteps(
+              'Celestia Registry',
+              ['Initiating MedCore Celestial Power…', 'Counting facility registry…', 'Done'],
+              async () => registryCountSummary(facilityId)
+            );
+          } else if (action.type === 'registry_list') {
+            reply = await runSteps(
+              'Celestia Registry',
+              ['Initiating MedCore Celestial Power…', 'Loading patient names…', 'Done'],
+              async () => registryListSummary(facilityId)
             );
           } else if (action.type === 'lookup') {
             const ref = action.patientRef;
