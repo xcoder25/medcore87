@@ -3,6 +3,7 @@
 import { geminiGenerate, hasGeminiKey, probeGeminiConfigured } from '../../lib/geminiClient';
 import {
   parseReceptionAutomationIntent,
+  extractReceptionJobWithAI,
   registerNewPatientWithFolderFee,
   canAutomateReception,
   receptionAutomationRefusal,
@@ -306,7 +307,30 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
     // Front desk: register patient + folder fee → Accounts
     {
       let receptionIntent = parseReceptionAutomationIntent(query);
-      let job = receptionIntent.job;
+      let job = receptionIntent.job || undefined;
+      // AI assist when natural phrasing didn't yield a full job yet
+      if (receptionIntent.handled && !job && !receptionIntent.confirmOnly) {
+        try {
+          const aiJob = await extractReceptionJobWithAI(query, facilityId);
+          if (aiJob) {
+            job = aiJob;
+            receptionIntent = { handled: true, job };
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!receptionIntent.handled && !receptionIntent.confirmOnly) {
+        try {
+          const aiJob = await extractReceptionJobWithAI(query, facilityId);
+          if (aiJob) {
+            job = aiJob;
+            receptionIntent = { handled: true, job };
+          }
+        } catch {
+          /* ignore */
+        }
+      }
       if (receptionIntent.confirmOnly && pendingReceptionJob) {
         job = pendingReceptionJob;
         receptionIntent = { handled: true, job };
@@ -342,6 +366,16 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
         }
 
         if (!job) {
+          // Natural language: try AI extraction when local parse only saw soft intent
+          try {
+            const aiJob = await extractReceptionJobWithAI(query, facilityId);
+            if (aiJob) job = aiJob;
+          } catch {
+            /* offline */
+          }
+        }
+
+        if (!job) {
           setMessages((prev) => [
             ...prev,
             {
@@ -349,7 +383,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
               sender: 'm87',
               text:
                 receptionIntent.replyIfEmpty ||
-                'Tell me the patient name and sex, e.g. **register Michael James, male, folder fee first**.',
+                'Who should I register? Name and sex is enough — e.g. *Michael James, male, new to the hospital*.',
               timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               category: 'operational',
             },
