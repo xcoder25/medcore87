@@ -6499,20 +6499,31 @@ img, .os-top-hud-avatar {
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 420px;
-  max-height: min(78vh, 720px);
-  border-radius: 20px;
+  width: 100%;
+  min-height: 480px;
   overflow: hidden;
   color: #E2E8F0;
-  background: #06061a;
+  background: radial-gradient(circle at 50% 25%, rgba(67, 24, 138, 0.22), transparent 70%),
+              radial-gradient(circle at 80% 80%, rgba(30, 27, 75, 0.35), transparent 60%),
+              #060517;
   border: 1px solid rgba(167, 139, 250, 0.22);
   box-shadow:
     0 24px 64px rgba(0, 0, 0, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
+.m87-chat-shell.is-fullscreen {
+  flex: 1;
+  border-radius: 16px;
+}
 
-/* Celestia logo + looping video bg (Grok-style empty chat) */
+.m87-chat-shell.is-in-drawer {
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+}
+
+/* Celestia logo + looping video bg */
 .celestia-bg-video {
   position: absolute;
   inset: 0;
@@ -6521,214 +6532,191 @@ img, .os-top-hud-avatar {
   object-fit: cover;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.92;
+  opacity: 0.82;
 }
+
 .celestia-bg-veil {
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 70% 55% at 50% 42%, rgba(6, 6, 26, 0.15), rgba(6, 6, 26, 0.72) 70%),
-    linear-gradient(180deg, rgba(6, 6, 26, 0.35) 0%, transparent 30%, transparent 55%, rgba(6, 6, 26, 0.75) 100%);
+    radial-gradient(ellipse 75% 60% at 50% 38%, rgba(6, 5, 23, 0.45), rgba(6, 5, 23, 0.85) 75%),
+    linear-gradient(180deg, rgba(6, 5, 23, 0.55) 0%, rgba(6, 5, 23, 0.35) 35%, rgba(6, 5, 23, 0.5) 70%, rgba(6, 5, 23, 0.92) 100%);
 }
-.celestia-logo-img {
-  display: block;
-  object-fit: contain;
-  user-select: none;
-  pointer-events: none;
+
+/* Avatar emblem framing — crops out the bottom wordmark to center the glowing orbital star emblem */
+.celestia-avatar-mark {
+  position: relative;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle, #3b0764 0%, #1e1145 70%, #090518 100%);
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  box-shadow: 0 0 14px rgba(139, 92, 246, 0.45);
 }
-.celestia-logo-hero {
-  width: min(220px, 58vw);
-  height: auto;
-  margin: 0 auto 8px;
-  filter: drop-shadow(0 0 28px rgba(139, 92, 246, 0.45));
-  animation: celestiaFloat 5s ease-in-out infinite;
-}
-.celestia-logo-sm {
+
+.celestia-avatar-header {
   width: 36px;
   height: 36px;
-  flex-shrink: 0;
-  filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.5));
 }
-.celestia-logo-msg {
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
+
+.celestia-avatar-msg {
+  width: 30px;
+  height: 30px;
+  margin-bottom: 2px;
+}
+
+.celestia-avatar-mark img {
+  width: 145%;
+  height: 145%;
+  max-width: none;
+  object-fit: cover;
+  object-position: 50% 19%;
+  transform: translateY(1px);
+  display: block;
+  pointer-events: none;
+}
+
+/* Hero empty state emblem */
+.celestia-hero-emblem-wrap {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  margin: 0 auto 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.celestia-hero-glow {
+  position: absolute;
+  inset: -20px;
   border-radius: 50%;
-  filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.4));
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.45), rgba(99, 102, 241, 0.2) 45%, transparent 70%);
+  filter: blur(20px);
+  animation: celestiaPulse 4s ease-in-out infinite;
+  pointer-events: none;
 }
+
+.celestia-logo-hero {
+  position: relative;
+  width: 130px;
+  height: 130px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 26px rgba(139, 92, 246, 0.65));
+  animation: celestiaFloat 5s ease-in-out infinite;
+}
+
 .celestia-wordmark {
-  font-size: 1rem !important;
-  font-weight: 700 !important;
+  font-size: 1.05rem !important;
+  font-weight: 750 !important;
   letter-spacing: 0.02em;
   text-transform: lowercase;
-  background: linear-gradient(90deg, #93c5fd, #c4b5fd, #e9d5ff) !important;
+  background: linear-gradient(90deg, #93c5fd, #c4b5fd 60%, #e9d5ff) !important;
   -webkit-background-clip: text !important;
   background-clip: text !important;
   color: transparent !important;
+  line-height: 1;
 }
+
+.celestia-facility-tag {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: rgba(167, 139, 250, 0.15);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  font-size: 10px;
+  font-weight: 700;
+  color: #d8b4fe;
+  letter-spacing: 0.04em;
+}
+
+.celestia-header-sub {
+  font-size: 11px;
+  color: rgba(196, 181, 253, 0.7);
+  font-weight: 500;
+  margin-top: 2px;
+}
+
 .celestia-empty-grok {
   min-height: 100%;
   justify-content: center;
   padding: 24px 12px 32px;
 }
+
 .celestia-hello {
   margin-top: 4px !important;
-  font-size: 1.35rem !important;
-}
-.celestia-header-slim {
-  background: rgba(6, 6, 26, 0.45) !important;
-  backdrop-filter: blur(14px);
-}
-.celestia-grok .m87-messages {
-  z-index: 2;
-}
-.celestia-grok .m87-composer,
-.celestia-grok .m87-chat-header {
-  z-index: 3;
-}
-.celestia-grok .celestia-stars,
-.celestia-grok .celestia-nebula,
-.celestia-grok .celestia-planet,
-.celestia-grok .m87-aurora {
-  display: none; /* video is the background */
+  font-size: 1.45rem !important;
+  font-weight: 750 !important;
+  background: linear-gradient(90deg, #f8fafc, #c4b5fd 70%, #e2e8f0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
-.celestia-stars {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background-image:
-    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255,255,255,0.9), transparent),
-    radial-gradient(1px 1px at 28% 42%, rgba(255,255,255,0.7), transparent),
-    radial-gradient(1.5px 1.5px at 55% 12%, rgba(255,255,255,0.85), transparent),
-    radial-gradient(1px 1px at 72% 38%, rgba(255,255,255,0.6), transparent),
-    radial-gradient(1.5px 1.5px at 88% 22%, rgba(255,255,255,0.8), transparent),
-    radial-gradient(1px 1px at 40% 68%, rgba(255,255,255,0.55), transparent),
-    radial-gradient(1px 1px at 18% 78%, rgba(255,255,255,0.5), transparent),
-    radial-gradient(1.5px 1.5px at 63% 82%, rgba(255,255,255,0.7), transparent);
-  animation: celestiaStarTwinkle 5s ease-in-out infinite;
-}
-.celestia-nebula {
-  position: absolute;
-  width: 70%;
-  height: 50%;
-  right: -10%;
-  top: -5%;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.35), transparent 65%);
-  filter: blur(40px);
-  pointer-events: none;
-  z-index: 0;
-  animation: m87Aurora 16s ease-in-out infinite;
-}
-.celestia-planet {
-  position: absolute;
-  width: 120%;
-  height: 55%;
-  left: -10%;
-  bottom: -28%;
-  border-radius: 50%;
-  background:
-    radial-gradient(ellipse at 50% 30%, rgba(99, 102, 241, 0.25), transparent 50%),
-    radial-gradient(ellipse at 40% 60%, rgba(14, 165, 233, 0.12), transparent 55%);
-  pointer-events: none;
-  z-index: 0;
+.celestia-chip-icon {
+  opacity: 0.85;
+  color: #c4b5fd;
 }
 
-.m87-aurora {
-  position: absolute;
-  width: 55%;
-  height: 40%;
-  left: -10%;
-  top: 20%;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(124, 58, 237, 0.25), transparent 70%);
-  filter: blur(48px);
-  pointer-events: none;
-  z-index: 0;
-  animation: m87Aurora 14s ease-in-out infinite;
-}
-.m87-aurora-2 {
-  left: auto;
-  right: -15%;
-  top: 50%;
-  background: radial-gradient(circle, rgba(6, 182, 212, 0.2), transparent 70%);
-  animation: m87Aurora2 18s ease-in-out infinite;
-}
-
+/* Header styles */
 .m87-chat-header,
 .celestia-header {
   position: relative;
-  z-index: 2;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  background: rgba(10, 8, 30, 0.75);
+  border-bottom: 1px solid rgba(167, 139, 250, 0.18);
+  backdrop-filter: blur(16px);
+}
+
+.celestia-header-brand {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px;
-  background: linear-gradient(180deg, rgba(15, 10, 40, 0.85), rgba(15, 10, 40, 0.35));
-  border-bottom: 1px solid rgba(167, 139, 250, 0.15);
-  backdrop-filter: blur(12px);
+  min-width: 0;
 }
 
-.celestia-logo-orbit {
-  position: relative;
-  width: 44px;
-  height: 44px;
-  flex-shrink: 0;
-}
-.celestia-orbit-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 1.5px solid rgba(196, 181, 253, 0.55);
-  border-top-color: rgba(167, 139, 250, 0.95);
-  border-bottom-color: transparent;
-  animation: celestiaOrbit 8s linear infinite;
-}
-.celestia-orbit-ring-2 {
-  inset: 4px;
-  border-color: rgba(125, 211, 252, 0.35);
-  border-right-color: rgba(56, 189, 248, 0.9);
-  border-left-color: transparent;
-  animation-duration: 12s;
-  animation-direction: reverse;
-}
-.celestia-star-core {
-  position: absolute;
-  inset: 10px;
-  border-radius: 50%;
+.celestia-header-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: linear-gradient(145deg, #a78bfa, #6366f1 40%, #7c3aed);
-  box-shadow: 0 0 20px rgba(167, 139, 250, 0.65), inset 0 1px 0 rgba(255,255,255,0.35);
-  animation: celestiaPulse 2.8s ease-in-out infinite;
+  gap: 8px;
+  flex-shrink: 0;
 }
-.celestia-star-lg {
-  inset: 22%;
+
+.celestia-hdr-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  background: rgba(28, 20, 60, 0.65);
+  color: #c4b5fd;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  backdrop-filter: blur(8px);
 }
-.celestia-orbit-lg {
-  inset: 0;
+
+.celestia-hdr-action-btn:hover {
+  background: rgba(88, 28, 135, 0.5);
+  border-color: rgba(196, 181, 253, 0.65);
+  color: #fff;
+  transform: translateY(-1px);
 }
-.celestia-hero-logo {
-  position: relative;
-  width: 120px;
-  height: 120px;
-  margin: 0 auto 8px;
-  animation: celestiaFloat 5s ease-in-out infinite;
-}
-.celestia-horizon {
-  position: absolute;
-  left: 10%;
-  right: 10%;
-  bottom: 8%;
-  height: 3px;
-  border-radius: 99px;
-  background: linear-gradient(90deg, transparent, #67e8f9, #c4b5fd, #67e8f9, transparent);
-  box-shadow: 0 0 24px rgba(103, 232, 249, 0.7);
-  animation: celestiaHorizon 3.5s ease-in-out infinite;
+
+.celestia-hdr-close-btn {
+  padding: 5px 8px;
 }
 
 .m87-header-text { flex: 1; min-width: 0; }
@@ -6760,25 +6748,29 @@ img, .os-top-hud-avatar {
   color: #6ee7b7;
   letter-spacing: 0.02em;
 }
-.m87-subtitle {
-  margin: 2px 0 0;
-  font-size: 12px;
-  color: rgba(196, 181, 253, 0.75);
-  font-weight: 500;
-}
 
+/* Messages area */
 .m87-messages,
 .celestia-messages {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   flex: 1;
   overflow-y: auto;
-  padding: 16px 14px 8px;
+  padding: 16px 14px 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
   scrollbar-width: thin;
   scrollbar-color: rgba(167, 139, 250, 0.35) transparent;
+}
+
+.celestia-messages-inner {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
 }
 
 .m87-empty,
@@ -6789,11 +6781,10 @@ img, .os-top-hud-avatar {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 12px 8px 20px;
-  min-height: 280px;
+  padding: 16px 12px 24px;
 }
 .m87-empty-title {
-  margin: 4px 0 8px;
+  margin: 6px 0 8px;
   font-size: 1.45rem;
   font-weight: 800;
   letter-spacing: -0.03em;
@@ -6801,51 +6792,39 @@ img, .os-top-hud-avatar {
   text-shadow: 0 0 40px rgba(167, 139, 250, 0.35);
 }
 .m87-empty-sub {
-  margin: 0 0 16px;
-  max-width: 340px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: rgba(203, 213, 225, 0.78);
-}
-.celestia-try-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: rgba(196, 181, 253, 0.8);
-  margin-bottom: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  margin: 0 0 20px;
+  max-width: 460px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: rgba(203, 213, 225, 0.8);
 }
 
 .m87-suggestions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 9px;
   justify-content: center;
-  max-width: 420px;
+  max-width: 580px;
 }
 .m87-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(167, 139, 250, 0.35);
-  background: rgba(30, 20, 60, 0.65);
+  gap: 7px;
+  padding: 9px 15px;
+  border-radius: 12px;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  background: rgba(28, 20, 58, 0.65);
   color: #e9d5ff;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: 12.5px;
+  font-weight: 600;
   cursor: pointer;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
   transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s, background 0.2s, box-shadow 0.2s;
   animation: m87ChipIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-.m87-chip:nth-child(1) { animation-delay: 0.05s; }
-.m87-chip:nth-child(2) { animation-delay: 0.1s; }
-.m87-chip:nth-child(3) { animation-delay: 0.15s; }
-.m87-chip:nth-child(4) { animation-delay: 0.2s; }
 .m87-chip:hover {
-  border-color: rgba(196, 181, 253, 0.7);
-  background: rgba(88, 28, 135, 0.45);
+  border-color: rgba(196, 181, 253, 0.75);
+  background: rgba(88, 28, 135, 0.5);
   box-shadow: 0 0 24px rgba(139, 92, 246, 0.35);
   transform: translateY(-2px) scale(1.02);
   color: #fff;
@@ -6853,49 +6832,82 @@ img, .os-top-hud-avatar {
 
 .m87-row {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: flex-end;
-  max-width: 92%;
+  max-width: 90%;
   animation: celestiaMsgIn 0.35s ease both;
 }
-.m87-row-user { align-self: flex-end; flex-direction: row-reverse; }
-.m87-row-ai { align-self: flex-start; }
-
-.m87-msg-avatar,
-.celestia-msg-star {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(145deg, #a78bfa, #6366f1);
-  box-shadow: 0 0 12px rgba(167, 139, 250, 0.5);
+.m87-row-user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+.m87-row-ai {
+  align-self: flex-start;
 }
 
 .m87-bubble {
-  padding: 12px 14px;
+  padding: 12px 16px;
   border-radius: 16px;
   font-size: 13.5px;
-  line-height: 1.5;
-  white-space: pre-wrap;
+  line-height: 1.55;
   word-break: break-word;
 }
 .m87-bubble-user {
   background: linear-gradient(135deg, #7c3aed, #6366f1 50%, #4f46e5);
   color: #fff;
-  border-bottom-right-radius: 6px;
+  border-bottom-right-radius: 4px;
   box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35);
 }
 .m87-bubble-ai {
-  background: rgba(20, 15, 45, 0.82);
-  border: 1px solid rgba(167, 139, 250, 0.28);
+  background: rgba(18, 14, 42, 0.85);
+  border: 1px solid rgba(167, 139, 250, 0.26);
   color: #e2e8f0;
-  border-bottom-left-radius: 6px;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+  border-bottom-left-radius: 4px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
 }
+
+/* Rich Assistant Formatting */
+.celestia-formatted-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.celestia-text-p {
+  margin: 0;
+  line-height: 1.55;
+}
+.celestia-line-spacer {
+  height: 6px;
+}
+.celestia-bullet-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.5;
+}
+.celestia-bullet-dot {
+  color: #a78bfa;
+  font-size: 11px;
+  flex-shrink: 0;
+  margin-top: 3px;
+  text-shadow: 0 0 8px rgba(167, 139, 250, 0.6);
+}
+.celestia-strong {
+  color: #fff;
+  font-weight: 700;
+}
+.celestia-code-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  background: rgba(167, 139, 250, 0.16);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  color: #c4b5fd;
+}
+
 .m87-thinking {
   display: flex;
   align-items: center;
@@ -6915,24 +6927,27 @@ img, .os-top-hud-avatar {
   border-top: 1px solid rgba(167, 139, 250, 0.15);
 }
 .m87-fb {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  border: 1px solid rgba(167, 139, 250, 0.25);
-  background: rgba(30, 20, 60, 0.5);
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 7px;
+  border: 1px solid rgba(167, 139, 250, 0.22);
+  background: rgba(28, 20, 58, 0.55);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11.5px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #e2e8f0;
+  transition: all 0.18s;
 }
-.m87-fb:hover {
+.m87-fb:hover,
+.m87-fb.is-active {
   border-color: rgba(196, 181, 253, 0.6);
-  background: rgba(88, 28, 135, 0.4);
+  background: rgba(88, 28, 135, 0.45);
+  color: #fff;
 }
 .m87-time {
-  font-size: 10px;
+  font-size: 10.5px;
   color: rgba(148, 163, 184, 0.85);
   margin-left: auto;
 }
@@ -6942,42 +6957,56 @@ img, .os-top-hud-avatar {
   text-align: right;
 }
 
+/* Composer */
 .m87-composer,
 .celestia-composer {
   position: relative;
-  z-index: 2;
+  z-index: 10;
   padding: 10px 14px 14px;
-  background: linear-gradient(180deg, transparent, rgba(8, 6, 24, 0.9) 40%);
-  border-top: 1px solid rgba(167, 139, 250, 0.12);
+  background: linear-gradient(180deg, transparent, rgba(6, 5, 23, 0.95) 45%);
+  border-top: 1px solid rgba(167, 139, 250, 0.14);
 }
+
+.celestia-composer-container {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
 .m87-composer-inner {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  padding: 6px 6px 6px 8px;
+  padding: 6px 8px 6px 10px;
   border-radius: 999px;
-  background: rgba(20, 15, 45, 0.75);
+  background: rgba(18, 14, 42, 0.8);
   border: 1px solid rgba(167, 139, 250, 0.35);
-  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.08), 0 12px 32px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(16px);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.08), 0 12px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(18px);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .m87-composer-inner:focus-within {
-  border-color: rgba(196, 181, 253, 0.65);
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2), 0 12px 32px rgba(88, 28, 135, 0.35);
+  border-color: rgba(196, 181, 253, 0.75);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.22), 0 12px 32px rgba(88, 28, 135, 0.4);
 }
 .celestia-plus {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: none;
+  border: 1px solid rgba(167, 139, 250, 0.2);
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(167, 139, 250, 0.15);
+  background: rgba(167, 139, 250, 0.12);
   color: #c4b5fd;
-  cursor: default;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.celestia-plus:hover {
+  background: rgba(167, 139, 250, 0.25);
+  color: #fff;
+  transform: rotate(90deg);
 }
 .m87-input {
   flex: 1;
@@ -6988,15 +7017,15 @@ img, .os-top-hud-avatar {
   line-height: 1.45;
   max-height: 120px;
   min-height: 24px;
-  padding: 8px 0;
+  padding: 8px 4px;
   background: transparent;
   color: #f1f5f9;
   font-family: inherit;
 }
 .m87-input::placeholder { color: rgba(148, 163, 184, 0.7); }
 .m87-send {
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   border: none;
   flex-shrink: 0;
@@ -7016,8 +7045,20 @@ img, .os-top-hud-avatar {
   transform: translateY(-1px) scale(1.05);
 }
 .m87-send:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
+  animation: none;
+  background: #334155;
+  box-shadow: none;
+}
+.celestia-composer-footer {
+  margin-top: 6px;
+  text-align: center;
+  font-size: 10.5px;
+  color: rgba(167, 139, 250, 0.55);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
   animation: none;
   background: #334155;
   box-shadow: none;

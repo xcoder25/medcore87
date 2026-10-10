@@ -15,7 +15,7 @@ import {
 } from '../../lib/staffAutomation';
 import { emitLiveAction } from '../../lib/liveActions';
 import {
-  Brain, Send, Sparkles, Plus, Activity, Users, Wallet, Stethoscope,
+  Brain, Send, Sparkles, Plus, Activity, Users, Wallet, Stethoscope, RotateCcw, Copy, Check, X, BedDouble,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -30,8 +30,57 @@ const INITIAL_MESSAGES: ChatMessage[] = [];
 
 interface Props {
   session?: UserSession;
+  inDrawer?: boolean;
+  onClose?: () => void;
 }
 
+function renderInlineMarkdown(content: string) {
+  const parts = content.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return (
+        <strong key={i} className="celestia-strong">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return (
+        <code key={i} className="celestia-code-pill">
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    return part;
+  });
+}
+
+function FormattedAssistantMessage({ text }: { text: string }) {
+  const lines = text.split('\n');
+  return (
+    <div className="celestia-formatted-text">
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return <div key={idx} className="celestia-line-spacer" />;
+        }
+        if (trimmed.startsWith('• ') || trimmed.startsWith('- ')) {
+          return (
+            <div key={idx} className="celestia-bullet-line">
+              <span className="celestia-bullet-dot" aria-hidden>✦</span>
+              <span>{renderInlineMarkdown(trimmed.slice(2))}</span>
+            </div>
+          );
+        }
+        return (
+          <p key={idx} className="celestia-text-p">
+            {renderInlineMarkdown(trimmed)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
 
 /** Streams assistant text with cursor — premium chat feel */
 function StreamingText({ text, animate }: { text: string; animate: boolean }) {
@@ -59,21 +108,27 @@ function StreamingText({ text, animate }: { text: string; animate: boolean }) {
     return () => window.clearInterval(id);
   }, [text, animate]);
 
+  if (done) {
+    return <FormattedAssistantMessage text={text} />;
+  }
+
   return (
-    <>
+    <div className="celestia-streaming-wrap">
       {shown}
-      {!done && <span className="mc-stream-cursor" aria-hidden />}
-    </>
+      <span className="mc-stream-cursor" aria-hidden />
+    </div>
   );
 }
 
-export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
+export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputPrompt, setInputPrompt] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [modelVer, setModelVer] = useState<string | null>(() => getModelState()?.version || null);
   const [engineReady, setEngineReady] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [feedbackState, setFeedbackState] = useState<Record<string, 1 | -1>>({});
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -315,19 +370,52 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
       response: msg.text,
       rating,
     });
-    liveAlert(rating === 1 ? 'Thanks — saved to Celestia training set' : 'Feedback noted', 'm87-ai', fid);
+    setFeedbackState((prev) => ({ ...prev, [msg.id]: rating }));
+    liveAlert(rating === 1 ? 'Saved to Celestia training set' : 'Feedback noted', 'm87-ai', fid);
+  };
+
+  const handleCopy = (id: string, text: string) => {
+    if (navigator?.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => {
+        setCopiedId((curr) => (curr === id ? null : curr));
+      }, 2000);
+    }
+  };
+
+  const handleNewChat = () => {
+    setMessages([]);
+    setInputPrompt('');
+    setIsThinking(false);
+    setStreamingId(null);
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      inputRef.current.focus();
+    }
+  };
+
+  const handleInputChange = (val: string) => {
+    setInputPrompt(val);
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
+    }
   };
 
   const suggestions = [
-    { label: 'Who is waiting in OPD?', icon: Users },
-    { label: 'Unpaid bills today', icon: Wallet },
-    { label: 'Enrol a new nurse', icon: Activity },
-    { label: 'What needs attention?', icon: Stethoscope },
+    { label: 'Who is waiting in OPD?', icon: Users, tag: 'Queue' },
+    { label: 'Bed occupancy & ICU status', icon: BedDouble, tag: 'Operations' },
+    { label: 'Unpaid bills today', icon: Wallet, tag: 'Billing' },
+    { label: 'Enrol a new nurse', icon: Activity, tag: 'Staff' },
   ];
 
   return (
-    <div className="m87-chat-shell celestia-cosmic celestia-grok" ref={shellRef}>
-      {/* Looping cosmic logo video background */}
+    <div
+      className={`m87-chat-shell celestia-cosmic celestia-grok${inDrawer ? ' is-in-drawer' : ' is-fullscreen'}`}
+      ref={shellRef}
+    >
+      {/* Looping cosmic space video background with fallback gradient */}
       <video
         className="celestia-bg-video"
         src="/celestia-bg.mp4"
@@ -339,141 +427,218 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session }) => {
       />
       <div className="celestia-bg-veil" aria-hidden />
 
-      {messages.length > 0 && (
-        <header className="m87-chat-header celestia-header celestia-header-slim">
-          <img src="/celestia-logo.png" alt="" className="celestia-logo-img celestia-logo-sm" />
+      {/* Header — Always Persistent to eliminate layout shifts */}
+      <header className="m87-chat-header celestia-header">
+        <div className="celestia-header-brand">
+          <div className="celestia-avatar-mark celestia-avatar-header" aria-hidden>
+            <img src="/celestia-logo.png" alt="" />
+          </div>
           <div className="m87-header-text">
             <div className="m87-title-row">
               <h1 className="m87-title celestia-wordmark">celestia</h1>
               <span className="m87-live-dot" title="Online" />
-              <span className="m87-live-label">{engineReady ? 'Online' : 'Warming up'}</span>
+              <span className="m87-live-label">{engineReady ? 'Online' : 'Ready'}</span>
+              <span className="celestia-facility-tag">{session?.hospitalId || 'IGH-EKT'}</span>
+            </div>
+            <div className="celestia-header-sub">
+              Hospital Intelligence {modelVer ? `· v${modelVer}` : ''}
             </div>
           </div>
-        </header>
-      )}
+        </div>
 
-      <div className="m87-messages celestia-messages" ref={listRef}>
-        {messages.length === 0 && !isThinking && (
-          <div className="m87-empty celestia-hero celestia-empty-grok">
-            <img
-              src="/celestia-logo.png"
-              alt="Celestia"
-              className="celestia-logo-img celestia-logo-hero"
-            />
-            <h2 className="m87-empty-title celestia-hello">Hello, I&apos;m Celestia</h2>
-            <p className="m87-empty-sub">
-              Your hospital AI companion. Ask about queues, billing, staff, or clinical care.
-            </p>
-            <div className="m87-suggestions">
-              {suggestions.map((s) => {
-                const Icon = s.icon;
-                return (
-                  <button
-                    key={s.label}
-                    type="button"
-                    className="m87-chip mc-btn-live"
-                    onClick={() => {
-                      void handleSend(undefined, s.label);
-                    }}
-                  >
-                    <Icon size={14} style={{ opacity: 0.9 }} />
-                    {s.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {messages.map((msg) => {
-          const mine = msg.sender === 'user';
-          return (
-            <div
-              key={msg.id}
-              className={mine ? 'm87-row m87-row-user mc-user-msg-in' : 'm87-row m87-row-ai mc-ai-msg-in'}
+        <div className="celestia-header-actions">
+          {messages.length > 0 && (
+            <button
+              type="button"
+              className="celestia-hdr-action-btn mc-btn-live"
+              onClick={handleNewChat}
+              title="Start a new chat session"
             >
-              {!mine && (
-                <img src="/celestia-logo.png" alt="" className="celestia-logo-img celestia-logo-msg" />
-              )}
-              <div className={mine ? 'm87-bubble m87-bubble-user' : 'm87-bubble m87-bubble-ai'}>
-                {!mine ? (
-                  <>
-                    <StreamingText text={msg.text} animate={streamingId === msg.id} />
-                    <div className="m87-feedback">
-                      <button type="button" className="m87-fb mc-btn-live" onClick={() => rateMessage(msg, 1)} title="Teach Celestia">
-                        👍
-                      </button>
-                      <button type="button" className="m87-fb mc-btn-live" onClick={() => rateMessage(msg, -1)} title="Not helpful">
-                        👎
-                      </button>
-                      <span className="m87-time">{msg.timestamp}</span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {msg.text}
-                    <div className="m87-time m87-time-user">{msg.timestamp}</div>
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })}
+              <RotateCcw size={13} />
+              <span>New Chat</span>
+            </button>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              className="celestia-hdr-action-btn celestia-hdr-close-btn"
+              onClick={onClose}
+              title="Close Celestia"
+              aria-label="Close"
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
+      </header>
 
-        {isThinking && (
-          <div className="m87-row m87-row-ai mc-ai-msg-in">
-            <img src="/celestia-logo.png" alt="" className="celestia-logo-img celestia-logo-msg" />
-            <div className="m87-bubble m87-bubble-ai m87-thinking">
-              <div className="mc-typing-dots">
-                <span />
-                <span />
-                <span />
+      {/* Message List & Empty State View */}
+      <div className="m87-messages celestia-messages" ref={listRef}>
+        <div className="celestia-messages-inner">
+          {messages.length === 0 && !isThinking && (
+            <div className="m87-empty celestia-hero celestia-empty-grok">
+              <div className="celestia-hero-emblem-wrap">
+                <div className="celestia-hero-glow" />
+                <img
+                  src="/celestia-logo.png"
+                  alt="Celestia"
+                  className="celestia-logo-img celestia-logo-hero"
+                />
               </div>
-              <span className="m87-thinking-label">Celestia is thinking…</span>
+              <h2 className="m87-empty-title celestia-hello">What can I coordinate for you?</h2>
+              <p className="m87-empty-sub">
+                Your hospital operations copilot. Query patient queues, ward beds, billing, or automate staff accounts in real time.
+              </p>
+              <div className="m87-suggestions">
+                {suggestions.map((s) => {
+                  const Icon = s.icon;
+                  return (
+                    <button
+                      key={s.label}
+                      type="button"
+                      className="m87-chip mc-btn-live"
+                      onClick={() => {
+                        void handleSend(undefined, s.label);
+                      }}
+                    >
+                      <Icon size={14} className="celestia-chip-icon" />
+                      <span>{s.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {messages.map((msg) => {
+            const mine = msg.sender === 'user';
+            const hasCopied = copiedId === msg.id;
+            const currentRating = feedbackState[msg.id];
+
+            return (
+              <div
+                key={msg.id}
+                className={mine ? 'm87-row m87-row-user mc-user-msg-in' : 'm87-row m87-row-ai mc-ai-msg-in'}
+              >
+                {!mine && (
+                  <div className="celestia-avatar-mark celestia-avatar-msg" aria-hidden>
+                    <img src="/celestia-logo.png" alt="" />
+                  </div>
+                )}
+                <div className={mine ? 'm87-bubble m87-bubble-user' : 'm87-bubble m87-bubble-ai'}>
+                  {!mine ? (
+                    <>
+                      <StreamingText text={msg.text} animate={streamingId === msg.id} />
+                      <div className="m87-feedback">
+                        <button
+                          type="button"
+                          className={`m87-fb mc-btn-live${hasCopied ? ' is-active' : ''}`}
+                          onClick={() => handleCopy(msg.id, msg.text)}
+                          title="Copy reply"
+                        >
+                          {hasCopied ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
+                          <span style={{ fontSize: 10, marginLeft: 3 }}>
+                            {hasCopied ? 'Copied' : 'Copy'}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`m87-fb mc-btn-live${currentRating === 1 ? ' is-active' : ''}`}
+                          onClick={() => rateMessage(msg, 1)}
+                          title="Good response — teach Celestia"
+                        >
+                          👍
+                        </button>
+                        <button
+                          type="button"
+                          className={`m87-fb mc-btn-live${currentRating === -1 ? ' is-active' : ''}`}
+                          onClick={() => rateMessage(msg, -1)}
+                          title="Not helpful"
+                        >
+                          👎
+                        </button>
+                        <span className="m87-time">{msg.timestamp}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="celestia-user-text">{msg.text}</div>
+                      <div className="m87-time m87-time-user">{msg.timestamp}</div>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {isThinking && (
+            <div className="m87-row m87-row-ai mc-ai-msg-in">
+              <div className="celestia-avatar-mark celestia-avatar-msg" aria-hidden>
+                <img src="/celestia-logo.png" alt="" />
+              </div>
+              <div className="m87-bubble m87-bubble-ai m87-thinking">
+                <div className="mc-typing-dots">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <span className="m87-thinking-label">Celestia is analyzing…</span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* Composer Input Form */}
       <form
         className="m87-composer celestia-composer"
         onSubmit={(e) => {
           void handleSend(e);
         }}
       >
-        <div className="m87-composer-inner">
-          <button type="button" className="celestia-plus" aria-label="More" tabIndex={-1}>
-            <Plus size={18} />
-          </button>
-          <textarea
-            ref={inputRef}
-            className="m87-input"
-            rows={1}
-            placeholder="Message Celestia…"
-            value={inputPrompt}
-            onChange={(e) => setInputPrompt(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                void handleSend(e as unknown as React.FormEvent);
-              }
-            }}
-            disabled={isThinking}
-          />
-          <button
-            type="submit"
-            className={`m87-send mc-btn-live${isThinking ? ' is-busy' : ''}`}
-            disabled={isThinking || !inputPrompt.trim()}
-            aria-label="Send"
-          >
-            <Send size={18} />
-          </button>
+        <div className="celestia-composer-container">
+          <div className="m87-composer-inner">
+            <button
+              type="button"
+              className="celestia-plus"
+              aria-label="New chat"
+              onClick={handleNewChat}
+              title="Reset conversation"
+            >
+              <RotateCcw size={16} />
+            </button>
+            <textarea
+              ref={inputRef}
+              className="m87-input"
+              rows={1}
+              placeholder="Message Celestia… (e.g. 'Who is in OPD?' or 'enrol nurse Ada pin 1234')"
+              value={inputPrompt}
+              onChange={(e) => handleInputChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSend(e as unknown as React.FormEvent);
+                }
+              }}
+              disabled={isThinking}
+            />
+            <button
+              type="submit"
+              className={`m87-send mc-btn-live${isThinking ? ' is-busy' : ''}`}
+              disabled={isThinking || !inputPrompt.trim()}
+              aria-label="Send message"
+            >
+              <Send size={16} />
+            </button>
+          </div>
+          <div className="celestia-composer-footer">
+            Enter to send · Shift+Enter for newline · Celestia Hospital OS
+          </div>
         </div>
       </form>
     </div>
   );
 };
-
 
 /** @deprecated use Celestia naming — same component */
 export const CelestiaAICopilotSuite = M87AICopilotSuite;

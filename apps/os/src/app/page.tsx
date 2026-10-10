@@ -1739,71 +1739,23 @@ const handleLockScreen = () => {
             top: 0,
             right: 0,
             bottom: 0,
-            width: 'min(440px, 100vw)',
+            width: 'min(460px, 100vw)',
             zIndex: 9600,
             display: 'flex',
             flexDirection: 'column',
             background: 'linear-gradient(165deg, #06061a 0%, #0c0a2e 50%, #12082a 100%)',
             backdropFilter: 'blur(20px)',
             borderLeft: '1px solid rgba(167, 139, 250, 0.25)',
-            boxShadow: '-20px 0 60px rgba(0, 0, 0, 0.5)',
+            boxShadow: '-20px 0 60px rgba(0, 0, 0, 0.65)',
             animation: 'osPremiumFade 0.28s cubic-bezier(0.22, 1, 0.36, 1)',
           }}
         >
-          <div
-            style={{
-              padding: '12px 14px',
-              borderBottom: '1px solid rgba(167, 139, 250, 0.18)',
-              background: 'rgba(15, 10, 40, 0.6)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: '50%',
-                background: 'linear-gradient(145deg, #a78bfa, #6366f1 40%, #7c3aed)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 0 20px rgba(167, 139, 250, 0.55)',
-              }}
-            >
-              <Sparkles size={18} color="#fff" />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 15, color: '#F5F3FF' }}>Celestia</div>
-              <div style={{ fontSize: 11, color: 'rgba(196, 181, 253, 0.8)', fontWeight: 600 }}>
-                Your hospital AI companion, beyond.
-                {' · '}
-                <span style={{ color: '#34d399' }}>Online</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAiDrawerOpen(false)}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                border: '1px solid rgba(167, 139, 250, 0.3)',
-                background: 'rgba(30, 20, 60, 0.6)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#c4b5fd',
-              }}
-              aria-label="Close assistant"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 10 }}>
-            <M87AICopilotSuite session={userSession ?? undefined} />
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <M87AICopilotSuite
+              session={userSession ?? undefined}
+              inDrawer
+              onClose={() => setAiDrawerOpen(false)}
+            />
           </div>
         </div>
       )}
