@@ -7221,3 +7221,69 @@ img, .os-top-hud-avatar {
 .celestia-logo-hero {
   display: none !important;
 }
+
+
+/* Celestia task automation progress (Grok-style steps) */
+.celestia-task-run {
+  min-width: min(100%, 340px);
+  padding: 12px 14px !important;
+}
+.celestia-task-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.celestia-task-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #a5b4fc;
+  margin-bottom: 2px;
+}
+.celestia-task-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.celestia-task-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: #94a3b8;
+  transition: color 0.2s ease, opacity 0.2s ease;
+}
+.celestia-task-step.is-pending {
+  opacity: 0.55;
+}
+.celestia-task-step.is-active {
+  color: #e0e7ff;
+  opacity: 1;
+  font-weight: 600;
+}
+.celestia-task-step.is-done {
+  color: #6ee7b7;
+  opacity: 1;
+}
+.celestia-task-step.is-error {
+  color: #fca5a5;
+  opacity: 1;
+}
+.celestia-task-ico {
+  flex-shrink: 0;
+  width: 1.1em;
+  text-align: center;
+  font-size: 12px;
+}
+.celestia-task-step.is-active .celestia-task-ico {
+  animation: celestia-task-pulse 1s ease-in-out infinite;
+}
+@keyframes celestia-task-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}

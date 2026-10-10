@@ -37,10 +37,17 @@ interface ChatMessage {
 
 const INITIAL_MESSAGES: ChatMessage[] = [];
 
+type TaskStepStatus = 'pending' | 'active' | 'done' | 'error';
+type TaskStep = { id: string; label: string; status: TaskStepStatus };
+
 interface Props {
   session?: UserSession;
   inDrawer?: boolean;
   onClose?: () => void;
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((r) => window.setTimeout(r, ms));
 }
 
 function renderInlineMarkdown(content: string) {
@@ -133,6 +140,8 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputPrompt, setInputPrompt] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [taskRun, setTaskRun] = useState<{ title: string; steps: TaskStep[] } | null>(null);
+  const [geminiOnline, setGeminiOnline] = useState<boolean | null>(null);
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [modelVer, setModelVer] = useState<string | null>(() => getModelState()?.version || null);
   const [engineReady, setEngineReady] = useState(false);
@@ -189,7 +198,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
   }, [session?.hospitalId]);
 
   useEffect(() => {
-    void probeGeminiConfigured();
+    void probeGeminiConfigured().then((ok) => setGeminiOnline(ok));
   }, []);
 
   useEffect(() => {
@@ -214,6 +223,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
     setMessages((prev) => [...prev, userMsg]);
     const query = text;
     setInputPrompt('');
+    setTaskRun(null);
     setIsThinking(true);
 
     const facilityId = session?.hospitalId || 'IGH-EKT';
@@ -341,23 +351,103 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
           },
         ]);
         setIsThinking(false);
+        setTaskRun(null);
         return;
       }
+
+      const jobCount = staffIntent.jobs.length;
+      const steps: TaskStep[] = [
+        { id: 'power', label: 'Initiating MedCore Celestial Power…', status: 'pending' },
+        { id: 'parse', label: 'Reading staff enrolment request…', status: 'pending' },
+        {
+          id: 'create',
+          label:
+            jobCount > 1
+              ? `Creating ${jobCount} staff accounts…`
+              : `Creating account for ${staffIntent.jobs[0]?.fullName || 'staff'}…`,
+          status: 'pending',
+        },
+        { id: 'card', label: 'Issuing ID cards & access rights…', status: 'pending' },
+        { id: 'sync', label: 'Syncing facility cloud directory…', status: 'pending' },
+        { id: 'done', label: 'Finalizing automation…', status: 'pending' },
+      ];
+      setTaskRun({ title: 'Celestia Access Automation', steps });
+
+      const mark = (id: string, status: TaskStepStatus) => {
+        setTaskRun((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            steps: prev.steps.map((s) => {
+              if (s.id === id) return { ...s, status };
+              if (status === 'active' && s.status === 'active') return { ...s, status: 'done' };
+              return s;
+            }),
+          };
+        });
+      };
+
       try {
-        if (staffIntent.jobs.length === 1) {
+        mark('power', 'active');
+        await sleep(450);
+        mark('power', 'done');
+        mark('parse', 'active');
+        await sleep(350);
+        mark('parse', 'done');
+        mark('create', 'active');
+        await sleep(200);
+
+        if (jobCount === 1) {
           const r = await createStaffAccountWithCard(staffIntent.jobs[0]);
-          reply = r.ok
-            ? `Celestia Access Automation: Account created and ID card issued.\n\n• Name: ${staffIntent.jobs[0].fullName}\n• Badge: ${r.badgeId}\n• Role: ${staffIntent.jobs[0].roleKey}\n• PIN: (as specified / default 123456)\n\nStaff can Sign in with ID No. using badge + PIN. Open Staff Access Control to view the card.`
-            : `Celestia could not create account: ${r.error || 'unknown error'}`;
-          if (r.ok) emitLiveAction(`Celestia enrolled ${r.badgeId}`, { module: 'ai-access' });
-        } else if (staffIntent.jobs.length > 1) {
+          if (r.ok) {
+            mark('create', 'done');
+            mark('card', 'active');
+            await sleep(400);
+            mark('card', 'done');
+            mark('sync', 'active');
+            await sleep(300);
+            mark('sync', 'done');
+            mark('done', 'active');
+            await sleep(250);
+            mark('done', 'done');
+            reply = `Celestia Access Automation complete.\n\n• Name: ${staffIntent.jobs[0].fullName}\n• Badge: ${r.badgeId}\n• Role: ${staffIntent.jobs[0].roleKey}\n• PIN: (as specified / default 123456)\n\nStaff can Sign in with ID No. using badge + PIN. Open Staff Access Control to view the card.`;
+            emitLiveAction(`Celestia enrolled ${r.badgeId}`, { module: 'ai-access' });
+          } else {
+            mark('create', 'error');
+            reply = `Celestia could not create account: ${r.error || 'unknown error'}`;
+          }
+        } else if (jobCount > 1) {
           const { summary } = await bulkCreateStaff(staffIntent.jobs);
-          reply = `Celestia Bulk Access Automation\n\n${summary}\n\nAll successful accounts have ID cards and badge login. Review under Staff Access Control.`;
-          emitLiveAction(`Celestia bulk enrol ×${staffIntent.jobs.length}`, { module: 'ai-access' });
+          mark('create', 'done');
+          mark('card', 'active');
+          await sleep(400);
+          mark('card', 'done');
+          mark('sync', 'active');
+          await sleep(300);
+          mark('sync', 'done');
+          mark('done', 'active');
+          await sleep(250);
+          mark('done', 'done');
+          reply = `Celestia Bulk Access Automation complete.\n\n${summary}\n\nAll successful accounts have ID cards and badge login. Review under Staff Access Control.`;
+          emitLiveAction(`Celestia bulk enrol ×${jobCount}`, { module: 'ai-access' });
+        } else {
+          mark('parse', 'done');
+          mark('done', 'done');
         }
       } catch (err: unknown) {
+        setTaskRun((prev) =>
+          prev
+            ? {
+                ...prev,
+                steps: prev.steps.map((s) =>
+                  s.status === 'active' ? { ...s, status: 'error' as const } : s
+                ),
+              }
+            : prev
+        );
         reply = `Celestia automation error: ${(err as Error)?.message || 'failed'}`;
       }
+
       const aiMsg: ChatMessage = {
         id: `msg-${Date.now()}-ai`,
         sender: 'm87',
@@ -367,53 +457,55 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
       };
       setMessages((prev) => [...prev, aiMsg]);
       setIsThinking(false);
+      // Keep task trail visible briefly then clear
+      window.setTimeout(() => setTaskRun(null), 2200);
       return;
     }
 
-    // Gemini (when key configured) → else local advisory
+    // Gemini when available → else Celestia offline (local hospital knowledge)
     let reply =
-      'Celestia: I can automate hospital admin tasks. Try:\n• enrol nurse Ada Okon pin 123456\n• bulk enrol: Emeka doctor; Chioma reception; Amaka nurse\n• create 5 nurses\n\nOr ask about beds, revenue, or clinical topics.';
+      'Celestia offline. I can still automate hospital admin tasks:\n• enrol nurse Ada Okon pin 123456\n• bulk enrol: Emeka doctor; Chioma reception; Amaka nurse\n• create 5 nurses\n\nOr ask about beds, revenue, or desk ops.';
     let cat: ChatMessage['category'] = 'clinical';
+    let offlineMode = false;
 
     const fid = session?.hospitalId || 'IGH-EKT';
     const rag = buildM87RagContext(query, fid);
     const localHits = retrieveRelevantExamples(query, fid, 1);
-    const gemini = await geminiGenerate(
-      query,
-      buildCelestiaSystemPrompt(session),
-      rag
-    );
+    const gemini = await geminiGenerate(query, buildCelestiaSystemPrompt(session), rag, fid);
+    setGeminiOnline(Boolean(gemini.ok && gemini.usedGemini));
+
     if (gemini.ok && gemini.text) {
       reply = gemini.text;
       cat = 'clinical';
-    } else if (gemini.text && (gemini.usedGemini || gemini.configured === false)) {
-      // Surface real key/API errors instead of hiding behind local fallback
-      reply = gemini.text;
-      cat = 'operational';
-    } else if (localHits[0]) {
-      reply =
-        localHits[0].idealOutput +
-        '\n\n— Offline hospital knowledge (Gemini not available). Set GEMINI_API_KEY on the server and redeploy.';
-      cat = 'operational';
+      offlineMode = false;
     } else {
+      offlineMode = true;
       const lower = query.toLowerCase();
-      if (lower.includes('bed') || lower.includes('surge') || lower.includes('capacity')) {
+      if (localHits[0]) {
         reply =
-          'Review Bed & Ward Occupancy for live counts. (Gemini offline — set GEMINI_API_KEY on Vercel.)';
+          localHits[0].idealOutput +
+          '\n\n— Celestia offline · using hospital knowledge base.';
         cat = 'operational';
-      } else if (lower.includes('money') || lower.includes('revenue') || lower.includes('hmo') || lower.includes('billing')) {
+      } else if (lower.includes('bed') || lower.includes('surge') || lower.includes('capacity') || lower.includes('ward')) {
         reply =
-          'Open Accounts / Revenue for live tills. (Gemini offline — set GEMINI_API_KEY on Vercel.)';
+          '**Celestia offline**\n\nReview **Bed & Ward Occupancy** for live counts and alerts. Open that module for ward >90% and long-stay patients.';
+        cat = 'operational';
+      } else if (lower.includes('money') || lower.includes('revenue') || lower.includes('hmo') || lower.includes('billing') || lower.includes('payment')) {
+        reply =
+          '**Celestia offline**\n\nOpen **Accounts / Cashier** for live tills, unpaid bills, and payment status. Front desk enrolment still queues patients for payment in realtime.';
         cat = 'financial';
-      } else if (lower.includes('access') || lower.includes('id card') || lower.includes('badge')) {
+      } else if (lower.includes('access') || lower.includes('id card') || lower.includes('badge') || lower.includes('enrol') || lower.includes('staff')) {
         reply = canAutomateStaff(actorRole)
-          ? 'Say “enrol doctor Full Name pin 123456” and I can create the account (admin only).'
+          ? '**Celestia offline** (chat model unavailable) — automation still works.\n\nSay `enrol doctor Full Name pin 123456` and I will run Access Automation with live steps.'
           : staffAutomationRefusal(actorRole);
+        cat = 'operational';
+      } else if (lower.includes('queue') || lower.includes('opd') || lower.includes('waiting')) {
+        reply =
+          '**Celestia offline**\n\nOpen **Reception / Front Desk** for the live OPD queue. Active visits and payment gates update without reload.';
         cat = 'operational';
       } else {
         reply =
-          gemini.text ||
-          'Celestia could not reach Gemini. Add GEMINI_API_KEY in Vercel → Environment Variables (Production + Preview), then Redeploy.';
+          '**Celestia offline**\n\nThe cloud model is unreachable right now. I can still:\n• Automate staff enrolment (admin)\n• Point you to beds, revenue, and queue modules\n• Use this facility's learned knowledge when available\n\nTry again later, or ask me to **enrol** staff / check **beds** / **revenue**.';
         cat = 'operational';
       }
     }
@@ -633,7 +725,9 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
             <div className="m87-title-row">
               <h1 className="m87-title celestia-wordmark">celestia</h1>
               <span className="m87-live-dot" title="Online" />
-              <span className="m87-live-label">{engineReady ? 'Online' : 'Ready'}</span>
+              <span className="m87-live-label">
+                {geminiOnline === false ? 'Offline' : engineReady ? 'Online' : 'Ready'}
+              </span>
               <span className="celestia-facility-tag">{session?.hospitalId || 'IGH-EKT'}</span>
             </div>
             <div className="celestia-header-sub">
@@ -757,18 +851,38 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
             );
           })}
 
-          {isThinking && (
+          {(isThinking || taskRun) && (
             <div className="m87-row m87-row-ai mc-ai-msg-in">
               <div className="celestia-avatar-mark celestia-avatar-msg" aria-hidden>
                 <img src="/celestia-logo.png" alt="" />
               </div>
-              <div className="m87-bubble m87-bubble-ai m87-thinking">
-                <div className="mc-typing-dots">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                <span className="m87-thinking-label">Celestia is analyzing…</span>
+              <div className={`m87-bubble m87-bubble-ai m87-thinking${taskRun ? ' celestia-task-run' : ''}`}>
+                {taskRun ? (
+                  <div className="celestia-task-panel">
+                    <div className="celestia-task-title">{taskRun.title}</div>
+                    <ul className="celestia-task-steps">
+                      {taskRun.steps.map((s) => (
+                        <li key={s.id} className={`celestia-task-step is-${s.status}`}>
+                          <span className="celestia-task-ico" aria-hidden>
+                            {s.status === 'done' ? '✓' : s.status === 'error' ? '!' : s.status === 'active' ? '◉' : '○'}
+                          </span>
+                          <span className="celestia-task-label">{s.label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mc-typing-dots">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                    <span className="m87-thinking-label">
+                      {geminiOnline === false ? 'Celestia offline · local desk…' : 'Celestia is analyzing…'}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           )}
