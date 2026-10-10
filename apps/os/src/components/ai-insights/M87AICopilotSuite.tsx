@@ -2,15 +2,20 @@
 
 import { geminiGenerate, hasGeminiKey, probeGeminiConfigured } from '../../lib/geminiClient';
 import {
-  parseReceptionAutomationIntent,
+  resolveFrontDeskAction,
   extractReceptionJobWithAI,
   registerNewPatientWithFolderFee,
-  parseSendAccountsIntent,
   sendPatientToAccounts,
   canAutomateReception,
   receptionAutomationRefusal,
+  lookupPatientSummary,
+  listWaitingQueueSummary,
+  checkInPatientByRef,
+  assignDoctorByRef,
+  bookAppointmentByRef,
   type ReceptionRegJob,
-} from '../../lib/receptionAutomation';
+  type ChatTurn,
+} from '../../lib/frontDeskAutomation';
 import { runM87Training, buildM87RagContext, retrieveRelevantExamples } from '../../lib/m87Train';
 import { addFeedback, getModelState, subscribeM87Learn } from '../../lib/m87LearningStore';
 import { liveAlert } from '../../lib/manualActions';
@@ -309,335 +314,301 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
 
 
 
-    // Front desk: send / re-send patient invoice to Accounts
-    {
-      let sendIntent = parseSendAccountsIntent(query);
-      // Hospital number only while waiting for "who to send"
-      if (
-        !sendIntent.handled &&
-        pendingSendAccounts &&
-        /^[A-Za-z0-9][A-Za-z0-9-]{4,24}$/.test(query.trim())
-      ) {
-        sendIntent = { handled: true, patientRef: query.trim().toUpperCase() };
+
+    // Front desk automation (full desk) — uses recent chat so follow-ups keep memory
+    if (canAutomateReception(actorRole) || true) {
+      const recentTurns: ChatTurn[] = messages
+        .slice(-12)
+        .map((m) => ({
+          role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
+          text: m.text,
+        }))
+        .concat([{ role: 'user', text: query }]);
+
+      let action = resolveFrontDeskAction(query, {
+        recentTurns,
+        lastPatientRef,
+        pendingSendAccounts,
+        pendingReceptionJob,
+      });
+
+      // AI fill for natural register if needed
+      if (action.type === 'none' || (action.type === 'register' && !('job' in action))) {
+        /* continue */
       }
-      if (sendIntent.handled) {
-        if (!canAutomateReception(actorRole)) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `msg-${Date.now()}-ai`,
-              sender: 'm87',
-              text: receptionAutomationRefusal(actorRole),
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              category: 'operational',
-            },
-          ]);
-          setIsThinking(false);
-          return;
-        }
-
-        let ref = sendIntent.patientRef || undefined;
-        if (!ref && sendIntent.needsPatient && lastPatientRef) {
-          ref = lastPatientRef;
-        }
-        if (!ref && sendIntent.needsPatient) {
-          setPendingSendAccounts(true);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `msg-${Date.now()}-ai`,
-              sender: 'm87',
-              text: 'Which patient? Name or hospital number (e.g. IGH-PT-2CKAR3).',
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              category: 'operational',
-            },
-          ]);
-          setIsThinking(false);
-          return;
-        }
-        if (!ref) {
-          setIsThinking(false);
-          return;
-        }
-
-        const steps: TaskStep[] = [
-          { id: 'power', label: 'Initiating MedCore Celestial Power…', status: 'pending' },
-          { id: 'find', label: `Looking up ${ref}…`, status: 'pending' },
-          { id: 'ledger', label: 'Checking open charges & prior handoffs…', status: 'pending' },
-          { id: 'send', label: 'Routing to Accounts / Cashier…', status: 'pending' },
-          { id: 'done', label: 'Confirming desk handoff…', status: 'pending' },
-        ];
-        setTaskRun({ title: 'Celestia → Accounts', steps });
-        const mark = (id: string, status: TaskStepStatus) => {
-          setTaskRun((prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              steps: prev.steps.map((s) => {
-                if (s.id === id) return { ...s, status };
-                if (status === 'active' && s.status === 'active') return { ...s, status: 'done' };
-                return s;
-              }),
-            };
-          });
-        };
-
-        let reply = '';
+      if (action.type === 'none' && /\b(register|enrol|patient|folder|check\s*-?in|queue|accounts?)\b/i.test(query)) {
         try {
-          mark('power', 'active');
-          await sleep(350);
-          mark('power', 'done');
-          mark('find', 'active');
-          await sleep(250);
-          mark('find', 'done');
-          mark('ledger', 'active');
-          await sleep(250);
-          const result = sendPatientToAccounts({
-            facilityId,
-            facilityName,
-            patientRef: ref,
-            actorName: session?.name,
-            actorBadge: session?.badgeId,
-          });
-          mark('ledger', 'done');
-          if (result.ok) {
-            mark('send', 'active');
-            await sleep(300);
-            mark('send', 'done');
-            mark('done', 'active');
-            await sleep(200);
-            mark('done', 'done');
-            reply = result.message;
-            if (result.hospitalNumber) setLastPatientRef(result.hospitalNumber);
-            setPendingSendAccounts(false);
-            try {
-              emitLiveAction(`Celestia → Accounts ${result.hospitalNumber || ref}`, {
-                module: 'reception',
-              });
-            } catch {
-              /* ignore */
-            }
-          } else {
-            mark('send', 'error');
-            reply = result.message || result.error || 'Could not send to Accounts.';
-          }
-        } catch (err: unknown) {
-          reply = `Accounts handoff error: ${(err as Error)?.message || 'failed'}`;
-        }
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `msg-${Date.now()}-ai`,
-            sender: 'm87',
-            text: reply,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            category: 'operational',
-          },
-        ]);
-        setIsThinking(false);
-        window.setTimeout(() => setTaskRun(null), 2200);
-        return;
-      }
-    }
-
-    // Front desk: register patient + folder fee → Accounts
-    {
-      let receptionIntent = parseReceptionAutomationIntent(query);
-      let job = receptionIntent.job || undefined;
-      // AI assist when natural phrasing didn't yield a full job yet
-      if (receptionIntent.handled && !job && !receptionIntent.confirmOnly) {
-        try {
-          const aiJob = await extractReceptionJobWithAI(query, facilityId);
-          if (aiJob) {
-            job = aiJob;
-            receptionIntent = { handled: true, job };
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-      if (!receptionIntent.handled && !receptionIntent.confirmOnly) {
-        try {
-          const aiJob = await extractReceptionJobWithAI(query, facilityId);
-          if (aiJob) {
-            job = aiJob;
-            receptionIntent = { handled: true, job };
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-      if (receptionIntent.confirmOnly && pendingReceptionJob) {
-        job = pendingReceptionJob;
-        receptionIntent = { handled: true, job };
-      } else if (receptionIntent.confirmOnly && !pendingReceptionJob) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `msg-${Date.now()}-ai`,
-            sender: 'm87',
-            text: 'What should I do? e.g. **register Michael James, male, folder fee first**.',
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            category: 'operational',
-          },
-        ]);
-        setIsThinking(false);
-        return;
-      }
-
-      if (receptionIntent.handled) {
-        if (!canAutomateReception(actorRole)) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `msg-${Date.now()}-ai`,
-              sender: 'm87',
-              text: receptionAutomationRefusal(actorRole),
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              category: 'operational',
-            },
-          ]);
-          setIsThinking(false);
-          return;
-        }
-
-        if (!job) {
-          // Natural language: try AI extraction when local parse only saw soft intent
-          try {
-            const aiJob = await extractReceptionJobWithAI(query, facilityId);
-            if (aiJob) job = aiJob;
-          } catch {
-            /* offline */
-          }
-        }
-
-        if (!job) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `msg-${Date.now()}-ai`,
-              sender: 'm87',
-              text:
-                receptionIntent.replyIfEmpty ||
-                'Who should I register? Name and sex is enough — e.g. *Michael James, male, new to the hospital*.',
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              category: 'operational',
-            },
-          ]);
-          setIsThinking(false);
-          return;
-        }
-
-        // Store for "do it for me" follow-up; run automation now
-        setPendingReceptionJob(job);
-
-        const steps: TaskStep[] = [
-          { id: 'power', label: 'Initiating MedCore Celestial Power…', status: 'pending' },
-          { id: 'parse', label: `Opening folder for ${job.firstName} ${job.lastName}…`, status: 'pending' },
-          { id: 'registry', label: 'Writing patient to facility registry…', status: 'pending' },
-          { id: 'fee', label: 'Creating registration / folder fee…', status: 'pending' },
-          { id: 'accounts', label: 'Sending invoice to Accounts / Cashier…', status: 'pending' },
-          { id: 'done', label: 'Finalizing front-desk handoff…', status: 'pending' },
-        ];
-        setTaskRun({ title: 'Celestia Front Desk Automation', steps });
-
-        const mark = (id: string, status: TaskStepStatus) => {
-          setTaskRun((prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              steps: prev.steps.map((s) => {
-                if (s.id === id) return { ...s, status };
-                if (status === 'active' && s.status === 'active') return { ...s, status: 'done' };
-                return s;
-              }),
-            };
-          });
-        };
-
-        let reply = '';
-        try {
-          mark('power', 'active');
-          await sleep(400);
-          mark('power', 'done');
-          mark('parse', 'active');
-          await sleep(300);
-          mark('parse', 'done');
-          mark('registry', 'active');
-          await sleep(200);
-
-          const r = registerNewPatientWithFolderFee({
-            job,
-            facilityId,
-            facilityName,
-            actorName: session?.name,
-            actorBadge: session?.badgeId,
-          });
-
-          if (r.ok) {
-            mark('registry', 'done');
-            mark('fee', 'active');
-            await sleep(350);
-            mark('fee', 'done');
-            mark('accounts', 'active');
-            await sleep(350);
-            mark('accounts', 'done');
-            mark('done', 'active');
-            await sleep(250);
-            mark('done', 'done');
-            const full = [job.firstName, job.middleName, job.lastName].filter(Boolean).join(' ');
-            reply =
-              `Done — **${full}** is on the registry.\n\n` +
-              `• Hospital No: **${r.hospitalNumber}**\n` +
-              `• Sex: ${job.sex}\n` +
-              (r.invoiceNumber
-                ? `• Folder fee: **₦${(r.amountNgn || 0).toLocaleString()}** · Invoice **${r.invoiceNumber}** → Accounts (PENDING)\n\n` +
-                  `Patient pays at Cashier, then returns here for check-in / queue.`
-                : `\nFolder opened. Continue on Patient Flow when ready.`);
-            try {
-              emitLiveAction(`Celestia registered ${r.hospitalNumber}`, { module: 'reception' });
-            } catch {
-              /* ignore */
-            }
-            setPendingReceptionJob(null);
-    setLastPatientRef(null);
-    setPendingSendAccounts(false);
-          } else {
-            mark('registry', 'error');
-            reply = `Could not register: ${r.error || 'unknown error'}`;
-          }
-        } catch (err: unknown) {
-          setTaskRun((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  steps: prev.steps.map((s) =>
-                    s.status === 'active' ? { ...s, status: 'error' as const } : s
-                  ),
-                }
-              : prev
+          const aiJob = await extractReceptionJobWithAI(
+            recentTurns.filter((x) => x.role === 'user').map((x) => x.text).slice(-4).join(' · '),
+            facilityId
           );
-          reply = `Registration automation error: ${(err as Error)?.message || 'failed'}`;
+          if (aiJob) action = { type: 'register', job: aiJob };
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (action.type !== 'none') {
+        if (!canAutomateReception(actorRole)) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg-${Date.now()}-ai`,
+              sender: 'm87',
+              text: receptionAutomationRefusal(actorRole),
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              category: 'operational',
+            },
+          ]);
+          setIsThinking(false);
+          return;
         }
 
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `msg-${Date.now()}-ai`,
-            sender: 'm87',
-            text: reply,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            category: 'operational',
-          },
-        ]);
-        setIsThinking(false);
-        window.setTimeout(() => setTaskRun(null), 2200);
-        return;
+        const runSteps = async (
+          title: string,
+          labels: string[],
+          work: () => Promise<string>
+        ) => {
+          const steps = labels.map((label, i) => ({
+            id: `s${i}`,
+            label,
+            status: 'pending' as TaskStepStatus,
+          }));
+          setTaskRun({ title, steps });
+          const mark = (i: number, status: TaskStepStatus) => {
+            setTaskRun((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                steps: prev.steps.map((s, idx) => {
+                  if (idx === i) return { ...s, status };
+                  if (status === 'active' && s.status === 'active') return { ...s, status: 'done' };
+                  return s;
+                }),
+              };
+            });
+          };
+          try {
+            for (let i = 0; i < labels.length - 1; i++) {
+              mark(i, 'active');
+              await sleep(280 + (i === 0 ? 120 : 0));
+              mark(i, 'done');
+            }
+            mark(labels.length - 1, 'active');
+            const text = await work();
+            mark(labels.length - 1, 'done');
+            return text;
+          } catch (e) {
+            mark(labels.length - 1, 'error');
+            throw e;
+          }
+        };
+
+        let reply = '';
+        try {
+          if (action.type === 'confirm_pending') {
+            reply =
+              lastPatientRef
+                ? `Still on **${lastPatientRef}**. Say check-in, send to accounts, or assign Dr Name.`
+                : 'What should I run? Register a patient, send to accounts, check-in, or show the queue.';
+          } else if (action.type === 'queue_list') {
+            reply = await runSteps(
+              'Celestia Queue',
+              ['Initiating MedCore Celestial Power…', 'Reading live OPD queue…', 'Done'],
+              async () => listWaitingQueueSummary(facilityId)
+            );
+          } else if (action.type === 'lookup') {
+            const ref = action.patientRef;
+            reply = await runSteps(
+              'Celestia Lookup',
+              ['Initiating MedCore Celestial Power…', `Finding ${ref}…`, 'Done'],
+              async () => {
+                setLastPatientRef(ref);
+                return lookupPatientSummary(facilityId, ref);
+              }
+            );
+          } else if (action.type === 'send_accounts_need_patient') {
+            setPendingSendAccounts(true);
+            reply = lastPatientRef
+              ? `Send **${lastPatientRef}** to Accounts? Say **yes** or give another hospital number.`
+              : 'Which patient? Name or hospital number (e.g. IGH-PT-2CKAR3).';
+          } else if (action.type === 'send_accounts') {
+            const ref = action.patientRef;
+            reply = await runSteps(
+              'Celestia → Accounts',
+              [
+                'Initiating MedCore Celestial Power…',
+                `Looking up ${ref}…`,
+                'Checking charges & handoffs…',
+                'Routing to Accounts…',
+                'Done',
+              ],
+              async () => {
+                const result = sendPatientToAccounts({
+                  facilityId,
+                  facilityName,
+                  patientRef: ref,
+                  actorName: session?.name,
+                  actorBadge: session?.badgeId,
+                });
+                if (result.hospitalNumber) setLastPatientRef(result.hospitalNumber);
+                setPendingSendAccounts(false);
+                try {
+                  emitLiveAction(`Celestia → Accounts ${result.hospitalNumber || ref}`, {
+                    module: 'reception',
+                  });
+                } catch {
+                  /* ignore */
+                }
+                return result.message;
+              }
+            );
+          } else if (action.type === 'check_in') {
+            const ref = action.patientRef;
+            reply = await runSteps(
+              'Celestia Check-in',
+              [
+                'Initiating MedCore Celestial Power…',
+                `Opening visit for ${ref}…`,
+                'Writing queue ticket…',
+                'Done',
+              ],
+              async () => {
+                const r = checkInPatientByRef({
+                  facilityId,
+                  patientRef: ref,
+                  department: action.department,
+                  doctor: action.doctor,
+                });
+                setLastPatientRef(ref);
+                if (r.ok) {
+                  try {
+                    emitLiveAction(`Celestia check-in ${ref}`, { module: 'reception' });
+                  } catch {
+                    /* ignore */
+                  }
+                }
+                return r.message;
+              }
+            );
+          } else if (action.type === 'assign_doctor') {
+            reply = await runSteps(
+              'Celestia Assign Doctor',
+              ['Initiating MedCore Celestial Power…', 'Updating assignment…', 'Notifying clinician…', 'Done'],
+              async () => {
+                const r = assignDoctorByRef({
+                  facilityId,
+                  patientRef: action.patientRef,
+                  doctor: action.doctor,
+                });
+                return r.message;
+              }
+            );
+          } else if (action.type === 'book_appointment') {
+            reply = await runSteps(
+              'Celestia Appointment',
+              ['Initiating MedCore Celestial Power…', 'Booking slot…', 'Done'],
+              async () => {
+                const r = bookAppointmentByRef({
+                  facilityId,
+                  patientRef: action.patientRef,
+                  department: action.department,
+                  doctor: action.doctor,
+                });
+                return r.message;
+              }
+            );
+          } else if (action.type === 'register') {
+            let job = action.job;
+            if (!job) {
+              try {
+                job =
+                  (await extractReceptionJobWithAI(
+                    recentTurns.filter((x) => x.role === 'user').map((x) => x.text).slice(-4).join(' · '),
+                    facilityId
+                  )) || undefined;
+              } catch {
+                /* ignore */
+              }
+            }
+            if (!job) {
+              reply =
+                'Who should I register? Name and sex is enough — e.g. *Michael James, male, new to the hospital*.';
+            } else {
+              setPendingReceptionJob(job);
+              reply = await runSteps(
+                'Celestia Front Desk Automation',
+                [
+                  'Initiating MedCore Celestial Power…',
+                  `Opening folder for ${job.firstName} ${job.lastName}…`,
+                  'Writing patient to registry…',
+                  'Creating folder fee…',
+                  'Sending invoice to Accounts…',
+                  'Done',
+                ],
+                async () => {
+                  const r = registerNewPatientWithFolderFee({
+                    job: job!,
+                    facilityId,
+                    facilityName,
+                    actorName: session?.name,
+                    actorBadge: session?.badgeId,
+                  });
+                  if (!r.ok) throw new Error(r.error || 'Registration failed');
+                  if (r.hospitalNumber) setLastPatientRef(r.hospitalNumber);
+                  setPendingReceptionJob(null);
+                  try {
+                    emitLiveAction(`Celestia registered ${r.hospitalNumber}`, { module: 'reception' });
+                  } catch {
+                    /* ignore */
+                  }
+                  const full = [job!.firstName, job!.middleName, job!.lastName].filter(Boolean).join(' ');
+                  return (
+                    `Done — **${full}** is on the registry.\n\n` +
+                    `• Hospital No: **${r.hospitalNumber}**\n` +
+                    `• Sex: ${job!.sex}\n` +
+                    (r.invoiceNumber
+                      ? `• Folder fee: **₦${(r.amountNgn || 0).toLocaleString()}** · Invoice **${r.invoiceNumber}** → Accounts (PENDING)\n\n` +
+                        `Patient pays at Cashier, then returns here for check-in / queue.`
+                      : `\nFolder opened. Continue on Patient Flow when ready.`)
+                  );
+                }
+              );
+            }
+          }
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg-${Date.now()}-ai`,
+              sender: 'm87',
+              text: reply,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              category: 'operational',
+            },
+          ]);
+          setIsThinking(false);
+          window.setTimeout(() => setTaskRun(null), 2200);
+          return;
+        } catch (err: unknown) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg-${Date.now()}-ai`,
+              sender: 'm87',
+              text: `Front desk automation error: ${(err as Error)?.message || 'failed'}`,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              category: 'operational',
+            },
+          ]);
+          setIsThinking(false);
+          setTaskRun(null);
+          return;
+        }
       }
     }
 
-    // Role visibility automation
+    // Role visibility automation    // Role visibility automation
     const lowerQ = query.toLowerCase();
     if (
       (lowerQ.includes('role') && (lowerQ.includes('can see') || lowerQ.includes('permission') || lowerQ.includes('visibility') || lowerQ.includes('module'))) ||

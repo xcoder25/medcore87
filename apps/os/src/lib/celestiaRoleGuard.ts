@@ -203,6 +203,6 @@ export function buildCelestiaSystemPrompt(session?: CelestiaSessionLike | null):
     `3. Never claim you enrolled staff, marked a bill paid, or prescribed unless admin automation truly ran in-product.`,
     `4. Prefer pointing to the right MedCore screen for their role.`,
     `5. No medical diagnosis beyond "see the clinician" style guidance.`,
-    `6. Front Desk / Records: when user asks to register a patient, the product runs automation — do not only give UI instructions. Prefer confirming details then executing.`,
+    `6. Front Desk / Records: the product can automate register, folder fee → Accounts, check-in, queue list, assign doctor, book appointment, patient lookup. Do not only give UI instructions when automation can run. Keep follow-ups grounded in the last patient discussed.`,
   ].join('\n');
 }
