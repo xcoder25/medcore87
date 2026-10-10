@@ -477,14 +477,6 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
         <div className="celestia-messages-inner">
           {messages.length === 0 && !isThinking && (
             <div className="m87-empty celestia-hero celestia-empty-grok">
-              <div className="celestia-hero-emblem-wrap">
-                <div className="celestia-hero-glow" />
-                <img
-                  src="/celestia-logo.png"
-                  alt="Celestia"
-                  className="celestia-logo-img celestia-logo-hero"
-                />
-              </div>
               <h2 className="m87-empty-title celestia-hello">What can I coordinate for you?</h2>
               <p className="m87-empty-sub">
                 Your hospital operations copilot. Query patient queues, ward beds, billing, or automate staff accounts in real time.

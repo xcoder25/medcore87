@@ -1769,7 +1769,11 @@ const handleLockScreen = () => {
           title="Open Celestia Assistant"
           aria-label="Open Celestia Assistant"
         >
-          <Sparkles size={22} color="#fff" />
+          <img
+            src="/celestia-logo.png"
+            alt=""
+            className="os-ai-fab-logo"
+          />
           <span className="os-ai-fab-pulse" />
         </button>
       )}

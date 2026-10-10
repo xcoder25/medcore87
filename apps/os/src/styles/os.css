@@ -4909,16 +4909,26 @@ body {
   width: 58px;
   height: 58px;
   border-radius: 18px;
-  border: none;
+  border: 1px solid rgba(167, 139, 250, 0.35);
   cursor: pointer;
-  background: linear-gradient(145deg, #7C3AED 0%, #0284C7 55%, #0D9488 100%);
+  background: #06061a;
   box-shadow:
     0 4px 0 rgba(15, 23, 42, 0.12),
-    0 12px 32px rgba(124, 58, 237, 0.45);
+    0 12px 32px rgba(124, 58, 237, 0.4),
+    0 0 24px rgba(139, 92, 246, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
+  overflow: hidden;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.os-ai-fab-logo {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 0 8px rgba(167, 139, 250, 0.55));
 }
 .os-ai-fab:hover {
   transform: translateY(-2px) scale(1.03);
@@ -7173,4 +7183,41 @@ img, .os-top-hud-avatar {
   .m87-chip:hover {
     transform: none !important;
   }
+}
+
+.celestia-avatar-header {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: transparent !important;
+  box-shadow: none !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.celestia-avatar-header img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.celestia-avatar-msg {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: transparent;
+}
+.celestia-avatar-msg img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.celestia-empty-grok {
+  /* no logo in chat body — video only */
+}
+.celestia-hero-emblem-wrap,
+.celestia-logo-hero {
+  display: none !important;
 }
