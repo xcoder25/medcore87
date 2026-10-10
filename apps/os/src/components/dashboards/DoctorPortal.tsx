@@ -1,3 +1,4 @@
+import { markPatientWithProvider } from '../../lib/receptionOpsStore';
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -671,7 +672,7 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
                 <div style={{ fontSize: '0.73rem', color: '#64748B' }}>{a.patientId} � {a.type} � {a.time}</div>
               </div>
               {a.status === 'waiting' && <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#F59E0B', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.28)', padding: '2px 9px', borderRadius: 999 }}>? Waiting</span>}
-              <button type="button" onClick={() => { setPatient(PATIENTS.find(p => p.id === a.patientId) || null); setStep('consult'); }} style={{ background: 'linear-gradient(135deg,#0284C7,#0369A1)', border: 'none', color: '#fff', padding: '8px 17px', borderRadius: 9, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
+              <button type="button" onClick={() => { setPatient(PATIENTS.find(p => p.id === a.patientId) || null); try { markPatientWithProvider(session?.hospitalId || 'IGH-EKT', patientId || patient?.id || '', session?.name); } catch {} setStep('consult'); }} style={{ background: 'linear-gradient(135deg,#0284C7,#0369A1)', border: 'none', color: '#fff', padding: '8px 17px', borderRadius: 9, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
                 Begin ?
               </button>
             </div>

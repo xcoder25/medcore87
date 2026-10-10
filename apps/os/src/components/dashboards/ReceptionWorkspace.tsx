@@ -390,6 +390,19 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   }, [facilityId]);
 
   useEffect(() => {
+    const bump = () => reload();
+    window.addEventListener('medcore-opd-stage', bump);
+    window.addEventListener('medcore-accounts-paid', bump);
+    window.addEventListener('medcore-clinical-orders', bump);
+    return () => {
+      window.removeEventListener('medcore-opd-stage', bump);
+      window.removeEventListener('medcore-accounts-paid', bump);
+      window.removeEventListener('medcore-clinical-orders', bump);
+    };
+  }, [reload]);
+
+
+  useEffect(() => {
     return subscribeAccountsRequests(() => {
       try {
         reload();
@@ -1686,7 +1699,9 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontWeight: 800, fontSize: 18, color: C.navy }}>Live queue board</div>
-              <div style={{ fontSize: 13, color: C.muted }}>Call · skip · complete · overtime alerts · by department</div>
+              <div style={{ fontSize: 13, color: C.muted }}>
+                Nigerian OPD flow · stages move with doctor / pharmacy / payment — desk only calls next
+              </div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button type="button" onClick={() => { setCiType('walkin'); goView('walkin'); }} style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: C.blue, color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: 12 }}>
@@ -1757,21 +1772,24 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                           <span style={{ fontSize: 11, fontWeight: 700 }}>{v.status}{v.aiReminderSent ? ' 🔔' : ''}</span>
                         </td>
                         <td style={{ padding: 10 }}>
-                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                             {v.status === 'waiting' && (
-                              <button type="button" onClick={() => { updateVisitStatus(v.id, 'called'); reload(); flash(`Called ${v.queueNumber}`); }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: C.blue, color: '#fff', cursor: 'pointer' }}>Call</button>
+                              <button type="button" onClick={() => { updateVisitStatus(v.id, 'called'); reload(); flash(`Called ${v.queueNumber}`); }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: C.blue, color: '#fff', cursor: 'pointer' }}>Call next</button>
                             )}
                             {v.status === 'called' && (
-                              <button type="button" onClick={() => { updateVisitStatus(v.id, 'with_provider'); reload(); }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: '#7C3AED', color: '#fff', cursor: 'pointer' }}>In room</button>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: '#E0F2FE', color: '#0369A1' }}>Called · auto in-room when doctor starts</span>
                             )}
-                            {v.status !== 'completed' && v.status !== 'cancelled' && (
-                              <button type="button" onClick={() => { updateVisitStatus(v.id, 'completed'); reload(); flash('Completed'); }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer' }}>Done</button>
+                            {v.status === 'with_provider' && (
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: '#EDE9FE', color: '#5B21B6' }}>With doctor · closes on Rx / lab order</span>
+                            )}
+                            {v.status === 'completed' && (
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: '#D1FAE5', color: '#047857' }}>Consult complete</span>
                             )}
                             {v.paymentStatus === 'pending' && (
                               <button type="button" onClick={() => {
                                 const p = patients.find((x) => x.id === v.patientId);
                                 if (p) { setSelected(p); setPosPatient(p); goView('send-accounts'); }
-                              }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: '#FEF3C7', color: '#B45309', cursor: 'pointer' }}>Pay</button>
+                              }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: '#FEF3C7', color: '#B45309', cursor: 'pointer' }} title="Folder/service fee is collected at Accounts">To Accounts</button>
                             )}
                           </div>
                         </td>

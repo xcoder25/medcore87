@@ -213,6 +213,87 @@ export function updateVisitStatus(visitId: string, status: QueueStatus) {
   save(state);
 }
 
+/**
+ * Nigerian OPD stage automation (public hospital pattern):
+ * waiting → called (desk) → with_provider (doctor opens consult) → completed (consult/orders done)
+ * Payment is a gate (Accounts), not a queue-stage button on the clinical path.
+ */
+export function markPatientWithProvider(
+  facilityId: string,
+  patientRef: string,
+  doctorName?: string
+): ReceptionVisit | null {
+  const state = load();
+  const ref = (patientRef || '').toLowerCase();
+  let updated: ReceptionVisit | null = null;
+  state.visits = state.visits.map((v) => {
+    if (v.facilityId !== facilityId) return v;
+    if (v.status === 'completed' || v.status === 'cancelled' || v.status === 'no_show') return v;
+    const match =
+      v.patientId.toLowerCase() === ref ||
+      v.hospitalNumber.toLowerCase() === ref ||
+      v.patientName.toLowerCase() === ref;
+    if (!match) return v;
+    if (v.status === 'waiting' || v.status === 'called' || v.status === 'with_provider') {
+      updated = {
+        ...v,
+        status: 'with_provider',
+        doctor: doctorName?.trim() || v.doctor,
+      };
+      return updated;
+    }
+    return v;
+  });
+  if (updated) save(state);
+  return updated;
+}
+
+/** After consult / prescription — complete active visit for patient */
+export function markPatientConsultComplete(
+  facilityId: string,
+  patientRef: string
+): ReceptionVisit | null {
+  const state = load();
+  const ref = (patientRef || '').toLowerCase();
+  let updated: ReceptionVisit | null = null;
+  state.visits = state.visits.map((v) => {
+    if (v.facilityId !== facilityId) return v;
+    if (v.status === 'completed' || v.status === 'cancelled' || v.status === 'no_show') return v;
+    const match =
+      v.patientId.toLowerCase() === ref ||
+      v.hospitalNumber.toLowerCase() === ref;
+    if (!match) return v;
+    if (v.status === 'with_provider' || v.status === 'called' || v.status === 'waiting') {
+      updated = { ...v, status: 'completed' };
+      return updated;
+    }
+    return v;
+  });
+  if (updated) save(state);
+  return updated;
+}
+
+/** Sync paymentStatus on visits when Accounts marks paid */
+export function syncVisitPaymentFromAccounts(
+  facilityId: string,
+  patientRef: string,
+  paymentStatus: PaymentStatus = 'paid'
+): void {
+  const state = load();
+  const ref = (patientRef || '').toLowerCase();
+  let changed = false;
+  state.visits = state.visits.map((v) => {
+    if (v.facilityId !== facilityId) return v;
+    const match =
+      v.patientId.toLowerCase() === ref || v.hospitalNumber.toLowerCase() === ref;
+    if (!match) return v;
+    if (v.paymentStatus === paymentStatus) return v;
+    changed = true;
+    return { ...v, paymentStatus };
+  });
+  if (changed) save(state);
+}
+
 /** Normalize doctor names for matching (Dr. X vs X) */
 export function normalizeDoctorName(name: string): string {
   return (name || '')

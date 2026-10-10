@@ -7,7 +7,7 @@
  */
 import { publishFacilityData } from './roleSyncBus';
 import { postInvoiceForPayment, markPatientOutstandingPaid } from './patientBillingStore';
-import { markVisitsPaidForPatient } from './receptionOpsStore';
+import { markVisitsPaidForPatient, syncVisitPaymentFromAccounts } from './receptionOpsStore';
 
 export const FD_ACCOUNTS_KEY = 'medcore_os_fd_accounts_requests_v1';
 export const FD_ACCOUNTS_EVENT = 'medcore-fd-accounts';
@@ -197,6 +197,12 @@ export function markAccountsRequestPaid(
       hospitalNumber: row.hospitalNumber,
       method: opts.via === 'hmo' ? 'hmo' : opts.via === 'waiver' ? 'waived' : 'paid',
     });
+  } catch {
+    /* ignore */
+  }
+  try {
+    syncVisitPaymentFromAccounts(row.facilityId, row.patientId, 'paid');
+    syncVisitPaymentFromAccounts(row.facilityId, row.hospitalNumber, 'paid');
   } catch {
     /* ignore */
   }

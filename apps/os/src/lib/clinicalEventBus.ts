@@ -1,3 +1,4 @@
+import { markPatientWithProvider, markPatientConsultComplete } from './receptionOpsStore';
 import { billPharmacyRx, billLabOrder, billImagingOrder, isOrderBillCleared } from './patientBillingStore';
 import { sendPaymentRequestToAccounts } from './frontDeskAccountsBridge';
 import { enqueue } from './universalQueue';
@@ -84,6 +85,28 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
     updatedAt: new Date().toISOString(),
   };
   write([order, ...read()]);
+  // OPD auto-flow: order means doctor has seen patient — complete queue ticket
+  try {
+    markPatientWithProvider(order.facilityId, order.patientId, order.orderedBy);
+    if (order.type === 'rx' || order.type === 'lab' || order.type === 'imaging' || order.type === 'procedure') {
+      markPatientConsultComplete(order.facilityId, order.patientId);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('medcore-opd-stage', {
+          detail: {
+            facilityId: order.facilityId,
+            patientId: order.patientId,
+            hospitalNumber: order.hospitalNumber,
+            stage: 'consult_complete',
+            orderType: order.type,
+          },
+        })
+      );
+    }
+  } catch {
+    /* ignore */
+  }
   if (order.type === 'rx') {
     try {
       billPharmacyRx({
