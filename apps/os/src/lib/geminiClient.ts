@@ -1,13 +1,20 @@
 /**
- * Celestia Gemini client — browser calls /api/gemini only.
- * Server reads GEMINI_API_KEY (never NEXT_PUBLIC_GEMINI_API_KEY).
+ * Celestia Gemini client — browser → /api/gemini only.
+ * Server uses GEMINI_API_KEY (never NEXT_PUBLIC_*).
  */
+
+export type GeminiResult = {
+  ok: boolean;
+  text: string;
+  usedGemini: boolean;
+  configured?: boolean;
+};
 
 export async function geminiGenerate(
   prompt: string,
   systemHint?: string,
   ragContext?: string
-): Promise<{ ok: boolean; text: string; usedGemini: boolean }> {
+): Promise<GeminiResult> {
   try {
     const res = await fetch('/api/gemini', {
       method: 'POST',
@@ -22,27 +29,37 @@ export async function geminiGenerate(
       ok?: boolean;
       text?: string;
       usedGemini?: boolean;
+      configured?: boolean;
     };
+    const text = String(json.text || '').trim();
+    const ok = Boolean(json.ok) && Boolean(text);
     return {
-      ok: Boolean(json.ok),
+      ok,
       usedGemini: Boolean(json.usedGemini),
-      text: String(json.text || ''),
+      configured: json.configured,
+      text:
+        text ||
+        (res.status === 503
+          ? 'GEMINI_API_KEY is not set on the server. Add it in Vercel Environment Variables and redeploy.'
+          : `Gemini request failed (HTTP ${res.status}).`),
     };
   } catch (e) {
     return {
       ok: false,
       usedGemini: false,
-      text: `Celestia could not reach Gemini: ${(e as Error)?.message || 'network error'}`,
+      configured: false,
+      text: `Celestia could not reach /api/gemini: ${(e as Error)?.message || 'network error'}`,
     };
   }
 }
 
-/** True if server reports GEMINI_API_KEY is configured (no key in the browser). */
 export function hasGeminiKey(): boolean {
-  // Sync callers: optimistic true in browser; actual check is async via probeGeminiConfigured
   if (typeof window === 'undefined') {
     return Boolean(
-      (process.env.GEMINI_API_KEY || '').trim() || (process.env.GOOGLE_GEMINI_API_KEY || '').trim()
+      (process.env.GEMINI_API_KEY || '').trim() ||
+        (process.env.GOOGLE_GEMINI_API_KEY || '').trim() ||
+        (process.env.GOOGLE_GENERATIVE_AI_API_KEY || '').trim() ||
+        (process.env.GOOGLE_API_KEY || '').trim()
     );
   }
   return (window as unknown as { __celestiaGeminiConfigured?: boolean }).__celestiaGeminiConfigured === true;
@@ -50,7 +67,7 @@ export function hasGeminiKey(): boolean {
 
 export async function probeGeminiConfigured(): Promise<boolean> {
   try {
-    const res = await fetch('/api/gemini', { method: 'GET' });
+    const res = await fetch('/api/gemini', { method: 'GET', cache: 'no-store' });
     const json = (await res.json().catch(() => ({}))) as { configured?: boolean };
     const ok = Boolean(json.configured);
     if (typeof window !== 'undefined') {
