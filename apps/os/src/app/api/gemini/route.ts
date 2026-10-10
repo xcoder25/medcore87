@@ -92,12 +92,15 @@ async function resolveGeminiKey(facilityId?: string): Promise<{ key: string; sou
   return { key: '', source: 'none' };
 }
 
+/** Current Gemini models (Oct 2026) — 1.5/2.0 flash retired */
 const MODELS = [
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-001',
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-pro',
+  'gemini-3.5-flash',
+  'gemini-3.8-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.6-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
 ];
 
 export async function GET(req: NextRequest) {
@@ -139,10 +142,13 @@ async function callGemini(
   payload: object
 ): Promise<{ ok: boolean; status: number; text: string; raw?: string }> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': key,
+      },
       body: JSON.stringify(payload),
     }
   );
