@@ -24,6 +24,7 @@ import {
   defaultPermissionsForRole,
   purgeNonAdminStaffForFacility,
   applyCloudStaffDirectory,
+  keepOnlyStaffNamesForFacility,
 } from '../../lib/staffCardStore';
 import {
   firestoreSubscribeStaffDirectory,
@@ -130,6 +131,22 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   }, []);
 
   useEffect(() => {
+    // One-shot: Eket — keep only Kelly + hospital admin
+    try {
+      if (facilityId === 'IGH-EKT' && typeof sessionStorage !== 'undefined') {
+        const key = 'medcore_keep_kelly_admin_IGH-EKT_v1';
+        if (!sessionStorage.getItem(key)) {
+          const removed = keepOnlyStaffNamesForFacility('IGH-EKT', ['kelly', 'admin']);
+          sessionStorage.setItem(key, '1');
+          if (removed.length) {
+            pushActivity(`Eket staff cleared · kept Kelly + admin · removed ${removed.length}`);
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
     reload();
 
     const safeReload = () => {

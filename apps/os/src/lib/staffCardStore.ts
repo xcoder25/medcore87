@@ -916,3 +916,141 @@ export function purgeStaffByNameForFacility(facilityId: string, nameQuery: strin
   }
   return removed;
 }
+
+/**
+ * Keep only staff whose name matches keepQueries (or hospital admin) for a facility.
+ * Everyone else at that facility is deleted (local + cloud via deleteStaffMember).
+ * Example: keepOnlyStaffNamesForFacility('IGH-EKT', ['kelly', 'admin'])
+ */
+export function keepOnlyStaffNamesForFacility(
+  facilityId: string,
+  keepQueries: string[]
+): string[] {
+  const fid = String(facilityId || '').toUpperCase();
+  if (!fid || typeof window === 'undefined') return [];
+  const queries = keepQueries
+    .map((q) => String(q || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  const isAdmin = (roleKey?: string, badge?: string, role?: string, name?: string) => {
+    const rk = String(roleKey || '').toLowerCase();
+    const b = String(badge || '').toUpperCase();
+    const r = String(role || '').toLowerCase();
+    const n = String(name || '').toLowerCase();
+    return (
+      rk === 'hospital_admin' ||
+      rk === 'sysadmin' ||
+      b.includes('-ADM-') ||
+      b === 'AKS-ADM-001' ||
+      b.endsWith('-ADM-001') ||
+      (r.includes('administrator') && !r.includes('system')) ||
+      n === 'admin' ||
+      n.includes(' administrator') ||
+      (n.startsWith('admin ') || n.endsWith(' admin'))
+    );
+  };
+
+  const shouldKeep = (roleKey?: string, badge?: string, role?: string, name?: string) => {
+    if (isAdmin(roleKey, badge, role, name)) return true;
+    const n = String(name || '').toLowerCase();
+    const b = String(badge || '').toLowerCase();
+    for (const q of queries) {
+      if (!q) continue;
+      if (n === q || n.includes(q) || q.includes(n)) return true;
+      if (b.includes(q.replace(/\s+/g, ''))) return true;
+      // "admin" query also matches admin roles already handled
+      if (q === 'admin' && isAdmin(roleKey, badge, role, name)) return true;
+    }
+    return false;
+  };
+
+  const candidates = new Set<string>();
+
+  try {
+    for (const c of readCards()) {
+      if (String(c.facilityId || '').toUpperCase() !== fid) continue;
+      const name = String((c as any).fullName || (c as any).name || '');
+      if (!shouldKeep(c.roleKey, c.badgeId, c.role, name)) {
+        candidates.add(String(c.badgeId).toUpperCase().replace(/\s+/g, ''));
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    for (const key of [STAFF_REGISTRY_STORAGE_KEY, 'medcore_os_staff_registry', 'medcore_staff_registry']) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const reg = JSON.parse(raw);
+      if (!Array.isArray(reg)) continue;
+      for (const r of reg) {
+        const hid = String(r.hospitalId || r.facilityId || '').toUpperCase();
+        if (hid && hid !== fid) continue;
+        const badge = String(r.badgeId || r.id || '')
+          .toUpperCase()
+          .replace(/\s+/g, '');
+        const name = String(r.name || r.fullName || '');
+        if (badge && !shouldKeep(r.roleKey, badge, r.role, name)) candidates.add(badge);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const accessRaw = localStorage.getItem('medcore_os_access_control');
+    const access = accessRaw ? JSON.parse(accessRaw) : [];
+    if (Array.isArray(access)) {
+      for (const a of access) {
+        const badge = String(a.id || '')
+          .toUpperCase()
+          .replace(/\s+/g, '');
+        const name = String(a.name || '');
+        // access rows are facility-scoped loosely — still filter by name
+        if (badge && !shouldKeep(undefined, badge, a.role, name)) candidates.add(badge);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const removed: string[] = [];
+  for (const bid of candidates) {
+    try {
+      if (deleteStaffMember(bid)) removed.push(bid);
+      else removed.push(bid);
+    } catch {
+      removed.push(bid);
+    }
+  }
+
+  // Push trimmed directory so other workstations / Access Control stay aligned
+  try {
+    const cards = readCards().filter((c) => String(c.facilityId || '').toUpperCase() === fid);
+    const regRaw = localStorage.getItem('medcore_os_staff_registry');
+    const reg = regRaw ? JSON.parse(regRaw) : [];
+    const filteredReg = Array.isArray(reg)
+      ? reg.filter((r: any) => {
+          const hid = String(r.hospitalId || r.facilityId || '').toUpperCase();
+          if (hid && hid !== fid) return true;
+          const badge = String(r.badgeId || r.id || '')
+            .toUpperCase()
+            .replace(/\s+/g, '');
+          const name = String(r.name || r.fullName || '');
+          return shouldKeep(r.roleKey, badge, r.role, name);
+        })
+      : [];
+    localStorage.setItem('medcore_os_staff_registry', JSON.stringify(filteredReg));
+    void firestorePushStaffDirectory(fid, {
+      staffCards: cards,
+      staffRegistry: filteredReg,
+    });
+  } catch {
+    /* ignore */
+  }
+
+  return removed;
+}
+
+
