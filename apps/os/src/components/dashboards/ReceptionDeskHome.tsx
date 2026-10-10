@@ -12,6 +12,7 @@ import {
   startFacilityPresenceListener,
   STAFF_PRESENCE_EVENT,
 } from '../../lib/staffPresenceStore';
+import { listStaffCards, isReceptionRole } from '../../lib/staffCardStore';
 import type { FacilityPatient } from '../../lib/patientRegistryStore';
 import type { ReceptionVisit, ReceptionAppointment, ReceptionDayStats } from '../../lib/receptionOpsStore';
 import { listAccountsRequests } from '../../lib/frontDeskAccountsBridge';
@@ -97,24 +98,83 @@ export const ReceptionDeskHome: React.FC<Props> = ({
 
   const recountFrontDeskStaff = useCallback(() => {
     try {
-      // Live presence for this hospital — all roles currently logged in (fresh heartbeat)
-      const live = listActiveStaff(facilityId);
-      let n = live.length;
+      const fid = String(facilityId || '').toUpperCase();
       const selfBadge = String(session.badgeId || '')
         .toUpperCase()
         .replace(/\s+/g, '');
+      const selfRoleKey = String(session.roleKey || '').toLowerCase();
+
+      // Facility roster only — enrolled cards + registry (ignore deleted / other hospitals)
+      const rosterIds = new Set<string>();
+      try {
+        for (const c of listStaffCards()) {
+          if (String(c.facilityId || '').toUpperCase() !== fid) continue;
+          const st = String(c.status || 'ACTIVE').toUpperCase();
+          if (st === 'REVOKED' || st === 'SUSPENDED' || st === 'EXPIRED') continue;
+          const id = String(c.badgeId || '')
+            .toUpperCase()
+            .replace(/\s+/g, '');
+          if (id) rosterIds.add(id);
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
+        const raw = localStorage.getItem('medcore_os_staff_registry');
+        const reg = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(reg)) {
+          for (const r of reg) {
+            const hid = String(r.hospitalId || r.facilityId || '').toUpperCase();
+            if (hid && hid !== fid) continue;
+            const st = String(r.status || 'active').toLowerCase();
+            if (st === 'suspended' || st === 'revoked' || st === 'deleted') continue;
+            const id = String(r.badgeId || r.id || '')
+              .toUpperCase()
+              .replace(/\s+/g, '');
+            if (id) rosterIds.add(id);
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      // Self is always on roster while signed in
+      if (selfBadge) rosterIds.add(selfBadge);
+
+      const sameRole = (roleKey?: string, role?: string) => {
+        const rk = String(roleKey || '').toLowerCase();
+        // Front-desk family: reception, records, and exact match to this session's role
+        if (selfRoleKey && rk === selfRoleKey) return true;
+        if (isReceptionRole(roleKey, role)) return true;
+        if (rk === 'reception' || rk === 'records') return true;
+        const r = String(role || '').toLowerCase();
+        if (r.includes('reception') || r.includes('front desk') || r.includes('records')) return true;
+        return false;
+      };
+
+      const live = listActiveStaff(facilityId).filter((p) => {
+        const id = String(p.badgeId || '')
+          .toUpperCase()
+          .replace(/\s+/g, '');
+        if (!id || !rosterIds.has(id)) return false; // not in facility auth/DB
+        return sameRole(p.roleKey, p.role);
+      });
+
+      let n = live.length;
+      // Count self if reception-family and not yet in presence map
       if (
         selfBadge &&
+        sameRole(session.roleKey, session.role) &&
         !live.some((p) => String(p.badgeId).toUpperCase().replace(/\s+/g, '') === selfBadge)
       ) {
-        // Self session is online even if presence map not yet written
         n += 1;
       }
       setActiveFrontDesk(n);
     } catch {
-      setActiveFrontDesk(session.badgeId ? 1 : 0);
+      setActiveFrontDesk(
+        isReceptionRole(session.roleKey, session.role, session.title, session.badgeId) ? 1 : 0
+      );
     }
-  }, [facilityId, session.badgeId]);
+  }, [facilityId, session.badgeId, session.roleKey, session.role, session.title]);
 
   useEffect(() => {
     recountFrontDeskStaff();
@@ -125,6 +185,8 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     window.addEventListener('medcore-admin-sync', bump);
     window.addEventListener('storage', bump);
     window.addEventListener('medcore-facility-cloud', bump);
+    window.addEventListener('medcore-staff-cards-updated', bump);
+    window.addEventListener('medcore-staff-registry-updated', bump);
     const tick = window.setInterval(bump, 4000);
     return () => {
       unsub();
@@ -133,6 +195,8 @@ export const ReceptionDeskHome: React.FC<Props> = ({
       window.removeEventListener('medcore-admin-sync', bump);
       window.removeEventListener('storage', bump);
       window.removeEventListener('medcore-facility-cloud', bump);
+      window.removeEventListener('medcore-staff-cards-updated', bump);
+      window.removeEventListener('medcore-staff-registry-updated', bump);
       window.clearInterval(tick);
     };
   }, [facilityId, recountFrontDeskStaff]);
@@ -242,7 +306,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     {
       label: 'Active Staff',
       value: activeFrontDesk,
-      sub: 'Logged in now · live',
+      sub: 'Same role · live · facility only',
       trend: 'Live',
       up: true,
       icon: Users,
