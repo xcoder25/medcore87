@@ -326,6 +326,11 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [acctTargetBadge, setAcctTargetBadge] = useState('');
   const [acctTargetName, setAcctTargetName] = useState('');
   const [sendAcctTab, setSendAcctTab] = useState<'queue' | 'flow'>('queue');
+  const [sendAcctDialog, setSendAcctDialog] = useState<{
+    kind: 'success' | 'no_officer' | 'error';
+    title: string;
+    body: string;
+  } | null>(null);
 
   // Appointment form
   const [apDept, setApDept] = useState('General OPD');
@@ -774,14 +779,38 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const sendToAccountingDesk = (overridePatient?: FacilityPatient | null) => {
     const p = overridePatient || posPatient || selected;
     if (!p) {
-      flash('Select a patient first');
+      setSendAcctDialog({
+        kind: 'error',
+        title: 'Select a patient',
+        body: 'Choose a patient from the queue or hospital flow before sending to Accounts.',
+      });
       return;
     }
     const amt = Number(posAmount) || 0;
     if (amt <= 0) {
-      flash('Enter amount for the invoice');
+      setSendAcctDialog({
+        kind: 'error',
+        title: 'Amount required',
+        body: 'Enter the invoice amount (₦) to send to the Accounting desk.',
+      });
       return;
     }
+
+    const activeAcct = listActiveStaff(facilityId).filter((pr) => {
+      const rk = String(pr.roleKey || '').toLowerCase();
+      const r = String(pr.role || '').toLowerCase();
+      return (
+        rk === 'accountant' ||
+        rk === 'cashier' ||
+        rk === 'hospital_admin' ||
+        r.includes('account') ||
+        r.includes('cashier') ||
+        r.includes('finance') ||
+        r.includes('billing')
+      );
+    });
+    const hasOfficer = activeAcct.length > 0 || Boolean(acctTargetBadge);
+
     try {
       const req = sendPaymentRequestToAccounts({
         facilityId,
@@ -830,12 +859,28 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
           detail: `${fullName(p)} ₦${amt} · ${req.invoiceNumber}`,
         });
       } catch { /* ignore */ }
-      flash(
-        `Sent to Accounting${acctTargetName ? ` · ${acctTargetName}` : ''} · ${req.invoiceNumber || req.id} · ₦${amt.toLocaleString()}. Patient pays at Accounts, then returns with receipt.`
-      );
       setPosAmount('5000');
+      if (!hasOfficer) {
+        setSendAcctDialog({
+          kind: 'no_officer',
+          title: 'No active account officer',
+          body: `Invoice ${req.invoiceNumber || req.id} for ${fullName(p)} · ₦${amt.toLocaleString()} was queued. No Accounting desk is online right now — it will appear when an officer signs in.`,
+        });
+      } else {
+        setSendAcctDialog({
+          kind: 'success',
+          title: 'Sent to Accounts',
+          body: `${fullName(p)} · ₦${amt.toLocaleString()} · ${req.invoiceNumber || req.id}${
+            acctTargetName ? ` · routed to ${acctTargetName}` : ` · ${activeAcct.length} desk(s) online`
+          }. Patient pays at Accounts, then returns with the receipt.`,
+        });
+      }
     } catch (e: any) {
-      flash(e?.message || 'Could not send to Accounts');
+      setSendAcctDialog({
+        kind: 'error',
+        title: 'Could not send',
+        body: e?.message || 'Could not send invoice to Accounts. Try again.',
+      });
     }
   };
 
@@ -1061,6 +1106,94 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: '100%' }}>
+      {sendAcctDialog && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2000,
+            background: 'rgba(15, 23, 42, 0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={() => setSendAcctDialog(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 400,
+              borderRadius: 18,
+              background: '#fff',
+              boxShadow: '0 24px 60px rgba(15,23,42,0.28)',
+              padding: '22px 22px 18px',
+              textAlign: 'center',
+            }}
+          >
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: '50%',
+                margin: '0 auto 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background:
+                  sendAcctDialog.kind === 'success'
+                    ? '#D1FAE5'
+                    : sendAcctDialog.kind === 'no_officer'
+                      ? '#FEF3C7'
+                      : '#FEE2E2',
+                color:
+                  sendAcctDialog.kind === 'success'
+                    ? '#047857'
+                    : sendAcctDialog.kind === 'no_officer'
+                      ? '#B45309'
+                      : '#B91C1C',
+                fontSize: 22,
+                fontWeight: 800,
+              }}
+            >
+              {sendAcctDialog.kind === 'success' ? '✓' : sendAcctDialog.kind === 'no_officer' ? '!' : '×'}
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 17, color: '#0F172A', marginBottom: 8 }}>
+              {sendAcctDialog.title}
+            </div>
+            <p style={{ margin: 0, fontSize: 13, color: '#64748B', lineHeight: 1.5 }}>
+              {sendAcctDialog.body}
+            </p>
+            <button
+              type="button"
+              onClick={() => setSendAcctDialog(null)}
+              style={{
+                marginTop: 18,
+                width: '100%',
+                height: 42,
+                borderRadius: 12,
+                border: 'none',
+                background:
+                  sendAcctDialog.kind === 'success'
+                    ? 'linear-gradient(135deg,#0D9488,#0284C7)'
+                    : sendAcctDialog.kind === 'no_officer'
+                      ? 'linear-gradient(135deg,#D97706,#B45309)'
+                      : '#DC2626',
+                color: '#fff',
+                fontWeight: 800,
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div
           style={{
