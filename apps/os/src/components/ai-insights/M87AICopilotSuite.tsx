@@ -5,7 +5,7 @@ import { runM87Training, buildM87RagContext, retrieveRelevantExamples } from '..
 import { addFeedback, getModelState, subscribeM87Learn } from '../../lib/m87LearningStore';
 import { liveAlert } from '../../lib/manualActions';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { pauseAnimationsWhenHidden } from '../../lib/motion';
 import type { UserSession } from '../auth/AuthScreen';
 import {
@@ -403,12 +403,137 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
     }
   };
 
-  const suggestions = [
-    { label: 'Who is waiting in OPD?', icon: Users, tag: 'Queue' },
-    { label: 'Bed occupancy & ICU status', icon: BedDouble, tag: 'Operations' },
-    { label: 'Unpaid bills today', icon: Wallet, tag: 'Billing' },
-    { label: 'Enrol a new nurse', icon: Activity, tag: 'Staff' },
-  ];
+  const roleKey = String(session?.roleKey || '').toLowerCase();
+
+  const roleIntro = useMemo(() => {
+    const map: Record<string, { title: string; sub: string }> = {
+      reception: {
+        title: 'Ready for the front desk?',
+        sub: 'Your reception copilot. Check-ins, live queue, appointments, and send patients to Accounts — without leaving the desk.',
+      },
+      records: {
+        title: 'Ready for records?',
+        sub: 'Your records copilot. Find patients, open folders, and keep registration and flow accurate in real time.',
+      },
+      doctor: {
+        title: 'Ready for clinic?',
+        sub: 'Your clinical copilot. Patients on your list, results, prescriptions, and ward notes — clear next steps, not noise.',
+      },
+      surgeon: {
+        title: 'Ready for theatre?',
+        sub: 'Your surgical copilot. Lists, PACU beds, post-op orders, and urgent results when you need them.',
+      },
+      nurse: {
+        title: 'Ready for the ward?',
+        sub: 'Your nursing copilot. Beds, e-MAR tasks, vitals, and who needs attention on your unit now.',
+      },
+      midwife: {
+        title: 'Ready for maternity?',
+        sub: 'Your midwifery copilot. Labour board, maternal–newborn flow, and urgent alerts for your bay.',
+      },
+      pharmacist: {
+        title: 'Ready for pharmacy?',
+        sub: 'Your pharmacy copilot. Pending Rx, stock, patient lookup, and dispense follow-up in one place.',
+      },
+      lab: {
+        title: 'Ready for the lab?',
+        sub: 'Your lab copilot. Pending orders, TAT, critical values, and what to release to the doctor desk.',
+      },
+      radiologist: {
+        title: 'Ready for imaging?',
+        sub: 'Your radiology copilot. Open studies, report drafts, and critical findings for the clinical team.',
+      },
+      cashier: {
+        title: 'Ready for Accounts?',
+        sub: 'Your accounts copilot. Awaiting payment from Front Desk, collections today, and open hospital bills.',
+      },
+      accountant: {
+        title: 'Ready for the AR desk?',
+        sub: 'Your finance copilot. Debtors, HMO claims, daily collections, and what needs follow-up now.',
+      },
+      hospital_admin: {
+        title: 'Ready to run the hospital?',
+        sub: 'Your admin copilot. Staff on duty, access, occupancy, revenue signals, and what needs your decision.',
+      },
+      admin: {
+        title: 'Ready to run the hospital?',
+        sub: 'Your admin copilot. Staff on duty, access, occupancy, revenue signals, and what needs your decision.',
+      },
+    };
+    return (
+      map[roleKey] || {
+        title: 'What can I coordinate for you?',
+        sub: 'Your MedCore hospital copilot. Ask about the work on your desk — queues, patients, orders, or ops — in plain language.',
+      }
+    );
+  }, [roleKey]);
+
+  const suggestions = useMemo(() => {
+    const byRole: Record<string, { label: string; icon: typeof Users; tag: string }[]> = {
+      reception: [
+        { label: 'Who is waiting in OPD?', icon: Users, tag: 'Queue' },
+        { label: 'Send next patient to Accounts', icon: Wallet, tag: 'Billing' },
+        { label: 'Today’s appointments', icon: Activity, tag: 'Appts' },
+        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+      ],
+      doctor: [
+        { label: 'My patients waiting', icon: Users, tag: 'Clinic' },
+        { label: 'Unreviewed lab results', icon: Activity, tag: 'Results' },
+        { label: 'Pending prescriptions', icon: Activity, tag: 'Rx' },
+        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+      ],
+      nurse: [
+        { label: 'Beds on my ward', icon: BedDouble, tag: 'Beds' },
+        { label: 'Tasks due now', icon: Activity, tag: 'Tasks' },
+        { label: 'Patients needing vitals', icon: Users, tag: 'Ward' },
+        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+      ],
+      pharmacist: [
+        { label: 'Pending prescriptions', icon: Activity, tag: 'Rx' },
+        { label: 'Low stock items', icon: Activity, tag: 'Stock' },
+        { label: 'Lookup patient by ID', icon: Users, tag: 'Patient' },
+        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+      ],
+      lab: [
+        { label: 'Pending lab orders', icon: Activity, tag: 'Orders' },
+        { label: 'Critical values today', icon: Activity, tag: 'Critical' },
+        { label: 'TAT status', icon: Activity, tag: 'Ops' },
+        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+      ],
+      cashier: [
+        { label: 'Awaiting payment queue', icon: Wallet, tag: 'Pay' },
+        { label: 'Collected today', icon: Wallet, tag: 'Cash' },
+        { label: 'Open hospital bills', icon: Wallet, tag: 'AR' },
+        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+      ],
+      accountant: [
+        { label: 'Awaiting payment queue', icon: Wallet, tag: 'Pay' },
+        { label: 'HMO claims status', icon: Wallet, tag: 'HMO' },
+        { label: 'Aged debtors', icon: Wallet, tag: 'AR' },
+        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+      ],
+      hospital_admin: [
+        { label: 'Staff logged in now', icon: Users, tag: 'Staff' },
+        { label: 'Bed occupancy', icon: BedDouble, tag: 'Ops' },
+        { label: 'Revenue today', icon: Wallet, tag: 'Finance' },
+        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+      ],
+      admin: [
+        { label: 'Staff logged in now', icon: Users, tag: 'Staff' },
+        { label: 'Bed occupancy', icon: BedDouble, tag: 'Ops' },
+        { label: 'Revenue today', icon: Wallet, tag: 'Finance' },
+        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+      ],
+    };
+    return (
+      byRole[roleKey] || [
+        { label: 'Who is waiting in OPD?', icon: Users, tag: 'Queue' },
+        { label: 'Bed occupancy & ICU status', icon: BedDouble, tag: 'Operations' },
+        { label: 'Unpaid bills today', icon: Wallet, tag: 'Billing' },
+        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+      ]
+    );
+  }, [roleKey]);
 
   return (
     <div
@@ -477,10 +602,8 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
         <div className="celestia-messages-inner">
           {messages.length === 0 && !isThinking && (
             <div className="m87-empty celestia-hero celestia-empty-grok">
-              <h2 className="m87-empty-title celestia-hello">What can I coordinate for you?</h2>
-              <p className="m87-empty-sub">
-                Your hospital operations copilot. Query patient queues, ward beds, billing, or automate staff accounts in real time.
-              </p>
+              <h2 className="m87-empty-title celestia-hello">{roleIntro.title}</h2>
+              <p className="m87-empty-sub">{roleIntro.sub}</p>
               <div className="m87-suggestions">
                 {suggestions.map((s) => {
                   const Icon = s.icon;
