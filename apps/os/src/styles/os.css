@@ -7287,3 +7287,15 @@ img, .os-top-hud-avatar {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
+
+
+/* Celestia connection status */
+.m87-live-dot.is-online {
+  background: #34d399 !important;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.7);
+}
+.m87-live-dot.is-offline {
+  background: #f87171 !important;
+  box-shadow: 0 0 6px rgba(248, 113, 113, 0.5);
+  animation: none !important;
+}

@@ -211,8 +211,67 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
     };
   }, [session?.hospitalId]);
 
+  // Header Online/Offline tracks network + Gemini without reload
   useEffect(() => {
-    void probeGeminiConfigured().then((ok) => setGeminiOnline(ok));
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const refresh = () => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        if (!cancelled) setGeminiOnline(false);
+        return;
+      }
+      void probeGeminiConfigured().then((ok) => {
+        if (!cancelled) setGeminiOnline(ok);
+      });
+    };
+
+    refresh();
+
+    const onOnline = () => {
+      // Network returned — re-probe Gemini immediately
+      if (!cancelled) setGeminiOnline(null); // brief "Ready" while probing
+      refresh();
+      // Second probe shortly after in case first races DNS
+      window.clearTimeout(timer);
+      timer = window.setTimeout(refresh, 1500);
+    };
+    const onOffline = () => {
+      if (!cancelled) setGeminiOnline(false);
+    };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    document.addEventListener('visibilitychange', onVis);
+
+    // While offline, poll lightly so recovery is detected even if `online` event is flaky
+    const poll = window.setInterval(() => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        if (!cancelled) setGeminiOnline(false);
+        return;
+      }
+      // Only re-probe if we think we're offline/unknown
+      if (cancelled) return;
+      setGeminiOnline((prev) => {
+        if (prev === true) return prev;
+        void probeGeminiConfigured().then((ok) => {
+          if (!cancelled) setGeminiOnline(ok);
+        });
+        return prev;
+      });
+    }, 12000);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      window.clearInterval(poll);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, []);
 
   useEffect(() => {
@@ -1097,9 +1156,18 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
           <div className="m87-header-text">
             <div className="m87-title-row">
               <h1 className="m87-title celestia-wordmark">celestia</h1>
-              <span className="m87-live-dot" title="Online" />
+              <span
+                className={`m87-live-dot${geminiOnline === false ? ' is-offline' : geminiOnline ? ' is-online' : ''}`}
+                title={
+                  geminiOnline === false
+                    ? 'Offline — local desk mode'
+                    : geminiOnline
+                      ? 'Online — cloud model ready'
+                      : 'Checking connection…'
+                }
+              />
               <span className="m87-live-label">
-                {geminiOnline === false ? 'Offline' : engineReady ? 'Online' : 'Ready'}
+                {geminiOnline === false ? 'Offline' : geminiOnline ? 'Online' : engineReady ? 'Ready' : '…'}
               </span>
               <span className="celestia-facility-tag">{session?.hospitalId || 'IGH-EKT'}</span>
             </div>
