@@ -519,14 +519,18 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
               }
             );
           } else if (action.type === 'register') {
-            let job = action.job;
+            let job: ReceptionRegJob | undefined = action.job;
             if (!job) {
               try {
-                job =
-                  (await extractReceptionJobWithAI(
-                    recentTurns.filter((x) => x.role === 'user').map((x) => x.text).slice(-4).join(' · '),
-                    facilityId
-                  )) || undefined;
+                const extracted = await extractReceptionJobWithAI(
+                  recentTurns
+                    .filter((x) => x.role === 'user')
+                    .map((x) => x.text)
+                    .slice(-4)
+                    .join(' · '),
+                  facilityId
+                );
+                if (extracted) job = extracted;
               } catch {
                 /* ignore */
               }
