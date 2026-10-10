@@ -641,6 +641,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       const pinNorm = normalizeStaffPin(pinQuery);
       let fbUser: import('firebase/auth').User | null = null;
 
+      let badgeAuthMiss: unknown = null;
       if (!profile) {
         try {
           fbUser = await withTimeout(firebaseSignInWithBadge(badgeQuery, pinNorm), 6000);
@@ -661,7 +662,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             setLoading(false);
             return;
           }
-        } catch {
+        } catch (authMiss: unknown) {
+          badgeAuthMiss = authMiss;
           // 5) First login to an empty facility → auto-provision facility admin
           //    (only when using platform bootstrap credentials, so facilities stay claimable securely)
           const {
@@ -700,14 +702,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             } else {
               setError(
                 prov.error ||
-                  'Staff ID not found. Use the exact badge from the confirmation screen (e.g. IGH-EKT-DOC-XXXX). Create the account under Staff Access Control if needed.'
+                  'This account does not exist. The Staff ID was not found or was removed by an administrator.'
               );
               setLoading(false);
               return;
             }
           } else {
+            const { classifyAuthError } = await import('../../lib/firebase');
             setError(
-              'Staff ID not found. Use the exact badge from the confirmation screen (e.g. IGH-EKT-DOC-XXXX). Create the account under Staff Access Control if needed.'
+              badgeAuthMiss
+                ? classifyAuthError(badgeAuthMiss, { accountKnown: false, mode: 'badge' })
+                : 'This account does not exist. The Staff ID was not found or was removed by an administrator.'
             );
             setLoading(false);
             return;
@@ -722,8 +727,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           if (!fbUser) {
             fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
           }
-        } catch {
-          setError('Incorrect PIN.');
+        } catch (pinErr: unknown) {
+          const { classifyAuthError } = await import('../../lib/firebase');
+          setError(classifyAuthError(pinErr, { accountKnown: true, mode: 'badge' }));
           setLoading(false);
           return;
         }
@@ -861,7 +867,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               } catch {
                 // Wrong password for existing account — only allow bootstrap / empty facility local path
                 if (!isBootstrapAdmin && !facilityEmpty) {
-                  setError('Incorrect password for this email.');
+                  setError('Incorrect password.');
                   setLoading(false);
                   return;
                 }
@@ -872,7 +878,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               console.warn('[auth] Firebase optional', code, upCode);
               fbUser = null;
             } else {
-              setError('Could not sign in with this email. Check the password or use Sign in with ID No.');
+              setError('This account does not exist, or the password is incorrect. Use Sign in with ID No. if you use a Staff ID.');
               setLoading(false);
               return;
             }
@@ -1064,7 +1070,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         }
 
         if (!matchedStaff) {
-          setError('No staff profile for this email at the selected hospital. Use Sign in with ID No. or ask your administrator to enrol you.');
+          setError('This account does not exist at the selected hospital. Use Sign in with ID No. or ask your administrator to enrol you.');
           setLoading(false);
           return;
         }
@@ -1109,7 +1115,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         setTimeout(() => triggerLogin(session), 300);
         return;
       } catch (err: unknown) {
-        setError((err as { message?: string })?.message || 'Sign-in error. Please try again.');
+        const { classifyAuthError } = await import('../../lib/firebase');
+        setError(classifyAuthError(err, { accountKnown: false, mode: 'email' }));
         setLoading(false);
         return;
       }

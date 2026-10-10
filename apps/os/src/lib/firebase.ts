@@ -96,6 +96,51 @@ export async function firebaseSignIn(email: string, password: string): Promise<U
   return cred.user;
 }
 
+/**
+ * Map Firebase Auth errors to user-facing copy.
+ * accountKnown=true → prefer "Incorrect PIN/password" over "does not exist".
+ */
+export function classifyAuthError(
+  err: unknown,
+  opts?: { accountKnown?: boolean; mode?: 'badge' | 'email' }
+): string {
+  const code = String((err as { code?: string })?.code || '');
+  const mode = opts?.mode || 'badge';
+  const known = Boolean(opts?.accountKnown);
+  const secret = mode === 'email' ? 'password' : 'PIN';
+
+  if (code === 'auth/user-not-found' || code === 'auth/user-disabled') {
+    return mode === 'email'
+      ? 'This account does not exist. Check the email or ask your administrator to enrol you.'
+      : 'This account does not exist. The Staff ID was not found or was removed.';
+  }
+  if (code === 'auth/wrong-password') {
+    return mode === 'email' ? 'Incorrect password.' : 'Incorrect PIN.';
+  }
+  if (code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
+    // Firebase often uses this for both missing user and wrong secret
+    if (known) {
+      return mode === 'email' ? 'Incorrect password.' : 'Incorrect PIN.';
+    }
+    return mode === 'email'
+      ? 'This account does not exist, or the password is wrong. If you are enrolled, check your password; otherwise ask admin to create your account.'
+      : 'This account does not exist. Confirm the Staff ID, or ask your administrator if the account was removed.';
+  }
+  if (code === 'auth/too-many-requests') {
+    return 'Too many sign-in attempts. Wait a moment and try again.';
+  }
+  if (code === 'auth/network-request-failed') {
+    return 'Network error. Check your connection and try again.';
+  }
+  const msg = String((err as { message?: string })?.message || '');
+  if (msg && !msg.includes('Firebase')) return msg;
+  return known
+    ? `Incorrect ${secret}.`
+    : 'This account does not exist or the sign-in details are wrong.';
+}
+
+
+
 export async function firebaseSignUp(email: string, password: string): Promise<User> {
   const cred = await createUserWithEmailAndPassword(getFirebaseAuth(), email, password);
   return cred.user;
