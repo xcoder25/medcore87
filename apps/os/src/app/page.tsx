@@ -23,6 +23,7 @@ import { PosPaymentDesk } from '../components/cashier/PosPaymentDesk';
 import { AccountingWorkspace } from '../components/dashboards/AccountingWorkspace';
 import { FrontDeskSettings } from '../components/reception/FrontDeskSettings';
 import { FacilityOnboarding } from '../components/facility/FacilityOnboarding';
+import { HospitalOnboardingWizard, resolveOnboardingMode } from '../components/onboarding/HospitalOnboardingWizard';
 import { AuthIdentity } from '../components/auth/AuthIdentity';
 import { DigitalPatientCard } from '../components/patient-card/DigitalPatientCard';
 import { Patient360View } from '../components/patients/Patient360View';
@@ -1517,6 +1518,23 @@ const handleLockScreen = () => {
 
   if (appState === 'auth') {
     return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  // First-login hospital / staff onboarding (admin facility setup or clinical workspace)
+  if (userSession) {
+    const onboardMode = resolveOnboardingMode(userSession);
+    if (onboardMode) {
+      return (
+        <HospitalOnboardingWizard
+          session={userSession}
+          mode={onboardMode}
+          onComplete={() => {
+            // Force re-render; flags already written to localStorage
+            setUserSession({ ...userSession });
+          }}
+        />
+      );
+    }
   }
 
   const receptionViews = ['dashboard', 'patient-flow', 'patient-card', 'appointments'] as const;

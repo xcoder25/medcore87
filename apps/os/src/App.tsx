@@ -20,6 +20,7 @@ import { DigitalPatientCard } from './components/patient-card/DigitalPatientCard
 import { RoleDashboard } from './components/dashboards/RoleDashboard';
 import { EMRManager } from './components/gateway-modules/EMRManager';
 import { AuthScreen, UserSession } from './components/auth/AuthScreen';
+import { HospitalOnboardingWizard, resolveOnboardingMode } from './components/onboarding/HospitalOnboardingWizard';
 import { RealtimeChrome } from './components/realtime/RealtimeChrome';
 import './styles/os.css';
 
@@ -88,6 +89,17 @@ export const App: React.FC = () => {
 
   if (!session) {
     return <AuthScreen onLogin={(s) => { setSession(s); setActiveModule('dashboard'); }} />;
+  }
+
+  const onboardMode = resolveOnboardingMode(session);
+  if (onboardMode) {
+    return (
+      <HospitalOnboardingWizard
+        session={session}
+        mode={onboardMode}
+        onComplete={() => setSession({ ...session })}
+      />
+    );
   }
 
   const isAdmin = ['hospital_admin', 'sysadmin', 'medical_director'].includes(session.roleKey);
