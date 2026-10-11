@@ -182,6 +182,7 @@ export interface BloodStockUnit {
   criticalThreshold: number;
   nearestExpiry: string;
   testingStatus: 'cleared_hiv_hep_syphilis' | 'quarantine';
+  reservedUnits?: number;
 }
 
 export interface NursingCareItem {

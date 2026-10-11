@@ -13,14 +13,14 @@ import { emitLiveAction } from '../../lib/liveActions';
 const STORAGE_KEY = 'medcore_os_blood_stock_v2';
 
 const SEED_BLOOD_STOCK: BloodStockUnit[] = [
-  { id: 'BB-O-NEG', bloodGroup: 'O-', component: 'Packed Red Blood Cells (PRBC)', unitsAvailable: 3, criticalThreshold: 6, nearestExpiry: 'In 18 days', reservedUnits: 1 },
-  { id: 'BB-O-POS', bloodGroup: 'O+', component: 'Packed Red Blood Cells (PRBC)', unitsAvailable: 18, criticalThreshold: 8, nearestExpiry: 'In 24 days', reservedUnits: 3 },
-  { id: 'BB-A-POS', bloodGroup: 'A+', component: 'Packed Red Blood Cells (PRBC)', unitsAvailable: 14, criticalThreshold: 6, nearestExpiry: 'In 21 days', reservedUnits: 2 },
-  { id: 'BB-A-NEG', bloodGroup: 'A-', component: 'Packed Red Blood Cells (PRBC)', unitsAvailable: 4, criticalThreshold: 4, nearestExpiry: 'In 15 days', reservedUnits: 0 },
-  { id: 'BB-B-POS', bloodGroup: 'B+', component: 'Packed Red Blood Cells (PRBC)', unitsAvailable: 12, criticalThreshold: 6, nearestExpiry: 'In 28 days', reservedUnits: 1 },
-  { id: 'BB-B-NEG', bloodGroup: 'B-', component: 'Packed Red Blood Cells (PRBC)', unitsAvailable: 2, criticalThreshold: 4, nearestExpiry: 'In 12 days', reservedUnits: 0 },
-  { id: 'BB-AB-POS', bloodGroup: 'AB+', component: 'Packed Red Blood Cells (PRBC)', unitsAvailable: 7, criticalThreshold: 3, nearestExpiry: 'In 30 days', reservedUnits: 0 },
-  { id: 'BB-AB-NEG', bloodGroup: 'AB-', component: 'Packed Red Blood Cells (PRBC)', unitsAvailable: 3, criticalThreshold: 2, nearestExpiry: 'In 19 days', reservedUnits: 0 },
+  { id: 'BB-O-NEG', bloodGroup: 'O-', component: 'Packed RBC', unitsAvailable: 3, criticalThreshold: 6, nearestExpiry: 'In 18 days', testingStatus: 'cleared_hiv_hep_syphilis', reservedUnits: 1 },
+  { id: 'BB-O-POS', bloodGroup: 'O+', component: 'Packed RBC', unitsAvailable: 18, criticalThreshold: 8, nearestExpiry: 'In 24 days', testingStatus: 'cleared_hiv_hep_syphilis', reservedUnits: 3 },
+  { id: 'BB-A-POS', bloodGroup: 'A+', component: 'Packed RBC', unitsAvailable: 14, criticalThreshold: 6, nearestExpiry: 'In 21 days', testingStatus: 'cleared_hiv_hep_syphilis', reservedUnits: 2 },
+  { id: 'BB-A-NEG', bloodGroup: 'A-', component: 'Packed RBC', unitsAvailable: 4, criticalThreshold: 4, nearestExpiry: 'In 15 days', testingStatus: 'cleared_hiv_hep_syphilis', reservedUnits: 0 },
+  { id: 'BB-B-POS', bloodGroup: 'B+', component: 'Packed RBC', unitsAvailable: 12, criticalThreshold: 6, nearestExpiry: 'In 28 days', testingStatus: 'cleared_hiv_hep_syphilis', reservedUnits: 1 },
+  { id: 'BB-B-NEG', bloodGroup: 'B-', component: 'Packed RBC', unitsAvailable: 2, criticalThreshold: 4, nearestExpiry: 'In 12 days', testingStatus: 'cleared_hiv_hep_syphilis', reservedUnits: 0 },
+  { id: 'BB-AB-POS', bloodGroup: 'AB+', component: 'Packed RBC', unitsAvailable: 7, criticalThreshold: 3, nearestExpiry: 'In 30 days', testingStatus: 'cleared_hiv_hep_syphilis', reservedUnits: 0 },
+  { id: 'BB-AB-NEG', bloodGroup: 'AB-', component: 'Packed RBC', unitsAvailable: 3, criticalThreshold: 2, nearestExpiry: 'In 19 days', testingStatus: 'cleared_hiv_hep_syphilis', reservedUnits: 0 },
 ];
 
 export const BloodBankSuite: React.FC = () => {
@@ -41,7 +41,7 @@ export const BloodBankSuite: React.FC = () => {
 
   // Add Donor Unit Form State
   const [newGroup, setNewGroup] = useState('O+');
-  const [newComponent, setNewComponent] = useState('Packed Red Blood Cells (PRBC)');
+  const [newComponent, setNewComponent] = useState<BloodStockUnit['component']>('Packed RBC');
   const [donorId, setDonorId] = useState('');
   const [unitCount, setUnitCount] = useState(1);
 
@@ -118,11 +118,12 @@ export const BloodBankSuite: React.FC = () => {
     } else {
       updated.push({
         id: `BB-${newGroup.replace('+', 'POS').replace('-', 'NEG')}`,
-        bloodGroup: newGroup,
+        bloodGroup: newGroup as BloodStockUnit['bloodGroup'],
         component: newComponent,
         unitsAvailable: Number(unitCount),
         criticalThreshold: 4,
         nearestExpiry: 'In 35 days',
+        testingStatus: 'cleared_hiv_hep_syphilis',
       });
     }
     saveStock(updated);
@@ -542,14 +543,13 @@ export const BloodBankSuite: React.FC = () => {
                 </label>
                 <select
                   value={newComponent}
-                  onChange={(e) => setNewComponent(e.target.value)}
+                  onChange={(e) => setNewComponent(e.target.value as BloodStockUnit['component'])}
                   style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.82rem' }}
                 >
-                  <option value="Packed Red Blood Cells (PRBC)">Packed Red Blood Cells (PRBC)</option>
-                  <option value="Whole Blood (CPDA-1)">Whole Blood (CPDA-1)</option>
-                  <option value="Fresh Frozen Plasma (FFP)">Fresh Frozen Plasma (FFP)</option>
-                  <option value="Platelet Concentrate (Random Donor)">Platelet Concentrate (Random Donor)</option>
-                  <option value="Cryoprecipitate">Cryoprecipitate</option>
+                  <option value="Packed RBC">Packed Red Blood Cells (PRBC)</option>
+                  <option value="Whole Blood">Whole Blood (CPDA-1)</option>
+                  <option value="Fresh Frozen Plasma">Fresh Frozen Plasma (FFP)</option>
+                  <option value="Platelets">Platelet Concentrate (Random Donor)</option>
                 </select>
               </div>
 
