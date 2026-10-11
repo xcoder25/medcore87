@@ -7,6 +7,9 @@ export const PATIENT_REGISTRY_KEY = 'medcore_os_patient_registry_v1';
 
 export type PatientSex = 'Male' | 'Female' | 'Other';
 
+/** @deprecated alias — use FacilityPatient */
+export type RegisteredPatient = FacilityPatient;
+
 export interface FacilityPatient {
   id: string;
   /** Hospital folder / card number */
