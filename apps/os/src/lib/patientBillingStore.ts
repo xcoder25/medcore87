@@ -86,7 +86,7 @@ export function addBillLine(
   input: Omit<PatientBillLine, 'id' | 'createdAt' | 'updatedAt' | 'status'> & { status?: BillLineStatus }
 ): PatientBillLine {
   const now = new Date().toISOString();
-  const line: PatientBillLine = {
+  let line: PatientBillLine = {
     ...input,
     id: `BILL-${Date.now().toString(36).toUpperCase()}`,
     status: input.status || 'unpaid',
