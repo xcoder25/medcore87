@@ -340,61 +340,63 @@ export const PharmacyDispensingSuite: React.FC = () => {
   const pendingRx = scanResult?.filter(r => r.status === 'ACTIVE' || r.status === 'PARTIAL').length ?? 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Header Metrics */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
-        <div className="os-card" style={{ borderLeft: '4px solid var(--ak-orange)' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Prescriptions in Queue</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--ak-orange-light)' }}>{pendingCount}</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--os-text-muted)' }}>Pending Pharmacist Verification</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif", margin: '-8px -4px 0' }}>
+      <div style={{ background: 'linear-gradient(135deg, #1B4F72 0%, #0E3A5C 50%, #0E7490 130%)', color: '#fff', padding: '16px 20px 14px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Pill size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', opacity: 0.75, textTransform: 'uppercase' }}>Pharmacy · Dispensing</div>
+              <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em' }}>Verify · Dispense · Stock</div>
+              <div style={{ fontSize: 12, opacity: 0.8 }}>Clinical bus realtime · pay-before-service gate</div>
+            </div>
           </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>Avg Verification Time: 3.5 min</span>
+          <div style={{ fontSize: 11, fontWeight: 700, background: 'rgba(52,211,153,0.2)', border: '1px solid rgba(52,211,153,0.35)', padding: '6px 10px', borderRadius: 6 }}>
+            ● LIVE AUDIT
+          </div>
         </div>
-        <div className="os-card" style={{ borderLeft: '4px solid #F87171' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Critical / Low Stock Items</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#F87171' }}>{lowStockCount} Items</span>
-            <span style={{ fontSize: '0.75rem', color: '#FCA5A5' }}>Below Threshold</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>Paracetamol IV & Enoxaparin 40mg</span>
-        </div>
-        <div className="os-card" style={{ borderLeft: '4px solid #34D399' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Formulary Items Active</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#34D399' }}>1,420</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--os-text-dim)' }}>Essential Medicines List</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>WHO / NAFDAC Approved</span>
-        </div>
-        <div className="os-card" style={{ borderLeft: '4px solid #60A5FA' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>e-Prescription System</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#60A5FA' }}>LIVE</span>
-            <span style={{ fontSize: '0.75rem', color: '#34D399' }}>Digital Audit Trail</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>Scan Patient ID to Verify Rx</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginTop: 14 }}>
+          {[
+            { l: 'Pending Rx', v: pendingCount, s: 'Awaiting verification' },
+            { l: 'Low stock', v: lowStockCount, s: 'Below reorder' },
+            { l: 'Formulary items', v: invStats.items, s: 'Facility catalogue' },
+            { l: 'Units on hand', v: invStats.totalUnits, s: 'All batches' },
+          ].map((k) => (
+            <div key={k.l} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', opacity: 0.7 }}>{k.l}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, marginTop: 2 }}>{k.v}</div>
+              <div style={{ fontSize: 10, opacity: 0.65 }}>{k.s}</div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#fff', borderBottom: '1px solid #E2E8F0', padding: '0 12px', boxShadow: '0 1px 3px rgba(26,35,50,0.05)' }}>
+        <div style={{ display: 'flex', gap: 0 }}>
           {[
-            { id: 'scan', label: 'Patient ID Scanner', Icon: UserSearch },
-            { id: 'queue', label: `General Queue (${filteredPrescriptions.length})`, Icon: Clock },
-            { id: 'formulary', label: 'AKS EML Formulary', Icon: Package },
+            { id: 'scan', label: 'Patient lookup', Icon: UserSearch },
+            { id: 'queue', label: `Dispense queue (${filteredPrescriptions.length})`, Icon: Clock },
+            { id: 'formulary', label: 'Stock snapshot', Icon: Package },
           ].map(({ id, label, Icon }) => (
             <button
               key={id}
               type="button"
-              className="os-ghost-btn"
               onClick={() => setActiveTab(id as any)}
               style={{
-                background: activeTab === id ? 'rgba(234,88,12,0.15)' : undefined,
-                borderColor: activeTab === id ? 'var(--ak-orange)' : undefined,
-                color: activeTab === id ? '#FFF' : undefined,
-                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 7,
+                padding: '12px 14px',
+                border: 'none',
+                borderBottom: activeTab === id ? '2px solid #1B4F72' : '2px solid transparent',
+                background: 'transparent',
+                color: activeTab === id ? '#1B4F72' : '#718096',
+                fontWeight: 650,
+                fontSize: 13,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
               }}
             >
               <Icon size={14} /> {label}
@@ -402,18 +404,19 @@ export const PharmacyDispensingSuite: React.FC = () => {
           ))}
         </div>
         {activeTab !== 'scan' && (
-          <div className="os-search-wrap" style={{ minWidth: 280 }}>
-            <Search size={14} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 240, margin: '6px 0', padding: '6px 10px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#F7FAFC' }}>
+            <Search size={14} color="#718096" />
             <input
-              className="os-search-input"
-              placeholder={activeTab === 'queue' ? 'Search patient, doctor, drug...' : 'Search medicine name or SKU...'}
+              placeholder={activeTab === 'queue' ? 'Search patient, doctor, drug…' : 'Search medicine…'}
               value={search}
               onChange={e => setSearch(e.target.value)}
+              style={{ border: 'none', background: 'transparent', outline: 'none', flex: 1, fontSize: 13, fontFamily: 'inherit' }}
             />
           </div>
         )}
       </div>
 
+      <div style={{ padding: '16px 14px 24px', background: '#F0F4F8', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* -- SCAN TAB -- */}
       {activeTab === 'scan' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -779,6 +782,7 @@ export const PharmacyDispensingSuite: React.FC = () => {
         </div>
       )}
 
+      </div>
     </div>
   );
 };
