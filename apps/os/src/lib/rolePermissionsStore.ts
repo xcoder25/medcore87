@@ -153,10 +153,10 @@ const DEFAULTS: Record<string, string[]> = {
     'm87-ai', 'ai', 'patient-card', 'my-card',
     'patient.identity', 'patient.allergies', 'patient.meds', 'patient.problems',
   ],
-  // Lab — LIS & specimens only
+  // Lab — LIS, specimens, blood bank & analyzers
   lab: [
-    'dashboard', 'laboratory', 'lab', 'notifications',
-    'blood-bank', 'emr', 'patient-card', 'my-card',
+    'dashboard', 'laboratory', 'lab', 'lis', 'notifications',
+    'blood-bank', 'iot-devices', 'my-card',
     'm87-ai', 'ai',
     'patient.identity', 'patient.labs', 'patient.vitals',
   ],
@@ -228,7 +228,8 @@ export function roleCanAccessModule(roleKey: string, moduleKey: string): boolean
   if (roleKey === 'hospital_admin') return true;
   const mods = getModulesForRole(roleKey);
   if (mods.includes('*')) return true;
-  if (mods.includes(moduleKey)) return true;
+  // lab role direct module access
+  if (roleKey === 'lab' && ['dashboard', 'laboratory', 'lab', 'lis', 'blood-bank', 'iot-devices', 'notifications', 'm87-ai', 'ai', 'my-card'].includes(moduleKey)) return true;
   // legacy aliases
   if (moduleKey === 'laboratory' && mods.includes('lab')) return true;
   if (moduleKey === 'lab' && mods.includes('laboratory')) return true;

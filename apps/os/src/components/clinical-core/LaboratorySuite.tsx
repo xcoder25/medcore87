@@ -55,27 +55,27 @@ export const LaboratorySuite: React.FC = () => {
       setOrders((prev) => {
         const byId = new Map(prev.map((o) => [o.id, o]));
         for (const o of bus) {
-          if (!byId.has(o.id)) {
-            byId.set(o.id, {
-              id: o.id,
-              patientName: o.patientName,
-              patientId: o.patientId || o.hospitalNumber,
-              testName: o.name,
-              specimenType: 'Blood',
-              barcode: `BC-${o.id.slice(-6)}`,
-              status:
-                o.status === 'resulted'
-                  ? 'completed'
-                  : o.status === 'in_progress'
-                    ? 'analyzing'
-                    : o.status === 'accepted'
-                      ? 'collected'
-                      : 'ordered',
-              orderedAt: o.createdAt,
-              result: o.resultSummary,
-              isPanicValue: o.priority === 'stat',
-            });
-          }
+          const existing = byId.get(o.id);
+          byId.set(o.id, {
+            id: o.id,
+            patientName: o.patientName,
+            patientId: o.patientId || o.hospitalNumber,
+            testName: o.name,
+            specimenType: existing?.specimenType || 'Blood',
+            barcode: existing?.barcode || `BC-${o.id.slice(-6)}`,
+            status:
+              o.status === 'resulted'
+                ? 'completed'
+                : o.status === 'in_progress'
+                  ? 'analyzing'
+                  : o.status === 'accepted'
+                    ? 'collected'
+                    : 'ordered',
+            orderedAt: o.createdAt ? new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (existing?.orderedAt || 'Just now'),
+            result: o.resultSummary || existing?.result,
+            isPanicValue: o.priority === 'stat' || (/panic|critical/i.test(o.resultSummary || '')),
+            referenceRange: existing?.referenceRange || 'Within normal range',
+          });
         }
         return Array.from(byId.values());
       });

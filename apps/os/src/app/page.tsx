@@ -395,20 +395,20 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'lab':
       return [
         {
-          label: 'Laboratory desk',
+          label: 'Laboratory operations',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Lab desk', badge: 'Live' },
             { key: 'laboratory', icon: FlaskConical, label: 'LIS & results', badge: 'LIS' },
-            { key: 'notifications', icon: Bell, label: 'Notifications' },
+            { key: 'lis', icon: Activity, label: 'Specimen pipeline', badge: 'Track' },
+            { key: 'blood-bank', icon: Droplet, label: 'Blood bank & ABO', badge: 'ABO' },
           ],
         },
         {
-          label: 'Specimens & support',
+          label: 'Analyzers & safety',
           items: [
-            { key: 'blood-bank', icon: Droplet, label: 'Blood bank', badge: 'ABO' },
-            { key: 'patient-card', icon: FileText, label: 'Patient records' },
-            { key: 'emr', icon: FileText, label: 'EMR' },
-            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
+            { key: 'iot-devices', icon: Cpu, label: 'Analyzers & telemetry', badge: 'IoT' },
+            { key: 'notifications', icon: Bell, label: 'Critical alerts & panic', badge: 'Panic' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia Lab AI', badge: 'AI' },
           ],
         },
       ];
@@ -1539,8 +1539,9 @@ const handleLockScreen = () => {
   const currentRoleTheme = ROLE_THEMES[activeRoleKey] || ROLE_THEMES.doctor;
   const RoleIcon = currentRoleTheme.icon;
 
+  const isLabStaff = activeRoleKey === 'lab' || userSession?.roleKey === 'lab';
   // Dynamically load tailored RBAC sidebar content
-  const roleNavSections = getRoleNavSections(userSession, receptionUser ? false : showFullDirectory);
+  const roleNavSections = getRoleNavSections(userSession, (receptionUser || isLabStaff) ? false : showFullDirectory);
 
   // Full admin chrome replaces the clinical OS shell
   if (userSession && (activeRoleKey === 'hospital_admin' || userSession.roleKey === 'hospital_admin')) {

@@ -43,6 +43,7 @@ import { printPaymentReceipt } from '../../lib/printService';
 import { PaystackBrandedCheckout } from '../reception/PaystackBrandedCheckout';
 import { hasPaystackKey } from '../../lib/paystackClient';
 import { syncAccountsRequestsForPatientPayment } from '../../lib/frontDeskAccountsBridge';
+import { releaseOrdersForPatient } from '../../lib/clinicalEventBus';
 
 const C = {
   blue: '#0284C7',
@@ -359,6 +360,7 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
         via: method === 'cash' ? 'cash' : String(method),
         paidBy: cashier,
       });
+      releaseOrdersForPatient(facilityId, patient.id);
     } catch {
       /* ignore */
     }

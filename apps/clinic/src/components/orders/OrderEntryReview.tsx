@@ -155,18 +155,73 @@ export const OrderEntryReview: React.FC = () => {
         payload
       );
 
+function broadcastToMedCoreEventBus(order: {
+  id: string;
+  patientId: string;
+  patientName: string;
+  title: string;
+  category: string;
+  priority: string;
+  details?: string;
+}) {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const KEY = 'medcore_os_clinical_orders_v1';
+    const raw = localStorage.getItem(KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    const newBusOrder = {
+      id: order.id,
+      facilityId: 'IGH-EKT',
+      patientId: order.patientId,
+      patientName: order.patientName,
+      hospitalNumber: order.patientId,
+      type: order.category === 'LAB' ? 'lab' : order.category === 'MED' ? 'rx' : 'imaging',
+      code: order.title.slice(0, 8).toUpperCase().replace(/\s/g, '_'),
+      name: order.title,
+      orderedBy: 'Dr. Julian Thorne (Clinic CPOE)',
+      status: 'ordered',
+      priority: order.priority.toLowerCase(),
+      notes: order.details || 'Clinic Order Entry Review',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const updated = [newBusOrder, ...list];
+    localStorage.setItem(KEY, JSON.stringify(updated.slice(0, 8000)));
+    window.dispatchEvent(new CustomEvent('medcore-clinical-orders', { detail: updated }));
+    try {
+      const bc = new BroadcastChannel('medcore_clinical');
+      bc.postMessage({ type: 'orders', list: updated });
+      bc.close();
+    } catch { /* ignore */ }
+  } catch { /* ignore */ }
+}
+
       // Append local order items to tracker
-      const newItems: OrderItem[] = pathway.items.map((item, idx) => ({
-        id: `ORD-PW-${Date.now().toString(36)}-${idx}`,
-        category: item.includes('IV') || item.includes('Infusion') || item.includes('Injection') ? 'MED' : 'LAB',
-        title: item,
-        patientName: selectedPatient.name,
-        bed: selectedPatient.bed,
-        urgency: item.includes('STAT') ? 'STAT' : item.includes('URGENT') ? 'URGENT' : 'ROUTINE',
-        status: 'PENDING',
-        orderedAt: 'Just now',
-        details: `From ${pathway.title}`,
-      }));
+      const newItems: OrderItem[] = pathway.items.map((item, idx) => {
+        const cat = item.includes('IV') || item.includes('Infusion') || item.includes('Injection') ? 'MED' : 'LAB';
+        const urg = item.includes('STAT') ? 'STAT' : item.includes('URGENT') ? 'URGENT' : 'ROUTINE';
+        const orderId = `ORD-PW-${Date.now().toString(36)}-${idx}`;
+        broadcastToMedCoreEventBus({
+          id: orderId,
+          patientId: selectedPatient.id,
+          patientName: selectedPatient.name,
+          title: item,
+          category: cat,
+          priority: urg,
+          details: `From ${pathway.title}`,
+        });
+        return {
+          id: orderId,
+          category: cat,
+          title: item,
+          patientName: selectedPatient.name,
+          bed: selectedPatient.bed,
+          urgency: urg,
+          status: 'PENDING',
+          orderedAt: 'Just now',
+          details: `From ${pathway.title}`,
+        };
+      });
 
       setActiveOrders((prev) => [...newItems, ...prev]);
       setSuccessBanner(
@@ -201,6 +256,16 @@ export const OrderEntryReview: React.FC = () => {
       orderedAt: 'Just now',
       details: orderInstructions || 'Routine order',
     };
+
+    broadcastToMedCoreEventBus({
+      id: newOrder.id,
+      patientId: selectedPatient.id,
+      patientName: selectedPatient.name,
+      title: newOrder.title,
+      category: orderCategory,
+      priority: orderUrgency,
+      details: newOrder.details,
+    });
 
     try {
       await offlineSyncManager.executeWithOfflineQueue(

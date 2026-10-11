@@ -6,6 +6,7 @@ import { inferRoleKey, isReceptionRole } from '../../lib/staffCardStore';
 import { AdminWorkspace } from './AdminWorkspace';
 import { ReceptionWorkspace } from './ReceptionWorkspace';
 import { DoctorDeskHome } from './DoctorDeskHome';
+import { LabDeskHome } from './LabDeskHome';
 import { RoleDeskHome, type RoleDeskConfig } from './RoleDeskHome';
 import { emitLiveAction } from '../../lib/liveActions';
 import {
@@ -61,6 +62,10 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
     return <DoctorDeskHome session={session} onNavigate={(k) => onNavigate(k)} />;
   }
 
+  // Laboratory desk — dedicated real-time EMR lab operations workspace
+  if (roleKey === 'lab') {
+    return <LabDeskHome session={session} onNavigate={(k) => onNavigate(k)} />;
+  }
 
   const deskForRole = (key: string): RoleDeskConfig | null => {
     const ai = { label: 'Celestia', desc: 'Assistant', icon: Brain, go: 'm87-ai' };
@@ -93,20 +98,6 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
             { label: 'Dispense', desc: 'Pharmacy suite', icon: Pill, go: 'pharmacy' },
             { label: 'EMR', desc: 'Records', icon: FileText, go: 'emr' },
             { label: 'Cashier', desc: 'Payments', icon: CreditCard, go: 'cashier' },
-          ],
-        };
-      case 'lab':
-        return {
-          title: 'Laboratory desk',
-          subtitle: 'Process orders and publish results to clinicians.',
-          badge: 'Lab · LIS',
-          boardTitle: 'Clinic activity',
-          boardEmpty: 'No visits in queue.',
-          orderType: 'lab',
-          quick: [
-            { label: 'Lab suite', desc: 'Orders & results', icon: FlaskConical, go: 'laboratory' },
-            { label: 'EMR', desc: 'Records', icon: FileText, go: 'emr' },
-            { label: 'Orders bus', desc: 'Clinical loop', icon: Activity, go: 'clinical-orders' },
           ],
         };
       case 'radiologist':

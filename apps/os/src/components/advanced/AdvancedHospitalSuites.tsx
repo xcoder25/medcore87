@@ -173,10 +173,15 @@ function AmbientSoap({ session }: { session?: UserSession }) {
 function LisBoard({ facilityId }: { facilityId: string }) {
   const [rows, setRows] = useState(listSpecimens(facilityId));
   const [stats, setStats] = useState(lisTatStats(facilityId));
+  const [search, setSearch] = useState('');
+  const [selectedStage, setSelectedStage] = useState<string>('all');
+  const [notice, setNotice] = useState<string | null>(null);
+
   const reload = () => {
     setRows(listSpecimens(facilityId));
     setStats(lisTatStats(facilityId));
   };
+
   useEffect(() => {
     reload();
     return subscribeLis(reload);
@@ -184,51 +189,243 @@ function LisBoard({ facilityId }: { facilityId: string }) {
 
   const stages: LisStage[] = ['ordered', 'collected', 'received', 'processing', 'verified', 'resulted'];
 
+  const stageLabels: Record<LisStage, string> = {
+    ordered: '1. Ordered (Queue)',
+    collected: '2. Phlebotomy (Collected)',
+    received: '3. Lab Received (Accessioned)',
+    processing: '4. On Bench (Analyzing)',
+    verified: '5. Verified (MLS Sign-off)',
+    resulted: '6. Resulted (EHR Released)',
+  };
+
+  const inferTubeColor = (testName: string) => {
+    const t = testName.toLowerCase();
+    if (t.includes('fbc') || t.includes('cbc') || t.includes('malaria') || t.includes('hba1c') || t.includes('film')) return { cap: '#7C3AED', name: 'EDTA Lavender' };
+    if (t.includes('pt') || t.includes('inr') || t.includes('coag')) return { cap: '#0284C7', name: 'Citrate Blue' };
+    if (t.includes('glucose') || t.includes('fbs') || t.includes('sugar')) return { cap: '#64748B', name: 'Fluoride Grey' };
+    if (t.includes('urine') || t.includes('stool') || t.includes('sputum') || t.includes('culture')) return { cap: '#D97706', name: 'Sterile Yellow' };
+    return { cap: '#CA8A04', name: 'SST Gold / Red' };
+  };
+
+  const filtered = rows.filter((s) => {
+    if (selectedStage !== 'all' && s.stage !== selectedStage) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      if (!s.patientName?.toLowerCase().includes(q) && !s.testName?.toLowerCase().includes(q) && !s.barcode?.toLowerCase().includes(q)) {
+        return false;
+      }
+    }
+    return true;
+  });
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <h2 style={{ margin: 0, fontWeight: 800 }}>LIS · Barcode & TAT</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-        <Kpi label="Open specimens" value={stats.open} />
-        <Kpi label="Completed" value={stats.completed} />
-        <Kpi label="Avg TAT (min)" value={stats.avgTatMinutes} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {notice && (
+        <div style={{
+          position: 'fixed', top: 22, right: 24, zIndex: 9999,
+          background: '#0F172A', color: '#38BDF8', border: '1px solid #0284C7',
+          borderRadius: 12, padding: '12px 20px', boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+          display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.86rem', fontWeight: 600,
+        }}>
+          <FlaskConical size={16} color="#38BDF8" />
+          <span>{notice}</span>
+        </div>
+      )}
+
+      {/* Header Banner */}
+      <div style={{
+        background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+        borderRadius: 16, padding: '20px 24px', color: '#FFFFFF',
+        display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 14
+      }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800 }}>Specimen Pipeline & TAT Tracking</h2>
+            <span style={{ background: '#0284C7', color: '#FFFFFF', padding: '3px 10px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 800 }}>
+              LIS REALTIME
+            </span>
+          </div>
+          <p style={{ margin: '4px 0 0 0', fontSize: '0.84rem', color: '#94A3B8' }}>
+            Chain-of-custody specimen tracking from venipuncture to bench accessioning and EHR verification.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => {
+              reload();
+              setNotice('Specimen pipeline re-synchronized.');
+              setTimeout(() => setNotice(null), 3000);
+            }}
+            style={{
+              background: '#0891B2', color: '#FFFFFF', border: 'none',
+              padding: '8px 16px', borderRadius: 10, fontSize: '0.82rem', fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+            }}
+          >
+            <FlaskConical size={14} /> Refresh Pipeline
+          </button>
+        </div>
       </div>
-      {rows.map((s) => (
-        <div key={s.id} style={card}>
-          <div style={{ fontWeight: 800 }}>
-            {s.barcode} · {s.testName}
+
+      {/* KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '14px 18px' }}>
+          <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Active In-Flight</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', marginTop: 4 }}>{stats.open}</div>
+          <div style={{ fontSize: '0.72rem', color: '#0284C7', fontWeight: 600 }}>Specimens in queue</div>
+        </div>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '14px 18px' }}>
+          <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Completed & Resulted</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#16A34A', marginTop: 4 }}>{stats.completed}</div>
+          <div style={{ fontSize: '0.72rem', color: '#16A34A', fontWeight: 600 }}>Transmitted to EMR</div>
+        </div>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '14px 18px' }}>
+          <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Average Turnaround (TAT)</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#2563EB', marginTop: 4 }}>{stats.avgTatMinutes} min</div>
+          <div style={{ fontSize: '0.72rem', color: '#64748B' }}>Target &lt; 45 mins</div>
+        </div>
+      </div>
+
+      {/* Filter and Search Bar */}
+      <div style={{
+        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '12px 18px',
+        display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12
+      }}>
+        <input
+          type="text"
+          placeholder="Filter by barcode, patient name, test…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{
+            padding: '7px 14px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.82rem',
+            minWidth: 260, flex: 1, maxWidth: 360, outline: 'none'
+          }}
+        />
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {['all', ...stages].map((st) => (
+            <button
+              key={st}
+              type="button"
+              onClick={() => setSelectedStage(st)}
+              style={{
+                padding: '4px 10px', borderRadius: 6, border: '1px solid',
+                borderColor: selectedStage === st ? '#0891B2' : '#E2E8F0',
+                background: selectedStage === st ? '#E0F2FE' : '#FFFFFF',
+                color: selectedStage === st ? '#0369A1' : '#475569',
+                fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize'
+              }}
+            >
+              {st === 'all' ? 'All Stages' : st}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Specimen Cards List */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {filtered.length === 0 ? (
+          <div style={{ background: '#FFFFFF', border: '1px dashed #CBD5E1', borderRadius: 14, padding: '36px 20px', textAlign: 'center', color: '#64748B' }}>
+            <FlaskConical size={32} color="#94A3B8" style={{ margin: '0 auto 8px auto' }} />
+            <div style={{ fontWeight: 700, color: '#1E293B' }}>No specimens found</div>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem' }}>Orders placed from clinical desks will automatically appear in this specimen pipeline.</p>
           </div>
-          <div style={{ fontSize: 12, color: '#64748B' }}>
-            {s.patientName} · {s.stage}
-            {s.tatMinutes != null ? ` · TAT ${s.tatMinutes}m` : ''}
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-            {stages.map((st) => (
-              <button
-                key={st}
-                type="button"
-                disabled={stages.indexOf(st) <= stages.indexOf(s.stage) && s.stage !== 'ordered'}
-                onClick={() => {
-                  advanceSpecimen(st === 'resulted' ? s.id : s.id, st, st === 'resulted' ? 'Result entered in LIS' : undefined);
-                  reload();
-                }}
+        ) : (
+          filtered.map((s) => {
+            const tube = inferTubeColor(s.testName);
+            const currentIdx = stages.indexOf(s.stage);
+
+            return (
+              <div
+                key={s.id}
                 style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  padding: '4px 8px',
-                  borderRadius: 8,
-                  border: '1px solid #E2E8F0',
-                  background: s.stage === st ? '#2563EB' : '#fff',
-                  color: s.stage === st ? '#fff' : '#334155',
-                  cursor: 'pointer',
+                  background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14,
+                  padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12,
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.02)'
                 }}
               >
-                {st}
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-      {rows.length === 0 && <div style={{ color: '#64748B' }}>No lab specimens — place lab orders from doctor desk.</div>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 8, background: `${tube.cap}15`,
+                      border: `2px solid ${tube.cap}`, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                      <FlaskConical size={18} color={tube.cap} />
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontWeight: 800, fontSize: '0.94rem', color: '#0F172A' }}>{s.patientName}</span>
+                        <code style={{ fontSize: '0.72rem', background: '#F1F5F9', padding: '2px 6px', borderRadius: 4, color: '#0284C7', fontWeight: 700 }}>
+                          {s.barcode}
+                        </code>
+                        <span style={{ fontSize: '0.7rem', color: tube.cap, fontWeight: 700 }}>
+                          {tube.name}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0891B2', marginTop: 2 }}>
+                        {s.testName}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{
+                      padding: '3px 10px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 800,
+                      background: s.stage === 'resulted' ? '#DCFCE7' : s.stage === 'processing' ? '#CFFAFE' : '#FEF3C7',
+                      color: s.stage === 'resulted' ? '#15803D' : s.stage === 'processing' ? '#0E7490' : '#B45309',
+                      textTransform: 'uppercase'
+                    }}>
+                      {s.stage}
+                    </span>
+                    {s.tatMinutes != null && (
+                      <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+                        TAT: {s.tatMinutes}m
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Visual Stage Progress Bar */}
+                <div style={{ display: 'flex', gap: 4, background: '#F8FAFC', padding: 8, borderRadius: 8, border: '1px solid #E2E8F0', overflowX: 'auto' }}>
+                  {stages.map((st, i) => {
+                    const isDone = i <= currentIdx;
+                    const isCurrent = i === currentIdx;
+                    return (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => {
+                          advanceSpecimen(s.id, st, st === 'resulted' ? (s.result || 'Validated & Released') : undefined);
+                          reload();
+                          setNotice(`Advanced specimen ${s.barcode} to stage: ${st}`);
+                          setTimeout(() => setNotice(null), 3000);
+                        }}
+                        style={{
+                          flex: 1, minWidth: 100, padding: '6px 8px', borderRadius: 6, border: 'none',
+                          background: isCurrent ? '#0891B2' : isDone ? '#E0F2FE' : '#FFFFFF',
+                          color: isCurrent ? '#FFFFFF' : isDone ? '#0369A1' : '#94A3B8',
+                          fontSize: '0.7rem', fontWeight: isDone ? 700 : 500, cursor: 'pointer',
+                          textAlign: 'center', transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {stageLabels[st]}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {s.result && (
+                  <div style={{ background: '#F0FDF4', padding: '6px 12px', borderRadius: 6, border: '1px solid #BBF7D0', fontSize: '0.76rem', color: '#166534', fontWeight: 600 }}>
+                    <strong>Report:</strong> {s.result}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }
