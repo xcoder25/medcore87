@@ -8,7 +8,7 @@ import type { UserSession } from '../auth/AuthScreen';
 import {
   Users, UserPlus, ArrowRightLeft, CalendarDays, AlertTriangle, Shield,
   FileCheck, ChevronRight, Activity, Clock, CheckCircle2,
-  UserCheck, BedDouble, Building2, Radio, RefreshCw, Sparkles,
+  UserCheck, BedDouble,
 } from 'lucide-react';
 import {
   buildAdminSnapshot,
@@ -394,44 +394,13 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
 
       <section className="admin-hero">
         <div className="admin-hero-copy">
-          <div className="admin-hero-eyebrow">
-            <Building2 size={13} />
-            <span>{facilityId}</span>
-            <span className="admin-hero-dot">·</span>
-            <span>Hospital Administration</span>
-          </div>
           <h1>
-            {greeting()}, {session.roleKey === 'hospital_admin' ? 'Administrator' : firstName}
+            {greeting()}, {session.roleKey === 'hospital_admin' ? 'Administrator' : firstName}{' '}
+            <span aria-hidden>👋</span>
           </h1>
           <p>
-            Live operations at <strong>{facility}</strong>
-            {' · '}
-            {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}
+            Here&apos;s what&apos;s happening at <strong>{facility}</strong> today.
           </p>
-        </div>
-        <div className="admin-hero-aside">
-          <div className={`admin-hero-status ${connected ? 'live' : 'local'}`}>
-            <span className="admin-status-dot" />
-            <div>
-              <div className="admin-status-title">{connected ? 'Gateway live' : 'Local realtime'}</div>
-              <div className="admin-status-sub">
-                {onlineStaff.length} staff online · updated {ageSec < 5 ? 'just now' : `${ageSec}s ago`}
-              </div>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="admin-hero-refresh"
-            onClick={() => {
-              setTick((t) => t + 1);
-              setToast('Dashboard synced');
-              setTimeout(() => setToast(null), 2200);
-            }}
-            title="Refresh metrics"
-          >
-            <RefreshCw size={15} />
-            Sync
-          </button>
         </div>
       </section>
 
@@ -454,25 +423,15 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
               </div>
               <div className="admin-kpi-value" style={{ color: toneFg[k.tone] }}>
                 {k.value}
-                {(k.key === 'staff' || k.key === 'logged') && (
-                  <span className="admin-kpi-live" title="Realtime">●</span>
-                )}
               </div>
-              <div className="admin-kpi-trend">
-                {(k.key === 'staff' || k.key === 'logged') && connected ? (
-                  <><Radio size={11} style={{ verticalAlign: 'middle', marginRight: 4 }} />{k.trend}</>
-                ) : k.trend}
-              </div>
+              <div className="admin-kpi-trend">{k.trend}</div>
             </button>
           );
         })}
       </section>
 
       <section className="admin-quick">
-        <div className="admin-quick-head">
-          <div className="admin-quick-title"><Sparkles size={14} /> Quick Actions</div>
-          <span className="admin-quick-hint">Common admin tasks</span>
-        </div>
+        <div className="admin-quick-title">Quick Actions</div>
         <div className="admin-quick-row">
           <button type="button" className="admin-qa primary" onClick={() => onNavigate('transfer')}>
             <ArrowRightLeft size={14} /> New Staff Transfer

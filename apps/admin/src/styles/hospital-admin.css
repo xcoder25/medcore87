@@ -503,16 +503,13 @@
 
 /* Hero Banner */
 .ha-hero-card {
-  background:
-    radial-gradient(ellipse 70% 100% at 100% -20%, rgba(0, 212, 168, 0.14), transparent 55%),
-    radial-gradient(ellipse 50% 80% at 0% 120%, rgba(0, 102, 255, 0.12), transparent 50%),
-    linear-gradient(135deg, #0C1A38 0%, #0F2044 55%, #0B2A4A 100%);
-  border: 1px solid rgba(0, 102, 255, 0.2);
-  border-radius: var(--admin-radius-xl, 16px);
-  padding: 26px 28px;
+  background: linear-gradient(135deg, #0C1A38 0%, #0F2044 100%);
+  border: 1px solid rgba(0, 102, 255, 0.18);
+  border-radius: var(--admin-radius-xl);
+  padding: 24px 28px;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 
 .ha-hero-card::before {
@@ -625,21 +622,24 @@
 }
 
 .ha-kpi-card {
-  background: linear-gradient(165deg, #0F2744 0%, #0C1A38 100%);
-  border: 1px solid rgba(56, 189, 248, 0.12);
-  border-radius: var(--admin-radius-xl, 16px);
-  padding: 18px 16px 16px;
+  background: rgba(15, 26, 52, 0.85);
+  border: 1px solid var(--admin-card-border);
+  border-radius: var(--admin-radius-lg);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all var(--admin-transition);
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
   position: relative;
-  overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(10px);
 }
 
 .ha-kpi-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(56, 189, 248, 0.35);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(56, 189, 248, 0.08);
+  transform: translateY(-2px);
+  border-color: var(--admin-card-border-hover);
+  background: rgba(19, 34, 68, 0.95);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 }
 
 .ha-kpi-top {
@@ -683,13 +683,11 @@
 }
 
 .ha-kpi-value {
-  font-family: var(--admin-font-heading, Inter, system-ui, sans-serif);
+  font-family: var(--admin-font-heading);
   font-size: 1.85rem;
-  font-weight: 800;
-  color: #F8FAFC;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-  margin: 8px 0 6px;
+  font-weight: 700;
+  color: var(--admin-text-white);
+  line-height: 1;
 }
 
 .ha-kpi-label {
