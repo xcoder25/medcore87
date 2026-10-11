@@ -23,135 +23,9 @@ interface LabInstrumentFeed {
   lastQc: string;
 }
 
-const SEED_LAB_INSTRUMENTS: LabInstrumentFeed[] = [
-  {
-    id: 'LAB-AN-01',
-    name: 'Automated Clinical Chemistry Analyzer',
-    model: 'Roche Cobas 6000 (c501 + e601)',
-    department: 'Clinical Chemistry & Immunoassay',
-    status: 'ONLINE',
-    protocol: 'ASTM E1394',
-    ipAddress: '192.168.4.112',
-    telemetry: 'Throughput: 180 tests/hr · Photometer OK',
-    reagentLevel: 88,
-    lastQc: 'Passed (Today 05:30)',
-  },
-  {
-    id: 'LAB-AN-02',
-    name: 'Automated 5-Part Differential Hematology',
-    model: 'Sysmex XN-1000',
-    department: 'Hematology',
-    status: 'ONLINE',
-    protocol: 'HL7 v2.5.1',
-    ipAddress: '192.168.4.115',
-    telemetry: 'Sample throughput: 100 tests/hr · Flow Cytometry Laser OK',
-    reagentLevel: 92,
-    lastQc: 'Passed (Today 06:00)',
-  },
-  {
-    id: 'LAB-AN-03',
-    name: 'Continuous Blood Culture Incubator',
-    model: 'BD BACTEC FX',
-    department: 'Medical Microbiology',
-    status: 'ACTIVE BATCH',
-    protocol: 'HL7 v2.5.1',
-    ipAddress: '192.168.4.118',
-    telemetry: '48 Vials Incubating · 0 Positive Alarm',
-    temperature: '37.0°C ±0.1°C',
-    lastQc: 'Passed (Yesterday)',
-  },
-  {
-    id: 'LAB-AN-04',
-    name: 'Hemostasis & Coagulation Analyzer',
-    model: 'Stago Compact Max',
-    department: 'Hemostasis / Coagulation',
-    status: 'ONLINE',
-    protocol: 'ASTM E1394',
-    ipAddress: '192.168.4.120',
-    telemetry: 'PT/INR Optical Detection In-Range',
-    reagentLevel: 81,
-    lastQc: 'Passed (Today 07:00)',
-  },
-  {
-    id: 'LAB-AN-05',
-    name: 'Molecular Real-Time PCR System',
-    model: 'Cepheid GeneXpert IV',
-    department: 'Molecular Diagnostics & TB',
-    status: 'ONLINE',
-    protocol: 'HL7 v2.5.1',
-    ipAddress: '192.168.4.124',
-    telemetry: '4 Cartridge Bays Ready · Optics Calibrated',
-    reagentLevel: 95,
-    lastQc: 'Passed (Today 04:30)',
-  },
-  {
-    id: 'LAB-CC-01',
-    name: 'Blood Bank Storage Refrigerator #1',
-    model: 'Helmer Scientific i.Series (+4°C)',
-    department: 'Blood Bank & Transfusion',
-    status: 'ONLINE',
-    protocol: 'MQTT IoT',
-    ipAddress: '192.168.4.140',
-    telemetry: 'Internal Temp: +3.8°C (Normal) · Backup Generator Active',
-    temperature: '+3.8°C',
-    lastQc: 'Continuous Probe Calibrated',
-  },
-  {
-    id: 'LAB-CC-02',
-    name: 'Plasma Deep Freezer Unit #2',
-    model: 'Thermo Scientific Horizon (-20°C)',
-    department: 'Blood Bank & Transfusion',
-    status: 'ONLINE',
-    protocol: 'MQTT IoT',
-    ipAddress: '192.168.4.142',
-    telemetry: 'Internal Temp: -21.4°C (Normal) · Uniform Cold Zone',
-    temperature: '-21.4°C',
-    lastQc: 'Continuous Probe Calibrated',
-  },
-];
-
-const SEED_BEDSIDE_MONITORS: ConnectedMonitorFeed[] = [
-  {
-    deviceId: 'MON-ICU-01',
-    bedId: 'ICU Bed 1',
-    patientName: 'Kelechi Nwosu',
-    heartRateBpm: 76,
-    spo2Percent: 98,
-    nibpSysDia: '124/82',
-    respiratoryRate: 16,
-    connectionState: 'online',
-  },
-  {
-    deviceId: 'MON-ICU-02',
-    bedId: 'ICU Bed 2',
-    patientName: 'Amina Bello',
-    heartRateBpm: 92,
-    spo2Percent: 95,
-    nibpSysDia: '138/88',
-    respiratoryRate: 19,
-    connectionState: 'online',
-  },
-  {
-    deviceId: 'MON-EMG-04',
-    bedId: 'Emergency Resuscitation 4',
-    patientName: 'David Essien',
-    heartRateBpm: 114,
-    spo2Percent: 91,
-    nibpSysDia: '94/62',
-    respiratoryRate: 24,
-    connectionState: 'online',
-  },
-  {
-    deviceId: 'MON-TH-02',
-    bedId: 'Theatre 2 Anaesthetic Bay',
-    patientName: 'Grace Bassey',
-    heartRateBpm: 68,
-    spo2Percent: 99,
-    nibpSysDia: '116/74',
-    respiratoryRate: 14,
-    connectionState: 'online',
-  },
-];
+/** Live feeds only — no demo patients or mock telemetry */
+const SEED_LAB_INSTRUMENTS: LabInstrumentFeed[] = [];
+const SEED_BEDSIDE_MONITORS: ConnectedMonitorFeed[] = [];
 
 export const ConnectedDevicesSuite: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'analyzers' | 'bedside'>('analyzers');
@@ -307,6 +181,13 @@ export const ConnectedDevicesSuite: React.FC = () => {
       {/* Tab 1: Laboratory Diagnostic Analyzers */}
       {activeTab === 'analyzers' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+          {instruments.length === 0 && (
+            <div className="os-card" style={{ padding: 28, gridColumn: '1 / -1', textAlign: 'center', color: '#64748B' }}>
+              <Server size={28} style={{ marginBottom: 10, opacity: 0.5 }} />
+              <div style={{ fontWeight: 700, color: '#0F172A', marginBottom: 6 }}>No lab instruments linked</div>
+              <div style={{ fontSize: 13 }}>Connect analyzers via Device Gateway (HL7 / ASTM / MQTT). Live feeds appear here automatically — no demo data.</div>
+            </div>
+          )}
           {instruments.map(inst => (
             <div
               key={inst.id}
@@ -382,6 +263,13 @@ export const ConnectedDevicesSuite: React.FC = () => {
       {/* Tab 2: Bedside Monitors */}
       {activeTab === 'bedside' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+          {monitors.length === 0 && (
+            <div className="os-card" style={{ padding: 28, gridColumn: '1 / -1', textAlign: 'center', color: '#64748B' }}>
+              <Heart size={28} style={{ marginBottom: 10, opacity: 0.5 }} />
+              <div style={{ fontWeight: 700, color: '#0F172A', marginBottom: 6 }}>No bedside monitors online</div>
+              <div style={{ fontSize: 13 }}>Enable monitors in Device Gateway (MQTT). Real-time vitals stream here when devices are paired — no mock patients.</div>
+            </div>
+          )}
           {monitors.map(mon => (
             <div
               key={mon.deviceId}
