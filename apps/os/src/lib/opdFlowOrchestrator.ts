@@ -132,7 +132,7 @@ export function runCompleteOpdFlow(input: {
       sentBy: input.actorName,
       sentByBadge: input.actorBadge,
     });
-    invoiceNumber = req.invoiceNumber;
+    invoiceNumber = req.invoiceNumber || req.id || "";
     steps.push({
       step: 'folder_invoice',
       ok: true,
