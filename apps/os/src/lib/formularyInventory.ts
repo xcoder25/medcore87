@@ -1,5 +1,6 @@
 /** Pharmacy formulary + inventory (batch, expiry, stock) */
 import { publishFacilityData } from './roleSyncBus';
+import { emlAsSeedRows } from './aksEmlFormulary';
 
 export interface FormularyDrug {
   id: string;
@@ -99,41 +100,45 @@ export function depleteStock(facilityId: string, drugName: string, qty = 1): boo
 
 export function seedDefaultFormulary(facilityId: string) {
   if (listFormulary(facilityId).length) return;
-  const defaults: [string, string, string, string, string, number][] = [
-    ['Amoxicillin 500mg', 'Amoxicillin', '500mg', 'Capsule', 'Antibiotic', 350],
-    ['Metformin 500mg', 'Metformin', '500mg', 'Tablet', 'Antidiabetic', 200],
-    ['Paracetamol 500mg', 'Paracetamol', '500mg', 'Tablet', 'Analgesic', 50],
-    ['Amlodipine 5mg', 'Amlodipine', '5mg', 'Tablet', 'Cardiovascular', 150],
-    ['Artemether/Lumefantrine', 'AL', '20/120', 'Tablet', 'Antimalarial', 800],
-    ['Lisinopril 10mg', 'Lisinopril', '10mg', 'Tablet', 'Cardiovascular', 180],
-    ['Omeprazole 20mg', 'Omeprazole', '20mg', 'Capsule', 'GI', 120],
-    ['Metronidazole 400mg', 'Metronidazole', '400mg', 'Tablet', 'Antibiotic', 90],
-    ['Aspirin 75mg', 'Aspirin', '75mg', 'Tablet', 'Cardiovascular', 40],
-    ['Furosemide 40mg', 'Furosemide', '40mg', 'Tablet', 'Diuretic', 70],
-  ];
-  for (const [name, generic, strength, form, category, price] of defaults) {
-    const id = `DRG-${generic.slice(0, 4).toUpperCase()}-${Date.now().toString(36)}`;
+  seedFromAksEml(facilityId, 'adult');
+}
+
+/** Load official AKS EML into facility formulary + starter batches (CMS) */
+export function seedFromAksEml(facilityId: string, audience: 'adult' | 'children' = 'adult') {
+  const rows = emlAsSeedRows(audience);
+  const stamp = Date.now().toString(36);
+  rows.forEach((row, i) => {
+    const id = `DRG-AKS-${audience === 'adult' ? 'A' : 'C'}-${i.toString(36).toUpperCase()}-${stamp}`;
     upsertDrug({
       id,
       facilityId,
-      name,
-      genericName: generic,
-      strength,
-      form,
-      category,
-      unitPriceNgn: price,
-      reorderLevel: 50,
-      controlled: false,
+      name: row.name,
+      genericName: row.genericName,
+      strength: row.strength,
+      form: row.form,
+      category: row.category,
+      unitPriceNgn: row.unitPriceNgn,
+      reorderLevel: row.reorderLevel,
+      controlled: row.controlled,
     });
     addBatch({
       drugId: id,
       facilityId,
-      batchNo: `B${Math.floor(Math.random() * 9000 + 1000)}`,
+      batchNo: `CMS-${1000 + (i % 9000)}`,
       expiry: '2027-12-31',
-      qty: 200,
-      supplier: 'CMS Nigeria',
+      qty: row.controlled ? 40 : 120,
+      supplier: 'CMS Nigeria / AKS EML',
     });
-  }
+  });
+}
+
+/** Force re-seed from EML (admin action) — replaces facility formulary */
+export function resealFormularyFromAksEml(facilityId: string) {
+  const all = read<FormularyDrug>(DRUG_KEY).filter((d) => d.facilityId !== facilityId);
+  write(DRUG_KEY, all);
+  const stocks = read<StockBatch>(STOCK_KEY).filter((b) => b.facilityId !== facilityId);
+  write(STOCK_KEY, stocks);
+  seedFromAksEml(facilityId, 'adult');
 }
 
 export function deleteDrug(drugId: string) {
