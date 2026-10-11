@@ -1,8 +1,9 @@
+'use client';
+
 /**
  * LIVE status pill + notification bell + critical alert banner
  * for MedCore OS top bar (WebSocket event bus).
  */
-'use client';
 
 import React from 'react';
 import NotificationBell from './NotificationBell';
