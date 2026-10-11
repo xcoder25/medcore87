@@ -75,7 +75,7 @@ import {
   type PatientBillLine,
 } from '../../lib/patientBillingStore';
 import { AksEmlFormularyPanel } from '../pharmacy/AksEmlFormularyPanel';
-import { depleteStock, seedDefaultFormulary, stockQty, listFormulary } from '../../lib/formularyInventory';
+import { depleteStock, seedDefaultFormulary, stockQty, listFormulary, subscribeFormulary, formularyStats, type FormularyDrug } from '../../lib/formularyInventory';
 import { parseRxNotes } from '../../lib/rxSigParse';
 import { listPatients } from '../../lib/patientRegistryStore';
 
@@ -95,6 +95,18 @@ export const PharmacyDispensingSuite: React.FC = () => {
   const [expandedRx, setExpandedRx] = useState<string | null>(null);
 
   const facilityId = (typeof window !== 'undefined' && getActiveFacilityId()) || 'IGH-EKT';
+  const [invDrugs, setInvDrugs] = useState<FormularyDrug[]>([]);
+  const [invStats, setInvStats] = useState({ items: 0, lowStock: 0, expiringBatches: 0, controlled: 0, totalUnits: 0 });
+
+  useEffect(() => {
+    seedDefaultFormulary(facilityId);
+    const pullInv = () => {
+      setInvDrugs(listFormulary(facilityId));
+      setInvStats(formularyStats(facilityId));
+    };
+    pullInv();
+    return subscribeFormulary(pullInv);
+  }, [facilityId]);
 
   useEffect(() => {
     seedDefaultFormulary(facilityId);
@@ -245,7 +257,7 @@ export const PharmacyDispensingSuite: React.FC = () => {
       ).slice(0, 5)
     : [];
   const pendingCount = filteredPrescriptions.filter((p) => p.status === 'pending').length;
-  const lowStockCount = formulary.filter(f => f.stockOnHand <= f.minimumThreshold).length;
+  const lowStockCount = invStats.lowStock;
 
   // --- Live Patient Scan ----------------------------------------------------
   const handleScan = async () => {
@@ -714,7 +726,57 @@ export const PharmacyDispensingSuite: React.FC = () => {
       {/* -- FORMULARY TAB -- */}
       {/* -- FORMULARY / AKS EML TAB -- */}
       {activeTab === 'formulary' && (
-        <AksEmlFormularyPanel />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10 }}>
+            {[
+              { l: 'Formulary items', v: invStats.items },
+              { l: 'Units on hand', v: invStats.totalUnits },
+              { l: 'Low stock', v: invStats.lowStock },
+              { l: 'Expiring ≤90d', v: invStats.expiringBatches },
+            ].map((x) => (
+              <div key={x.l} style={{ background: 'rgba(15,23,42,0.04)', borderRadius: 12, padding: '12px 14px', border: '1px solid rgba(148,163,184,0.25)' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8' }}>{x.l}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{x.v}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 13, color: '#94A3B8' }}>
+            Live facility stock (realtime). Open <strong>Formulary & stock</strong> in the sidebar for full inventory, receive stock, and AKS EML reference.
+          </div>
+          <div style={{ maxHeight: 360, overflow: 'auto', borderRadius: 12, border: '1px solid rgba(148,163,184,0.2)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: 'rgba(15,23,42,0.5)' }}>
+                  <th style={{ textAlign: 'left', padding: 10 }}>Medicine</th>
+                  <th style={{ textAlign: 'left', padding: 10 }}>Stock</th>
+                  <th style={{ textAlign: 'left', padding: 10 }}>Reorder</th>
+                  <th style={{ textAlign: 'left', padding: 10 }}>₦</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invDrugs.map((d) => {
+                  const q = stockQty(facilityId, d.id);
+                  const low = q <= d.reorderLevel;
+                  return (
+                    <tr key={d.id} style={{ borderTop: '1px solid rgba(148,163,184,0.15)' }}>
+                      <td style={{ padding: 10 }}>
+                        <div style={{ fontWeight: 700 }}>{d.name}</div>
+                        <div style={{ fontSize: 11, color: '#94A3B8' }}>{d.genericName}</div>
+                      </td>
+                      <td style={{ padding: 10, fontWeight: 800, color: low ? '#FBBF24' : '#34D399' }}>{q}</td>
+                      <td style={{ padding: 10 }}>{d.reorderLevel}</td>
+                      <td style={{ padding: 10 }}>{d.unitPriceNgn.toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+                {invDrugs.length === 0 && (
+                  <tr><td colSpan={4} style={{ padding: 20, color: '#94A3B8' }}>No formulary items yet</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <AksEmlFormularyPanel />
+        </div>
       )}
 
     </div>

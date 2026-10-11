@@ -40,7 +40,16 @@ function write(key: string, list: unknown[]) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(key, JSON.stringify(list.slice(0, 5000)));
   window.dispatchEvent(new CustomEvent(EVT));
-  publishFacilityData('IGH-EKT', key, list);
+  try {
+    const fid =
+      (list[0] as { facilityId?: string } | undefined)?.facilityId ||
+      (typeof window !== 'undefined' &&
+        (window as unknown as { __medcoreFacilityId?: string }).__medcoreFacilityId) ||
+      'IGH-EKT';
+    publishFacilityData(String(fid), key, list);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function listFormulary(facilityId: string): FormularyDrug[] {
@@ -127,11 +136,69 @@ export function seedDefaultFormulary(facilityId: string) {
   }
 }
 
+export function deleteDrug(drugId: string) {
+  write(
+    DRUG_KEY,
+    read<FormularyDrug>(DRUG_KEY).filter((d) => d.id !== drugId)
+  );
+  write(
+    STOCK_KEY,
+    read<StockBatch>(STOCK_KEY).filter((b) => b.drugId !== drugId)
+  );
+}
+
+export function receiveStock(input: {
+  facilityId: string;
+  drugId: string;
+  batchNo: string;
+  expiry: string;
+  qty: number;
+  supplier?: string;
+}): StockBatch {
+  return addBatch({
+    drugId: input.drugId,
+    facilityId: input.facilityId,
+    batchNo: input.batchNo,
+    expiry: input.expiry,
+    qty: Math.max(0, input.qty),
+    supplier: input.supplier,
+  });
+}
+
+export function formularyStats(facilityId: string) {
+  const drugs = listFormulary(facilityId);
+  let low = 0;
+  let expiring = 0;
+  let controlled = 0;
+  let totalUnits = 0;
+  const soon = Date.now() + 90 * 864e5;
+  for (const d of drugs) {
+    const q = stockQty(facilityId, d.id);
+    totalUnits += q;
+    if (q <= d.reorderLevel) low += 1;
+    if (d.controlled) controlled += 1;
+    for (const b of listBatches(facilityId, d.id)) {
+      if (b.qty > 0 && new Date(b.expiry).getTime() < soon) expiring += 1;
+    }
+  }
+  return {
+    items: drugs.length,
+    lowStock: low,
+    expiringBatches: expiring,
+    controlled,
+    totalUnits,
+  };
+}
+
 export function subscribeFormulary(cb: () => void) {
   if (typeof window === 'undefined') return () => {};
   const fn = () => cb();
   window.addEventListener(EVT, fn);
-  return () => window.removeEventListener(EVT, fn);
+  window.addEventListener('medcore-admin-sync', fn);
+  return () => {
+    window.removeEventListener(EVT, fn);
+    window.removeEventListener('medcore-admin-sync', fn);
+  };
 }
 
 export const FORMULARY_KEYS = [DRUG_KEY, STOCK_KEY];

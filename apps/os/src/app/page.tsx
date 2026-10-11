@@ -61,6 +61,7 @@ import { roleCanAccessModule } from '../lib/rolePermissionsStore';
 import { inferRoleKey, isReceptionRole, defaultPermissionsForRole } from '../lib/staffCardStore';
 import { EmergencyTriageSuite } from '../components/clinical-core/EmergencyTriageSuite';
 import { PharmacyDispensingSuite } from '../components/clinical-core/PharmacyDispensingSuite';
+import { PharmacyFormularyWorkspace } from '../components/pharmacy/PharmacyFormularyWorkspace';
 import { LaboratorySuite } from '../components/clinical-core/LaboratorySuite';
 import { RadiologyPacsSuite } from '../components/clinical-core/RadiologyPacsSuite';
 import { OperatingTheatreSuite } from '../components/clinical-core/OperatingTheatreSuite';
@@ -375,8 +376,8 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: 'Pharmacy desk',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Dispensary desk', badge: 'Live' },
-            { key: 'pharmacy', icon: Pill, label: 'Dispense & stock', badge: 'Rx' },
-            { key: 'formulary', icon: Pill, label: 'AKS EML formulary', badge: 'EML' },
+            { key: 'pharmacy', icon: Pill, label: 'Dispense queue', badge: 'Rx' },
+            { key: 'formulary', icon: Pill, label: 'Formulary & stock', badge: 'EML' },
             { key: 'notifications', icon: Bell, label: 'Notifications' },
           ],
         },
@@ -794,7 +795,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   procurement: ProcurementHrSuite,
   'ambient-soap': (props: any) => <AdvancedHospitalSuites {...props} mode="ambient-soap" />,
   'lis': (props: any) => <AdvancedHospitalSuites {...props} mode="lis" />,
-  'formulary': (props: any) => <AdvancedHospitalSuites {...props} mode="formulary" />,
+  'formulary': PharmacyFormularyWorkspace,
   'mfa-sso': (props: any) => <AdvancedHospitalSuites {...props} mode="mfa-sso" />,
   'knowledge-graph': (props: any) => <AdvancedHospitalSuites {...props} mode="knowledge-graph" />,
   'predictive-staffing': (props: any) => <AdvancedHospitalSuites {...props} mode="predictive-staffing" />,
