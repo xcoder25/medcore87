@@ -74,9 +74,11 @@ export const CashierRevenue: React.FC = () => {
         ? 'paid'
         : r.status === 'waived'
           ? 'waived'
-          : r.status === 'hmo'
-            ? 'insurance'
-            : 'pending';
+          : r.status === 'partial'
+            ? 'outstanding'
+            : r.status === 'cancelled'
+              ? 'pending'
+              : 'pending'; // awaiting_payment
     return {
       id: r.invoiceNumber || r.id,
       patientId: r.hospitalNumber || r.patientId,
