@@ -75,7 +75,8 @@ import {
   type PatientBillLine,
 } from '../../lib/patientBillingStore';
 import { AksEmlFormularyPanel } from '../pharmacy/AksEmlFormularyPanel';
-import { depleteStock, seedDefaultFormulary, stockQty, listFormulary, subscribeFormulary, formularyStats, type FormularyDrug } from '../../lib/formularyInventory';
+import { depleteStockDetailed, seedDefaultFormulary, stockQty, listFormulary, subscribeFormulary, formularyStats, listControlledDispenses, type FormularyDrug } from '../../lib/formularyInventory';
+import { appendAudit } from '../../lib/auditLogStore';
 import { parseRxNotes } from '../../lib/rxSigParse';
 import { listPatients } from '../../lib/patientRegistryStore';
 
@@ -177,22 +178,41 @@ export const PharmacyDispensingSuite: React.FC = () => {
     }
     const rx = prescriptions.find((p) => p.id === id);
     const drugName = rx?.medication || '';
-    const stockOk = drugName ? depleteStock(facilityId, drugName, 1) : false;
+    const dep = drugName
+      ? depleteStockDetailed(facilityId, drugName, 1, {
+          actor: 'Pharmacist',
+          patientRef: rx?.patientId || rx?.patientName,
+          rxId: id,
+        })
+      : { ok: false, depleted: [], remaining: 0, lowStock: false, controlled: false, reason: 'No drug name' };
     setPrescriptions(prev => prev.map(p => p.id === id ? { ...p, status: 'dispensed' } : p));
     const d = dispenseOrder(id, 'Pharmacist');
     if (!d) {
       updateOrderStatus(id, 'resulted', {
-        resultSummary: stockOk
-          ? `Dispensed at pharmacy · stock decremented`
-          : `Dispensed at pharmacy · stock not matched (check formulary)`,
+        resultSummary: dep.ok
+          ? `Dispensed · FEFO ${dep.depleted.map((x) => x.batchNo).join('+')} · remaining ${dep.remaining}`
+          : `Dispensed · stock issue: ${dep.reason || 'no match'}`,
         resultedBy: 'Pharmacist',
       });
     }
-    emitLiveAction(`Dispensed ${id}${stockOk ? ' · stock −1' : ' · no stock match'}`, { module: 'pharmacy' });
+    if (dep.ok) {
+      appendAudit({
+        facilityId,
+        actor: 'Pharmacist',
+        action: dep.controlled ? 'controlled_dispense' : 'pharmacy_dispense',
+        entity: 'rx',
+        entityId: id,
+        detail: `${drugName} · ${dep.depleted.map((x) => `${x.batchNo}×${x.qty}`).join('; ')}${dep.lowStock ? ' · LOW STOCK' : ''}`,
+      });
+    }
+    emitLiveAction(
+      `Dispensed ${id}${dep.ok ? ` · stock −1 (FEFO)` : ` · ${dep.reason || 'no stock'}`}${dep.controlled ? ' · CONTROLLED' : ''}${dep.lowStock ? ' · LOW' : ''}`,
+      { module: 'pharmacy' }
+    );
     liveAlert(
-      stockOk
-        ? 'Dispensed — stock updated — visible on clinical desk'
-        : 'Dispensed — formulary stock not found for this drug name',
+      dep.ok
+        ? `Dispensed${dep.controlled ? ' (controlled logged)' : ''} · remaining ${dep.remaining}${dep.lowStock ? ' · REORDER' : ''}`
+        : `Dispense recorded · stock: ${dep.reason || 'not matched'}`,
       'pharmacy',
       facilityId
     );

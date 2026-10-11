@@ -30,6 +30,7 @@ const KEY_EVENTS: Record<string, string[]> = {
   medcore_os_patient_bills_v1: ['medcore-patient-bills', 'medcore-admin-sync'],
   medcore_os_formulary_v1: ['medcore-formulary', 'medcore-admin-sync'],
   medcore_os_drug_stock_v1: ['medcore-formulary', 'medcore-admin-sync'],
+  medcore_os_pharmacy_stock_log_v1: ['medcore-pharmacy-log', 'medcore-formulary', 'medcore-admin-sync'],
   [FACILITY_KEYS.audit]: ['medcore-admin-sync'],
   [FACILITY_KEYS.facilityCatalog]: ['medcore-facility-catalog', 'medcore-admin-sync'],
 };

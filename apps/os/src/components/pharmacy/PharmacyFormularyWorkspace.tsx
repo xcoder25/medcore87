@@ -33,6 +33,8 @@ import {
   receiveStock,
   formularyStats,
   subscribeFormulary,
+  listControlledDispenses,
+  listPharmacyLog,
   type FormularyDrug,
   type StockBatch,
 } from '../../lib/formularyInventory';
@@ -68,7 +70,7 @@ const T = {
   mono: "ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
 };
 
-type Tab = 'inventory' | 'eml';
+type Tab = 'inventory' | 'eml' | 'log';
 
 export const PharmacyFormularyWorkspace: React.FC = () => {
   const facilityId =
@@ -339,6 +341,7 @@ export const PharmacyFormularyWorkspace: React.FC = () => {
         {(
           [
             { id: 'inventory' as Tab, label: 'Facility inventory', icon: Layers },
+            { id: 'log' as Tab, label: 'Controlled log', icon: Shield },
             { id: 'eml' as Tab, label: 'AKS EML reference', icon: Shield },
           ] as const
         ).map((t) => {
@@ -371,6 +374,62 @@ export const PharmacyFormularyWorkspace: React.FC = () => {
       </div>
 
       <div style={{ padding: '14px 16px 0', maxWidth: 1400, margin: '0 auto' }}>
+        {tab === 'log' && (
+          <div
+            style={{
+              background: T.surface,
+              borderRadius: 12,
+              border: `1px solid ${T.line}`,
+              boxShadow: T.shadow,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                padding: '12px 14px',
+                borderBottom: `1px solid ${T.line}`,
+                background: T.surfaceAlt,
+                fontSize: 12,
+                fontWeight: 700,
+                color: T.inkSoft,
+              }}
+            >
+              Controlled-substance dispenses & stock movements (facility audit)
+            </div>
+            <div style={{ maxHeight: 520, overflow: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: T.surfaceAlt, position: 'sticky', top: 0 }}>
+                    {['When', 'Type', 'Medicine', 'Batch', 'Qty', 'Actor', 'Detail'].map((h) => (
+                      <th key={h} style={{ textAlign: 'left', padding: '8px 10px', fontSize: 10, fontWeight: 700, color: T.muted, textTransform: 'uppercase' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {listPharmacyLog(facilityId, { limit: 80 }).map((row) => (
+                    <tr key={row.id} style={{ borderBottom: `1px solid ${T.line}`, background: row.controlled ? T.purpleSoft : undefined }}>
+                      <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{new Date(row.at).toLocaleString()}</td>
+                      <td style={{ padding: '8px 10px', fontWeight: 700 }}>{row.type}</td>
+                      <td style={{ padding: '8px 10px' }}>{row.drugName}{row.controlled ? ' · CTRL' : ''}</td>
+                      <td style={{ padding: '8px 10px', fontFamily: T.mono }}>{row.batchNo || '—'}</td>
+                      <td style={{ padding: '8px 10px', fontWeight: 700 }}>{row.qty}</td>
+                      <td style={{ padding: '8px 10px' }}>{row.actor}</td>
+                      <td style={{ padding: '8px 10px', color: T.muted, maxWidth: 280 }}>{row.detail}</td>
+                    </tr>
+                  ))}
+                  {listPharmacyLog(facilityId, { limit: 1 }).length === 0 && (
+                    <tr>
+                      <td colSpan={7} style={{ padding: 28, textAlign: 'center', color: T.muted }}>
+                        No pharmacy stock events yet — receive or dispense to populate this log
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {tab === 'eml' && (
           <div
             style={{

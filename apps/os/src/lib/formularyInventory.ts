@@ -81,21 +81,161 @@ export function stockQty(facilityId: string, drugId: string): number {
   return listBatches(facilityId, drugId).reduce((s, b) => s + b.qty, 0);
 }
 
-export function depleteStock(facilityId: string, drugName: string, qty = 1): boolean {
-  const drugs = listFormulary(facilityId).filter((d) =>
-    d.name.toLowerCase().includes(drugName.toLowerCase()) || drugName.toLowerCase().includes(d.name.toLowerCase())
+export interface DepleteResult {
+  ok: boolean;
+  drug?: FormularyDrug;
+  depleted: { batchId: string; batchNo: string; expiry: string; qty: number }[];
+  remaining: number;
+  lowStock: boolean;
+  controlled: boolean;
+  reason?: string;
+}
+
+export interface PharmacyStockEvent {
+  id: string;
+  at: string;
+  facilityId: string;
+  type: 'receive' | 'dispense' | 'adjust' | 'alert';
+  drugId: string;
+  drugName: string;
+  batchNo?: string;
+  qty: number;
+  actor: string;
+  patientRef?: string;
+  rxId?: string;
+  controlled: boolean;
+  detail?: string;
+}
+
+const LOG_KEY = 'medcore_os_pharmacy_stock_log_v1';
+
+function readLog(): PharmacyStockEvent[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    return JSON.parse(localStorage.getItem(LOG_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+function writeLog(list: PharmacyStockEvent[]) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(LOG_KEY, JSON.stringify(list.slice(0, 3000)));
+  window.dispatchEvent(new CustomEvent(EVT));
+  window.dispatchEvent(new CustomEvent('medcore-pharmacy-log', { detail: list }));
+  try {
+    const fid = list[0]?.facilityId || 'IGH-EKT';
+    publishFacilityData(String(fid), LOG_KEY, list);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function appendPharmacyLog(
+  input: Omit<PharmacyStockEvent, 'id' | 'at'>
+): PharmacyStockEvent {
+  const row: PharmacyStockEvent = {
+    ...input,
+    id: `PHL-${Date.now().toString(36).toUpperCase()}`,
+    at: new Date().toISOString(),
+  };
+  writeLog([row, ...readLog()]);
+  return row;
+}
+
+export function listPharmacyLog(facilityId: string, opts?: { controlledOnly?: boolean; limit?: number }) {
+  let rows = readLog().filter((r) => r.facilityId === facilityId);
+  if (opts?.controlledOnly) rows = rows.filter((r) => r.controlled);
+  return rows.slice(0, opts?.limit ?? 100);
+}
+
+export function listControlledDispenses(facilityId: string, limit = 50) {
+  return listPharmacyLog(facilityId, { controlledOnly: true, limit }).filter((r) => r.type === 'dispense');
+}
+
+/** FEFO deplete across batches; logs dispense; flags low stock */
+export function depleteStockDetailed(
+  facilityId: string,
+  drugName: string,
+  qty = 1,
+  meta?: { actor?: string; patientRef?: string; rxId?: string }
+): DepleteResult {
+  const need = Math.max(1, Math.floor(qty));
+  const drugs = listFormulary(facilityId).filter(
+    (d) =>
+      d.name.toLowerCase().includes(drugName.toLowerCase()) ||
+      drugName.toLowerCase().includes(d.name.toLowerCase()) ||
+      d.genericName.toLowerCase().includes(drugName.toLowerCase())
   );
-  if (!drugs[0]) return false;
-  const batches = listBatches(facilityId, drugs[0].id)
+  if (!drugs[0]) return { ok: false, depleted: [], remaining: 0, lowStock: false, controlled: false, reason: 'Drug not on formulary' };
+
+  const drug = drugs[0];
+  const ordered = listBatches(facilityId, drug.id)
     .filter((b) => b.qty > 0)
-    .sort((a, b) => a.expiry.localeCompare(b.expiry));
-  if (!batches[0]) return false;
+    .sort((a, b) => a.expiry.localeCompare(b.expiry)); // FEFO
+
+  const available = ordered.reduce((s, b) => s + b.qty, 0);
+  if (available < need) {
+    return {
+      ok: false,
+      drug,
+      depleted: [],
+      remaining: available,
+      lowStock: available <= drug.reorderLevel,
+      controlled: drug.controlled,
+      reason: `Insufficient stock (need ${need}, have ${available})`,
+    };
+  }
+
+  let left = need;
+  const depleted: DepleteResult['depleted'] = [];
   const all = read<StockBatch>(STOCK_KEY);
-  const i = all.findIndex((x) => x.id === batches[0].id);
-  if (i < 0) return false;
-  all[i] = { ...all[i], qty: Math.max(0, all[i].qty - qty) };
+  for (const bat of ordered) {
+    if (left <= 0) break;
+    const idx = all.findIndex((x) => x.id === bat.id);
+    if (idx < 0) continue;
+    const take = Math.min(all[idx].qty, left);
+    all[idx] = { ...all[idx], qty: all[idx].qty - take };
+    depleted.push({ batchId: bat.id, batchNo: bat.batchNo, expiry: bat.expiry, qty: take });
+    left -= take;
+  }
   write(STOCK_KEY, all);
-  return true;
+
+  const remaining = stockQty(facilityId, drug.id);
+  const lowStock = remaining <= drug.reorderLevel;
+  const actor = meta?.actor || 'Pharmacist';
+
+  appendPharmacyLog({
+    facilityId,
+    type: 'dispense',
+    drugId: drug.id,
+    drugName: drug.name,
+    batchNo: depleted.map((d) => d.batchNo).join('+'),
+    qty: need,
+    actor,
+    patientRef: meta?.patientRef,
+    rxId: meta?.rxId,
+    controlled: drug.controlled,
+    detail: `FEFO ${depleted.map((d) => `${d.batchNo}×${d.qty} exp ${d.expiry}`).join('; ')}${lowStock ? ' · LOW STOCK' : ''}`,
+  });
+
+  if (lowStock) {
+    appendPharmacyLog({
+      facilityId,
+      type: 'alert',
+      drugId: drug.id,
+      drugName: drug.name,
+      qty: remaining,
+      actor: 'system',
+      controlled: drug.controlled,
+      detail: `Reorder alert: on-hand ${remaining} ≤ reorder level ${drug.reorderLevel}`,
+    });
+  }
+
+  return { ok: true, drug, depleted, remaining, lowStock, controlled: drug.controlled };
+}
+
+export function depleteStock(facilityId: string, drugName: string, qty = 1): boolean {
+  return depleteStockDetailed(facilityId, drugName, qty).ok;
 }
 
 export function seedDefaultFormulary(facilityId: string) {
@@ -159,8 +299,9 @@ export function receiveStock(input: {
   expiry: string;
   qty: number;
   supplier?: string;
+  actor?: string;
 }): StockBatch {
-  return addBatch({
+  const row = addBatch({
     drugId: input.drugId,
     facilityId: input.facilityId,
     batchNo: input.batchNo,
@@ -168,6 +309,19 @@ export function receiveStock(input: {
     qty: Math.max(0, input.qty),
     supplier: input.supplier,
   });
+  const drug = listFormulary(input.facilityId).find((d) => d.id === input.drugId);
+  appendPharmacyLog({
+    facilityId: input.facilityId,
+    type: 'receive',
+    drugId: input.drugId,
+    drugName: drug?.name || input.drugId,
+    batchNo: input.batchNo,
+    qty: Math.max(0, input.qty),
+    actor: input.actor || 'Pharmacy',
+    controlled: !!drug?.controlled,
+    detail: `Received batch ${input.batchNo} exp ${input.expiry}${input.supplier ? ` · ${input.supplier}` : ''}`,
+  });
+  return row;
 }
 
 export function formularyStats(facilityId: string) {
@@ -206,4 +360,4 @@ export function subscribeFormulary(cb: () => void) {
   };
 }
 
-export const FORMULARY_KEYS = [DRUG_KEY, STOCK_KEY];
+export const FORMULARY_KEYS = [DRUG_KEY, STOCK_KEY, LOG_KEY];
