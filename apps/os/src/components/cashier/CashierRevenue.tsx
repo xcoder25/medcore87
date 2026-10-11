@@ -83,7 +83,7 @@ export const CashierRevenue: React.FC = () => {
       id: r.invoiceNumber || r.id,
       patientId: r.hospitalNumber || r.patientId,
       patientName: r.patientName,
-      date: (r.paidAt || r.createdAt || '').slice(0, 10),
+      date: (r.paidAt || r.sentAt || '').slice(0, 10),
       services: [r.purpose || 'Hospital charge'],
       totalNaira: Number(r.amountNgn) || 0,
       status: st,
