@@ -119,7 +119,7 @@ const SEED_BEDSIDE_MONITORS: ConnectedMonitorFeed[] = [
     spo2Percent: 98,
     nibpSysDia: '124/82',
     respiratoryRate: 16,
-    connectionState: 'connected',
+    connectionState: 'online',
   },
   {
     deviceId: 'MON-ICU-02',
@@ -129,7 +129,7 @@ const SEED_BEDSIDE_MONITORS: ConnectedMonitorFeed[] = [
     spo2Percent: 95,
     nibpSysDia: '138/88',
     respiratoryRate: 19,
-    connectionState: 'connected',
+    connectionState: 'online',
   },
   {
     deviceId: 'MON-EMG-04',
@@ -139,7 +139,7 @@ const SEED_BEDSIDE_MONITORS: ConnectedMonitorFeed[] = [
     spo2Percent: 91,
     nibpSysDia: '94/62',
     respiratoryRate: 24,
-    connectionState: 'connected',
+    connectionState: 'online',
   },
   {
     deviceId: 'MON-TH-02',
@@ -149,7 +149,7 @@ const SEED_BEDSIDE_MONITORS: ConnectedMonitorFeed[] = [
     spo2Percent: 99,
     nibpSysDia: '116/74',
     respiratoryRate: 14,
-    connectionState: 'connected',
+    connectionState: 'online',
   },
 ];
 
