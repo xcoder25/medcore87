@@ -48,25 +48,23 @@ export function getStaffCard(badgeId: string): StaffCardRecord | undefined {
   return readCards().find((c) => c.badgeId === badgeId);
 }
 
-/** Printed badge format matching Arise MedCore card: AMC-YYYY-#### */
-function nextPrintedBadgeId(facilityId: string): string {
-  const year = new Date().getFullYear();
-  const fid = (facilityId || 'AMC').trim().toUpperCase().replace(/\s+/g, '');
-  // Prefer AMC-style short brand code from facility id when possible
-  const brand =
-    fid.includes('ARISE') || fid === 'AMC' || fid.startsWith('AMC')
-      ? 'AMC'
-      : fid.split(/[-_]/)[0].slice(0, 4) || 'AMC';
-  const seq = (Date.now() % 9000) + 1000; // 1000–9999
-  return `${brand}-${year}-${seq}`;
-}
-
 /** Enrol staff: create registry row + issue ID card in one step */
 export function enrolStaffAndIssueCard(
   input: StaffEnrolmentInput,
   badgeId?: string
 ): { card: StaffCardRecord; badgeId: string } {
-  const id = (badgeId || nextPrintedBadgeId(input.facilityId)).trim().toUpperCase();
+  // Facility-owned prefix (e.g. IGH-EKT-DOC-A1B2) so every hospital keeps its own ID space
+  const facilityPrefix = (input.facilityId || 'FAC').trim().toUpperCase().replace(/\s+/g, '');
+  const ROLE_BADGE_SEG: Record<string, string> = {
+    doctor: 'DOC', surgeon: 'SUR', nurse: 'NUR', midwife: 'MID', pharmacist: 'PHA',
+    lab: 'LAB', radiologist: 'RAD', reception: 'REC', records: 'REO', accountant: 'ACC',
+    hospital_admin: 'ADM', sysadmin: 'SYS', biomedical: 'BIO', medical_director: 'DIR',
+  };
+  const roleSeg = (ROLE_BADGE_SEG[input.roleKey] || (input.roleKey || 'STF').slice(0, 3)).toUpperCase();
+  const id = (
+    badgeId ||
+    `${facilityPrefix}-${roleSeg}-${Date.now().toString(36).slice(-4).toUpperCase()}`
+  ).trim().toUpperCase();
 
   const card = issueStaffCardFromEnrolment(input, id);
   const cards = readCards().filter((c) => c.badgeId !== id);
