@@ -1,68 +1,91 @@
-
 'use client';
 
 /**
- * Premium vertical staff ID card — portrait photo, holographic accent, dual sides.
+ * Arise MedCore staff ID card — exact dual-side design:
+ * Front: logo + circular gold-ring photo + identity + access bar
+ * Back: QR + security notice + emergency contacts + wave footer
  */
 import React, { useMemo, useState } from 'react';
 import type { StaffCardRecord, StaffCardTemplate } from '@medcore/types';
 
-const TEMPLATE_STYLE: Record<
+const ACCESS_BAR: Record<
   StaffCardTemplate,
-  { stripe: string; accent: string; header: string; label: string }
+  { label: string; gradient: string }
 > = {
   TPL_CLINICAL: {
-    stripe: 'linear-gradient(180deg, #0052D4 0%, #00BFA5 100%)',
-    accent: '#0052D4',
-    header: 'linear-gradient(135deg, #0052D4 0%, #00A3BF 55%, #00BFA5 100%)',
-    label: 'Clinical',
+    label: 'FULL ACCESS – CLINICAL',
+    gradient: 'linear-gradient(90deg, #0EA5E9 0%, #14B8A6 55%, #10B981 100%)',
   },
   TPL_CONSULTANT: {
-    stripe: 'linear-gradient(180deg, #0A2540 0%, #0052D4 100%)',
-    accent: '#0A2540',
-    header: 'linear-gradient(135deg, #0A2540 0%, #1E3A5F 50%, #0052D4 100%)',
-    label: 'Consultant',
+    label: 'FULL ACCESS – CLINICAL',
+    gradient: 'linear-gradient(90deg, #0369A1 0%, #0D9488 55%, #059669 100%)',
   },
   TPL_EXEC: {
-    stripe: 'linear-gradient(180deg, #EA580C 0%, #F59E0B 100%)',
-    accent: '#EA580C',
-    header: 'linear-gradient(135deg, #C2410C 0%, #EA580C 50%, #F59E0B 100%)',
-    label: 'Executive',
+    label: 'FULL ACCESS – EXECUTIVE',
+    gradient: 'linear-gradient(90deg, #EA580C 0%, #F59E0B 100%)',
   },
   TPL_SUPPORT: {
-    stripe: 'linear-gradient(180deg, #0284C7 0%, #00BFA5 100%)',
-    accent: '#0284C7',
-    header: 'linear-gradient(135deg, #0369A1 0%, #0284C7 50%, #00BFA5 100%)',
-    label: 'Support',
+    label: 'ACCESS – SUPPORT',
+    gradient: 'linear-gradient(90deg, #0284C7 0%, #00BFA5 100%)',
   },
   TPL_ICT: {
-    stripe: 'linear-gradient(180deg, #0F172A 0%, #00BFA5 100%)',
-    accent: '#0F172A',
-    header: 'linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0D9488 100%)',
-    label: 'ICT',
+    label: 'ACCESS – ICT',
+    gradient: 'linear-gradient(90deg, #0F172A 0%, #0D9488 100%)',
   },
   TPL_VISITOR: {
-    stripe: 'linear-gradient(180deg, #DC2626 0%, #F97316 100%)',
-    accent: '#DC2626',
-    header: 'linear-gradient(135deg, #B91C1C 0%, #DC2626 50%, #F97316 100%)',
-    label: 'Temporary',
+    label: 'TEMPORARY ACCESS',
+    gradient: 'linear-gradient(90deg, #DC2626 0%, #F97316 100%)',
   },
 };
 
-function QrMatrix({ payload, size = 88 }: { payload: string; size?: number }) {
+/** Stylized Arise MedCore mark (M + people) matching the printed card */
+function AriseLogo({ size = 36 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" aria-hidden>
+      <defs>
+        <linearGradient id="amcM" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#0EA5E9" />
+          <stop offset="0.55" stopColor="#0284C7" />
+          <stop offset="1" stopColor="#0369A1" />
+        </linearGradient>
+        <linearGradient id="amcPeople" x1="24" y1="4" x2="48" y2="28" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#FBBF24" />
+          <stop offset="1" stopColor="#F97316" />
+        </linearGradient>
+      </defs>
+      {/* M stroke */}
+      <path
+        d="M6 38V12l9 16 9-16v26"
+        stroke="url(#amcM)"
+        strokeWidth="5.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      {/* People cluster */}
+      <circle cx="36" cy="12" r="4.2" fill="url(#amcPeople)" />
+      <path d="M30 24c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5v2.5H30V24z" fill="url(#amcPeople)" />
+      <circle cx="42" cy="14" r="3.2" fill="#FB923C" opacity="0.95" />
+      <path d="M39 23c0-2.4 1.8-4 3.8-4 2 0 3.7 1.6 3.7 4v1.8H39V23z" fill="#FB923C" opacity="0.95" />
+    </svg>
+  );
+}
+
+function QrMatrix({ payload, size = 120 }: { payload: string; size?: number }) {
   const cells = useMemo(() => {
-    const n = 17;
+    const n = 21;
     const grid: boolean[][] = [];
     let h = 0;
     for (let i = 0; i < payload.length; i++) h = (h * 31 + payload.charCodeAt(i)) >>> 0;
     for (let r = 0; r < n; r++) {
       const row: boolean[] = [];
       for (let c = 0; c < n; c++) {
-        const border = r < 2 || c < 2 || r > n - 3 || c > n - 3;
+        const border = r < 1 || c < 1 || r > n - 2 || c > n - 2;
         const finder =
-          (r < 5 && c < 5) || (r < 5 && c > n - 6) || (r > n - 6 && c < 5);
-        const bit = ((h >> ((r * c + r + c) % 16)) & 1) === 1;
-        row.push(border || finder || bit);
+          (r < 6 && c < 6) || (r < 6 && c > n - 7) || (r > n - 7 && c < 6);
+        const timing = r === 6 || c === 6;
+        const bit = ((h >> ((r * c + r + c + r * 3) % 16)) & 1) === 1;
+        row.push(border || finder || timing || bit);
       }
       grid.push(row);
     }
@@ -75,22 +98,31 @@ function QrMatrix({ payload, size = 88 }: { payload: string; size?: number }) {
         width: size,
         height: size,
         background: '#fff',
-        padding: 4,
-        borderRadius: 8,
+        padding: 8,
+        borderRadius: 12,
         boxSizing: 'border-box',
-        boxShadow: '0 1px 4px rgba(15,23,42,0.12)',
+        border: '1.5px solid #E2E8F0',
+        boxShadow: '0 2px 8px rgba(15,23,42,0.06)',
       }}
       title={payload}
     >
-      <svg width={size - 8} height={size - 8} viewBox={`0 0 ${cells.length} ${cells.length}`}>
+      <svg width={size - 16} height={size - 16} viewBox={`0 0 ${cells.length} ${cells.length}`}>
         {cells.map((row, r) =>
           row.map((on, c) =>
-            on ? <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill="#0A2540" /> : null
+            on ? <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill="#0F172A" /> : null
           )
         )}
       </svg>
     </div>
   );
+}
+
+function formatDisplayDate(iso: string | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 interface Props {
@@ -99,36 +131,49 @@ interface Props {
   bloodGroup?: string;
   emergencyContact?: string;
   credentials?: string;
+  facilityPhone?: string;
+  facilityEmail?: string;
+  facilityWeb?: string;
 }
 
 export const StaffIdCardView: React.FC<Props> = ({
   card,
   compact,
-  bloodGroup = '—',
-  emergencyContact = 'Hospital Security / HR',
+  emergencyContact,
   credentials,
+  facilityPhone = '+234 809 555 0180',
+  facilityEmail = 'info@arisemedcore.ng',
+  facilityWeb = 'www.arisemedcore.ng',
 }) => {
   const [side, setSide] = useState<'front' | 'back'>('front');
-  const tpl = TEMPLATE_STYLE[card.templateKey] || TEMPLATE_STYLE.TPL_CLINICAL;
-  const w = compact ? 252 : 300;
-  const h = compact ? 400 : 480;
-  const suffix =
-    credentials || (card.title?.match(/\b(MD|RN|PharmD|BSc|MBBS|FWACS)\b/i)?.[0] ?? '');
-  const issued = card.issuedAt?.slice(0, 10) || '—';
-  const expires = card.expiresAt?.slice(0, 10) || '—';
+  const access = ACCESS_BAR[card.templateKey] || ACCESS_BAR.TPL_CLINICAL;
+  const w = compact ? 260 : 320;
+  const h = compact ? 420 : 510;
+  const issued = formatDisplayDate(card.issuedAt);
+  const expires = formatDisplayDate(card.expiresAt);
+  const facility =
+    (card.facilityName || 'ARISE MEDCORE HOSPITAL').replace(/,\s*.*$/, '').toUpperCase() ||
+    'ARISE MEDCORE HOSPITAL';
+  const titleLine = card.title || card.role || 'Staff';
+  const deptLine = card.department || 'Clinical Services';
+  const displayName = card.fullName.startsWith('Dr') || card.fullName.startsWith('Prof')
+    ? card.fullName
+    : credentials
+      ? `${card.fullName}`
+      : card.fullName;
 
   const shell: React.CSSProperties = {
     width: w,
     height: h,
     maxWidth: '100%',
-    borderRadius: 20,
+    borderRadius: 18,
     overflow: 'hidden',
     background: '#FFFFFF',
     color: '#0A2540',
     boxShadow:
-      '0 1px 0 rgba(255,255,255,0.5) inset, 0 20px 50px rgba(15, 23, 42, 0.22), 0 8px 16px rgba(0, 82, 212, 0.08)',
-    border: '1px solid rgba(226, 232, 240, 0.95)',
-    fontFamily: 'var(--os-font, Inter, system-ui, sans-serif)',
+      '0 1px 0 rgba(255,255,255,0.6) inset, 0 18px 40px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(14, 165, 233, 0.08)',
+    border: '1px solid #E8EEF5',
+    fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
     position: 'relative',
     display: 'flex',
     flexDirection: 'column',
@@ -137,403 +182,387 @@ export const StaffIdCardView: React.FC<Props> = ({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
       <div style={shell}>
-        {/* Holographic edge */}
+        {/* Soft medical cross watermark */}
         <div
+          aria-hidden
           style={{
             position: 'absolute',
             inset: 0,
             pointerEvents: 'none',
-            borderRadius: 20,
-            boxShadow: `inset 0 0 0 1px ${tpl.accent}22`,
-            zIndex: 4,
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 5,
-            background: tpl.stripe,
-            zIndex: 5,
+            opacity: 0.04,
+            backgroundImage:
+              'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'80\' height=\'80\' viewBox=\'0 0 80 80\'%3E%3Cpath fill=\'%230284C7\' d=\'M36 12h8v24h24v8H44v24h-8V44H12v-8h24z\'/%3E%3C/svg%3E")',
+            backgroundSize: '72px 72px',
+            zIndex: 0,
           }}
         />
 
         {side === 'front' ? (
           <>
-            {/* Brand header */}
+            {/* Brand row */}
             <div
               style={{
-                padding: '16px 16px 18px 18px',
-                background: tpl.header,
-                color: '#fff',
                 position: 'relative',
-                overflow: 'hidden',
+                zIndex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: compact ? '16px 16px 8px' : '20px 20px 10px',
+              }}
+            >
+              <AriseLogo size={compact ? 32 : 40} />
+              <div style={{ lineHeight: 1.15 }}>
+                <div
+                  style={{
+                    fontSize: compact ? 13 : 15,
+                    fontWeight: 800,
+                    letterSpacing: '0.02em',
+                    color: '#0B3A7A',
+                  }}
+                >
+                  {facility.includes('ARISE') ? (
+                    <>
+                      ARISE <span style={{ color: '#0369A1' }}>MEDCORE</span>
+                    </>
+                  ) : (
+                    facility.split(' ').slice(0, 2).join(' ')
+                  )}
+                </div>
+                <div
+                  style={{
+                    fontSize: compact ? 12 : 13,
+                    fontWeight: 700,
+                    background: 'linear-gradient(90deg, #0D9488, #10B981)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  HOSPITAL
+                </div>
+              </div>
+            </div>
+
+            {/* Circular portrait with gold ring */}
+            <div
+              style={{
+                position: 'relative',
+                zIndex: 1,
+                display: 'flex',
+                justifyContent: 'center',
+                padding: compact ? '6px 0 4px' : '8px 0 6px',
               }}
             >
               <div
                 style={{
-                  position: 'absolute',
-                  right: -20,
-                  top: -30,
-                  width: 120,
-                  height: 120,
+                  width: compact ? 118 : 148,
+                  height: compact ? 118 : 148,
                   borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.12)',
+                  padding: 4,
+                  background:
+                    'linear-gradient(145deg, #FDE68A 0%, #F59E0B 40%, #D97706 100%)',
+                  boxShadow:
+                    '0 0 0 3px rgba(251,191,36,0.25), 0 12px 28px rgba(217,119,6,0.28)',
                 }}
-              />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
+              >
                 <div
                   style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 10,
-                    background: 'rgba(255,255,255,0.95)',
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: '50%',
+                    overflow: 'hidden',
+                    background: 'linear-gradient(145deg, #E0F2FE, #ECFDF5)',
+                    border: '3px solid #fff',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                   }}
                 >
-                  <img
-                    src="/medcore-logo.png"
-                    alt=""
-                    width={28}
-                    height={28}
-                    style={{ objectFit: 'contain' }}
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
+                  {card.photoUrl ? (
+                    <img
+                      src={card.photoUrl}
+                      alt={card.fullName}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <span
+                      style={{
+                        fontSize: compact ? 36 : 44,
+                        fontWeight: 800,
+                        color: '#0369A1',
+                        letterSpacing: '-0.02em',
+                      }}
+                    >
+                      {card.initials}
+                    </span>
+                  )}
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 800,
-                      letterSpacing: '0.12em',
-                      textTransform: 'uppercase',
-                      opacity: 0.9,
-                    }}
-                  >
-                    MedCore · Staff ID
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 800,
-                      lineHeight: 1.25,
-                      marginTop: 2,
-                      textShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                    }}
-                  >
-                    {card.facilityName}
-                  </div>
-                </div>
-                <span
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 800,
-                    padding: '5px 9px',
-                    borderRadius: 999,
-                    background: 'rgba(255,255,255,0.22)',
-                    backdropFilter: 'blur(4px)',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {tpl.label}
-                </span>
               </div>
             </div>
 
-            {/* Photo + identity */}
+            {/* Identity block */}
             <div
               style={{
+                position: 'relative',
+                zIndex: 1,
                 flex: 1,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                padding: '18px 16px 12px',
-                background: 'linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 40%)',
+                textAlign: 'center',
+                padding: '6px 18px 0',
               }}
             >
               <div
                 style={{
-                  width: compact ? 112 : 132,
-                  height: compact ? 112 : 132,
-                  borderRadius: 20,
-                  overflow: 'hidden',
-                  border: `3px solid ${tpl.accent}`,
-                  boxShadow: `0 8px 24px ${tpl.accent}33, 0 0 0 4px ${tpl.accent}14`,
-                  background: 'linear-gradient(145deg, #E0F2FE, #ECFDF5)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative',
+                  fontSize: compact ? 17 : 20,
+                  fontWeight: 800,
+                  color: '#0B3A7A',
+                  letterSpacing: '-0.01em',
+                  lineHeight: 1.2,
                 }}
               >
-                {card.photoUrl ? (
-                  <img
-                    src={card.photoUrl}
-                    alt={card.fullName}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                ) : (
-                  <span
-                    style={{
-                      fontSize: compact ? 36 : 42,
-                      fontWeight: 800,
-                      color: tpl.accent,
-                      fontFamily: 'var(--os-font-heading, Outfit, sans-serif)',
-                      letterSpacing: '-0.02em',
-                    }}
-                  >
-                    {card.initials}
-                  </span>
-                )}
-                {/* Status chip on photo */}
-                <span
-                  style={{
-                    position: 'absolute',
-                    bottom: 6,
-                    right: 6,
-                    width: 12,
-                    height: 12,
-                    borderRadius: '50%',
-                    background: card.status === 'ACTIVE' ? '#16A34A' : '#EF4444',
-                    border: '2px solid #fff',
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
-                  }}
-                />
+                {displayName}
               </div>
-
               <div
                 style={{
-                  marginTop: 14,
-                  textAlign: 'center',
-                  width: '100%',
+                  marginTop: 6,
+                  fontSize: compact ? 13 : 14,
+                  fontWeight: 700,
+                  color: '#0D9488',
                 }}
               >
-                <div
-                  style={{
-                    fontFamily: 'var(--os-font-heading, Outfit, sans-serif)',
-                    fontSize: compact ? 16 : 18,
-                    fontWeight: 800,
-                    letterSpacing: '-0.02em',
-                    color: '#0A2540',
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {card.fullName}
-                  {suffix ? (
-                    <span style={{ color: tpl.accent, fontWeight: 700 }}>
-                      {', '}
-                      {suffix}
-                    </span>
-                  ) : null}
-                </div>
-                <div
-                  style={{
-                    marginTop: 4,
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: tpl.accent,
-                  }}
-                >
-                  {card.title || card.role}
-                </div>
-                <div style={{ marginTop: 2, fontSize: 11, color: '#64748B', fontWeight: 600 }}>
-                  {card.department}
-                </div>
+                {titleLine}
               </div>
-
-              {/* Badge chip */}
               <div
                 style={{
-                  marginTop: 14,
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: 12,
-                  background: 'linear-gradient(135deg, #F1F5F9 0%, #EFF6FF 100%)',
-                  border: '1px solid #E2E8F0',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 800,
-                      letterSpacing: '0.08em',
-                      color: '#94A3B8',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Badge ID
-                  </div>
-                  <div
-                    style={{
-                      fontFamily: 'var(--os-font-mono, monospace)',
-                      fontSize: 13,
-                      fontWeight: 800,
-                      color: '#0052D4',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    {card.badgeId}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 800,
-                      letterSpacing: '0.08em',
-                      color: '#94A3B8',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Clearance
-                  </div>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#0A2540' }}>
-                    {card.clearanceLabel}
-                  </div>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  marginTop: 10,
-                  width: '100%',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  fontSize: 10,
-                  color: '#64748B',
+                  marginTop: 2,
+                  fontSize: compact ? 12 : 13,
                   fontWeight: 600,
+                  color: '#059669',
                 }}
               >
-                <span>Issued {issued}</span>
-                <span>Valid until {expires}</span>
+                {deptLine}
+              </div>
+
+              <div
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: '#F59E0B',
+                  margin: '12px 0 10px',
+                  boxShadow: '0 0 0 3px rgba(245,158,11,0.2)',
+                }}
+              />
+
+              <div
+                style={{
+                  fontSize: compact ? 12 : 13,
+                  fontWeight: 800,
+                  color: '#EA580C',
+                  letterSpacing: '0.04em',
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                }}
+              >
+                ID: {card.badgeId}
               </div>
             </div>
 
-            {/* Footer strip */}
+            {/* Access bar */}
             <div
               style={{
-                padding: '8px 14px',
-                background: tpl.header,
-                color: 'rgba(255,255,255,0.95)',
-                fontSize: 9,
-                fontWeight: 700,
-                letterSpacing: '0.06em',
+                position: 'relative',
+                zIndex: 1,
+                margin: '14px 0 0',
+                padding: compact ? '10px 12px' : '12px 16px',
+                background: access.gradient,
+                color: '#fff',
+                fontSize: compact ? 11 : 12,
+                fontWeight: 800,
+                letterSpacing: '0.1em',
                 textAlign: 'center',
                 textTransform: 'uppercase',
+                textShadow: '0 1px 2px rgba(0,0,0,0.15)',
               }}
             >
-              Property of {card.facilityName.split(',')[0]} · Return if found
+              {card.clearanceLabel
+                ? card.clearanceLabel.toUpperCase().includes('ACCESS')
+                  ? card.clearanceLabel.toUpperCase()
+                  : access.label
+                : access.label}
+            </div>
+
+            {/* Validity footer */}
+            <div
+              style={{
+                position: 'relative',
+                zIndex: 1,
+                padding: '10px 16px 14px',
+                fontSize: 10,
+                fontWeight: 600,
+                color: '#64748B',
+                textAlign: 'center',
+                background: '#fff',
+              }}
+            >
+              Issued: {issued}
+              <span style={{ margin: '0 8px', color: '#CBD5E1' }}>|</span>
+              Valid until: {expires}
             </div>
           </>
         ) : (
           <>
+            {/* Back — facility name */}
             <div
               style={{
-                padding: '14px 16px',
-                background: tpl.header,
-                color: '#fff',
-                fontWeight: 800,
-                fontSize: 12,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
+                position: 'relative',
+                zIndex: 1,
+                padding: compact ? '22px 16px 8px' : '28px 20px 12px',
+                textAlign: 'center',
               }}
             >
-              Security &amp; access
+              <div
+                style={{
+                  fontSize: compact ? 13 : 15,
+                  fontWeight: 800,
+                  letterSpacing: '0.06em',
+                  color: '#0B3A7A',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {facility}
+              </div>
             </div>
+
+            {/* QR */}
             <div
               style={{
+                position: 'relative',
+                zIndex: 1,
+                display: 'flex',
+                justifyContent: 'center',
+                padding: '8px 0 16px',
+              }}
+            >
+              <QrMatrix payload={card.qrPayload || card.badgeId} size={compact ? 108 : 132} />
+            </div>
+
+            {/* Security notice */}
+            <div
+              style={{
+                position: 'relative',
+                zIndex: 1,
+                padding: '0 22px',
+                textAlign: 'center',
                 flex: 1,
-                padding: 16,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: '0.08em',
+                  color: '#0B3A7A',
+                  marginBottom: 8,
+                }}
+              >
+                SECURITY NOTICE:
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  lineHeight: 1.55,
+                  color: '#475569',
+                  fontWeight: 500,
+                }}
+              >
+                This card is the property of {facility.includes('ARISE') ? 'Arise MedCore Hospital' : card.facilityName}.
+                If found, please return to the nearest security desk or call the number below.
+                Unauthorized use is prohibited.
+              </div>
+
+              {/* People icon */}
+              <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center' }}>
+                <svg width="44" height="28" viewBox="0 0 44 28" fill="none" aria-hidden>
+                  <circle cx="14" cy="8" r="5" fill="#FB923C" />
+                  <path d="M5 24c0-5 4-8 9-8s9 3 9 8v2H5v-2z" fill="#FB923C" />
+                  <circle cx="28" cy="7" r="4.5" fill="#F59E0B" />
+                  <path d="M21 24c0-4.5 3.2-7 7-7s7 2.5 7 7v2H21v-2z" fill="#F59E0B" />
+                  <circle cx="36" cy="9" r="3.8" fill="#FBBF24" />
+                  <path d="M31 24c0-3.5 2.5-5.5 5.5-5.5S42 20.5 42 24v2h-11v-2z" fill="#FBBF24" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Contact row */}
+            <div
+              style={{
+                position: 'relative',
+                zIndex: 1,
+                padding: '10px 18px 8px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 12,
-                background: '#F8FAFC',
+                gap: 6,
+                fontSize: 11,
+                color: '#334155',
+                fontWeight: 600,
               }}
             >
-              <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                <QrMatrix payload={card.qrPayload || card.badgeId} size={compact ? 80 : 96} />
-                <div style={{ flex: 1, fontSize: 11, lineHeight: 1.45, color: '#475569' }}>
-                  <div style={{ fontWeight: 800, color: '#0A2540', marginBottom: 4 }}>Scan for access</div>
-                  Door control, time &amp; attendance, and system login via badge + PIN.
-                  <div
-                    style={{
-                      marginTop: 8,
-                      fontFamily: 'var(--os-font-mono, monospace)',
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: '#0052D4',
-                    }}
-                  >
-                    {card.badgeId}
-                  </div>
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#0EA5E9', fontSize: 13 }}>☎</span>
+                <span>Emergency Contact: {emergencyContact || facilityPhone}</span>
               </div>
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  background: '#fff',
-                  border: '1px solid #E2E8F0',
-                  fontSize: 11,
-                  lineHeight: 1.5,
-                }}
-              >
-                <div>
-                  <strong>Blood group:</strong> {bloodGroup}
-                </div>
-                <div style={{ marginTop: 4 }}>
-                  <strong>Emergency:</strong> {emergencyContact}
-                </div>
-                <div style={{ marginTop: 4 }}>
-                  <strong>Department:</strong> {card.department}
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#0EA5E9', fontSize: 13 }}>✉</span>
+                <span>{facilityEmail}</span>
               </div>
-              <div style={{ fontSize: 10, color: '#64748B', lineHeight: 1.45 }}>
-                If found, return to hospital administration or security. Unauthorized use is prohibited.
-              </div>
-              <div
-                style={{
-                  marginTop: 'auto',
-                  borderTop: '1px dashed #CBD5E1',
-                  paddingTop: 10,
-                  fontSize: 10,
-                  color: '#94A3B8',
-                }}
-              >
-                Authorized signature / hologram zone
-                <div
-                  style={{
-                    marginTop: 8,
-                    height: 28,
-                    borderBottom: '1px solid #94A3B8',
-                    width: '70%',
-                  }}
-                />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#0EA5E9', fontSize: 13 }}>🌐</span>
+                <span>{facilityWeb}</span>
               </div>
             </div>
+
+            {/* Wave footer */}
+            <div
+              style={{
+                position: 'relative',
+                zIndex: 1,
+                marginTop: 'auto',
+                height: 28,
+                background:
+                  'linear-gradient(90deg, #0369A1 0%, #0EA5E9 35%, #14B8A6 70%, #F59E0B 100%)',
+                clipPath:
+                  'polygon(0 40%, 8% 30%, 18% 45%, 30% 25%, 42% 50%, 55% 20%, 68% 42%, 80% 28%, 90% 40%, 100% 22%, 100% 100%, 0 100%)',
+              }}
+            />
+            <div
+              style={{
+                height: 10,
+                background: 'linear-gradient(90deg, #0284C7, #0EA5E9 40%, #F97316)',
+              }}
+            />
           </>
         )}
       </div>
 
+      {/* Flip control */}
       <button
         type="button"
-        className="os-ghost-btn"
-        style={{ fontSize: 12 }}
         onClick={() => setSide((s) => (s === 'front' ? 'back' : 'front'))}
+        style={{
+          border: '1px solid #E2E8F0',
+          background: '#fff',
+          borderRadius: 999,
+          padding: '8px 16px',
+          fontSize: 12,
+          fontWeight: 700,
+          color: '#0B3A7A',
+          cursor: 'pointer',
+          boxShadow: '0 2px 8px rgba(15,23,42,0.06)',
+        }}
       >
-        Flip to {side === 'front' ? 'back' : 'front'}
+        {side === 'front' ? 'Show back · QR & security' : 'Show front · Photo ID'}
       </button>
     </div>
   );
