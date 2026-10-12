@@ -37,7 +37,6 @@ const KEY_EVENTS: Record<string, string[]> = {
   [FACILITY_KEYS.onboarding]: ['medcore-onboarding-sync', 'medcore-admin-sync'],
   [FACILITY_KEYS.onboardingDraft]: ['medcore-onboarding-sync', 'medcore-admin-sync'],
   [FACILITY_KEYS.him]: ['medcore-him-updated', 'medcore-admin-sync'],
-  medcore_os_him_v1: ['medcore-him-updated', 'medcore-admin-sync'],
 };
 
 function emitForKey(key: string, value: unknown) {
