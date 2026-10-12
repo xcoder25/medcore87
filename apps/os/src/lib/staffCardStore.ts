@@ -7,6 +7,7 @@ import {
   STAFF_CARD_STORAGE_KEY,
   STAFF_REGISTRY_STORAGE_KEY,
   issueStaffCardFromEnrolment,
+  buildStaffQrPayload,
 } from '@medcore/types';
 import {
   firestorePushStaffDirectory,
