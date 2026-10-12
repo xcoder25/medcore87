@@ -64,6 +64,7 @@ import { roleCanAccessModule } from '../lib/rolePermissionsStore';
 import { inferRoleKey, isReceptionRole, defaultPermissionsForRole } from '../lib/staffCardStore';
 import { EmergencyTriageSuite } from '../components/clinical-core/EmergencyTriageSuite';
 import { PharmacyDispensingSuite } from '../components/clinical-core/PharmacyDispensingSuite';
+import { HimSuite } from '../components/him/HimSuite';
 import { PharmacyFormularyWorkspace } from '../components/pharmacy/PharmacyFormularyWorkspace';
 import { LaboratorySuite } from '../components/clinical-core/LaboratorySuite';
 import { RadiologyPacsSuite } from '../components/clinical-core/RadiologyPacsSuite';
@@ -101,7 +102,7 @@ import {
   CreditCard, FileText, Stethoscope, Calendar, HeartPulse, Database, Brain, Sparkles, Flame,
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck,
-  Search, X, LayoutDashboard, MapPin, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
+  Search, X, LayoutDashboard, MapPin, Ticket, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
   Command, CornerDownLeft, IdCard,
 } from 'lucide-react';
 
@@ -112,7 +113,7 @@ export type ModuleKey =
   // Pillar 1: AI
   | 'm87-ai' | 'ai'
   // Pillar 2: Core
-  | 'emr' | 'emergency' | 'theatre' | 'icu' | 'pharmacy' | 'laboratory' | 'radiology'
+  | 'emr' | 'emergency' | 'theatre' | 'icu' | 'pharmacy' | 'laboratory' | 'radiology' | 'him' | 'him-deficiency' | 'him-coding' | 'him-roi' | 'him-chart' | 'him-merge' | 'him-docs'
   | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'patient-card' | 'patient-360' | 'clinical-ux' | 'device-gateway'
   // Pillar 3: Operations
   | 'command' | 'beds' | 'patient-flow' | 'universal-queue' | 'appointments' | 'staffing' | 'ambulance' | 'notifications'
@@ -478,25 +479,29 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'reception':
       return [
         {
-          label: '',
+          label: 'Front desk command',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-            { key: 'patient-flow', icon: Activity, label: 'Check-in & queue' },
-            { key: 'patient-card', icon: FileText, label: 'Register / Find patient' },
-            { key: 'appointments', icon: Calendar, label: 'Appointments' },
-            { key: 'patient-360', icon: Users, label: 'Patient folder' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Command dashboard', badge: 'Live' },
+            { key: 'patient-flow', icon: Activity, label: 'Check-in & multi-queue', badge: 'Queue' },
+            { key: 'patient-card', icon: FileText, label: 'Register / MPI find', badge: 'MPI' },
+            { key: 'appointments', icon: Calendar, label: 'Appointments & clinics' },
+            { key: 'universal-queue', icon: Ticket, label: 'Hospital-wide queue board', badge: 'UUTH' },
           ],
         },
         {
-          label: 'After payment',
+          label: 'Patient & pay',
           items: [
-            { key: 'patient-flow', icon: Activity, label: 'Continue with receipt' },
+            { key: 'patient-360', icon: Users, label: 'Patient folder (desk scope)' },
+            { key: 'cashier', icon: CreditCard, label: 'Send / track payment', badge: 'POS' },
+            { key: 'patient-flow', icon: Activity, label: 'Continue after PAID' },
           ],
         },
         {
-          label: 'Reports',
+          label: 'Intelligence',
           items: [
-            { key: 'analytics', icon: BarChart3, label: 'Reports & Analytics' },
+            { key: 'm87-ai', icon: Brain, label: 'Front-desk AI copilot', badge: 'AI' },
+            { key: 'notifications', icon: Bell, label: 'Desk alerts' },
+            { key: 'analytics', icon: BarChart3, label: 'Throughput reports' },
           ],
         },
         {
@@ -510,13 +515,33 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'records':
       return [
         {
-          label: 'Health Records & Triage Desk',
+          label: 'HIM command',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Records desk', badge: 'Live' },
-            { key: 'patient-card', icon: FileText, label: 'Digital Health Card (FHIR)', badge: 'FHIR' },
-            { key: 'patient-flow', icon: RefreshCw, label: 'Patient Transit & Admissions' },
-            { key: 'beds', icon: BedDouble, label: 'Bed Management Board' },
-            { key: 'claims', icon: ShieldCheck, label: 'NHIA Insurance Eligibility' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Records command', badge: 'Live' },
+            { key: 'him', icon: FileText, label: 'HIM workqueues', badge: 'Epic' },
+            { key: 'patient-card', icon: FileText, label: 'MPI / Digital health card', badge: 'FHIR' },
+            { key: 'emr', icon: FileText, label: 'Chart retrieval (view only)' },
+            { key: 'notifications', icon: Bell, label: 'Notifications' },
+          ],
+        },
+        {
+          label: 'HIM workqueues',
+          items: [
+            { key: 'him-deficiency', icon: AlertTriangle, label: 'Deficiency queue' },
+            { key: 'him-coding', icon: FileText, label: 'Coding & abstracting' },
+            { key: 'him-roi', icon: ShieldCheck, label: 'Release of information' },
+            { key: 'him-chart', icon: CheckCircle2, label: 'Chart complete / bill-hold' },
+            { key: 'him-merge', icon: Users, label: 'MPI merge' },
+            { key: 'him-docs', icon: FileText, label: 'Document index' },
+          ],
+        },
+        {
+          label: 'Flow & census',
+          items: [
+            { key: 'patient-flow', icon: RefreshCw, label: 'Patient transit & admissions' },
+            { key: 'beds', icon: BedDouble, label: 'Bed management board' },
+            { key: 'claims', icon: ShieldCheck, label: 'NHIA eligibility' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia HIM', badge: 'AI' },
           ],
         },
       ];
@@ -765,6 +790,13 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   'm87-ai': M87AICopilotSuite,
   ai: AICommandInsights,
   emr: EMRManager,
+  him: HimSuite,
+  'him-deficiency': (props: any) => <HimSuite {...props} initialTab="deficiency" />,
+  'him-coding': (props: any) => <HimSuite {...props} initialTab="coding" />,
+  'him-roi': (props: any) => <HimSuite {...props} initialTab="roi" />,
+  'him-chart': (props: any) => <HimSuite {...props} initialTab="chart" />,
+  'him-merge': (props: any) => <HimSuite {...props} initialTab="merge" />,
+  'him-docs': (props: any) => <HimSuite {...props} initialTab="docs" />,
   emergency: EmergencyTriageSuite,
   theatre: OperatingTheatreSuite,
   icu: CriticalCareIcuSuite,
@@ -826,6 +858,13 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   dashboard: { level: 2, label: 'L2 All Roles', roleDesc: 'Your main work desk' },
   'doctor-portal': { level: 3, label: 'L3 Clinical', roleDesc: 'Licensed Medical Doctors & Clinical Officers' },
   emr: { level: 2, label: 'L2 Clinical & Records', roleDesc: 'Physicians, Clinical Officers & Records' },
+  him: { level: 2, label: 'L2 HIM', roleDesc: 'Health Records Officers' },
+  'him-deficiency': { level: 2, label: 'L2 HIM', roleDesc: 'Health Records Officers' },
+  'him-coding': { level: 2, label: 'L2 HIM', roleDesc: 'Health Records Officers' },
+  'him-roi': { level: 2, label: 'L2 HIM', roleDesc: 'Health Records Officers' },
+  'him-chart': { level: 2, label: 'L2 HIM', roleDesc: 'Health Records Officers' },
+  'him-merge': { level: 2, label: 'L2 HIM', roleDesc: 'Health Records Officers' },
+  'him-docs': { level: 2, label: 'L2 HIM', roleDesc: 'Health Records Officers' },
   'm87-ai': { level: 3, label: 'L3 Clinical', roleDesc: 'Clinical Officers & Nursing Supervisors' },
   ai: { level: 3, label: 'L3 Clinical', roleDesc: 'Clinical Decision Support & Physicians' },
   emergency: { level: 3, label: 'L3 Clinical', roleDesc: 'A&E Triage Officers & Medical Doctors' },

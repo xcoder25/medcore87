@@ -3,6 +3,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { HospitalPatient, INITIAL_PATIENTS, INITIAL_CLINICAL_NOTES, ClinicalNoteItem } from '../../data/hospitalData';
 import { searchEml, EmlMedication } from '../../data/emlFormulary';
+import type { UserSession } from '../auth/AuthScreen';
+import { roleCanPrescribe } from '../../lib/rolePermissionsStore';
+import { inferRoleKey } from '../../lib/staffCardStore';
 import {
   FileText, User, HeartPulse, Pill, FlaskConical, Layers,
   AlertTriangle, Stethoscope, Calendar, ShieldCheck, Printer,
@@ -15,6 +18,7 @@ import {
 interface EMRManagerProps {
   initialPatientId?: string;
   onNavigate?: (module: string, param?: any) => void;
+  session?: UserSession;
 }
 
 // ── Evidence-Based Clinical Order Bundles ──────────────────────────────────────────
@@ -123,7 +127,14 @@ const MOCK_PACS_STUDIES: Record<string, PacsRecord[]> = {
   ],
 };
 
-export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavigate }) => {
+export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavigate, session }) => {
+  const roleKey = inferRoleKey(
+    session?.roleKey || session?.role || session?.title || '',
+    session?.badgeId
+  );
+  const canPrescribe = roleCanPrescribe(roleKey);
+  const isRecords = roleKey === 'records';
+
   const [patients] = useState<HospitalPatient[]>(INITIAL_PATIENTS);
   const [selectedPatientId, setSelectedPatientId] = useState<string>(initialPatientId || INITIAL_PATIENTS[0]?.id || '');
   const [activeTab, setActiveTab] = useState<'notes' | 'vitals' | 'labs' | 'meds' | 'imaging' | 'timeline' | 'interop'>('notes');
@@ -346,6 +357,10 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
 
   // 1-Click Clinical Bundle Execution (Dispatches to real-time event bus & lab routes)
   const handleExecuteBundle = async (bundle: OrderBundle) => {
+    if (!canPrescribe) {
+      showToast('Clinical order bundles require a prescribing clinician');
+      return;
+    }
     try {
       // Dispatches to local real-time lab order API if online
       await fetch('http://localhost:4000/api/v1/lab/orders', {
@@ -481,6 +496,10 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
 
   // ── Interoperability REST Handlers ──────────────────────────────────────────
   const handleDispatchLabOrder = async (testName: string, loincCode: string, targetLab: string) => {
+    if (isRecords || (!canPrescribe && roleKey !== 'lab' && roleKey !== 'nurse')) {
+      showToast('Ordering investigations is limited to clinical roles');
+      return;
+    }
     setInteropLoading(true);
     try {
       const response = await fetch('http://localhost:4000/api/v1/fhir/DiagnosticReport', {
@@ -565,6 +584,10 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
   };
 
   const handleDispatchERx = async (medName: string, rxNormCode: string, pharmacy: string) => {
+    if (!canPrescribe) {
+      showToast('Prescription ordering is limited to doctors / surgeons / medical director');
+      return;
+    }
     setInteropLoading(true);
     try {
       const response = await fetch('http://localhost:4000/api/v1/fhir/MedicationRequest', {
@@ -1502,6 +1525,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                   </div>
                 </div>
 
+                {canPrescribe ? (
                 <button
                   type="button"
                   onClick={() => showToast('💊 e-Prescription order routed to MedCore Central Pharmacy')}
@@ -1513,6 +1537,11 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                 >
                   <Plus size={14} /> Prescribe EML Drug
                 </button>
+                ) : (
+                  <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: 600 }}>
+                    {isRecords ? 'View-only medications (records desk)' : 'Prescribing restricted to clinicians'}
+                  </span>
+                )}
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

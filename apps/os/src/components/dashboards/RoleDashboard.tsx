@@ -7,6 +7,7 @@ import { AdminWorkspace } from './AdminWorkspace';
 import { ReceptionWorkspace } from './ReceptionWorkspace';
 import { DoctorDeskHome } from './DoctorDeskHome';
 import { LabDeskHome } from './LabDeskHome';
+import { RecordsDeskHome } from './RecordsDeskHome';
 import { RoleDeskHome, type RoleDeskConfig } from './RoleDeskHome';
 import { emitLiveAction } from '../../lib/liveActions';
 import {
@@ -65,6 +66,11 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
   // Laboratory desk — dedicated real-time EMR lab operations workspace
   if (roleKey === 'lab') {
     return <LabDeskHome session={session} onNavigate={(k) => onNavigate(k)} />;
+  }
+
+  // Health records / HIM — intelligent MPI & folder desk (not clinical prescribe)
+  if (roleKey === 'records') {
+    return <RecordsDeskHome session={session} onNavigate={(k) => onNavigate(k)} />;
   }
 
   const deskForRole = (key: string): RoleDeskConfig | null => {
@@ -143,15 +149,16 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
         };
       case 'records':
         return {
-          title: 'Records desk',
-          subtitle: 'Patient registry, cards, and documentation.',
-          badge: 'Health records',
-          boardTitle: 'Today’s visits',
-          boardEmpty: 'No visits yet today.',
+          title: 'Health records command',
+          subtitle: 'MPI quality, folder integrity, transit & census — intelligent HIM desk.',
+          badge: 'HIM · Records',
+          boardTitle: 'Today’s registrations',
+          boardEmpty: 'No new folders yet today.',
           quick: [
-            { label: 'Patients', desc: 'Registry', icon: Users, go: 'patients' },
-            { label: 'EMR', desc: 'Records', icon: FileText, go: 'emr' },
-            { label: 'Cards', desc: 'Patient ID', icon: CreditCard, go: 'patient-card' },
+            { label: 'MPI / Card', desc: 'FHIR enrolment', icon: CreditCard, go: 'patient-card' },
+            { label: 'Chart retrieval', desc: 'View only', icon: FileText, go: 'emr' },
+            { label: 'Transit', desc: 'Admissions', icon: RefreshCw, go: 'patient-flow' },
+            { label: 'Celestia', desc: 'HIM AI', icon: Brain, go: 'm87-ai' },
           ],
         };
       case 'accountant':
@@ -404,7 +411,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
       )}
 
       {roleKey === 'records' && (
-        <RecordsDashboardBody onNavigate={onNavigate} triggerAction={triggerAction} activeTab={activeTab} />
+        <RecordsDeskHome session={session} onNavigate={onNavigate} />
       )}
       {roleKey === 'reception' && (
         <ReceptionDashboardBody onNavigate={onNavigate} triggerAction={triggerAction} activeTab={activeTab} />
@@ -733,16 +740,17 @@ function RecordsDashboardBody({ onNavigate, triggerAction }: any) {
   return (
     <RoleHome
       title="Health records workspace"
-      subtitle="Records officers share MPI / folder and chart retrieval tools."
+      subtitle="MPI, folders, and chart retrieval only — no e-prescribe or pharmacy dispense."
       metrics={[
         { label: 'Role', value: 'Records', sub: 'MPI & folders', tone: 'green' },
-        { label: 'Charts', value: 'Live', sub: 'EMR / cards' },
+        { label: 'Charts', value: 'View only', sub: 'No e-prescribe' },
         { label: 'Shift', value: 'Active', sub: 'Shared desk' },
       ]}
       actions={[
         { label: 'Patient card / MPI', nav: 'patient-card', msg: 'Patient card', primary: true },
-        { label: 'Open EMR', nav: 'emr', msg: 'Clinical records' },
+        { label: 'Chart retrieval', nav: 'emr', msg: 'View EMR (no prescribe)' },
         { label: 'Patient flow', nav: 'patient-flow', msg: 'Flow' },
+        { label: 'Beds', nav: 'beds', msg: 'Bed board' },
       ]}
       triggerAction={triggerAction}
     />

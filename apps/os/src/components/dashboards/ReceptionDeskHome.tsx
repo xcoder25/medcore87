@@ -17,9 +17,14 @@ import type { FacilityPatient } from '../../lib/patientRegistryStore';
 import type { ReceptionVisit, ReceptionAppointment, ReceptionDayStats } from '../../lib/receptionOpsStore';
 import { listAccountsRequests } from '../../lib/frontDeskAccountsBridge';
 import {
+  orchestrateDeskOverview,
+  computeClinicLoadBoard,
+  intelligentRouteHint,
+} from '../../lib/receptionAiOrchestrator';
+import {
   Search, UserPlus, CreditCard, Calendar, QrCode, Users, Clock,
   Activity, CheckCircle2, AlertTriangle, RefreshCw, ChevronRight,
-  MoreHorizontal, TrendingUp, TrendingDown, ScanLine,
+  MoreHorizontal, TrendingUp, TrendingDown, ScanLine, Sparkles, Brain, Building2,
 } from 'lucide-react';
 
 export type DeskNav =
@@ -479,6 +484,112 @@ export const ReceptionDeskHome: React.FC<Props> = ({
           </div>
         </div>
       )}
+
+      {/* AI Intelligence Command — teaching-hospital scale */}
+      {(() => {
+        const deskAi = orchestrateDeskOverview(visits, patients, stats);
+        const clinicBoard = computeClinicLoadBoard(visits);
+        const route = intelligentRouteHint(visits);
+        const pressureColor = (p: string) =>
+          p === 'critical' ? '#DC2626' : p === 'heavy' ? '#D97706' : p === 'moderate' ? '#2563EB' : '#059669';
+        return (
+          <div
+            style={{
+              borderRadius: 18,
+              border: '1px solid #C7D2FE',
+              background: 'linear-gradient(135deg, #EEF2FF 0%, #F8FAFC 55%, #ECFDF5 100%)',
+              padding: '16px 18px',
+              boxShadow: '0 8px 28px rgba(79, 70, 229, 0.08)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg,#4F46E5,#7C3AED)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Brain size={20} color="#fff" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: '#1E1B4B', letterSpacing: '-0.02em' }}>
+                    Front-desk intelligence
+                  </div>
+                  <div style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>
+                    UUTH-scale multi-clinic · AI recommends · human confirms
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 11, fontWeight: 800, background: '#EEF2FF', color: '#4338CA', padding: '5px 10px', borderRadius: 999 }}>
+                  <Sparkles size={11} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                  {deskAi.ready} ready to advance
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 800, background: deskAi.incompleteRegistration ? '#FEF3C7' : '#ECFDF5', color: deskAi.incompleteRegistration ? '#B45309' : '#047857', padding: '5px 10px', borderRadius: 999 }}>
+                  {deskAi.incompleteRegistration} incomplete reg
+                </span>
+              </div>
+            </div>
+            <p style={{ margin: '0 0 14px', fontSize: 13, color: '#334155', lineHeight: 1.45, fontWeight: 500 }}>
+              {deskAi.narrative}
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: clinicBoard.length ? 14 : 0 }}>
+              <button
+                type="button"
+                onClick={() => onGo('queue')}
+                style={{
+                  border: 'none', borderRadius: 10, padding: '9px 14px', fontWeight: 700, fontSize: 12,
+                  background: 'linear-gradient(135deg,#4F46E5,#6366F1)', color: '#fff', cursor: 'pointer',
+                }}
+              >
+                Open live queue
+              </button>
+              <button
+                type="button"
+                onClick={() => onGo('walkin')}
+                style={{
+                  border: '1px solid #C7D2FE', borderRadius: 10, padding: '9px 14px', fontWeight: 700, fontSize: 12,
+                  background: '#fff', color: '#4338CA', cursor: 'pointer',
+                }}
+              >
+                Smart walk-in
+              </button>
+              <div style={{ fontSize: 12, color: '#64748B', alignSelf: 'center', fontWeight: 600 }}>
+                <Building2 size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                Route hint: {route.department} — {route.reason}
+              </div>
+            </div>
+            {clinicBoard.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                  Multi-clinic pressure board
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+                  {clinicBoard.slice(0, 8).map((row) => (
+                    <div
+                      key={row.department}
+                      style={{
+                        background: '#fff',
+                        borderRadius: 12,
+                        border: `1px solid ${row.pressure === 'critical' ? '#FECACA' : '#E2E8F0'}`,
+                        padding: '10px 12px',
+                        borderLeft: `3px solid ${pressureColor(row.pressure)}`,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                        <span style={{ fontWeight: 800, fontSize: 12, color: '#0F172A' }}>{row.department}</span>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: pressureColor(row.pressure), textTransform: 'uppercase' }}>
+                          {row.pressure}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>
+                        {row.waiting} waiting · {row.withProvider} in consult · avg {row.avgWaitMin}m
+                      </div>
+                      <div style={{ fontSize: 11, color: '#475569', marginTop: 4, fontWeight: 600 }}>{row.suggestion}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* KPI row — single horizontal line */}
       <div
