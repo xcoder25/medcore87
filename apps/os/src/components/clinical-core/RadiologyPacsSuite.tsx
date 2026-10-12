@@ -519,11 +519,23 @@ export const RadiologyPacsSuite: React.FC = () => {
         modality: modalityFromName(studyName),
         studyName,
         clinicalContext: [selectedStudy.reason, selectedStudy.patientName ? `Patient: ${selectedStudy.patientName}` : ''].filter(Boolean).join(' · ') || undefined,
-      })
-      setAiDraft(result as ImagingAiAssist);
-      if (result?.impression || result?.findings) {
-        setFindingsText([result.findings, result.impression].filter(Boolean).join('\n\n'));
+      });
+      if (!result.ok || !result.text) {
+        toast(result.text || 'AI draft unavailable');
+        return;
       }
+      const saved = saveAssistDraft({
+        facilityId,
+        orderId: selectedStudy.id,
+        patientId: selectedStudy.patientId || '',
+        patientName: selectedStudy.patientName || '',
+        studyName,
+        modality: selectedStudy.modality || 'OTHER',
+        result,
+        actorName: 'Radiologist',
+      });
+      setAiDraft(saved);
+      setFindingsText(result.text);
       toast('AI draft ready — review before sign');
     } catch {
       toast('AI draft failed');
