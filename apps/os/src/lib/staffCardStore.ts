@@ -700,7 +700,7 @@ export function defaultPermissionsForRole(roleKey: string): string[] {
     lab: [
       'dashboard', 'laboratory', 'lab', 'notifications', 'blood-bank', 'emr', 'patient-card',
       'my-card', 'm87-ai', 'ai',
-    ],
+    , 'device-gateway', 'iot-devices', 'lis'],
     radiologist: [
       'dashboard', 'radiology', 'notifications', 'emr', 'patient-card', 'my-card', 'm87-ai', 'ai',
     ],

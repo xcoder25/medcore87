@@ -24,6 +24,12 @@ export interface DeviceGatewayConfig {
   monitorsMqttUrl: string;
   barcodeWedgeEnabled: boolean;
   posTerminalId: string;
+  /** Lab analyzer / LIS instrument bus (Beaker-style middleware) */
+  analyzerEnabled: boolean;
+  analyzerPollMs: number;
+  analyzerEndpoint: string;
+  autoVerifyNormals: boolean;
+  criticalNotify: boolean;
   notes: string;
   updatedAt: string;
   updatedBy?: string;
@@ -53,6 +59,11 @@ function defaultConfig(facilityId: string): DeviceGatewayConfig {
     monitorsMqttUrl: 'mqtt://10.0.0.10:1883',
     barcodeWedgeEnabled: true,
     posTerminalId: '',
+    analyzerEnabled: true,
+    analyzerPollMs: 5000,
+    analyzerEndpoint: 'http://10.0.0.10:9100/analyzers',
+    autoVerifyNormals: true,
+    criticalNotify: true,
     notes: '',
     updatedAt: new Date().toISOString(),
   };
@@ -77,7 +88,10 @@ function writeAll(map: Record<string, DeviceGatewayConfig>) {
 
 export function loadGatewayConfig(facilityId: string): DeviceGatewayConfig {
   const map = readAll();
-  return map[facilityId] || defaultConfig(facilityId);
+  const base = defaultConfig(facilityId);
+  const saved = map[facilityId];
+  if (!saved) return base;
+  return { ...base, ...saved, facilityId };
 }
 
 export function saveGatewayConfig(cfg: DeviceGatewayConfig, by?: string): DeviceGatewayConfig {
