@@ -1,10 +1,15 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+/**
+ * Radiology RIS / PACS desk — worklist, viewer, imaging history, critical findings, schedule.
+ * Radiology-only pages (no generic patient MPI under "imaging history").
+ */
+
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  FileText, Search, ZoomIn, ZoomOut, RotateCw, Contrast,
-  Layers, CheckCircle2, ShieldAlert, Eye, User, Calendar,
-  Plus, X, Edit3, Send, Sparkles, RefreshCw
+  FileText, Search, ZoomIn, ZoomOut, RotateCw, Layers, CheckCircle2, ShieldAlert,
+  Eye, User, Calendar, Plus, X, Edit3, Send, Sparkles, RefreshCw, ClipboardList,
+  History, AlertTriangle, Clock, Radio, LayoutDashboard, Scan,
 } from 'lucide-react';
 import type { RadiologyStudy } from '@medcore/types';
 import {
@@ -13,7 +18,6 @@ import {
   updateOrderStatus,
   type ClinicalOrder,
 } from '../../lib/clinicalEventBus';
-import { loadGatewayConfig } from '../../lib/deviceGatewayStore';
 import {
   draftImagingReport,
   hasImagingAiAssist,
@@ -34,7 +38,22 @@ import {
   type OrthancStudyRef,
 } from '../../lib/orthancClient';
 
-const INITIAL_STUDIES: RadiologyStudy[] = [];
+type RadPage = 'worklist' | 'viewer' | 'history' | 'critical' | 'schedule';
+
+const NAV: { key: RadPage; label: string; icon: React.ElementType; badge?: string }[] = [
+  { key: 'worklist', label: 'Modality worklist', icon: ClipboardList, badge: 'RIS' },
+  { key: 'viewer', label: 'PACS viewer & report', icon: Scan, badge: 'DICOM' },
+  { key: 'history', label: 'Imaging history', icon: History },
+  { key: 'critical', label: 'Critical findings', icon: ShieldAlert },
+  { key: 'schedule', label: 'Schedule', icon: Calendar },
+];
+
+const STATUS_META: Record<RadiologyStudy['status'], { label: string; color: string; bg: string }> = {
+  scheduled: { label: 'Scheduled', color: '#2563EB', bg: '#EFF6FF' },
+  in_progress: { label: 'In progress', color: '#D97706', bg: '#FFFBEB' },
+  acquired: { label: 'Acquired · unread', color: '#7C3AED', bg: '#F5F3FF' },
+  reported: { label: 'Reported', color: '#059669', bg: '#ECFDF5' },
+};
 
 function facilityIdGuess(): string {
   try {
@@ -57,826 +76,914 @@ function modalityFromName(name: string): MedGemmaModality {
   return 'OTHER';
 }
 
+const RAD_STUDIES_KEY = 'medcore_os_radiology_studies_v1';
+
+function loadPersistedStudies(): RadiologyStudy[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(RAD_STUDIES_KEY);
+    if (!raw) return [];
+    const p = JSON.parse(raw);
+    return Array.isArray(p) ? p : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistStudies(studies: RadiologyStudy[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(RAD_STUDIES_KEY, JSON.stringify(studies.slice(0, 200)));
+  } catch {
+    /* quota */
+  }
+}
+
+function seedDemoIfEmpty(existing: RadiologyStudy[]): RadiologyStudy[] {
+  if (existing.length > 0) return existing;
+  const now = Date.now();
+  return [
+    {
+      id: 'RAD-2026-0101',
+      patientId: 'IGH-PT-2CKAR3',
+      patientName: 'Michael James',
+      modality: 'XR',
+      bodyPart: 'Chest PA',
+      reason: 'Cough · rule out consolidation',
+      status: 'acquired',
+      orderedAt: new Date(now - 2 * 3600e3).toISOString(),
+      radiologist: 'Pending',
+      findings: '',
+    },
+    {
+      id: 'RAD-2026-0102',
+      patientId: 'IGH-PT-40OLLG',
+      patientName: 'Chioma Etim',
+      modality: 'US',
+      bodyPart: 'Abdomen',
+      reason: 'RUQ pain · gallstones?',
+      status: 'reported',
+      orderedAt: new Date(now - 26 * 3600e3).toISOString(),
+      radiologist: 'Dr. Bassey Ntuen',
+      findings: 'Normal abdominal ultrasound. No cholelithiasis. Liver, spleen, kidneys unremarkable.',
+    },
+    {
+      id: 'RAD-2026-0103',
+      patientId: 'IGH-PT-YB13KN',
+      patientName: 'Dahlia nen Arcade',
+      modality: 'CT',
+      bodyPart: 'Head',
+      reason: 'Headache · trauma screen',
+      status: 'in_progress',
+      orderedAt: new Date(now - 45 * 60e3).toISOString(),
+      radiologist: 'Pending',
+    },
+    {
+      id: 'RAD-2026-0098',
+      patientId: 'IGH-PT-2CKAR3',
+      patientName: 'Michael James',
+      modality: 'XR',
+      bodyPart: 'Left knee',
+      reason: 'Pain after fall',
+      status: 'reported',
+      orderedAt: new Date(now - 14 * 864e5).toISOString(),
+      radiologist: 'Dr. Bassey Ntuen',
+      findings: 'No fracture. Mild joint space narrowing. Soft tissues intact.',
+    },
+    {
+      id: 'RAD-2026-0090',
+      patientId: 'IGH-PT-40OLLG',
+      patientName: 'Chioma Etim',
+      modality: 'MRI',
+      bodyPart: 'Lumbar spine',
+      reason: 'Chronic LBP',
+      status: 'reported',
+      orderedAt: new Date(now - 60 * 864e5).toISOString(),
+      radiologist: 'Dr. Fatima Al-Hassan',
+      findings: 'L4-L5 disc desiccation without significant canal stenosis. No cord compression.',
+    },
+  ];
+}
+
 export const RadiologyPacsSuite: React.FC = () => {
   const facilityId = facilityIdGuess();
-  const [studies, setStudies] = useState<RadiologyStudy[]>(INITIAL_STUDIES);
+  const [page, setPage] = useState<RadPage>('worklist');
+  const [studies, setStudies] = useState<RadiologyStudy[]>(() => seedDemoIfEmpty(loadPersistedStudies()));
   const [busOrders, setBusOrders] = useState<ClinicalOrder[]>([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [search, setSearch] = useState('');
+  const [historyPatient, setHistoryPatient] = useState('');
+  const [zoomLevel, setZoomLevel] = useState(100);
+  const [windowPreset, setWindowPreset] = useState<'lung' | 'bone' | 'soft_tissue'>('soft_tissue');
+  const [findingsText, setFindingsText] = useState('');
+  const [showReport, setShowReport] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiDraft, setAiDraft] = useState<ImagingAiAssist | null>(null);
-  const [assistTick, setAssistTick] = useState(0);
   const [orthancStudies, setOrthancStudies] = useState<OrthancStudyRef[]>([]);
   const [orthancMsg, setOrthancMsg] = useState('');
-  const [orthancBusy, setOrthancBusy] = useState(false);
-  const [selectedId, setSelectedId] = useState<string>('');
-  const [zoomLevel, setZoomLevel] = useState(100);
-  const [windowPreset, setWindowPreset] = useState<'lung' | 'bone' | 'soft_tissue'>('lung');
-  const [search, setSearch] = useState('');
-  const [notice, setNotice] = useState<string | null>(null);
+  const [modalityFilter, setModalityFilter] = useState<string>('all');
 
-  // Modal States
-  const [showOrderModal, setShowOrderModal] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
-
-  // New Order Form
-  const [newPatient, setNewPatient] = useState('');
-  const [newModality, setNewModality] = useState<'XR' | 'CT' | 'MRI' | 'US'>('XR');
-  const [newBodyPart, setNewBodyPart] = useState('Chest PA View');
-  const [newReason, setNewReason] = useState('');
-
-  // Report Form
-  const [reportFindings, setReportFindings] = useState('');
-
-  const showNotification = (msg: string) => {
+  const toast = useCallback((msg: string) => {
     setNotice(msg);
-    setTimeout(() => setNotice(null), 3500);
-  };
-
-  const selectedStudy = studies.find(s => s.id === selectedId) || studies[0];
-
-  const reloadBus = () => {
-    setBusOrders(listOrders(facilityId).filter((o) => o.type === 'imaging'));
-  };
+    setTimeout(() => setNotice(null), 3200);
+  }, []);
 
   useEffect(() => {
-    reloadBus();
-    return subscribeOrders(reloadBus);
+    persistStudies(studies);
+  }, [studies]);
+
+  const refreshBus = useCallback(() => {
+    setBusOrders(listOrders(facilityId).filter((o) => o.type === 'imaging'));
   }, [facilityId]);
 
   useEffect(() => {
-    return subscribeMedgemmaAssist(() => setAssistTick((n) => n + 1));
-  }, []);
+    refreshBus();
+    return subscribeOrders(() => refreshBus());
+  }, [refreshBus]);
 
-  const selectedBusOrder = useMemo(() => {
-    void assistTick;
-    if (!selectedId) return busOrders[0];
-    return busOrders.find((o) => o.id === selectedId) || busOrders[0];
-  }, [busOrders, selectedId, assistTick]);
+  useEffect(() => subscribeMedgemmaAssist(() => {}), []);
 
-  useEffect(() => {
-    if (selectedBusOrder) {
-      setAiDraft(getLatestAssist(facilityId, selectedBusOrder.id) || null);
+  const selectedStudy = useMemo(
+    () => studies.find((s) => s.id === selectedId) || studies.find((s) => s.status !== 'reported') || studies[0],
+    [studies, selectedId]
+  );
+
+  const worklist = useMemo(() => {
+    let list = studies.filter((s) => s.status !== 'reported');
+    if (modalityFilter !== 'all') list = list.filter((s) => s.modality === modalityFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (s) =>
+          s.patientName.toLowerCase().includes(q) ||
+          s.id.toLowerCase().includes(q) ||
+          s.bodyPart.toLowerCase().includes(q)
+      );
     }
-  }, [selectedBusOrder?.id, facilityId, assistTick]);
+    return list.sort((a, b) => b.orderedAt.localeCompare(a.orderedAt));
+  }, [studies, search, modalityFilter]);
 
-  const gateway = useMemo(() => loadGatewayConfig(facilityId), [facilityId, assistTick]);
-
-  const runMedGemma = async (order?: ClinicalOrder) => {
-    const o = order || selectedBusOrder;
-    if (!o) {
-      showNotification('Select or create an imaging order first');
-      return;
+  const historyList = useMemo(() => {
+    let list = [...studies].sort((a, b) => b.orderedAt.localeCompare(a.orderedAt));
+    if (historyPatient.trim()) {
+      const q = historyPatient.toLowerCase();
+      list = list.filter(
+        (s) =>
+          s.patientName.toLowerCase().includes(q) ||
+          s.patientId.toLowerCase().includes(q) ||
+          s.id.toLowerCase().includes(q)
+      );
     }
+    if (modalityFilter !== 'all') list = list.filter((s) => s.modality === modalityFilter);
+    return list;
+  }, [studies, historyPatient, modalityFilter]);
+
+  const criticalList = useMemo(
+    () =>
+      studies.filter(
+        (s) =>
+          (s.findings || '').toLowerCase().match(/critical|urgent|mass|fracture|hemorrhage|pneumothorax|stroke/) ||
+          s.status === 'acquired'
+      ),
+    [studies]
+  );
+
+  const scheduled = useMemo(
+    () => studies.filter((s) => s.status === 'scheduled' || s.status === 'in_progress'),
+    [studies]
+  );
+
+  const kpis = useMemo(() => {
+    const unread = studies.filter((s) => s.status === 'acquired').length;
+    const today = studies.filter((s) => s.orderedAt.slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
+    const reported = studies.filter((s) => s.status === 'reported').length;
+    const bus = busOrders.filter((o) => o.status === 'ordered' || o.status === 'in_progress').length;
+    return { unread, today, reported, bus, total: studies.length };
+  }, [studies, busOrders]);
+
+  const openViewer = (id: string) => {
+    setSelectedId(id);
+    const s = studies.find((x) => x.id === id);
+    setFindingsText(s?.findings || '');
+    setPage('viewer');
+  };
+
+  const signReport = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedStudy) return;
+    const text = findingsText.trim() || 'Normal examination. No acute pathology identified.';
+    setStudies((prev) =>
+      prev.map((s) =>
+        s.id === selectedStudy.id
+          ? {
+              ...s,
+              status: 'reported' as const,
+              findings: text,
+              radiologist: 'Nathan · IGH-EKT-RAD-GO8D',
+            }
+          : s
+      )
+    );
+    setShowReport(false);
+    toast(`Report signed · ${selectedStudy.id}`);
+  };
+
+  const addFromOrder = (o: ClinicalOrder) => {
+    const id = `RAD-${Date.now().toString(36).toUpperCase()}`;
+    const study: RadiologyStudy = {
+      id,
+      patientId: o.patientId || 'UNK',
+      patientName: o.patientName || 'Unknown',
+      modality: (['XR', 'CT', 'MRI', 'US', 'MAMMO'].includes(String(o.details || '').split(' ')[0])
+        ? (String(o.details).split(' ')[0] as RadiologyStudy['modality'])
+        : 'XR'),
+      bodyPart: o.details || o.name || 'Study',
+      reason: o.name || 'Clinical indication',
+      status: 'scheduled',
+      orderedAt: o.createdAt || new Date().toISOString(),
+      radiologist: 'Pending',
+    };
+    setStudies((prev) => [study, ...prev]);
+    try {
+      updateOrderStatus(o.id, 'in_progress');
+    } catch {
+      /* */
+    }
+    toast(`Added to worklist · ${id}`);
+    setSelectedId(id);
+  };
+
+  const pullOrthanc = async () => {
+    setOrthancMsg('Querying PACS…');
+    try {
+      const list = await fetchOrthancStudies();
+      setOrthancStudies(list || []);
+      setOrthancMsg(list?.length ? `${list.length} studies from Orthanc` : 'No Orthanc studies (link optional)');
+    } catch {
+      setOrthancMsg('Orthanc unreachable — local RIS active');
+      setOrthancStudies([]);
+    }
+  };
+
+  const runAiDraft = async () => {
+    if (!selectedStudy) return;
     if (!hasImagingAiAssist()) {
-      showNotification('Set NEXT_PUBLIC_MEDGEMMA_API_URL or NEXT_PUBLIC_GEMINI_API_KEY for AI assist');
+      toast('Imaging AI assist not configured');
       return;
     }
     setAiBusy(true);
     try {
-      const mod = modalityFromName(o.name);
       const result = await draftImagingReport({
-        modality: mod,
-        studyName: o.name,
-        clinicalContext: o.notes || `Patient ${o.patientName} (${o.hospitalNumber}). Priority ${o.priority}.`,
-        orthancUrl: gateway.orthancEnabled ? gateway.orthancUrl : undefined,
+        modality: modalityFromName(selectedStudy.modality + ' ' + selectedStudy.bodyPart),
+        bodyPart: selectedStudy.bodyPart,
+        indication: selectedStudy.reason,
+        patientName: selectedStudy.patientName,
       });
-      if (!result.ok) {
-        showNotification(result.text || 'AI assist failed');
-        return;
+      setAiDraft(result as ImagingAiAssist);
+      if (result?.impression || result?.findings) {
+        setFindingsText([result.findings, result.impression].filter(Boolean).join('\n\n'));
       }
-      const row = saveAssistDraft({
-        facilityId,
-        orderId: o.id,
-        patientId: o.patientId,
-        patientName: o.patientName,
-        studyName: o.name,
-        modality: mod,
-        result,
-        orthancUrl: gateway.orthancUrl,
-        actorName: 'Radiology desk',
-      });
-      setAiDraft(row);
-      setReportFindings(result.text);
-      showNotification(`MedGemma draft ready (${result.provider}) — review before signing`);
+      toast('AI draft ready — review before sign');
+    } catch {
+      toast('AI draft failed');
     } finally {
       setAiBusy(false);
     }
   };
 
-  const loadOrthanc = async () => {
-    setOrthancBusy(true);
-    try {
-      const r = await fetchOrthancStudies(facilityId);
-      setOrthancStudies(r.studies);
-      setOrthancMsg(r.message);
-      showNotification(r.message);
-    } finally {
-      setOrthancBusy(false);
-    }
+  const card: React.CSSProperties = {
+    background: '#fff',
+    border: '1px solid #E2E8F0',
+    borderRadius: 14,
+    boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
   };
-
-  const linkSelectedStudy = (study: OrthancStudyRef) => {
-    const o = selectedBusOrder;
-    if (!o) {
-      showNotification('Select a live imaging order first');
-      return;
-    }
-    linkStudyToOrder({ facilityId, orderId: o.id, study, actorName: 'Radiology' });
-    showNotification(`Linked study ${study.id} → ${o.id}`);
-    setAssistTick((n) => n + 1);
-  };
-
-  const acceptAiIntoReport = () => {
-    if (!aiDraft) return;
-    setReportFindings(aiDraft.draftText);
-    setAssistStatus(aiDraft.id, 'accepted');
-    setShowReportModal(true);
-    showNotification('AI draft loaded into report form — edit & sign');
-  };
-
-  const handleSignReport = (id: string, findingsText?: string) => {
-    const finalFindings = findingsText || selectedStudy.findings || 'Normal radiological examination. No focal acute pathology.';
-    setStudies(prev => prev.map(s => {
-      if (s.id === id) {
-        return {
-          ...s,
-          status: 'reported' as const,
-          radiologist: 'Dr. Bassey Ntuen (Consultant Radiologist)',
-          findings: finalFindings,
-        };
-      }
-      return s;
-    }));
-    showNotification(`Radiology report for ${selectedStudy?.patientName || 'patient'} signed & dispatched to EHR.`);
-    // Mirror to clinical bus when order id matches
-    try {
-      const bus = busOrders.find((o) => o.id === id);
-      if (bus) {
-        updateOrderStatus(id, 'resulted', {
-          resultSummary: finalFindings,
-          resultedBy: 'Radiologist',
-        });
-        reloadBus();
-      }
-      if (aiDraft && aiDraft.orderId === id) {
-        setAssistStatus(aiDraft.id, 'accepted');
-      }
-    } catch { /* ignore */ }
-  };
-
-  const handleSaveReportForm = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reportFindings.trim()) return;
-    handleSignReport(selectedStudy.id, reportFindings.trim());
-    setShowReportModal(false);
-  };
-
-  const handleCreateOrder = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPatient.trim() || !newReason.trim()) return;
-
-    const nextId = `RAD-2026-0${95 + studies.length}`;
-    const newStudy: RadiologyStudy = {
-      id: nextId,
-      patientId: `PAT-AK-${Math.floor(1000 + Math.random() * 9000)}`,
-      patientName: newPatient.trim(),
-      modality: newModality,
-      bodyPart: newBodyPart,
-      reason: newReason.trim(),
-      status: 'acquired',
-      orderedAt: 'Just Now',
-      radiologist: 'Pending Radiologist Reading',
-      findings: 'Study acquired. Awaiting radiologist interpretation.',
-    };
-
-    setStudies([newStudy, ...studies]);
-    setSelectedId(newStudy.id);
-    setShowOrderModal(false);
-    setNewPatient('');
-    setNewReason('');
-    showNotification(`Radiology scan ${nextId} ordered for ${newStudy.patientName}!`);
-  };
-
-  const filteredStudies = studies.filter(s => {
-    if (search && !s.patientName.toLowerCase().includes(search.toLowerCase()) && !s.bodyPart.toLowerCase().includes(search.toLowerCase()) && !s.id.toLowerCase().includes(search.toLowerCase())) {
-      return false;
-    }
-    return true;
-  });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Toast Notification */}
-      {notice && (
-        <div style={{
-          position: 'fixed', top: 24, right: 24, zIndex: 99999, background: '#0F2236',
-          border: '1px solid #10B981', borderRadius: 10, padding: '14px 20px',
-          boxShadow: '0 12px 32px rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center',
-          gap: 12, color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 600
-        }}>
-          <CheckCircle2 size={18} color="#10B981" />
-          <span>{notice}</span>
-        </div>
-      )}
-
-      
-      {/* MedGemma + Orthanc assist layer */}
-      <div style={{
-        display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center',
-        padding: '14px 16px', borderRadius: 14,
-        background: 'linear-gradient(90deg, #F5F3FF, #ECFEFF)',
-        border: '1px solid #DDD6FE',
-      }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-          background: 'linear-gradient(135deg, #7C3AED, #0D9488)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Sparkles size={18} color="#fff" />
-        </div>
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ fontWeight: 800, fontSize: 13, color: '#0F172A' }}>
-            MedGemma imaging assist · Orthanc remains image source of truth
-          </div>
-          <div style={{ fontSize: 12, color: '#64748B', marginTop: 4, lineHeight: 1.45 }}>
-            {hasImagingAiAssist()
-              ? 'Generate a draft report from clinical context (and image when provided). Human must sign.'
-              : 'Configure NEXT_PUBLIC_MEDGEMMA_API_URL (preferred) or NEXT_PUBLIC_GEMINI_API_KEY for assist.'}
-            {gateway.orthancEnabled ? ` · PACS: ${gateway.orthancUrl}` : ' · Orthanc disabled in gateway'}
-            {' · Live imaging orders: '}{busOrders.length}
-          </div>
-          {aiDraft && (
-            <div style={{ marginTop: 8, fontSize: 12, color: '#5B21B6', fontWeight: 600 }}>
-              Latest draft for {aiDraft.studyName}: {aiDraft.status} · {aiDraft.provider}
-              {aiDraft.latencyMs ? ` · ${aiDraft.latencyMs}ms` : ''}
-            </div>
-          )}
-        </div>
-        <button
-          type="button"
-          disabled={aiBusy}
-          onClick={() => void runMedGemma()}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '10px 14px', borderRadius: 12, border: 'none',
-            background: 'linear-gradient(90deg,#7C3AED,#0D9488)', color: '#fff',
-            fontWeight: 800, fontSize: 12, cursor: aiBusy ? 'wait' : 'pointer',
-          }}
-        >
-          <Sparkles size={14} /> {aiBusy ? 'MedGemma…' : 'Run MedGemma draft'}
-        </button>
-        {aiDraft && (
-          <button
-            type="button"
-            onClick={acceptAiIntoReport}
-            style={{
-              padding: '10px 14px', borderRadius: 12, border: '1px solid #C4B5FD',
-              background: '#fff', color: '#5B21B6', fontWeight: 700, fontSize: 12, cursor: 'pointer',
-            }}
-          >
-            Use draft in report
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={reloadBus}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '10px 12px', borderRadius: 12, border: '1px solid #E2E8F0',
-            background: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer',
-          }}
-        >
-          <RefreshCw size={14} /> Orders
-        </button>
-      </div>
-
-      {aiDraft && aiDraft.status === 'draft' && (
-        <div className="os-card" style={{ padding: 16, borderLeft: '4px solid #7C3AED' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-            <span style={{ fontWeight: 800, fontSize: 13 }}>AI draft (not signed)</span>
-            <span style={{ fontSize: 11, color: '#64748B' }}>{aiDraft.disclaimer.slice(0, 80)}…</span>
-          </div>
-          <pre style={{
-            whiteSpace: 'pre-wrap', fontFamily: 'ui-sans-serif,system-ui', fontSize: 13,
-            color: '#0F172A', margin: 0, lineHeight: 1.5, maxHeight: 220, overflow: 'auto',
-          }}>{aiDraft.draftText}</pre>
-        </div>
-      )}
-
-      
-      {/* Orthanc live studies */}
-      <div className="os-card" style={{ padding: 16 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontWeight: 800, fontSize: 13, flex: 1 }}>Orthanc / PACS studies</div>
-          <button
-            type="button"
-            disabled={orthancBusy}
-            onClick={() => void loadOrthanc()}
-            style={{
-              padding: '8px 12px', borderRadius: 10, border: 'none',
-              background: '#0F172A', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer',
-            }}
-          >
-            {orthancBusy ? 'Loading…' : 'Fetch from Orthanc'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const o = selectedBusOrder;
-              if (!o) {
-                showNotification('Select imaging order first');
-                return;
-              }
-              linkSimulatedStudy({ facilityId, order: o, actorName: 'Radiology' });
-              showNotification('Simulated study linked (hub offline path)');
-              setAssistTick((n) => n + 1);
-            }}
-            style={{
-              padding: '8px 12px', borderRadius: 10, border: '1px solid #E2E8F0',
-              background: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer',
-            }}
-          >
-            Link simulated study
-          </button>
-        </div>
-        {orthancMsg && <div style={{ fontSize: 12, color: '#64748B', marginBottom: 8 }}>{orthancMsg}</div>}
-        {selectedBusOrder && getLinkForOrder(selectedBusOrder.id) && (
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#0D9488', marginBottom: 8 }}>
-            Linked: {getLinkForOrder(selectedBusOrder.id)?.studyId} ·{' '}
-            <a href={getLinkForOrder(selectedBusOrder.id)?.viewerUrl} target="_blank" rel="noreferrer">
-              Open viewer
-            </a>
-          </div>
-        )}
-        {orthancStudies.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {orthancStudies.slice(0, 15).map((s) => (
-              <div
-                key={s.id}
-                style={{
-                  display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center',
-                  padding: '8px 10px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#F8FAFC',
-                }}
-              >
-                <div style={{ fontSize: 12 }}>
-                  <strong>{s.studyDescription || s.id}</strong>
-                  <div style={{ color: '#64748B' }}>{s.patientName} · {s.studyDate}</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => linkSelectedStudy(s)}
-                  style={{
-                    padding: '6px 10px', borderRadius: 8, border: 'none',
-                    background: '#0D9488', color: '#fff', fontWeight: 700, fontSize: 11, cursor: 'pointer',
-                  }}
-                >
-                  Link to order
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Live clinical bus imaging worklist */}
-      {busOrders.length > 0 && (
-        <div className="os-card" style={{ padding: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10, color: '#0F172A' }}>
-            Live imaging orders (doctor → radiology bus)
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {busOrders.slice(0, 12).map((o) => (
-              <div
-                key={o.id}
-                onClick={() => setSelectedId(o.id)}
-                style={{
-                  display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center',
-                  padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
-                  border: selectedId === o.id ? '2px solid #7C3AED' : '1px solid #E2E8F0',
-                  background: selectedId === o.id ? '#F5F3FF' : '#F8FAFC',
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{o.patientName} · {o.name}</div>
-                  <div style={{ fontSize: 11, color: '#64748B' }}>
-                    {o.hospitalNumber} · {o.status} · {o.priority} · {o.orderedBy}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); void runMedGemma(o); }}
-                  style={{
-                    padding: '6px 10px', borderRadius: 8, border: 'none',
-                    background: '#7C3AED', color: '#fff', fontWeight: 700, fontSize: 11, cursor: 'pointer',
-                  }}
-                >
-                  AI draft
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Top Telemetry */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
-        <div className="os-card" style={{ borderLeft: '4px solid var(--ak-orange)' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>PACS Modalities Online</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--ak-orange-light)' }}>5 / 5</span>
-            <span style={{ fontSize: '0.75rem', color: '#34D399' }}>DICOM 3.0 Ready</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>CT 64-Slice, MRI 1.5T, Digital X-Ray, US 1 & 2</span>
-        </div>
-
-        <div className="os-card" style={{ borderLeft: '4px solid #3B82F6' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Pending Radiologist Reports</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#60A5FA' }}>
-              {studies.filter(s => s.status !== 'reported').length} Pending
-            </span>
-            <span style={{ fontSize: '0.75rem', color: '#F87171' }}>STAT Protocol</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>Avg Radiologist Turnaround: 22m</span>
-        </div>
-
-        <div className="os-card" style={{ borderLeft: '4px solid #10B981' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Storage & Archive</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#34D399' }}>14.8 TB</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--os-text-dim)' }}>RAID 6 Secure</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>Lossless Compression • 100% Retained</span>
-        </div>
-      </div>
-
-      {/* PACS Workspace */}
-      <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 20 }}>
-        {/* Left Column: Studies List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--os-text-muted)', textTransform: 'uppercase' }}>
-              PACS DICOM Studies
-            </span>
-            <button
-              type="button"
-              className="os-action-btn-primary"
-              onClick={() => setShowOrderModal(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', padding: '6px 14px' }}
+    <div
+      style={{
+        display: 'flex',
+        minHeight: 'calc(100vh - 120px)',
+        borderRadius: 16,
+        overflow: 'hidden',
+        border: '1px solid #E2E8F0',
+        background: '#F8FAFC',
+      }}
+    >
+      {/* Radiology-only sidebar */}
+      <aside
+        style={{
+          width: 220,
+          flexShrink: 0,
+          background: 'linear-gradient(180deg, #0F172A 0%, #1E293B 100%)',
+          color: '#F8FAFC',
+          padding: '16px 10px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+        }}
+      >
+        <div style={{ padding: '4px 10px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                background: 'rgba(124,58,237,0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              <Plus size={14} /> Order Scan
-            </button>
+              <Layers size={18} color="#C4B5FD" />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '0.88rem' }}>RIS / PACS</div>
+              <div style={{ fontSize: '0.62rem', opacity: 0.7 }}>Radiology only</div>
+            </div>
           </div>
-
-          <div className="os-search-wrap">
-            <Search size={14} />
-            <input
-              className="os-search-input"
-              placeholder="Search patient, modality, body part..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {filteredStudies.map(s => {
-              const isSelected = s.id === selectedId;
-              return (
-                <div
-                  key={s.id}
-                  className="os-card"
-                  onClick={() => setSelectedId(s.id)}
-                  style={{
-                    cursor: 'pointer',
-                    borderColor: isSelected ? 'var(--ak-orange)' : undefined,
-                    background: isSelected ? 'rgba(234,88,12,0.08)' : undefined,
-                    padding: '14px 18px',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{
-                        fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: 4,
-                        background: '#0D4F8B', color: '#FFF',
-                      }}>
-                        {s.modality}
-                      </span>
-                      <span style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.9rem' }}>{s.patientName}</span>
-                    </div>
-                    <span style={{
-                      fontSize: '0.68rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-                      background: s.status === 'reported' ? 'rgba(5,150,105,0.1)' : 'rgba(234,88,12,0.15)',
-                      color: s.status === 'reported' ? '#059669' : '#D97706',
-                    }}>
-                      {s.status.toUpperCase()}
-                    </span>
-                  </div>
-
-                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#D97706', marginBottom: 2 }}>
-                    {s.bodyPart}
-                  </div>
-                  <div style={{ fontSize: '0.76rem', color: '#475569', marginBottom: 6 }}>
-                    {s.reason}
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--os-text-dim)' }}>
-                    <span>{s.id}</span>
-                    <span>{s.orderedAt}</span>
-                  </div>
-                </div>
-              );
-            })}
+          <div
+            style={{
+              marginTop: 10,
+              fontSize: '0.68rem',
+              background: 'rgba(0,0,0,0.25)',
+              borderRadius: 8,
+              padding: '6px 8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Radio size={11} color="#34D399" />
+            {kpis.unread} unread · {kpis.bus} bus orders
           </div>
         </div>
-
-        {/* Right Column: DICOM Viewport & Findings */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* DICOM Viewer Box */}
-          <div className="os-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid #1E293B', background: '#020617' }}>
-            {/* Viewport Toolbar */}
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '10px 16px', background: '#0F172A', borderBottom: '1px solid #1E293B', flexWrap: 'wrap', gap: 8,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#38BDF8' }}>
-                  {selectedStudy.modality}: {selectedStudy.bodyPart}
+        {NAV.map((item) => {
+          const active = page === item.key;
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setPage(item.key)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                width: '100%',
+                textAlign: 'left',
+                border: 'none',
+                borderRadius: 10,
+                padding: '10px 12px',
+                cursor: 'pointer',
+                background: active ? 'rgba(124,58,237,0.35)' : 'transparent',
+                color: '#F8FAFC',
+                fontWeight: active ? 800 : 600,
+                fontSize: '0.8rem',
+              }}
+            >
+              <Icon size={15} />
+              <span style={{ flex: 1 }}>{item.label}</span>
+              {item.badge && (
+                <span
+                  style={{
+                    fontSize: '0.58rem',
+                    fontWeight: 800,
+                    background: '#4C1D95',
+                    color: '#E9D5FF',
+                    borderRadius: 999,
+                    padding: '2px 6px',
+                  }}
+                >
+                  {item.badge}
                 </span>
-                <span style={{ fontSize: '0.72rem', color: '#64748B' }}>• {selectedStudy.id}</span>
+              )}
+              {item.key === 'worklist' && kpis.unread > 0 && (
+                <span
+                  style={{
+                    background: '#F59E0B',
+                    color: '#111',
+                    fontSize: '0.65rem',
+                    fontWeight: 800,
+                    borderRadius: 999,
+                    padding: '2px 7px',
+                  }}
+                >
+                  {kpis.unread}
+                </span>
+              )}
+            </button>
+          );
+        })}
+        <div style={{ marginTop: 'auto', padding: '10px 8px', fontSize: '0.62rem', opacity: 0.5 }}>
+          Worklist · Viewer · History · Critical · Schedule
+        </div>
+      </aside>
+
+      <main style={{ flex: 1, padding: 16, overflow: 'auto' }}>
+        {/* KPI strip */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 10, marginBottom: 14 }}>
+          {[
+            { l: 'Unread', v: kpis.unread, c: '#7C3AED' },
+            { l: 'Today', v: kpis.today, c: '#2563EB' },
+            { l: 'Reported', v: kpis.reported, c: '#059669' },
+            { l: 'Bus orders', v: kpis.bus, c: '#D97706' },
+            { l: 'Archive', v: kpis.total, c: '#64748B' },
+          ].map((k) => (
+            <div key={k.l} style={{ ...card, padding: '12px 14px', borderTop: `3px solid ${k.c}` }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>{k.l}</div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0F172A' }}>{k.v}</div>
+            </div>
+          ))}
+        </div>
+
+        {page === 'worklist' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A', flex: 1 }}>Modality worklist</h2>
+              <div style={{ position: 'relative' }}>
+                <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: '#94A3B8' }} />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Patient, accession, body part…"
+                  style={{
+                    padding: '9px 12px 9px 32px',
+                    borderRadius: 10,
+                    border: '1px solid #E2E8F0',
+                    fontSize: '0.84rem',
+                    minWidth: 220,
+                  }}
+                />
               </div>
+              <select
+                value={modalityFilter}
+                onChange={(e) => setModalityFilter(e.target.value)}
+                style={{ padding: '9px 12px', borderRadius: 10, border: '1px solid #E2E8F0', fontSize: '0.84rem' }}
+              >
+                <option value="all">All modalities</option>
+                {['XR', 'CT', 'MRI', 'US', 'MAMMO'].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => { refreshBus(); pullOrthanc(); toast('Worklist refreshed'); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, border: '1px solid #E2E8F0',
+                  background: '#fff', borderRadius: 10, padding: '9px 12px', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
+                }}
+              >
+                <RefreshCw size={14} /> Sync
+              </button>
+            </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <button
-                  type="button"
-                  className="os-ghost-btn"
-                  style={{ padding: '4px 8px', fontSize: '0.72rem', color: '#CBD5E1' }}
-                  onClick={() => setZoomLevel(prev => Math.max(50, prev - 15))}
-                >
-                  <ZoomOut size={12} />
-                </button>
-                <span style={{ fontSize: '0.72rem', color: '#94A3B8', minWidth: 36, textAlign: 'center' }}>
-                  {zoomLevel}%
-                </span>
-                <button
-                  type="button"
-                  className="os-ghost-btn"
-                  style={{ padding: '4px 8px', fontSize: '0.72rem', color: '#CBD5E1' }}
-                  onClick={() => setZoomLevel(prev => Math.min(200, prev + 15))}
-                >
-                  <ZoomIn size={12} />
-                </button>
-                <button
-                  type="button"
-                  className="os-ghost-btn"
-                  style={{ padding: '4px 8px', fontSize: '0.72rem', color: '#CBD5E1' }}
-                  onClick={() => setZoomLevel(100)}
-                >
-                  <RotateCw size={12} /> Reset
-                </button>
-                <div style={{ width: 1, height: 16, background: '#334155', margin: '0 4px' }} />
-                {(['lung', 'bone', 'soft_tissue'] as const).map(w => (
-                  <button
-                    key={w}
-                    type="button"
-                    className="os-ghost-btn"
-                    onClick={() => setWindowPreset(w)}
+            {busOrders.length > 0 && (
+              <div style={{ ...card, padding: 14 }}>
+                <div style={{ fontWeight: 800, fontSize: '0.8rem', marginBottom: 8, color: '#7C3AED' }}>
+                  Live imaging orders (clinical bus)
+                </div>
+                {busOrders.slice(0, 8).map((o) => (
+                  <div
+                    key={o.id}
                     style={{
-                      padding: '4px 8px',
-                      fontSize: '0.68rem',
-                      background: windowPreset === w ? 'rgba(234,88,12,0.25)' : undefined,
-                      borderColor: windowPreset === w ? '#EA580C' : undefined,
-                      color: windowPreset === w ? '#FB923C' : '#94A3B8',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '8px 0', borderBottom: '1px solid #F1F5F9', gap: 10,
                     }}
                   >
-                    {w.toUpperCase().replace('_', ' ')}
-                  </button>
+                    <div>
+                      <strong style={{ fontSize: '0.86rem' }}>{o.patientName}</strong>
+                      <div style={{ fontSize: '0.75rem', color: '#64748B' }}>{o.name || o.details} · {o.status}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => addFromOrder(o)}
+                      style={{
+                        background: '#7C3AED', color: '#fff', border: 'none', borderRadius: 8,
+                        padding: '7px 12px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
+                      }}
+                    >
+                      Add to RIS
+                    </button>
+                  </div>
                 ))}
               </div>
-            </div>
+            )}
 
-            {/* Viewport Canvas Simulation */}
-            <div style={{
-              height: 360,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              position: 'relative',
-              background: 'radial-gradient(circle at center, #0F172A 0%, #020617 100%)',
-              overflow: 'hidden',
-            }}>
-              <div style={{ position: 'absolute', top: 12, left: 16, fontSize: '0.72rem', color: '#64748B', fontFamily: 'monospace' }}>
-                <div>PATIENT: {selectedStudy.patientName}</div>
-                <div>ID: {selectedStudy.patientId}</div>
-                <div>STUDY: {selectedStudy.id}</div>
-                <div>W: {windowPreset === 'lung' ? '1500 L: -600' : windowPreset === 'bone' ? '2000 L: 500' : '400 L: 40'}</div>
-              </div>
-
-              <div style={{ position: 'absolute', top: 12, right: 16, fontSize: '0.72rem', color: '#64748B', fontFamily: 'monospace', textAlign: 'right' }}>
-                <div>IBOM SPECIALIST HOSPITAL PACS</div>
-                <div>KV: 120 • MA: 250</div>
-                <div>SLICE: 1.25mm</div>
-                <div>R</div>
-              </div>
-
-              <div style={{
-                transform: `scale(${zoomLevel / 100})`,
-                transition: 'transform 0.2s ease',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 12,
-              }}>
-                <div style={{
-                  width: 140,
-                  height: 140,
-                  borderRadius: 12,
-                  border: '2px solid rgba(59,130,246,0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: 'rgba(59,130,246,0.1)',
-                  boxShadow: '0 0 40px rgba(59,130,246,0.1)',
-                }}>
-                  <Layers size={50} style={{ color: '#60A5FA', opacity: 0.8 }} />
+            <div style={{ ...card, overflow: 'hidden' }}>
+              {worklist.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#94A3B8' }}>
+                  <ClipboardList size={32} color="#C4B5FD" style={{ marginBottom: 8 }} />
+                  <div style={{ fontWeight: 700, color: '#64748B' }}>Worklist clear</div>
+                  <div style={{ fontSize: '0.82rem' }}>New imaging orders from clinicians appear here.</div>
                 </div>
-                <span style={{ fontSize: '0.8rem', color: '#94A3B8', fontWeight: 600 }}>
-                  [DICOM High-Res Series: 124 Slices Loaded]
-                </span>
-              </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ background: '#F8FAFC', color: '#64748B', textAlign: 'left' }}>
+                      {['Accession', 'Patient', 'Modality', 'Body part', 'Indication', 'Status', ''].map((h) => (
+                        <th key={h} style={{ padding: '10px 12px', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {worklist.map((s) => {
+                      const st = STATUS_META[s.status];
+                      return (
+                        <tr key={s.id} style={{ borderTop: '1px solid #F1F5F9' }}>
+                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.75rem' }}>{s.id}</td>
+                          <td style={{ padding: '10px 12px', fontWeight: 700 }}>
+                            {s.patientName}
+                            <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 500 }}>{s.patientId}</div>
+                          </td>
+                          <td style={{ padding: '10px 12px', fontWeight: 800, color: '#7C3AED' }}>{s.modality}</td>
+                          <td style={{ padding: '10px 12px' }}>{s.bodyPart}</td>
+                          <td style={{ padding: '10px 12px', color: '#64748B', maxWidth: 180 }}>{s.reason}</td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <span style={{ background: st.bg, color: st.color, fontWeight: 700, fontSize: '0.7rem', padding: '3px 8px', borderRadius: 999 }}>{st.label}</span>
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <button
+                              type="button"
+                              onClick={() => openViewer(s.id)}
+                              style={{
+                                background: 'linear-gradient(135deg,#7C3AED,#6D28D9)', color: '#fff', border: 'none',
+                                borderRadius: 8, padding: '7px 12px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
+                              }}
+                            >
+                              Open PACS
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
+        )}
 
-          {/* Radiologist Formal Findings & Report Card */}
-          <div className="os-card" style={{ padding: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--os-text-dim)', textTransform: 'uppercase' }}>
-                Radiological Interpretation & Formal Report
-              </span>
-              <span style={{
-                fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4,
-                background: selectedStudy.status === 'reported' ? 'rgba(5,150,105,0.12)' : 'rgba(234,88,12,0.15)',
-                color: selectedStudy.status === 'reported' ? '#059669' : '#D97706',
-              }}>
-                {selectedStudy.status.toUpperCase()}
-              </span>
+        {page === 'viewer' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 12 }}>
+            <div style={{ ...card, padding: 10, maxHeight: 560, overflowY: 'auto' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#7C3AED', marginBottom: 8 }}>STUDIES</div>
+              {studies.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => { setSelectedId(s.id); setFindingsText(s.findings || ''); }}
+                  style={{
+                    width: '100%', textAlign: 'left', marginBottom: 6, borderRadius: 10, padding: 10, cursor: 'pointer',
+                    border: selectedStudy?.id === s.id ? '2px solid #7C3AED' : '1px solid #E2E8F0',
+                    background: selectedStudy?.id === s.id ? '#F5F3FF' : '#fff',
+                  }}
+                >
+                  <div style={{ fontWeight: 800, fontSize: '0.82rem' }}>{s.patientName}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748B' }}>{s.modality} · {s.bodyPart}</div>
+                </button>
+              ))}
             </div>
-
-            <div style={{ fontSize: '0.82rem', color: 'var(--os-text-muted)', marginBottom: 8 }}>
-              Reporting Radiologist: <strong style={{ color: '#0A2540' }}>{selectedStudy.radiologist || 'Attending Radiologist On-Call'}</strong>
-            </div>
-
-            <div style={{ background: '#F8FAFC', padding: 14, borderRadius: 8, border: '1px solid #E2E8F0', fontSize: '0.88rem', color: '#0A2540', lineHeight: 1.6 }}>
-              {selectedStudy.findings || 'Awaiting image reading by radiologist...'}
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-              <button
-                type="button"
-                className="os-ghost-btn"
-                onClick={() => {
-                  setReportFindings(selectedStudy.findings || '');
-                  setShowReportModal(true);
-                }}
-                style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                <Edit3 size={14} /> Write / Edit Findings
-              </button>
-              <button
-                type="button"
-                className="os-action-btn-primary"
-                onClick={() => handleSignReport(selectedStudy.id)}
-                style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                <CheckCircle2 size={14} /> Electronically Sign & Dispatch Report
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Modal 1: Order Scan */}
-      {showOrderModal && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(10,25,41,0.7)',
-          backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
-        }}>
-          <div style={{
-            background: '#FFF', borderRadius: 14, width: '100%', maxWidth: 460, padding: 24,
-            boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0A2540' }}>
-                Order Radiology / PACS Imaging Study
-              </h3>
-              <button className="os-ghost-btn" style={{ padding: 4 }} onClick={() => setShowOrderModal(false)}><X size={16} /></button>
-            </div>
-            <form onSubmit={handleCreateOrder} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
-                  Patient Full Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Mfoniso Akpabio"
-                  value={newPatient}
-                  onChange={e => setNewPatient(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.86rem', outline: 'none' }}
-                />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
-                    Modality *
-                  </label>
-                  <select
-                    value={newModality}
-                    onChange={e => setNewModality(e.target.value as any)}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.86rem', background: '#FFF' }}
+            <div style={{ ...card, overflow: 'hidden' }}>
+              {!selectedStudy ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#94A3B8' }}>Select a study</div>
+              ) : (
+                <>
+                  <div style={{ background: '#0F172A', color: '#E2E8F0', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 800, color: '#C4B5FD' }}>{selectedStudy.modality}: {selectedStudy.bodyPart}</div>
+                      <div style={{ fontSize: '0.78rem', color: '#94A3B8' }}>{selectedStudy.patientName} · {selectedStudy.id} · {selectedStudy.reason}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <button type="button" onClick={() => setZoomLevel((z) => Math.max(50, z - 15))} style={viewerBtn}><ZoomOut size={14} /></button>
+                      <span style={{ fontSize: '0.75rem', minWidth: 36, textAlign: 'center' }}>{zoomLevel}%</span>
+                      <button type="button" onClick={() => setZoomLevel((z) => Math.min(200, z + 15))} style={viewerBtn}><ZoomIn size={14} /></button>
+                      <button type="button" onClick={() => setZoomLevel(100)} style={viewerBtn}><RotateCw size={14} /></button>
+                      {(['lung', 'bone', 'soft_tissue'] as const).map((w) => (
+                        <button
+                          key={w}
+                          type="button"
+                          onClick={() => setWindowPreset(w)}
+                          style={{
+                            ...viewerBtn,
+                            background: windowPreset === w ? 'rgba(124,58,237,0.4)' : viewerBtn.background,
+                            borderColor: windowPreset === w ? '#A78BFA' : '#334155',
+                          }}
+                        >
+                          {w.replace('_', ' ')}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      height: 280,
+                      background: 'radial-gradient(circle at 40% 40%, #1E293B, #020617)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                    }}
                   >
-                    <option value="XR">Digital X-Ray (XR)</option>
-                    <option value="CT">Computed Tomography (CT)</option>
-                    <option value="MRI">Magnetic Resonance (MRI)</option>
-                    <option value="US">Ultrasound Sonography (US)</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
-                    Anatomical Region / View *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Chest PA, Brain NC, Pelvis"
-                    value={newBodyPart}
-                    onChange={e => setNewBodyPart(e.target.value)}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.86rem', outline: 'none' }}
-                  />
-                </div>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
-                  Clinical Indication / Reason for Scan *
-                </label>
-                <textarea
-                  required
-                  rows={2}
-                  placeholder="e.g. Rule out intracranial bleed post head injury..."
-                  value={newReason}
-                  onChange={e => setNewReason(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.86rem', outline: 'none' }}
+                    <div
+                      style={{
+                        width: `${Math.min(220, zoomLevel * 1.1)}px`,
+                        height: `${Math.min(220, zoomLevel * 1.1)}px`,
+                        borderRadius: 8,
+                        border: '2px solid #475569',
+                        background:
+                          windowPreset === 'bone'
+                            ? 'linear-gradient(135deg,#e2e8f0,#64748b)'
+                            : windowPreset === 'lung'
+                              ? 'linear-gradient(135deg,#0f172a,#334155)'
+                              : 'linear-gradient(135deg,#475569,#94a3b8)',
+                        boxShadow: '0 0 40px rgba(124,58,237,0.25)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#CBD5E1',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                      }}
+                    >
+                      DICOM preview
+                    </div>
+                    <div style={{ position: 'absolute', bottom: 10, left: 12, fontSize: '0.7rem', color: '#64748B' }}>
+                      Window: {windowPreset} · Simulated viewer (Orthanc optional)
+                    </div>
+                  </div>
+                  <div style={{ padding: 14 }}>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowReport(true)}
+                        style={{
+                          background: 'linear-gradient(135deg,#7C3AED,#6D28D9)', color: '#fff', border: 'none',
+                          borderRadius: 10, padding: '10px 14px', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer',
+                        }}
+                      >
+                        <Edit3 size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+                        Report / sign
+                      </button>
+                      <button
+                        type="button"
+                        disabled={aiBusy}
+                        onClick={runAiDraft}
+                        style={{
+                          border: '1px solid #DDD6FE', background: '#F5F3FF', color: '#5B21B6',
+                          borderRadius: 10, padding: '10px 14px', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer',
+                        }}
+                      >
+                        <Sparkles size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+                        {aiBusy ? 'Drafting…' : 'AI draft'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setHistoryPatient(selectedStudy.patientName); setPage('history'); }}
+                        style={{
+                          border: '1px solid #E2E8F0', background: '#fff', color: '#475569',
+                          borderRadius: 10, padding: '10px 14px', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer',
+                        }}
+                      >
+                        <History size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+                        Patient history
+                      </button>
+                    </div>
+                    {selectedStudy.findings && (
+                      <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: 12, fontSize: '0.84rem', color: '#334155' }}>
+                        <div style={{ fontWeight: 800, fontSize: '0.72rem', color: '#7C3AED', marginBottom: 4 }}>PRIOR / CURRENT FINDINGS</div>
+                        {selectedStudy.findings}
+                        <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#94A3B8' }}>{selectedStudy.radiologist}</div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {page === 'history' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Imaging history</h2>
+              <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748B' }}>
+                Prior studies by patient · accession · modality (not patient registration)
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+                <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: '#94A3B8' }} />
+                <input
+                  value={historyPatient}
+                  onChange={(e) => setHistoryPatient(e.target.value)}
+                  placeholder="Filter by patient name or hospital number…"
+                  style={{ width: '100%', padding: '9px 12px 9px 32px', borderRadius: 10, border: '1px solid #E2E8F0', fontSize: '0.84rem' }}
                 />
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
-                <button type="button" className="os-ghost-btn" onClick={() => setShowOrderModal(false)}>Cancel</button>
-                <button type="submit" className="os-action-btn-primary">Submit to Modality Queue</button>
-              </div>
-            </form>
+              <select
+                value={modalityFilter}
+                onChange={(e) => setModalityFilter(e.target.value)}
+                style={{ padding: '9px 12px', borderRadius: 10, border: '1px solid #E2E8F0', fontSize: '0.84rem' }}
+              >
+                <option value="all">All modalities</option>
+                {['XR', 'CT', 'MRI', 'US', 'MAMMO'].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ ...card, overflow: 'hidden' }}>
+              {historyList.length === 0 ? (
+                <div style={{ padding: 36, textAlign: 'center', color: '#94A3B8' }}>
+                  <History size={28} color="#C4B5FD" style={{ marginBottom: 8 }} />
+                  <div style={{ fontWeight: 700 }}>No imaging studies match</div>
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ background: '#F5F3FF', color: '#5B21B6', textAlign: 'left' }}>
+                      {['Date', 'Accession', 'Patient', 'Study', 'Status', 'Report'].map((h) => (
+                        <th key={h} style={{ padding: '10px 12px', fontSize: '0.7rem', textTransform: 'uppercase' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyList.map((s) => (
+                      <tr
+                        key={s.id}
+                        style={{ borderTop: '1px solid #F1F5F9', cursor: 'pointer' }}
+                        onClick={() => openViewer(s.id)}
+                      >
+                        <td style={{ padding: '10px 12px', color: '#64748B', whiteSpace: 'nowrap' }}>
+                          {new Date(s.orderedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.75rem' }}>{s.id}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: 700 }}>
+                          {s.patientName}
+                          <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 500 }}>{s.patientId}</div>
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{ fontWeight: 800, color: '#7C3AED' }}>{s.modality}</span> {s.bodyPart}
+                          <div style={{ fontSize: '0.72rem', color: '#64748B' }}>{s.reason}</div>
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{
+                            background: STATUS_META[s.status].bg,
+                            color: STATUS_META[s.status].color,
+                            fontWeight: 700, fontSize: '0.7rem', padding: '3px 8px', borderRadius: 999,
+                          }}>{STATUS_META[s.status].label}</span>
+                        </td>
+                        <td style={{ padding: '10px 12px', maxWidth: 220, color: '#475569', fontSize: '0.78rem' }}>
+                          {s.findings ? (
+                            <>
+                              {(s.findings || '').slice(0, 90)}{(s.findings || '').length > 90 ? '…' : ''}
+                              <div style={{ fontSize: '0.68rem', color: '#94A3B8', marginTop: 2 }}>{s.radiologist}</div>
+                            </>
+                          ) : (
+                            <span style={{ color: '#94A3B8' }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
+        )}
+
+        {page === 'critical' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Critical findings</h2>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B' }}>Unread studies and reports with urgent language</p>
+            {criticalList.length === 0 ? (
+              <div style={{ ...card, padding: 32, textAlign: 'center' }}>
+                <CheckCircle2 size={28} color="#10B981" />
+                <div style={{ fontWeight: 700, color: '#059669', marginTop: 8 }}>No critical queue items</div>
+              </div>
+            ) : (
+              criticalList.map((s) => (
+                <div
+                  key={s.id}
+                  style={{ ...card, padding: 14, borderLeft: '4px solid #DC2626', display: 'flex', justifyContent: 'space-between', gap: 12 }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{s.patientName} · {s.modality} {s.bodyPart}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748B' }}>{s.id} · {STATUS_META[s.status].label}</div>
+                    {s.findings && <div style={{ fontSize: '0.82rem', marginTop: 6, color: '#334155' }}>{s.findings}</div>}
+                  </div>
+                  <button type="button" onClick={() => openViewer(s.id)} style={{
+                    background: '#DC2626', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px',
+                    fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', alignSelf: 'flex-start',
+                  }}>Review</button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {page === 'schedule' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Imaging schedule</h2>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B' }}>Scheduled and in-progress exams</p>
+            <div style={{ ...card, overflow: 'hidden' }}>
+              {scheduled.length === 0 ? (
+                <div style={{ padding: 32, textAlign: 'center', color: '#94A3B8' }}>No scheduled slots</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ background: '#F8FAFC', textAlign: 'left', color: '#64748B' }}>
+                      {['When', 'Patient', 'Exam', 'Status'].map((h) => (
+                        <th key={h} style={{ padding: '10px 12px', fontSize: '0.7rem', textTransform: 'uppercase' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scheduled.map((s) => (
+                      <tr key={s.id} style={{ borderTop: '1px solid #F1F5F9' }}>
+                        <td style={{ padding: '10px 12px' }}>{new Date(s.orderedAt).toLocaleString()}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: 700 }}>{s.patientName}</td>
+                        <td style={{ padding: '10px 12px' }}>{s.modality} · {s.bodyPart}</td>
+                        <td style={{ padding: '10px 12px' }}>{STATUS_META[s.status].label}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <button type="button" onClick={pullOrthanc} style={{
+              alignSelf: 'flex-start', border: '1px solid #E2E8F0', background: '#fff', borderRadius: 10,
+              padding: '10px 14px', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
+            }}>
+              Query Orthanc PACS
+            </button>
+            {orthancMsg && <div style={{ fontSize: '0.78rem', color: '#64748B' }}>{orthancMsg}</div>}
+          </div>
+        )}
+      </main>
+
+      {notice && (
+        <div style={{
+          position: 'fixed', top: 20, right: 20, zIndex: 99999, background: '#4C1D95', color: '#fff',
+          padding: '12px 16px', borderRadius: 12, fontWeight: 600, fontSize: '0.86rem',
+          boxShadow: '0 12px 32px rgba(76,29,149,0.35)',
+        }}>
+          {notice}
         </div>
       )}
 
-      {/* Modal 2: Edit Findings */}
-      {showReportModal && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(10,25,41,0.7)',
-          backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
-        }}>
-          <div style={{
-            background: '#FFF', borderRadius: 14, width: '100%', maxWidth: 520, padding: 24,
-            boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0A2540' }}>
-                Radiologist Interpretation & Findings
-              </h3>
-              <button className="os-ghost-btn" style={{ padding: 4 }} onClick={() => setShowReportModal(false)}><X size={16} /></button>
+      {showReport && selectedStudy && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 99990, background: 'rgba(15,23,42,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+          }}
+          onClick={() => setShowReport(false)}
+        >
+          <form
+            onSubmit={signReport}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 16, width: '100%', maxWidth: 520, padding: 22,
+              border: '1px solid #E9D5FF', boxShadow: '0 24px 48px rgba(76,29,149,0.2)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontWeight: 800, color: '#5B21B6' }}>Report · {selectedStudy.id}</h3>
+              <button type="button" onClick={() => setShowReport(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}><X size={18} /></button>
             </div>
-            <form onSubmit={handleSaveReportForm} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ fontSize: '0.82rem', color: '#64748B' }}>
-                Study: <strong style={{ color: '#0A2540' }}>{selectedStudy.modality} - {selectedStudy.bodyPart}</strong> • Patient: <strong>{selectedStudy.patientName}</strong>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
-                  Detailed Diagnostic Findings & Impression *
-                </label>
-                <textarea
-                  required
-                  rows={5}
-                  placeholder="Enter radiologist impression, anatomical findings, measurements and recommendation..."
-                  value={reportFindings}
-                  onChange={e => setReportFindings(e.target.value)}
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.88rem', outline: 'none' }}
-                />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
-                <button type="button" className="os-ghost-btn" onClick={() => setShowReportModal(false)}>Cancel</button>
-                <button type="submit" className="os-action-btn-primary">Sign & Save Findings</button>
-              </div>
-            </form>
-          </div>
+            <div style={{ fontSize: '0.82rem', color: '#64748B', marginBottom: 10 }}>
+              {selectedStudy.patientName} · {selectedStudy.modality} {selectedStudy.bodyPart}
+            </div>
+            <textarea
+              value={findingsText}
+              onChange={(e) => setFindingsText(e.target.value)}
+              rows={8}
+              placeholder="Findings and impression…"
+              style={{ width: '100%', borderRadius: 10, border: '1px solid #E2E8F0', padding: 12, fontSize: '0.88rem', resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+              <button type="button" onClick={() => setShowReport(false)} style={{ border: '1px solid #E2E8F0', background: '#fff', borderRadius: 10, padding: '9px 14px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+              <button type="submit" style={{ background: 'linear-gradient(135deg,#7C3AED,#6D28D9)', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 16px', fontWeight: 700, cursor: 'pointer' }}>
+                Sign &amp; save
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
   );
 };
+
+const viewerBtn: React.CSSProperties = {
+  border: '1px solid #334155',
+  background: 'rgba(30,41,59,0.8)',
+  color: '#E2E8F0',
+  borderRadius: 6,
+  padding: '4px 8px',
+  cursor: 'pointer',
+  fontSize: '0.68rem',
+};
+
+export default RadiologyPacsSuite;

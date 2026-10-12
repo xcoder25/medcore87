@@ -205,7 +205,13 @@ export function getRolePermissionsMap(): RolePermissionsMap {
   try {
     const raw = localStorage.getItem(ROLE_PERMISSIONS_KEY);
     if (!raw) return { ...DEFAULTS };
-    return { ...DEFAULTS, ...JSON.parse(raw) };
+    const saved = JSON.parse(raw) as RolePermissionsMap;
+    // Merge: defaults first, then saved overrides — never drop a role's baseline list entirely if key missing
+    const merged: RolePermissionsMap = { ...DEFAULTS };
+    for (const [rk, mods] of Object.entries(saved)) {
+      if (Array.isArray(mods) && mods.length) merged[rk] = mods;
+    }
+    return merged;
   } catch {
     return { ...DEFAULTS };
   }
@@ -235,7 +241,9 @@ export function roleCanAccessModule(roleKey: string, moduleKey: string): boolean
   if (moduleKey === 'lab' && mods.includes('laboratory')) return true;
   if (moduleKey === 'm87-ai' && mods.includes('ai')) return true;
   if (moduleKey === 'ai' && mods.includes('m87-ai')) return true;
-  return false;
+  // Always allow staff card + home desk
+  if (moduleKey === 'dashboard' || moduleKey === 'my-card' || moduleKey === 'notifications') return true;
+  return mods.includes(moduleKey);
 }
 
 /** Patient-data scopes (keys starting with patient.) */
