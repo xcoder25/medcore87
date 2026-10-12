@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FileText, Search, ZoomIn, ZoomOut, RotateCw, Layers, CheckCircle2, ShieldAlert,
   Eye, User, Calendar, Plus, X, Edit3, Send, Sparkles, RefreshCw, ClipboardList,
-  History, AlertTriangle, Clock, Radio, LayoutDashboard, Scan,
+  History, AlertTriangle, Clock, Radio, LayoutDashboard, Scan, BarChart3, Phone,
 } from 'lucide-react';
 import type { RadiologyStudy } from '@medcore/types';
 import {
@@ -38,14 +38,79 @@ import {
   type OrthancStudyRef,
 } from '../../lib/orthancClient';
 
-type RadPage = 'worklist' | 'viewer' | 'history' | 'critical' | 'schedule';
+type RadPage = 'worklist' | 'reading' | 'viewer' | 'history' | 'critical' | 'protocol' | 'schedule' | 'analytics';
+
+/** Extended study fields aligned with Epic Radiant / Cerner RadNet */
+type Priority = 'stat' | 'urgent' | 'routine';
+type PatientClass = 'ED' | 'IP' | 'OP' | 'UC';
+type ReportPhase = 'none' | 'preliminary' | 'final' | 'addendum';
+
+interface RadStudyExt extends RadiologyStudy {
+  priority?: Priority;
+  patientClass?: PatientClass;
+  reportPhase?: ReportPhase;
+  protocol?: string;
+  contrast?: string;
+  doseDlp?: number;
+  techNotes?: string;
+  orderingProvider?: string;
+  criticalFlagged?: boolean;
+  criticalAcked?: boolean;
+  criticalAckBy?: string;
+  criticalAckAt?: string;
+  comparisonAccession?: string;
+}
+
+const PRIORITY_META: Record<Priority, { label: string; color: string; bg: string; sort: number }> = {
+  stat: { label: 'STAT', color: '#DC2626', bg: '#FEF2F2', sort: 0 },
+  urgent: { label: 'Urgent', color: '#D97706', bg: '#FFFBEB', sort: 1 },
+  routine: { label: 'Routine', color: '#64748B', bg: '#F8FAFC', sort: 2 },
+};
+
+const CLASS_META: Record<PatientClass, { label: string; color: string }> = {
+  ED: { label: 'ED', color: '#DC2626' },
+  IP: { label: 'Inpatient', color: '#D97706' },
+  UC: { label: 'Urgent care', color: '#2563EB' },
+  OP: { label: 'Outpatient', color: '#059669' },
+};
+
+/** Structured report templates (Radiant / RadNet style) */
+const REPORT_TEMPLATES: { id: string; name: string; modality: string; body: string }[] = [
+  {
+    id: 'xr-chest',
+    name: 'Chest XR — standard',
+    modality: 'XR',
+    body: 'TECHNIQUE: PA and lateral chest radiographs.\n\nCOMPARISON: None available.\n\nFINDINGS:\nLungs are clear bilaterally. No focal consolidation, effusion, or pneumothorax.\nCardiomediastinal silhouette is within normal limits.\n\nIMPRESSION:\nNo acute cardiopulmonary process.',
+  },
+  {
+    id: 'ct-head',
+    name: 'CT Head — non-contrast',
+    modality: 'CT',
+    body: 'TECHNIQUE: Non-contrast CT head.\n\nCOMPARISON: None.\n\nFINDINGS:\nNo intracranial hemorrhage, mass effect, or midline shift.\nVentricles and cisterns are normal.\nGray-white differentiation preserved.\n\nIMPRESSION:\nNo acute intracranial abnormality.',
+  },
+  {
+    id: 'us-abd',
+    name: 'Abdomen US',
+    modality: 'US',
+    body: 'TECHNIQUE: Transabdominal ultrasound of the abdomen.\n\nFINDINGS:\nLiver normal in size and echotexture. No focal lesion.\nGallbladder without stones or wall thickening.\nKidneys normal bilaterally. Spleen unremarkable.\n\nIMPRESSION:\nNormal abdominal ultrasound.',
+  },
+  {
+    id: 'mri-spine',
+    name: 'Lumbar MRI',
+    modality: 'MRI',
+    body: 'TECHNIQUE: MRI lumbar spine without contrast.\n\nFINDINGS:\nAlignment maintained. Disc desiccation as noted. No significant central canal stenosis.\nNeural foramina patent. Cord/conus normal.\n\nIMPRESSION:\nMild degenerative changes without significant stenosis.',
+  },
+];
 
 const NAV: { key: RadPage; label: string; icon: React.ElementType; badge?: string }[] = [
-  { key: 'worklist', label: 'Modality worklist', icon: ClipboardList, badge: 'RIS' },
-  { key: 'viewer', label: 'PACS viewer & report', icon: Scan, badge: 'DICOM' },
+  { key: 'worklist', label: 'Tech worklist', icon: ClipboardList, badge: 'MWL' },
+  { key: 'reading', label: 'Reading worklist', icon: Eye, badge: 'Read' },
+  { key: 'viewer', label: 'PACS & report', icon: Scan, badge: 'DICOM' },
+  { key: 'protocol', label: 'Protocol queue', icon: FileText },
   { key: 'history', label: 'Imaging history', icon: History },
-  { key: 'critical', label: 'Critical findings', icon: ShieldAlert },
+  { key: 'critical', label: 'Critical results', icon: ShieldAlert },
   { key: 'schedule', label: 'Schedule', icon: Calendar },
+  { key: 'analytics', label: 'TAT & analytics', icon: Clock },
 ];
 
 const STATUS_META: Record<RadiologyStudy['status'], { label: string; color: string; bg: string }> = {
@@ -102,7 +167,7 @@ function persistStudies(studies: RadiologyStudy[]) {
 function seedDemoIfEmpty(existing: RadiologyStudy[]): RadiologyStudy[] {
   if (existing.length > 0) return existing;
   const now = Date.now();
-  return [
+  const base: RadStudyExt[] = [
     {
       id: 'RAD-2026-0101',
       patientId: 'IGH-PT-2CKAR3',
@@ -114,6 +179,12 @@ function seedDemoIfEmpty(existing: RadiologyStudy[]): RadiologyStudy[] {
       orderedAt: new Date(now - 2 * 3600e3).toISOString(),
       radiologist: 'Pending',
       findings: '',
+      priority: 'stat',
+      patientClass: 'ED',
+      reportPhase: 'none',
+      protocol: 'XR Chest 2 views',
+      orderingProvider: 'Dr. Amara Okafor',
+      contrast: 'None',
     },
     {
       id: 'RAD-2026-0102',
@@ -126,6 +197,11 @@ function seedDemoIfEmpty(existing: RadiologyStudy[]): RadiologyStudy[] {
       orderedAt: new Date(now - 26 * 3600e3).toISOString(),
       radiologist: 'Dr. Bassey Ntuen',
       findings: 'Normal abdominal ultrasound. No cholelithiasis. Liver, spleen, kidneys unremarkable.',
+      priority: 'routine',
+      patientClass: 'OP',
+      reportPhase: 'final',
+      protocol: 'US Abdomen complete',
+      orderingProvider: 'Dr. Emeka Adeyemi',
     },
     {
       id: 'RAD-2026-0103',
@@ -137,6 +213,32 @@ function seedDemoIfEmpty(existing: RadiologyStudy[]): RadiologyStudy[] {
       status: 'in_progress',
       orderedAt: new Date(now - 45 * 60e3).toISOString(),
       radiologist: 'Pending',
+      priority: 'urgent',
+      patientClass: 'ED',
+      reportPhase: 'none',
+      protocol: 'CT Head non-contrast',
+      orderingProvider: 'ED Physician',
+      doseDlp: 620,
+      contrast: 'None',
+    },
+    {
+      id: 'RAD-2026-0104',
+      patientId: 'IGH-PT-2CKAR3',
+      patientName: 'Michael James',
+      modality: 'CT',
+      bodyPart: 'Chest',
+      reason: 'Suspected PE',
+      status: 'acquired',
+      orderedAt: new Date(now - 90 * 60e3).toISOString(),
+      radiologist: 'Pending',
+      priority: 'stat',
+      patientClass: 'IP',
+      reportPhase: 'none',
+      protocol: 'CTPA PE protocol',
+      orderingProvider: 'Dr. Amara Okafor',
+      contrast: 'IV contrast — 80 ml',
+      doseDlp: 410,
+      criticalFlagged: false,
     },
     {
       id: 'RAD-2026-0098',
@@ -149,6 +251,9 @@ function seedDemoIfEmpty(existing: RadiologyStudy[]): RadiologyStudy[] {
       orderedAt: new Date(now - 14 * 864e5).toISOString(),
       radiologist: 'Dr. Bassey Ntuen',
       findings: 'No fracture. Mild joint space narrowing. Soft tissues intact.',
+      priority: 'routine',
+      patientClass: 'OP',
+      reportPhase: 'final',
     },
     {
       id: 'RAD-2026-0090',
@@ -161,8 +266,30 @@ function seedDemoIfEmpty(existing: RadiologyStudy[]): RadiologyStudy[] {
       orderedAt: new Date(now - 60 * 864e5).toISOString(),
       radiologist: 'Dr. Fatima Al-Hassan',
       findings: 'L4-L5 disc desiccation without significant canal stenosis. No cord compression.',
+      priority: 'routine',
+      patientClass: 'OP',
+      reportPhase: 'final',
+      comparisonAccession: 'RAD-2025-0440',
+    },
+    {
+      id: 'RAD-2026-0088',
+      patientId: 'IGH-PT-YB13KN',
+      patientName: 'Dahlia nen Arcade',
+      modality: 'XR',
+      bodyPart: 'Chest',
+      reason: 'Fever',
+      status: 'reported',
+      orderedAt: new Date(now - 3 * 864e5).toISOString(),
+      radiologist: 'Nathan · IGH-EKT-RAD-GO8D',
+      findings: 'CRITICAL: Large right pneumothorax with mediastinal shift. Immediate clinical correlation advised.',
+      priority: 'stat',
+      patientClass: 'ED',
+      reportPhase: 'final',
+      criticalFlagged: true,
+      criticalAcked: false,
     },
   ];
+  return base as RadiologyStudy[];
 }
 
 export const RadiologyPacsSuite: React.FC = () => {
@@ -221,8 +348,38 @@ export const RadiologyPacsSuite: React.FC = () => {
           s.bodyPart.toLowerCase().includes(q)
       );
     }
-    return list.sort((a, b) => b.orderedAt.localeCompare(a.orderedAt));
+    const sorted = list.sort((a, b) => {
+      const pa = PRIORITY_META[(a as RadStudyExt).priority || 'routine'].sort;
+      const pb = PRIORITY_META[(b as RadStudyExt).priority || 'routine'].sort;
+      if (pa !== pb) return pa - pb;
+      return a.orderedAt.localeCompare(b.orderedAt); // oldest first within priority
+    });
+    return sorted;
   }, [studies, search, modalityFilter]);
+
+  const readingList = useMemo(() => {
+    let list = studies.filter((s) => s.status === 'acquired' || (s as RadStudyExt).reportPhase === 'preliminary');
+    if (modalityFilter !== 'all') list = list.filter((s) => s.modality === modalityFilter);
+    return list.sort((a, b) => {
+      const pa = PRIORITY_META[(a as RadStudyExt).priority || 'routine'].sort;
+      const pb = PRIORITY_META[(b as RadStudyExt).priority || 'routine'].sort;
+      if (pa !== pb) return pa - pb;
+      return a.orderedAt.localeCompare(b.orderedAt);
+    });
+  }, [studies, modalityFilter]);
+
+  const protocolQueue = useMemo(
+    () => studies.filter((s) => s.status === 'scheduled' && !(s as RadStudyExt).protocol),
+    [studies]
+  );
+
+  const avgTatHours = useMemo(() => {
+    const reported = studies.filter((s) => s.status === 'reported' && s.findings);
+    if (!reported.length) return 0;
+    // demo: approximate TAT from ordered to "now" delta capped
+    const hours = reported.map((s) => Math.min(48, (Date.now() - new Date(s.orderedAt).getTime()) / 3600e3));
+    return Math.round((hours.reduce((a, b) => a + b, 0) / hours.length) * 10) / 10;
+  }, [studies]);
 
   const historyList = useMemo(() => {
     let list = [...studies].sort((a, b) => b.orderedAt.localeCompare(a.orderedAt));
@@ -241,11 +398,12 @@ export const RadiologyPacsSuite: React.FC = () => {
 
   const criticalList = useMemo(
     () =>
-      studies.filter(
-        (s) =>
-          (s.findings || '').toLowerCase().match(/critical|urgent|mass|fracture|hemorrhage|pneumothorax|stroke/) ||
-          s.status === 'acquired'
-      ),
+      studies.filter((s) => {
+        const ext = s as RadStudyExt;
+        if (ext.criticalFlagged) return true;
+        const f = (s.findings || '').toLowerCase();
+        return /critical|urgent|hemorrhage|pneumothorax|stroke|immediate/.test(f);
+      }),
     [studies]
   );
 
@@ -273,15 +431,19 @@ export const RadiologyPacsSuite: React.FC = () => {
     e.preventDefault();
     if (!selectedStudy) return;
     const text = findingsText.trim() || 'Normal examination. No acute pathology identified.';
+    const isCritical = /critical|pneumothorax|hemorrhage|stroke|immediate/i.test(text);
     setStudies((prev) =>
       prev.map((s) =>
         s.id === selectedStudy.id
-          ? {
+          ? ({
               ...s,
               status: 'reported' as const,
               findings: text,
               radiologist: 'Nathan · IGH-EKT-RAD-GO8D',
-            }
+              reportPhase: 'final',
+              criticalFlagged: isCritical || (s as RadStudyExt).criticalFlagged,
+              criticalAcked: isCritical ? false : (s as RadStudyExt).criticalAcked,
+            } as RadiologyStudy)
           : s
       )
     );
@@ -477,7 +639,7 @@ export const RadiologyPacsSuite: React.FC = () => {
           );
         })}
         <div style={{ marginTop: 'auto', padding: '10px 8px', fontSize: '0.62rem', opacity: 0.5 }}>
-          Worklist · Viewer · History · Critical · Schedule
+          Tech · Reading · PACS · Protocol · History · Critical · TAT
         </div>
       </aside>
 
@@ -582,7 +744,7 @@ export const RadiologyPacsSuite: React.FC = () => {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead>
                     <tr style={{ background: '#F8FAFC', color: '#64748B', textAlign: 'left' }}>
-                      {['Accession', 'Patient', 'Modality', 'Body part', 'Indication', 'Status', ''].map((h) => (
+                      {['Pri', 'Class', 'Accession', 'Patient', 'Modality', 'Body part', 'Indication', 'Status', ''].map((h) => (
                         <th key={h} style={{ padding: '10px 12px', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase' }}>{h}</th>
                       ))}
                     </tr>
@@ -591,7 +753,17 @@ export const RadiologyPacsSuite: React.FC = () => {
                     {worklist.map((s) => {
                       const st = STATUS_META[s.status];
                       return (
-                        <tr key={s.id} style={{ borderTop: '1px solid #F1F5F9' }}>
+                        <tr key={s.id} style={{ borderTop: '1px solid #F1F5F9', background: (s as RadStudyExt).priority === 'stat' ? '#FEF2F2' : undefined }}>
+                          <td style={{ padding: '10px 12px' }}>
+                            {(() => {
+                              const p = (s as RadStudyExt).priority || 'routine';
+                              const m = PRIORITY_META[p];
+                              return <span style={{ background: m.bg, color: m.color, fontWeight: 800, fontSize: '0.65rem', padding: '2px 7px', borderRadius: 6 }}>{m.label}</span>;
+                            })()}
+                          </td>
+                          <td style={{ padding: '10px 12px', fontWeight: 700, fontSize: '0.72rem', color: CLASS_META[(s as RadStudyExt).patientClass || 'OP'].color }}>
+                            {(s as RadStudyExt).patientClass || 'OP'}
+                          </td>
                           <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.75rem' }}>{s.id}</td>
                           <td style={{ padding: '10px 12px', fontWeight: 700 }}>
                             {s.patientName}
@@ -853,10 +1025,142 @@ export const RadiologyPacsSuite: React.FC = () => {
           </div>
         )}
 
+        
+        {page === 'reading' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Reading worklist</h2>
+              <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748B' }}>
+                Epic Radiant–style unread queue · STAT first · then ED / IP / OP
+              </p>
+            </div>
+            <div style={{ ...card, overflow: 'hidden' }}>
+              {readingList.length === 0 ? (
+                <div style={{ padding: 36, textAlign: 'center', color: '#94A3B8' }}>No studies waiting for interpretation</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ background: '#F5F3FF', color: '#5B21B6', textAlign: 'left' }}>
+                      {['Pri', 'Class', 'Accession', 'Patient', 'Exam', 'Ordered', ''].map((h) => (
+                        <th key={h} style={{ padding: '10px 12px', fontSize: '0.7rem', textTransform: 'uppercase' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {readingList.map((s) => {
+                      const ext = s as RadStudyExt;
+                      const pri = PRIORITY_META[ext.priority || 'routine'];
+                      return (
+                        <tr key={s.id} style={{ borderTop: '1px solid #F1F5F9', background: ext.priority === 'stat' ? '#FEF2F2' : undefined }}>
+                          <td style={{ padding: '10px 12px' }}><span style={{ background: pri.bg, color: pri.color, fontWeight: 800, fontSize: '0.65rem', padding: '2px 7px', borderRadius: 6 }}>{pri.label}</span></td>
+                          <td style={{ padding: '10px 12px', fontWeight: 700, color: CLASS_META[ext.patientClass || 'OP'].color }}>{ext.patientClass || 'OP'}</td>
+                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.75rem' }}>{s.id}</td>
+                          <td style={{ padding: '10px 12px', fontWeight: 700 }}>{s.patientName}</td>
+                          <td style={{ padding: '10px 12px' }}>{s.modality} · {s.bodyPart}</td>
+                          <td style={{ padding: '10px 12px', color: '#64748B' }}>{new Date(s.orderedAt).toLocaleString()}</td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <button type="button" onClick={() => openViewer(s.id)} style={{ background: 'linear-gradient(135deg,#7C3AED,#6D28D9)', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 12px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>
+                              Open &amp; report
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {page === 'protocol' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Protocol queue</h2>
+              <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748B' }}>
+                Assign acquisition protocol before modality (Radiant Protocol Work List)
+              </p>
+            </div>
+            {studies.filter((s) => s.status === 'scheduled' || s.status === 'in_progress').map((s) => {
+              const ext = s as RadStudyExt;
+              return (
+                <div key={s.id} style={{ ...card, padding: 14, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{s.patientName} · {s.modality} {s.bodyPart}</div>
+                    <div style={{ fontSize: '0.78rem', color: '#64748B' }}>{s.reason} · Ordered by {ext.orderingProvider || '—'}</div>
+                    <div style={{ fontSize: '0.78rem', marginTop: 4, color: '#5B21B6', fontWeight: 600 }}>Protocol: {ext.protocol || 'Not assigned'}</div>
+                  </div>
+                  <select
+                    value={ext.protocol || ''}
+                    onChange={(e) => {
+                      const protocol = e.target.value;
+                      setStudies((prev) => prev.map((x) => x.id === s.id ? { ...x, protocol } as RadiologyStudy : x));
+                      toast(`Protocol set · ${protocol}`);
+                    }}
+                    style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: '0.8rem', maxWidth: 220 }}
+                  >
+                    <option value="">Select protocol…</option>
+                    <option value="XR Chest 2 views">XR Chest 2 views</option>
+                    <option value="CT Head non-contrast">CT Head non-contrast</option>
+                    <option value="CTPA PE protocol">CTPA PE protocol</option>
+                    <option value="US Abdomen complete">US Abdomen complete</option>
+                    <option value="MRI Lumbar without contrast">MRI Lumbar without contrast</option>
+                    <option value="Mammography screening">Mammography screening</option>
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {page === 'analytics' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>TAT &amp; analytics</h2>
+              <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748B' }}>
+                Radiant-style operational metrics · turnaround · modality mix
+              </p>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 10 }}>
+              {[
+                { l: 'Avg report TAT (h)', v: avgTatHours || '—', c: '#7C3AED' },
+                { l: 'Unread backlog', v: kpis.unread, c: '#DC2626' },
+                { l: 'Reported', v: kpis.reported, c: '#059669' },
+                { l: 'STAT in queue', v: studies.filter((s) => (s as RadStudyExt).priority === 'stat' && s.status !== 'reported').length, c: '#EA580C' },
+              ].map((k) => (
+                <div key={k.l} style={{ ...card, padding: 14, borderTop: `3px solid ${k.c}` }}>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>{k.l}</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{k.v}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ ...card, padding: 16 }}>
+              <div style={{ fontWeight: 800, fontSize: '0.85rem', marginBottom: 12 }}>Modality volume</div>
+              {['XR', 'CT', 'MRI', 'US', 'MAMMO'].map((m) => {
+                const n = studies.filter((s) => s.modality === m).length;
+                const pct = studies.length ? Math.round((n / studies.length) * 100) : 0;
+                return (
+                  <div key={m} style={{ marginBottom: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700 }}>{m}</span>
+                      <span style={{ color: '#64748B' }}>{n} · {pct}%</span>
+                    </div>
+                    <div style={{ height: 8, background: '#F1F5F9', borderRadius: 999, overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg,#7C3AED,#A78BFA)', borderRadius: 999 }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {page === 'critical' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Critical findings</h2>
-            <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B' }}>Unread studies and reports with urgent language</p>
+            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Critical results · closed loop</h2>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B' }}>
+              Radiant / RadNet style · flag → notify ordering provider → acknowledge
+            </p>
             {criticalList.length === 0 ? (
               <div style={{ ...card, padding: 32, textAlign: 'center' }}>
                 <CheckCircle2 size={28} color="#10B981" />
@@ -873,10 +1177,35 @@ export const RadiologyPacsSuite: React.FC = () => {
                     <div style={{ fontSize: '0.8rem', color: '#64748B' }}>{s.id} · {STATUS_META[s.status].label}</div>
                     {s.findings && <div style={{ fontSize: '0.82rem', marginTop: 6, color: '#334155' }}>{s.findings}</div>}
                   </div>
-                  <button type="button" onClick={() => openViewer(s.id)} style={{
-                    background: '#DC2626', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px',
-                    fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', alignSelf: 'flex-start',
-                  }}>Review</button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <button type="button" onClick={() => openViewer(s.id)} style={{
+                      background: '#DC2626', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px',
+                      fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer',
+                    }}>Review</button>
+                    {(s as RadStudyExt).criticalFlagged && !(s as RadStudyExt).criticalAcked && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStudies((prev) => prev.map((x) => x.id === s.id ? {
+                            ...x,
+                            criticalAcked: true,
+                            criticalAckBy: 'Ordering provider',
+                            criticalAckAt: new Date().toISOString(),
+                          } as RadiologyStudy : x));
+                          toast('Critical result acknowledged · loop closed');
+                        }}
+                        style={{
+                          border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C',
+                          borderRadius: 8, padding: '7px 10px', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer',
+                        }}
+                      >
+                        Mark acknowledged
+                      </button>
+                    )}
+                    {(s as RadStudyExt).criticalAcked && (
+                      <span style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 700 }}>✓ Acknowledged</span>
+                    )}
+                  </div>
                 </div>
               ))
             )}
@@ -956,6 +1285,22 @@ export const RadiologyPacsSuite: React.FC = () => {
             <div style={{ fontSize: '0.82rem', color: '#64748B', marginBottom: 10 }}>
               {selectedStudy.patientName} · {selectedStudy.modality} {selectedStudy.bodyPart}
             </div>
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#5B21B6' }}>Structured template</label>
+              <select
+                onChange={(e) => {
+                  const t = REPORT_TEMPLATES.find((x) => x.id === e.target.value);
+                  if (t) setFindingsText(t.body);
+                }}
+                defaultValue=""
+                style={{ width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid #E9D5FF', fontSize: '0.84rem' }}
+              >
+                <option value="">Select template (optional)…</option>
+                {REPORT_TEMPLATES.filter((t) => !selectedStudy || t.modality === selectedStudy.modality || t.modality === 'XR').map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
             <textarea
               value={findingsText}
               onChange={(e) => setFindingsText(e.target.value)}
@@ -963,6 +1308,9 @@ export const RadiologyPacsSuite: React.FC = () => {
               placeholder="Findings and impression…"
               style={{ width: '100%', borderRadius: 10, border: '1px solid #E2E8F0', padding: 12, fontSize: '0.88rem', resize: 'vertical' }}
             />
+            <p style={{ margin: '8px 0 0', fontSize: '0.72rem', color: '#94A3B8' }}>
+              Preliminary → Final · Critical language auto-flags closed-loop notification
+            </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
               <button type="button" onClick={() => setShowReport(false)} style={{ border: '1px solid #E2E8F0', background: '#fff', borderRadius: 10, padding: '9px 14px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
               <button type="submit" style={{ background: 'linear-gradient(135deg,#7C3AED,#6D28D9)', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 16px', fontWeight: 700, cursor: 'pointer' }}>
