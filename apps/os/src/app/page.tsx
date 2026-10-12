@@ -353,20 +353,18 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: 'Labour & delivery',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Labour ward desk', badge: 'Live' },
-            { key: 'maternity', icon: Stethoscope, label: 'Maternity, labour & CTG', badge: 'CTG' },
+            { key: 'maternity', icon: Stethoscope, label: 'Maternity EMR (CTG)', badge: 'CTG' },
             { key: 'paediatrics', icon: Baby, label: 'Newborn / NICU', badge: 'NICU' },
             { key: 'notifications', icon: Bell, label: 'Notifications' },
           ],
         },
         {
-          label: 'Care & support',
+          label: 'Maternity care',
           items: [
             { key: 'beds', icon: BedDouble, label: 'Maternity beds' },
-            { key: 'nursing', icon: FileText, label: 'Nursing & e-MAR' },
             { key: 'emergency', icon: Flame, label: 'Obstetric emergency' },
-            { key: 'blood-bank', icon: Droplet, label: 'Blood bank' },
-            { key: 'pharmacy', icon: Pill, label: 'Pharmacy requests' },
             { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
+            { key: 'my-card', icon: ShieldCheck, label: 'My staff ID' },
           ],
         },
       ];
@@ -2199,7 +2197,9 @@ const handleLockScreen = () => {
             {moduleLoading ? (
               <ModulePageLoader label="Opening workspace…" />
             ) : isModulePermitted(activeModule) ? (
-              activeModule === 'dashboard' && userSession && (userSession.roleKey === 'accountant' || userSession.roleKey === 'cashier') ? (
+              activeModule === 'dashboard' && userSession && userSession.roleKey === 'midwife' ? (
+                <MaternityOgSuite />
+              ) : activeModule === 'dashboard' && userSession && (userSession.roleKey === 'accountant' || userSession.roleKey === 'cashier') ? (
                 <AccountingWorkspace
                   session={userSession}
                   onNavigate={(k) => handleModuleChange(k as ModuleKey)}

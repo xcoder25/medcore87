@@ -328,59 +328,65 @@ export const MaternityOgSuite: React.FC = () => {
   const boardAll = labourCases.length ? labourCases : records.filter((r) => r.stage !== 'anc' && r.stage !== 'discharged');
 
   return (
-    <div style={{ display: 'flex', gap: 0, minHeight: 'calc(100vh - 120px)', background: 'linear-gradient(180deg, #FFF5F9 0%, #F8FAFC 40%)', borderRadius: 16, overflow: 'hidden', border: '1px solid #FCE7F3' }}>
-      <aside style={{ width: 236, flexShrink: 0, background: 'linear-gradient(180deg, #831843 0%, #9D174D 45%, #BE185D 100%)', color: '#FFF', padding: '18px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <div style={{ padding: '4px 10px 14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Baby size={20} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, minHeight: 'calc(100vh - 120px)', background: 'linear-gradient(180deg, #FFF5F9 0%, #F8FAFC 42%)', borderRadius: 16, overflow: 'hidden', border: '1px solid #FCE7F3' }}>
+      {/* Unified top command bar (no second sidebar) */}
+      <div style={{ background: 'linear-gradient(90deg, #831843 0%, #9D174D 40%, #BE185D 100%)', color: '#FFF', padding: '12px 16px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Baby size={18} />
             </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: '0.92rem' }}>Maternity EMR</div>
-              <div style={{ fontSize: '0.62rem', opacity: 0.75 }}>Stork · PowerChart parity</div>
+              <div style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '-0.01em' }}>Maternity · Labour & CTG</div>
+              <div style={{ fontSize: '0.68rem', opacity: 0.8 }}>Epic Stork / Cerner PowerChart parity · single desk</div>
             </div>
           </div>
-          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', background: 'rgba(0,0,0,0.15)', borderRadius: 8, padding: '6px 8px' }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#4ADE80' : '#FBBF24', boxShadow: connected ? '0 0 6px #4ADE80' : 'none' }} />
-            {connected ? 'Gateway live' : 'Local realtime'}
-            <Radio size={11} style={{ marginLeft: 'auto', opacity: 0.7 }} />
-          </div>
-        </div>
-        {NAV.map((item) => {
-          const active = page === item.key;
-          const Icon = item.icon;
-          return (
-            <button key={item.key} type="button" onClick={() => setPage(item.key)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', border: 'none', borderRadius: 10, padding: '10px 12px', cursor: 'pointer', background: active ? 'rgba(255,255,255,0.2)' : 'transparent', color: '#FFF', fontWeight: active ? 800 : 600, fontSize: '0.8rem' }}>
-              <Icon size={15} strokeWidth={active ? 2.5 : 2} />
-              <span style={{ flex: 1 }}>{item.label}</span>
-              {item.badge && (
-                <span style={{ background: item.badge === 'Live' ? '#4ADE80' : '#F9A8D4', color: item.badge === 'Live' ? '#14532D' : '#831843', fontSize: '0.6rem', fontWeight: 800, borderRadius: 999, padding: '2px 6px' }}>{item.badge}</span>
-              )}
-              {item.key === 'labour' && kpis.inLabour > 0 && (
-                <span style={{ background: '#FFF', color: '#BE185D', fontSize: '0.65rem', fontWeight: 800, borderRadius: 999, padding: '2px 7px' }}>{kpis.inLabour}</span>
-              )}
-              {item.key === 'emergency' && kpis.critical > 0 && (
-                <span style={{ background: '#FEE2E2', color: '#DC2626', fontSize: '0.65rem', fontWeight: 800, borderRadius: 999, padding: '2px 7px' }}>{kpis.critical}</span>
-              )}
-            </button>
-          );
-        })}
-        <div style={{ marginTop: 'auto', padding: '12px 8px 4px', fontSize: '0.62rem', opacity: 0.55 }}>
-          Maternity only · Epic Stork / Cerner OB
-        </div>
-      </aside>
-
-      <main style={{ flex: 1, padding: '18px 20px', overflow: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Users size={16} color="#DB2777" />
-            <span style={{ fontSize: '0.8rem', color: '#64748B' }}>{records.length} OB records · CTG pulse 6s</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.7rem', background: 'rgba(0,0,0,0.18)', borderRadius: 999, padding: '5px 10px' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#4ADE80' : '#FBBF24', boxShadow: connected ? '0 0 6px #4ADE80' : 'none' }} />
+              {connected ? 'Gateway live' : 'Local realtime'}
+            </span>
+            <span style={{ fontSize: '0.72rem', opacity: 0.85 }}>{records.length} OB · CTG 6s</span>
+            <button type="button" onClick={() => { pulseActiveLabour(facilityId); refresh(); toast('Board synced'); }} style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#FFF', borderRadius: 8, padding: '6px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
+              <RefreshCw size={13} /> Sync
+            </button>
           </div>
-          <button type="button" onClick={() => { pulseActiveLabour(facilityId); refresh(); toast('Board synced'); }} style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid #F9A8D4', background: '#FFF', color: '#9D174D', borderRadius: 8, padding: '7px 12px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
-            <RefreshCw size={14} /> Sync
-          </button>
         </div>
+        <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 0, scrollbarWidth: 'thin' }}>
+          {NAV.map((item) => {
+            const active = page === item.key;
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setPage(item.key)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
+                  border: 'none', borderRadius: '10px 10px 0 0', padding: '10px 14px', cursor: 'pointer',
+                  background: active ? '#FFF5F9' : 'transparent',
+                  color: active ? '#831843' : 'rgba(255,255,255,0.92)',
+                  fontWeight: active ? 800 : 600, fontSize: '0.78rem',
+                }}
+              >
+                <Icon size={14} strokeWidth={active ? 2.5 : 2} />
+                {item.label}
+                {item.badge && (
+                  <span style={{ background: item.badge === 'Live' ? '#4ADE80' : '#F9A8D4', color: item.badge === 'Live' ? '#14532D' : '#831843', fontSize: '0.58rem', fontWeight: 800, borderRadius: 999, padding: '2px 6px' }}>{item.badge}</span>
+                )}
+                {item.key === 'labour' && kpis.inLabour > 0 && (
+                  <span style={{ background: active ? '#BE185D' : '#FFF', color: active ? '#FFF' : '#BE185D', fontSize: '0.62rem', fontWeight: 800, borderRadius: 999, padding: '2px 6px' }}>{kpis.inLabour}</span>
+                )}
+                {item.key === 'emergency' && kpis.critical > 0 && (
+                  <span style={{ background: '#FEE2E2', color: '#DC2626', fontSize: '0.62rem', fontWeight: 800, borderRadius: 999, padding: '2px 6px' }}>{kpis.critical}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
+      <main style={{ flex: 1, padding: '18px 20px', overflow: 'auto', background: 'linear-gradient(180deg, #FFF5F9 0%, #FFFFFF 30%)' }}>
         {page === 'grease' && (
           <PageShell title="L&D Grease Board" sub="Epic Stork · Cerner Tracking Shell · live status">
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
