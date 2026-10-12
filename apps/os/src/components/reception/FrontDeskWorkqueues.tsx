@@ -57,7 +57,7 @@ function todayStr() {
 }
 
 export const FrontDeskWorkqueues: React.FC<{ session?: UserSession }> = ({ session }) => {
-  const facilityId = getActiveFacilityId() || session?.facilityId || 'IGH-EKT';
+  const facilityId = getActiveFacilityId() || session?.hospitalId || 'IGH-EKT';
   const [tab, setTab] = useState<Tab>('grid');
   const [day, setDay] = useState(todayStr());
   const [dept, setDept] = useState('General OPD');
