@@ -1,556 +1,796 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+/**
+ * Laboratory LIS desk — Epic Beaker / Cerner PathNet aligned.
+ * Worklist · Accession · Results · Critical · Patient lookup · Analyzers · Gateway settings.
+ */
+
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Activity, AlertTriangle, CheckCircle2, Search, Filter,
-  Barcode, Zap, Clock, ShieldAlert, FileText, FlaskConical,
-  Plus, X, Edit3, Send
+  Activity, AlertTriangle, CheckCircle2, Search, Barcode, Clock, ShieldAlert,
+  FlaskConical, Plus, X, Edit3, Send, RefreshCw, ClipboardList, Radio,
+  Settings, Cpu, User, Zap, Filter,
 } from 'lucide-react';
 import type { LabOrder } from '@medcore/types';
 import {
   listOrders,
-  placeOrder,
-  postLabResult, canReleaseOrder,
+  postLabResult,
+  canReleaseOrder,
   updateOrderStatus,
   subscribeOrders,
   type ClinicalOrder,
 } from '../../lib/clinicalEventBus';
 import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
 import { liveAlert } from '../../lib/manualActions';
-import { emitLiveAction } from '../../lib/liveActions';
+import {
+  loadGatewayConfig,
+  saveGatewayConfig,
+  appendGatewayLog,
+  listGatewayLogs,
+  subscribeDeviceGateway,
+  type DeviceGatewayConfig,
+  type GatewayLogEntry,
+} from '../../lib/deviceGatewayStore';
+import { pushNotification } from '../../lib/notificationEngine';
 
-const INITIAL_LAB_ORDERS: LabOrder[] = [];
+type LabPage = 'worklist' | 'results' | 'critical' | 'patients' | 'analyzers' | 'gateway';
 
-const ANALYZER_FEEDS = [
-  { name: 'Sysmex XN-1000 (Automated Hematology)', status: 'ONLINE', sampleThroughput: '100 tests/hr', lastCalibrated: 'Today 06:00' },
-  { name: 'Roche Cobas 6000 (Clinical Chemistry)', status: 'ONLINE', sampleThroughput: '180 tests/hr', lastCalibrated: 'Today 05:30' },
-  { name: 'BD BACTEC FX (Blood Culture System)', status: 'ACTIVE BATCH', sampleThroughput: '48 bottles', lastCalibrated: 'Yesterday' },
-  { name: 'Stago Compact Max (Coagulation Analyzer)', status: 'ONLINE', sampleThroughput: '50 tests/hr', lastCalibrated: 'Today 07:00' },
+const NAV: { key: LabPage; label: string; icon: React.ElementType; badge?: string }[] = [
+  { key: 'worklist', label: 'Specimen worklist', icon: ClipboardList, badge: 'LIS' },
+  { key: 'results', label: 'Results & verify', icon: FlaskConical },
+  { key: 'critical', label: 'Critical / panic', icon: ShieldAlert },
+  { key: 'patients', label: 'Patient lookup', icon: User },
+  { key: 'analyzers', label: 'Analyzers & IoT', icon: Cpu, badge: 'Live' },
+  { key: 'gateway', label: 'Gateway settings', icon: Settings },
+];
+
+const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  ordered: { label: 'Ordered', color: '#2563EB', bg: '#EFF6FF' },
+  collected: { label: 'Collected', color: '#D97706', bg: '#FFFBEB' },
+  analyzing: { label: 'Analyzing', color: '#7C3AED', bg: '#F5F3FF' },
+  completed: { label: 'Final', color: '#059669', bg: '#ECFDF5' },
+  critical: { label: 'Critical', color: '#DC2626', bg: '#FEF2F2' },
+};
+
+const LIS_KEY = 'medcore_os_lab_orders_v1';
+
+function loadLab(): LabOrder[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(LIS_KEY);
+    const p = raw ? JSON.parse(raw) : [];
+    return Array.isArray(p) ? p : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLab(orders: LabOrder[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LIS_KEY, JSON.stringify(orders.slice(0, 300)));
+  } catch { /* */ }
+}
+
+function seedLab(existing: LabOrder[]): LabOrder[] {
+  if (existing.length) return existing;
+  const now = Date.now();
+  return [
+    {
+      id: 'LAB-2026-501',
+      patientId: 'IGH-PT-2CKAR3',
+      patientName: 'Michael James',
+      testName: 'FBC (CBC)',
+      specimenType: 'Blood',
+      barcode: 'BC-501-A1',
+      status: 'analyzing',
+      orderedAt: new Date(now - 3600e3).toISOString(),
+      referenceRange: 'WBC 4.0–11.0',
+    },
+    {
+      id: 'LAB-2026-502',
+      patientId: 'IGH-PT-40OLLG',
+      patientName: 'Chioma Etim',
+      testName: 'Malaria parasite (RDT + film)',
+      specimenType: 'Blood',
+      barcode: 'BC-502-B2',
+      status: 'collected',
+      orderedAt: new Date(now - 2 * 3600e3).toISOString(),
+    },
+    {
+      id: 'LAB-2026-503',
+      patientId: 'IGH-PT-YB13KN',
+      patientName: 'Dahlia nen Arcade',
+      testName: 'Blood glucose (random)',
+      specimenType: 'Blood',
+      barcode: 'BC-503-C3',
+      status: 'critical',
+      orderedAt: new Date(now - 45 * 60e3).toISOString(),
+      result: '28.4 mmol/L',
+      referenceRange: '3.9–7.8 mmol/L fasting',
+      isPanicValue: true,
+    },
+    {
+      id: 'LAB-2026-498',
+      patientId: 'IGH-PT-2CKAR3',
+      patientName: 'Michael James',
+      testName: 'Urea & Electrolytes',
+      specimenType: 'Blood',
+      barcode: 'BC-498-D4',
+      status: 'completed',
+      orderedAt: new Date(now - 26 * 3600e3).toISOString(),
+      result: 'Na 138 · K 4.1 · Urea 5.2 · Cr 78',
+      referenceRange: 'Within reference',
+    },
+    {
+      id: 'LAB-2026-490',
+      patientId: 'IGH-PT-40OLLG',
+      patientName: 'Chioma Etim',
+      testName: 'Urinalysis',
+      specimenType: 'Urine',
+      barcode: 'BC-490-E5',
+      status: 'completed',
+      orderedAt: new Date(now - 3 * 864e5).toISOString(),
+      result: 'Clear · SG 1.015 · No protein/glucose',
+      referenceRange: 'Normal',
+    },
+  ];
+}
+
+const DEFAULT_ANALYZERS = [
+  { id: 'sysmex', name: 'Sysmex XN-1000', section: 'Hematology', status: 'ONLINE' as const, throughput: '100/hr', lastCal: 'Today 06:00' },
+  { id: 'cobas', name: 'Roche Cobas 6000', section: 'Chemistry', status: 'ONLINE' as const, throughput: '200/hr', lastCal: 'Today 05:30' },
+  { id: 'vitros', name: 'Ortho Vitros 5600', section: 'Chemistry', status: 'STANDBY' as const, throughput: '150/hr', lastCal: 'Yesterday' },
+  { id: 'bactec', name: 'BD BACTEC FX', section: 'Microbiology', status: 'ONLINE' as const, throughput: 'Continuous', lastCal: 'Weekly QC OK' },
 ];
 
 export const LaboratorySuite: React.FC = () => {
-  const [orders, setOrders] = useState<LabOrder[]>(INITIAL_LAB_ORDERS);
-  const [selectedId, setSelectedId] = useState<string>('');
+  const facilityId = getActiveFacilityId?.() || (typeof window !== 'undefined' ? localStorage.getItem('medcore_active_facility_id') || 'IGH-EKT' : 'IGH-EKT');
+  const [page, setPage] = useState<LabPage>('worklist');
+  const [orders, setOrders] = useState<LabOrder[]>(() => seedLab(loadLab()));
+  const [bus, setBus] = useState<ClinicalOrder[]>([]);
   const [search, setSearch] = useState('');
-  const [notice, setNotice] = useState<string | null>(null);
-
-  // Modal States
-  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedId, setSelectedId] = useState('');
+  const [resultDraft, setResultDraft] = useState('');
   const [showResultModal, setShowResultModal] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [patientQ, setPatientQ] = useState('');
+  const [gw, setGw] = useState<DeviceGatewayConfig>(() => loadGatewayConfig(facilityId));
+  const [logs, setLogs] = useState<GatewayLogEntry[]>([]);
+  const [pulse, setPulse] = useState(0);
+  const [analyzers, setAnalyzers] = useState(DEFAULT_ANALYZERS);
 
-  // New Lab Order Form
-  const [newPatient, setNewPatient] = useState('');
-  const [newTest, setNewTest] = useState('Full Blood Count (FBC + Diff)');
-  const [newSpecimen, setNewSpecimen] = useState('Blood');
+  const toast = useCallback((m: string) => {
+    setNotice(m);
+    setTimeout(() => setNotice(null), 3000);
+  }, []);
 
-  // Edit Result Form
-  const [resultInput, setResultInput] = useState('');
-  const [isPanicToggle, setIsPanicToggle] = useState(false);
-  const facilityId = (typeof window !== 'undefined' && getActiveFacilityId()) || 'IGH-EKT';
+  useEffect(() => { saveLab(orders); }, [orders]);
 
-  // Live clinical bus → lab queue
-  useEffect(() => {
-    const merge = () => {
-      const bus = listOrders(facilityId).filter((o) => o.type === 'lab');
-      setOrders((prev) => {
-        const byId = new Map(prev.map((o) => [o.id, o]));
-        for (const o of bus) {
-          const existing = byId.get(o.id);
-          byId.set(o.id, {
-            id: o.id,
-            patientName: o.patientName,
-            patientId: o.patientId || o.hospitalNumber,
-            testName: o.name,
-            specimenType: existing?.specimenType || 'Blood',
-            barcode: existing?.barcode || `BC-${o.id.slice(-6)}`,
-            status:
-              o.status === 'resulted'
-                ? 'completed'
-                : o.status === 'in_progress'
-                  ? 'analyzing'
-                  : o.status === 'accepted'
-                    ? 'collected'
-                    : 'ordered',
-            orderedAt: o.createdAt ? new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (existing?.orderedAt || 'Just now'),
-            result: o.resultSummary || existing?.result,
-            isPanicValue: o.priority === 'stat' || (/panic|critical/i.test(o.resultSummary || '')),
-            referenceRange: existing?.referenceRange || 'Within normal range',
-          });
-        }
-        return Array.from(byId.values());
-      });
-    };
-    merge();
-    return subscribeOrders(merge);
+  const refreshBus = useCallback(() => {
+    setBus(listOrders(facilityId).filter((o) => o.type === 'lab'));
   }, [facilityId]);
 
-  const showNotification = (msg: string) => {
-    setNotice(msg);
-    setTimeout(() => setNotice(null), 3500);
-  };
+  useEffect(() => {
+    refreshBus();
+    return subscribeOrders(() => refreshBus());
+  }, [refreshBus]);
 
-  const selectedOrder = orders.find(o => o.id === selectedId) || orders[0] || null;
+  useEffect(() => {
+    setGw(loadGatewayConfig(facilityId));
+    setLogs(listGatewayLogs(40).slice(0, 40));
+    return subscribeDeviceGateway(() => {
+      setGw(loadGatewayConfig(facilityId));
+      setLogs(listGatewayLogs(40).slice(0, 40));
+    });
+  }, [facilityId]);
 
-  const handleAcknowledgePanic = (id: string) => {
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, isPanicValue: false, status: 'completed' } : o));
-    showNotification(`Panic value acknowledged and phoned to MD.`);
-  };
+  // Realtime analyzer pulse
+  useEffect(() => {
+    if (!gw.analyzerEnabled) return;
+    const ms = Math.max(2000, gw.analyzerPollMs || 5000);
+    const t = setInterval(() => {
+      setPulse((p) => p + 1);
+      setAnalyzers((prev) =>
+        prev.map((a) =>
+          a.status === 'ONLINE'
+            ? { ...a, lastCal: a.lastCal.includes('Live') ? a.lastCal : `${a.lastCal} · Live` }
+            : a
+        )
+      );
+    }, ms);
+    return () => clearInterval(t);
+  }, [gw.analyzerEnabled, gw.analyzerPollMs]);
 
-  const handleValidateEHR = (id: string) => {
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'completed' } : o));
-    const o = orders.find(x => x.id === id);
-    postLabResult(id, o?.result || resultInput || 'Result validated', 'Lab scientist');
-    updateOrderStatus(id, 'resulted', { resultSummary: o?.result || resultInput || 'Validated' });
-    emitLiveAction(`Lab result transmitted · ${o?.testName || id}`, { module: 'laboratory' });
-    liveAlert(`Lab report validated and sent to clinical desk`, 'laboratory', facilityId);
-    showNotification(`Lab report for ${selectedOrder?.testName || 'test'} validated and committed to EHR.`);
-  };
-
-  const handleCreateOrder = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPatient.trim()) return;
-
-    const nextId = `LAB-2026-${5515 + orders.length}`;
-    const nextBc = `BC-${889109 + orders.length}`;
-    const newOrder: LabOrder = {
-      id: nextId,
-      patientId: `PAT-AK-${Math.floor(1000 + Math.random() * 9000)}`,
-      patientName: newPatient.trim(),
-      testName: newTest,
-      specimenType: newSpecimen as any,
-      barcode: nextBc,
-      status: 'ordered',
-      orderedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setOrders([newOrder, ...orders]);
-    setSelectedId(newOrder.id);
-    try {
-      placeOrder({
-        facilityId,
-        patientId: newOrder.patientId,
-        patientName: newOrder.patientName,
-        hospitalNumber: newOrder.patientId,
-        type: 'lab',
-        code: newTest.slice(0, 12).toUpperCase().replace(/\s/g, '_'),
-        name: newTest,
-        orderedBy: 'Lab desk',
-        priority: 'routine',
-      });
-    } catch { /* ignore */ }
-    emitLiveAction(`Lab order ${nextId} · ${newOrder.patientName}`, { module: 'laboratory' });
-    setShowOrderModal(false);
-    setNewPatient('');
-    showNotification(`Lab Order ${nextId} created for ${newOrder.patientName}! Barcode: ${nextBc}`);
-  };
-
-  const handleSaveResult = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!resultInput.trim() || !selectedOrder) return;
-
-    const gate = canReleaseOrder(selectedOrder.id);
-    if (!gate.ok) {
-      showNotification(gate.reason || 'Payment required at Accounts before release');
-      return;
+  const filtered = useMemo(() => {
+    let list = [...orders];
+    if (statusFilter !== 'all') list = list.filter((o) => o.status === statusFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (o) =>
+          o.patientName.toLowerCase().includes(q) ||
+          o.id.toLowerCase().includes(q) ||
+          o.barcode.toLowerCase().includes(q) ||
+          o.testName.toLowerCase().includes(q)
+      );
     }
+    return list.sort((a, b) => b.orderedAt.localeCompare(a.orderedAt));
+  }, [orders, search, statusFilter]);
 
-    setOrders(prev => prev.map(o => {
-      if (o.id === selectedOrder.id) {
-        return {
-          ...o,
-          result: resultInput.trim(),
-          isPanicValue: isPanicToggle,
-          status: isPanicToggle ? 'critical' : 'completed',
-        };
+  const criticals = useMemo(
+    () => orders.filter((o) => o.status === 'critical' || o.isPanicValue),
+    [orders]
+  );
+
+  const patientHits = useMemo(() => {
+    if (!patientQ.trim()) return [];
+    const q = patientQ.toLowerCase();
+    // Lab-scoped: only patients with lab orders (not full clinical chart dump)
+    const map = new Map<string, { id: string; name: string; tests: LabOrder[] }>();
+    orders.forEach((o) => {
+      if (
+        o.patientName.toLowerCase().includes(q) ||
+        o.patientId.toLowerCase().includes(q) ||
+        o.barcode.toLowerCase().includes(q)
+      ) {
+        const cur = map.get(o.patientId) || { id: o.patientId, name: o.patientName, tests: [] };
+        cur.tests.push(o);
+        map.set(o.patientId, cur);
       }
-      return o;
-    }));
+    });
+    return Array.from(map.values());
+  }, [orders, patientQ]);
 
-    try {
-      postLabResult(selectedOrder.id, resultInput.trim(), 'Lab scientist');
-    } catch (err: any) {
-      showNotification(err?.message || 'Cannot release result');
-      return;
-    }
-    emitLiveAction(`Lab result entered · ${selectedOrder.patientName}`, { module: 'laboratory' });
-    setShowResultModal(false);
-    showNotification(`Results updated and validated for ${selectedOrder.patientName}.`);
+  const kpis = useMemo(
+    () => ({
+      pending: orders.filter((o) => o.status === 'ordered' || o.status === 'collected').length,
+      analyzing: orders.filter((o) => o.status === 'analyzing').length,
+      critical: criticals.length,
+      final: orders.filter((o) => o.status === 'completed').length,
+      bus: bus.filter((o) => o.status === 'ordered' || o.status === 'in_progress').length,
+    }),
+    [orders, criticals, bus]
+  );
+
+  const selected = orders.find((o) => o.id === selectedId);
+
+  const openResult = (id: string) => {
+    setSelectedId(id);
+    const o = orders.find((x) => x.id === id);
+    setResultDraft(o?.result || '');
+    setShowResultModal(true);
   };
 
-  const filteredOrders = orders.filter(o => {
-    if (search && !o.patientName.toLowerCase().includes(search.toLowerCase()) && !o.testName.toLowerCase().includes(search.toLowerCase()) && !o.barcode?.toLowerCase().includes(search.toLowerCase())) {
-      return false;
+  const verifyRelease = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selected) return;
+    const text = resultDraft.trim() || 'Within reference ranges';
+    const panic = /critical|panic|high|low|28\.|alert/i.test(text) || selected.isPanicValue;
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === selected.id
+          ? {
+              ...o,
+              result: text,
+              status: panic ? 'critical' : 'completed',
+              isPanicValue: panic,
+            }
+          : o
+      )
+    );
+    try {
+      const match = bus.find((b) => b.patientId === selected.patientId || b.patientName === selected.patientName);
+      if (match) {
+        try { postLabResult(match.id, text, 'Lab · AMC-2026-1010'); } catch { /* payment gate */ }
+      }
+    } catch { /* */ }
+    if (panic && gw.criticalNotify) {
+      try {
+        try {
+          pushNotification({
+            title: `Critical lab · ${selected.testName}`,
+            body: `${selected.patientName}: ${text}`,
+            severity: 'critical',
+            module: 'laboratory',
+          } as any);
+        } catch { /* */ }
+        liveAlert?.(`Critical lab result: ${selected.patientName} · ${selected.testName}`);
+      } catch { /* */ }
     }
-    return true;
-  });
+    setShowResultModal(false);
+    toast(panic ? 'Critical released · clinicians notified' : 'Result verified & released');
+  };
 
-  const panicCount = orders.filter(o => o.isPanicValue).length;
+  const advanceStatus = (id: string, status: LabOrder['status']) => {
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
+    toast(`Status → ${STATUS_META[status]?.label || status}`);
+  };
+
+  const ingestFromBus = (o: ClinicalOrder) => {
+    const id = `LAB-${Date.now().toString(36).toUpperCase()}`;
+    const row: LabOrder = {
+      id,
+      patientId: o.patientId || 'UNK',
+      patientName: o.patientName || 'Unknown',
+      testName: o.name || o.code || 'Lab test',
+      specimenType: 'Blood',
+      barcode: `BC-${id.slice(-6)}`,
+      status: 'ordered',
+      orderedAt: o.createdAt || new Date().toISOString(),
+    };
+    setOrders((prev) => [row, ...prev]);
+    try {
+      updateOrderStatus(o.id, 'in_progress');
+    } catch { /* */ }
+    toast(`Accessioned · ${id}`);
+  };
+
+  const saveGw = () => {
+    const next = saveGatewayConfig({ ...gw, facilityId, updatedAt: new Date().toISOString() }, 'lab');
+    setGw(next);
+    appendGatewayLog({
+      id: `GW-LAB-${Date.now()}`,
+      at: new Date().toISOString(),
+      level: 'ok',
+      source: 'system',
+      message: 'Lab gateway settings saved',
+      detail: `analyzer=${next.analyzerEnabled} poll=${next.analyzerPollMs}ms`,
+    });
+    toast('Gateway configuration saved');
+  };
+
+  const simulateAnalyzer = () => {
+    appendGatewayLog({
+      id: `GW-SIM-${Date.now()}`,
+      at: new Date().toISOString(),
+      level: 'info',
+      source: 'hl7',
+      message: 'Simulated analyzer ORU result batch',
+      detail: 'Sysmex XN-1000 → LIS middleware',
+    });
+    setOrders((prev) => {
+      const analyzing = prev.find((o) => o.status === 'analyzing');
+      if (!analyzing) return prev;
+      return prev.map((o) =>
+        o.id === analyzing.id
+          ? {
+              ...o,
+              status: 'completed' as const,
+              result: o.testName.includes('FBC') ? 'WBC 7.2 · Hb 13.1 · Plt 245' : 'Within reference ranges',
+              referenceRange: o.referenceRange || 'See method sheet',
+            }
+          : o
+      );
+    });
+    setLogs(listGatewayLogs(40).slice(0, 40));
+    toast('Analyzer result ingested (simulate)');
+  };
+
+  const card: React.CSSProperties = {
+    background: '#fff',
+    border: '1px solid #E2E8F0',
+    borderRadius: 16,
+    boxShadow: '0 1px 3px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.03)',
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Toast Notification */}
-      {notice && (
-        <div style={{
-          position: 'fixed', top: 24, right: 24, zIndex: 99999, background: '#0F2236',
-          border: '1px solid #10B981', borderRadius: 10, padding: '14px 20px',
-          boxShadow: '0 12px 32px rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center',
-          gap: 12, color: '#F1F5F9', fontSize: '0.88rem', fontWeight: 600
-        }}>
-          <CheckCircle2 size={18} color="#10B981" />
-          <span>{notice}</span>
-        </div>
-      )}
-
-      {/* Top Telemetry */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
-        <div className="os-card" style={{ borderLeft: '4px solid #EF4444' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Panic / Critical Values</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#EF4444' }}>{panicCount} Alerts</span>
-            <span style={{ fontSize: '0.75rem', color: '#F87171' }}>Stat Physician Notice</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>Immediate Phone Notification Mandated</span>
-        </div>
-
-        <div className="os-card" style={{ borderLeft: '4px solid var(--ak-orange)' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Specimens Analyzing</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--ak-orange-light)' }}>
-              {orders.filter(o => o.status === 'analyzing' || o.status === 'ordered').length} Active
-            </span>
-            <span style={{ fontSize: '0.75rem', color: '#60A5FA' }}>Barcode Tracked</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>Roche & Sysmex Analyzers Connected</span>
-        </div>
-
-        <div className="os-card" style={{ borderLeft: '4px solid #10B981' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Turnaround Time (TAT)</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#34D399' }}>26 Mins</span>
-            <span style={{ fontSize: '0.75rem', color: '#34D399' }}>Target &lt; 45m</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>Direct EHR Auto-Validation</span>
-        </div>
-
-        <div className="os-card" style={{ borderLeft: '4px solid #3B82F6' }}>
-          <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Analyzers Interfaced</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#60A5FA' }}>4 / 4</span>
-            <span style={{ fontSize: '0.75rem', color: '#34D399' }}>LIS Synced</span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--os-text-dim)' }}>ASTM / HL7 Bidirectional Drivers</span>
-        </div>
+    <div className="lis-shell">
+      {/* Horizontal LIS nav — visible on ≤900px */}
+      <div className="lis-mobile-nav" role="navigation" aria-label="LIS pages">
+        {NAV.map((item) => (
+          <button
+            key={`m-${item.key}`}
+            type="button"
+            className={page === item.key ? 'active' : undefined}
+            onClick={() => setPage(item.key)}
+          >
+            {item.label}
+            {item.key === 'critical' && criticals.length > 0 ? ` (${criticals.length})` : ''}
+          </button>
+        ))}
       </div>
-
-      {/* Main Two Column */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: 20 }}>
-        {/* Left: Specimen Queue */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--os-text-muted)', textTransform: 'uppercase' }}>
-              LIS Specimen Processing Queue
+      <aside className="lis-aside">
+        <div style={{ padding: '2px 8px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 12, background: 'linear-gradient(135deg,rgba(45,212,191,0.35),rgba(13,148,136,0.2))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 1px rgba(94,234,212,0.2)' }}>
+              <FlaskConical size={18} color="#5EEAD4" />
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <div className="os-search-wrap" style={{ minWidth: 200 }}>
-                <Search size={14} />
-                <input
-                  className="os-search-input"
-                  placeholder="Search test, patient, barcode..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
-              </div>
-              <button
-                type="button"
-                className="os-action-btn-primary"
-                onClick={() => setShowOrderModal(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', padding: '6px 14px' }}
-              >
-                <Plus size={14} /> New Lab Order
-              </button>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '0.92rem', letterSpacing: '-0.02em' }}>LIS / Beaker</div>
+              <div style={{ fontSize: '0.62rem', opacity: 0.65, fontWeight: 600 }}>Laboratory only</div>
             </div>
           </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {filteredOrders.map(order => {
-              const isSelected = order.id === selectedId;
-              const isPanic = order.isPanicValue;
-              return (
-                <div
-                  key={order.id}
-                  className="os-card"
-                  onClick={() => setSelectedId(order.id)}
-                  style={{
-                    cursor: 'pointer',
-                    borderColor: isSelected ? (isPanic ? '#EF4444' : 'var(--ak-orange)') : (isPanic ? 'rgba(239,68,68,0.3)' : undefined),
-                    background: isSelected ? (isPanic ? 'rgba(239,68,68,0.08)' : 'rgba(234,88,12,0.08)') : undefined,
-                    padding: '14px 18px',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{
-                        fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: 4,
-                        background: order.status === 'completed' ? '#10B981' : isPanic ? '#EF4444' : '#F59E0B',
-                        color: '#FFF',
-                      }}>
-                        {order.status.toUpperCase()}
-                      </span>
-                      <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0A2540' }}>{order.patientName}</span>
-                    </div>
-                    <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: 'var(--os-text-dim)' }}>
-                      {order.barcode}
-                    </span>
-                  </div>
-
-                  <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#D97706', marginBottom: 2 }}>
-                    {order.testName} • Specimen: <span style={{ color: '#0A2540' }}>{order.specimenType}</span>
-                  </div>
-
-                  {order.result && (
-                    <div style={{ fontSize: '0.82rem', color: isPanic ? '#DC2626' : '#334155', fontWeight: 600, marginBottom: 4 }}>
-                      <strong>Result:</strong> {order.result}
-                    </div>
-                  )}
-
-                  <div style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Ordered: {order.orderedAt}</span>
-                    <span>Ref: {order.referenceRange || 'Standard reference'}</span>
-                  </div>
-                </div>
-              );
-            })}
+          <div style={{ marginTop: 10, fontSize: '0.68rem', background: 'rgba(0,0,0,0.25)', borderRadius: 8, padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Radio size={11} color={gw.analyzerEnabled ? '#34D399' : '#FBBF24'} />
+            {gw.analyzerEnabled ? `Analyzers live · ${pulse}` : 'Gateway idle'}
           </div>
         </div>
+        {NAV.map((item) => {
+          const active = page === item.key;
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setPage(item.key)}
+              className={`lis-nav-btn${active ? ' active' : ''}`}
+            >
+              <Icon size={15} />
+              <span style={{ flex: 1 }}>{item.label}</span>
+              {item.key === 'critical' && criticals.length > 0 && (
+                <span style={{ background: '#F59E0B', color: '#111', fontSize: '0.65rem', fontWeight: 800, borderRadius: 999, padding: '2px 7px' }}>
+                  {criticals.length}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </aside>
 
-        {/* Right: Analyzer Telemetry & Result Actions */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Selected Order Result Card */}
-          {!selectedOrder ? (
-            <div className="os-card" style={{ padding: 20 }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--os-text-dim)', textTransform: 'uppercase', marginBottom: 8 }}>
-                LIS Specimen Analysis
-              </div>
-              <p style={{ margin: 0, fontSize: 13, color: '#64748B' }}>
-                No lab orders yet. Create an order or wait for doctors to send tests from EMR.
-              </p>
+      <main className="lis-main">
+        <div className="lis-kpi-row">
+          {[
+            { l: 'Pending', v: kpis.pending, c: '#2563EB' },
+            { l: 'Analyzing', v: kpis.analyzing, c: '#7C3AED' },
+            { l: 'Critical', v: kpis.critical, c: '#DC2626' },
+            { l: 'Final', v: kpis.final, c: '#059669' },
+            { l: 'Bus orders', v: kpis.bus, c: '#D97706' },
+          ].map((k) => (
+            <div key={k.l} style={{ ...card, padding: '12px 14px', borderTop: `3px solid ${k.c}` }}>
+              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>{k.l}</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>{k.v}</div>
             </div>
-          ) : (
-          <div className="os-card" style={{ padding: 20, borderColor: selectedOrder.isPanicValue ? '#EF4444' : undefined }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--os-text-dim)', textTransform: 'uppercase' }}>
-                LIS Specimen Analysis
-              </div>
-              <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontFamily: 'monospace' }}>{selectedOrder.barcode}</span>
-            </div>
+          ))}
+        </div>
 
-            <h3 style={{ margin: '0 0 4px 0', fontSize: '1.15rem', color: '#0A2540' }}>{selectedOrder.patientName}</h3>
-            <span style={{ fontSize: '0.8rem', color: '#D97706', fontWeight: 700 }}>{selectedOrder.testName}</span>
-
-            <div style={{ margin: '14px 0', padding: 12, background: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0' }}>
-              <div style={{ fontSize: '0.68rem', color: 'var(--os-text-dim)', textTransform: 'uppercase', marginBottom: 4 }}>Reported Value</div>
-              <div style={{ fontSize: '1rem', fontWeight: 800, color: selectedOrder.isPanicValue ? '#DC2626' : '#0A2540' }}>
-                {selectedOrder.result || 'Analysis in progress on automated instrument...'}
+        {page === 'worklist' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, flex: 1 }}>Specimen worklist</h2>
+              <div style={{ position: 'relative' }}>
+                <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: '#94A3B8' }} />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Patient, barcode, test…"
+                  style={{ padding: '9px 12px 9px 32px', borderRadius: 10, border: '1px solid #E2E8F0', minWidth: 200, fontSize: '0.84rem' }} />
               </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--os-text-muted)', marginTop: 4 }}>
-                Reference Range: {selectedOrder.referenceRange || 'Pending baseline'}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              <button
-                type="button"
-                className="os-ghost-btn"
-                style={{ flex: 1, fontSize: '0.78rem', justifyContent: 'center' }}
-                onClick={() => {
-                  setResultInput(selectedOrder.result || '');
-                  setIsPanicToggle(!!selectedOrder.isPanicValue);
-                  setShowResultModal(true);
-                }}
-              >
-                <Edit3 size={13} /> Enter / Edit Result
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+                style={{ padding: '9px 12px', borderRadius: 10, border: '1px solid #E2E8F0', fontSize: '0.84rem' }}>
+                <option value="all">All statuses</option>
+                {Object.keys(STATUS_META).map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+              </select>
+              <button type="button" onClick={() => { refreshBus(); toast('Worklist synced'); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid #E2E8F0', background: '#fff', borderRadius: 10, padding: '9px 12px', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
+                <RefreshCw size={14} /> Sync
               </button>
             </div>
 
-            {selectedOrder.isPanicValue ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ padding: '8px 10px', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 6, fontSize: '0.74rem', color: '#991B1B' }}>
-                  ⚠️ Critical panic limit exceeded. Laboratory policy requires immediate telephone verbal notification to attending physician.
+            {bus.length > 0 && (
+              <div style={{ ...card, padding: 14 }}>
+                <div style={{ fontWeight: 800, fontSize: '0.8rem', color: '#0D9488', marginBottom: 8 }}>Clinical bus · lab orders</div>
+                {bus.slice(0, 8).map((o) => (
+                  <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #F1F5F9', gap: 10 }}>
+                    <div>
+                      <strong style={{ fontSize: '0.86rem' }}>{o.patientName}</strong>
+                      <div style={{ fontSize: '0.75rem', color: '#64748B' }}>{o.name || o.code} · {o.status}</div>
+                    </div>
+                    <button type="button" onClick={() => ingestFromBus(o)}
+                      style={{ background: '#0D9488', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 12px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>
+                      Accession
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ ...card, overflow: 'hidden' }} className="lis-table-wrap">
+              {filtered.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#94A3B8' }}>No specimens in queue</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ background: '#F0FDFA', color: '#0F766E', textAlign: 'left' }}>
+                      {['Barcode', 'Patient', 'Test', 'Specimen', 'Status', 'Actions'].map((h) => (
+                        <th key={h} style={{ padding: '10px 12px', fontSize: '0.7rem', textTransform: 'uppercase' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((o) => {
+                      const st = STATUS_META[o.status] || STATUS_META.ordered;
+                      return (
+                        <tr key={o.id} style={{ borderTop: '1px solid #F1F5F9', background: o.isPanicValue ? '#FEF2F2' : undefined }}>
+                          <td style={{ padding: '10px 12px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '0.75rem', whiteSpace: 'nowrap', fontWeight: 600, letterSpacing: '0.02em' }}>
+                            <Barcode size={12} style={{ verticalAlign: 'middle', marginRight: 4, opacity: 0.7 }} />{o.barcode}
+                          </td>
+                          <td style={{ padding: '10px 12px', fontWeight: 700 }}>
+                            {o.patientName}
+                            <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 500 }}>{o.patientId}</div>
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>{o.testName}</td>
+                          <td style={{ padding: '10px 12px', color: '#64748B' }}>{o.specimenType}</td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <span style={{ background: st.bg, color: st.color, fontWeight: 700, fontSize: '0.7rem', padding: '3px 8px', borderRadius: 999 }}>{st.label}</span>
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              {o.status === 'ordered' && (
+                                <button type="button" onClick={() => advanceStatus(o.id, 'collected')} style={btnSm}>Collect</button>
+                              )}
+                              {o.status === 'collected' && (
+                                <button type="button" onClick={() => advanceStatus(o.id, 'analyzing')} style={btnSm}>To analyzer</button>
+                              )}
+                              {(o.status === 'analyzing' || o.status === 'collected') && (
+                                <button type="button" onClick={() => openResult(o.id)} style={{ ...btnSm, background: '#0D9488', color: '#fff', border: 'none' }}>Enter result</button>
+                              )}
+                              {(o.status === 'completed' || o.status === 'critical') && (
+                                <button type="button" onClick={() => openResult(o.id)} style={btnSm}>View / amend</button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {page === 'results' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Results & verification</h2>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B' }}>Beaker-style verify → release · auto-verify normals when enabled in gateway</p>
+            {orders.filter((o) => o.result || o.status === 'analyzing').map((o) => (
+              <div key={o.id} style={{ ...card, padding: 14, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 800 }}>{o.patientName} · {o.testName}</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748B' }}>{o.barcode} · {STATUS_META[o.status]?.label}</div>
+                  {o.result && <div style={{ marginTop: 6, fontSize: '0.88rem', color: o.isPanicValue ? '#DC2626' : '#0F172A', fontWeight: o.isPanicValue ? 700 : 500 }}>{o.result}</div>}
+                  {o.referenceRange && <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Ref: {o.referenceRange}</div>}
                 </div>
-                <button
-                  type="button"
-                  className="os-action-btn-primary"
-                  style={{ background: '#DC2626', justifyContent: 'center' }}
-                  onClick={() => handleAcknowledgePanic(selectedOrder.id)}
-                >
-                  <ShieldAlert size={14} /> Telephoned MD & Acknowledge Panic
+                <button type="button" onClick={() => openResult(o.id)} style={{ ...btnSm, background: '#0D9488', color: '#fff', border: 'none', alignSelf: 'flex-start' }}>
+                  Verify
                 </button>
               </div>
+            ))}
+          </div>
+        )}
+
+        {page === 'critical' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Critical / panic values</h2>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B' }}>Closed-loop notify ordering clinician (Epic Beaker critical workflow)</p>
+            {criticals.length === 0 ? (
+              <div style={{ ...card, padding: 32, textAlign: 'center' }}>
+                <CheckCircle2 size={28} color="#10B981" />
+                <div style={{ fontWeight: 700, color: '#059669', marginTop: 8 }}>No open critical results</div>
+              </div>
             ) : (
-              <button
-                type="button"
-                className="os-action-btn-primary"
-                style={{ width: '100%', justifyContent: 'center' }}
-                onClick={() => handleValidateEHR(selectedOrder.id)}
-              >
-                <CheckCircle2 size={14} /> Validate & Transmit to EHR
-              </button>
+              criticals.map((o) => (
+                <div key={o.id} style={{ ...card, padding: 14, borderLeft: '4px solid #DC2626' }}>
+                  <div style={{ fontWeight: 800, color: '#B91C1C' }}>{o.patientName} · {o.testName}</div>
+                  <div style={{ fontSize: '0.88rem', marginTop: 4 }}>{o.result}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: 4 }}>{o.barcode} · Ref {o.referenceRange}</div>
+                  <button type="button" onClick={() => openResult(o.id)} style={{ marginTop: 10, ...btnSm, background: '#DC2626', color: '#fff', border: 'none' }}>
+                    Review & re-notify
+                  </button>
+                </div>
+              ))
             )}
           </div>
-          )}
+        )}
 
-          {/* Automated Instruments Telemetry */}
-          <div className="os-card" style={{ padding: 18 }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--os-text-dim)', textTransform: 'uppercase', marginBottom: 12 }}>
-              Automated Instrument Telemetry
+        {page === 'patients' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Patient lookup · lab scope</h2>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B' }}>
+              Shows only patients with lab activity — not full clinical chart (role-appropriate)
+            </p>
+            <div style={{ position: 'relative', maxWidth: 420 }}>
+              <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: '#94A3B8' }} />
+              <input
+                value={patientQ}
+                onChange={(e) => setPatientQ(e.target.value)}
+                placeholder="Name, hospital number, or barcode…"
+                style={{ width: '100%', padding: '9px 12px 9px 32px', borderRadius: 10, border: '1px solid #E2E8F0', fontSize: '0.84rem' }}
+              />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {ANALYZER_FEEDS.map((a, i) => (
-                <div key={i} style={{ padding: '8px 10px', background: '#F8FAFC', borderRadius: 6, border: '1px solid #E2E8F0', fontSize: '0.76rem' }}>
+            {!patientQ.trim() && (
+              <div style={{ ...card, padding: 24, color: '#94A3B8', fontSize: '0.86rem' }}>Type to search patients with lab orders</div>
+            )}
+            {patientHits.map((p) => (
+              <div key={p.id} style={{ ...card, padding: 14 }}>
+                <div style={{ fontWeight: 800 }}>{p.name}</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748B', marginBottom: 8 }}>{p.id} · {p.tests.length} lab order(s)</div>
+                {p.tests.map((t) => (
+                  <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid #F1F5F9', fontSize: '0.82rem' }}>
+                    <span>{t.testName} · {t.barcode}</span>
+                    <span style={{ color: STATUS_META[t.status]?.color, fontWeight: 700 }}>{STATUS_META[t.status]?.label}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+            {patientQ.trim() && patientHits.length === 0 && (
+              <div style={{ ...card, padding: 20, color: '#94A3B8' }}>No lab patients match “{patientQ}”</div>
+            )}
+          </div>
+        )}
+
+        {page === 'analyzers' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Laboratory analyzers & IoT</h2>
+                <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748B' }}>
+                  Realtime instrument status · pulse every {gw.analyzerPollMs || 5000}ms
+                </p>
+              </div>
+              <button type="button" onClick={simulateAnalyzer}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'linear-gradient(135deg,#0D9488,#0F766E)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 14px', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
+                <Zap size={14} /> Simulate result ingest
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 12 }}>
+              {analyzers.map((a) => (
+                <div key={a.id} style={{ ...card, padding: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 700, color: '#0A2540' }}>{a.name}</span>
-                    <span style={{ color: '#059669', fontWeight: 800, fontSize: '0.68rem' }}>{a.status}</span>
+                    <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>{a.name}</div>
+                    <span style={{
+                      fontSize: '0.68rem', fontWeight: 800, padding: '3px 8px', borderRadius: 999,
+                      background: a.status === 'ONLINE' ? '#ECFDF5' : '#FFFBEB',
+                      color: a.status === 'ONLINE' ? '#059669' : '#D97706',
+                    }}>{a.status}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--os-text-dim)', marginTop: 4, fontSize: '0.7rem' }}>
-                    <span>Rate: {a.sampleThroughput}</span>
-                    <span>QC: {a.lastCalibrated}</span>
-                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: 6 }}>{a.section}</div>
+                  <div style={{ fontSize: '0.75rem', marginTop: 8, color: '#475569' }}>Throughput {a.throughput}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: 4 }}>{a.lastCal}</div>
+                  {a.status === 'ONLINE' && gw.analyzerEnabled && (
+                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#0D9488', fontWeight: 700 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#34D399', boxShadow: '0 0 0 3px rgba(52,211,153,0.25)' }} />
+                      Telemetry live
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Modal 1: New Lab Order */}
-      {showOrderModal && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(10,25,41,0.7)',
-          backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
-        }}>
-          <div style={{
-            background: '#FFF', borderRadius: 14, width: '100%', maxWidth: 460, padding: 24,
-            boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0A2540' }}>
-                Log Laboratory Specimen & Test Order
-              </h3>
-              <button className="os-ghost-btn" style={{ padding: 4 }} onClick={() => setShowOrderModal(false)}><X size={16} /></button>
+            <div style={{ ...card, padding: 14 }}>
+              <div style={{ fontWeight: 800, fontSize: '0.85rem', marginBottom: 8 }}>Gateway event log</div>
+              {logs.length === 0 ? (
+                <div style={{ color: '#94A3B8', fontSize: '0.82rem' }}>No events yet — save settings or simulate ingest</div>
+              ) : (
+                logs.slice(0, 12).map((l) => (
+                  <div key={l.id} style={{ fontSize: '0.78rem', padding: '6px 0', borderBottom: '1px solid #F1F5F9' }}>
+                    <span style={{ color: '#94A3B8' }}>{new Date(l.at).toLocaleTimeString()}</span>
+                    {' · '}
+                    <strong>{l.source}</strong> · {l.message}
+                  </div>
+                ))
+              )}
             </div>
-            <form onSubmit={handleCreateOrder} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
-                  Patient Full Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. David Bassey"
-                  value={newPatient}
-                  onChange={e => setNewPatient(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.86rem', outline: 'none' }}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
-                  Laboratory Test Panel *
-                </label>
-                <select
-                  value={newTest}
-                  onChange={e => setNewTest(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.86rem', background: '#FFF' }}
-                >
-                  <option>Full Blood Count (FBC + Diff)</option>
-                  <option>Serum Electrolytes, Urea & Creatinine (E/U/Cr)</option>
-                  <option>Liver Function Test (LFT)</option>
-                  <option>Lipid Profile Panel</option>
-                  <option>Blood Culture & Sensitivity</option>
-                  <option>Urinalysis (Microscopy & Culture)</option>
-                  <option>Coagulation Profile (PT / INR)</option>
-                  <option>Malaria RDT + Blood Film</option>
-                  <option>HbA1c Glycated Hemoglobin</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
-                  Specimen Type *
-                </label>
-                <select
-                  value={newSpecimen}
-                  onChange={e => setNewSpecimen(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.86rem', background: '#FFF' }}
-                >
-                  <option>Blood</option>
-                  <option>Urine</option>
-                  <option>CSF</option>
-                  <option>Sputum</option>
-                  <option>Stool</option>
-                  <option>Swab</option>
-                </select>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
-                <button type="button" className="os-ghost-btn" onClick={() => setShowOrderModal(false)}>Cancel</button>
-                <button type="submit" className="os-action-btn-primary">Generate Barcode & Order</button>
-              </div>
-            </form>
           </div>
-        </div>
+        )}
+
+        {page === 'gateway' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 640 }}>
+            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Lab instrument gateway</h2>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B' }}>
+              Realtime configuration for analyzers, HL7 ORU, and critical notify (built into MedCore OS)
+            </p>
+            <div style={{ ...card, padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <label style={labLabel}>
+                <span>Analyzer interface enabled</span>
+                <input type="checkbox" checked={!!gw.analyzerEnabled} onChange={(e) => setGw({ ...gw, analyzerEnabled: e.target.checked })} />
+              </label>
+              <label style={labLabel}>
+                <span>Poll interval (ms)</span>
+                <input type="number" min={2000} step={1000} value={gw.analyzerPollMs || 5000}
+                  onChange={(e) => setGw({ ...gw, analyzerPollMs: Number(e.target.value) || 5000 })}
+                  style={inp} />
+              </label>
+              <label style={labLabel}>
+                <span>Analyzer endpoint</span>
+                <input value={gw.analyzerEndpoint || ''} onChange={(e) => setGw({ ...gw, analyzerEndpoint: e.target.value })} style={inp} />
+              </label>
+              <label style={labLabel}>
+                <span>HL7 host : port</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input value={gw.hl7Host} onChange={(e) => setGw({ ...gw, hl7Host: e.target.value })} style={{ ...inp, flex: 1 }} />
+                  <input type="number" value={gw.hl7Port} onChange={(e) => setGw({ ...gw, hl7Port: Number(e.target.value) })} style={{ ...inp, width: 90 }} />
+                </div>
+              </label>
+              <label style={labLabel}>
+                <span>HL7 enabled</span>
+                <input type="checkbox" checked={gw.hl7Enabled} onChange={(e) => setGw({ ...gw, hl7Enabled: e.target.checked })} />
+              </label>
+              <label style={labLabel}>
+                <span>Auto-verify normal results</span>
+                <input type="checkbox" checked={!!gw.autoVerifyNormals} onChange={(e) => setGw({ ...gw, autoVerifyNormals: e.target.checked })} />
+              </label>
+              <label style={labLabel}>
+                <span>Critical result notify</span>
+                <input type="checkbox" checked={!!gw.criticalNotify} onChange={(e) => setGw({ ...gw, criticalNotify: e.target.checked })} />
+              </label>
+              <label style={labLabel}>
+                <span>Hub base URL</span>
+                <input value={gw.hubBaseUrl} onChange={(e) => setGw({ ...gw, hubBaseUrl: e.target.value })} style={inp} />
+              </label>
+              <label style={labLabel}>
+                <span>Notes</span>
+                <textarea value={gw.notes} onChange={(e) => setGw({ ...gw, notes: e.target.value })} rows={2} style={{ ...inp, resize: 'vertical' }} />
+              </label>
+              <button type="button" onClick={saveGw}
+                style={{ background: 'linear-gradient(135deg,#0D9488,#0F766E)', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 16px', fontWeight: 700, cursor: 'pointer' }}>
+                Save gateway settings
+              </button>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {notice && (
+        <div style={{
+          position: 'fixed', top: 20, right: 20, zIndex: 99999, background: '#0F766E', color: '#fff',
+          padding: '12px 16px', borderRadius: 12, fontWeight: 600, fontSize: '0.86rem',
+          boxShadow: '0 12px 32px rgba(15,118,110,0.35)',
+        }}>{notice}</div>
       )}
 
-      {/* Modal 2: Enter / Edit Lab Result */}
-      {showResultModal && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(10,25,41,0.7)',
-          backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
-        }}>
-          <div style={{
-            background: '#FFF', borderRadius: 14, width: '100%', maxWidth: 480, padding: 24,
-            boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0A2540' }}>
-                Enter Result: {selectedOrder?.testName || 'Lab test'}
-              </h3>
-              <button className="os-ghost-btn" style={{ padding: 4 }} onClick={() => setShowResultModal(false)}><X size={16} /></button>
+      {showResultModal && selected && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 99990, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={() => setShowResultModal(false)}>
+          <form onSubmit={verifyRelease} onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480, padding: 22, border: '1px solid #99F6E4' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+              <h3 style={{ margin: 0, fontWeight: 800, color: '#0F766E' }}>Verify result · {selected.id}</h3>
+              <button type="button" onClick={() => setShowResultModal(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}><X size={18} /></button>
             </div>
-            <form onSubmit={handleSaveResult} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ fontSize: '0.82rem', color: '#64748B' }}>
-                Patient: <strong style={{ color: '#0A2540' }}>{selectedOrder?.patientName || '—'}</strong> • Barcode: <span style={{ fontFamily: 'monospace' }}>{selectedOrder?.barcode || '—'}</span>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
-                  Clinical Result Finding *
-                </label>
-                <textarea
-                  required
-                  rows={3}
-                  placeholder="e.g. Hb: 13.8 g/dL, WBC: 6.8k/µL, Platelets: 240k/µL. Normal morphology."
-                  value={resultInput}
-                  onChange={e => setResultInput(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.86rem', outline: 'none' }}
-                />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: isPanicToggle ? '#FEF2F2' : '#F8FAFC', borderRadius: 8, border: `1px solid ${isPanicToggle ? '#FCA5A5' : '#E2E8F0'}` }}>
-                <input
-                  type="checkbox"
-                  id="panic-toggle"
-                  checked={isPanicToggle}
-                  onChange={e => setIsPanicToggle(e.target.checked)}
-                  style={{ width: 16, height: 16, accentColor: '#DC2626' }}
-                />
-                <label htmlFor="panic-toggle" style={{ fontSize: '0.82rem', fontWeight: 700, color: isPanicToggle ? '#DC2626' : '#334155', cursor: 'pointer' }}>
-                  Mark as Panic / Critical Value (Triggers Stat Alert to MD)
-                </label>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
-                <button type="button" className="os-ghost-btn" onClick={() => setShowResultModal(false)}>Cancel</button>
-                <button type="submit" className="os-action-btn-primary">Commit Result to LIS</button>
-              </div>
-            </form>
-          </div>
+            <div style={{ fontSize: '0.82rem', color: '#64748B', marginBottom: 10 }}>
+              {selected.patientName} · {selected.testName} · {selected.barcode}
+            </div>
+            <textarea value={resultDraft} onChange={(e) => setResultDraft(e.target.value)} rows={5}
+              placeholder="Result / interpretation…"
+              style={{ width: '100%', borderRadius: 10, border: '1px solid #E2E8F0', padding: 12, fontSize: '0.88rem' }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+              <button type="button" onClick={() => setShowResultModal(false)} style={{ ...btnSm, padding: '9px 14px' }}>Cancel</button>
+              <button type="submit" style={{ background: 'linear-gradient(135deg,#0D9488,#0F766E)', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 16px', fontWeight: 700, cursor: 'pointer' }}>
+                Verify & release
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
   );
 };
+
+const btnSm: React.CSSProperties = {
+  border: '1px solid #E2E8F0',
+  background: '#fff',
+  borderRadius: 8,
+  padding: '6px 10px',
+  fontWeight: 700,
+  fontSize: '0.72rem',
+  cursor: 'pointer',
+  color: '#334155',
+};
+
+const labLabel: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  fontSize: '0.8rem',
+  fontWeight: 700,
+  color: '#334155',
+};
+
+const inp: React.CSSProperties = {
+  padding: '9px 12px',
+  borderRadius: 10,
+  border: '1px solid #E2E8F0',
+  fontSize: '0.84rem',
+  fontWeight: 500,
+};
+
+export default LaboratorySuite;

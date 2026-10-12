@@ -245,6 +245,51 @@ export const DeviceGatewaySettings: React.FC<Props> = ({ session }) => {
             )}
           </Section>
 
+          <Section title="Laboratory analyzers (LIS)" icon={Activity}>
+            <label style={check}>
+              <input
+                type="checkbox"
+                checked={!!cfg.analyzerEnabled}
+                onChange={(e) => setCfg({ ...cfg, analyzerEnabled: e.target.checked })}
+              />
+              Analyzer interface enabled (realtime)
+            </label>
+            <Field label="Poll interval (ms)">
+              <input
+                style={inp}
+                type="number"
+                min={2000}
+                step={1000}
+                value={cfg.analyzerPollMs || 5000}
+                onChange={(e) => setCfg({ ...cfg, analyzerPollMs: Number(e.target.value) || 5000 })}
+              />
+            </Field>
+            <Field label="Analyzer / middleware endpoint">
+              <input
+                style={inp}
+                value={cfg.analyzerEndpoint || ''}
+                onChange={(e) => setCfg({ ...cfg, analyzerEndpoint: e.target.value })}
+                placeholder="http://10.0.0.10:9100/analyzers"
+              />
+            </Field>
+            <label style={check}>
+              <input
+                type="checkbox"
+                checked={!!cfg.autoVerifyNormals}
+                onChange={(e) => setCfg({ ...cfg, autoVerifyNormals: e.target.checked })}
+              />
+              Auto-verify normal results (Beaker-style)
+            </label>
+            <label style={check}>
+              <input
+                type="checkbox"
+                checked={!!cfg.criticalNotify}
+                onChange={(e) => setCfg({ ...cfg, criticalNotify: e.target.checked })}
+              />
+              Critical / panic value clinician notify
+            </label>
+          </Section>
+
           <Section title="Monitors & barcode" icon={Radio}>
             <label style={check}>
               <input

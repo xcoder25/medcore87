@@ -408,7 +408,8 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Analyzers & safety',
           items: [
-            { key: 'iot-devices', icon: Cpu, label: 'Analyzers & telemetry', badge: 'IoT' },
+            { key: 'iot-devices', icon: Cpu, label: 'Analyzers & IoT', badge: 'Live' },
+            { key: 'device-gateway', icon: Settings, label: 'Instrument gateway', badge: 'HL7' },
             { key: 'notifications', icon: Bell, label: 'Critical alerts & panic', badge: 'Panic' },
             { key: 'm87-ai', icon: Brain, label: 'Celestia Lab AI', badge: 'AI' },
           ],
