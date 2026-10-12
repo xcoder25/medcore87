@@ -311,7 +311,7 @@ export const OperatingTheatreSuite: React.FC = () => {
 
             {/* Stage Progress Buttons */}
             <div style={{ display: 'flex', gap: 8 }}>
-              {selectedCase && selectedCase.status === 'pre_op' && (
+              {selectedCase && selectedCase?.status === 'pre_op' && (
                 <button
                   type="button"
                   className="os-action-btn-primary"
@@ -321,7 +321,7 @@ export const OperatingTheatreSuite: React.FC = () => {
                   <Play size={14} /> Begin Surgical Procedure
                 </button>
               )}
-              {selectedCase && selectedCase.status === 'in_surgery' && (
+              {selectedCase && selectedCase?.status === 'in_surgery' && (
                 <button
                   type="button"
                   className="os-action-btn-primary"
@@ -331,7 +331,7 @@ export const OperatingTheatreSuite: React.FC = () => {
                   <CheckCircle2 size={14} /> Transfer to Recovery (PACU)
                 </button>
               )}
-              {selectedCase && selectedCase.status === 'pacu' && (
+              {selectedCase && selectedCase?.status === 'pacu' && (
                 <button
                   type="button"
                   className="os-action-btn-primary"
@@ -341,7 +341,7 @@ export const OperatingTheatreSuite: React.FC = () => {
                   <CheckCircle2 size={14} /> Discharge to Inpatient Ward
                 </button>
               )}
-              {selectedCase && selectedCase.status === 'completed' && (
+              {selectedCase && selectedCase?.status === 'completed' && (
                 <div style={{ width: '100%', textAlign: 'center', padding: '10px', background: '#ECFDF5', borderRadius: 8, color: '#059669', fontWeight: 700, fontSize: '0.85rem' }}>
                   ✓ Surgical Case Completed & Documented
                 </div>
