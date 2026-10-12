@@ -17,14 +17,14 @@ import {
   type AccessRecord,
 } from '../../lib/adminRealtimeStore';
 import {
-  enrolStaffAndIssueCard,
+  prepareStaffEnrolment,
+  commitStaffEnrolment,
   listStaffCards,
+  countActiveStaffCards,
   getStaffCard,
   deleteStaffMember,
   defaultPermissionsForRole,
-  purgeNonAdminStaffForFacility,
   applyCloudStaffDirectory,
-  keepOnlyStaffNamesForFacility,
   migrateStaffIdsToNewFormat,
 } from '../../lib/staffCardStore';
 import {
@@ -132,21 +132,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   }, []);
 
   useEffect(() => {
-    // One-shot: Eket — keep only Kelly + hospital admin
-    try {
-      if (facilityId === 'IGH-EKT' && typeof sessionStorage !== 'undefined') {
-        const key = 'medcore_keep_kelly_admin_IGH-EKT_v1';
-        if (!sessionStorage.getItem(key)) {
-          const removed = keepOnlyStaffNamesForFacility('IGH-EKT', ['kelly', 'admin']);
-          sessionStorage.setItem(key, '1');
-          if (removed.length) {
-            pushActivity(`Eket staff cleared · kept Kelly + admin · removed ${removed.length}`);
-          }
-        }
-      }
-    } catch {
-      /* ignore */
-    }
+    // No auto-purge of staff — admin manages enrolments. Failed creates never persist ID cards.
     try {
       migrateStaffIdsToNewFormat();
     } catch {
@@ -337,7 +323,8 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     const mail = email.trim();
 
     try {
-      const issued = enrolStaffAndIssueCard({
+      // Prepare only — no local/cloud write until Firestore profile succeeds (no phantom ID cards)
+      const prepared = prepareStaffEnrolment({
         fullName: nameSnap,
         role: roleMeta.role,
         roleKey: roleMeta.roleKey,
@@ -353,8 +340,9 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         photoUrl: photoUrl || undefined,
         email: mail || undefined,
       });
-      card = issued.card;
+      card = prepared.card;
       const badgeId = card.badgeId;
+      const preparedEntry = prepared.entry;
 
       accessRow = {
         id: badgeId,
@@ -368,7 +356,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         email: mail || undefined,
       };
 
-      // Cloud identity — hard cap so success screen always appears (local card already issued)
+      // Cloud identity first — only commit local ID card after profile is saved
       try {
         const cloud = await withTimeout(
           ensureStaffCloudIdentity({
@@ -460,6 +448,30 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       setBusy(false);
       // Success only when cloud profile saved — otherwise roll back ID (no orphan badges)
       if (card && accessRow && firestoreStatus === 'ok') {
+        // Persist ID card + registry only after cloud profile succeeded
+        try {
+          commitStaffEnrolment(
+            {
+              fullName: nameSnap,
+              role: roleMeta.role,
+              roleKey: roleMeta.roleKey,
+              title: roleMeta.title,
+              department: roleMeta.department,
+              facilityId,
+              facilityName,
+              clearanceLevel: roleMeta.clearanceLevel,
+              clearanceLabel: roleMeta.clearanceLabel,
+              pin: pinNorm,
+              shortRole: roleMeta.shortRole,
+              permissions: defaultPermissionsForRole(roleMeta.roleKey),
+              photoUrl: photoUrl || undefined,
+              email: mail || undefined,
+            },
+            card,
+            preparedEntry
+          );
+        } catch { /* ignore */ }
+
         const issuedCard = card;
         const row = accessRow;
         setIssued(issuedCard);
@@ -593,8 +605,8 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         </div>
         <div className="metric-box">
           <span className="metric-label">ID cards</span>
-          <span className="metric-val">{listStaffCards().length}</span>
-          <span className="metric-sub">Issued with accounts</span>
+          <span className="metric-val">{countActiveStaffCards(facilityId)}</span>
+          <span className="metric-sub">Active ID cards only</span>
         </div>
       </div>
 

@@ -142,7 +142,7 @@ const DEFAULTS: Record<string, string[]> = {
   midwife: [
     'dashboard', 'maternity', 'paediatrics', 'notifications',
     'beds', 'emergency', 'my-card', 'patient-360',
-    'm87-ai', 'ai',
+    'm87-ai', 'ai', 'him', 'him-deficiency', 'him-coding', 'him-roi', 'him-chart', 'him-merge', 'him-docs',
     'patient.identity', 'patient.contact', 'patient.vitals', 'patient.allergies',
     'patient.problems', 'patient.notes', 'patient.meds',
   ],
@@ -157,14 +157,14 @@ const DEFAULTS: Record<string, string[]> = {
   lab: [
     'dashboard', 'laboratory', 'lab', 'lis', 'notifications',
     'blood-bank', 'iot-devices', 'my-card',
-    'm87-ai', 'ai',
+    'm87-ai', 'ai', 'him', 'him-deficiency', 'him-coding', 'him-roi', 'him-chart', 'him-merge', 'him-docs',
     'patient.identity', 'patient.labs', 'patient.vitals',
   ],
   // Radiologists — imaging only (not full OPD / prescribing)
   radiologist: [
     'dashboard', 'radiology', 'notifications',
     'emr', 'patient-card', 'my-card',
-    'm87-ai', 'ai',
+    'm87-ai', 'ai', 'him', 'him-deficiency', 'him-coding', 'him-roi', 'him-chart', 'him-merge', 'him-docs',
     'patient.identity', 'patient.imaging', 'patient.problems',
   ],
   reception: [
@@ -173,7 +173,8 @@ const DEFAULTS: Record<string, string[]> = {
     'patient.identity', 'patient.contact', 'patient.demographics', 'patient.billing', 'patient.insurance',
   ],
   records: [
-    'dashboard', 'patient-card', 'patient-flow', 'beds', 'emr', 'my-card', 'notifications',
+    'dashboard', 'patient-card', 'patient-flow', 'beds', 'emr', 'my-card', 'notifications', 'claims',
+    'm87-ai', 'ai', 'him', 'him-deficiency', 'him-coding', 'him-roi', 'him-chart', 'him-merge', 'him-docs',
     'patient.identity', 'patient.contact', 'patient.demographics',
   ],
   accountant: [
@@ -230,20 +231,44 @@ export function getModulesForRole(roleKey: string): string[] {
   return map[roleKey] || DEFAULTS[roleKey] || ['dashboard', 'my-card'];
 }
 
+/** Hard denials — win over stale localStorage grants */
+const ROLE_MODULE_DENY: Record<string, string[]> = {
+  records: [
+    'pharmacy', 'formulary', 'doctor-portal', 'theatre', 'icu', 'laboratory', 'lab',
+    'radiology', 'nursing', 'maternity', 'paediatrics', 'blood-bank', 'emergency',
+    'cashier', 'billing', 'revenue-cycle', 'rbac', 'sysadmin', 'enrolment', 'staffing',
+  ],
+  reception: [
+    'pharmacy', 'formulary', 'doctor-portal', 'theatre', 'icu', 'laboratory', 'lab',
+    'radiology', 'nursing', 'rbac', 'sysadmin',
+  ],
+  radiologist: ['pharmacy', 'formulary', 'theatre', 'nursing', 'cashier', 'billing'],
+  lab: ['pharmacy', 'formulary', 'theatre', 'doctor-portal', 'cashier', 'billing'],
+  accountant: ['pharmacy', 'formulary', 'doctor-portal', 'theatre', 'icu', 'laboratory', 'lab'],
+};
+
 export function roleCanAccessModule(roleKey: string, moduleKey: string): boolean {
   if (roleKey === 'hospital_admin') return true;
+  const deny = ROLE_MODULE_DENY[roleKey] || [];
+  if (deny.includes(moduleKey)) return false;
   const mods = getModulesForRole(roleKey);
   if (mods.includes('*')) return true;
   // lab role direct module access
   if (roleKey === 'lab' && ['dashboard', 'laboratory', 'lab', 'lis', 'blood-bank', 'iot-devices', 'notifications', 'm87-ai', 'ai', 'my-card'].includes(moduleKey)) return true;
   // legacy aliases
-  if (moduleKey === 'laboratory' && mods.includes('lab')) return true;
-  if (moduleKey === 'lab' && mods.includes('laboratory')) return true;
+  if (moduleKey === 'laboratory' && mods.includes('lab') && !deny.includes('laboratory')) return true;
+  if (moduleKey === 'lab' && mods.includes('laboratory') && !deny.includes('lab')) return true;
   if (moduleKey === 'm87-ai' && mods.includes('ai')) return true;
   if (moduleKey === 'ai' && mods.includes('m87-ai')) return true;
   // Always allow staff card + home desk
   if (moduleKey === 'dashboard' || moduleKey === 'my-card' || moduleKey === 'notifications') return true;
   return mods.includes(moduleKey);
+}
+
+/** Doctors / surgeons / medical director only — not records or pharmacy techs */
+export function roleCanPrescribe(roleKey: string): boolean {
+  const r = String(roleKey || '').toLowerCase();
+  return r === 'doctor' || r === 'surgeon' || r === 'medical_director' || r === 'hospital_admin';
 }
 
 /** Patient-data scopes (keys starting with patient.) */

@@ -10,6 +10,7 @@ import { firestoreSubscribeFacility, enableFirestoreOffline } from './firebase';
 import { startFacilitySyncLoop, probeHospitalApi } from './hospitalSync';
 import { startOutboxAutoFlush, flushOutbox } from './durableOutbox';
 import { FACILITY_KEYS } from './roleSyncBus';
+import { applyHimRemote, HIM_STORAGE_KEY } from './himStore';
 import { mergePresenceMaps, STAFF_PRESENCE_KEY } from './staffPresenceStore';
 
 /** Map storage keys → CustomEvents so existing subscribe*() hooks refresh live */
@@ -35,6 +36,8 @@ const KEY_EVENTS: Record<string, string[]> = {
   [FACILITY_KEYS.facilityCatalog]: ['medcore-facility-catalog', 'medcore-admin-sync'],
   [FACILITY_KEYS.onboarding]: ['medcore-onboarding-sync', 'medcore-admin-sync'],
   [FACILITY_KEYS.onboardingDraft]: ['medcore-onboarding-sync', 'medcore-admin-sync'],
+  [FACILITY_KEYS.him]: ['medcore-him-updated', 'medcore-admin-sync'],
+  medcore_os_him_v1: ['medcore-him-updated', 'medcore-admin-sync'],
 };
 
 function emitForKey(key: string, value: unknown) {
@@ -61,6 +64,11 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
   if (typeof window === 'undefined') return;
   if (value === undefined || value === null) return;
   if (key === 'updatedAt' || key === 'resetAt') return;
+  if (key === HIM_STORAGE_KEY || key === FACILITY_KEYS.him || key === 'medcore_os_him_v1') {
+    applyHimRemote(value);
+    emitForKey(key, value);
+    return;
+  }
   try {
     // Presence maps must MERGE (not replace) so multi-PC logins all stay visible
     if (key === STAFF_PRESENCE_KEY && value && typeof value === 'object') {

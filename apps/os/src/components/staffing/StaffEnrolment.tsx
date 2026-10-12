@@ -10,7 +10,8 @@ import { UserPlus, IdCard, CheckCircle2, Trash2, X } from 'lucide-react';
 import { LogoProgressBar } from '../realtime/LogoProgressBar';
 import { HOSPITALS } from '../auth/AuthScreen';
 import {
-  enrolStaffAndIssueCard,
+  prepareStaffEnrolment,
+  commitStaffEnrolment,
   listStaffCards,
   getStaffCard,
   deleteStaffMember,
@@ -134,7 +135,8 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         return;
       }
 
-      const { card } = enrolStaffAndIssueCard({
+      const pinNorm = normalizeStaffPin(pin);
+      const prepared = prepareStaffEnrolment({
         fullName: fullName.trim(),
         role: roleMeta.role,
         roleKey: roleMeta.roleKey,
@@ -144,13 +146,14 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         facilityName: facility.name,
         clearanceLevel: roleMeta.clearanceLevel,
         clearanceLabel: roleMeta.clearanceLabel,
-        pin,
+        pin: pinNorm,
         shortRole: roleMeta.shortRole,
         permissions: defaultPermissionsForRole(roleMeta.roleKey),
         email: mail || undefined,
       });
+      const { card, entry } = prepared;
 
-      const pinNorm = normalizeStaffPin(pin);
+      let cloudOk = false;
       try {
         const cloud = await ensureStaffCloudIdentity({
           facilityId: facility.id,
@@ -173,45 +176,52 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
             status: 'active',
           },
         });
-        if (!cloud.badgeAuth || (mail && !cloud.emailAuth) || !cloud.firestore) {
-          // Silent background retry — local card already works on this device
-          window.setTimeout(() => {
-            void ensureStaffCloudIdentity({
-              facilityId: facility.id,
-              badgeId: card.badgeId,
-              pin: pinNorm,
-              email: mail || undefined,
-              profile: {
-                badgeId: card.badgeId,
-                name: fullName.trim(),
-                role: roleMeta.role,
-                roleKey: roleMeta.roleKey,
-                title: roleMeta.title,
-                department: roleMeta.department,
-                hospitalId: facility.id,
-                hospitalName: facility.name,
-                clearanceLevel: roleMeta.clearanceLevel,
-                clearanceLabel: roleMeta.clearanceLabel,
-                permissions: defaultPermissionsForRole(roleMeta.roleKey),
-                email: mail || undefined,
-                status: 'active',
-              },
-            });
-          }, 2500);
-        }
+        cloudOk = Boolean(cloud.firestore);
       } catch (err) {
         console.warn('[enrol] cloud identity', err);
+        cloudOk = false;
       }
+
+      if (!cloudOk) {
+        // No local card, no ID count — failed cloud must not issue Staff ID
+        try {
+          deleteStaffMember(card.badgeId);
+        } catch { /* ignore */ }
+        setError(
+          'Account was not created. Cloud profile could not be saved — no Staff ID was issued. Check network / Firebase and try again.'
+        );
+        setBusy(false);
+        return;
+      }
+
+      commitStaffEnrolment(
+        {
+          fullName: fullName.trim(),
+          role: roleMeta.role,
+          roleKey: roleMeta.roleKey,
+          title: roleMeta.title,
+          department: roleMeta.department,
+          facilityId: facility.id,
+          facilityName: facility.name,
+          clearanceLevel: roleMeta.clearanceLevel,
+          clearanceLabel: roleMeta.clearanceLabel,
+          pin: pinNorm,
+          shortRole: roleMeta.shortRole,
+          permissions: defaultPermissionsForRole(roleMeta.roleKey),
+          email: mail || undefined,
+        },
+        card,
+        entry
+      );
 
       try {
         pushActivity(`Enrolled ${fullName.trim()} · ${roleMeta.shortRole} · ${card.badgeId}`);
       } catch { /* ignore */ }
       emitLiveAction(`Staff enrolled · ${card.badgeId}`, { module: 'enrolment' });
 
-      // Confirmation screen BEFORE roster list updates
       setPendingConfirm({
         card,
-        pin: pin || '1234',
+        pin: pinNorm || '1234',
         hospitalName: facility.name,
       });
       setIssued(card);

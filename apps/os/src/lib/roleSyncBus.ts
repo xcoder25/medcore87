@@ -29,6 +29,7 @@ export const FACILITY_KEYS = {
   notifications: 'medcore_os_notifications_v1',
   onboarding: 'medcore_admin_onboarding_done',
   onboardingDraft: 'medcore_os_onboarding',
+  him: 'medcore_os_him_v1',
 } as const;
 
 /** Publish facility data. Online = cloud first, then local peers. Offline = local + queue. */

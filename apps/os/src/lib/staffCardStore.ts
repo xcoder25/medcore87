@@ -220,7 +220,12 @@ export function nextPrintedBadgeId(facilityId?: string): string {
   try {
     const raw = typeof window !== 'undefined' ? localStorage.getItem(STAFF_CARD_STORAGE_KEY) : null;
     const cards: StaffCardRecord[] = raw ? JSON.parse(raw) : [];
+    // Only ACTIVE issued cards consume sequence — failed/rolled-back creates must not advance the count
     const seqs = (Array.isArray(cards) ? cards : [])
+      .filter((c) => {
+        const st = String((c as { status?: string })?.status || 'ACTIVE').toUpperCase();
+        return st === 'ACTIVE';
+      })
       .map((c) => {
         const b = String(c?.badgeId || '').toUpperCase();
         if (b.startsWith(prefix)) {
@@ -238,65 +243,111 @@ export function nextPrintedBadgeId(facilityId?: string): string {
   }
 }
 
-/** Enrol staff: create registry row + issue ID card in one step */
-export function enrolStaffAndIssueCard(
+export type StaffRegistryEntry = {
+  id: string;
+  badgeId: string;
+  name: string;
+  role: string;
+  shortRole: string;
+  title: string;
+  roleKey: string;
+  clearanceLevel: number;
+  clearanceLabel: string;
+  department: string;
+  initials: string;
+  permissions: string[];
+  pin: string;
+  hospitalId: string;
+  hospitalName: string;
+  status: string;
+  email?: string;
+};
+
+/** Build card + registry entry in memory — does NOT write local or cloud (no ID consumed until commit). */
+export function prepareStaffEnrolment(
   input: StaffEnrolmentInput,
   badgeId?: string
-): { card: StaffCardRecord; badgeId: string } {
-  // Use new printed badge format AMC-YYYY-#### (matching the official ID card)
+): { card: StaffCardRecord; badgeId: string; entry: StaffRegistryEntry } {
   const id = (badgeId || nextPrintedBadgeId(input.facilityId)).trim().toUpperCase();
-
   const card = issueStaffCardFromEnrolment(input, id);
+  const entry: StaffRegistryEntry = {
+    id,
+    badgeId: id,
+    name: input.fullName,
+    role: input.role,
+    shortRole: input.shortRole || input.role,
+    title: input.title,
+    roleKey: input.roleKey,
+    clearanceLevel: input.clearanceLevel,
+    clearanceLabel: input.clearanceLabel,
+    department: input.department,
+    initials: card.initials,
+    permissions: input.permissions || [],
+    pin: input.pin || '1234',
+    hospitalId: input.facilityId,
+    hospitalName: input.facilityName,
+    status: 'active',
+    email: (input.email || '').trim().toLowerCase() || undefined,
+  };
+  return { card, badgeId: id, entry };
+}
+
+/**
+ * Persist enrolment only after cloud profile succeeds.
+ * Writes local cards + registry, then pushes directory (card already has ACTIVE status).
+ */
+export function commitStaffEnrolment(
+  input: StaffEnrolmentInput,
+  card: StaffCardRecord,
+  entry: StaffRegistryEntry
+): void {
+  const id = card.badgeId;
   const cards = readCards().filter((c) => c.badgeId !== id);
   cards.unshift(card);
   writeCards(cards);
 
-  // Mirror into staff registry used by AuthScreen
   try {
     const regRaw = localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY);
     const reg = regRaw ? JSON.parse(regRaw) : [];
-    const entry = {
-      id,
-      badgeId: id,
-      name: input.fullName,
-      role: input.role,
-      shortRole: input.shortRole || input.role,
-      title: input.title,
-      roleKey: input.roleKey,
-      clearanceLevel: input.clearanceLevel,
-      clearanceLabel: input.clearanceLabel,
-      department: input.department,
-      initials: card.initials,
-      permissions: input.permissions || [],
-      pin: input.pin || '1234',
-      hospitalId: input.facilityId,
-      hospitalName: input.facilityName,
-      status: 'active',
-      email: (input.email || '').trim().toLowerCase() || undefined,
-    };
     const next = Array.isArray(reg)
       ? [entry, ...reg.filter((r: { id?: string; badgeId?: string }) => r.id !== id && r.badgeId !== id)]
       : [entry];
     localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(next));
-    try {
-      localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
-      window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } }));
-      window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: next }));
-      window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: cards }));
-    } catch {
-      /* ignore */
-    }
-    // CLOUD-FIRST staff directory + member doc (online peers need this before local-only login)
+    localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } }));
+    window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: next }));
+    window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: cards }));
     void firestorePushStaffDirectory(input.facilityId, {
       staffCards: cards,
       staffRegistry: next,
     });
-    void firestoreUpsertStaffMember(input.facilityId, entry);
   } catch {
     /* ignore */
   }
+}
 
-  return { card, badgeId: id };
+/** Count of issued ACTIVE staff ID cards (failed creates must not inflate this). */
+export function countActiveStaffCards(facilityId?: string): number {
+  const fid = String(facilityId || '').toUpperCase();
+  return readCards().filter((c) => {
+    const st = String(c.status || 'ACTIVE').toUpperCase();
+    if (st !== 'ACTIVE') return false;
+    if (fid && String(c.facilityId || '').toUpperCase() !== fid) return false;
+    return true;
+  }).length;
+}
+
+/**
+ * Enrol staff in one step (local commit). Prefer Access Control flow:
+ * prepareStaffEnrolment → cloud save → commitStaffEnrolment so failed cloud leaves no ID.
+ */
+export function enrolStaffAndIssueCard(
+  input: StaffEnrolmentInput,
+  badgeId?: string
+): { card: StaffCardRecord; badgeId: string } {
+  const prepared = prepareStaffEnrolment(input, badgeId);
+  commitStaffEnrolment(input, prepared.card, prepared.entry);
+  return { card: prepared.card, badgeId: prepared.badgeId };
 }
 
 
@@ -704,7 +755,7 @@ export function defaultPermissionsForRole(roleKey: string): string[] {
     radiologist: [
       'dashboard', 'radiology', 'notifications', 'emr', 'patient-card', 'my-card', 'm87-ai', 'ai',
     ],
-    records: ['dashboard', 'patient-card', 'patient-flow', 'beds', 'emr', 'my-card', 'notifications'],
+    records: ['dashboard', 'patient-card', 'patient-flow', 'beds', 'emr', 'my-card', 'notifications', 'claims', 'm87-ai', 'ai', 'him', 'him-deficiency', 'him-coding', 'him-roi', 'him-chart', 'him-merge', 'him-docs'],
     accountant: [
       'dashboard', 'cashier', 'billing', 'claims', 'revenue-cycle', 'procurement', 'patient-card',
       'analytics', 'my-card', 'notifications',
