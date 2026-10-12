@@ -425,6 +425,7 @@ export function convertReferralToVisit(
     facilityId: ref.facilityId,
     facilityName: ref.facilityId,
     status: 'active',
+    registeredAt: new Date().toISOString(),
   };
   const visit = checkInPatient({
     patient: stub,
