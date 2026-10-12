@@ -30,6 +30,7 @@ export const FACILITY_KEYS = {
   onboarding: 'medcore_admin_onboarding_done',
   onboardingDraft: 'medcore_os_onboarding',
   him: 'medcore_os_him_v1',
+  theatre: 'medcore_os_theatre_cases_v1',
 } as const;
 
 /** Publish facility data. Online = cloud first, then local peers. Offline = local + queue. */

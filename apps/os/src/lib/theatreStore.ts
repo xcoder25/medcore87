@@ -21,7 +21,7 @@ export interface TheatreCase extends SurgicalCase {
   scheduledByBadge?: string;
 }
 
-const KEY = FACILITY_KEYS.theatre || 'medcore_os_theatre_cases_v1';
+const KEY = FACILITY_KEYS.theatre;
 const EVT = 'medcore-theatre-cases';
 const BC_NAME = 'medcore_theatre';
 
