@@ -698,9 +698,9 @@ export function defaultPermissionsForRole(roleKey: string): string[] {
       'inventory', 'm87-ai', 'ai', 'patient-card', 'my-card',
     ],
     lab: [
-      'dashboard', 'laboratory', 'lab', 'notifications', 'blood-bank', 'emr', 'patient-card',
-      'my-card', 'm87-ai', 'ai',
-    , 'device-gateway', 'iot-devices', 'lis'],
+      'dashboard', 'laboratory', 'lab', 'lis', 'notifications', 'blood-bank', 'emr',
+      'patient-card', 'my-card', 'm87-ai', 'ai', 'device-gateway', 'iot-devices',
+    ],
     radiologist: [
       'dashboard', 'radiology', 'notifications', 'emr', 'patient-card', 'my-card', 'm87-ai', 'ai',
     ],
