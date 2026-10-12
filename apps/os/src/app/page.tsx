@@ -27,6 +27,7 @@ import { HospitalOnboardingWizard, resolveOnboardingMode } from '../components/o
 import { subscribeOnboarding } from '../lib/onboardingStore';
 import { AuthIdentity } from '../components/auth/AuthIdentity';
 import { DigitalPatientCard } from '../components/patient-card/DigitalPatientCard';
+import { MyStaffIdPanel } from '../components/staffing/MyStaffIdPanel';
 import { Patient360View } from '../components/patients/Patient360View';
 import { UniversalQueueBoard } from '../components/queue/UniversalQueueBoard';
 import { NotificationCentre } from '../components/notifications/NotificationCentre';
@@ -816,7 +817,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   'desk-settings': FrontDeskSettings as any,
   transfer: HospitalStaffTransfer as any,
   enrolment: StaffEnrolment as any,
-  'my-card': DigitalPatientCard as any,
+  'my-card': MyStaffIdPanel,
 };
 
 const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDesc: string }> = {
