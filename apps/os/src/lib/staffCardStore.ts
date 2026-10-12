@@ -726,7 +726,7 @@ export function defaultPermissionsForRole(roleKey: string): string[] {
     reception: [
       'dashboard', 'patient-flow', 'patient-card', 'appointments', 'cashier', 'billing',
       'desk-settings', 'notifications', 'my-card', 'universal-queue', 'm87-ai', 'ai',
-    ],
+    , 'front-desk-wq'],
     doctor: [
       'dashboard', 'doctor-portal', 'patient-360', 'notifications', 'emr', 'pharmacy',
       'laboratory', 'radiology', 'emergency', 'beds', 'nursing', 'icu', 'theatre',
