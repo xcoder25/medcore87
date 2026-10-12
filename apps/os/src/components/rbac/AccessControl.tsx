@@ -25,6 +25,7 @@ import {
   purgeNonAdminStaffForFacility,
   applyCloudStaffDirectory,
   keepOnlyStaffNamesForFacility,
+  migrateStaffIdsToNewFormat,
 } from '../../lib/staffCardStore';
 import {
   firestoreSubscribeStaffDirectory,
@@ -143,6 +144,8 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           }
         }
       }
+    try {
+      migrateStaffIdsToNewFormat();
     } catch {
       /* ignore */
     }
@@ -830,158 +833,140 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
       {confirmInfo && (
         <div
-          id="staff-create-confirm"
-          role="dialog"
-          aria-modal="true"
+          id="staff-create-success-banner"
           style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 9999,
+            background: 'linear-gradient(135deg, #F0FDF4 0%, #ECFEFF 100%)',
+            border: '1.5px solid #86EFAC',
+            borderRadius: 14,
+            padding: '16px 20px',
+            boxShadow: '0 4px 20px rgba(16, 185, 129, 0.12)',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            background: 'rgba(15, 23, 42, 0.55)',
-            backdropFilter: 'blur(4px)',
+            flexDirection: 'column',
+            gap: 12,
+            position: 'relative',
           }}
-          onClick={() => setConfirmInfo(null)}
         >
-          <div
-            className="os-card"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: '100%',
-              maxWidth: 420,
-              padding: 0,
-              overflow: 'hidden',
-              borderRadius: 16,
-              border: '1px solid #E2E8F0',
-              boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)',
-              background: '#FFFFFF',
-            }}
-          >
-            <div
-              style={{
-                padding: '18px 20px 14px',
-                background: 'linear-gradient(135deg, #ECFDF5, #F0F9FF)',
-                borderBottom: '1px solid #E2E8F0',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-              }}
-            >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
+                  width: 34,
+                  height: 34,
+                  borderRadius: '50%',
                   background: '#16A34A',
+                  color: '#fff',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0,
                 }}
               >
-                <CheckCircle2 size={20} color="#fff" />
+                <CheckCircle2 size={18} />
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0F172A' }}>Account created</div>
-                <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>{confirmInfo.name}</div>
+              <div>
+                <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0F172A' }}>
+                  Staff Enrolled Successfully · {confirmInfo.name}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748B' }}>
+                  {confirmInfo.role} · {confirmInfo.department} · Registered into active roster
+                </div>
               </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setConfirmInfo(null)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                fontSize: 20,
+                lineHeight: 1,
+                color: '#64748B',
+                padding: '4px 8px',
+                borderRadius: 6,
+              }}
+              title="Dismiss banner"
+              aria-label="Dismiss banner"
+            >
+              ×
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              flexWrap: 'wrap',
+              background: '#FFFFFF',
+              border: '1px solid #BBF7D0',
+              borderRadius: 10,
+              padding: '10px 14px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                Staff ID:
+              </span>
+              <code style={{ fontSize: '1rem', fontWeight: 800, color: '#0052D4', background: '#EFF6FF', padding: '2px 8px', borderRadius: 6 }}>
+                {confirmInfo.badgeId}
+              </code>
               <button
                 type="button"
-                onClick={() => setConfirmInfo(null)}
-                aria-label="Close"
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  fontSize: 20,
-                  lineHeight: 1,
-                  color: '#94A3B8',
-                  padding: 4,
+                className="os-ghost-btn"
+                style={{ padding: '3px 8px', fontSize: '0.74rem', height: 26 }}
+                onClick={() => {
+                  try {
+                    void navigator.clipboard.writeText(confirmInfo.badgeId);
+                  } catch {
+                    /* ignore */
+                  }
                 }}
               >
-                ×
+                Copy ID
               </button>
             </div>
 
-            <div style={{ padding: '16px 20px 20px' }}>
-              <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.55, marginBottom: 12 }}>
-                <div><span style={{ color: '#64748B' }}>Role</span> · {confirmInfo.role}</div>
-                <div><span style={{ color: '#64748B' }}>Dept</span> · {confirmInfo.department}</div>
-              </div>
+            <div style={{ width: 1, height: 20, background: '#E2E8F0' }} />
 
-              <div
-                style={{
-                  padding: '12px 14px',
-                  borderRadius: 12,
-                  background: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
-                  marginBottom: 12,
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                PIN:
+              </span>
+              <code style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A', background: '#F8FAFC', padding: '2px 8px', borderRadius: 6 }}>
+                {confirmInfo.pin}
+              </code>
+              <button
+                type="button"
+                className="os-ghost-btn"
+                style={{ padding: '3px 8px', fontSize: '0.74rem', height: 26 }}
+                onClick={() => {
+                  try {
+                    void navigator.clipboard.writeText(confirmInfo.pin);
+                  } catch {
+                    /* ignore */
+                  }
                 }}
               >
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', letterSpacing: '0.04em', marginBottom: 8 }}>
-                  SIGN-IN
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: '#94A3B8' }}>Badge</div>
-                    <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 800, color: '#0052D4', fontSize: 15 }}>
-                      {confirmInfo.badgeId}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { try { void navigator.clipboard.writeText(confirmInfo.badgeId); } catch { /* */ } }}
-                    style={{ fontSize: 11, fontWeight: 700, border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', background: '#fff' }}
-                  >
-                    Copy
-                  </button>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: '#94A3B8' }}>PIN</div>
-                    <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 800, fontSize: 15 }}>{confirmInfo.pin}</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { try { void navigator.clipboard.writeText(confirmInfo.pin); } catch { /* */ } }}
-                    style={{ fontSize: 11, fontWeight: 700, border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', background: '#fff' }}
-                  >
-                    Copy
-                  </button>
-                </div>
-                {confirmInfo.email ? (
-                  <div style={{ marginTop: 8, fontSize: 12, color: '#64748B' }}>Email · {confirmInfo.email}</div>
-                ) : null}
-              </div>
+                Copy PIN
+              </button>
+            </div>
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: confirmInfo.firebaseAuth === 'ok' ? '#D1FAE5' : '#FEF3C7', color: confirmInfo.firebaseAuth === 'ok' ? '#047857' : '#B45309' }}>
-                  Auth {confirmInfo.firebaseAuth}
-                </span>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: confirmInfo.firestore === 'ok' ? '#D1FAE5' : '#FEE2E2', color: confirmInfo.firestore === 'ok' ? '#047857' : '#B91C1C' }}>
-                  Cloud {confirmInfo.firestore}
-                </span>
-              </div>
+            {confirmInfo.email && (
+              <>
+                <div style={{ width: 1, height: 20, background: '#E2E8F0' }} />
+                <span style={{ fontSize: '0.78rem', color: '#64748B' }}>{confirmInfo.email}</span>
+              </>
+            )}
 
-              {confirmInfo.firestore !== 'ok' && (
-                <div style={{ fontSize: 12, color: '#991B1B', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '8px 10px', marginBottom: 12 }}>
-                  Cloud profile did not save. Other devices may not see this staff until you retry online.
-                </div>
-              )}
-
-              {issued && (
-                <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'center' }}>
-                  <StaffIdCardView card={issued} compact />
-                </div>
-              )}
-
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#047857', background: '#D1FAE5', padding: '3px 8px', borderRadius: 999 }}>
+                ID Card Issued
+              </span>
               <button
                 type="button"
                 className="os-primary-btn"
-                style={{ width: '100%', justifyContent: 'center' }}
+                style={{ padding: '5px 12px', fontSize: '0.76rem', height: 28 }}
                 onClick={() => setConfirmInfo(null)}
               >
                 Done

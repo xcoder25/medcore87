@@ -9,7 +9,14 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { UserPlus, IdCard, CheckCircle2, Trash2, X } from 'lucide-react';
 import { LogoProgressBar } from '../realtime/LogoProgressBar';
 import { HOSPITALS } from '../auth/AuthScreen';
-import { enrolStaffAndIssueCard, listStaffCards, getStaffCard, deleteStaffMember, defaultPermissionsForRole } from '../../lib/staffCardStore';
+import {
+  enrolStaffAndIssueCard,
+  listStaffCards,
+  getStaffCard,
+  deleteStaffMember,
+  defaultPermissionsForRole,
+  migrateStaffIdsToNewFormat,
+} from '../../lib/staffCardStore';
 import { isEmailCredential, normalizeStaffPin, ensureStaffCloudIdentity } from '../../lib/firebase';
 import { emitLiveAction } from '../../lib/liveActions';
 import { StaffIdCardView } from './StaffIdCardView';
@@ -74,6 +81,12 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
   useEffect(() => {
+    try {
+      migrateStaffIdsToNewFormat();
+      setCards(listStaffCards());
+    } catch {
+      /* ignore */
+    }
     if (session?.hospitalId) setFacilityId(session.hospitalId);
   }, [session?.hospitalId]);
 
@@ -335,68 +348,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         </form>
 
         <div>
-          {pendingConfirm ? (
-            <div
-              className="os-panel"
-              style={{
-                border: '2px solid #16A34A',
-                boxShadow: '0 8px 28px rgba(22,163,74,0.15)',
-                padding: 0,
-                overflow: 'hidden',
-              }}
-            >
-              <div style={{ background: 'linear-gradient(135deg,#16A34A,#0D9488)', padding: '16px 18px', color: '#fff' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: '1rem' }}>
-                  <CheckCircle2 size={20} /> Staff created successfully
-                </div>
-                <div style={{ fontSize: '0.82rem', opacity: 0.95, marginTop: 4 }}>
-                  Confirm below before this person appears on the roster.
-                </div>
-              </div>
-              <div style={{ padding: 18 }}>
-                <StaffIdCardView card={pendingConfirm.card} />
-                <div
-                  style={{
-                    marginTop: 16,
-                    background: '#F0FDF4',
-                    border: '1px solid #BBF7D0',
-                    borderRadius: 12,
-                    padding: 14,
-                  }}
-                >
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#166534', letterSpacing: '0.04em' }}>
-                    SIGN-IN DETAILS (share with staff)
-                  </div>
-                  <div style={{ marginTop: 10, fontSize: '0.9rem', color: '#0F172A', lineHeight: 1.7 }}>
-                    <div>
-                      <strong>Staff ID / Badge:</strong>{' '}
-                      <code style={{ fontSize: '1rem', fontWeight: 800, color: '#0052D4' }}>
-                        {pendingConfirm.card.badgeId}
-                      </code>
-                    </div>
-                    <div>
-                      <strong>PIN:</strong>{' '}
-                      <code style={{ fontWeight: 800 }}>{pendingConfirm.pin}</code>
-                    </div>
-                    <div>
-                      <strong>Hospital:</strong> {pendingConfirm.hospitalName}
-                    </div>
-                    <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: 6 }}>
-                      On the login screen choose <strong>Staff ID No.</strong>, enter this badge and PIN.
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="os-action-btn-primary"
-                  style={{ width: '100%', marginTop: 16, justifyContent: 'center' }}
-                  onClick={confirmEnrolment}
-                >
-                  <CheckCircle2 size={16} /> Confirm — add to staff list
-                </button>
-              </div>
-            </div>
-          ) : issued ? (
+          {issued ? (
             <div>
               <div
                 style={{
@@ -475,6 +427,105 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         </div>
       )}
     </div>
+
+      {/* ── New-staff confirmation modal ── */}
+      {pendingConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Staff enrolled"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10000,
+            background: 'rgba(15, 23, 42, 0.6)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 480,
+              background: '#fff',
+              borderRadius: 20,
+              overflow: 'hidden',
+              boxShadow: '0 32px 64px rgba(0,0,0,0.22)',
+              animation: 'fadeInScale 0.22s ease',
+            }}
+          >
+            {/* Header */}
+            <div style={{ background: 'linear-gradient(135deg,#16A34A 0%,#0D9488 100%)', padding: '20px 22px', color: '#fff' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 800, fontSize: '1.05rem' }}>
+                <CheckCircle2 size={22} />
+                Staff enrolled successfully
+              </div>
+              <div style={{ fontSize: '0.82rem', opacity: 0.9, marginTop: 4 }}>
+                Review the card and credentials, then confirm to add to the roster.
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <StaffIdCardView card={pendingConfirm.card} />
+
+              {/* Credentials box */}
+              <div
+                style={{
+                  background: '#F0FDF4',
+                  border: '1px solid #BBF7D0',
+                  borderRadius: 12,
+                  padding: '14px 16px',
+                }}
+              >
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#166534', letterSpacing: '0.06em', marginBottom: 10 }}>
+                  SIGN-IN CREDENTIALS — share with staff member
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 14px', fontSize: '0.88rem', color: '#0F172A' }}>
+                  <div>
+                    <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>BADGE / STAFF ID</span>
+                    <div>
+                      <code style={{ fontSize: '1rem', fontWeight: 800, color: '#0052D4' }}>
+                        {pendingConfirm.card.badgeId}
+                      </code>
+                    </div>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>INITIAL PIN</span>
+                    <div>
+                      <code style={{ fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>
+                        {pendingConfirm.pin}
+                      </code>
+                    </div>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>HOSPITAL</span>
+                    <div style={{ fontWeight: 600 }}>{pendingConfirm.hospitalName}</div>
+                  </div>
+                </div>
+                <div style={{ marginTop: 10, fontSize: '0.76rem', color: '#64748B', lineHeight: 1.5 }}>
+                  On the login screen select <strong>Staff ID No.</strong>, enter the badge and PIN above.
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={confirmEnrolment}
+                  className="os-action-btn-primary"
+                  style={{ flex: 1, justifyContent: 'center' }}
+                >
+                  <CheckCircle2 size={16} /> Confirm — add to roster
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete confirmation modal — no browser/Firebase dialogs */}
       {deleteTarget && (

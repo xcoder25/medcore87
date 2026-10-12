@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CommandCentreDashboard } from './components/command-centre/CommandCentreDashboard';
 import { BedManagement } from './components/beds/BedManagement';
 import { PatientFlowVisibility } from './components/patient-flow/PatientFlowVisibility';
@@ -21,6 +21,7 @@ import { RoleDashboard } from './components/dashboards/RoleDashboard';
 import { EMRManager } from './components/gateway-modules/EMRManager';
 import { AuthScreen, UserSession } from './components/auth/AuthScreen';
 import { HospitalOnboardingWizard, resolveOnboardingMode } from './components/onboarding/HospitalOnboardingWizard';
+import { subscribeOnboarding } from './lib/onboardingStore';
 import { RealtimeChrome } from './components/realtime/RealtimeChrome';
 import './styles/os.css';
 
@@ -85,12 +86,22 @@ export const App: React.FC = () => {
   const [session, setSession] = useState<UserSession | null>(null);
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [onboardTick, setOnboardTick] = useState(0);
   const now = new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+
+  useEffect(() => {
+    if (!session) return;
+    const unsub = subscribeOnboarding(() => {
+      setOnboardTick((t) => t + 1);
+    }, session.hospitalId);
+    return unsub;
+  }, [session?.hospitalId, session?.badgeId]);
 
   if (!session) {
     return <AuthScreen onLogin={(s) => { setSession(s); setActiveModule('dashboard'); }} />;
   }
 
+  void onboardTick;
   const onboardMode = resolveOnboardingMode(session);
   if (onboardMode) {
     return (

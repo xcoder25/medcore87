@@ -24,6 +24,7 @@ import { AccountingWorkspace } from '../components/dashboards/AccountingWorkspac
 import { FrontDeskSettings } from '../components/reception/FrontDeskSettings';
 import { FacilityOnboarding } from '../components/facility/FacilityOnboarding';
 import { HospitalOnboardingWizard, resolveOnboardingMode } from '../components/onboarding/HospitalOnboardingWizard';
+import { subscribeOnboarding } from '../lib/onboardingStore';
 import { AuthIdentity } from '../components/auth/AuthIdentity';
 import { DigitalPatientCard } from '../components/patient-card/DigitalPatientCard';
 import { Patient360View } from '../components/patients/Patient360View';
@@ -908,6 +909,16 @@ export default function OSPage() {
 
   const [appState, setAppState] = useState<'splash' | 'auth' | 'app'>('splash');
   const [userSession, setUserSession] = useState<UserSession | null>(null);
+  const [onboardTick, setOnboardTick] = useState(0);
+
+  useEffect(() => {
+    if (!userSession) return;
+    const unsub = subscribeOnboarding(() => {
+      setOnboardTick((t) => t + 1);
+    }, userSession.hospitalId);
+    return unsub;
+  }, [userSession?.hospitalId, userSession?.badgeId]);
+
   const { criticalAlert, dismissCriticalAlert } = useRealtimeEvents({ app: 'MEDCORE_OS', facilityId: userSession?.facility });
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard');
   const [moduleHistory, setModuleHistory] = useState<ModuleKey[]>([]);
@@ -1522,6 +1533,7 @@ const handleLockScreen = () => {
 
   // First-login hospital / staff onboarding (admin facility setup or clinical workspace)
   if (userSession) {
+    void onboardTick;
     const onboardMode = resolveOnboardingMode(userSession);
     if (onboardMode) {
       return (

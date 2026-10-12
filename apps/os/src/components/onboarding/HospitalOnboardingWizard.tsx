@@ -4,10 +4,10 @@
  * First-login Hospital Onboarding — Admin facility setup + Staff clinical setup.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Building2, Shield, Plug, Users, CheckCircle2, ChevronRight, ChevronLeft,
-  SkipForward, KeyRound, Stethoscope, Sparkles, AlertTriangle, Hospital,
+  SkipForward, KeyRound, Stethoscope, Sparkles, AlertTriangle, Hospital, Radio,
 } from 'lucide-react';
 import type { UserSession } from '../auth/AuthScreen';
 import {
@@ -21,6 +21,8 @@ import {
   isFacilityOnboarded,
   isStaffOnboarded,
   isFacilityAdminRole,
+  subscribeFacilityDraft,
+  subscribeOnboarding,
   type FacilityOnboardDraft,
   type StaffOnboardDraft,
   type SpecialtyKey,
@@ -136,9 +138,13 @@ function WizardShell({ title, subtitle, steps, step, session, children }: {
               <div style={{ fontSize: '0.78rem', opacity: 0.85 }}>{subtitle}</div>
             </div>
           </div>
-          <div style={{ textAlign: 'right', fontSize: '0.75rem', opacity: 0.9 }}>
+          <div style={{ textAlign: 'right', fontSize: '0.75rem', opacity: 0.9, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.18)', padding: '3px 9px', borderRadius: 999, fontSize: '0.70rem', fontWeight: 700, color: '#F0FDF4' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#34D399', boxShadow: '0 0 6px #34D399', display: 'inline-block' }} />
+              <span>Realtime Cloud &amp; LAN</span>
+            </div>
             <div style={{ fontWeight: 700 }}>{session.name}</div>
-            <div>{session.badgeId || session.role}</div>
+            <div style={{ opacity: 0.85 }}>{session.badgeId || session.role}</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, padding: '14px 20px', borderBottom: '1px solid #F1F5F9', overflowX: 'auto', background: '#F8FAFC' }}>
@@ -203,6 +209,13 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
     loadFacilityDraft(session.hospitalId, session.facility)
   );
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsub = subscribeFacilityDraft(session.hospitalId, (remote) => {
+      setDraft((curr) => ({ ...curr, ...remote }));
+    });
+    return unsub;
+  }, [session.hospitalId]);
 
   const patch = useCallback((p: Partial<FacilityOnboardDraft>) => {
     setDraft((d) => {
@@ -412,6 +425,14 @@ function StaffWizard({ session, onComplete }: { session: UserSession; onComplete
   const [draft, setDraft] = useState<StaffOnboardDraft>(() =>
     loadStaffDraft(session.badgeId || session.id, session.hospitalId)
   );
+
+  useEffect(() => {
+    const key = session.badgeId || session.id;
+    const unsub = subscribeOnboarding(() => {
+      setDraft((curr) => ({ ...curr, ...loadStaffDraft(key, session.hospitalId) }));
+    }, session.hospitalId);
+    return unsub;
+  }, [session.badgeId, session.id, session.hospitalId]);
 
   const patch = useCallback((p: Partial<StaffOnboardDraft>) => {
     setDraft((d) => {

@@ -17,9 +17,171 @@ import {
 } from './firebase';
 import { removeStaffPresence, markStaffRevokedLocal } from './staffPresenceStore';
 
+let _migrationRan = false;
+
+/**
+ * Migration: updates any staff IDs created before with the new format AMC-YYYY-####.
+ * Specifically updates both earlier-created staff (Hospital Admin and Kelly) and any
+ * legacy IDs stored in cards, staff registry, or access control.
+ */
+export function migrateStaffIdsToNewFormat(): { migratedCount: number; mapping: Record<string, string> } {
+  if (typeof window === 'undefined') return { migratedCount: 0, mapping: {} };
+
+  const mapping: Record<string, string> = {};
+  const year = new Date().getFullYear();
+  let nextSeq = 1001;
+
+  try {
+    const rawCards = localStorage.getItem(STAFF_CARD_STORAGE_KEY);
+    let cards: any[] = rawCards ? JSON.parse(rawCards) : [];
+    if (!Array.isArray(cards)) cards = [];
+
+    for (const c of cards) {
+      const bid = String(c?.badgeId || '').toUpperCase();
+      if (bid.startsWith(`AMC-${year}-`)) {
+        const n = parseInt(bid.slice(`AMC-${year}-`.length), 10);
+        if (!isNaN(n) && n >= nextSeq) nextSeq = n + 1;
+      }
+    }
+
+    let changed = false;
+
+    const getNewIdFor = (oldId: string, roleKey?: string, name?: string) => {
+      const normOld = String(oldId || '').trim().toUpperCase();
+      if (!normOld) return '';
+      if (/^AMC-\d{4}-\d{4}$/i.test(normOld)) return normOld;
+      if (mapping[normOld]) return mapping[normOld];
+
+      const n = String(name || '').toLowerCase();
+      const rk = String(roleKey || '').toLowerCase();
+      const isAdm = rk === 'hospital_admin' || normOld.includes('ADM') || n.includes('admin');
+      const isKelly = n.includes('kelly');
+
+      let newId = '';
+      if (isAdm && !Object.values(mapping).includes(`AMC-${year}-1001`)) {
+        newId = `AMC-${year}-1001`;
+      } else if (isKelly && !Object.values(mapping).includes(`AMC-${year}-1002`)) {
+        newId = `AMC-${year}-1002`;
+      } else {
+        while (Object.values(mapping).includes(`AMC-${year}-${String(nextSeq).padStart(4, '0')}`)) {
+          nextSeq++;
+        }
+        newId = `AMC-${year}-${String(nextSeq).padStart(4, '0')}`;
+        nextSeq++;
+      }
+      mapping[normOld] = newId;
+      return newId;
+    };
+
+    const updatedCards = cards.map((c: any) => {
+      const oldId = String(c?.badgeId || '').trim().toUpperCase();
+      if (!oldId || /^AMC-\d{4}-\d{4}$/i.test(oldId)) return c;
+      const newId = getNewIdFor(oldId, c.roleKey, c.fullName || c.name);
+      changed = true;
+      const updated = {
+        ...c,
+        badgeId: newId,
+        legacyBadgeId: oldId,
+      };
+      try {
+        updated.qrPayload = buildStaffQrPayload(updated);
+      } catch {
+        /* ignore */
+      }
+      return updated;
+    });
+
+    if (changed) {
+      localStorage.setItem(STAFF_CARD_STORAGE_KEY, JSON.stringify(updatedCards));
+    }
+
+    for (const regKey of [STAFF_REGISTRY_STORAGE_KEY, 'medcore_os_staff_registry']) {
+      const regRaw = localStorage.getItem(regKey);
+      if (!regRaw) continue;
+      const reg = JSON.parse(regRaw);
+      if (!Array.isArray(reg)) continue;
+      let regChanged = false;
+      const updatedReg = reg.map((r: any) => {
+        const oldBadge = String(r?.badgeId || r?.id || '').trim().toUpperCase();
+        if (!oldBadge || /^AMC-\d{4}-\d{4}$/i.test(oldBadge)) return r;
+        const newId = getNewIdFor(oldBadge, r.roleKey, r.name || r.fullName);
+        regChanged = true;
+        return {
+          ...r,
+          id: newId,
+          badgeId: newId,
+          legacyBadgeId: oldBadge,
+        };
+      });
+      if (regChanged) {
+        localStorage.setItem(regKey, JSON.stringify(updatedReg));
+      }
+    }
+
+    const accessRaw = localStorage.getItem('medcore_os_access_control');
+    if (accessRaw) {
+      const access = JSON.parse(accessRaw);
+      if (Array.isArray(access)) {
+        let accessChanged = false;
+        const updatedAccess = access.map((a: any) => {
+          const oldId = String(a?.id || '').trim().toUpperCase();
+          if (!oldId || /^AMC-\d{4}-\d{4}$/i.test(oldId)) return a;
+          const newId = getNewIdFor(oldId, a.roleKey, a.name);
+          accessChanged = true;
+          return {
+            ...a,
+            id: newId,
+            legacyBadgeId: oldId,
+          };
+        });
+        if (accessChanged) {
+          localStorage.setItem('medcore_os_access_control', JSON.stringify(updatedAccess));
+        }
+      }
+    }
+
+    const migratedCount = Object.keys(mapping).length;
+    if (migratedCount > 0) {
+      try {
+        window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: updatedCards }));
+        window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated'));
+        window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_access_control' } }));
+      } catch {
+        /* ignore */
+      }
+
+      try {
+        const facilityId = (updatedCards[0]?.facilityId || 'IGH-EKT');
+        const regRaw = localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY);
+        const finalReg = regRaw ? JSON.parse(regRaw) : [];
+        void firestorePushStaffDirectory(facilityId, {
+          staffCards: updatedCards,
+          staffRegistry: finalReg,
+        });
+        for (const [oldId, newId] of Object.entries(mapping)) {
+          if (oldId !== newId) {
+            void firestoreDeleteStaffMember(facilityId, oldId);
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    return { migratedCount, mapping };
+  } catch (err) {
+    console.warn('[staffStore] migration error', err);
+    return { migratedCount: 0, mapping };
+  }
+}
+
 function readCards(): StaffCardRecord[] {
   if (typeof window === 'undefined') return [];
   try {
+    if (!_migrationRan) {
+      _migrationRan = true;
+      migrateStaffIdsToNewFormat();
+    }
     const raw = localStorage.getItem(STAFF_CARD_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
@@ -45,7 +207,34 @@ export function listStaffCards(): StaffCardRecord[] {
 }
 
 export function getStaffCard(badgeId: string): StaffCardRecord | undefined {
-  return readCards().find((c) => c.badgeId === badgeId);
+  const norm = (badgeId || '').trim().toUpperCase();
+  return readCards().find((c) => c.badgeId === norm || (c as any).legacyBadgeId === norm);
+}
+
+/** Printed badge format matching official Arise MedCore card: AMC-YYYY-#### */
+export function nextPrintedBadgeId(facilityId?: string): string {
+  const year = new Date().getFullYear();
+  const brand = 'AMC';
+  const prefix = `${brand}-${year}-`;
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(STAFF_CARD_STORAGE_KEY) : null;
+    const cards: StaffCardRecord[] = raw ? JSON.parse(raw) : [];
+    const seqs = (Array.isArray(cards) ? cards : [])
+      .map((c) => {
+        const b = String(c?.badgeId || '').toUpperCase();
+        if (b.startsWith(prefix)) {
+          const n = parseInt(b.slice(prefix.length), 10);
+          return isNaN(n) ? 0 : n;
+        }
+        return 0;
+      })
+      .filter((n) => n > 0);
+
+    const nextSeq = seqs.length > 0 ? Math.max(...seqs) + 1 : 1001;
+    return `${prefix}${String(nextSeq).padStart(4, '0')}`;
+  } catch {
+    return `${prefix}1001`;
+  }
 }
 
 /** Enrol staff: create registry row + issue ID card in one step */
@@ -53,18 +242,8 @@ export function enrolStaffAndIssueCard(
   input: StaffEnrolmentInput,
   badgeId?: string
 ): { card: StaffCardRecord; badgeId: string } {
-  // Facility-owned prefix (e.g. IGH-EKT-DOC-A1B2) so every hospital keeps its own ID space
-  const facilityPrefix = (input.facilityId || 'FAC').trim().toUpperCase().replace(/\s+/g, '');
-  const ROLE_BADGE_SEG: Record<string, string> = {
-    doctor: 'DOC', surgeon: 'SUR', nurse: 'NUR', midwife: 'MID', pharmacist: 'PHA',
-    lab: 'LAB', radiologist: 'RAD', reception: 'REC', records: 'REO', accountant: 'ACC',
-    hospital_admin: 'ADM', sysadmin: 'SYS', biomedical: 'BIO', medical_director: 'DIR',
-  };
-  const roleSeg = (ROLE_BADGE_SEG[input.roleKey] || (input.roleKey || 'STF').slice(0, 3)).toUpperCase();
-  const id = (
-    badgeId ||
-    `${facilityPrefix}-${roleSeg}-${Date.now().toString(36).slice(-4).toUpperCase()}`
-  ).trim().toUpperCase();
+  // Use new printed badge format AMC-YYYY-#### (matching the official ID card)
+  const id = (badgeId || nextPrintedBadgeId(input.facilityId)).trim().toUpperCase();
 
   const card = issueStaffCardFromEnrolment(input, id);
   const cards = readCards().filter((c) => c.badgeId !== id);

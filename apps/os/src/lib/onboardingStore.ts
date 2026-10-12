@@ -4,6 +4,9 @@
  * Clinical staff: identity → workspace prefs → guided tour.
  */
 
+import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
+import { firestoreSubscribeFacility } from './firebase';
+
 export const FACILITY_ONBOARD_KEY = 'medcore_admin_onboarding_done';
 export const STAFF_ONBOARD_PREFIX = 'medcore_os_staff_onboard_';
 export const ONBOARD_DRAFT_KEY = 'medcore_os_onboarding';
@@ -188,6 +191,11 @@ export function markFacilityOnboarded(facilityId: string, by?: string) {
     const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
     map[facilityId] = by || new Date().toISOString();
     localStorage.setItem(FACILITY_ONBOARD_KEY, JSON.stringify(map));
+    try {
+      publishFacilityData(facilityId, FACILITY_KEYS.onboarding, map);
+    } catch {
+      /* offline ok */
+    }
   } catch {
     /* ignore */
   }
@@ -234,6 +242,11 @@ export function saveFacilityDraft(draft: FacilityOnboardDraft) {
     const all = raw ? (JSON.parse(raw) as Record<string, FacilityOnboardDraft>) : {};
     all[draft.facilityId] = draft;
     localStorage.setItem(ONBOARD_DRAFT_KEY, JSON.stringify(all));
+    try {
+      publishFacilityData(draft.facilityId, FACILITY_KEYS.onboardingDraft, all);
+    } catch {
+      /* offline ok */
+    }
   } catch {
     /* ignore */
   }
@@ -299,13 +312,73 @@ export function isFacilityAdminRole(roleKey?: string, role?: string, title?: str
   );
 }
 
-export function subscribeOnboarding(cb: () => void): () => void {
+export function subscribeOnboarding(cb: () => void, facilityId?: string): () => void {
   if (typeof window === 'undefined') return () => {};
   const h = () => cb();
   window.addEventListener(ONBOARD_EVENT, h);
   window.addEventListener('storage', h);
+  window.addEventListener('medcore-admin-sync', h);
+
+  let unsubFs: (() => void) | undefined;
+  if (facilityId) {
+    try {
+      unsubFs = firestoreSubscribeFacility(facilityId, (data) => {
+        let changed = false;
+        const remoteDone = data?.[FACILITY_KEYS.onboarding];
+        if (remoteDone && typeof remoteDone === 'object') {
+          try {
+            const raw = localStorage.getItem(FACILITY_ONBOARD_KEY);
+            const local = raw ? JSON.parse(raw) : {};
+            const merged = { ...local, ...remoteDone };
+            if (JSON.stringify(local) !== JSON.stringify(merged)) {
+              localStorage.setItem(FACILITY_ONBOARD_KEY, JSON.stringify(merged));
+              changed = true;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+
+        const remoteDrafts = data?.[FACILITY_KEYS.onboardingDraft];
+        if (remoteDrafts && typeof remoteDrafts === 'object') {
+          try {
+            const raw = localStorage.getItem(ONBOARD_DRAFT_KEY);
+            const local = raw ? JSON.parse(raw) : {};
+            const merged = { ...local, ...remoteDrafts };
+            if (JSON.stringify(local) !== JSON.stringify(merged)) {
+              localStorage.setItem(ONBOARD_DRAFT_KEY, JSON.stringify(merged));
+              changed = true;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+
+        if (changed) {
+          emit();
+          cb();
+        }
+      });
+    } catch {
+      /* offline / ignore */
+    }
+  }
+
   return () => {
     window.removeEventListener(ONBOARD_EVENT, h);
     window.removeEventListener('storage', h);
+    window.removeEventListener('medcore-admin-sync', h);
+    if (unsubFs) unsubFs();
   };
+}
+
+export function subscribeFacilityDraft(
+  facilityId: string,
+  onUpdate: (draft: FacilityOnboardDraft) => void
+): () => void {
+  if (typeof window === 'undefined' || !facilityId) return () => {};
+  const handle = () => {
+    onUpdate(loadFacilityDraft(facilityId));
+  };
+  return subscribeOnboarding(handle, facilityId);
 }

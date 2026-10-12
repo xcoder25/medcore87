@@ -27,6 +27,8 @@ export const FACILITY_KEYS = {
   audit: 'medcore_os_audit_log_v1',
   facilityCatalog: 'medcore_facility_catalog_v1',
   notifications: 'medcore_os_notifications_v1',
+  onboarding: 'medcore_admin_onboarding_done',
+  onboardingDraft: 'medcore_os_onboarding',
 } as const;
 
 /** Publish facility data. Online = cloud first, then local peers. Offline = local + queue. */
