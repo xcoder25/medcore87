@@ -22,6 +22,8 @@ import { CashierRevenue } from '../components/cashier/CashierRevenue';
 import { PosPaymentDesk } from '../components/cashier/PosPaymentDesk';
 import { AccountingWorkspace } from '../components/dashboards/AccountingWorkspace';
 import { FrontDeskSettings } from '../components/reception/FrontDeskSettings';
+import { FrontDeskWorkqueues } from '../components/reception/FrontDeskWorkqueues';
+
 import { FacilityOnboarding } from '../components/facility/FacilityOnboarding';
 import { HospitalOnboardingWizard, resolveOnboardingMode } from '../components/onboarding/HospitalOnboardingWizard';
 import { subscribeOnboarding } from '../lib/onboardingStore';
@@ -125,7 +127,7 @@ export type ModuleKey =
   // Pillar 6: Connected IoT
   | 'iot-devices'
   // Pillar 7: Security & Governance
-  | 'auth' | 'facility' | 'rbac' | 'compliance' | 'safety' | 'sysadmin' | 'transfer' | 'enrolment' | 'my-card' | 'desk-settings';
+  | 'auth' | 'facility' | 'rbac' | 'compliance' | 'safety' | 'sysadmin' | 'transfer' | 'enrolment' | 'my-card' | 'desk-settings' | 'front-desk-wq';
 
 export type NavSection = {
   label: string;
@@ -485,6 +487,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'patient-flow', icon: Activity, label: 'Check-in & multi-queue', badge: 'Queue' },
             { key: 'patient-card', icon: FileText, label: 'Register / MPI find', badge: 'MPI' },
             { key: 'appointments', icon: Calendar, label: 'Appointments & clinics' },
+            { key: 'front-desk-wq', icon: Layers, label: 'Workqueues (grid · recall · print)', badge: 'Epic' },
             { key: 'universal-queue', icon: Ticket, label: 'Hospital-wide queue board', badge: 'UUTH' },
           ],
         },
@@ -849,6 +852,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   safety: ClinicalSafetyBcpSuite,
   sysadmin: SystemAdministration,
   'desk-settings': FrontDeskSettings as any,
+  'front-desk-wq': FrontDeskWorkqueues as any,
   transfer: HospitalStaffTransfer as any,
   enrolment: StaffEnrolment as any,
   'my-card': MyStaffIdPanel,
@@ -922,6 +926,7 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   enrolment: { level: 4, label: 'Administrator', roleDesc: 'Hospital administrators enrol staff' },
   'my-card': { level: 2, label: 'All staff', roleDesc: 'Staff identity card' },
   'desk-settings': { level: 2, label: 'Front desk', roleDesc: 'Reception & front desk operations settings' },
+  'front-desk-wq': { level: 1, label: 'L2 Front Desk', roleDesc: 'Epic/Cerner workqueues — grid, recall, referrals' },
 };
 
 export default function OSPage() {
