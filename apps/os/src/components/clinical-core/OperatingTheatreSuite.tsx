@@ -221,7 +221,7 @@ export const OperatingTheatreSuite: React.FC = () => {
                 Active Operating Suite Live Card
               </div>
               <span style={{ fontSize: '0.72rem', color: '#D97706', fontWeight: 700 }}>
-                {selectedCase?.theatreNumber ?? '—'.split('(')[0]}
+                {(selectedCase?.theatreNumber ?? '—').split('(')[0]}
               </span>
             </div>
 
@@ -294,24 +294,24 @@ export const OperatingTheatreSuite: React.FC = () => {
                   onClick={() => handleToggleChecklist((selectedCase?.id ?? ''), 'signOut')}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 12px', background: selectedCase.signOutDone ? '#ECFDF5' : '#F8FAFC',
-                    border: `1px solid ${selectedCase.signOutDone ? '#A7F3D0' : '#E2E8F0'}`,
-                    borderRadius: 6, fontSize: '0.76rem', color: selectedCase.signOutDone ? '#059669' : '#64748B',
+                    padding: '8px 12px', background: selectedCase?.signOutDone ? '#ECFDF5' : '#F8FAFC',
+                    border: `1px solid ${selectedCase?.signOutDone ? '#A7F3D0' : '#E2E8F0'}`,
+                    borderRadius: 6, fontSize: '0.76rem', color: selectedCase?.signOutDone ? '#059669' : '#64748B',
                     fontWeight: 700, cursor: 'pointer',
                   }}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <CheckCircle2 size={14} color={selectedCase.signOutDone ? '#059669' : '#94A3B8'} />
+                    <CheckCircle2 size={14} color={selectedCase?.signOutDone ? '#059669' : '#94A3B8'} />
                     SIGN OUT (Instrument & Swab Count)
                   </span>
-                  <span>{selectedCase.signOutDone ? 'VERIFIED' : 'CLICK TO CHECK'}</span>
+                  <span>{selectedCase?.signOutDone ? 'VERIFIED' : 'CLICK TO CHECK'}</span>
                 </div>
               </div>
             </div>
 
             {/* Stage Progress Buttons */}
             <div style={{ display: 'flex', gap: 8 }}>
-              {selectedCase.status === 'pre_op' && (
+              {selectedCase && selectedCase.status === 'pre_op' && (
                 <button
                   type="button"
                   className="os-action-btn-primary"
@@ -321,7 +321,7 @@ export const OperatingTheatreSuite: React.FC = () => {
                   <Play size={14} /> Begin Surgical Procedure
                 </button>
               )}
-              {selectedCase.status === 'in_surgery' && (
+              {selectedCase && selectedCase.status === 'in_surgery' && (
                 <button
                   type="button"
                   className="os-action-btn-primary"
@@ -331,7 +331,7 @@ export const OperatingTheatreSuite: React.FC = () => {
                   <CheckCircle2 size={14} /> Transfer to Recovery (PACU)
                 </button>
               )}
-              {selectedCase.status === 'pacu' && (
+              {selectedCase && selectedCase.status === 'pacu' && (
                 <button
                   type="button"
                   className="os-action-btn-primary"
@@ -341,7 +341,7 @@ export const OperatingTheatreSuite: React.FC = () => {
                   <CheckCircle2 size={14} /> Discharge to Inpatient Ward
                 </button>
               )}
-              {selectedCase.status === 'completed' && (
+              {selectedCase && selectedCase.status === 'completed' && (
                 <div style={{ width: '100%', textAlign: 'center', padding: '10px', background: '#ECFDF5', borderRadius: 8, color: '#059669', fontWeight: 700, fontSize: '0.85rem' }}>
                   ✓ Surgical Case Completed & Documented
                 </div>
