@@ -371,8 +371,8 @@ export const LaboratorySuite: React.FC = () => {
   const card: React.CSSProperties = {
     background: '#fff',
     border: '1px solid #E2E8F0',
-    borderRadius: 14,
-    boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+    borderRadius: 16,
+    boxShadow: '0 1px 3px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.03)',
   };
 
   return (
@@ -392,14 +392,14 @@ export const LaboratorySuite: React.FC = () => {
         ))}
       </div>
       <aside className="lis-aside">
-        <div style={{ padding: '4px 10px 12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(45,212,191,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ padding: '2px 8px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 12, background: 'linear-gradient(135deg,rgba(45,212,191,0.35),rgba(13,148,136,0.2))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 1px rgba(94,234,212,0.2)' }}>
               <FlaskConical size={18} color="#5EEAD4" />
             </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: '0.88rem' }}>LIS / Beaker</div>
-              <div style={{ fontSize: '0.62rem', opacity: 0.7 }}>Lab only</div>
+              <div style={{ fontWeight: 800, fontSize: '0.92rem', letterSpacing: '-0.02em' }}>LIS / Beaker</div>
+              <div style={{ fontSize: '0.62rem', opacity: 0.65, fontWeight: 600 }}>Laboratory only</div>
             </div>
           </div>
           <div style={{ marginTop: 10, fontSize: '0.68rem', background: 'rgba(0,0,0,0.25)', borderRadius: 8, padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -500,8 +500,8 @@ export const LaboratorySuite: React.FC = () => {
                       const st = STATUS_META[o.status] || STATUS_META.ordered;
                       return (
                         <tr key={o.id} style={{ borderTop: '1px solid #F1F5F9', background: o.isPanicValue ? '#FEF2F2' : undefined }}>
-                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                            <Barcode size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />{o.barcode}
+                          <td style={{ padding: '10px 12px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '0.75rem', whiteSpace: 'nowrap', fontWeight: 600, letterSpacing: '0.02em' }}>
+                            <Barcode size={12} style={{ verticalAlign: 'middle', marginRight: 4, opacity: 0.7 }} />{o.barcode}
                           </td>
                           <td style={{ padding: '10px 12px', fontWeight: 700 }}>
                             {o.patientName}

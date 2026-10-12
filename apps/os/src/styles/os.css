@@ -7456,3 +7456,178 @@ img, .os-top-hud-avatar {
   }
 }
 
+
+/* ── Laboratory LIS responsive shell (premium) ── */
+.lis-shell {
+  display: flex;
+  align-items: stretch;
+  height: calc(100vh - 112px);
+  max-height: calc(100vh - 112px);
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  background: #F1F5F9;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 12px 40px rgba(15, 23, 42, 0.06);
+}
+.lis-aside {
+  width: 228px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  align-self: stretch;
+  height: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background:
+    radial-gradient(ellipse 120% 80% at 0% 0%, rgba(45, 212, 191, 0.18), transparent 55%),
+    linear-gradient(165deg, #0B1220 0%, #0F172A 45%, #134E4A 130%);
+  color: #F8FAFC;
+  padding: 18px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-right: 1px solid rgba(148, 163, 184, 0.12);
+  z-index: 2;
+}
+.lis-aside::-webkit-scrollbar { width: 4px; }
+.lis-aside::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.35); border-radius: 4px; }
+.lis-main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 18px 20px 28px;
+  background:
+    radial-gradient(ellipse 70% 50% at 100% 0%, rgba(20, 184, 166, 0.06), transparent 50%),
+    #F8FAFC;
+}
+.lis-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.lis-kpi-row > div {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  padding: 14px 14px 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.lis-kpi-row > div:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+}
+.lis-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 14px;
+}
+.lis-table-wrap table {
+  min-width: 640px;
+  width: 100%;
+}
+.lis-table-wrap th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  backdrop-filter: blur(8px);
+}
+.lis-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 12px;
+  padding: 11px 12px;
+  cursor: pointer;
+  color: #E2E8F0;
+  font-size: 0.8rem;
+  background: transparent;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+.lis-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.lis-nav-btn.active {
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.45), rgba(13, 148, 136, 0.35));
+  color: #fff;
+  font-weight: 800;
+  box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.25);
+}
+.lis-nav-btn:not(.active) {
+  font-weight: 600;
+}
+.lis-mobile-nav {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .lis-kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .lis-aside { width: 200px; }
+}
+@media (max-width: 900px) {
+  .lis-shell {
+    flex-direction: column;
+    height: auto;
+    max-height: none;
+    min-height: calc(100vh - 100px);
+    border-radius: 14px;
+  }
+  .lis-aside {
+    display: none;
+  }
+  .lis-mobile-nav {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 12px 14px;
+    background: linear-gradient(90deg, #0B1220, #134E4A);
+    -webkit-overflow-scrolling: touch;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  }
+  .lis-mobile-nav button {
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06);
+    color: #F8FAFC;
+    border-radius: 999px;
+    padding: 9px 15px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+  }
+  .lis-mobile-nav button.active {
+    background: #14B8A6;
+    border-color: transparent;
+    color: #042F2E;
+    box-shadow: 0 4px 12px rgba(20, 184, 166, 0.35);
+  }
+  .lis-main {
+    padding: 14px;
+    height: auto;
+    overflow: visible;
+  }
+  .lis-kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .lis-kpi-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .lis-table-wrap table { min-width: 520px; font-size: 0.75rem; }
+  .lis-main { padding: 12px; }
+}
+
