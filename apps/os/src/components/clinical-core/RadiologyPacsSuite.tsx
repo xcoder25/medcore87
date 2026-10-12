@@ -514,12 +514,12 @@ export const RadiologyPacsSuite: React.FC = () => {
     }
     setAiBusy(true);
     try {
+      const studyName = [selectedStudy.modality, selectedStudy.bodyPart].filter(Boolean).join(' ') || selectedStudy.modality || 'Imaging study';
       const result = await draftImagingReport({
-        modality: modalityFromName(selectedStudy.modality + ' ' + selectedStudy.bodyPart),
-        bodyPart: selectedStudy.bodyPart,
-        indication: selectedStudy.reason,
-        patientName: selectedStudy.patientName,
-      });
+        modality: modalityFromName(studyName),
+        studyName,
+        clinicalContext: [selectedStudy.reason, selectedStudy.patientName ? `Patient: ${selectedStudy.patientName}` : ''].filter(Boolean).join(' · ') || undefined,
+      })
       setAiDraft(result as ImagingAiAssist);
       if (result?.impression || result?.findings) {
         setFindingsText([result.findings, result.impression].filter(Boolean).join('\n\n'));
