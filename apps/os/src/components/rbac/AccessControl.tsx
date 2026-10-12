@@ -318,6 +318,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     let emailAuth: 'ok' | 'fail' | 'skipped' = 'skipped';
     let card: StaffCardRecord | null = null;
     let accessRow: AccessRecord | null = null;
+    let preparedEntry: ReturnType<typeof prepareStaffEnrolment>['entry'] | null = null;
     const pinNorm = normalizeStaffPin(pin);
     const nameSnap = fullName.trim();
     const mail = email.trim();
@@ -342,7 +343,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       });
       card = prepared.card;
       const badgeId = card.badgeId;
-      const preparedEntry = prepared.entry;
+      preparedEntry = prepared.entry;
 
       accessRow = {
         id: badgeId,
@@ -450,26 +451,28 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       if (card && accessRow && firestoreStatus === 'ok') {
         // Persist ID card + registry only after cloud profile succeeded
         try {
-          commitStaffEnrolment(
-            {
-              fullName: nameSnap,
-              role: roleMeta.role,
-              roleKey: roleMeta.roleKey,
-              title: roleMeta.title,
-              department: roleMeta.department,
-              facilityId,
-              facilityName,
-              clearanceLevel: roleMeta.clearanceLevel,
-              clearanceLabel: roleMeta.clearanceLabel,
-              pin: pinNorm,
-              shortRole: roleMeta.shortRole,
-              permissions: defaultPermissionsForRole(roleMeta.roleKey),
-              photoUrl: photoUrl || undefined,
-              email: mail || undefined,
-            },
-            card,
-            preparedEntry
-          );
+          if (preparedEntry) {
+            commitStaffEnrolment(
+              {
+                fullName: nameSnap,
+                role: roleMeta.role,
+                roleKey: roleMeta.roleKey,
+                title: roleMeta.title,
+                department: roleMeta.department,
+                facilityId,
+                facilityName,
+                clearanceLevel: roleMeta.clearanceLevel,
+                clearanceLabel: roleMeta.clearanceLabel,
+                pin: pinNorm,
+                shortRole: roleMeta.shortRole,
+                permissions: defaultPermissionsForRole(roleMeta.roleKey),
+                photoUrl: photoUrl || undefined,
+                email: mail || undefined,
+              },
+              card,
+              preparedEntry
+            );
+          }
         } catch { /* ignore */ }
 
         const issuedCard = card;
