@@ -144,6 +144,9 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           }
         }
       }
+    } catch {
+      /* ignore */
+    }
     try {
       migrateStaffIdsToNewFormat();
     } catch {

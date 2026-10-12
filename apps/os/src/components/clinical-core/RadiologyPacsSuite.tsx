@@ -453,15 +453,18 @@ export const RadiologyPacsSuite: React.FC = () => {
 
   const addFromOrder = (o: ClinicalOrder) => {
     const id = `RAD-${Date.now().toString(36).toUpperCase()}`;
+    const label = String(o.name || o.code || o.notes || 'Study');
+    const firstTok = label.toUpperCase().split(/\s+/)[0];
+    const modality = (['XR', 'CT', 'MRI', 'US', 'MAMMO'].includes(firstTok)
+      ? (firstTok as RadiologyStudy['modality'])
+      : 'XR');
     const study: RadiologyStudy = {
       id,
       patientId: o.patientId || 'UNK',
       patientName: o.patientName || 'Unknown',
-      modality: (['XR', 'CT', 'MRI', 'US', 'MAMMO'].includes(String(o.details || '').split(' ')[0])
-        ? (String(o.details).split(' ')[0] as RadiologyStudy['modality'])
-        : 'XR'),
-      bodyPart: o.details || o.name || 'Study',
-      reason: o.name || 'Clinical indication',
+      modality,
+      bodyPart: label,
+      reason: o.notes || o.name || 'Clinical indication',
       status: 'scheduled',
       orderedAt: o.createdAt || new Date().toISOString(),
       radiologist: 'Pending',
@@ -716,7 +719,7 @@ export const RadiologyPacsSuite: React.FC = () => {
                   >
                     <div>
                       <strong style={{ fontSize: '0.86rem' }}>{o.patientName}</strong>
-                      <div style={{ fontSize: '0.75rem', color: '#64748B' }}>{o.name || o.details} · {o.status}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748B' }}>{o.name || o.code || o.notes} · {o.status}</div>
                     </div>
                     <button
                       type="button"
