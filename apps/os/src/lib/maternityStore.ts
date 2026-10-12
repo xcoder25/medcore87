@@ -206,9 +206,11 @@ export function pulseActiveLabour(facilityId: string) {
     const dil = r.cervicalDilationCm ?? 3;
     const ctx = r.contractionsPer10Min ?? 3;
     const fhrDelta = Math.random() > 0.5 ? 1 : -1;
-    const nextFhr = Math.max(
-      100,
-      Math.min(180, fhr + (Math.random() > 0.4 ? fhrDelta * (2 + Math.floor(Math.random() * 4)) : 0))
+    const nextFhr = Math.round(
+      Math.max(
+        100,
+        Math.min(180, fhr + (Math.random() > 0.4 ? fhrDelta * (2 + Math.floor(Math.random() * 4)) : 0))
+      )
     );
     const nextDil = dil < 10 && Math.random() > 0.85 ? Math.min(10, Math.round((dil + 0.5) * 10) / 10) : dil;
     const nextCtx =
@@ -216,14 +218,25 @@ export function pulseActiveLabour(facilityId: string) {
     let risk = r.risk;
     if (nextFhr > 160 || nextFhr < 110) risk = 'critical';
     else if (nextFhr > 155 || nextDil >= 8) risk = risk === 'critical' ? 'critical' : 'high';
+    const nextStage = nextDil >= 10 ? 'second_stage' : nextDil >= 4 ? 'active_labour' : r.stage;
+    // Only persist when vitals/stage actually moved — stops save→event→re-render shake loop
+    if (
+      nextFhr === fhr &&
+      nextDil === dil &&
+      nextCtx === ctx &&
+      risk === r.risk &&
+      nextStage === r.stage
+    ) {
+      return r;
+    }
     changed = true;
     return {
       ...r,
-      fetalHeartRateBpm: Math.round(nextFhr),
+      fetalHeartRateBpm: nextFhr,
       cervicalDilationCm: nextDil,
       contractionsPer10Min: nextCtx,
       risk,
-      stage: nextDil >= 10 ? 'second_stage' : nextDil >= 4 ? 'active_labour' : r.stage,
+      stage: nextStage,
       updatedAt: new Date().toISOString(),
     };
   });

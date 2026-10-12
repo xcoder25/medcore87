@@ -23,6 +23,7 @@ import {
   type MftiLevel, type GbsStatus, type RomStatus,
 } from '../../lib/maternityStore';
 import { buildAncPlan, computeEddFromLmp, gaWeeksFromLmp } from '../../lib/ancNpiSms';
+import { AncDueSmsPanel } from '../maternity/AncDueSmsPanel';
 
 type MatPage =
   | 'grease' | 'anc' | 'triage' | 'labour' | 'delivery' | 'postnatal' | 'beds' | 'emergency' | 'register';
@@ -136,12 +137,13 @@ export const MaternityOgSuite: React.FC = () => {
   }, [refresh]);
 
   useEffect(() => {
+    // Pulse may no-op; subscribeMaternity already refreshes when save() fires.
+    // Avoid forced refresh every tick — that was re-mounting the live bed strip.
     const iv = setInterval(() => {
       pulseActiveLabour(facilityId);
-      refresh();
-    }, 6000);
+    }, 12000);
     return () => clearInterval(iv);
-  }, [facilityId, refresh]);
+  }, [facilityId]);
 
   const { connected } = useRealtimeEvents({
     app: 'MEDCORE_OS_MATERNITY',
@@ -196,7 +198,7 @@ export const MaternityOgSuite: React.FC = () => {
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
     upsertMaternity(rec);
-    try { buildAncPlan({ facilityId, patientId: rec.id, patientName: rec.patientName, lmp, gaWeeks: ga }); } catch { /* */ }
+    try { buildAncPlan({ facilityId, patientId: rec.id, patientName: rec.patientName, lmp, gaWeeks: ga, phone: rec.phone, smsOptIn: true, smsLang: 'en' }); } catch { /* */ }
     setShowAncModal(false); setAncName(''); setSelectedId(rec.id); refresh();
     toast(`Prenatal chart · ${rec.patientName} · EDD ${edd}`);
   };
@@ -408,7 +410,7 @@ export const MaternityOgSuite: React.FC = () => {
                 </div>
               ))}
             </div>
-            <SharedBedStrip wardFilter={['Maternity']} title="Maternity beds · live" />
+            <SharedBedStrip wardFilter="Maternity" title="Maternity beds · live" />
             {boardAll.length === 0 ? (
               <Empty text="Grease board empty — triage or admit a mother" action={() => setShowTriageModal(true)} />
             ) : (
@@ -637,7 +639,8 @@ export const MaternityOgSuite: React.FC = () => {
 
         {page === 'beds' && (
           <PageShell title="Maternity Beds" sub="Ward board · Maternity filter only">
-            <SharedBedStrip wardFilter={['Maternity']} title="Maternity · labour · postpartum beds" />
+            <AncDueSmsPanel facilityId={facilityId} facilityName={facilityId === 'IGH-EKT' ? 'Immanuel General Hospital Eket' : facilityId} />
+            <SharedBedStrip wardFilter="Maternity" title="Maternity · labour · postpartum beds" />
           </PageShell>
         )}
 

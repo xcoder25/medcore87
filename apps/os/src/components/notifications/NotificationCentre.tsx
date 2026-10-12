@@ -9,6 +9,7 @@ import {
   notificationSummary,
   subscribeNotifications,
   type HospitalNotification,
+  type NotifLevel,
 } from '../../lib/notificationEngine';
 import { scanEarlyWarnings } from '../../lib/clinicalEarlyWarning';
 import { buildOpsIntelligence } from '../../lib/opsIntelligence';
@@ -23,6 +24,8 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
   const facilityId = session?.hospitalId || 'IGH-EKT';
   const [items, setItems] = useState<HospitalNotification[]>([]);
   const [sum, setSum] = useState(notificationSummary(facilityId));
+  const [filterLevel, setFilterLevel] = useState<'all' | NotifLevel>('all');
+  const roleKey = session?.roleKey || '';
 
   const reload = () => {
     setItems(
@@ -94,10 +97,32 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
       </div>
 
       <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0' }}>
-        {items.length === 0 && (
+        {(filterLevel === 'all' ? items : items.filter((n) => n.level === filterLevel)).length === 0 && (
           <div style={{ padding: 28, textAlign: 'center', color: '#64748B' }}>No notifications</div>
         )}
-        {items.map((n) => (
+        <div style={{ display: 'flex', gap: 6, padding: '10px 16px', borderBottom: '1px solid #F1F5F9', flexWrap: 'wrap' }}>
+          {(['all', 'critical', 'important', 'info'] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFilterLevel(f)}
+              style={{
+                border: filterLevel === f ? '1px solid #1D4ED8' : '1px solid #E2E8F0',
+                background: filterLevel === f ? '#EFF6FF' : '#fff',
+                color: filterLevel === f ? '#1D4ED8' : '#64748B',
+                borderRadius: 999,
+                padding: '4px 12px',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+                textTransform: 'capitalize',
+              }}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+        {(filterLevel === 'all' ? items : items.filter((n) => n.level === filterLevel)).map((n) => (
           <div
             key={n.id}
             style={{

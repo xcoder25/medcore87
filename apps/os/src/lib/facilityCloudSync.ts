@@ -35,6 +35,10 @@ const KEY_EVENTS: Record<string, string[]> = {
   [FACILITY_KEYS.facilityCatalog]: ['medcore-facility-catalog', 'medcore-admin-sync'],
   [FACILITY_KEYS.onboarding]: ['medcore-onboarding-sync', 'medcore-admin-sync'],
   [FACILITY_KEYS.onboardingDraft]: ['medcore-onboarding-sync', 'medcore-admin-sync'],
+  [FACILITY_KEYS.ancPlans]: ['medcore-anc-plans', 'medcore-admin-sync'],
+  medcore_anc_plans_v1: ['medcore-anc-plans', 'medcore-admin-sync'],
+  [FACILITY_KEYS.ancSmsPrefs]: ['medcore-anc-plans', 'medcore-admin-sync'],
+  medcore_anc_sms_prefs_v1: ['medcore-anc-plans', 'medcore-admin-sync'],
 };
 
 function emitForKey(key: string, value: unknown) {

@@ -169,12 +169,26 @@ export function notificationVisibleTo(
   n: HospitalNotification,
   opts?: { staffName?: string; roleKey?: string }
 ): boolean {
-  if (!n.targetStaff) return true;
-  const me = normName(opts?.staffName || '');
-  if (!me) return true;
-  const target = normName(n.targetStaff);
-  if (target === 'any available' || target === 'any') return true;
-  return target === me || target.includes(me) || me.includes(target);
+  // Staff-targeted alerts only for matching staff
+  if (n.targetStaff) {
+    const me = normName(opts?.staffName || '');
+    if (!me) return true;
+    const target = normName(n.targetStaff);
+    if (target === 'any available' || target === 'any') return true;
+    if (!(target === me || target.includes(me) || me.includes(target))) return false;
+  }
+  // Soft role filter: when roleHint is set and viewer role is specialty-scoped,
+  // hide alerts clearly aimed at unrelated desks (e.g. pharmacy stock for midwife).
+  const role = (opts?.roleKey || '').toLowerCase();
+  const hint = (n.roleHint || '').toLowerCase();
+  if (hint && role && role !== 'hospital_admin' && role !== 'medical_director') {
+    const midwifeHints = ['midwife', 'maternity', 'paediatrics', 'nursing', 'nurse', 'doctor'];
+    if (role === 'midwife' && hint && !midwifeHints.some((h) => hint.includes(h) || h.includes(hint))) {
+      // still show critical facility-wide
+      if (n.level !== 'critical') return false;
+    }
+  }
+  return true;
 }
 
 export function listNotifications(

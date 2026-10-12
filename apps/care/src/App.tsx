@@ -14,6 +14,7 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MyAncPanel } from './components/maternity/MyAncPanel';
 
 const { width, height } = Dimensions.get('window');
 const patLogo = require('./assets/patmedcore.png');
@@ -54,7 +55,8 @@ export type SubView =
   // Phase 3
   | 'family'
   | 'mentalHealth'
-  | 'healthEdu';
+  | 'healthEdu'
+  | 'myAnc';
 
 export interface DoctorInfo {
   id: string;
@@ -1809,6 +1811,7 @@ export const App: React.FC = () => {
             {subView === 'family' && 'Family & Dependents'}
             {subView === 'mentalHealth' && 'Mental Health & Wellness'}
             {subView === 'healthEdu' && 'Health Education'}
+            {subView === 'myAnc' && 'My ANC'}
           </Text>
           <View style={{ width: 40 }} />
         </View>
@@ -3165,6 +3168,13 @@ export const App: React.FC = () => {
         {/* ===================================================================
             SUBVIEW: IMMUNIZATION RECORDS (Phase 2)
         =================================================================== */}
+        {subView === 'myAnc' && (
+          <MyAncPanel
+            patientName={patientDisplayName}
+            onToast={(msg) => showToast(msg)}
+          />
+        )}
+
         {subView === 'immunization' && (
           <View style={styles.subViewContainer}>
             {/* Registry Info Card */}
@@ -3667,6 +3677,13 @@ export const App: React.FC = () => {
                   </View>
                   <Text style={styles.glassTileTitle}>Health Guides</Text>
                   <Text style={styles.glassTileSub}>Preventive tips</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.glassTile} onPress={() => setSubView('myAnc')} activeOpacity={0.84}>
+                  <View style={[styles.glassTileIconBadge, { backgroundColor: 'rgba(219, 39, 119, 0.16)' }]}>
+                    <Text style={{ fontSize: 18 }}>🤰</Text>
+                  </View>
+                  <Text style={styles.glassTileTitle}>My ANC</Text>
+                  <Text style={styles.glassTileSub}>EDD · visits · SMS</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.glassTile} onPress={() => setSubView('feedback')} activeOpacity={0.84}>
                   <View style={[styles.glassTileIconBadge, { backgroundColor: 'rgba(234, 179, 8, 0.16)' }]}>

@@ -143,8 +143,9 @@ const DEFAULTS: Record<string, string[]> = {
     'dashboard', 'maternity', 'paediatrics', 'notifications',
     'beds', 'emergency', 'my-card', 'patient-360',
     'm87-ai', 'ai',
-    'patient.identity', 'patient.contact', 'patient.vitals', 'patient.allergies',
-    'patient.problems', 'patient.notes', 'patient.meds',
+    'patient.identity', 'patient.contact', 'patient.demographics', 'patient.vitals',
+    'patient.allergies', 'patient.problems', 'patient.notes', 'patient.meds',
+    'patient.labs',
   ],
   // Pharmacists — dispense & formulary only (not theatre / ICU control)
   pharmacist: [

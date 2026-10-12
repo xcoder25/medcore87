@@ -3,8 +3,11 @@
 /**
  * Compact bed board strip — same bed IDs as Bed & Ward Occupancy.
  * Embed in Nursing, Theatre PACU, Maternity.
+ *
+ * Stable: does not re-fetch or setState when data is unchanged (avoids UI shake
+ * when parent re-renders every clock tick or labour pulse).
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   listBeds,
   ensureDefaultBeds,
@@ -12,6 +15,12 @@ import {
   type BedRecord,
 } from '../../lib/bedBoardStore';
 import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
+
+function bedsSignature(list: BedRecord[]): string {
+  return list
+    .map((b) => `${b.id}|${b.status}|${b.patient || ''}|${b.bedNo}|${b.ward}`)
+    .join(';');
+}
 
 export const SharedBedStrip: React.FC<{
   facilityId?: string;
@@ -22,21 +31,35 @@ export const SharedBedStrip: React.FC<{
     facilityIdProp && facilityIdProp !== 'IGH-EKT'
       ? facilityIdProp
       : (typeof window !== 'undefined' && getActiveFacilityId()) || facilityIdProp || 'IGH-EKT';
+
+  // Stabilize array/object filter so parent re-renders do not re-run the effect
+  const wardKey = useMemo(() => {
+    if (!wardFilter) return '';
+    return Array.isArray(wardFilter) ? wardFilter.slice().sort().join('|') : String(wardFilter);
+  }, [Array.isArray(wardFilter) ? wardFilter.join('|') : wardFilter]);
+
   const [beds, setBeds] = useState<BedRecord[]>([]);
+  const sigRef = useRef('');
 
   useEffect(() => {
     const load = () => {
       ensureDefaultBeds(facilityId);
       let list = listBeds(facilityId);
-      if (wardFilter) {
-        const set = new Set(Array.isArray(wardFilter) ? wardFilter : [wardFilter]);
-        list = list.filter((b) => set.has(b.ward) || [...set].some((w) => b.ward.toLowerCase().includes(w.toLowerCase())));
+      if (wardKey) {
+        const set = new Set(wardKey.split('|').filter(Boolean));
+        list = list.filter(
+          (b) => set.has(b.ward) || [...set].some((w) => b.ward.toLowerCase().includes(w.toLowerCase()))
+        );
       }
-      setBeds(list.slice(0, 24));
+      const next = list.slice(0, 24);
+      const sig = bedsSignature(next);
+      if (sig === sigRef.current) return; // no visual change — skip setState (stops shake)
+      sigRef.current = sig;
+      setBeds(next);
     };
     load();
     return subscribeBeds(load);
-  }, [facilityId, wardFilter]);
+  }, [facilityId, wardKey]);
 
   const occ = beds.filter((b) => b.status === 'occupied' || b.status === 'isolation').length;
 
@@ -48,6 +71,8 @@ export const SharedBedStrip: React.FC<{
         borderRadius: 12,
         padding: 12,
         marginBottom: 12,
+        // Prevent layout thrash from child paint
+        contain: 'layout style',
       }}
     >
       <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>
