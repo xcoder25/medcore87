@@ -7335,3 +7335,124 @@ img, .os-top-hud-avatar {
   background-size: 200% 200%;
   animation: mcFluidGradient 14s ease infinite;
 }
+
+
+/* ── Laboratory LIS responsive shell ── */
+.lis-shell {
+  display: flex;
+  min-height: calc(100vh - 120px);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid #E2E8F0;
+  background: #F8FAFC;
+}
+.lis-aside {
+  width: 210px;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #0F172A 0%, #134E4A 120%);
+  color: #F8FAFC;
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lis-main {
+  flex: 1;
+  padding: 16px;
+  overflow: auto;
+  min-width: 0;
+}
+.lis-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.lis-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.lis-table-wrap table {
+  min-width: 640px;
+}
+.lis-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  color: #F8FAFC;
+  font-size: 0.8rem;
+  background: transparent;
+}
+.lis-nav-btn.active {
+  background: rgba(20, 184, 166, 0.35);
+  font-weight: 800;
+}
+.lis-nav-btn:not(.active) {
+  font-weight: 600;
+}
+.lis-mobile-nav {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .lis-kpi-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 900px) {
+  .lis-shell {
+    flex-direction: column;
+    border-radius: 12px;
+  }
+  .lis-aside {
+    display: none; /* replaced by horizontal chips on small screens */
+  }
+  .lis-mobile-nav {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 10px 12px;
+    background: linear-gradient(90deg, #0F172A, #134E4A);
+    -webkit-overflow-scrolling: touch;
+    flex-shrink: 0;
+  }
+  .lis-mobile-nav button {
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.08);
+    color: #F8FAFC;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .lis-mobile-nav button.active {
+    background: #14B8A6;
+    border-color: transparent;
+    color: #042F2E;
+  }
+  .lis-main {
+    padding: 12px;
+  }
+  .lis-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .lis-kpi-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .lis-table-wrap table {
+    min-width: 520px;
+    font-size: 0.75rem;
+  }
+}
+

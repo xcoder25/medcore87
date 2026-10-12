@@ -376,28 +376,22 @@ export const LaboratorySuite: React.FC = () => {
   };
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        minHeight: 'calc(100vh - 120px)',
-        borderRadius: 16,
-        overflow: 'hidden',
-        border: '1px solid #E2E8F0',
-        background: '#F8FAFC',
-      }}
-    >
-      <aside
-        style={{
-          width: 210,
-          flexShrink: 0,
-          background: 'linear-gradient(180deg,#0F172A 0%,#134E4A 120%)',
-          color: '#F8FAFC',
-          padding: '14px 10px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 4,
-        }}
-      >
+    <div className="lis-shell">
+      {/* Horizontal LIS nav — visible on ≤900px */}
+      <div className="lis-mobile-nav" role="navigation" aria-label="LIS pages">
+        {NAV.map((item) => (
+          <button
+            key={`m-${item.key}`}
+            type="button"
+            className={page === item.key ? 'active' : undefined}
+            onClick={() => setPage(item.key)}
+          >
+            {item.label}
+            {item.key === 'critical' && criticals.length > 0 ? ` (${criticals.length})` : ''}
+          </button>
+        ))}
+      </div>
+      <aside className="lis-aside">
         <div style={{ padding: '4px 10px 12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(45,212,191,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -421,12 +415,7 @@ export const LaboratorySuite: React.FC = () => {
               key={item.key}
               type="button"
               onClick={() => setPage(item.key)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
-                border: 'none', borderRadius: 10, padding: '10px 12px', cursor: 'pointer',
-                background: active ? 'rgba(20,184,166,0.35)' : 'transparent',
-                color: '#F8FAFC', fontWeight: active ? 800 : 600, fontSize: '0.8rem',
-              }}
+              className={`lis-nav-btn${active ? ' active' : ''}`}
             >
               <Icon size={15} />
               <span style={{ flex: 1 }}>{item.label}</span>
@@ -440,8 +429,8 @@ export const LaboratorySuite: React.FC = () => {
         })}
       </aside>
 
-      <main style={{ flex: 1, padding: 16, overflow: 'auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(0,1fr))', gap: 10, marginBottom: 14 }}>
+      <main className="lis-main">
+        <div className="lis-kpi-row">
           {[
             { l: 'Pending', v: kpis.pending, c: '#2563EB' },
             { l: 'Analyzing', v: kpis.analyzing, c: '#7C3AED' },
@@ -494,7 +483,7 @@ export const LaboratorySuite: React.FC = () => {
               </div>
             )}
 
-            <div style={{ ...card, overflow: 'hidden' }}>
+            <div style={{ ...card, overflow: 'hidden' }} className="lis-table-wrap">
               {filtered.length === 0 ? (
                 <div style={{ padding: 40, textAlign: 'center', color: '#94A3B8' }}>No specimens in queue</div>
               ) : (
