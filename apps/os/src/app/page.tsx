@@ -2245,109 +2245,29 @@ const handleLockScreen = () => {
               <div
                 style={{
                   background: '#FFFFFF',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  borderRadius: 18,
-                  padding: '44px 32px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: 16,
+                  padding: '36px 28px',
+                  maxWidth: 520,
+                  margin: '48px auto',
                   textAlign: 'center',
-                  maxWidth: 680,
-                  margin: '40px auto',
-                  boxShadow: '0 20px 50px rgba(239,68,68,0.08)',
-                  animation: 'fadeUp 0.3s ease-out',
+                  boxShadow: '0 8px 24px rgba(15,23,42,0.06)',
                 }}
               >
-                <div
-                  style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: '50%',
-                    background: 'rgba(239, 68, 68, 0.08)',
-                    border: '1.5px solid rgba(239, 68, 68, 0.3)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#EF4444',
-                    marginBottom: 18,
-                  }}
-                >
-                  <Lock size={30} />
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#0A2540', marginBottom: 8 }}>
+                  This area is not on your desk
                 </div>
-
-                <div
-                  style={{
-                    fontSize: '0.72rem',
-                    fontWeight: 800,
-                    letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
-                    color: '#DC2626',
-                    background: 'rgba(239, 68, 68, 0.08)',
-                    padding: '3px 10px',
-                    borderRadius: 6,
-                    marginBottom: 10,
-                  }}
-                >
-                  Access restricted — you need permission for this area
-                </div>
-
-                <h2 style={{ margin: '0 0 8px 0', fontSize: '1.5rem', color: '#0A2540', fontFamily: 'var(--os-font-heading)' }}>
-                  Clearance Elevation Required
-                </h2>
-
-                <p style={{ margin: '0 0 20px 0', color: '#64748B', fontSize: '0.88rem', lineHeight: 1.6, maxWidth: 540 }}>
-                  This suite requires <strong>{MODULE_CLEARANCE[activeModule]?.label || 'Higher Clearance'}</strong> ({MODULE_CLEARANCE[activeModule]?.roleDesc}).
-                  Your current clearance is <strong>{userSession?.clearanceLabel}</strong> ({userSession?.name} — {userSession?.role}).
+                <p style={{ margin: '0 0 18px', fontSize: 13, color: '#64748B', lineHeight: 1.55 }}>
+                  Open a suite from your sidebar, or return to your home desk.
                 </p>
-
-                <div
-                  style={{
-                    background: '#F8FAFC',
-                    border: '1px solid #E2E8F0',
-                    borderRadius: 12,
-                    padding: '14px 18px',
-                    width: '100%',
-                    textAlign: 'left',
-                    marginBottom: 24,
-                    fontSize: '0.78rem',
-                    color: '#64748B',
-                  }}
+                <button
+                  type="button"
+                  className="os-ghost-btn"
+                  onClick={() => setActiveModule('dashboard')}
+                  style={{ fontWeight: 700 }}
                 >
-                  <div style={{ fontWeight: 700, color: '#0A2540', marginBottom: 4 }}>
-                    Access note:
-                  </div>
-                  <div>
-                    Patient records and admin settings are limited by your job role. Access attempts are recorded for security.
-                  </div>
-                </div>
-
-                {/* Sign in as another role (testing) */}
-                <div style={{ width: '100%' }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94A3B8', marginBottom: 10 }}>
-                    Switch to an authorized staff role to access this suite:
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-                    {PRESET_STAFF.map(staff => {
-                      const isAuth = staff.clearanceLevel >= (MODULE_CLEARANCE[activeModule]?.level || 0);
-                      return (
-                        <button
-                          key={staff.badgeId}
-                          type="button"
-                          onClick={() => handleSwitchCadre(staff)}
-                          className="os-ghost-btn"
-                          style={{
-                            fontSize: '0.74rem',
-                            borderColor: isAuth ? 'rgba(5,150,105,0.4)' : undefined,
-                            color: isAuth ? '#059669' : undefined,
-                          }}
-                        >
-                          <ShieldCheck size={13} />
-                          <span>{staff.shortRole}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                  Go to my desk
+                </button>
               </div>
             )}
           </div>
