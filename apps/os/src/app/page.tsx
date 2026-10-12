@@ -102,7 +102,7 @@ import {
   CreditCard, FileText, Stethoscope, Calendar, HeartPulse, Database, Brain, Sparkles, Flame,
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck,
-  Search, X, LayoutDashboard, MapPin, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
+  Search, X, LayoutDashboard, MapPin, Ticket, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
   Command, CornerDownLeft, IdCard,
 } from 'lucide-react';
 
@@ -479,25 +479,29 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'reception':
       return [
         {
-          label: '',
+          label: 'Front desk command',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-            { key: 'patient-flow', icon: Activity, label: 'Check-in & queue' },
-            { key: 'patient-card', icon: FileText, label: 'Register / Find patient' },
-            { key: 'appointments', icon: Calendar, label: 'Appointments' },
-            { key: 'patient-360', icon: Users, label: 'Patient folder' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Command dashboard', badge: 'Live' },
+            { key: 'patient-flow', icon: Activity, label: 'Check-in & multi-queue', badge: 'Queue' },
+            { key: 'patient-card', icon: FileText, label: 'Register / MPI find', badge: 'MPI' },
+            { key: 'appointments', icon: Calendar, label: 'Appointments & clinics' },
+            { key: 'universal-queue', icon: Ticket, label: 'Hospital-wide queue board', badge: 'UUTH' },
           ],
         },
         {
-          label: 'After payment',
+          label: 'Patient & pay',
           items: [
-            { key: 'patient-flow', icon: Activity, label: 'Continue with receipt' },
+            { key: 'patient-360', icon: Users, label: 'Patient folder (desk scope)' },
+            { key: 'cashier', icon: CreditCard, label: 'Send / track payment', badge: 'POS' },
+            { key: 'patient-flow', icon: Activity, label: 'Continue after PAID' },
           ],
         },
         {
-          label: 'Reports',
+          label: 'Intelligence',
           items: [
-            { key: 'analytics', icon: BarChart3, label: 'Reports & Analytics' },
+            { key: 'm87-ai', icon: Brain, label: 'Front-desk AI copilot', badge: 'AI' },
+            { key: 'notifications', icon: Bell, label: 'Desk alerts' },
+            { key: 'analytics', icon: BarChart3, label: 'Throughput reports' },
           ],
         },
         {

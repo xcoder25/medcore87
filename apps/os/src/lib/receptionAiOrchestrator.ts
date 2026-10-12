@@ -384,3 +384,73 @@ export function actionLabel(a: AiRecommendedAction): string {
       return a;
   }
 }
+
+
+/** Multi-clinic load for teaching-hospital front desks (UUTH-scale). */
+export interface ClinicLoadRow {
+  department: string;
+  waiting: number;
+  called: number;
+  withProvider: number;
+  avgWaitMin: number;
+  pressure: 'clear' | 'moderate' | 'heavy' | 'critical';
+  suggestion: string;
+}
+
+export function computeClinicLoadBoard(visits: ReceptionVisit[]): ClinicLoadRow[] {
+  const by = new Map<string, ReceptionVisit[]>();
+  for (const v of visits) {
+    if (v.status === 'completed' || v.status === 'no_show' || v.status === 'cancelled') continue;
+    const d = v.department || 'General OPD';
+    if (!by.has(d)) by.set(d, []);
+    by.get(d)!.push(v);
+  }
+  const rows: ClinicLoadRow[] = [];
+  for (const [department, list] of by) {
+    const waiting = list.filter((x) => x.status === 'waiting').length;
+    const called = list.filter((x) => x.status === 'called').length;
+    const withProvider = list.filter((x) => x.status === 'with_provider').length;
+    const waits = list
+      .filter((x) => x.status === 'waiting' || x.status === 'called')
+      .map((x) => Math.max(0, (Date.now() - new Date(x.checkedInAt || Date.now()).getTime()) / 60000));
+    const avgWaitMin = waits.length ? Math.round(waits.reduce((a, b) => a + b, 0) / waits.length) : 0;
+    let pressure: ClinicLoadRow['pressure'] = 'clear';
+    if (waiting + called >= 15 || avgWaitMin >= 90) pressure = 'critical';
+    else if (waiting + called >= 8 || avgWaitMin >= 45) pressure = 'heavy';
+    else if (waiting + called >= 4 || avgWaitMin >= 20) pressure = 'moderate';
+    let suggestion = 'Steady — continue normal flow';
+    if (pressure === 'critical') suggestion = 'Open extra bay / redirect non-urgent · escalate supervisor';
+    else if (pressure === 'heavy') suggestion = 'Prioritize NHIA/STAT · call next 2 patients';
+    else if (pressure === 'moderate') suggestion = 'Keep calling cadence · watch long waits';
+    rows.push({ department, waiting, called, withProvider, avgWaitMin, pressure, suggestion });
+  }
+  return rows.sort((a, b) => {
+    const rank = { critical: 0, heavy: 1, moderate: 2, clear: 3 };
+    return rank[a.pressure] - rank[b.pressure] || b.waiting - a.waiting;
+  });
+}
+
+export function intelligentRouteHint(
+  visits: ReceptionVisit[],
+  preferredDept?: string
+): { department: string; reason: string } {
+  const board = computeClinicLoadBoard(visits);
+  if (preferredDept) {
+    const row = board.find((r) => r.department === preferredDept);
+    if (row && (row.pressure === 'heavy' || row.pressure === 'critical')) {
+      const alt = board.find((r) => r.pressure === 'clear' || r.pressure === 'moderate');
+      if (alt && alt.department !== preferredDept) {
+        return {
+          department: preferredDept,
+          reason: `${preferredDept} is ${row.pressure} (${row.waiting} waiting). Consider ${alt.department} only if clinically appropriate.`,
+        };
+      }
+    }
+    return { department: preferredDept, reason: 'Route to requested clinic' };
+  }
+  const lightest = board.find((r) => r.pressure === 'clear') || board[board.length - 1];
+  if (lightest) {
+    return { department: lightest.department, reason: `Lowest pressure clinic on board (${lightest.waiting} waiting)` };
+  }
+  return { department: 'General OPD', reason: 'Default OPD routing' };
+}
