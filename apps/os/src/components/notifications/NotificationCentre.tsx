@@ -49,6 +49,7 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
           body: `${w.patientName}: ${w.message}`,
           module: w.module,
           patientId: w.patientId,
+          roleHint: session?.roleKey,
         });
       }
       for (const r of buildOpsIntelligence(facilityId).filter((x) => x.level === 'critical' || x.level === 'warn').slice(0, 3)) {
@@ -58,9 +59,12 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
           title: r.title,
           body: r.detail,
           module: r.module,
+          roleHint: session?.roleKey,
         });
       }
     }
+    // Always refresh role-scoped list on mount
+
     reload();
     return subscribeNotifications(reload);
   }, [facilityId]);
@@ -74,7 +78,7 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
         <div>
           <h2 style={{ margin: 0, fontWeight: 800 }}>Notification Centre</h2>
           <p style={{ margin: '6px 0 0', fontSize: 13, color: '#64748B' }}>
-            Prioritised alerts — {sum.total} need attention ({sum.critical} critical · {sum.important} important · {sum.info} info)
+            Prioritised alerts for your desk — {sum.total} open ({sum.critical} critical · {sum.important} important · {sum.info} info)
           </p>
         </div>
         <button

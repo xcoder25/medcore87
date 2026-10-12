@@ -6,6 +6,8 @@ import { PatientChartBanner } from '../clinical-core/PatientChartBanner';
 import { setPatientContext } from '../../lib/patientContextStore';
 import { Search, User, RefreshCw, FileText, Pill, FlaskConical, Wallet, Calendar } from 'lucide-react';
 import { buildPatient360, searchPatients360, type Patient360Bundle, type TimelineEvent } from '../../lib/patient360';
+import { roleCanSeePatientData } from '../../lib/rolePermissionsStore';
+import { inferRoleKey } from '../../lib/staffCardStore';
 import { scanEarlyWarnings } from '../../lib/clinicalEarlyWarning';
 
 interface Props {
@@ -27,6 +29,10 @@ const kindIcon: Record<string, React.ReactNode> = {
 
 export const Patient360View: React.FC<Props> = ({ session, initialPatientId }) => {
   const facilityId = session?.hospitalId || 'IGH-EKT';
+  const roleKey = inferRoleKey(session?.roleKey || session?.role || session?.title, session?.badgeId);
+  const canBills = roleCanSeePatientData(roleKey, 'patient.full_chart') || roleKey === 'hospital_admin' || roleKey === 'accountant' || roleKey === 'reception';
+  const canLabs = roleCanSeePatientData(roleKey, 'patient.labs') || roleKey === 'doctor' || roleKey === 'lab';
+  const scopedLabel = roleKey === 'midwife' ? 'Maternity-scoped chart' : 'Patient 360°';
   const [q, setQ] = useState(initialPatientId || '');
   const [bundle, setBundle] = useState<Patient360Bundle | null>(null);
   const [hits, setHits] = useState(() => searchPatients360(facilityId, ''));
@@ -48,11 +54,22 @@ export const Patient360View: React.FC<Props> = ({ session, initialPatientId }) =
   }, [q, facilityId]);
 
   const p = bundle?.patient;
+  const events = (bundle?.events || []).filter((ev) => {
+    if (roleKey === 'midwife' || roleKey === 'nurse') {
+      return !['payment', 'bill'].includes(ev.kind);
+    }
+    return true;
+  });
+  const unpaidBills = canBills ? (bundle?.unpaidBills || []) : [];
+  const openOrders = (bundle?.openOrders || []).filter((o) => {
+    if (roleKey === 'midwife') return o.type === 'lab' || o.type === 'rx' || o.type === 'imaging';
+    return true;
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
-        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>Patient 360°</h2>
+        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>{scopedLabel}</h2>
         <p style={{ margin: '6px 0 0', fontSize: 13, color: '#64748B' }}>
           Longitudinal profile from registry, visits, orders, bills — source of truth, not AI inventing data.
         </p>
@@ -184,10 +201,10 @@ export const Patient360View: React.FC<Props> = ({ session, initialPatientId }) =
 
             <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', padding: 14 }}>
               <div style={{ fontWeight: 800, marginBottom: 8 }}>Open clinical work</div>
-              {bundle.openOrders.length === 0 && (
+              {openOrders.length === 0 && (
                 <div style={{ fontSize: 12, color: '#64748B' }}>No open orders</div>
               )}
-              {bundle.openOrders.map((o) => (
+              {openOrders.map((o) => (
                 <div key={o.id} style={{ fontSize: 12, padding: '6px 0', borderBottom: '1px solid #F1F5F9' }}>
                   <strong>{o.type}</strong> · {o.name} · {o.status}
                 </div>
@@ -211,7 +228,7 @@ export const Patient360View: React.FC<Props> = ({ session, initialPatientId }) =
 
             <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', padding: 18 }}>
               <div style={{ fontWeight: 800, marginBottom: 12 }}>Timeline</div>
-              {bundle.events.map((ev: TimelineEvent) => (
+              {events.map((ev: TimelineEvent) => (
                 <div
                   key={ev.id}
                   style={{

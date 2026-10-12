@@ -141,7 +141,7 @@ const DEFAULTS: Record<string, string[]> = {
   ],
   midwife: [
     'dashboard', 'maternity', 'paediatrics', 'notifications',
-    'beds', 'emergency', 'my-card',
+    'beds', 'emergency', 'my-card', 'patient-360',
     'm87-ai', 'ai',
     'patient.identity', 'patient.contact', 'patient.vitals', 'patient.allergies',
     'patient.problems', 'patient.notes', 'patient.meds',

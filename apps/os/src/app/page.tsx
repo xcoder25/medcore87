@@ -363,6 +363,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Maternity care',
           items: [
+            { key: 'patient-360', icon: Users, label: 'Patient chart (scoped)' },
             { key: 'beds', icon: BedDouble, label: 'Maternity beds' },
             { key: 'emergency', icon: Flame, label: 'Obstetric emergency' },
             { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
