@@ -103,14 +103,15 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
       case 'radiologist':
         return {
           title: 'Imaging desk',
-          subtitle: 'Studies and reports linked to the clinical bus.',
+          subtitle: 'RIS worklist, PACS reporting, and imaging history.',
           badge: 'Radiology · PACS',
           boardTitle: 'Clinic activity',
           boardEmpty: 'No visits in queue.',
           orderType: 'imaging',
           quick: [
-            { label: 'Radiology', desc: 'PACS suite', icon: Layers, go: 'radiology' },
+            { label: 'RIS / PACS', desc: 'Worklist & viewer', icon: Layers, go: 'radiology' },
             { label: 'EMR', desc: 'Records', icon: FileText, go: 'emr' },
+            { label: 'Celestia', desc: 'Imaging AI', icon: Brain, go: 'm87-ai' },
           ],
         };
       case 'surgeon':

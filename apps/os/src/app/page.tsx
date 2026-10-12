@@ -100,7 +100,7 @@ import {
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck,
   Search, X, LayoutDashboard, MapPin, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
-  Command, CornerDownLeft
+  Command, CornerDownLeft, IdCard,
 } from 'lucide-react';
 
 export type ModuleKey =
@@ -417,17 +417,17 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Imaging desk',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Radiology desk', badge: 'Live' },
-            { key: 'radiology', icon: Layers, label: 'PACS & reporting', badge: 'DICOM' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Radiology home', badge: 'Live' },
+            { key: 'radiology', icon: Layers, label: 'RIS / PACS suite', badge: 'DICOM' },
             { key: 'notifications', icon: Bell, label: 'Notifications' },
           ],
         },
         {
-          label: 'Support',
+          label: 'Clinical support',
           items: [
             { key: 'emr', icon: FileText, label: 'Clinical records' },
-            { key: 'patient-card', icon: FileText, label: 'Patient imaging history' },
-            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia imaging AI', badge: 'AI' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
       ];
