@@ -493,9 +493,13 @@ export const RadiologyPacsSuite: React.FC = () => {
   const pullOrthanc = async () => {
     setOrthancMsg('Querying PACS…');
     try {
-      const list = await fetchOrthancStudies(facilityId);
-      setOrthancStudies(list || []);
-      setOrthancMsg(list?.length ? `${list.length} studies from Orthanc` : 'No Orthanc studies (link optional)');
+      const res = await fetchOrthancStudies(facilityId);
+      setOrthancStudies(res.studies || []);
+      setOrthancMsg(
+        res.ok
+          ? (res.studies.length ? `${res.studies.length} studies from Orthanc` : 'No Orthanc studies (link optional)')
+          : (res.message || 'Orthanc unavailable')
+      );
     } catch {
       setOrthancMsg('Orthanc unreachable — local RIS active');
       setOrthancStudies([]);
