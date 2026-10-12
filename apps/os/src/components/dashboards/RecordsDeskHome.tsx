@@ -96,13 +96,8 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   }, [facilityId, tick]);
   const him = useMemo(() => himSummary(facilityId), [facilityId, tick]);
   const notifSum = useMemo(
-    () =>
-      notificationSummary(facilityId, {
-        staffName: session.name,
-        roleKey: session.roleKey || 'records',
-        badgeId: session.badgeId,
-      }),
-    [facilityId, session.name, session.roleKey, session.badgeId, tick]
+    () => notificationSummary(facilityId),
+    [facilityId, tick]
   );
 
   const todayStr = new Date().toISOString().slice(0, 10);
