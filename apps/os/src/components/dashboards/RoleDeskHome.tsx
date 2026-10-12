@@ -36,6 +36,9 @@ interface Props {
   onNavigate: (moduleKey: string) => void;
   config: RoleDeskConfig;
   extraKpis?: DeskKpi[];
+  /** Optional hero gradient theme class, e.g. theme-maternity */
+  heroTheme?: string;
+  accentColor?: string;
 }
 
 const C = {
@@ -45,7 +48,7 @@ const C = {
   blue: '#2563EB',
 };
 
-export const RoleDeskHome: React.FC<Props> = ({ session, onNavigate, config, extraKpis }) => {
+export const RoleDeskHome: React.FC<Props> = ({ session, onNavigate, config, extraKpis, heroTheme, accentColor }) => {
   const facilityId = session.hospitalId || 'IGH-EKT';
   const firstName = (session.name || 'Staff').split(' ')[0];
   const [tick, setTick] = useState(0);
@@ -133,7 +136,7 @@ export const RoleDeskHome: React.FC<Props> = ({ session, onNavigate, config, ext
         onNavigate={onNavigate}
       />
       <div
-        className="mc-hero-fluid"
+        className={`mc-hero-fluid${heroTheme ? ` ${heroTheme}` : ''}`}
         style={{
           borderRadius: 20,
           overflow: 'hidden',
@@ -249,8 +252,8 @@ export const RoleDeskHome: React.FC<Props> = ({ session, onNavigate, config, ext
                     width: 40,
                     height: 40,
                     borderRadius: 12,
-                    background: '#EFF6FF',
-                    color: C.blue,
+                    background: accentColor ? `${accentColor}18` : '#EFF6FF',
+                    color: accentColor || C.blue,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',

@@ -7316,3 +7316,22 @@ img, .os-top-hud-avatar {
     font-size: 16px !important; /* reduce iOS zoom */
   }
 }
+
+
+/* ── Maternity / Midwife role chrome ── */
+.os-sidebar.theme-maternity {
+  background: linear-gradient(180deg, #4A044E 0%, #701A75 35%, #9D174D 100%) !important;
+  border-right: 1px solid rgba(236, 72, 153, 0.25);
+  box-shadow: 2px 0 24px rgba(190, 24, 93, 0.18);
+}
+.os-sidebar.theme-maternity::after {
+  background: linear-gradient(180deg, transparent, rgba(249, 168, 212, 0.35), transparent) !important;
+}
+.os-sidebar.theme-maternity .os-nav-group-label {
+  color: rgba(251, 207, 232, 0.75) !important;
+}
+.mc-hero-fluid.theme-maternity {
+  background: linear-gradient(105deg, #831843 0%, #9D174D 28%, #DB2777 55%, #EC4899 78%, #BE185D 100%) !important;
+  background-size: 200% 200%;
+  animation: mcFluidGradient 14s ease infinite;
+}

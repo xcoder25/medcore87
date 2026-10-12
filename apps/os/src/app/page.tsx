@@ -1870,7 +1870,7 @@ const handleLockScreen = () => {
 
       {/* ── Left Navigation Sidebar (Bespoke Content per RBAC Role) ── */}
       <aside
-        className={`os-sidebar${sidebarOpen ? '' : ' is-collapsed'}`}
+        className={`os-sidebar${sidebarOpen ? '' : ' is-collapsed'}${activeRoleKey === 'midwife' ? ' theme-maternity' : ''}`}
         style={{ width: sidebarOpen ? 275 : 72 }}
         data-collapsed={sidebarOpen ? 'false' : 'true'}
       >
@@ -2209,9 +2209,7 @@ const handleLockScreen = () => {
             {moduleLoading ? (
               <ModulePageLoader label="Opening workspace…" />
             ) : isModulePermitted(activeModule) ? (
-              activeModule === 'dashboard' && userSession && userSession.roleKey === 'midwife' ? (
-                <MaternityOgSuite />
-              ) : activeModule === 'dashboard' && userSession && (userSession.roleKey === 'accountant' || userSession.roleKey === 'cashier') ? (
+              activeModule === 'dashboard' && userSession && (userSession.roleKey === 'accountant' || userSession.roleKey === 'cashier') ? (
                 <AccountingWorkspace
                   session={userSession}
                   onNavigate={(k) => handleModuleChange(k as ModuleKey)}

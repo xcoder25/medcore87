@@ -70,12 +70,26 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
   const deskForRole = (key: string): RoleDeskConfig | null => {
     const ai = { label: 'Celestia', desc: 'Assistant', icon: Brain, go: 'm87-ai' };
     switch (key) {
-      case 'nurse':
       case 'midwife':
         return {
-          title: key === 'midwife' ? 'Maternity desk' : 'Nursing desk',
+          title: 'Labour & Delivery Desk',
+          subtitle: 'Grease board, CTG, partograph, and birth outcomes — maternity only.',
+          badge: 'Maternity · Midwifery',
+          boardTitle: 'Labour / maternity board',
+          boardEmpty: 'No active labour cases — admit from Maternity EMR.',
+          quick: [
+            { label: 'Maternity EMR', desc: 'CTG · Partograph', icon: Baby, go: 'maternity' },
+            { label: 'Maternity beds', desc: 'Occupancy', icon: BedDouble, go: 'beds' },
+            { label: 'OB emergency', desc: 'Resus / PPH', icon: Flame, go: 'emergency' },
+            { label: 'Newborn', desc: 'NICU link', icon: HeartPulse, go: 'paediatrics' },
+            { label: 'Celestia', desc: 'Assistant', icon: Brain, go: 'm87-ai' },
+          ],
+        };
+      case 'nurse':
+        return {
+          title: 'Nursing desk',
           subtitle: 'Tasks, ward board, and patient flow in one place.',
-          badge: key === 'midwife' ? 'Maternity · Midwifery' : 'Nursing · Wards',
+          badge: 'Nursing · Wards',
           boardTitle: 'Ward / clinic board',
           boardEmpty: 'No active visits — reception check-ins appear here.',
           quick: [
@@ -186,7 +200,15 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
 
   const sharedDesk = deskForRole(roleKey);
   if (sharedDesk) {
-    return <RoleDeskHome session={session} onNavigate={(k) => onNavigate(k)} config={sharedDesk} />;
+    return (
+      <RoleDeskHome
+        session={session}
+        onNavigate={(k) => onNavigate(k)}
+        config={sharedDesk}
+        heroTheme={roleKey === 'midwife' ? 'theme-maternity' : undefined}
+        accentColor={roleKey === 'midwife' ? '#DB2777' : undefined}
+      />
+    );
   }
 
   // Administrator gets dedicated premium workspace (no clinical banner)
