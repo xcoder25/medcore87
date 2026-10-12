@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FileText, Search, ZoomIn, ZoomOut, RotateCw, Layers, CheckCircle2, ShieldAlert,
   Eye, User, Calendar, Plus, X, Edit3, Send, Sparkles, RefreshCw, ClipboardList,
-  History, AlertTriangle, Clock, Radio, LayoutDashboard, Scan, BarChart3, Phone,
+  History, AlertTriangle, Clock, Radio, LayoutDashboard, Activity,
 } from 'lucide-react';
 import type { RadiologyStudy } from '@medcore/types';
 import {
@@ -105,7 +105,7 @@ const REPORT_TEMPLATES: { id: string; name: string; modality: string; body: stri
 const NAV: { key: RadPage; label: string; icon: React.ElementType; badge?: string }[] = [
   { key: 'worklist', label: 'Tech worklist', icon: ClipboardList, badge: 'MWL' },
   { key: 'reading', label: 'Reading worklist', icon: Eye, badge: 'Read' },
-  { key: 'viewer', label: 'PACS & report', icon: Scan, badge: 'DICOM' },
+  { key: 'viewer', label: 'PACS & report', icon: Activity, badge: 'DICOM' },
   { key: 'protocol', label: 'Protocol queue', icon: FileText },
   { key: 'history', label: 'Imaging history', icon: History },
   { key: 'critical', label: 'Critical results', icon: ShieldAlert },
@@ -118,6 +118,17 @@ const STATUS_META: Record<RadiologyStudy['status'], { label: string; color: stri
   in_progress: { label: 'In progress', color: '#D97706', bg: '#FFFBEB' },
   acquired: { label: 'Acquired · unread', color: '#7C3AED', bg: '#F5F3FF' },
   reported: { label: 'Reported', color: '#059669', bg: '#ECFDF5' },
+};
+
+
+const viewerBtn: React.CSSProperties = {
+  border: '1px solid #334155',
+  background: 'rgba(30,41,59,0.8)',
+  color: '#E2E8F0',
+  borderRadius: 6,
+  padding: '4px 8px',
+  cursor: 'pointer',
+  fontSize: '0.68rem',
 };
 
 function facilityIdGuess(): string {
@@ -349,8 +360,8 @@ export const RadiologyPacsSuite: React.FC = () => {
       );
     }
     const sorted = list.sort((a, b) => {
-      const pa = PRIORITY_META[(a as RadStudyExt).priority || 'routine'].sort;
-      const pb = PRIORITY_META[(b as RadStudyExt).priority || 'routine'].sort;
+      const pa = PRIORITY_META[((a as RadStudyExt).priority as Priority) || 'routine'].sort;
+      const pb = PRIORITY_META[((b as RadStudyExt).priority as Priority) || 'routine'].sort;
       if (pa !== pb) return pa - pb;
       return a.orderedAt.localeCompare(b.orderedAt); // oldest first within priority
     });
@@ -361,8 +372,8 @@ export const RadiologyPacsSuite: React.FC = () => {
     let list = studies.filter((s) => s.status === 'acquired' || (s as RadStudyExt).reportPhase === 'preliminary');
     if (modalityFilter !== 'all') list = list.filter((s) => s.modality === modalityFilter);
     return list.sort((a, b) => {
-      const pa = PRIORITY_META[(a as RadStudyExt).priority || 'routine'].sort;
-      const pb = PRIORITY_META[(b as RadStudyExt).priority || 'routine'].sort;
+      const pa = PRIORITY_META[((a as RadStudyExt).priority as Priority) || 'routine'].sort;
+      const pb = PRIORITY_META[((b as RadStudyExt).priority as Priority) || 'routine'].sort;
       if (pa !== pb) return pa - pb;
       return a.orderedAt.localeCompare(b.orderedAt);
     });
@@ -1325,16 +1336,6 @@ export const RadiologyPacsSuite: React.FC = () => {
       )}
     </div>
   );
-};
-
-const viewerBtn: React.CSSProperties = {
-  border: '1px solid #334155',
-  background: 'rgba(30,41,59,0.8)',
-  color: '#E2E8F0',
-  borderRadius: 6,
-  padding: '4px 8px',
-  cursor: 'pointer',
-  fontSize: '0.68rem',
 };
 
 export default RadiologyPacsSuite;
