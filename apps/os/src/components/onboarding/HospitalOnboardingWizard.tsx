@@ -291,7 +291,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
         facilityName: final.facilityName,
         adminBadgeId: session.badgeId,
         primaryContact: final.primaryContact || session.name,
-        contactEmail: final.contactEmail || session.email,
+        contactEmail: final.contactEmail || undefined,
         contactPhone: final.contactPhone,
         physicalAddress: final.physicalAddress,
         state: final.state,
