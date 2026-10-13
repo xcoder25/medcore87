@@ -24,6 +24,7 @@ import {
   syncAccessRosterFromSources,
   purgeOrphanAndDuplicateIdCards,
   wipeFacilityStaffExceptAdmin,
+  isStaffFlushLocked,
   getStaffCard,
   deleteStaffMember,
   defaultPermissionsForRole,
@@ -134,7 +135,9 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const reload = useCallback(() => {
     // Never refresh list over a pending confirmation (keeps "confirm first" UX)
     try {
-      syncAccessRosterFromSources(facilityId);
+      if (!isStaffFlushLocked()) {
+        syncAccessRosterFromSources(facilityId);
+      }
     } catch {
       /* ignore */
     }
@@ -170,14 +173,16 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     // Live Firestore facility directory (staffCards + staffRegistry)
     const unsubDir = firestoreSubscribeStaffDirectory(facilityId, (data) => {
       try {
-        applyCloudStaffDirectory({
-          staffCards: data.staffCards,
-          staffRegistry: data.staffRegistry,
-        });
+        if (!isStaffFlushLocked()) {
+          applyCloudStaffDirectory({
+            staffCards: data.staffCards,
+            staffRegistry: data.staffRegistry,
+          });
+        }
       } catch {
         /* ignore */
       }
-      safeReload();
+      if (!isStaffFlushLocked()) safeReload();
     });
 
     // Live per-member staff collection (authoritative roster from cloud)
@@ -717,18 +722,21 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
             )
               return;
             setBusy(true);
-            try {
-              const r = purgeOrphanAndDuplicateIdCards(facilityId);
-              setRecords(getAccessRecords());
-              setPurgeMsg(
-                `Purged ${r.removedDuplicates.length} duplicate(s) and ${r.removedOrphans.length} orphan(s).`
-              );
-              setTimeout(() => setPurgeMsg(null), 8000);
-            } catch {
-              setError('Purge failed.');
-            } finally {
-              setBusy(false);
-            }
+            setPurgeMsg('Purging…');
+            window.setTimeout(() => {
+              try {
+                const r = purgeOrphanAndDuplicateIdCards(facilityId);
+                setRecords(getAccessRecords());
+                setPurgeMsg(
+                  `Purged ${r.removedDuplicates.length} duplicate(s) and ${r.removedOrphans.length} orphan(s).`
+                );
+                window.setTimeout(() => setPurgeMsg(null), 8000);
+              } catch {
+                setError('Purge failed.');
+              } finally {
+                setBusy(false);
+              }
+            }, 50);
           }}
         >
           Purge orphan / duplicate cards
@@ -746,23 +754,22 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
             )
               return;
             setBusy(true);
-            try {
-              const n = wipeFacilityStaffExceptAdmin(facilityId);
+            setPurgeMsg('Flushing staff…');
+            // Yield so the browser can paint before heavy localStorage work
+            window.setTimeout(() => {
               try {
-                syncAccessRosterFromSources(facilityId);
-              } catch {
-                /* ignore */
+                const n = wipeFacilityStaffExceptAdmin(facilityId);
+                setRecords(getAccessRecords());
+                setPurgeMsg(
+                  `Flushed ${n} staff record(s). Only administrator remains. Cloud clearing in background…`
+                );
+                window.setTimeout(() => setPurgeMsg(null), 8000);
+              } catch (e) {
+                setError((e as Error)?.message || 'Wipe failed.');
+              } finally {
+                setBusy(false);
               }
-              setRecords(getAccessRecords());
-              setPurgeMsg(
-                `Flushed ${n} staff record(s). Only administrator remains. Cloud directory cleared.`
-              );
-              setTimeout(() => setPurgeMsg(null), 10000);
-            } catch (e) {
-              setError((e as Error)?.message || 'Wipe failed.');
-            } finally {
-              setBusy(false);
-            }
+            }, 50);
           }}
         >
           Wipe all cards (keep admin)

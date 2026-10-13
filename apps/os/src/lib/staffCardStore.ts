@@ -207,6 +207,28 @@ export function listStaffCards(): StaffCardRecord[] {
   return readCards();
 }
 
+const FLUSH_LOCK_KEY = 'medcore_staff_flush_lock_until';
+
+/** While locked, ignore non-empty cloud staff pushes (prevents UI freeze rehydrate loops). */
+export function setStaffFlushLock(ms = 90_000): void {
+  try {
+    localStorage.setItem(FLUSH_LOCK_KEY, String(Date.now() + ms));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function isStaffFlushLocked(): boolean {
+  try {
+    const until = Number(localStorage.getItem(FLUSH_LOCK_KEY) || 0);
+    return until > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+
+
 /** Remove every staff ID card (optionally one facility only). */
 export function clearAllStaffIdCards(facilityId?: string): number {
   const fid = (facilityId || '').trim().toUpperCase();
@@ -481,166 +503,135 @@ export function purgeOrphanAndDuplicateIdCards(facilityId: string): {
  */
 /**
  * Hard flush: remove ALL non-admin staff for this facility (and unscoped/legacy cards).
- * Clears cards, registry, access, presence; pushes empty directory to cloud.
+ * Local work is synchronous and minimal; cloud/API runs in background so the UI stays responsive.
  */
 export function wipeFacilityStaffExceptAdmin(facilityId: string): number {
   const fid = String(facilityId || '').trim();
-  const before = listStaffCards();
-  const isAdminBadge = (id: string) => {
-    const u = id.toUpperCase();
-    return u.includes('ADM-001') || u === 'AKS-ADM-001' || u.startsWith('AMC-') && u.endsWith('-0001') === false && /ADM/.test(u);
-  };
+  setStaffFlushLock(90_000);
 
-  // Keep only admin cards (any facility) + cards clearly belonging to OTHER facilities
+  const before = listStaffCards();
   const kept = before.filter((c) => {
     const id = String(c.badgeId || '').toUpperCase();
     if (id.includes('ADM-001') || id === 'AKS-ADM-001') return true;
     const cf = String(c.facilityId || '').trim();
-    if (fid && cf && cf !== fid) return true; // other hospital
-    // same facility OR no facility tag → remove
+    if (fid && cf && cf !== fid) return true;
     return false;
   });
-  writeCards(kept);
+  const removed = before.length - kept.length;
 
-  // Registry — keep admin + other facilities only
+  // Fast local writes only
+  try {
+    localStorage.setItem(STAFF_CARD_STORAGE_KEY, JSON.stringify(kept));
+  } catch {
+    /* ignore */
+  }
+
   try {
     const regRaw =
       localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY) ||
       localStorage.getItem('medcore_os_staff_registry');
     const reg = regRaw ? JSON.parse(regRaw) : [];
-    if (Array.isArray(reg)) {
-      const next = reg.filter(
-        (r: { badgeId?: string; id?: string; hospitalId?: string; facilityId?: string }) => {
+    const nextReg = Array.isArray(reg)
+      ? reg.filter((r: { badgeId?: string; id?: string; hospitalId?: string; facilityId?: string }) => {
           const b = String(r.badgeId || r.id || '').toUpperCase();
           if (b.includes('ADM-001') || b === 'AKS-ADM-001') return true;
           const rowFid = String(r.hospitalId || r.facilityId || '').trim();
           if (fid && rowFid && rowFid !== fid) return true;
           return false;
-        }
-      );
-      localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(next));
-      localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
-    }
+        })
+      : [];
+    localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(nextReg));
+    localStorage.setItem('medcore_os_staff_registry', JSON.stringify(nextReg));
   } catch {
     /* ignore */
   }
 
-  // Access control — same rule
   try {
     const accessRaw = localStorage.getItem('medcore_os_access_control');
     const access = accessRaw ? JSON.parse(accessRaw) : [];
-    if (Array.isArray(access)) {
-      const next = access.filter((r: { id?: string; hospitalId?: string; facilityId?: string }) => {
-        const b = String(r.id || '').toUpperCase();
-        if (b.includes('ADM-001') || b === 'AKS-ADM-001') return true;
-        return false; // drop everyone else at this desk
-      });
-      localStorage.setItem('medcore_os_access_control', JSON.stringify(next));
-      void import('./adminRealtimeStore')
-        .then((m) => {
-          try {
-            m.setAccessRecords(next as never);
-          } catch {
-            /* ignore */
-          }
+    const nextAccess = Array.isArray(access)
+      ? access.filter((r: { id?: string }) => {
+          const b = String(r.id || '').toUpperCase();
+          return b.includes('ADM-001') || b === 'AKS-ADM-001';
         })
-        .catch(() => {});
-    }
+      : [];
+    localStorage.setItem('medcore_os_access_control', JSON.stringify(nextAccess));
   } catch {
     /* ignore */
   }
 
-  // Presence map — drop non-admin for this facility
   try {
-    const mapRaw = localStorage.getItem('medcore_os_staff_presence_v1');
-    const map = mapRaw ? JSON.parse(mapRaw) : {};
-    if (map && typeof map === 'object') {
-      for (const key of Object.keys(map)) {
-        const row = map[key];
-        const bid = String(row?.badgeId || key || '').toUpperCase();
-        if (bid.includes('ADM-001')) continue;
-        if (fid && String(row?.facilityId || '').trim() && String(row.facilityId) !== fid) continue;
-        delete map[key];
-      }
-      localStorage.setItem('medcore_os_staff_presence_v1', JSON.stringify(map));
-      window.dispatchEvent(new CustomEvent('medcore-staff-presence', { detail: map }));
-    }
+    localStorage.setItem('medcore_os_staff_presence_v1', '{}');
   } catch {
     /* ignore */
   }
 
-  // Server Admin SDK flush (authoritative cloud wipe)
-  try {
+  // Defer events + cloud so click handler returns immediately
+  const adminCards = kept.filter((c) => {
+    const id = String(c.badgeId || '').toUpperCase();
+    return id.includes('ADM-001') || id === 'AKS-ADM-001';
+  });
+
+  window.setTimeout(() => {
+    try {
+      window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: kept }));
+      window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_access_control' } }));
+      window.dispatchEvent(new CustomEvent('medcore-staff-presence', { detail: {} }));
+    } catch {
+      /* ignore */
+    }
+
     void (async () => {
       try {
         const { getFirebaseAuth } = await import('./firebase');
         const u = getFirebaseAuth().currentUser;
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (u) {
-          headers.Authorization = `Bearer ${await u.getIdToken(true)}`;
+          try {
+            headers.Authorization = `Bearer ${await Promise.race([
+              u.getIdToken(true),
+              new Promise<string>((_, rej) => setTimeout(() => rej(new Error('token timeout')), 4000)),
+            ])}`;
+          } catch {
+            /* no token */
+          }
         }
         const secret =
           (typeof window !== 'undefined' && window.localStorage.getItem('medcore_admin_api_secret')) ||
           '';
         if (secret) headers['x-admin-secret'] = secret;
-        await fetch('/api/staff/flush-facility', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ facilityId: fid, confirm: 'FLUSH_FACILITY_STAFF' }),
-        });
+        await Promise.race([
+          fetch('/api/staff/flush-facility', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ facilityId: fid, confirm: 'FLUSH_FACILITY_STAFF' }),
+          }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('flush timeout')), 15000)),
+        ]).catch(() => null);
       } catch {
-        /* offline */
+        /* ignore */
+      }
+
+      try {
+        const m = await import('./firebase');
+        await Promise.race([
+          m.firestoreWriteFacility(fid, {
+            staffCards: adminCards,
+            staffRegistry: [],
+            staffUpdatedAt: new Date().toISOString(),
+            flushAt: new Date().toISOString(),
+          }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('fs timeout')), 10000)),
+        ]).catch(() => null);
+      } catch {
+        /* ignore */
       }
     })();
-  } catch {
-    /* ignore */
-  }
+  }, 0);
 
-  // Cloud: empty staff directory for facility
-  try {
-    void import('./firebase').then(async (m) => {
-      try {
-        await m.firestorePushStaffDirectory(fid, {
-          staffCards: kept.filter((c) => !c.facilityId || c.facilityId === fid),
-          staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]').filter(
-            (r: { badgeId?: string; id?: string }) => {
-              const b = String(r.badgeId || r.id || '').toUpperCase();
-              return b.includes('ADM-001') || b === 'AKS-ADM-001';
-            }
-          ),
-        });
-      } catch {
-        /* ignore */
-      }
-      try {
-        await m.firestoreWriteFacility(fid, {
-          staffCards: kept.filter((c) => !c.facilityId || c.facilityId === fid),
-          staffRegistry: [],
-          staffUpdatedAt: new Date().toISOString(),
-          flushAt: new Date().toISOString(),
-        });
-      } catch {
-        /* ignore */
-      }
-    });
-  } catch {
-    /* ignore */
-  }
-
-  try {
-    syncAccessRosterFromSources(fid);
-  } catch {
-    /* ignore */
-  }
-
-  window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: kept }));
-  window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'reset-staff' } }));
-  window.dispatchEvent(new CustomEvent('medcore-data-reset', { detail: { scope: 'staff', facilityId: fid } }));
-
-  return before.length - kept.length;
+  return removed;
 }
 
-/** Alias — full staff flush for facility */
 export function flushFacilityStaff(facilityId: string): number {
   return wipeFacilityStaffExceptAdmin(facilityId);
 }
@@ -835,6 +826,13 @@ export function applyCloudStaffDirectory(payload: {
   staffRegistry?: unknown[];
 }): void {
   if (typeof window === 'undefined') return;
+  if (isStaffFlushLocked()) {
+    const cards = payload.staffCards;
+    const reg = payload.staffRegistry;
+    const cardLen = Array.isArray(cards) ? cards.length : -1;
+    const regLen = Array.isArray(reg) ? reg.length : -1;
+    if (cardLen > 0 || regLen > 0) return;
+  }
   try {
     if (Array.isArray(payload.staffCards)) {
       const cards = payload.staffCards as StaffCardRecord[];
