@@ -29,6 +29,7 @@ import { HospitalOnboardingWizard, resolveOnboardingMode } from '../components/o
 import { RoleFirstRunGuide } from '../components/onboarding/RoleFirstRunGuide';
 import { shouldShowRoleGuide } from '../lib/roleFirstRunGuide';
 import { subscribeOnboarding } from '../lib/onboardingStore';
+import { startSessionGuard, clearOsSessionStorage } from '../lib/sessionGuard';
 import { AuthIdentity } from '../components/auth/AuthIdentity';
 import { DigitalPatientCard } from '../components/patient-card/DigitalPatientCard';
 import { MyStaffIdPanel } from '../components/staffing/MyStaffIdPanel';
@@ -1336,40 +1337,37 @@ export default function OSPage() {
     return () => stop();
   }, [userSession?.hospitalId]);
 
-  // If this badge was deleted/revoked at the facility → force logout everywhere
+  // Force logout when Firebase Auth user is deleted or staff is revoked / removed from directory
   useEffect(() => {
-    const badgeId = userSession?.badgeId;
-    const hospitalId = userSession?.hospitalId;
-    if (!hospitalId || !badgeId) return;
-    let stop = () => {};
-    void (async () => {
+    if (!userSession?.badgeId) return;
+    const badgeId = userSession.badgeId;
+    const hospitalId = userSession.hospitalId;
+    const stop = startSessionGuard(userSession, (reason) => {
       try {
-        const { firestoreSubscribeRevokedStaff, firebaseSignOut } = await import('../lib/firebase');
-        stop = firestoreSubscribeRevokedStaff(hospitalId, (ids) => {
-          const me = String(badgeId).toUpperCase().replace(/\s+/g, '');
-          if (!ids.some((id) => String(id).toUpperCase().replace(/\s+/g, '') === me)) return;
-          try {
-            markStaffOffline(badgeId, hospitalId);
-          } catch {
-            /* ignore */
-          }
-          try {
-            localStorage.removeItem('medcore_os_session');
-          } catch {
-            /* ignore */
-          }
-          void firebaseSignOut().catch(() => {});
-          setUserSession(null);
-          try {
-            window.alert('Your staff account was removed by an administrator. You have been signed out.');
-          } catch {
-            /* ignore */
-          }
-        });
+        if (badgeId && hospitalId) markStaffOffline(badgeId, hospitalId);
       } catch {
-        /* offline */
+        /* ignore */
       }
-    })();
+      clearOsSessionStorage();
+      void import('../lib/firebase')
+        .then((m) => m.firebaseSignOut())
+        .catch(() => {});
+      setUserSession(null);
+      setAppState('auth');
+      const msg =
+        reason === 'auth_deleted' || reason === 'token_invalid'
+          ? 'Your account was removed from Firebase. You have been signed out.'
+          : reason === 'auth_disabled'
+            ? 'Your account was disabled. You have been signed out.'
+            : reason === 'removed_from_directory'
+              ? 'Your staff record was removed from this facility. You have been signed out.'
+              : 'Your staff account was revoked by an administrator. You have been signed out.';
+      try {
+        window.alert(msg);
+      } catch {
+        /* ignore */
+      }
+    });
     return () => stop();
   }, [userSession?.badgeId, userSession?.hospitalId]);
 
