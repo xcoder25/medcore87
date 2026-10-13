@@ -479,47 +479,143 @@ export function purgeOrphanAndDuplicateIdCards(facilityId: string): {
 /**
  * Nuclear: clear every non-admin ID card + registry + access for facility.
  */
+/**
+ * Hard flush: remove ALL non-admin staff for this facility (and unscoped/legacy cards).
+ * Clears cards, registry, access, presence; pushes empty directory to cloud.
+ */
 export function wipeFacilityStaffExceptAdmin(facilityId: string): number {
   const fid = String(facilityId || '').trim();
   const before = listStaffCards();
+  const isAdminBadge = (id: string) => {
+    const u = id.toUpperCase();
+    return u.includes('ADM-001') || u === 'AKS-ADM-001' || u.startsWith('AMC-') && u.endsWith('-0001') === false && /ADM/.test(u);
+  };
+
+  // Keep only admin cards (any facility) + cards clearly belonging to OTHER facilities
   const kept = before.filter((c) => {
     const id = String(c.badgeId || '').toUpperCase();
     if (id.includes('ADM-001') || id === 'AKS-ADM-001') return true;
-    if (fid && c.facilityId && c.facilityId !== fid) return true;
-    if (fid && (!c.facilityId || c.facilityId === fid)) return false;
-    return true;
+    const cf = String(c.facilityId || '').trim();
+    if (fid && cf && cf !== fid) return true; // other hospital
+    // same facility OR no facility tag → remove
+    return false;
   });
   writeCards(kept);
+
+  // Registry — keep admin + other facilities only
   try {
-    const regRaw = localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY);
+    const regRaw =
+      localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY) ||
+      localStorage.getItem('medcore_os_staff_registry');
     const reg = regRaw ? JSON.parse(regRaw) : [];
     if (Array.isArray(reg)) {
-      const next = reg.filter((r: { badgeId?: string; id?: string; hospitalId?: string; facilityId?: string; roleKey?: string }) => {
-        const b = String(r.badgeId || r.id || '').toUpperCase();
-        if (b.includes('ADM-001')) return true;
-        const rowFid = String(r.hospitalId || r.facilityId || '');
-        if (fid && rowFid && rowFid !== fid) return true;
-        if (fid && (!rowFid || rowFid === fid)) return false;
-        return true;
-      });
+      const next = reg.filter(
+        (r: { badgeId?: string; id?: string; hospitalId?: string; facilityId?: string }) => {
+          const b = String(r.badgeId || r.id || '').toUpperCase();
+          if (b.includes('ADM-001') || b === 'AKS-ADM-001') return true;
+          const rowFid = String(r.hospitalId || r.facilityId || '').trim();
+          if (fid && rowFid && rowFid !== fid) return true;
+          return false;
+        }
+      );
       localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(next));
       localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
     }
   } catch {
     /* ignore */
   }
-  syncAccessRosterFromSources(fid);
+
+  // Access control — same rule
   try {
-    void import('./firebase').then((m) => {
-      void m.firestorePushStaffDirectory(fid, {
-        staffCards: listStaffCards().filter((c) => !c.facilityId || c.facilityId === fid),
-        staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
+    const accessRaw = localStorage.getItem('medcore_os_access_control');
+    const access = accessRaw ? JSON.parse(accessRaw) : [];
+    if (Array.isArray(access)) {
+      const next = access.filter((r: { id?: string; hospitalId?: string; facilityId?: string }) => {
+        const b = String(r.id || '').toUpperCase();
+        if (b.includes('ADM-001') || b === 'AKS-ADM-001') return true;
+        return false; // drop everyone else at this desk
       });
+      localStorage.setItem('medcore_os_access_control', JSON.stringify(next));
+      void import('./adminRealtimeStore')
+        .then((m) => {
+          try {
+            m.setAccessRecords(next as never);
+          } catch {
+            /* ignore */
+          }
+        })
+        .catch(() => {});
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // Presence map — drop non-admin for this facility
+  try {
+    const mapRaw = localStorage.getItem('medcore_os_staff_presence_v1');
+    const map = mapRaw ? JSON.parse(mapRaw) : {};
+    if (map && typeof map === 'object') {
+      for (const key of Object.keys(map)) {
+        const row = map[key];
+        const bid = String(row?.badgeId || key || '').toUpperCase();
+        if (bid.includes('ADM-001')) continue;
+        if (fid && String(row?.facilityId || '').trim() && String(row.facilityId) !== fid) continue;
+        delete map[key];
+      }
+      localStorage.setItem('medcore_os_staff_presence_v1', JSON.stringify(map));
+      window.dispatchEvent(new CustomEvent('medcore-staff-presence', { detail: map }));
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // Cloud: empty staff directory for facility
+  try {
+    void import('./firebase').then(async (m) => {
+      try {
+        await m.firestorePushStaffDirectory(fid, {
+          staffCards: kept.filter((c) => !c.facilityId || c.facilityId === fid),
+          staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]').filter(
+            (r: { badgeId?: string; id?: string }) => {
+              const b = String(r.badgeId || r.id || '').toUpperCase();
+              return b.includes('ADM-001') || b === 'AKS-ADM-001';
+            }
+          ),
+        });
+      } catch {
+        /* ignore */
+      }
+      try {
+        await m.firestoreWriteFacility(fid, {
+          staffCards: kept.filter((c) => !c.facilityId || c.facilityId === fid),
+          staffRegistry: [],
+          staffUpdatedAt: new Date().toISOString(),
+          flushAt: new Date().toISOString(),
+        });
+      } catch {
+        /* ignore */
+      }
     });
   } catch {
     /* ignore */
   }
+
+  try {
+    syncAccessRosterFromSources(fid);
+  } catch {
+    /* ignore */
+  }
+
+  window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: kept }));
+  window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'reset-staff' } }));
+  window.dispatchEvent(new CustomEvent('medcore-data-reset', { detail: { scope: 'staff', facilityId: fid } }));
+
   return before.length - kept.length;
+}
+
+/** Alias — full staff flush for facility */
+export function flushFacilityStaff(facilityId: string): number {
+  return wipeFacilityStaffExceptAdmin(facilityId);
 }
 
 

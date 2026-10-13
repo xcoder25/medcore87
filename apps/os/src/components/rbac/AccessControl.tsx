@@ -142,6 +142,13 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   }, [facilityId]);
 
   useEffect(() => {
+    try {
+      (window as unknown as { __medcoreFlushStaff?: (fid?: string) => number }).__medcoreFlushStaff = (
+        fid?: string
+      ) => wipeFacilityStaffExceptAdmin(fid || facilityId);
+    } catch {
+      /* ignore */
+    }
     // No auto-purge of staff — admin manages enrolments. Failed creates never persist ID cards.
     try {
       migrateStaffIdsToNewFormat();
@@ -734,18 +741,25 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           onClick={() => {
             if (
               !window.confirm(
-                'WIPE all staff ID cards for this facility except the administrator?\n\nThis cannot be undone.'
+                'FLUSH ALL STAFF for this hospital?\n\nRemoves every ID card, access row, and registry entry except the administrator.\nPushes empty list to cloud.\n\nThis cannot be undone.'
               )
             )
               return;
             setBusy(true);
             try {
               const n = wipeFacilityStaffExceptAdmin(facilityId);
+              try {
+                syncAccessRosterFromSources(facilityId);
+              } catch {
+                /* ignore */
+              }
               setRecords(getAccessRecords());
-              setPurgeMsg(`Removed ${n} staff card(s). Admin retained.`);
-              setTimeout(() => setPurgeMsg(null), 8000);
-            } catch {
-              setError('Wipe failed.');
+              setPurgeMsg(
+                `Flushed ${n} staff record(s). Only administrator remains. Cloud directory cleared.`
+              );
+              setTimeout(() => setPurgeMsg(null), 10000);
+            } catch (e) {
+              setError((e as Error)?.message || 'Wipe failed.');
             } finally {
               setBusy(false);
             }
