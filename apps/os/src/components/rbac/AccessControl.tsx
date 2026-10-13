@@ -132,17 +132,19 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     [roleKey]
   );
 
-  const reload = useCallback(() => {
-    // Never refresh list over a pending confirmation (keeps "confirm first" UX)
+  // Read-only refresh — NEVER call syncAccessRoster here (that dispatches admin-sync → infinite loop)
+  const loadRecords = useCallback(() => {
     try {
-      if (!isStaffFlushLocked()) {
-        syncAccessRosterFromSources(facilityId);
-      }
+      setRecords(getAccessRecords());
     } catch {
       /* ignore */
     }
-    setRecords(getAccessRecords());
-  }, [facilityId]);
+  }, []);
+
+  const busyRef = React.useRef(busy);
+  const confirmRef = React.useRef(confirmInfo);
+  busyRef.current = busy;
+  confirmRef.current = confirmInfo;
 
   useEffect(() => {
     try {
@@ -152,43 +154,53 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     } catch {
       /* ignore */
     }
-    // No auto-purge of staff — admin manages enrolments. Failed creates never persist ID cards.
+
     try {
       migrateStaffIdsToNewFormat();
     } catch {
       /* ignore */
     }
 
-    reload();
+    // One-time roster align on mount only (not on every event)
+    try {
+      if (!isStaffFlushLocked()) {
+        syncAccessRosterFromSources(facilityId);
+      }
+    } catch {
+      /* ignore */
+    }
+    loadRecords();
 
-    const safeReload = () => {
-      if (busy) return;
-      // Keep confirmation modal stable until listed
-      if (confirmInfo && !confirmInfo.listed) return;
-      reload();
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleLoad = () => {
+      if (busyRef.current) return;
+      if (confirmRef.current && !confirmRef.current.listed) return;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        loadRecords();
+      }, 300);
     };
 
-    const unsubAdmin = subscribeAdminSync(safeReload);
+    const unsubAdmin = subscribeAdminSync(scheduleLoad);
 
-    // Live Firestore facility directory (staffCards + staffRegistry)
     const unsubDir = firestoreSubscribeStaffDirectory(facilityId, (data) => {
       try {
-        if (!isStaffFlushLocked()) {
-          applyCloudStaffDirectory({
-            staffCards: data.staffCards,
-            staffRegistry: data.staffRegistry,
-          });
-        }
+        if (isStaffFlushLocked()) return;
+        applyCloudStaffDirectory({
+          staffCards: data.staffCards,
+          staffRegistry: data.staffRegistry,
+        });
+        scheduleLoad();
       } catch {
         /* ignore */
       }
-      if (!isStaffFlushLocked()) safeReload();
     });
 
-    // Live per-member staff collection (authoritative roster from cloud)
     const unsubCol = firestoreSubscribeStaffCollection(facilityId, (staffRows) => {
       try {
-        const registry = staffRows.map((s) => {
+        if (isStaffFlushLocked()) return;
+        if (!Array.isArray(staffRows)) return;
+        const registry = staffRows.slice(0, 200).map((s: Record<string, unknown>) => {
           const badgeId = String(s.badgeId || s.id || '')
             .toUpperCase()
             .replace(/\s+/g, '');
@@ -212,33 +224,25 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
             lastLoginAt: s.lastLoginAt || s.lastLogin,
           };
         });
-        if (!isStaffFlushLocked()) {
-          applyCloudStaffDirectory({ staffRegistry: registry });
-          safeReload();
-        }
+        applyCloudStaffDirectory({ staffRegistry: registry });
+        scheduleLoad();
       } catch {
         /* ignore */
       }
     });
 
-    window.addEventListener('medcore-staff-cards-updated', safeReload);
-    window.addEventListener('medcore-staff-registry-updated', safeReload);
+    window.addEventListener('medcore-staff-cards-updated', scheduleLoad);
+    window.addEventListener('medcore-staff-registry-updated', scheduleLoad);
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       unsubAdmin();
       unsubDir();
       unsubCol();
-      window.removeEventListener('medcore-staff-cards-updated', safeReload);
-      window.removeEventListener('medcore-staff-registry-updated', safeReload);
+      window.removeEventListener('medcore-staff-cards-updated', scheduleLoad);
+      window.removeEventListener('medcore-staff-registry-updated', scheduleLoad);
     };
-  }, [facilityId, reload]); // busy/confirm via closure checks only — do not resubscribe
-
-  // Refresh list only when not in confirmation-pending state
-  useEffect(() => {
-    if (busy) return;
-    if (confirmInfo && !confirmInfo.listed) return;
-    reload();
-  }, [busy, confirmInfo, reload]);
+  }, [facilityId, loadRecords]);
 
   const filtered = records.filter(
     (s) =>
@@ -702,7 +706,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           onClick={() => {
             try {
               const r = syncAccessRosterFromSources(facilityId);
-              setRecords(getAccessRecords());
+              loadRecords();
               setPurgeMsg(`Roster synced — ${r.count} access row(s) from cards + registry.`);
               setTimeout(() => setPurgeMsg(null), 6000);
             } catch {
@@ -761,7 +765,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
             window.setTimeout(() => {
               try {
                 const n = wipeFacilityStaffExceptAdmin(facilityId);
-                setRecords(getAccessRecords());
+                loadRecords();
                 setPurgeMsg(
                   `Flushed ${n} staff record(s). Only administrator remains. Cloud clearing in background…`
                 );

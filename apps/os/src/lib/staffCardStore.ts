@@ -873,14 +873,18 @@ export function applyCloudStaffDirectory(payload: {
   }
   try {
     if (Array.isArray(payload.staffRegistry)) {
-      localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(payload.staffRegistry));
-      localStorage.setItem('medcore_os_staff_registry', JSON.stringify(payload.staffRegistry));
-      window.dispatchEvent(
-        new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } })
-      );
-      window.dispatchEvent(
-        new CustomEvent('medcore-staff-registry-updated', { detail: payload.staffRegistry })
-      );
+      const regJson = JSON.stringify(payload.staffRegistry);
+      const prevReg = localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY) || '';
+      if (prevReg !== regJson) {
+        localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, regJson);
+        localStorage.setItem('medcore_os_staff_registry', regJson);
+        window.dispatchEvent(
+          new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } })
+        );
+        window.dispatchEvent(
+          new CustomEvent('medcore-staff-registry-updated', { detail: payload.staffRegistry })
+        );
+      }
     }
   } catch {
     /* ignore */
@@ -912,10 +916,14 @@ export function applyCloudStaffDirectory(payload: {
         };
       })
       .filter(Boolean);
-    localStorage.setItem('medcore_os_access_control', JSON.stringify(access));
-    window.dispatchEvent(
-      new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_access_control' } })
-    );
+    const prev = localStorage.getItem('medcore_os_access_control') || '';
+    const next = JSON.stringify(access);
+    if (prev !== next) {
+      localStorage.setItem('medcore_os_access_control', next);
+      window.dispatchEvent(
+        new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_access_control' } })
+      );
+    }
   } catch {
     /* ignore */
   }
