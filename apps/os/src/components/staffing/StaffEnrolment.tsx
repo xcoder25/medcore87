@@ -13,6 +13,8 @@ import {
   prepareStaffEnrolment,
   commitStaffEnrolment,
   listStaffCards,
+  listActiveStaffCardsForFacility,
+  countActiveStaffCards,
   getStaffCard,
   deleteStaffMember,
   defaultPermissionsForRole,
@@ -100,6 +102,13 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
     (session?.hospitalId
       ? { id: session.hospitalId, name: session.facility || session.hospitalId }
       : HOSPITALS[0]);
+
+  /** Card counter: ACTIVE cards in this facility only */
+  const facilityActiveCards = useMemo(
+    () => listActiveStaffCardsForFacility(facility?.id || facilityId),
+    [cards, facility?.id, facilityId]
+  );
+  const activeCardCount = facilityActiveCards.length;
 
   const handleEnrol = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -387,13 +396,13 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         </div>
       </div>
 
-      {cards.length > 0 && (
+      {facilityActiveCards.length > 0 && (
         <div className="os-panel">
           <div className="os-panel-header">
-            <div className="os-panel-title">Issued cards ({cards.length})</div>
+            <div className="os-panel-title">Active cards at this facility ({activeCardCount})</div>
           </div>
           <div className="os-panel-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
-            {cards.map((c) => (
+            {facilityActiveCards.map((c) => (
               <div key={c.badgeId} style={{ position: 'relative' }}>
                 <div
                   onClick={() => setIssued(getStaffCard(c.badgeId) || c)}

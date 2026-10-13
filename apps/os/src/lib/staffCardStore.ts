@@ -207,6 +207,22 @@ export function listStaffCards(): StaffCardRecord[] {
   return readCards();
 }
 
+/** Active staff ID cards for one facility only (UI counters / facility desks). */
+export function listActiveStaffCardsForFacility(facilityId: string): StaffCardRecord[] {
+  const fid = (facilityId || '').trim().toUpperCase();
+  return readCards().filter((c) => {
+    const st = String(c.status || 'ACTIVE').toUpperCase();
+    if (st !== 'ACTIVE') return false;
+    if (!fid) return true;
+    return String(c.facilityId || '').toUpperCase() === fid;
+  });
+}
+
+/** Count of active cards in a facility — source of truth for “card counter”. */
+export function countActiveStaffCards(facilityId: string): number {
+  return listActiveStaffCardsForFacility(facilityId).length;
+}
+
 export function getStaffCard(badgeId: string): StaffCardRecord | undefined {
   const norm = (badgeId || '').trim().toUpperCase();
   return readCards().find((c) => c.badgeId === norm || (c as any).legacyBadgeId === norm);
