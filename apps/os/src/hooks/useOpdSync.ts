@@ -1,5 +1,5 @@
 /**
- * useOpdSync — hospital-wide OPD real-time hook.
+ * useOpdSync - hospital-wide OPD real-time hook.
  *
  * Subscribes to ALL live data channels that the three OPD desks care about:
  *   1. Reception queue updates   (medcore-reception-ops + BroadcastChannel)
