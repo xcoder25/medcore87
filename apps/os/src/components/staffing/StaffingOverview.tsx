@@ -229,7 +229,7 @@ export const StaffingOverview: React.FC<Props> = ({ session }) => {
         const { applyCloudStaffDirectory } = await import('../../lib/staffCardStore');
         stopDir = firestoreSubscribeStaffDirectory(facilityId, (data) => {
           try {
-            applyCloudStaffDirectory(data);
+            applyCloudStaffDirectory({ ...data, facilityId });
           } catch {
             /* ignore */
           }

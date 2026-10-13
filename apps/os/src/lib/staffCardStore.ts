@@ -855,6 +855,8 @@ export function findStaffByEmail(email: string, facilityId?: string) {
 export function applyCloudStaffDirectory(payload: {
   staffCards?: unknown[];
   staffRegistry?: unknown[];
+  /** When set, only replace cards/registry rows for this facility (keeps other hospitals). */
+  facilityId?: string;
 }): void {
   if (typeof window === 'undefined') return;
   if (isStaffFlushLocked()) {
@@ -862,36 +864,94 @@ export function applyCloudStaffDirectory(payload: {
     const reg = payload.staffRegistry;
     const cardLen = Array.isArray(cards) ? cards.length : -1;
     const regLen = Array.isArray(reg) ? reg.length : -1;
+    // During intentional wipe lock, ignore non-empty rehydrate storms only
     if (cardLen > 0 || regLen > 0) return;
   }
   try {
     if (Array.isArray(payload.staffCards)) {
       const cards = payload.staffCards as StaffCardRecord[];
-      // Full replace from cloud (empty array clears all ID cards)
-      const byId = new Map<string, StaffCardRecord>();
-      for (const c of cards) {
-        const id = String(c?.badgeId || '').toUpperCase();
-        if (!id) continue;
-        byId.set(id, c as StaffCardRecord);
+      // Empty cloud snapshot must NOT wipe all local cards unless flush lock
+      // (switching facility / new hospital often publishes [] briefly)
+      if (cards.length === 0) {
+        if (isStaffFlushLocked()) {
+          const fid = String(payload.facilityId || '').toUpperCase();
+          if (fid) {
+            writeCards(
+              readCards().filter((c) => String(c.facilityId || '').toUpperCase() !== fid)
+            );
+          } else {
+            writeCards([]);
+          }
+        }
+        // else: ignore empty — protect multi-facility local cache
+      } else {
+        const byId = new Map<string, StaffCardRecord>();
+        for (const c of cards) {
+          const id = String(c?.badgeId || '').toUpperCase();
+          if (!id) continue;
+          byId.set(id, c as StaffCardRecord);
+        }
+        const incoming = Array.from(byId.values());
+        // Facilities represented in this payload
+        const fids = new Set(
+          incoming
+            .map((c) => String(c.facilityId || payload.facilityId || '').toUpperCase())
+            .filter(Boolean)
+        );
+        if (payload.facilityId) fids.add(String(payload.facilityId).toUpperCase());
+        if (fids.size > 0) {
+          // Keep cards from other facilities; replace only this facility set
+          const kept = readCards().filter(
+            (c) => !fids.has(String(c.facilityId || '').toUpperCase())
+          );
+          writeCards([...kept, ...incoming]);
+        } else {
+          writeCards(incoming);
+        }
       }
-      writeCards(Array.from(byId.values()));
     }
   } catch {
     /* ignore */
   }
   try {
     if (Array.isArray(payload.staffRegistry)) {
-      const regJson = JSON.stringify(payload.staffRegistry);
-      const prevReg = localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY) || '';
-      if (prevReg !== regJson) {
-        localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, regJson);
-        localStorage.setItem('medcore_os_staff_registry', regJson);
-        window.dispatchEvent(
-          new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } })
-        );
-        window.dispatchEvent(
-          new CustomEvent('medcore-staff-registry-updated', { detail: payload.staffRegistry })
-        );
+      const incoming = payload.staffRegistry as any[];
+      // Empty registry: only clear under flush lock
+      if (incoming.length === 0 && !isStaffFlushLocked()) {
+        /* keep local registry */
+      } else {
+        const fid = String(payload.facilityId || '').toUpperCase();
+        let nextReg = incoming;
+        if (fid && incoming.length >= 0) {
+          try {
+            const prevRaw =
+              localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY) ||
+              localStorage.getItem('medcore_os_staff_registry') ||
+              '[]';
+            const prev = JSON.parse(prevRaw);
+            if (Array.isArray(prev)) {
+              const kept = prev.filter((r: any) => {
+                const rowFid = String(r.hospitalId || r.facilityId || '').toUpperCase();
+                return rowFid && rowFid !== fid;
+              });
+              nextReg = [...kept, ...incoming];
+            }
+          } catch {
+            nextReg = incoming;
+          }
+        }
+        const regJson = JSON.stringify(nextReg);
+        const prevReg = localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY) || '';
+        if (prevReg !== regJson) {
+          localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, regJson);
+          localStorage.setItem('medcore_os_staff_registry', regJson);
+          window.dispatchEvent(
+            new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } })
+          );
+          window.dispatchEvent(
+            new CustomEvent('medcore-staff-registry-updated', { detail: nextReg })
+          );
+        }
       }
     }
   } catch {

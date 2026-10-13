@@ -189,6 +189,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         applyCloudStaffDirectory({
           staffCards: data.staffCards,
           staffRegistry: data.staffRegistry,
+          facilityId,
         });
         scheduleLoad();
       } catch {
@@ -224,7 +225,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
             lastLoginAt: s.lastLoginAt || s.lastLogin,
           };
         });
-        applyCloudStaffDirectory({ staffRegistry: registry });
+        applyCloudStaffDirectory({ staffRegistry: registry, facilityId });
         scheduleLoad();
       } catch {
         /* ignore */

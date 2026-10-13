@@ -2,8 +2,10 @@
  * Force logout when the staff account no longer exists in Firebase Auth
  * or was removed from the facility staff directory / revoked list.
  *
- * Deleting users in Firebase Console does not clear localStorage by itself —
- * this guard watches Auth + cloud staff data and ends the OS session.
+ * Important: do NOT treat an empty or lagging cloud directory as removal.
+ * Only logout after this badge was seen in the directory and later disappears
+ * (or after an explicit wipe following a non-empty directory that included us).
+ * Switching facilities / first admin claim must not kick the user out.
  */
 
 import type { UserSession } from '../components/auth/AuthScreen';
@@ -37,6 +39,15 @@ export function startSessionGuard(session: UserSession, onForceLogout: LogoutFn)
   /** Avoid logout on the first auth null before Firebase has restored persistence */
   let authReady = false;
   let sawFirebaseUser = false;
+  /**
+   * Only treat directory absence as removal after we have positively seen
+   * this badge in the cloud staff list for this facility.
+   */
+  let sawSelfInDirectory = false;
+  let directorySnapshots = 0;
+  const sessionStartedAt = Date.now();
+  /** Ignore empty/missing directory for a short grace period after login */
+  const DIRECTORY_GRACE_MS = 12_000;
 
   const force = (reason: ForceLogoutReason) => {
     if (stopped) return;
@@ -59,12 +70,9 @@ export function startSessionGuard(session: UserSession, onForceLogout: LogoutFn)
           }
           // null user
           if (!authReady) {
-            // First callback may be null before persistence hydrates — wait briefly
             window.setTimeout(() => {
               if (stopped) return;
               authReady = true;
-              const cur = fb.getFirebaseAuth?.() ? null : null;
-              // Re-check via getIdToken path below; only logout if we previously had a user
               if (sawFirebaseUser) force('auth_deleted');
             }, 2500);
             return;
@@ -81,48 +89,38 @@ export function startSessionGuard(session: UserSession, onForceLogout: LogoutFn)
         if (stopped) return;
         void (async () => {
           try {
-            const auth = fb.getFirebaseAuth();
-            const u = auth.currentUser;
-            if (!u) {
-              if (sawFirebaseUser) force('auth_deleted');
+            const auth = fb.getFirebaseAuth?.();
+            const user = auth?.currentUser;
+            if (!user) {
+              if (sawFirebaseUser && authReady) force('auth_deleted');
               return;
             }
-            sawFirebaseUser = true;
-            await u.getIdToken(true);
-          } catch (e) {
+            await user.getIdToken(true);
+          } catch (e: unknown) {
+            const msg = String((e as { message?: string })?.message || e || '');
             const code = String((e as { code?: string })?.code || '');
             if (
-              code.includes('user-not-found') ||
               code.includes('user-disabled') ||
-              code.includes('user-token-expired') ||
-              code.includes('invalid-user-token') ||
-              code.includes('id-token-revoked')
+              msg.includes('user-disabled') ||
+              msg.includes('USER_DISABLED')
             ) {
-              force(code.includes('disabled') ? 'auth_disabled' : 'token_invalid');
+              force('auth_disabled');
+              return;
+            }
+            if (
+              code.includes('user-not-found') ||
+              code.includes('user-token-expired') ||
+              code.includes('id-token-revoked') ||
+              msg.includes('user-not-found') ||
+              msg.includes('user-token-expired')
+            ) {
+              force(sawFirebaseUser ? 'auth_deleted' : 'token_invalid');
             }
           }
         })();
       }, 45_000);
-      unsubs.push(() => clearInterval(tokenTimer));
+      unsubs.push(() => window.clearInterval(tokenTimer));
 
-      // Immediate token check shortly after login/restore
-      window.setTimeout(() => {
-        if (stopped) return;
-        void (async () => {
-          try {
-            const auth = fb.getFirebaseAuth();
-            const u = auth.currentUser;
-            if (u) {
-              sawFirebaseUser = true;
-              await u.getIdToken(true);
-            }
-          } catch {
-            if (sawFirebaseUser) force('token_invalid');
-          }
-        })();
-      }, 4000);
-
-      // 3) Explicit revoke collection (Access Control delete path)
       if (hospitalId) {
         try {
           const stopRev = fb.firestoreSubscribeRevokedStaff(hospitalId, (ids) => {
@@ -134,16 +132,17 @@ export function startSessionGuard(session: UserSession, onForceLogout: LogoutFn)
           /* ignore */
         }
 
-        // 4) Staff directory — if cloud publishes a list and this badge is gone, log out
+        // 4) Staff directory — only logout after we saw this badge, then it vanished
         try {
           const stopDir = fb.firestoreSubscribeStaffDirectory(hospitalId, (data) => {
             if (stopped) return;
             const cards = data.staffCards;
             const reg = data.staffRegistry;
-            // Only act when cloud sent an explicit array (including empty = wipe)
             const hasCards = Array.isArray(cards);
             const hasReg = Array.isArray(reg);
             if (!hasCards && !hasReg) return;
+
+            directorySnapshots += 1;
 
             const ids = new Set<string>();
             if (hasCards) {
@@ -159,14 +158,30 @@ export function startSessionGuard(session: UserSession, onForceLogout: LogoutFn)
               }
             }
 
-            // Empty directory after a prior non-empty, or badge missing from non-empty list
-            if (ids.size === 0 && (hasCards || hasReg)) {
-              // Empty staff directory published → all removed
-              force('removed_from_directory');
+            // Positive membership
+            if (ids.has(badgeId)) {
+              sawSelfInDirectory = true;
               return;
             }
-            if (ids.size > 0 && !ids.has(badgeId)) {
-              force('removed_from_directory');
+
+            const inGrace = Date.now() - sessionStartedAt < DIRECTORY_GRACE_MS;
+
+            // Empty directory: only treat as wipe if we previously saw ourselves here
+            if (ids.size === 0) {
+              if (sawSelfInDirectory && !inGrace) {
+                force('removed_from_directory');
+              }
+              // First empty snapshot on a new/empty facility — do not kick out
+              return;
+            }
+
+            // Non-empty directory without this badge
+            if (!ids.has(badgeId)) {
+              // Never kick until we had confirmed membership (avoids wrong-facility /
+              // lagging cloud false positives on first login to another hospital)
+              if (sawSelfInDirectory && !inGrace) {
+                force('removed_from_directory');
+              }
             }
           });
           unsubs.push(stopDir);
