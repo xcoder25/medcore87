@@ -20,6 +20,7 @@ import {
   defaultPermissionsForRole,
   migrateStaffIdsToNewFormat,
 } from '../../lib/staffCardStore';
+import { StaffDeleteSuccessScreen, type StaffDeleteSuccessInfo } from './StaffDeleteSuccessScreen';
 import { isEmailCredential, normalizeStaffPin, ensureStaffCloudIdentity } from '../../lib/firebase';
 import { emitLiveAction } from '../../lib/liveActions';
 import { StaffIdCardView } from './StaffIdCardView';
@@ -81,7 +82,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
     );
   const [deleteTarget, setDeleteTarget] = useState<{ badgeId: string; fullName: string } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<StaffDeleteSuccessInfo | null>(null);
 
   useEffect(() => {
     try {
@@ -646,10 +647,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
                           pushActivity(`Deleted staff · ${id} · ${name}`);
                         } catch { /* ignore */ }
                         setDeleteTarget(null);
-                        setDeleteSuccess(
-                          `${name} was removed. Card deleted, Auth removed, and they cannot sign in.`
-                        );
-                        setTimeout(() => setDeleteSuccess(null), 6000);
+                        setDeleteSuccess({ name, badgeId: id, authDeleted: true });
                       } else {
                         setError('Could not remove this staff member. Please try again.');
                       }
@@ -679,34 +677,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
       )}
 
       {deleteSuccess && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 24,
-            right: 24,
-            zIndex: 10001,
-            background: '#ECFDF5',
-            border: '1px solid #A7F3D0',
-            borderRadius: 12,
-            padding: '14px 18px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            maxWidth: 360,
-          }}
-        >
-          <CheckCircle2 size={20} color="#059669" />
-          <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#065F46' }}>{deleteSuccess}</div>
-          <button
-            type="button"
-            onClick={() => setDeleteSuccess(null)}
-            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#047857' }}
-            aria-label="Dismiss"
-          >
-            <X size={16} />
-          </button>
-        </div>
+        <StaffDeleteSuccessScreen info={deleteSuccess} onClose={() => setDeleteSuccess(null)} />
       )}
     </>
   );

@@ -27,6 +27,7 @@ import {
   applyCloudStaffDirectory,
   migrateStaffIdsToNewFormat,
 } from '../../lib/staffCardStore';
+import { StaffDeleteSuccessScreen, type StaffDeleteSuccessInfo } from '../staffing/StaffDeleteSuccessScreen';
 import {
   firestoreSubscribeStaffDirectory,
   firestoreSubscribeStaffCollection,
@@ -108,7 +109,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   } | null>(null);
   const [createFail, setCreateFail] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ badgeId: string; name: string } | null>(null);
-  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<StaffDeleteSuccessInfo | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -567,6 +568,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       if (confirmInfo?.badgeId?.toUpperCase() === id) setConfirmInfo(null);
 
       let authNote = '';
+      let authDeleted = false;
       try {
         const {
           firestoreDeleteStaffMember,
@@ -582,10 +584,11 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           email: workEmail || undefined,
         });
         if (authResult.badgeDeleted || authResult.emailDeleted) {
-          authNote = ' Firebase Auth removed.';
+          authDeleted = true;
+          authNote = 'Firebase Auth removed.';
         } else {
           authNote =
-            ' (Auth may still exist if Admin SDK is not configured on the server — set FIREBASE_SERVICE_ACCOUNT_JSON.)';
+            'Auth may still exist if Admin SDK is not configured on the server — set FIREBASE_SERVICE_ACCOUNT_JSON.';
         }
         await firestoreDeleteStaffMember(facilityId, id);
         await firestorePushStaffDirectory(facilityId, {
@@ -600,10 +603,12 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       pushActivity(`Account deleted · ${name} · ${id}`);
       emitLiveAction(`Deleted staff ${id}`, { module: 'access' });
       setDeleteTarget(null);
-      setDeleteSuccess(
-        `${name} was removed (card + access). They are logged out and cannot sign in.${authNote}`
-      );
-      setTimeout(() => setDeleteSuccess(null), 8000);
+      setDeleteSuccess({
+        name,
+        badgeId: id,
+        authDeleted,
+        authNote: authDeleted ? undefined : (authNote.trim() || undefined),
+      });
     } catch {
       setError('Could not remove this staff member. Please try again.');
     } finally {
@@ -1207,10 +1212,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         </div>
       )}
       {deleteSuccess && (
-        <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 10001, background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12, padding: '14px 18px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', gap: 10, maxWidth: 360, fontSize: 13, fontWeight: 600, color: '#065F46' }}>
-          {deleteSuccess}
-          <button type="button" onClick={() => setDeleteSuccess(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', marginLeft: 8, color: '#047857', fontWeight: 800 }}>×</button>
-        </div>
+        <StaffDeleteSuccessScreen info={deleteSuccess} onClose={() => setDeleteSuccess(null)} />
       )}
     </>
   );
