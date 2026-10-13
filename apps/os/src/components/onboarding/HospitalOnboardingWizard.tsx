@@ -29,6 +29,7 @@ import {
   type StorageRegion,
   type AppointmentType,
 } from '../../lib/onboardingStore';
+import { bindFacilityOnboardingToAdmin } from '../../lib/staffCardStore';
 import { getAdminSettings, saveAdminSettings } from '../../lib/adminSettingsStore';
 
 interface Props {
@@ -283,6 +284,25 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
         updatedBy: session.badgeId || session.name,
       });
     } catch { /* optional */ }
+    // Bind onboarding details to THIS admin account + facility (name, email, phone)
+    try {
+      const bound = bindFacilityOnboardingToAdmin({
+        facilityId: session.hospitalId,
+        facilityName: final.facilityName,
+        adminBadgeId: session.badgeId,
+        primaryContact: final.primaryContact || session.name,
+        contactEmail: final.contactEmail || session.email,
+        contactPhone: final.contactPhone,
+        physicalAddress: final.physicalAddress,
+        state: final.state,
+        lga: final.lga,
+      });
+      if (bound.ok && bound.badgeId) {
+        final.completedBy = bound.badgeId;
+        saveFacilityDraft(final);
+      }
+    } catch { /* optional */ }
+    // Lock facility: no further auto-admin generation after this
     markFacilityOnboarded(session.hospitalId, session.badgeId || session.name);
     onComplete();
   };

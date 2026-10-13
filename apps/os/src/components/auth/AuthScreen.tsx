@@ -500,7 +500,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           (badgeQuery === PLATFORM_ADMIN.badgeId.toUpperCase() && pinOk);
 
         if (claiming) {
-          if (!hasFacilityAdmin(effectiveHospital.id)) {
+          let facilityAlreadyOnboarded = false;
+          try {
+            const { isFacilityOnboarded } = await import('../../lib/onboardingStore');
+            facilityAlreadyOnboarded = isFacilityOnboarded(effectiveHospital.id);
+          } catch { /* */ }
+          if (!hasFacilityAdmin(effectiveHospital.id) && !facilityAlreadyOnboarded) {
             const prov = provisionFacilityAdmin(
               { id: effectiveHospital.id, name: effectiveHospital.name },
               {
@@ -677,6 +682,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               (pinQuery === PLATFORM_ADMIN.password || pinNorm === normalizeStaffPin(PLATFORM_ADMIN.password)));
 
           if (canClaim && !hasFacilityAdmin(effectiveHospital.id)) {
+            let facilityAlreadyOnboarded = false;
+            try {
+              const { isFacilityOnboarded } = await import('../../lib/onboardingStore');
+              facilityAlreadyOnboarded = isFacilityOnboarded(effectiveHospital.id);
+            } catch { /* */ }
+            if (facilityAlreadyOnboarded) {
+              setError(
+                'This hospital is already set up. Sign in with the hospital admin Staff ID + PIN. A new admin is only created after Firebase Auth accounts for this facility are deleted.'
+              );
+              setLoading(false);
+              return;
+            }
             const prov = provisionFacilityAdmin(
               { id: effectiveHospital.id, name: effectiveHospital.name },
               { pin: PLATFORM_ADMIN.password, fullName: `${effectiveHospital.name.split(',')[0]} Administrator` }
@@ -906,12 +923,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             ? PLATFORM_ADMIN.name
             : (fbUser?.displayName || email.split('@')[0].replace(/[._]/g, ' ') || shortName + ' Administrator');
 
-        if (!hasFacilityAdmin(effectiveHospital.id)) {
+        let facilityOnboardedEmail = false;
+        try {
+          const { isFacilityOnboarded } = await import('../../lib/onboardingStore');
+          facilityOnboardedEmail = isFacilityOnboarded(effectiveHospital.id);
+        } catch { /* */ }
+        if (!hasFacilityAdmin(effectiveHospital.id) && !facilityOnboardedEmail) {
           const prov = provisionFacilityAdmin(
             { id: effectiveHospital.id, name: effectiveHospital.name },
             {
               pin: pass.length >= 6 ? pass : PLATFORM_ADMIN.password,
               fullName: adminFullName.replace(/\b\w/g, (c) => c.toUpperCase()),
+              email,
             }
           );
           if (prov.ok && prov.badgeId) {
@@ -1061,9 +1084,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
                 // ONE facility admin only: first claim on empty facility OR explicit platform bootstrap.
         // Never promote a random Firebase user to hospital_admin just because they signed in.
+        let facilityAlreadyOnboarded = false;
+        try {
+          const { isFacilityOnboarded } = await import('../../lib/onboardingStore');
+          facilityAlreadyOnboarded = isFacilityOnboarded(effectiveHospital.id);
+        } catch { /* */ }
         const mayClaimFacilityAdmin =
           !matchedStaff &&
           !hasFacilityAdmin(effectiveHospital.id) &&
+          !facilityAlreadyOnboarded &&
           (isBootstrapAdmin || facilityEmpty);
 
         if (mayClaimFacilityAdmin) {

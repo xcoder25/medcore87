@@ -241,6 +241,13 @@ export function clearAllStaffIdCards(facilityId?: string): number {
     ? before.filter((c) => String(c.facilityId || '').toUpperCase() !== fid)
     : [];
   writeCards(next);
+  // Full card wipe for a facility unlocks re-onboarding / first admin claim
+  if (fid || !facilityId) {
+    try {
+      const { clearFacilityOnboarded } = require('./onboardingStore') as typeof import('./onboardingStore');
+      if (facilityId) clearFacilityOnboarded(facilityId);
+    } catch { /* */ }
+  }
   return before.length - next.length;
 }
 
@@ -656,6 +663,7 @@ export function wipeFacilityStaffExceptAdmin(facilityId: string): number {
 }
 
 export function flushFacilityStaff(facilityId: string): number {
+
   return wipeFacilityStaffExceptAdmin(facilityId);
 }
 
@@ -1434,16 +1442,48 @@ export type ProvisionFacilityAdminResult = {
  */
 export function provisionFacilityAdmin(
   facility: { id: string; name: string },
-  opts?: { pin?: string; fullName?: string }
+  opts?: { pin?: string; fullName?: string; email?: string; phone?: string; force?: boolean }
 ): ProvisionFacilityAdminResult {
   const facilityId = String(facility.id || '').trim();
   const facilityName = String(facility.name || facilityId).trim();
   if (!facilityId) return { ok: false, error: 'Missing facility id' };
 
+  // After hospital onboarding, never auto-mint another admin unless force
+  // (force only when Firebase Auth for this facility was wiped).
+  try {
+    const { isFacilityOnboarded } = require('./onboardingStore') as typeof import('./onboardingStore');
+    if (!opts?.force && isFacilityOnboarded(facilityId)) {
+      const existing = listStaffCards().find(
+        (c) =>
+          String(c.facilityId || '').toUpperCase() === facilityId.toUpperCase() &&
+          c.roleKey === 'hospital_admin'
+      );
+      if (existing) {
+        const profile = resolveStaffByBadge(existing.badgeId);
+        return {
+          ok: true,
+          badgeId: existing.badgeId,
+          pin: profile?.pin,
+          profile: profile || undefined,
+          created: false,
+        };
+      }
+      return {
+        ok: false,
+        error:
+          'This facility is already onboarded. Sign in with the existing hospital admin credentials. A new admin is only created after Firebase Auth accounts for this facility are deleted.',
+      };
+    }
+  } catch {
+    /* onboarding store optional during SSR */
+  }
+
   if (hasFacilityAdmin(facilityId)) {
     // Already has an admin — do not create another
     const existing = listStaffCards().find(
-      (c) => c.facilityId === facilityId && c.roleKey === 'hospital_admin'
+      (c) =>
+        String(c.facilityId || '').toUpperCase() === facilityId.toUpperCase() &&
+        c.roleKey === 'hospital_admin'
     );
     if (existing) {
       const profile = resolveStaffByBadge(existing.badgeId);
@@ -1486,6 +1526,20 @@ export function provisionFacilityAdmin(
       badgeId
     );
 
+    if (opts?.email || opts?.phone || opts?.fullName) {
+      try {
+        bindFacilityOnboardingToAdmin({
+          facilityId,
+          facilityName,
+          adminBadgeId: card.badgeId,
+          primaryContact: fullName,
+          contactEmail: opts?.email,
+          contactPhone: opts?.phone,
+        });
+      } catch {
+        /* ignore */
+      }
+    }
     const profile = resolveStaffByBadge(card.badgeId);
     return {
       ok: true,
@@ -1497,6 +1551,160 @@ export function provisionFacilityAdmin(
   } catch (e: any) {
     return { ok: false, error: e?.message || 'Failed to provision facility admin' };
   }
+}
+
+
+
+
+/**
+ * After hospital onboarding: bind wizard details to the facility admin card + registry.
+ * Ties name, email, phone, facility display name to the admin account permanently.
+ */
+export function bindFacilityOnboardingToAdmin(input: {
+  facilityId: string;
+  facilityName?: string;
+  adminBadgeId?: string;
+  primaryContact?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  physicalAddress?: string;
+  state?: string;
+  lga?: string;
+}): { ok: boolean; badgeId?: string; error?: string } {
+  const facilityId = String(input.facilityId || '').trim();
+  if (!facilityId || typeof window === 'undefined') {
+    return { ok: false, error: 'Missing facility' };
+  }
+  const fid = facilityId.toUpperCase();
+  const cards = readCards();
+  let card =
+    (input.adminBadgeId &&
+      cards.find((c) => String(c.badgeId || '').toUpperCase() === String(input.adminBadgeId).toUpperCase())) ||
+    cards.find(
+      (c) =>
+        String(c.facilityId || '').toUpperCase() === fid && c.roleKey === 'hospital_admin'
+    );
+
+  if (!card) {
+    // Ensure one admin exists from onboarding details (first-time only)
+    const prov = provisionFacilityAdmin(
+      { id: facilityId, name: input.facilityName || facilityId },
+      {
+        fullName: input.primaryContact || 'Hospital Administrator',
+        pin: undefined,
+        email: input.contactEmail,
+        phone: input.contactPhone,
+        force: false,
+      }
+    );
+    if (!prov.ok || !prov.badgeId) {
+      return { ok: false, error: prov.error || 'No facility admin to bind' };
+    }
+    card = readCards().find((c) => c.badgeId === prov.badgeId) || null;
+  }
+
+  if (!card) return { ok: false, error: 'Admin card missing' };
+
+  const fullName = (input.primaryContact || card.fullName || card.name || 'Hospital Administrator').trim();
+  const nextCard: StaffCardRecord = {
+    ...card,
+    fullName,
+    name: fullName,
+    facilityId,
+    facilityName: input.facilityName || (card as any).facilityName || facilityId,
+    email: input.contactEmail || (card as any).email || (card as any).workEmail,
+    workEmail: input.contactEmail || (card as any).workEmail || (card as any).email,
+    phone: input.contactPhone || (card as any).phone,
+    roleKey: 'hospital_admin',
+    role: 'Hospital Administrator',
+    title: 'Hospital Administrator',
+  } as StaffCardRecord;
+
+  const nextCards = cards.map((c) =>
+    String(c.badgeId || '').toUpperCase() === String(nextCard.badgeId).toUpperCase() ? nextCard : c
+  );
+  writeCards(nextCards);
+
+  // Mirror into staff registry
+  try {
+    for (const key of [STAFF_REGISTRY_STORAGE_KEY, 'medcore_os_staff_registry']) {
+      const raw = localStorage.getItem(key);
+      const arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) continue;
+      let found = false;
+      const mapped = arr.map((r: any) => {
+        const bid = String(r.badgeId || r.id || '').toUpperCase();
+        if (bid === String(nextCard.badgeId).toUpperCase()) {
+          found = true;
+          return {
+            ...r,
+            badgeId: nextCard.badgeId,
+            id: nextCard.badgeId,
+            name: fullName,
+            fullName,
+            email: input.contactEmail || r.email,
+            workEmail: input.contactEmail || r.workEmail || r.email,
+            phone: input.contactPhone || r.phone,
+            hospitalId: facilityId,
+            facilityId,
+            hospitalName: input.facilityName || r.hospitalName,
+            facilityName: input.facilityName || r.facilityName,
+            roleKey: 'hospital_admin',
+            role: 'Hospital Administrator',
+            title: 'Hospital Administrator',
+            status: r.status || 'ACTIVE',
+          };
+        }
+        return r;
+      });
+      if (!found) {
+        mapped.push({
+          badgeId: nextCard.badgeId,
+          id: nextCard.badgeId,
+          name: fullName,
+          fullName,
+          email: input.contactEmail,
+          workEmail: input.contactEmail,
+          phone: input.contactPhone,
+          hospitalId: facilityId,
+          facilityId,
+          hospitalName: input.facilityName,
+          facilityName: input.facilityName,
+          roleKey: 'hospital_admin',
+          role: 'Hospital Administrator',
+          title: 'Hospital Administrator',
+          status: 'ACTIVE',
+          pin: (nextCard as any).pin,
+        });
+      }
+      localStorage.setItem(key, JSON.stringify(mapped));
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated'));
+    window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated'));
+    window.dispatchEvent(new CustomEvent('medcore-admin-sync'));
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    firestoreUpsertStaffMember({
+      badgeId: nextCard.badgeId,
+      fullName,
+      facilityId,
+      roleKey: 'hospital_admin',
+      email: input.contactEmail,
+      phone: input.contactPhone,
+    } as any);
+  } catch {
+    /* offline ok */
+  }
+
+  return { ok: true, badgeId: nextCard.badgeId };
 }
 
 

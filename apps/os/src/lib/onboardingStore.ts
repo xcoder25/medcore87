@@ -190,6 +190,27 @@ export function markFacilityOnboarded(facilityId: string, by?: string) {
     const raw = localStorage.getItem(FACILITY_ONBOARD_KEY);
     const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
     map[facilityId] = by || new Date().toISOString();
+    map[facilityId.toUpperCase()] = map[facilityId];
+    localStorage.setItem(FACILITY_ONBOARD_KEY, JSON.stringify(map));
+    try {
+      publishFacilityData(facilityId, FACILITY_KEYS.onboarding, map);
+    } catch {
+      /* offline ok */
+    }
+  } catch {
+    /* ignore */
+  }
+  emit();
+}
+
+/** Clear onboard lock — only after Firebase Auth / staff wipe for this facility */
+export function clearFacilityOnboarded(facilityId: string) {
+  if (typeof window === 'undefined' || !facilityId) return;
+  try {
+    const raw = localStorage.getItem(FACILITY_ONBOARD_KEY);
+    const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    delete map[facilityId];
+    delete map[facilityId.toUpperCase()];
     localStorage.setItem(FACILITY_ONBOARD_KEY, JSON.stringify(map));
     try {
       publishFacilityData(facilityId, FACILITY_KEYS.onboarding, map);
