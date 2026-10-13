@@ -212,11 +212,13 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
             lastLoginAt: s.lastLoginAt || s.lastLogin,
           };
         });
-        applyCloudStaffDirectory({ staffRegistry: registry });
+        if (!isStaffFlushLocked()) {
+          applyCloudStaffDirectory({ staffRegistry: registry });
+          safeReload();
+        }
       } catch {
         /* ignore */
       }
-      safeReload();
     });
 
     window.addEventListener('medcore-staff-cards-updated', safeReload);
@@ -229,7 +231,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       window.removeEventListener('medcore-staff-cards-updated', safeReload);
       window.removeEventListener('medcore-staff-registry-updated', safeReload);
     };
-  }, [reload, facilityId, busy, confirmInfo]);
+  }, [facilityId, reload]); // busy/confirm via closure checks only — do not resubscribe
 
   // Refresh list only when not in confirmation-pending state
   useEffect(() => {

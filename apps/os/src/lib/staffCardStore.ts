@@ -194,8 +194,12 @@ function readCards(): StaffCardRecord[] {
 
 function writeCards(cards: StaffCardRecord[]) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STAFF_CARD_STORAGE_KEY, JSON.stringify(cards));
-  // Broadcast so OS + browser Clinic tab can refresh
+  try {
+    localStorage.setItem(STAFF_CARD_STORAGE_KEY, JSON.stringify(cards));
+  } catch {
+    return;
+  }
+  // Broadcast so OS + browser Clinic tab can refresh (never throw into React)
   try {
     window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: cards }));
   } catch {
@@ -251,6 +255,16 @@ export function syncAccessRosterFromSources(facilityId: string): {
   count: number;
   badgeIds: string[];
 } {
+  if (typeof window === 'undefined') return { count: 0, badgeIds: [] };
+  if (isStaffFlushLocked()) {
+    try {
+      const access = JSON.parse(localStorage.getItem('medcore_os_access_control') || '[]');
+      const ids = Array.isArray(access) ? access.map((r: { id?: string }) => String(r.id || '')) : [];
+      return { count: ids.length, badgeIds: ids };
+    } catch {
+      return { count: 0, badgeIds: [] };
+    }
+  }
   const fid = String(facilityId || '').trim();
   const byId = new Map<string, Record<string, unknown>>();
 
@@ -519,9 +533,18 @@ export function wipeFacilityStaffExceptAdmin(facilityId: string): number {
   });
   const removed = before.length - kept.length;
 
-  // Fast local writes only
+  // Fast local writes only — clear primary + legacy keys so ID CARDS counter drops
   try {
     localStorage.setItem(STAFF_CARD_STORAGE_KEY, JSON.stringify(kept));
+    localStorage.setItem('medcore_os_staff_cards', JSON.stringify(kept));
+    localStorage.setItem('medcore_staff_cards', JSON.stringify(kept));
+    localStorage.setItem('ibom_staff_id_cards', JSON.stringify(kept));
+    // also via writeCards for in-memory consistency (event deferred)
+  } catch {
+    /* ignore */
+  }
+  try {
+    // Direct assign without extra events during wipe — already set keys above
   } catch {
     /* ignore */
   }
