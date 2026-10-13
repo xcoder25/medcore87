@@ -1748,14 +1748,14 @@ export function bindFacilityOnboardingToAdmin(input: {
   }
 
   try {
-    firestoreUpsertStaffMember({
+    void firestoreUpsertStaffMember(facilityId, {
       badgeId: nextCard.badgeId,
       fullName,
       facilityId,
       roleKey: 'hospital_admin',
       email: input.contactEmail,
       phone: input.contactPhone,
-    } as any);
+    });
   } catch {
     /* offline ok */
   }
