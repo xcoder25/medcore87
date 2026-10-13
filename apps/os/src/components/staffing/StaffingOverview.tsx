@@ -184,6 +184,10 @@ function buildRows(facilityId: string): StaffRow[] {
   });
 }
 
+interface Props {
+  session?: UserSession;
+}
+
 export const StaffingOverview: React.FC<Props> = ({ session }) => {
   const facilityId = session?.hospitalId || 'IGH-EKT';
   const [staff, setStaff] = useState<StaffRow[]>([]);
