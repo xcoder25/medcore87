@@ -21,6 +21,9 @@ import { RoleDashboard } from './components/dashboards/RoleDashboard';
 import { EMRManager } from './components/gateway-modules/EMRManager';
 import { AuthScreen, UserSession } from './components/auth/AuthScreen';
 import { HospitalOnboardingWizard, resolveOnboardingMode } from './components/onboarding/HospitalOnboardingWizard';
+import { RoleFirstRunGuide } from './components/onboarding/RoleFirstRunGuide';
+import { shouldShowRoleGuide } from './lib/roleFirstRunGuide';
+import { inferRoleKey } from './lib/staffCardStore';
 import { subscribeOnboarding } from './lib/onboardingStore';
 import { RealtimeChrome } from './components/realtime/RealtimeChrome';
 import './styles/os.css';
@@ -109,6 +112,19 @@ export const App: React.FC = () => {
         session={session}
         mode={onboardMode}
         onComplete={() => setSession({ ...session })}
+      />
+    );
+  }
+
+  const guideRole = inferRoleKey(session.roleKey || session.role || session.title, session.badgeId);
+  if (shouldShowRoleGuide(session.badgeId || '', guideRole)) {
+    return (
+      <RoleFirstRunGuide
+        session={session}
+        onComplete={({ openModule } = {}) => {
+          if (openModule) setActiveModule(openModule as any);
+          setSession({ ...session });
+        }}
       />
     );
   }

@@ -26,6 +26,8 @@ import { FrontDeskWorkqueues } from '../components/reception/FrontDeskWorkqueues
 
 import { FacilityOnboarding } from '../components/facility/FacilityOnboarding';
 import { HospitalOnboardingWizard, resolveOnboardingMode } from '../components/onboarding/HospitalOnboardingWizard';
+import { RoleFirstRunGuide } from '../components/onboarding/RoleFirstRunGuide';
+import { shouldShowRoleGuide } from '../lib/roleFirstRunGuide';
 import { subscribeOnboarding } from '../lib/onboardingStore';
 import { AuthIdentity } from '../components/auth/AuthIdentity';
 import { DigitalPatientCard } from '../components/patient-card/DigitalPatientCard';
@@ -1587,6 +1589,29 @@ const handleLockScreen = () => {
           mode={onboardMode}
           onComplete={() => {
             // Force re-render; flags already written to localStorage
+            setUserSession({ ...userSession });
+          }}
+        />
+      );
+    }
+
+    // Role-specific first-time use guide (once per badge + role)
+    const guideRole = inferRoleKey(
+      userSession.roleKey || userSession.role || userSession.title,
+      userSession.badgeId
+    );
+    if (shouldShowRoleGuide(userSession.badgeId || '', guideRole)) {
+      return (
+        <RoleFirstRunGuide
+          session={userSession}
+          onComplete={({ openModule } = {}) => {
+            if (openModule) {
+              try {
+                setActiveModule(openModule as any);
+              } catch {
+                /* ignore */
+              }
+            }
             setUserSession({ ...userSession });
           }}
         />
