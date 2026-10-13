@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import React, { useState } from 'react';
 import { resetAllPilotData } from '../../lib/adminRealtimeStore';
 import { Settings, Server, Database, Wifi, Shield, RefreshCw, CheckCircle2, AlertCircle, HardDrive, Clock } from 'lucide-react';
@@ -17,6 +17,78 @@ const STATUS_META = {
 
 export const SystemAdministration: React.FC = () => {
   const [tab, setTab] = useState<'services' | 'backups'>('services');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authMsg, setAuthMsg] = useState<string | null>(null);
+
+  const deleteAllFirebaseAuthUsers = async () => {
+    if (typeof window === 'undefined') return;
+    const ok = window.confirm(
+      'DELETE ALL FIREBASE AUTH USERS?\n\nThis permanently removes every Authentication user in the Firebase project (badge logins + email logins).\n\nRequires Admin SDK service account on the server.\n\nThis cannot be undone.'
+    );
+    if (!ok) return;
+    const typed = window.prompt('Type DELETE_ALL_AUTH_USERS to confirm:');
+    if (typed !== 'DELETE_ALL_AUTH_USERS') {
+      setAuthMsg('Cancelled — confirmation phrase did not match.');
+      return;
+    }
+    setAuthBusy(true);
+    setAuthMsg('Deleting Auth users…');
+    try {
+      const { getFirebaseAuth } = await import('../../lib/firebase');
+      const user = getFirebaseAuth().currentUser;
+      if (!user) {
+        setAuthMsg('You must be signed in with Firebase Auth to authorize this action.');
+        setAuthBusy(false);
+        return;
+      }
+      const idToken = await user.getIdToken(true);
+      const secret =
+        (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_ADMIN_API_SECRET) ||
+        window.localStorage.getItem('medcore_admin_api_secret') ||
+        '';
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      };
+      if (secret) headers['x-admin-secret'] = secret;
+
+      const res = await fetch('/api/staff/delete-all-auth', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ confirm: 'DELETE_ALL_AUTH_USERS' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAuthMsg(data.error || `Failed (${res.status}). Check FIREBASE_SERVICE_ACCOUNT_JSON on Vercel.`);
+        setAuthBusy(false);
+        return;
+      }
+      setAuthMsg(
+        `Deleted ${data.deleted ?? 0} Auth user(s).` +
+          (data.errorCount ? ` ${data.errorCount} error(s).` : '') +
+          ' Local data was not cleared — use “Reset all data” if needed.'
+      );
+      // Sign out local session — Auth users are gone
+      try {
+        const { firebaseSignOut } = await import('../../lib/firebase');
+        await firebaseSignOut();
+      } catch {
+        /* ignore */
+      }
+      try {
+        localStorage.removeItem('medcore_os_session');
+      } catch {
+        /* ignore */
+      }
+      window.setTimeout(() => {
+        window.location.href = window.location.pathname || '/';
+      }, 1200);
+    } catch (e) {
+      setAuthMsg((e as Error)?.message || 'Request failed');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -72,7 +144,32 @@ export const SystemAdministration: React.FC = () => {
         >
           Reset all data
         </button>
+        <button
+          type="button"
+          className="os-ghost-btn"
+          disabled={authBusy}
+          style={{ borderColor: '#7F1D1D', color: '#991B1B', opacity: authBusy ? 0.6 : 1 }}
+          onClick={() => void deleteAllFirebaseAuthUsers()}
+        >
+          <Shield size={13} style={{ display: 'inline', marginRight: 4 }} />
+          {authBusy ? 'Deleting Auth…' : 'Delete all Firebase Auth users'}
+        </button>
       </div>
+      {authMsg && (
+        <div
+          style={{
+            padding: '12px 14px',
+            borderRadius: 12,
+            background: authMsg.startsWith('Deleted') ? '#ECFDF5' : '#FEF2F2',
+            border: `1px solid ${authMsg.startsWith('Deleted') ? '#A7F3D0' : '#FECACA'}`,
+            color: authMsg.startsWith('Deleted') ? '#065F46' : '#991B1B',
+            fontSize: 13,
+            fontWeight: 600,
+          }}
+        >
+          {authMsg}
+        </div>
+      )}
 
       {tab === 'services' && (
         <div className="os-table-wrap">
