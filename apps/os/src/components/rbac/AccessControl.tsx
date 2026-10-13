@@ -569,6 +569,11 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
       let authNote = '';
       let authDeleted = false;
+      const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
+        Promise.race([
+          p,
+          new Promise<T>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
+        ]);
       try {
         const {
           firestoreDeleteStaffMember,
@@ -577,27 +582,41 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           deleteStaffFirebaseAuth,
         } = await import('../../lib/firebase');
         // Force-logout signal for any open session on other devices
-        await firestoreRevokeStaff(facilityId, id, { name, revokedBy: session?.badgeId });
+        await withTimeout(
+          firestoreRevokeStaff(facilityId, id, { name, revokedBy: session?.badgeId }),
+          8000
+        ).catch(() => false);
         // Admin SDK deletes Auth so re-login returns "user does not exist"
-        const authResult = await deleteStaffFirebaseAuth({
-          badgeId: id,
-          email: workEmail || undefined,
-        });
-        if (authResult.badgeDeleted || authResult.emailDeleted) {
-          authDeleted = true;
-          authNote = 'Firebase Auth removed.';
-        } else {
+        try {
+          const authResult = await withTimeout(
+            deleteStaffFirebaseAuth({
+              badgeId: id,
+              email: workEmail || undefined,
+            }),
+            12000
+          );
+          if (authResult.badgeDeleted || authResult.emailDeleted) {
+            authDeleted = true;
+            authNote = 'Firebase Auth removed.';
+          } else {
+            authNote =
+              'Auth may still exist if Admin SDK is not configured on the server — set FIREBASE_SERVICE_ACCOUNT_JSON.';
+          }
+        } catch {
           authNote =
-            'Auth may still exist if Admin SDK is not configured on the server — set FIREBASE_SERVICE_ACCOUNT_JSON.';
+            'Auth delete timed out or failed — card/access already removed. Check FIREBASE_SERVICE_ACCOUNT_JSON.';
         }
-        await firestoreDeleteStaffMember(facilityId, id);
-        await firestorePushStaffDirectory(facilityId, {
-          staffCards: listStaffCards(),
-          staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
-        });
+        await withTimeout(firestoreDeleteStaffMember(facilityId, id), 8000).catch(() => false);
+        await withTimeout(
+          firestorePushStaffDirectory(facilityId, {
+            staffCards: listStaffCards(),
+            staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
+          }),
+          8000
+        ).catch(() => false);
       } catch {
         /* cloud sync best-effort — local removal already done */
-        authNote = ' Cloud/Auth cleanup best-effort.';
+        authNote = authNote || 'Cloud/Auth cleanup best-effort.';
       }
 
       pushActivity(`Account deleted · ${name} · ${id}`);
