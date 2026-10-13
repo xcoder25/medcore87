@@ -207,7 +207,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'transfer':
         return <HospitalStaffTransfer session={session} />;
       case 'staffing':
-        return <StaffingOverview />;
+        return <StaffingOverview session={session} />;
       case 'facility':
         return <FacilityOnboarding session={session} />;
       case 'command':

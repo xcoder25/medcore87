@@ -7,6 +7,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Users, Clock, Search, Phone, RefreshCw } from 'lucide-react';
 import { getStaffRegistry, getAccessRecords, subscribeAdminSync } from '../../lib/adminRealtimeStore';
+import { listStaffCards } from '../../lib/staffCardStore';
 import {
   listActiveStaff,
   listOfflineStaff,
@@ -72,33 +73,74 @@ function formatSince(ts: number): string {
   return new Date(ts).toLocaleString();
 }
 
+function sameFacility(rowFid: string, facilityId: string): boolean {
+  const a = String(rowFid || '').toUpperCase().replace(/\s+/g, '');
+  const b = String(facilityId || '').toUpperCase().replace(/\s+/g, '');
+  if (!b) return true;
+  if (!a) return true; // legacy rows without facility still show for this desk
+  return a === b;
+}
+
 function buildRows(facilityId: string): StaffRow[] {
   const fid = facilityId || 'IGH-EKT';
   const online = listActiveStaff(fid);
-  const onlineIds = new Set(online.map((p) => p.badgeId.toUpperCase()));
+  const onlineIds = new Set(online.map((p) => String(p.badgeId || '').toUpperCase()));
 
   const reg = (getStaffRegistry() as any[]) || [];
   const access = getAccessRecords() || [];
+  const cards = listStaffCards();
   const byId = new Map<string, any>();
 
-  for (const s of reg) {
+  const ingest = (s: any, source: string) => {
     const id = String(s.badgeId || s.id || '')
       .toUpperCase()
       .replace(/\s+/g, '');
-    if (id) byId.set(id, s);
-  }
-  for (const a of access) {
-    const id = String(a.id || '')
-      .toUpperCase()
-      .replace(/\s+/g, '');
-    if (id && !byId.has(id)) byId.set(id, a);
+    if (!id) return;
+    const rowFid = String(s.hospitalId || s.facilityId || '');
+    if (!sameFacility(rowFid, fid)) return;
+    const prev = byId.get(id) || {};
+    byId.set(id, {
+      ...prev,
+      ...s,
+      badgeId: id,
+      name: s.name || s.fullName || prev.name || id,
+      role: s.role || s.shortRole || prev.role,
+      roleKey: s.roleKey || prev.roleKey,
+      department: s.department || prev.department,
+      specialty: s.specialty || prev.specialty,
+      ward: s.ward || prev.ward,
+      phone: s.phone || prev.phone,
+      status: s.status || prev.status || 'active',
+      _source: source,
+    });
+  };
+
+  for (const s of reg) ingest(s, 'registry');
+  for (const a of access) ingest({ ...a, badgeId: a.id }, 'access');
+  for (const c of cards) {
+    ingest(
+      {
+        badgeId: c.badgeId,
+        fullName: c.fullName,
+        name: c.fullName,
+        role: c.role,
+        roleKey: c.roleKey,
+        department: c.department,
+        facilityId: c.facilityId,
+        hospitalId: c.facilityId,
+        status: c.status === 'ACTIVE' ? 'active' : String(c.status || 'active').toLowerCase(),
+        phone: (c as any).phone,
+      },
+      'card'
+    );
   }
 
   const rows: StaffRow[] = [];
 
-  // 1) Online presence — only if still on facility roster/access (deleted staff excluded)
+  // 1) Online presence — only if still on facility roster/cards (deleted staff excluded)
   for (const p of online) {
-    const meta = byId.get(p.badgeId.toUpperCase());
+    const bid = String(p.badgeId || '').toUpperCase();
+    const meta = byId.get(bid);
     if (!meta) continue; // deleted from facility — ignore ghost presence
     rows.push({
       id: p.badgeId,
@@ -114,11 +156,12 @@ function buildRows(facilityId: string): StaffRow[] {
     });
   }
 
-  // 2) Roster / access not online → off-duty (or leave if flagged)
+  // 2) Roster / cards not online → off-duty (or leave if flagged)
   for (const [id, meta] of byId) {
     if (onlineIds.has(id)) continue;
     const st = String(meta.status || '').toLowerCase();
-    if (st === 'suspended' || st === 'pending') continue;
+    if (st === 'suspended' || st === 'pending' || st === 'revoked') continue;
+    if (st === 'expired' || st === 'revoked') continue;
     const leave = st === 'on-leave' || st === 'leave';
     rows.push({
       id,
@@ -134,17 +177,11 @@ function buildRows(facilityId: string): StaffRow[] {
     });
   }
 
-  // Ghost presence (no roster) intentionally omitted — deleted staff must not reappear
-
   return rows.sort((a, b) => {
     if (a.status === 'on-duty' && b.status !== 'on-duty') return -1;
     if (b.status === 'on-duty' && a.status !== 'on-duty') return 1;
-    return a.name.localeCompare(b.name);
+    return String(a.name).localeCompare(String(b.name));
   });
-}
-
-interface Props {
-  session?: UserSession | null;
 }
 
 export const StaffingOverview: React.FC<Props> = ({ session }) => {
@@ -166,17 +203,43 @@ export const StaffingOverview: React.FC<Props> = ({ session }) => {
     const u2 = subscribeStaffPresence(reload);
     const stopCloud = startFacilityPresenceListener(facilityId);
     const bump = () => reload();
+    // Live: presence, admin registry, ID cards, cloud directory, storage peers
     window.addEventListener(STAFF_PRESENCE_EVENT, bump);
     window.addEventListener('medcore-admin-sync', bump);
+    window.addEventListener('medcore-staff-cards-updated', bump);
+    window.addEventListener('medcore-staff-registry-updated', bump);
+    window.addEventListener('medcore-data-reset', bump);
     window.addEventListener('storage', bump);
     window.addEventListener('medcore-facility-cloud', bump);
-    const iv = window.setInterval(reload, 10000);
+    const iv = window.setInterval(reload, 5000);
+    // Pull staff directory from cloud when online
+    let stopDir = () => {};
+    void (async () => {
+      try {
+        const { firestoreSubscribeStaffDirectory } = await import('../../lib/firebase');
+        const { applyCloudStaffDirectory } = await import('../../lib/staffCardStore');
+        stopDir = firestoreSubscribeStaffDirectory(facilityId, (data) => {
+          try {
+            applyCloudStaffDirectory(data);
+          } catch {
+            /* ignore */
+          }
+          reload();
+        });
+      } catch {
+        /* offline */
+      }
+    })();
     return () => {
       u1();
       u2();
       stopCloud();
+      stopDir();
       window.removeEventListener(STAFF_PRESENCE_EVENT, bump);
       window.removeEventListener('medcore-admin-sync', bump);
+      window.removeEventListener('medcore-staff-cards-updated', bump);
+      window.removeEventListener('medcore-staff-registry-updated', bump);
+      window.removeEventListener('medcore-data-reset', bump);
       window.removeEventListener('storage', bump);
       window.removeEventListener('medcore-facility-cloud', bump);
       window.clearInterval(iv);

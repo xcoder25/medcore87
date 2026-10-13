@@ -207,6 +207,18 @@ export function listStaffCards(): StaffCardRecord[] {
   return readCards();
 }
 
+/** Remove every staff ID card (optionally one facility only). */
+export function clearAllStaffIdCards(facilityId?: string): number {
+  const fid = (facilityId || '').trim().toUpperCase();
+  const before = readCards();
+  const next = fid
+    ? before.filter((c) => String(c.facilityId || '').toUpperCase() !== fid)
+    : [];
+  writeCards(next);
+  return before.length - next.length;
+}
+
+
 /** Active staff ID cards for one facility only (UI counters / facility desks). */
 export function listActiveStaffCardsForFacility(facilityId: string): StaffCardRecord[] {
   const fid = (facilityId || '').trim().toUpperCase();
@@ -398,24 +410,16 @@ export function applyCloudStaffDirectory(payload: {
 }): void {
   if (typeof window === 'undefined') return;
   try {
-    if (Array.isArray(payload.staffCards) && payload.staffCards.length >= 0) {
+    if (Array.isArray(payload.staffCards)) {
       const cards = payload.staffCards as StaffCardRecord[];
-      // Only replace when cloud has data OR we need to clear orphans — prefer merge by badgeId
-      const local = readCards();
+      // Full replace from cloud (empty array clears all ID cards)
       const byId = new Map<string, StaffCardRecord>();
-      for (const c of local) {
-        const id = String(c.badgeId || '').toUpperCase();
-        if (id) byId.set(id, c);
-      }
       for (const c of cards) {
         const id = String(c?.badgeId || '').toUpperCase();
         if (!id) continue;
-        byId.set(id, { ...byId.get(id), ...c } as StaffCardRecord);
+        byId.set(id, c as StaffCardRecord);
       }
-      // If cloud explicitly sent the full directory, prefer cloud set when non-empty
-      if (cards.length > 0) {
-        writeCards(Array.from(byId.values()));
-      }
+      writeCards(Array.from(byId.values()));
     }
   } catch {
     /* ignore */
