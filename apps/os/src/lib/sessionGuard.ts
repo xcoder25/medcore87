@@ -1,11 +1,14 @@
 /**
- * Force logout when the staff account no longer exists in Firebase Auth
- * or was removed from the facility staff directory / revoked list.
+ * Force logout only when the account is clearly deleted/revoked.
  *
- * Important: do NOT treat an empty or lagging cloud directory as removal.
- * Only logout after this badge was seen in the directory and later disappears
- * (or after an explicit wipe following a non-empty directory that included us).
- * Switching facilities / first admin claim must not kick the user out.
+ * Design rules (hospital admin / multi-facility safe):
+ * - Local PIN sessions never logout on Firebase Auth null (no cloud user required).
+ * - hospital_admin is never kicked for "removed_from_directory" (directory lag is common
+ *   right after first claim / onboarding / facility switch).
+ * - Directory removal only applies after this badge was seen in cloud AND later gone,
+ *   past a grace period, and only for non-admin roles.
+ * - Auth deletion requires: we saw a Firebase user for THIS session, then token proves
+ *   user-not-found / disabled — not a transient null during hydration.
  */
 
 import type { UserSession } from '../components/auth/AuthScreen';
@@ -25,6 +28,22 @@ function normBadge(id: string): string {
     .replace(/\s+/g, '');
 }
 
+function isLocalPinSession(session: UserSession): boolean {
+  const m = String(session.authMethod || '').toLowerCase();
+  return m.includes('pin') || m.includes('local') || m.includes('staff id');
+}
+
+function isHospitalAdmin(session: UserSession): boolean {
+  const rk = String(session.roleKey || '').toLowerCase();
+  const role = String(session.role || '').toLowerCase();
+  return (
+    rk === 'hospital_admin' ||
+    rk === 'admin' ||
+    role.includes('hospital administrator') ||
+    role.includes('administrator')
+  );
+}
+
 /**
  * Start live guards for an active OS session.
  * Returns unsubscribe.
@@ -34,24 +53,38 @@ export function startSessionGuard(session: UserSession, onForceLogout: LogoutFn)
   const hospitalId = session.hospitalId || '';
   if (!badgeId) return () => {};
 
+  const localPin = isLocalPinSession(session);
+  const admin = isHospitalAdmin(session);
+
   let stopped = false;
   const unsubs: Array<() => void> = [];
-  /** Avoid logout on the first auth null before Firebase has restored persistence */
   let authReady = false;
   let sawFirebaseUser = false;
-  /**
-   * Only treat directory absence as removal after we have positively seen
-   * this badge in the cloud staff list for this facility.
-   */
   let sawSelfInDirectory = false;
-  let directorySnapshots = 0;
   const sessionStartedAt = Date.now();
-  /** Ignore empty/missing directory for a short grace period after login */
-  const DIRECTORY_GRACE_MS = 12_000;
+  const DIRECTORY_GRACE_MS = 30_000;
+  const AUTH_GRACE_MS = 15_000;
 
   const force = (reason: ForceLogoutReason) => {
     if (stopped) return;
+    // Hospital admin: never auto-kick for directory lag or transient Auth nulls.
+    // Only real revoke / disabled account should end an admin session.
+    if (admin && (reason === 'removed_from_directory' || reason === 'auth_deleted' || reason === 'token_invalid')) {
+      return;
+    }
+    // Local PIN desk sessions: Firebase Auth is optional
+    if (
+      localPin &&
+      (reason === 'auth_deleted' || reason === 'token_invalid' || reason === 'auth_disabled')
+    ) {
+      return;
+    }
     stopped = true;
+    try {
+      console.warn('[sessionGuard] force logout', reason, { badgeId, hospitalId, admin, localPin });
+    } catch {
+      /* */
+    }
     onForceLogout(reason);
   };
 
@@ -59,69 +92,77 @@ export function startSessionGuard(session: UserSession, onForceLogout: LogoutFn)
     try {
       const fb = await import('./firebase');
 
-      // 1) Firebase Auth — user deleted in Console → currentUser becomes null / token fails
-      try {
-        const stopAuth = fb.subscribeFirebaseAuth((user) => {
-          if (stopped) return;
-          if (user) {
-            sawFirebaseUser = true;
-            authReady = true;
-            return;
-          }
-          // null user
-          if (!authReady) {
-            window.setTimeout(() => {
-              if (stopped) return;
+      // 1) Firebase Auth — only meaningful for email / Firebase sessions
+      if (!localPin) {
+        try {
+          const stopAuth = fb.subscribeFirebaseAuth((user) => {
+            if (stopped) return;
+            if (user) {
+              sawFirebaseUser = true;
               authReady = true;
-              if (sawFirebaseUser) force('auth_deleted');
-            }, 2500);
-            return;
-          }
-          if (sawFirebaseUser) force('auth_deleted');
-        });
-        unsubs.push(stopAuth);
-      } catch {
-        /* offline */
+              return;
+            }
+            if (!authReady) {
+              window.setTimeout(() => {
+                if (stopped) return;
+                authReady = true;
+                // Still no user after hydration — only logout if we had one in this session
+                if (sawFirebaseUser && Date.now() - sessionStartedAt > AUTH_GRACE_MS) {
+                  force('auth_deleted');
+                }
+              }, 4000);
+              return;
+            }
+            if (sawFirebaseUser && Date.now() - sessionStartedAt > AUTH_GRACE_MS) {
+              force('auth_deleted');
+            }
+          });
+          unsubs.push(stopAuth);
+        } catch {
+          /* offline */
+        }
+
+        const tokenTimer = window.setInterval(() => {
+          if (stopped) return;
+          if (Date.now() - sessionStartedAt < AUTH_GRACE_MS) return;
+          void (async () => {
+            try {
+              const auth = fb.getFirebaseAuth?.();
+              const user = auth?.currentUser;
+              if (!user) {
+                // No Firebase user is normal for some admins — do not logout unless we had one
+                if (sawFirebaseUser) force('auth_deleted');
+                return;
+              }
+              await user.getIdToken(true);
+            } catch (e: unknown) {
+              const msg = String((e as { message?: string })?.message || e || '');
+              const code = String((e as { code?: string })?.code || '');
+              if (
+                code.includes('user-disabled') ||
+                msg.includes('user-disabled') ||
+                msg.includes('USER_DISABLED')
+              ) {
+                force('auth_disabled');
+                return;
+              }
+              if (
+                code.includes('user-not-found') ||
+                msg.includes('user-not-found') ||
+                code.includes('user-token-expired') ||
+                code.includes('id-token-revoked')
+              ) {
+                if (sawFirebaseUser) force('auth_deleted');
+              }
+              // Other token errors: ignore (network)
+            }
+          })();
+        }, 60_000);
+        unsubs.push(() => window.clearInterval(tokenTimer));
       }
 
-      // 2) Token refresh — deleted/disabled accounts fail here
-      const tokenTimer = window.setInterval(() => {
-        if (stopped) return;
-        void (async () => {
-          try {
-            const auth = fb.getFirebaseAuth?.();
-            const user = auth?.currentUser;
-            if (!user) {
-              if (sawFirebaseUser && authReady) force('auth_deleted');
-              return;
-            }
-            await user.getIdToken(true);
-          } catch (e: unknown) {
-            const msg = String((e as { message?: string })?.message || e || '');
-            const code = String((e as { code?: string })?.code || '');
-            if (
-              code.includes('user-disabled') ||
-              msg.includes('user-disabled') ||
-              msg.includes('USER_DISABLED')
-            ) {
-              force('auth_disabled');
-              return;
-            }
-            if (
-              code.includes('user-not-found') ||
-              code.includes('user-token-expired') ||
-              code.includes('id-token-revoked') ||
-              msg.includes('user-not-found') ||
-              msg.includes('user-token-expired')
-            ) {
-              force(sawFirebaseUser ? 'auth_deleted' : 'token_invalid');
-            }
-          }
-        })();
-      }, 45_000);
-      unsubs.push(() => window.clearInterval(tokenTimer));
-
       if (hospitalId) {
+        // Revoke list — still honor for everyone including admin (real security)
         try {
           const stopRev = fb.firestoreSubscribeRevokedStaff(hospitalId, (ids) => {
             if (stopped) return;
@@ -132,64 +173,53 @@ export function startSessionGuard(session: UserSession, onForceLogout: LogoutFn)
           /* ignore */
         }
 
-        // 4) Staff directory — only logout after we saw this badge, then it vanished
-        try {
-          const stopDir = fb.firestoreSubscribeStaffDirectory(hospitalId, (data) => {
-            if (stopped) return;
-            const cards = data.staffCards;
-            const reg = data.staffRegistry;
-            const hasCards = Array.isArray(cards);
-            const hasReg = Array.isArray(reg);
-            if (!hasCards && !hasReg) return;
+        // Staff directory — skip removal logic for hospital_admin entirely
+        if (!admin) {
+          try {
+            const stopDir = fb.firestoreSubscribeStaffDirectory(hospitalId, (data) => {
+              if (stopped) return;
+              const cards = data.staffCards;
+              const reg = data.staffRegistry;
+              const hasCards = Array.isArray(cards);
+              const hasReg = Array.isArray(reg);
+              if (!hasCards && !hasReg) return;
 
-            directorySnapshots += 1;
-
-            const ids = new Set<string>();
-            if (hasCards) {
-              for (const c of cards as { badgeId?: string }[]) {
-                const id = normBadge(c?.badgeId || '');
-                if (id) ids.add(id);
+              const ids = new Set<string>();
+              if (hasCards) {
+                for (const c of cards as { badgeId?: string }[]) {
+                  const id = normBadge(c?.badgeId || '');
+                  if (id) ids.add(id);
+                }
               }
-            }
-            if (hasReg) {
-              for (const r of reg as { badgeId?: string; id?: string }[]) {
-                const id = normBadge(r?.badgeId || r?.id || '');
-                if (id) ids.add(id);
+              if (hasReg) {
+                for (const r of reg as { badgeId?: string; id?: string }[]) {
+                  const id = normBadge(r?.badgeId || r?.id || '');
+                  if (id) ids.add(id);
+                }
               }
-            }
 
-            // Positive membership
-            if (ids.has(badgeId)) {
-              sawSelfInDirectory = true;
-              return;
-            }
+              if (ids.has(badgeId)) {
+                sawSelfInDirectory = true;
+                return;
+              }
 
-            const inGrace = Date.now() - sessionStartedAt < DIRECTORY_GRACE_MS;
+              const inGrace = Date.now() - sessionStartedAt < DIRECTORY_GRACE_MS;
+              if (inGrace) return;
 
-            // Empty directory: only treat as wipe if we previously saw ourselves here
-            if (ids.size === 0) {
-              if (sawSelfInDirectory && !inGrace) {
+              if (ids.size === 0) {
+                if (sawSelfInDirectory) force('removed_from_directory');
+                return;
+              }
+              if (sawSelfInDirectory && !ids.has(badgeId)) {
                 force('removed_from_directory');
               }
-              // First empty snapshot on a new/empty facility — do not kick out
-              return;
-            }
-
-            // Non-empty directory without this badge
-            if (!ids.has(badgeId)) {
-              // Never kick until we had confirmed membership (avoids wrong-facility /
-              // lagging cloud false positives on first login to another hospital)
-              if (sawSelfInDirectory && !inGrace) {
-                force('removed_from_directory');
-              }
-            }
-          });
-          unsubs.push(stopDir);
-        } catch {
-          /* ignore */
+            });
+            unsubs.push(stopDir);
+          } catch {
+            /* ignore */
+          }
         }
 
-        // One-shot revoke check on start
         try {
           const revoked = await fb.isStaffRevoked(hospitalId, badgeId);
           if (revoked) force('revoked');
