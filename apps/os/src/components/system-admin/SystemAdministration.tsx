@@ -59,9 +59,14 @@ export const SystemAdministration: React.FC = () => {
           className="os-ghost-btn"
           style={{ borderColor: '#FECACA', color: '#B91C1C' }}
           onClick={() => {
-            if (typeof window !== 'undefined' && window.confirm('Reset ALL local hospital data on this browser? Staff, transfers, bills, cameras, and session will be cleared. You will need to sign in again.')) {
-              resetAllPilotData();
-              window.location.reload();
+            if (
+              typeof window !== 'undefined' &&
+              window.confirm(
+                'RESET ALL DATA?\n\nThis clears local hospital data on this browser AND empties facility cloud copies (staff list, patients, beds, orders, ANC, etc.).\n\nYou will be signed out. Re-enrol staff to continue.\n\nThis cannot be undone.'
+              )
+            ) {
+              resetAllPilotData({ wipeCloud: true });
+              window.location.href = window.location.pathname || '/';
             }
           }}
         >

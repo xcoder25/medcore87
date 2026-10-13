@@ -413,10 +413,25 @@ export const ALL_PILOT_KEYS = [
   'medcore_os_formulary_v1',
   'medcore_os_universal_queue_v1',
   'medcore_os_ambulance_v1',
+  'medcore_os_reception_ops_v2',
+  'medcore_anc_plans_v1',
+  'medcore_anc_sms_prefs_v1',
+  'medcore_os_him_v1',
+  'medcore_os_theatre_cases_v1',
+  'medcore_os_pharmacy_stock_log_v1',
+  'medcore_os_maternity_v1',
+  'medcore_os_newborn_nicu_v1',
+  'medcore_os_role_permissions_v2',
+  'medcore_os_role_permissions_v3',
+  'medcore_facility_catalog_v1',
+  'medcore_os_payment_receipts_v1',
+  'medcore_os_fd_accounts_requests_v1',
+  'medcore_os_staff_presence_v1',
+  'medcore_os_front_desk_wq_v1',
 ];
 
 /** Bump this to force a one-time full wipe on every browser that opens the OS. */
-export const PILOT_DATA_VERSION = 'pilot-clean-v5';
+export const PILOT_DATA_VERSION = 'pilot-clean-v6';
 
 const WIPE_PREFIXES = ['medcore_', 'ibom_', 'medcore-'];
 
@@ -425,9 +440,10 @@ const WIPE_PREFIXES = ['medcore_', 'ibom_', 'medcore-'];
  * (staff, patients, queue, POS, clinical orders, audit, settings mirrors, outbox).
  * @param opts.keepSession — if true, do not clear medcore_os_session (stay logged in)
  */
-export function resetAllPilotData(opts?: { keepSession?: boolean }): void {
+export function resetAllPilotData(opts?: { keepSession?: boolean; wipeCloud?: boolean; facilityId?: string }): void {
   if (typeof window === 'undefined') return;
   const keepSession = !!opts?.keepSession;
+  const wipeCloud = opts?.wipeCloud !== false; // default true when online
   let savedSession: string | null = null;
   if (keepSession) {
     try {
@@ -437,17 +453,32 @@ export function resetAllPilotData(opts?: { keepSession?: boolean }): void {
     }
   }
 
+  // Resolve facility for cloud wipe
+  let facilityId = opts?.facilityId || '';
+  if (!facilityId) {
+    try {
+      const s = savedSession || localStorage.getItem('medcore_os_session');
+      if (s) facilityId = String(JSON.parse(s)?.hospitalId || '');
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!facilityId) facilityId = activeFacilityId || 'DEFAULT-HOSPITAL';
+
   try {
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k) continue;
       if (keepSession && k === 'medcore_os_session') continue;
-      if (ALL_PILOT_KEYS.includes(k as any) || WIPE_PREFIXES.some((p) => k.startsWith(p))) {
+      if (
+        ALL_PILOT_KEYS.includes(k as (typeof ALL_PILOT_KEYS)[number]) ||
+        WIPE_PREFIXES.some((p) => k.startsWith(p)) ||
+        k.startsWith('medcore_role_guide_seen_v1:')
+      ) {
         toRemove.push(k);
       }
     }
-    // Facility-scoped settings keys: medcore_os_admin_settings_v1:*
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (k && k.includes('admin_settings')) toRemove.push(k);
@@ -502,10 +533,41 @@ export function resetAllPilotData(opts?: { keepSession?: boolean }): void {
   } catch {
     /* ignore */
   }
+
+  // Cloud wipe — empty facility document fields so other workstations drop stale data
+  if (wipeCloud && facilityId && (typeof navigator === 'undefined' || navigator.onLine)) {
+    void (async () => {
+      try {
+        const { firestoreWriteFacility } = await import('./firebase');
+        await firestoreWriteFacility(facilityId, {
+          staffCards: [],
+          staffRegistry: [],
+          staffUpdatedAt: new Date().toISOString(),
+          medcore_os_patient_registry_v1: [],
+          medcore_os_reception_ops_v2: null,
+          medcore_os_clinical_orders_v1: [],
+          medcore_os_bed_board_v1: null,
+          medcore_os_notifications_v1: [],
+          medcore_anc_plans_v1: [],
+          medcore_os_him_v1: null,
+          medcore_os_theatre_cases_v1: [],
+          medcore_os_formulary_v1: null,
+          medcore_os_drug_stock_v1: null,
+          resetAt: new Date().toISOString(),
+          resetNote: 'Full data reset from Hospital OS',
+        });
+      } catch {
+        /* offline / rules */
+      }
+    })();
+  }
+
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'reset' } }));
   window.dispatchEvent(new CustomEvent('medcore-data-reset', { detail: { at: new Date().toISOString() } }));
   window.dispatchEvent(new CustomEvent('medcore-reception-ops', { detail: { visits: [], appointments: [], payments: [] } }));
   window.dispatchEvent(new CustomEvent('medcore-clinical-orders', { detail: [] }));
+  window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: [] }));
+  window.dispatchEvent(new CustomEvent('medcore-patients-updated', { detail: [] }));
 }
 
 /** Run once per browser when pilot version changes. */
