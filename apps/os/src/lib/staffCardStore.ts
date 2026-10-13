@@ -569,6 +569,33 @@ export function wipeFacilityStaffExceptAdmin(facilityId: string): number {
     /* ignore */
   }
 
+  // Server Admin SDK flush (authoritative cloud wipe)
+  try {
+    void (async () => {
+      try {
+        const { getFirebaseAuth } = await import('./firebase');
+        const u = getFirebaseAuth().currentUser;
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (u) {
+          headers.Authorization = `Bearer ${await u.getIdToken(true)}`;
+        }
+        const secret =
+          (typeof window !== 'undefined' && window.localStorage.getItem('medcore_admin_api_secret')) ||
+          '';
+        if (secret) headers['x-admin-secret'] = secret;
+        await fetch('/api/staff/flush-facility', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ facilityId: fid, confirm: 'FLUSH_FACILITY_STAFF' }),
+        });
+      } catch {
+        /* offline */
+      }
+    })();
+  } catch {
+    /* ignore */
+  }
+
   // Cloud: empty staff directory for facility
   try {
     void import('./firebase').then(async (m) => {
