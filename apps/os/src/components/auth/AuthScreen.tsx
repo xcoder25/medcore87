@@ -1059,9 +1059,25 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           } catch { /* ignore */ }
         }
 
-        if (!matchedStaff && (isBootstrapAdmin || facilityEmpty || fbUser)) {
+                // ONE facility admin only: first claim on empty facility OR explicit platform bootstrap.
+        // Never promote a random Firebase user to hospital_admin just because they signed in.
+        const mayClaimFacilityAdmin =
+          !matchedStaff &&
+          !hasFacilityAdmin(effectiveHospital.id) &&
+          (isBootstrapAdmin || facilityEmpty);
+
+        if (mayClaimFacilityAdmin) {
+          // Prefer provisioned badge (already created above when !hasFacilityAdmin)
+          const existingAdminCard = listStaffCards().find(
+            (c) =>
+              c.facilityId === effectiveHospital.id &&
+              (c.roleKey === 'hospital_admin' || String(c.badgeId || '').includes('ADM-001'))
+          );
+          const claimBadge =
+            existingAdminCard?.badgeId ||
+            `${effectiveHospital.id.toUpperCase()}-ADM-001`;
           matchedStaff = {
-            badgeId: `${effectiveHospital.id.toUpperCase()}-ADM-001`,
+            badgeId: claimBadge,
             name: adminFullName.replace(/\b\w/g, (c: string) => c.toUpperCase()),
             role: 'Hospital Administrator',
             shortRole: 'Admin',
@@ -1083,10 +1099,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         }
 
         if (!matchedStaff) {
-          setError('This account does not exist at the selected hospital. Use Sign in with ID No. or ask your administrator to enrol you.');
+          if (hasFacilityAdmin(effectiveHospital.id) || !facilityEmpty) {
+            setError(
+              'This hospital already has an administrator. Your email is not enrolled as staff here. Ask the hospital admin to create your account, or sign in with your Staff ID + PIN.'
+            );
+          } else {
+            setError(
+              'This account does not exist at the selected hospital. Use Sign in with ID No. or ask your administrator to enrol you.'
+            );
+          }
           setLoading(false);
           return;
         }
+
 
         const displayName =
           matchedStaff.name ||
