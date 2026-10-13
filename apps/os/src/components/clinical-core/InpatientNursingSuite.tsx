@@ -8,10 +8,17 @@ import {
   FileText, Search, User, ShieldCheck, AlertTriangle, Plus, X
 } from 'lucide-react';
 import type { NursingCareItem } from '@medcore/types';
+import type { UserSession } from '../auth/AuthScreen';
+import { NursingTriageStation } from './NursingTriageStation';
 
 const INITIAL_NURSING_ITEMS: NursingCareItem[] = [];
 
-export const InpatientNursingSuite: React.FC = () => {
+interface Props {
+  session?: UserSession;
+}
+
+export const InpatientNursingSuite: React.FC<Props> = ({ session }) => {
+  const [tab, setTab] = useState<'tasks' | 'triage'>('tasks');
   const [items, setItems] = useState<NursingCareItem[]>(INITIAL_NURSING_ITEMS);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newBed, setNewBed] = useState('Med Bed 08');
@@ -75,8 +82,72 @@ export const InpatientNursingSuite: React.FC = () => {
         </div>
       )}
 
-      {/* Top Telemetry */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
+      {/* Tab Switcher */}
+      <div style={{ display: 'flex', gap: 6, background: '#fff', padding: '5px 8px', borderRadius: 12, border: '1px solid #E2E8F0', width: 'fit-content' }}>
+        <button
+          type="button"
+          onClick={() => setTab('tasks')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 8,
+            border: 'none',
+            fontWeight: 700,
+            fontSize: 13,
+            cursor: 'pointer',
+            background: tab === 'tasks' ? '#2563EB' : 'transparent',
+            color: tab === 'tasks' ? '#fff' : '#64748B',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <Pill size={14} /> e-MAR & Ward Care Kardex
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('triage')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 8,
+            border: 'none',
+            fontWeight: 700,
+            fontSize: 13,
+            cursor: 'pointer',
+            background: tab === 'triage' ? '#0D9488' : 'transparent',
+            color: tab === 'triage' ? '#fff' : '#64748B',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <Heart size={14} /> Triage & Vitals Station
+        </button>
+      </div>
+
+      {tab === 'triage' ? (
+        <NursingTriageStation
+          session={
+            session || {
+              id: 'usr-nurse-01',
+              name: 'Duty Nurse',
+              role: 'Registered Nurse',
+              roleKey: 'nurse',
+              title: 'Senior Nursing Officer',
+              facility: 'General Hospital',
+              hospitalId: 'IGH-EKT',
+              department: 'Nursing',
+              avatarInitials: 'DN',
+              clearanceLabel: 'L3 Clinical',
+              clearanceLevel: 3,
+              permissions: ['nursing', 'triage', 'patient-flow'],
+              badgeId: 'NUR-01',
+            }
+          }
+        />
+      ) : (
+        <>
+          {/* Top Telemetry */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
         <div className="os-card" style={{ borderLeft: '4px solid var(--ak-orange)' }}>
           <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', fontWeight: 700, textTransform: 'uppercase' }}>Inpatient Ward Census</span>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
@@ -274,6 +345,8 @@ export const InpatientNursingSuite: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

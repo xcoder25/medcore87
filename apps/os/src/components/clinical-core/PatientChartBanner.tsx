@@ -5,8 +5,9 @@
  * Always-visible demographics + allergies to reduce wrong-patient errors.
  */
 import React from 'react';
-import { AlertTriangle, User, Droplets, Phone } from 'lucide-react';
+import { AlertTriangle, User, Droplets, Phone, Activity } from 'lucide-react';
 import type { FacilityPatient } from '../../lib/patientRegistryStore';
+import { listVitals } from '../../lib/nursingVitalsStore';
 
 interface Props {
   patient: FacilityPatient;
@@ -31,6 +32,12 @@ export const PatientChartBanner: React.FC<Props> = ({
 }) => {
   const allergies = patient.allergies?.filter(Boolean) || [];
   const hasAllergy = allergies.length > 0;
+
+  const latestVital = React.useMemo(() => {
+    if (!patient?.facilityId || !patient?.id) return null;
+    const list = listVitals(patient.facilityId, patient.id);
+    return list[0] || null;
+  }, [patient?.facilityId, patient?.id]);
 
   return (
     <div
@@ -119,6 +126,58 @@ export const PatientChartBanner: React.FC<Props> = ({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        {latestVital && (
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 10px',
+              borderRadius: 8,
+              background:
+                latestVital.urgency === 'critical'
+                  ? '#FEF2F2'
+                  : latestVital.urgency === 'urgent'
+                  ? '#FFFBEB'
+                  : '#F1F5F9',
+              border:
+                latestVital.urgency === 'critical'
+                  ? '1px solid #FECACA'
+                  : latestVital.urgency === 'urgent'
+                  ? '1px solid #FDE68A'
+                  : '1px solid #E2E8F0',
+              color:
+                latestVital.urgency === 'critical'
+                  ? '#DC2626'
+                  : latestVital.urgency === 'urgent'
+                  ? '#D97706'
+                  : '#1E293B',
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+            title={`Vitals recorded by ${latestVital.recordedBy || 'nurse'} at ${latestVital.recordedAt.slice(11, 16)}`}
+          >
+            <Activity size={13} />
+            <span>
+              {latestVital.bpSystolic && latestVital.bpDiastolic ? `BP ${latestVital.bpSystolic}/${latestVital.bpDiastolic} · ` : ''}
+              {latestVital.pulse ? `HR ${latestVital.pulse} · ` : ''}
+              {latestVital.tempC ? `${latestVital.tempC}°C · ` : ''}
+              {latestVital.spo2 ? `SpO₂ ${latestVital.spo2}%` : ''}
+            </span>
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                padding: '1px 5px',
+                borderRadius: 4,
+                background: 'rgba(0,0,0,0.06)',
+              }}
+            >
+              {latestVital.urgency}
+            </span>
+          </div>
+        )}
         {hasAllergy ? (
           <div
             style={{

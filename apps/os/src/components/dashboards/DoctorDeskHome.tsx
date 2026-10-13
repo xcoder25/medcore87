@@ -4,12 +4,13 @@
  * Doctor clinical desk — same UX pattern as Reception Front Desk Operations.
  * Hero · KPIs · Quick actions · Live worklist · Right rail. Realtime only, no demo patients.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
 import {
   Stethoscope, Activity, FileText, FlaskConical, Pill, Users, Clock,
   Brain, ChevronRight, RefreshCw, TrendingUp, AlertTriangle, CheckCircle2,
-  HeartPulse, Layers,
+  HeartPulse, Layers, Phone, Heart, UserCheck, User, ArrowRight, Zap,
+  Thermometer, Wind,
 } from 'lucide-react';
 import {
   visitsForDoctor,
@@ -18,6 +19,8 @@ import {
   type ReceptionVisit,
 } from '../../lib/receptionOpsStore';
 import { listOrders, subscribeOrders, placeOrder, type ClinicalOrder } from '../../lib/clinicalEventBus';
+import { subscribeVitals } from '../../lib/nursingVitalsStore';
+import { setPatientContext } from '../../lib/patientContextStore';
 import {
   listNotifications,
   subscribeNotifications,
@@ -43,6 +46,7 @@ import { InBasketPanel } from '../clinical-core/InBasketPanel';
 import { getPatientContext, subscribePatientContext } from '../../lib/patientContextStore';
 import { listPatients, subscribePatients } from '../../lib/patientRegistryStore';
 import { emitLiveAction } from '../../lib/liveActions';
+import { useOpdSync, broadcastOpdStage } from '../../hooks/useOpdSync';
 
 interface Props {
   session: UserSession;
@@ -68,15 +72,27 @@ function waitMins(iso: string): number {
 export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   const facilityId = session.hospitalId || 'IGH-EKT';
   const firstName = (session.name || 'Doctor').split(' ')[0];
-  const [tick, setTick] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [orderPatientId, setOrderPatientId] = useState('');
   const [orderSetId, setOrderSetId] = useState('os-malaria');
   const [orderFlash, setOrderFlash] = useState('');
   const [resultTab, setResultTab] = useState<'critical' | 'unreviewed' | 'reviewed'>('unreviewed');
+  const [newCritical, setNewCritical] = useState<string | null>(null); // flash on new critical patient
+  const [lastSync, setLastSync] = useState<Date>(new Date());
 
-  const reload = () => setTick((t) => t + 1);
+  const [lastCompleted, setLastCompleted] = useState<{
+    patientName: string;
+    queueNumber?: string;
+  } | null>(null);
 
+  // Unified real-time sync — reacts to nurse vitals, reception check-ins, BroadcastChannel
+  const { tick } = useOpdSync({ heartbeatMs: 25_000 });
+
+  const reload = useCallback(() => {
+    setLastSync(new Date());
+  }, []);
+
+  // Belt-and-suspenders: direct store subscriptions (fire immediately on same-tab writes)
   useEffect(() => {
     const u1 = subscribeReceptionOps(reload);
     const u2 = subscribeOrders(reload);
@@ -85,15 +101,21 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     const u5 = subscribeResultReviews(reload);
     const u6 = subscribePatientContext(reload);
     const u7 = subscribeNotifications(reload);
-    return () => {
-      u1();
-      u2();
-      u3();
-      u4();
-      u5();
-      u6();
-      u7();
+    const u8 = subscribeVitals(reload);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
+  }, [reload]);
+
+  // Flash badge when a new critical patient arrives via broadcast
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (d?.urgency === 'critical' && d?.patientName) {
+        setNewCritical(`Critical triage: ${d.patientName}`);
+        setTimeout(() => setNewCritical(null), 8000);
+      }
     };
+    window.addEventListener('medcore-opd-stage', handler);
+    return () => window.removeEventListener('medcore-opd-stage', handler);
   }, []);
 
   const doctorName = session.name || '';
@@ -122,10 +144,33 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   const openOrders = orders.filter((o) => o.status === 'ordered' || o.status === 'in_progress');
   const criticalOrders = orders.filter((o) => o.priority === 'stat' || o.priority === 'urgent');
 
+  const waitingQueue = useMemo(() => {
+    return visits.filter((v) => v.status === 'waiting' || v.status === 'called');
+  }, [visits]);
+
+  /** Next patient to call: critical triage first, then urgent, then FIFO */
+  const nextPatient = useMemo(() => {
+    if (waitingQueue.length === 0) return null;
+    return [...waitingQueue].sort((a, b) => {
+      const score = (u?: string) => (u === 'critical' ? 2 : u === 'urgent' ? 1 : 0);
+      const diff = score(b.triageUrgency) - score(a.triageUrgency);
+      if (diff !== 0) return diff;
+      return a.checkedInAt.localeCompare(b.checkedInAt);
+    })[0];
+  }, [waitingQueue]);
+
   const worklist = useMemo(() => {
     return [...visits]
       .filter((v) => v.status !== 'cancelled' && v.status !== 'completed')
-      .sort((a, b) => a.checkedInAt.localeCompare(b.checkedInAt));
+      .sort((a, b) => {
+        // Patients with provider first, then called, then waiting by urgency & FIFO
+        if (a.status === 'with_provider' && b.status !== 'with_provider') return -1;
+        if (b.status === 'with_provider' && a.status !== 'with_provider') return 1;
+        const score = (u?: string) => (u === 'critical' ? 2 : u === 'urgent' ? 1 : 0);
+        const diff = score(b.triageUrgency) - score(a.triageUrgency);
+        if (diff !== 0) return diff;
+        return a.checkedInAt.localeCompare(b.checkedInAt);
+      });
   }, [visits]);
 
   const kpi = [
@@ -193,6 +238,14 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
         module: 'reception',
       });
     } catch { /* ignore */ }
+    // Notify reception & triage that this patient was called
+    broadcastOpdStage('medcore_reception', {
+      facilityId, patientId: v.patientId, visitId: v.id,
+      stage: 'called', patientName: v.patientName, queueNumber: v.queueNumber,
+    });
+    broadcastOpdStage('medcore_triage', {
+      facilityId, patientId: v.patientId, stage: 'called',
+    });
     setTimeout(() => setBusyId(null), 400);
     reload();
   };
@@ -200,6 +253,17 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   const takePatient = (v: ReceptionVisit) => {
     setBusyId(v.id);
     updateVisitStatus(v.id, 'with_provider');
+    setLastCompleted(null);
+    try {
+      const parts = (v.patientName || '').split(' ');
+      setPatientContext({
+        id: v.patientId,
+        hospitalNumber: v.hospitalNumber,
+        firstName: parts[0] || v.patientName,
+        lastName: parts.slice(1).join(' ') || '',
+        facilityId,
+      });
+    } catch { /* ignore */ }
     emitLiveAction(`Seeing ${v.patientName}`, { module: 'doctor-portal' });
     try {
       pushNotification({
@@ -210,6 +274,10 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
         module: 'reception',
       });
     } catch { /* ignore */ }
+    broadcastOpdStage('medcore_reception', {
+      facilityId, patientId: v.patientId, visitId: v.id,
+      stage: 'with_provider', patientName: v.patientName,
+    });
     setTimeout(() => setBusyId(null), 400);
     reload();
   };
@@ -217,6 +285,7 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   const completeVisit = (v: ReceptionVisit) => {
     setBusyId(v.id);
     updateVisitStatus(v.id, 'completed');
+    setLastCompleted({ patientName: v.patientName, queueNumber: v.queueNumber });
     emitLiveAction(`Completed ${v.patientName}`, { module: 'doctor-portal' });
     try {
       pushNotification({
@@ -227,6 +296,13 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
         module: 'reception',
       });
     } catch { /* ignore */ }
+    broadcastOpdStage('medcore_reception', {
+      facilityId, patientId: v.patientId, visitId: v.id,
+      stage: 'completed', patientName: v.patientName, queueNumber: v.queueNumber,
+    });
+    broadcastOpdStage('medcore_triage', {
+      facilityId, patientId: v.patientId, stage: 'completed',
+    });
     setTimeout(() => setBusyId(null), 400);
     reload();
   };
@@ -398,6 +474,34 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
+      {/* Critical triage flash — fires when nurse records critical vitals */}
+      {newCritical && (
+        <div style={{
+          background: 'linear-gradient(135deg, #FEF2F2, #FFF1F2)',
+          border: '2px solid #FECACA',
+          borderRadius: 14,
+          padding: '14px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          animation: 'pulse 1.5s ease-in-out infinite',
+          boxShadow: '0 4px 16px rgba(220,38,38,0.15)',
+        }}>
+          <Zap size={20} color="#DC2626" />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 800, fontSize: 13, color: '#991B1B' }}>
+              🚨 Triage Alert — {newCritical}
+            </div>
+            <div style={{ fontSize: 12, color: '#7F1D1D', marginTop: 2 }}>
+              Critical vitals recorded by nursing · Patient at the top of your queue
+            </div>
+          </div>
+          <button type="button" onClick={() => setNewCritical(null)}
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#DC2626', fontWeight: 700, fontSize: 12 }}>
+            Dismiss
+          </button>
+        </div>
+      )}
       {criticalPanel}
       {assignmentBanner}
       {getPatientContext() && (
@@ -683,9 +787,9 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
               }}
             >
               <div>
-                <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Clinic board</div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Clinic Consultation Board</div>
                 <div style={{ fontSize: 12, color: C.muted }}>
-                  Take · Complete — live from reception check-ins
+                  Active queue · Triage vitals · Next-up patient caller
                 </div>
               </div>
               <button type="button" className="os-ghost-btn mc-btn-live" onClick={reload}>
@@ -693,11 +797,495 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
               </button>
             </div>
 
+            {/* SECTION 1: Active Consultation Card (if seeing a patient) */}
+            {withMe.length > 0 && (
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%)',
+                  border: '1.5px solid #DDD6FE',
+                  borderRadius: 16,
+                  padding: '16px 20px',
+                  marginBottom: 16,
+                  boxShadow: '0 4px 14px rgba(124, 58, 237, 0.08)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 12,
+                        background: '#7C3AED',
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 8px rgba(124, 58, 237, 0.3)',
+                      }}
+                    >
+                      <Stethoscope size={22} />
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: '#7C3AED', background: '#fff', padding: '2px 8px', borderRadius: 999 }}>
+                          CURRENTLY IN CONSULTATION
+                        </span>
+                        <span style={{ fontSize: 12, color: '#6D28D9', fontWeight: 600 }}>Queue #{withMe[0].queueNumber}</span>
+                      </div>
+                      <div style={{ fontWeight: 800, fontSize: 18, color: '#1E1B4B', marginTop: 2 }}>
+                        {withMe[0].patientName}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#6B7280' }}>
+                        {withMe[0].hospitalNumber} · {withMe[0].department} · In room {waitMins(withMe[0].checkedInAt)}m
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    {withMe[0].triageUrgency && (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 800,
+                          padding: '4px 10px',
+                          borderRadius: 999,
+                          background:
+                            withMe[0].triageUrgency === 'critical'
+                              ? '#FEF2F2'
+                              : withMe[0].triageUrgency === 'urgent'
+                              ? '#FFFBEB'
+                              : '#ECFDF5',
+                          color:
+                            withMe[0].triageUrgency === 'critical'
+                              ? '#DC2626'
+                              : withMe[0].triageUrgency === 'urgent'
+                              ? '#D97706'
+                              : '#16A34A',
+                          border:
+                            withMe[0].triageUrgency === 'critical'
+                              ? '1px solid #FECACA'
+                              : withMe[0].triageUrgency === 'urgent'
+                              ? '1px solid #FDE68A'
+                              : '1px solid #BBF7D0',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {withMe[0].triageUrgency}
+                      </span>
+                    )}
+                    <div
+                      style={{
+                        background: '#fff',
+                        border: '1px solid #E5E7EB',
+                        borderRadius: 10,
+                        padding: '6px 12px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: '#1F2937',
+                      }}
+                    >
+                      {withMe[0].vitalsSummary || 'Triage vitals on file'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => completeVisit(withMe[0])}
+                      style={{
+                        padding: '10px 18px',
+                        borderRadius: 10,
+                        border: 'none',
+                        background: 'linear-gradient(135deg, #16A34A, #0D9488)',
+                        color: '#fff',
+                        fontWeight: 800,
+                        fontSize: 13,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        boxShadow: '0 4px 12px rgba(22, 163, 74, 0.25)',
+                      }}
+                    >
+                      <CheckCircle2 size={16} /> Complete & Call Next Patient
+                    </button>
+                  </div>
+                </div>
+
+                {/* Up Next in Queue Preview banner */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: 'rgba(255,255,255,0.7)',
+                    borderRadius: 10,
+                    padding: '8px 14px',
+                    fontSize: 12,
+                    border: '1px solid rgba(221, 214, 254, 0.8)',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#4C1D95' }}>
+                    <span style={{ fontWeight: 800 }}>Next in Line:</span>
+                    {nextPatient ? (
+                      <span>
+                        <strong>{nextPatient.patientName}</strong> ({nextPatient.hospitalNumber} · #{nextPatient.queueNumber}) · Waiting {waitMins(nextPatient.checkedInAt)}m
+                        {nextPatient.vitalsSummary ? ` · ${nextPatient.vitalsSummary}` : ''}
+                      </span>
+                    ) : (
+                      <span style={{ color: '#6B7280' }}>No other patients waiting in queue</span>
+                    )}
+                  </div>
+                  {nextPatient && (
+                    <button
+                      type="button"
+                      onClick={() => callPatient(nextPatient)}
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: '4px 10px',
+                        borderRadius: 6,
+                        border: '1px solid #7C3AED',
+                        background: '#fff',
+                        color: '#7C3AED',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      <Phone size={11} /> Call Next ({nextPatient.queueNumber})
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* SECTION 2: Completed Banner with Call Next Trigger */}
+            {lastCompleted && withMe.length === 0 && (
+              <div
+                style={{
+                  background: '#ECFDF5',
+                  border: '1.5px solid #A7F3D0',
+                  borderRadius: 14,
+                  padding: '12px 18px',
+                  marginBottom: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <CheckCircle2 size={18} color="#16A34A" />
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: '#065F46' }}>
+                      Consultation completed for {lastCompleted.patientName}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#047857' }}>
+                      {nextPatient
+                        ? `Next patient ready is ${nextPatient.patientName} (${nextPatient.hospitalNumber} · Queue #${nextPatient.queueNumber})`
+                        : 'OPD queue is now clear.'}
+                    </div>
+                  </div>
+                </div>
+                {nextPatient && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => callPatient(nextPatient)}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: 8,
+                        border: '1px solid #059669',
+                        background: '#fff',
+                        color: '#065F46',
+                        fontWeight: 700,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5,
+                      }}
+                    >
+                      <Phone size={13} /> Call {nextPatient.patientName}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => takePatient(nextPatient)}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: 8,
+                        border: 'none',
+                        background: '#16A34A',
+                        color: '#fff',
+                        fontWeight: 800,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5,
+                      }}
+                    >
+                      <Stethoscope size={13} /> See Now
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SECTION 3: Next Patient in Queue Flight-Deck Card (when doctor is free) */}
+            {nextPatient && withMe.length === 0 && !lastCompleted && (
+              <div
+                style={{
+                  background:
+                    nextPatient.triageUrgency === 'critical'
+                      ? 'linear-gradient(135deg, #FEF2F2 0%, #FFF1F2 100%)'
+                      : nextPatient.triageUrgency === 'urgent'
+                      ? 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)'
+                      : 'linear-gradient(135deg, #EFF6FF 0%, #F0FDF4 100%)',
+                  border:
+                    nextPatient.triageUrgency === 'critical'
+                      ? '1.5px solid #FECACA'
+                      : nextPatient.triageUrgency === 'urgent'
+                      ? '1.5px solid #FDE68A'
+                      : '1.5px solid #BFDBFE',
+                  borderRadius: 18,
+                  padding: '18px 22px',
+                  marginBottom: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                  flexWrap: 'wrap',
+                  boxShadow:
+                    nextPatient.triageUrgency === 'critical'
+                      ? '0 8px 24px rgba(239, 68, 68, 0.12)'
+                      : '0 8px 24px rgba(37, 99, 235, 0.08)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 14,
+                      background:
+                        nextPatient.triageUrgency === 'critical'
+                          ? 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)'
+                          : nextPatient.triageUrgency === 'urgent'
+                          ? 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)'
+                          : 'linear-gradient(135deg, #2563EB 0%, #0D9488 100%)',
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <UserCheck size={24} />
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          letterSpacing: '0.04em',
+                          color:
+                            nextPatient.triageUrgency === 'critical'
+                              ? '#B91C1C'
+                              : nextPatient.triageUrgency === 'urgent'
+                              ? '#92400E'
+                              : '#1D4ED8',
+                          background:
+                            nextPatient.triageUrgency === 'critical'
+                              ? '#FEE2E2'
+                              : nextPatient.triageUrgency === 'urgent'
+                              ? '#FEF3C7'
+                              : '#DBEAFE',
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                        }}
+                      >
+                        {nextPatient.triageUrgency === 'critical'
+                          ? 'CRITICAL TRIAGE PRIORITY'
+                          : nextPatient.triageUrgency === 'urgent'
+                          ? 'URGENT PRIORITY'
+                          : 'NEXT UP IN QUEUE'}
+                      </span>
+                      <span style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>
+                        Ticket #{nextPatient.queueNumber}
+                      </span>
+                      <span style={{ fontSize: 11, color: C.muted }}>
+                        Waiting {waitMins(nextPatient.checkedInAt)}m
+                      </span>
+                    </div>
+
+                    <div style={{ fontWeight: 800, fontSize: 18, color: C.text, marginTop: 3 }}>
+                      {nextPatient.patientName}
+                    </div>
+
+                    {/* Vitals Telemetry Chips Row */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                      <span style={{ fontSize: 11, color: C.muted }}>{nextPatient.hospitalNumber}</span>
+                      <span style={{ fontSize: 11, color: C.muted }}>•</span>
+                      <span style={{ fontSize: 11, color: C.muted }}>{nextPatient.department}</span>
+
+                      {nextPatient.vitalsBp ? (
+                        <>
+                          <span style={{ fontSize: 11, color: C.muted }}>•</span>
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              background: '#FFFFFF',
+                              padding: '2px 8px',
+                              borderRadius: 8,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              border: '1px solid #E2E8F0',
+                              color: C.text,
+                            }}
+                          >
+                            <Heart size={11} color="#EF4444" /> BP {nextPatient.vitalsBp}
+                          </span>
+                          {nextPatient.vitalsPulse && (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                background: '#FFFFFF',
+                                padding: '2px 8px',
+                                borderRadius: 8,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                border: '1px solid #E2E8F0',
+                                color: C.text,
+                              }}
+                            >
+                              <Activity size={11} color="#0D9488" /> {nextPatient.vitalsPulse} bpm
+                            </span>
+                          )}
+                          {nextPatient.vitalsTemp && (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                background: '#FFFFFF',
+                                padding: '2px 8px',
+                                borderRadius: 8,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                border: '1px solid #E2E8F0',
+                                color: C.text,
+                              }}
+                            >
+                              <Thermometer size={11} color="#EA580C" /> {nextPatient.vitalsTemp}°C
+                            </span>
+                          )}
+                          {nextPatient.vitalsSpo2 && (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                background: '#FFFFFF',
+                                padding: '2px 8px',
+                                borderRadius: 8,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                border: '1px solid #E2E8F0',
+                                color: C.text,
+                              }}
+                            >
+                              <Wind size={11} color="#2563EB" /> SpO₂ {nextPatient.vitalsSpo2}%
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: 11, color: C.muted }}>•</span>
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 700,
+                              color: '#D97706',
+                              background: '#FFFBEB',
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              border: '1px solid #FDE68A',
+                            }}
+                          >
+                            Awaiting Vitals
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => callPatient(nextPatient)}
+                    style={{
+                      padding: '10px 18px',
+                      borderRadius: 12,
+                      border: '1.5px solid #2563EB',
+                      background: '#FFFFFF',
+                      color: '#2563EB',
+                      fontWeight: 700,
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      boxShadow: '0 2px 6px rgba(37,99,235,0.08)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <Phone size={14} /> Call Patient
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => takePatient(nextPatient)}
+                    style={{
+                      padding: '10px 22px',
+                      borderRadius: 12,
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #2563EB 0%, #0D9488 100%)',
+                      color: '#FFFFFF',
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      boxShadow: '0 4px 14px rgba(37,99,235,0.3)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <Stethoscope size={15} /> Start Consultation
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Table */}
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ textAlign: 'left', color: C.muted, fontSize: 11, fontWeight: 700 }}>
-                    {['Patient', 'ID', 'Dept', 'Wait', 'Status', 'Actions'].map((h) => (
+                    {['Patient', 'ID', 'Triage / Vitals', 'Dept', 'Wait', 'Status', 'Actions'].map((h) => (
                       <th key={h} style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>
                         {h}
                       </th>
@@ -707,19 +1295,68 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                 <tbody>
                   {worklist.length === 0 && (
                     <tr>
-                      <td colSpan={6} style={{ padding: 28, textAlign: 'center', color: C.muted }}>
+                      <td colSpan={7} style={{ padding: 28, textAlign: 'center', color: C.muted }}>
                         No patients waiting — reception check-ins appear here in realtime
                       </td>
                     </tr>
                   )}
-                  {worklist.slice(0, 12).map((v) => (
+                  {worklist.slice(0, 15).map((v) => (
                     <tr
                       key={v.id}
                       className={`mc-queue-row${busyId === v.id ? ' is-updating' : ''}`}
                       style={{ borderBottom: `1px solid ${C.border}` }}
                     >
-                      <td style={{ padding: '12px 10px', fontWeight: 700 }}>{v.patientName}</td>
+                      <td style={{ padding: '12px 10px', fontWeight: 700 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>{v.patientName}</span>
+                          {nextPatient?.id === v.id && v.status !== 'with_provider' && (
+                            <span
+                              style={{
+                                fontSize: 9,
+                                fontWeight: 800,
+                                background: '#EFF6FF',
+                                color: '#1D4ED8',
+                                border: '1px solid #BFDBFE',
+                                padding: '1px 6px',
+                                borderRadius: 999,
+                              }}
+                            >
+                              NEXT UP
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td style={{ padding: '12px 10px', color: C.muted, fontSize: 12 }}>{v.hospitalNumber}</td>
+                      <td style={{ padding: '12px 10px' }}>
+                        {v.triageUrgency ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 800,
+                                padding: '2px 6px',
+                                borderRadius: 999,
+                                background:
+                                  v.triageUrgency === 'critical' ? '#FEF2F2' : v.triageUrgency === 'urgent' ? '#FFFBEB' : '#ECFDF5',
+                                color:
+                                  v.triageUrgency === 'critical' ? '#DC2626' : v.triageUrgency === 'urgent' ? '#D97706' : '#16A34A',
+                                border:
+                                  v.triageUrgency === 'critical' ? '1px solid #FECACA' : v.triageUrgency === 'urgent' ? '1px solid #FDE68A' : '1px solid #BBF7D0',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              {v.triageUrgency}
+                            </span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>
+                              {v.vitalsSummary || 'Logged'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 11, color: C.muted, fontStyle: 'italic' }}>
+                            Awaiting triage
+                          </span>
+                        )}
+                      </td>
                       <td style={{ padding: '12px 10px' }}>{v.department}</td>
                       <td style={{ padding: '12px 10px' }}>{waitMins(v.checkedInAt)} min</td>
                       <td style={{ padding: '12px 10px' }}>

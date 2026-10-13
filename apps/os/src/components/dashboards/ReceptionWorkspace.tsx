@@ -76,6 +76,7 @@ import {
   type ArrivalIntent,
 } from '../../lib/receptionAiOrchestrator';
 import { ReceptionDeskHome } from './ReceptionDeskHome';
+import { NursingTriageStation } from '../clinical-core/NursingTriageStation';
 import { markPatientOutstandingPaid } from '../../lib/patientBillingStore';
 import {
   subscribePresence,
@@ -83,6 +84,7 @@ import {
   admitFromPresence,
   emitPatientPresence,
 } from '../../lib/presenceArrivalEngine';
+import { broadcastOpdStage } from '../../hooks/useOpdSync';
 
 interface Props {
   session: UserSession;
@@ -98,7 +100,8 @@ type View =
   | 'payment' | 'send-accounts'
   | 'search'
   | 'scan'
-  | 'walkin';
+  | 'walkin'
+  | 'triage';
 
 type RegStep = 1 | 2 | 3 | 4;
 
@@ -430,14 +433,15 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     window.addEventListener('medcore-admin-sync', bump);
     window.addEventListener('medcore-billing', bump);
     window.addEventListener('medcore-staff-cards-updated', bump);
+    window.addEventListener('medcore-vitals', bump);   // nurse saves vitals → queue badge updates
     window.addEventListener('storage', bump);
-    // Cross-tab
+    // Cross-tab (from doctor calling/completing, or nurse triaging)
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel('medcore_reception');
       bc.onmessage = () => reload();
     } catch { /* ignore */ }
-    const poll = window.setInterval(reload, 12000);
+    const poll = window.setInterval(reload, 8000); // 8s poll for snappy live feel
     return () => {
       u1();
       u2();
@@ -446,6 +450,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       window.removeEventListener('medcore-admin-sync', bump);
       window.removeEventListener('medcore-billing', bump);
       window.removeEventListener('medcore-staff-cards-updated', bump);
+      window.removeEventListener('medcore-vitals', bump);
       window.removeEventListener('storage', bump);
       try { bc?.close(); } catch { /* */ }
       window.clearInterval(poll);
@@ -711,6 +716,21 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       { module: 'queue' }
     );
     notifyDoctorAssignment(visit, fullName(p));
+    // Notify nurse triage station so the patient appears in OPD queue immediately
+    broadcastOpdStage('medcore_triage', {
+      facilityId,
+      patientId: p.id,
+      hospitalNumber: p.hospitalNumber,
+      patientName: fullName(p),
+      queueNumber: visit.queueNumber,
+      department: ciDept,
+      stage: 'checked_in',
+    });
+    // Also notify doctor desk so queue count updates
+    broadcastOpdStage('medcore_doctor', {
+      facilityId, patientId: p.id,
+      stage: 'checked_in', patientName: fullName(p),
+    });
     try {
       printQueueTicket({
         queueNumber: visit.queueNumber,
@@ -1321,6 +1341,11 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
           onSelectPatient={(p) => openPatient(p)}
           onRefresh={reload}
         />
+      )}
+
+      {/* TRIAGE / VITALS STATION */}
+      {view === 'triage' && (
+        <NursingTriageStation session={session} onClose={() => goView('home')} />
       )}
 
       {view === 'search' && (

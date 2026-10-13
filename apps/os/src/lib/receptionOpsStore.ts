@@ -37,6 +37,13 @@ export interface ReceptionVisit {
   appointmentTime?: string;
   appointmentId?: string;
   aiReminderSent?: boolean;
+  triageUrgency?: 'routine' | 'urgent' | 'critical';
+  vitalsSummary?: string;
+  vitalsBp?: string;
+  vitalsPulse?: number;
+  vitalsTemp?: number;
+  vitalsSpo2?: number;
+  vitalsWeight?: number;
 }
 
 export interface ReceptionAppointment {
@@ -271,6 +278,45 @@ export function markPatientConsultComplete(
   });
   if (updated) save(state);
   return updated;
+}
+
+/** Nurse Triage: attach recorded vitals & urgency directly to active visit */
+export function attachVitalsToVisit(
+  facilityId: string,
+  patientRef: string,
+  vitals: {
+    triageUrgency: 'routine' | 'urgent' | 'critical';
+    vitalsSummary: string;
+    vitalsBp?: string;
+    vitalsPulse?: number;
+    vitalsTemp?: number;
+    vitalsSpo2?: number;
+    vitalsWeight?: number;
+  }
+): void {
+  const state = load();
+  const ref = (patientRef || '').toLowerCase();
+  let changed = false;
+  state.visits = state.visits.map((v) => {
+    if (v.facilityId !== facilityId) return v;
+    if (v.status === 'completed' || v.status === 'cancelled') return v;
+    const match =
+      v.patientId.toLowerCase() === ref ||
+      v.hospitalNumber.toLowerCase() === ref;
+    if (!match) return v;
+    changed = true;
+    return {
+      ...v,
+      triageUrgency: vitals.triageUrgency,
+      vitalsSummary: vitals.vitalsSummary,
+      vitalsBp: vitals.vitalsBp,
+      vitalsPulse: vitals.vitalsPulse,
+      vitalsTemp: vitals.vitalsTemp,
+      vitalsSpo2: vitals.vitalsSpo2,
+      vitalsWeight: vitals.vitalsWeight,
+    };
+  });
+  if (changed) save(state);
 }
 
 /** Sync paymentStatus on visits when Accounts marks paid */

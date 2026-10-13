@@ -15,17 +15,14 @@ import {
 import { listStaffCards, isReceptionRole } from '../../lib/staffCardStore';
 import type { FacilityPatient } from '../../lib/patientRegistryStore';
 import type { ReceptionVisit, ReceptionAppointment, ReceptionDayStats } from '../../lib/receptionOpsStore';
-import { listAccountsRequests } from '../../lib/frontDeskAccountsBridge';
-import {
-  orchestrateDeskOverview,
-  computeClinicLoadBoard,
-  intelligentRouteHint,
-} from '../../lib/receptionAiOrchestrator';
+
+
 import {
   Search, UserPlus, CreditCard, Calendar, QrCode, Users, Clock,
-  Activity, CheckCircle2, AlertTriangle, RefreshCw, ChevronRight,
-  MoreHorizontal, TrendingUp, TrendingDown, ScanLine, Sparkles, Brain, Building2,
+  Activity, CheckCircle2, RefreshCw, ChevronRight,
+  TrendingUp, TrendingDown, Heart,
 } from 'lucide-react';
+import { useOpdSync, broadcastOpdStage } from '../../hooks/useOpdSync';
 
 export type DeskNav =
   | 'home'
@@ -37,7 +34,8 @@ export type DeskNav =
   | 'cashier'
   | 'search'
   | 'scan'
-  | 'walkin';
+  | 'walkin'
+  | 'triage';
 
 interface Props {
   session: UserSession;
@@ -96,7 +94,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   onRefresh,
 }) => {
   const facilityId = session.hospitalId || 'IGH-EKT';
-  const accountsPending = listAccountsRequests(facilityId, { status: 'awaiting_payment' });
+
   const [deptFilter, setDeptFilter] = useState('all');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activeFrontDesk, setActiveFrontDesk] = useState(0);
@@ -215,7 +213,6 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     } catch { /* ignore */ }
     window.setTimeout(() => setBusyId(null), 450);
   };
-  const firstName = (session.name || 'Staff').split(' ')[0];
 
   const waiting = visits.filter((v) => v.status === 'waiting');
   const called = visits.filter((v) => v.status === 'called');
@@ -342,256 +339,69 @@ export const ReceptionDeskHome: React.FC<Props> = ({
         }}
       />
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
-      {/* Hero */}
+      {/* Quick Actions — first thing the desk officer sees */}
       <div
-        className="mc-hero-fluid"
         style={{
-          borderRadius: 20,
-          overflow: 'hidden',
-          color: '#fff',
-          position: 'relative',
-          minHeight: 148,
-          display: 'flex',
-          alignItems: 'stretch',
+          background: '#fff',
+          borderRadius: 16,
+          border: `1px solid ${C.border}`,
+          padding: 18,
+          boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
         }}
       >
-        <div style={{ padding: '22px 28px', flex: 1, zIndex: 1, maxWidth: '62%' }}>
-          <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 4 }}>
-            Welcome back, {firstName} 👋
-          </div>
-          <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: -0.4, marginBottom: 6 }}>
-            Front Desk Operations
-          </div>
-          <div style={{ fontSize: 13, opacity: 0.88, maxWidth: 420, lineHeight: 1.45 }}>
-            Manage check-ins, queue, appointments and patient flow efficiently.
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                background: 'rgba(255,255,255,0.18)',
-                border: '1px solid rgba(255,255,255,0.25)',
-                borderRadius: 999,
-                padding: '5px 12px',
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: '50%',
-                  background: '#4ADE80',
-                  boxShadow: '0 0 0 3px rgba(74,222,128,0.35)',
-                }}
-              />
-              System Online
-            </span>
-            <span
-              style={{
-                background: 'rgba(255,255,255,0.12)',
-                borderRadius: 999,
-                padding: '5px 12px',
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              All systems operational
-            </span>
-          </div>
+        <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Quick Actions</div>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>
+          Speed up your workflow with essential actions
         </div>
-        <div
-          style={{
-            position: 'absolute',
-            right: 0,
-            top: 0,
-            bottom: 0,
-            width: '48%',
-            backgroundImage: 'url(/hosos-clean.png), url(/auth-hero.png)',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            opacity: 0.35,
-            maskImage: 'linear-gradient(90deg, transparent, black 30%)',
-            WebkitMaskImage: 'linear-gradient(90deg, transparent, black 30%)',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            right: 28,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            textAlign: 'right',
-            zIndex: 2,
-            maxWidth: 180,
-          }}
-        >
-          <div style={{ fontSize: 13, fontStyle: 'italic', opacity: 0.95, lineHeight: 1.4 }}>
-            “ Better Care.
-            <br />
-            Smarter Systems.”
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 700, marginTop: 8, opacity: 0.85 }}>MedCore</div>
+        <div className="mc-stagger-desk" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
+          {quick.map((q) => {
+            const Icon = q.icon;
+            return (
+              <button
+                key={q.label}
+                type="button"
+                onClick={() => onGo(q.go)}
+                className="mc-btn-live"
+                style={{
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 14,
+                  background: '#F8FAFC',
+                  padding: '14px 10px',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#BFDBFE';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(37,99,235,0.12)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = C.border;
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    background: '#EFF6FF',
+                    color: C.blue,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 8px',
+                  }}
+                >
+                  <Icon size={18} />
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{q.label}</div>
+                <div style={{ fontSize: 10, color: C.muted, marginTop: 2, lineHeight: 1.3 }}>{q.desc}</div>
+              </button>
+            );
+          })}
         </div>
       </div>
-
-      
-      {/* Accounts PENDING — live from Accounting desk */}
-      {accountsPending.length > 0 && (
-        <div
-          style={{
-            borderRadius: 16,
-            border: '1px solid #FDE68A',
-            background: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)',
-            padding: '14px 16px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-            <div style={{ fontWeight: 800, color: '#92400E', fontSize: 14 }}>
-              PENDING at Accounts · {accountsPending.length}
-            </div>
-            <div style={{ fontSize: 12, color: '#B45309', fontWeight: 600 }}>
-              Live · clears to PAID when Accounting collects
-            </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 140, overflowY: 'auto' }}>
-            {accountsPending.slice(0, 6).map((r) => (
-              <div
-                key={r.id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  gap: 10,
-                  fontSize: 13,
-                  padding: '8px 10px',
-                  borderRadius: 10,
-                  background: 'rgba(255,255,255,0.7)',
-                }}
-              >
-                <span style={{ fontWeight: 700, color: '#0F172A' }}>
-                  {r.patientName}{' '}
-                  <span style={{ fontWeight: 600, color: '#64748B' }}>· {r.hospitalNumber}</span>
-                </span>
-                <span style={{ fontWeight: 800, color: '#B45309' }}>₦{r.amountNgn.toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* AI Intelligence Command — teaching-hospital scale */}
-      {(() => {
-        const deskAi = orchestrateDeskOverview(visits, patients, stats);
-        const clinicBoard = computeClinicLoadBoard(visits);
-        const route = intelligentRouteHint(visits);
-        const pressureColor = (p: string) =>
-          p === 'critical' ? '#DC2626' : p === 'heavy' ? '#D97706' : p === 'moderate' ? '#2563EB' : '#059669';
-        return (
-          <div
-            style={{
-              borderRadius: 18,
-              border: '1px solid #C7D2FE',
-              background: 'linear-gradient(135deg, #EEF2FF 0%, #F8FAFC 55%, #ECFDF5 100%)',
-              padding: '16px 18px',
-              boxShadow: '0 8px 28px rgba(79, 70, 229, 0.08)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg,#4F46E5,#7C3AED)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Brain size={20} color="#fff" />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: 15, color: '#1E1B4B', letterSpacing: '-0.02em' }}>
-                    Front-desk intelligence
-                  </div>
-                  <div style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>
-                    UUTH-scale multi-clinic · AI recommends · human confirms
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 11, fontWeight: 800, background: '#EEF2FF', color: '#4338CA', padding: '5px 10px', borderRadius: 999 }}>
-                  <Sparkles size={11} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                  {deskAi.ready} ready to advance
-                </span>
-                <span style={{ fontSize: 11, fontWeight: 800, background: deskAi.incompleteRegistration ? '#FEF3C7' : '#ECFDF5', color: deskAi.incompleteRegistration ? '#B45309' : '#047857', padding: '5px 10px', borderRadius: 999 }}>
-                  {deskAi.incompleteRegistration} incomplete reg
-                </span>
-              </div>
-            </div>
-            <p style={{ margin: '0 0 14px', fontSize: 13, color: '#334155', lineHeight: 1.45, fontWeight: 500 }}>
-              {deskAi.narrative}
-            </p>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: clinicBoard.length ? 14 : 0 }}>
-              <button
-                type="button"
-                onClick={() => onGo('queue')}
-                style={{
-                  border: 'none', borderRadius: 10, padding: '9px 14px', fontWeight: 700, fontSize: 12,
-                  background: 'linear-gradient(135deg,#4F46E5,#6366F1)', color: '#fff', cursor: 'pointer',
-                }}
-              >
-                Open live queue
-              </button>
-              <button
-                type="button"
-                onClick={() => onGo('walkin')}
-                style={{
-                  border: '1px solid #C7D2FE', borderRadius: 10, padding: '9px 14px', fontWeight: 700, fontSize: 12,
-                  background: '#fff', color: '#4338CA', cursor: 'pointer',
-                }}
-              >
-                Smart walk-in
-              </button>
-              <div style={{ fontSize: 12, color: '#64748B', alignSelf: 'center', fontWeight: 600 }}>
-                <Building2 size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                Route hint: {route.department} — {route.reason}
-              </div>
-            </div>
-            {clinicBoard.length > 0 && (
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#6366F1', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
-                  Multi-clinic pressure board
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-                  {clinicBoard.slice(0, 8).map((row) => (
-                    <div
-                      key={row.department}
-                      style={{
-                        background: '#fff',
-                        borderRadius: 12,
-                        border: `1px solid ${row.pressure === 'critical' ? '#FECACA' : '#E2E8F0'}`,
-                        padding: '10px 12px',
-                        borderLeft: `3px solid ${pressureColor(row.pressure)}`,
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                        <span style={{ fontWeight: 800, fontSize: 12, color: '#0F172A' }}>{row.department}</span>
-                        <span style={{ fontSize: 10, fontWeight: 800, color: pressureColor(row.pressure), textTransform: 'uppercase' }}>
-                          {row.pressure}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>
-                        {row.waiting} waiting · {row.withProvider} in consult · avg {row.avgWaitMin}m
-                      </div>
-                      <div style={{ fontSize: 11, color: '#475569', marginTop: 4, fontWeight: 600 }}>{row.suggestion}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* KPI row — single horizontal line */}
+      {/* KPI row — live stats */}
       <div
         style={{
           display: 'grid',
@@ -659,69 +469,6 @@ export const ReceptionDeskHome: React.FC<Props> = ({
       {/* Main grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Quick Actions */}
-          <div
-            style={{
-              background: '#fff',
-              borderRadius: 16,
-              border: `1px solid ${C.border}`,
-              padding: 18,
-              boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
-            }}
-          >
-            <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Quick Actions</div>
-            <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>
-              Speed up your workflow with essential actions
-            </div>
-            <div className="mc-stagger-desk" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
-              {quick.map((q) => {
-                const Icon = q.icon;
-                return (
-                  <button
-                    key={q.label}
-                    type="button"
-                    onClick={() => onGo(q.go)}
-                    className="mc-btn-live"
-                    style={{
-                      border: `1px solid ${C.border}`,
-                      borderRadius: 14,
-                      background: '#F8FAFC',
-                      padding: '14px 10px',
-                      cursor: 'pointer',
-                      textAlign: 'center',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = '#BFDBFE';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(37,99,235,0.12)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = C.border;
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 12,
-                        background: '#EFF6FF',
-                        color: C.blue,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        margin: '0 auto 8px',
-                      }}
-                    >
-                      <Icon size={18} />
-                    </div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{q.label}</div>
-                    <div style={{ fontSize: 10, color: C.muted, marginTop: 2, lineHeight: 1.3 }}>{q.desc}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Live Queue Board */}
           <div
             style={{
@@ -903,7 +650,29 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                         </span>
                       </td>
                       <td style={{ padding: '12px 10px' }}>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          {(v.status === 'waiting' || v.status === 'called') && (
+                            <button
+                              type="button"
+                              onClick={() => onGo('triage')}
+                              title="Take vitals / triage"
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 700,
+                                padding: '4px 8px',
+                                borderRadius: 6,
+                                border: '1px solid #BBF7D0',
+                                background: '#ECFDF5',
+                                color: '#16A34A',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 3,
+                              }}
+                            >
+                              <Heart size={10} /> Triage
+                            </button>
+                          )}
                           {v.status === 'waiting' && (
                             <button
                               type="button"
@@ -915,8 +684,8 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                                 padding: '4px 8px',
                                 borderRadius: 6,
                                 border: 'none',
-                                background: '#ECFDF5',
-                                color: '#047857',
+                                background: '#EFF6FF',
+                                color: '#1D4ED8',
                                 cursor: 'pointer',
                               }}
                             >

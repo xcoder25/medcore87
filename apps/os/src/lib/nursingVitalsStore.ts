@@ -4,7 +4,8 @@
  */
 import { publishFacilityData } from './roleSyncBus';
 import { pushNotification } from './notificationEngine';
-import { markPatientWithProvider } from './receptionOpsStore';
+import { markPatientWithProvider, attachVitalsToVisit } from './receptionOpsStore';
+import { addVital } from './clinicalUxStores';
 
 const KEY = 'medcore_os_nursing_vitals_v1';
 
@@ -100,6 +101,49 @@ export function saveVitals(input: {
     recordedAt: new Date().toISOString(),
   };
   write([row, ...read()]);
+
+  // Attach to active ReceptionVisit on the live queue
+  const bpStr =
+    input.bpSystolic && input.bpDiastolic ? `${input.bpSystolic}/${input.bpDiastolic}` : undefined;
+  const summaryParts: string[] = [];
+  if (bpStr) summaryParts.push(`BP ${bpStr}`);
+  if (input.pulse) summaryParts.push(`HR ${input.pulse}`);
+  if (input.tempC) summaryParts.push(`${input.tempC}°C`);
+  if (input.spo2) summaryParts.push(`SpO₂ ${input.spo2}%`);
+  if (input.weightKg) summaryParts.push(`${input.weightKg}kg`);
+
+  try {
+    attachVitalsToVisit(input.facilityId, input.patientId, {
+      triageUrgency: urgency,
+      vitalsSummary: summaryParts.join(' · ') || 'Vitals on file',
+      vitalsBp: bpStr,
+      vitalsPulse: input.pulse,
+      vitalsTemp: input.tempC,
+      vitalsSpo2: input.spo2,
+      vitalsWeight: input.weightKg,
+    });
+  } catch {
+    /* ignore */
+  }
+
+  // Attach to longitudinal clinical chart
+  try {
+    addVital({
+      id: row.id,
+      facilityId: input.facilityId,
+      patientId: input.patientId,
+      at: row.recordedAt,
+      bpSys: input.bpSystolic,
+      bpDia: input.bpDiastolic,
+      hr: input.pulse,
+      temp: input.tempC,
+      spo2: input.spo2,
+      weightKg: input.weightKg,
+      recordedBy: input.recordedBy || 'Nurse',
+    });
+  } catch {
+    /* ignore */
+  }
 
   // Route: vitals done → doctor can take patient (still waiting until Call/open)
   try {

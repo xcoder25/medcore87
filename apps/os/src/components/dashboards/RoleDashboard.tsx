@@ -15,7 +15,7 @@ import {
   FileText, BedDouble, Users, Clock, ShieldCheck, AlertTriangle, CheckCircle2,
   ArrowRight, Search, Building2, CreditCard, Package, Wrench, Gauge, Brain,
   Sparkles, Calendar, TrendingUp, Plus, PhoneCall, Bell, FileCheck, Eye, RefreshCw,
-  Lock, Check, AlertCircle, HeartPulse, Shield, BarChart3, Database, Cpu, Zap, LogOut, Send, UserCheck
+  Lock, Check, AlertCircle, Heart, HeartPulse, Shield, BarChart3, Database, Cpu, Zap, LogOut, Send, UserCheck
 } from 'lucide-react';
 
 interface RoleDashboardProps {
@@ -99,6 +99,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
           boardTitle: 'Ward / clinic board',
           boardEmpty: 'No active visits — reception check-ins appear here.',
           quick: [
+            { label: 'Triage / Vitals', desc: 'OPD vitals', icon: Heart, go: 'triage' },
             { label: 'Inpatient', desc: 'Nursing suite', icon: BedDouble, go: 'nursing' },
             { label: 'EMR', desc: 'Records', icon: FileText, go: 'emr' },
             { label: 'Patient flow', desc: 'Queue', icon: Activity, go: 'patient-flow' },

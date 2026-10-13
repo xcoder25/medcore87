@@ -79,6 +79,8 @@ import { MaternityOgSuite } from '../components/clinical-core/MaternityOgSuite';
 import { PaediatricsNicuSuite } from '../components/clinical-core/PaediatricsNicuSuite';
 import { BloodBankSuite } from '../components/clinical-core/BloodBankSuite';
 import { InpatientNursingSuite } from '../components/clinical-core/InpatientNursingSuite';
+import { NursingTriageStation } from '../components/clinical-core/NursingTriageStation';
+import { WorkflowIntelligenceHub } from '../components/clinical-core/WorkflowIntelligenceHub';
 import { AmbulanceTransfersSuite } from '../components/operations/AmbulanceTransfersSuite';
 import { SupplyChainInventorySuite } from '../components/operations/SupplyChainInventorySuite';
 import { BiomedicalEquipmentSuite } from '../components/operations/BiomedicalEquipmentSuite';
@@ -104,7 +106,7 @@ import {
   Clock, Bell,
   Activity, Shield, Lock, Unlock, LogOut, ChevronLeft, ArrowLeft, ChevronRight,
   AlertTriangle, Building2, Users, BedDouble, RefreshCw, BarChart3, Settings,
-  CreditCard, FileText, Stethoscope, Calendar, HeartPulse, Database, Brain, Sparkles, Flame,
+  CreditCard, FileText, Stethoscope, Calendar, Heart, HeartPulse, Database, Brain, Sparkles, Flame,
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck,
   Search, X, LayoutDashboard, MapPin, Ticket, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
@@ -119,7 +121,7 @@ export type ModuleKey =
   | 'm87-ai' | 'ai'
   // Pillar 2: Core
   | 'emr' | 'emergency' | 'theatre' | 'icu' | 'pharmacy' | 'laboratory' | 'radiology' | 'him' | 'him-deficiency' | 'him-coding' | 'him-roi' | 'him-chart' | 'him-merge' | 'him-docs'
-  | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'patient-card' | 'patient-360' | 'clinical-ux' | 'device-gateway'
+  | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'triage' | 'workflow-intelligence' | 'intel-hub' | 'patient-card' | 'patient-360' | 'clinical-ux' | 'device-gateway'
   // Pillar 3: Operations
   | 'command' | 'beds' | 'patient-flow' | 'universal-queue' | 'appointments' | 'staffing' | 'ambulance' | 'notifications'
   | 'inventory' | 'biomedical' | 'facilities' | 'environmental'
@@ -173,6 +175,7 @@ const MASTER_PILLARS: NavSection[] = [
       { key: 'paediatrics', icon: Baby, label: 'Paediatrics & NICU Incubators' },
       { key: 'blood-bank', icon: Droplet, label: 'Blood Bank & Transfusions' },
       { key: 'nursing', icon: FileText, label: 'Inpatient Nursing & e-MAR' },
+      { key: 'triage', icon: Heart, label: 'OPD Triage & Vitals Station' },
       { key: 'patient-card', icon: FileText, label: 'Digital Health Card (FHIR)', badge: 'FHIR' },
     ],
   },
@@ -813,6 +816,24 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   paediatrics: PaediatricsNicuSuite,
   'blood-bank': BloodBankSuite,
   nursing: InpatientNursingSuite,
+  triage: (props: any) => (
+    <NursingTriageStation
+      session={props.session || props.userSession}
+      onClose={() => props.onNavigate?.('dashboard')}
+    />
+  ),
+  'workflow-intelligence': (props: any) => (
+    <WorkflowIntelligenceHub
+      session={props.session || props.userSession}
+      onClose={() => props.onNavigate?.('dashboard')}
+    />
+  ),
+  'intel-hub': (props: any) => (
+    <WorkflowIntelligenceHub
+      session={props.session || props.userSession}
+      onClose={() => props.onNavigate?.('dashboard')}
+    />
+  ),
   'patient-card': DigitalPatientCard,
   'clinical-ux': ClinicalUxSuite,
   'patient-360': Patient360View as any,
@@ -884,6 +905,9 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   paediatrics: { level: 3, label: 'L3 Clinical', roleDesc: 'Paediatricians & NICU Nurses' },
   'blood-bank': { level: 2, label: 'L2 Support', roleDesc: 'Hematology Technicians & Blood Bank Officers' },
   nursing: { level: 3, label: 'L3 Clinical', roleDesc: 'Inpatient Ward Nurses & Sisters' },
+  triage: { level: 2, label: 'L2 Nursing & OPD', roleDesc: 'Triage Nurses & Front Desk Staff' },
+  'workflow-intelligence': { level: 2, label: 'L2 Clinical & Operations', roleDesc: 'Doctors, Nurses, Admin & Quality Officers' },
+  'intel-hub': { level: 2, label: 'L2 Clinical & Operations', roleDesc: 'Doctors, Nurses, Admin & Quality Officers' },
   'patient-card': { level: 1, label: 'L2 Support', roleDesc: 'Records & Front Desk Officers' },
   'patient-360': { level: 2, label: 'L2 Clinical & Records', roleDesc: 'Longitudinal patient profile' },
   'clinical-ux': { level: 2, label: 'L2 Clinical', roleDesc: 'Schedule, meds, notes, discharge' },

@@ -16,6 +16,7 @@ export const MODULE_CATALOG: { key: string; label: string; group: string }[] = [
   // Clinical & wards
   { key: 'emr', label: 'EMR / clinical records', group: 'Clinical' },
   { key: 'emergency', label: 'Emergency / A&E', group: 'Clinical' },
+  { key: 'triage', label: 'Nursing triage & vitals station', group: 'Clinical' },
   { key: 'nursing', label: 'Nursing workstation', group: 'Clinical' },
   { key: 'maternity', label: 'Maternity', group: 'Clinical' },
   { key: 'paediatrics', label: 'Paediatrics', group: 'Clinical' },
@@ -26,6 +27,7 @@ export const MODULE_CATALOG: { key: string; label: string; group: string }[] = [
   { key: 'lab', label: 'Laboratory (legacy key)', group: 'Clinical' },
   { key: 'radiology', label: 'Radiology / imaging', group: 'Clinical' },
   { key: 'blood-bank', label: 'Blood bank', group: 'Clinical' },
+  { key: 'workflow-intelligence', label: '7-Workflow intelligence suite', group: 'Clinical' },
 
   // Operations
   { key: 'command', label: 'Hospital command centre', group: 'Operations' },
@@ -117,7 +119,7 @@ const CLINICAL_PATIENT = [
 const DEFAULTS: Record<string, string[]> = {
   // General physician / MO — full clinical desk, not platform admin tools
   doctor: [
-    'dashboard', 'doctor-portal', 'patient-360', 'notifications',
+    'dashboard', 'doctor-portal', 'workflow-intelligence', 'patient-360', 'notifications',
     'emr', 'pharmacy', 'laboratory', 'lab', 'radiology',
     'emergency', 'beds', 'nursing', 'icu', 'theatre',
     'm87-ai', 'ai', 'patient-card', 'my-card',
@@ -125,14 +127,14 @@ const DEFAULTS: Record<string, string[]> = {
   ],
   // Surgeons — OT-first; no general pharmacy inventory / finance / admin
   surgeon: [
-    'dashboard', 'theatre', 'doctor-portal', 'notifications',
+    'dashboard', 'theatre', 'doctor-portal', 'workflow-intelligence', 'notifications',
     'icu', 'beds', 'blood-bank', 'emergency',
     'laboratory', 'lab', 'radiology', 'emr',
     'm87-ai', 'ai', 'patient-card', 'my-card',
     ...CLINICAL_PATIENT, 'patient.procedures',
   ],
   nurse: [
-    'dashboard', 'nursing', 'beds', 'notifications',
+    'dashboard', 'nursing', 'triage', 'workflow-intelligence', 'beds', 'notifications',
     'patient-flow', 'emergency', 'pharmacy', 'blood-bank',
     'maternity', 'paediatrics', 'icu',
     'm87-ai', 'ai', 'patient-card', 'my-card', 'emr',
@@ -169,7 +171,7 @@ const DEFAULTS: Record<string, string[]> = {
     'patient.identity', 'patient.imaging', 'patient.problems',
   ],
   reception: [
-    'dashboard', 'patient-flow', 'patient-card', 'appointments', 'cashier', 'billing',
+    'dashboard', 'patient-flow', 'patient-card', 'triage', 'appointments', 'cashier', 'billing',
     'desk-settings', 'notifications', 'my-card',
     'patient.identity', 'patient.contact', 'patient.demographics', 'patient.billing', 'patient.insurance',
   ],
