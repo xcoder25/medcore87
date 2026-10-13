@@ -1665,20 +1665,16 @@ export function bindFacilityOnboardingToAdmin(input: {
 
   if (!card) return { ok: false, error: 'Admin card missing' };
 
-  const fullName = (input.primaryContact || card.fullName || card.name || 'Hospital Administrator').trim();
+  const fullName = (input.primaryContact || card.fullName || 'Hospital Administrator').trim();
   const nextCard: StaffCardRecord = {
     ...card,
     fullName,
-    name: fullName,
     facilityId,
-    facilityName: input.facilityName || (card as any).facilityName || facilityId,
-    email: input.contactEmail || (card as any).email || (card as any).workEmail,
-    workEmail: input.contactEmail || (card as any).workEmail || (card as any).email,
-    phone: input.contactPhone || (card as any).phone,
+    facilityName: input.facilityName || card.facilityName || facilityId,
     roleKey: 'hospital_admin',
     role: 'Hospital Administrator',
     title: 'Hospital Administrator',
-  } as StaffCardRecord;
+  };
 
   const nextCards = cards.map((c) =>
     String(c.badgeId || '').toUpperCase() === String(nextCard.badgeId).toUpperCase() ? nextCard : c
