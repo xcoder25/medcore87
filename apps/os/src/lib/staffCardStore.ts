@@ -220,6 +220,309 @@ export function clearAllStaffIdCards(facilityId?: string): number {
 
 
 /** Active staff ID cards for one facility only (UI counters / facility desks). */
+
+/**
+ * Rebuild access-control rows from ID cards + registry for one facility.
+ * Fixes Access list (few) vs ID cards (many) mismatch.
+ */
+export function syncAccessRosterFromSources(facilityId: string): {
+  count: number;
+  badgeIds: string[];
+} {
+  const fid = String(facilityId || '').trim();
+  const byId = new Map<string, Record<string, unknown>>();
+
+  const ingest = (raw: Record<string, unknown>) => {
+    const id = String(raw.badgeId || raw.id || '')
+      .toUpperCase()
+      .replace(/\s+/g, '');
+    if (!id) return;
+    const rowFid = String(raw.hospitalId || raw.facilityId || '').trim();
+    // Skip other facilities when we know the row's facility; allow legacy empty
+    if (fid && rowFid && rowFid !== fid) return;
+    const prev = byId.get(id) || {};
+    byId.set(id, {
+      ...prev,
+      ...raw,
+      badgeId: id,
+      id,
+      name: raw.name || raw.fullName || prev.name || id,
+      fullName: raw.fullName || raw.name || prev.fullName || id,
+      role: raw.role || raw.shortRole || prev.role || 'Staff',
+      roleKey: raw.roleKey || prev.roleKey,
+      department: raw.department || prev.department || '—',
+      clearance: Number(raw.clearanceLevel || raw.clearance || prev.clearance || 2),
+      status: String(raw.status || prev.status || 'active').toLowerCase() === 'suspended'
+        ? 'suspended'
+        : String(raw.status || '').toLowerCase() === 'pending'
+          ? 'pending'
+          : 'active',
+      lastLogin: raw.lastLoginAt || raw.lastLogin || prev.lastLogin || '—',
+      permissions: Array.isArray(raw.permissions)
+        ? raw.permissions
+        : prev.permissions || [],
+      email: raw.email || raw.workEmail || prev.email,
+      hospitalId: fid || rowFid,
+      facilityId: fid || rowFid,
+    });
+  };
+
+  try {
+    for (const c of listStaffCards()) {
+      if (fid && c.facilityId && c.facilityId !== fid) continue;
+      ingest({
+        badgeId: c.badgeId,
+        fullName: c.fullName,
+        name: c.fullName,
+        role: c.role,
+        roleKey: c.roleKey,
+        department: c.department,
+        clearanceLevel: c.clearanceLevel,
+        status: c.status === 'ACTIVE' ? 'active' : String(c.status || 'active').toLowerCase(),
+        email: (c as { email?: string }).email,
+        permissions: c.permissions,
+        facilityId: c.facilityId || fid,
+        hospitalId: c.facilityId || fid,
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const regRaw =
+      localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY) ||
+      localStorage.getItem('medcore_os_staff_registry');
+    const reg = regRaw ? JSON.parse(regRaw) : [];
+    if (Array.isArray(reg)) {
+      for (const s of reg) {
+        const rowFid = String(s.hospitalId || s.facilityId || '');
+        if (fid && rowFid && rowFid !== fid) continue;
+        ingest(s as Record<string, unknown>);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const accessRaw = localStorage.getItem('medcore_os_access_control');
+    const access = accessRaw ? JSON.parse(accessRaw) : [];
+    if (Array.isArray(access)) {
+      for (const a of access) ingest(a as Record<string, unknown>);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const rows = Array.from(byId.values()).map((s) => ({
+    id: String(s.id || s.badgeId),
+    name: String(s.name || s.fullName || s.id),
+    role: String(s.role || 'Staff'),
+    department: String(s.department || '—'),
+    clearance: Number(s.clearance || 2),
+    status: (String(s.status || 'active').toLowerCase() === 'suspended'
+      ? 'suspended'
+      : String(s.status || '').toLowerCase() === 'pending'
+        ? 'pending'
+        : 'active') as 'active' | 'suspended' | 'pending',
+    lastLogin: String(s.lastLogin || '—'),
+    permissions: Array.isArray(s.permissions) ? (s.permissions as string[]) : [],
+    email: s.email ? String(s.email) : undefined,
+  }));
+
+  try {
+    localStorage.setItem('medcore_os_access_control', JSON.stringify(rows));
+    window.dispatchEvent(
+      new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_access_control' } })
+    );
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    void import('./adminRealtimeStore').then((m) => {
+      try {
+        m.setAccessRecords(rows as never);
+      } catch {
+        /* ignore */
+      }
+    });
+  } catch {
+    /* ignore */
+  }
+
+  return { count: rows.length, badgeIds: rows.map((r) => r.id) };
+}
+
+/**
+ * Remove ID cards that are not on the access/registry roster for this facility
+ * (true orphans), OR remove duplicate cards with the same name+role keeping the newest.
+ */
+export function purgeOrphanAndDuplicateIdCards(facilityId: string): {
+  removedOrphans: string[];
+  removedDuplicates: string[];
+} {
+  const fid = String(facilityId || '').trim();
+  const removedOrphans: string[] = [];
+  const removedDuplicates: string[] = [];
+
+  // Ensure access roster exists first
+  const synced = syncAccessRosterFromSources(fid);
+  const keep = new Set(synced.badgeIds.map((b) => b.toUpperCase()));
+
+  let cards = listStaffCards().filter((c) => {
+    if (fid && c.facilityId && c.facilityId !== fid) return true; // keep other facilities
+    const id = String(c.badgeId || '').toUpperCase();
+    // Keep admin / platform badges
+    if (id.includes('ADM-001') || id === 'AKS-ADM-001') return true;
+    if (!keep.has(id) && fid && (!c.facilityId || c.facilityId === fid)) {
+      // Card not on roster — after sync, keep should include all cards; so orphans are rare.
+      // Treat cards with empty name or badge-as-name and no roleKey as junk
+      const name = String(c.fullName || '').trim();
+      if (!name || name === id) {
+        removedOrphans.push(id);
+        return false;
+      }
+    }
+    return true;
+  });
+
+  // Deduplicate same fullName + roleKey within facility — keep newest issuedAt / highest id
+  const groups = new Map<string, StaffCardRecord[]>();
+  for (const c of cards) {
+    if (fid && c.facilityId && c.facilityId !== fid) continue;
+    const key = `${String(c.fullName || '').trim().toLowerCase()}|${String(c.roleKey || c.role || '').toLowerCase()}`;
+    if (!key.startsWith('|') && String(c.fullName || '').trim()) {
+      const arr = groups.get(key) || [];
+      arr.push(c);
+      groups.set(key, arr);
+    }
+  }
+  const drop = new Set<string>();
+  for (const [, arr] of groups) {
+    if (arr.length < 2) continue;
+    arr.sort((a, b) => {
+      const ta = Date.parse(String(a.issuedAt || a.createdAt || 0)) || 0;
+      const tb = Date.parse(String(b.issuedAt || b.createdAt || 0)) || 0;
+      if (tb !== ta) return tb - ta;
+      return String(b.badgeId).localeCompare(String(a.badgeId));
+    });
+    // keep first (newest)
+    for (const extra of arr.slice(1)) {
+      const id = String(extra.badgeId || '').toUpperCase();
+      if (id.includes('ADM-001')) continue;
+      drop.add(id);
+      removedDuplicates.push(id);
+    }
+  }
+
+  cards = cards.filter((c) => !drop.has(String(c.badgeId || '').toUpperCase()));
+  writeCards(cards);
+
+  // Drop registry + access rows for removed badges
+  const gone = new Set([...removedOrphans, ...removedDuplicates]);
+  if (gone.size) {
+    try {
+      const regRaw = localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY);
+      const reg = regRaw ? JSON.parse(regRaw) : [];
+      if (Array.isArray(reg)) {
+        const next = reg.filter((r: { badgeId?: string; id?: string }) => {
+          const b = String(r.badgeId || r.id || '')
+            .toUpperCase()
+            .replace(/\s+/g, '');
+          return !gone.has(b);
+        });
+        localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(next));
+        localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      const accessRaw = localStorage.getItem('medcore_os_access_control');
+      const access = accessRaw ? JSON.parse(accessRaw) : [];
+      if (Array.isArray(access)) {
+        const next = access.filter(
+          (r: { id?: string }) =>
+            !gone.has(String(r.id || '').toUpperCase().replace(/\s+/g, ''))
+        );
+        localStorage.setItem('medcore_os_access_control', JSON.stringify(next));
+      }
+    } catch {
+      /* ignore */
+    }
+    // Cloud push best-effort
+    try {
+      void import('./firebase').then((m) => {
+        void m.firestorePushStaffDirectory(fid, {
+          staffCards: listStaffCards().filter((c) => !c.facilityId || c.facilityId === fid),
+          staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
+        });
+        for (const bid of gone) {
+          void m.firestoreDeleteStaffMember(fid, bid);
+          void m.firestoreRevokeStaff(fid, bid, { name: bid });
+        }
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  syncAccessRosterFromSources(fid);
+  window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated'));
+  window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } }));
+
+  return { removedOrphans, removedDuplicates };
+}
+
+/**
+ * Nuclear: clear every non-admin ID card + registry + access for facility.
+ */
+export function wipeFacilityStaffExceptAdmin(facilityId: string): number {
+  const fid = String(facilityId || '').trim();
+  const before = listStaffCards();
+  const kept = before.filter((c) => {
+    const id = String(c.badgeId || '').toUpperCase();
+    if (id.includes('ADM-001') || id === 'AKS-ADM-001') return true;
+    if (fid && c.facilityId && c.facilityId !== fid) return true;
+    if (fid && (!c.facilityId || c.facilityId === fid)) return false;
+    return true;
+  });
+  writeCards(kept);
+  try {
+    const regRaw = localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY);
+    const reg = regRaw ? JSON.parse(regRaw) : [];
+    if (Array.isArray(reg)) {
+      const next = reg.filter((r: { badgeId?: string; id?: string; hospitalId?: string; facilityId?: string; roleKey?: string }) => {
+        const b = String(r.badgeId || r.id || '').toUpperCase();
+        if (b.includes('ADM-001')) return true;
+        const rowFid = String(r.hospitalId || r.facilityId || '');
+        if (fid && rowFid && rowFid !== fid) return true;
+        if (fid && (!rowFid || rowFid === fid)) return false;
+        return true;
+      });
+      localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(next));
+      localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
+    }
+  } catch {
+    /* ignore */
+  }
+  syncAccessRosterFromSources(fid);
+  try {
+    void import('./firebase').then((m) => {
+      void m.firestorePushStaffDirectory(fid, {
+        staffCards: listStaffCards().filter((c) => !c.facilityId || c.facilityId === fid),
+        staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
+      });
+    });
+  } catch {
+    /* ignore */
+  }
+  return before.length - kept.length;
+}
+
+
 export function listActiveStaffCardsForFacility(facilityId: string): StaffCardRecord[] {
   const fid = (facilityId || '').trim().toUpperCase();
   return readCards().filter((c) => {

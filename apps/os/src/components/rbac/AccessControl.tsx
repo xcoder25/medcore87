@@ -21,6 +21,9 @@ import {
   commitStaffEnrolment,
   listStaffCards,
   countActiveStaffCards,
+  syncAccessRosterFromSources,
+  purgeOrphanAndDuplicateIdCards,
+  wipeFacilityStaffExceptAdmin,
   getStaffCard,
   deleteStaffMember,
   defaultPermissionsForRole,
@@ -112,6 +115,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const [deleteSuccess, setDeleteSuccess] = useState<StaffDeleteSuccessInfo | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [purgeMsg, setPurgeMsg] = useState<string | null>(null);
 
   const [fullName, setFullName] = useState('');
   const [roleKey, setRoleKey] = useState('');
@@ -129,8 +133,13 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
   const reload = useCallback(() => {
     // Never refresh list over a pending confirmation (keeps "confirm first" UX)
+    try {
+      syncAccessRosterFromSources(facilityId);
+    } catch {
+      /* ignore */
+    }
     setRecords(getAccessRecords());
-  }, []);
+  }, [facilityId]);
 
   useEffect(() => {
     // No auto-purge of staff — admin manages enrolments. Failed creates never persist ID cards.
@@ -670,7 +679,98 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+        <button
+          type="button"
+          className="os-ghost-btn"
+          disabled={busy}
+          onClick={() => {
+            try {
+              const r = syncAccessRosterFromSources(facilityId);
+              setRecords(getAccessRecords());
+              setPurgeMsg(`Roster synced — ${r.count} access row(s) from cards + registry.`);
+              setTimeout(() => setPurgeMsg(null), 6000);
+            } catch {
+              setError('Could not sync roster.');
+            }
+          }}
+        >
+          Sync access from ID cards
+        </button>
+        <button
+          type="button"
+          className="os-ghost-btn"
+          disabled={busy}
+          onClick={() => {
+            if (
+              !window.confirm(
+                'Remove orphan & duplicate ID cards for this facility?\n\nKeeps one card per name+role (newest). Admin cards are never removed.'
+              )
+            )
+              return;
+            setBusy(true);
+            try {
+              const r = purgeOrphanAndDuplicateIdCards(facilityId);
+              setRecords(getAccessRecords());
+              setPurgeMsg(
+                `Purged ${r.removedDuplicates.length} duplicate(s) and ${r.removedOrphans.length} orphan(s).`
+              );
+              setTimeout(() => setPurgeMsg(null), 8000);
+            } catch {
+              setError('Purge failed.');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Purge orphan / duplicate cards
+        </button>
+        <button
+          type="button"
+          className="os-ghost-btn"
+          disabled={busy}
+          style={{ borderColor: '#FECACA', color: '#B91C1C' }}
+          onClick={() => {
+            if (
+              !window.confirm(
+                'WIPE all staff ID cards for this facility except the administrator?\n\nThis cannot be undone.'
+              )
+            )
+              return;
+            setBusy(true);
+            try {
+              const n = wipeFacilityStaffExceptAdmin(facilityId);
+              setRecords(getAccessRecords());
+              setPurgeMsg(`Removed ${n} staff card(s). Admin retained.`);
+              setTimeout(() => setPurgeMsg(null), 8000);
+            } catch {
+              setError('Wipe failed.');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Wipe all cards (keep admin)
+        </button>
+      </div>
+      {purgeMsg && (
         <div
+          style={{
+            padding: '10px 14px',
+            borderRadius: 10,
+            background: '#ECFDF5',
+            border: '1px solid #A7F3D0',
+            color: '#065F46',
+            fontSize: 13,
+            fontWeight: 600,
+            marginBottom: 8,
+          }}
+        >
+          {purgeMsg}
+        </div>
+      )}
+<div
           style={{
             flex: 1,
             minWidth: 180,

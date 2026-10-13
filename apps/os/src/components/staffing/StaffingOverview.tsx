@@ -7,7 +7,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Users, Clock, Search, Phone, RefreshCw } from 'lucide-react';
 import { getStaffRegistry, getAccessRecords, subscribeAdminSync } from '../../lib/adminRealtimeStore';
-import { listStaffCards } from '../../lib/staffCardStore';
+import { listStaffCards, syncAccessRosterFromSources } from '../../lib/staffCardStore';
 import {
   listActiveStaff,
   listOfflineStaff,
@@ -197,6 +197,11 @@ export const StaffingOverview: React.FC<Props> = ({ session }) => {
   const [tick, setTick] = useState(0);
 
   const reload = useCallback(() => {
+    try {
+      syncAccessRosterFromSources(facilityId);
+    } catch {
+      /* ignore */
+    }
     setStaff(buildRows(facilityId));
     setTick((n) => n + 1);
   }, [facilityId]);
