@@ -1226,15 +1226,15 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                     <td onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                         {r.status === 'suspended' ? (
-                          <button type="button" className="os-ghost-btn" style={{ fontSize: 12 }} onClick={() => { reactivateAccess(r.id); reload(); }}>
+                          <button type="button" className="os-ghost-btn" style={{ fontSize: 12 }} onClick={() => { reactivateAccess(r.id); loadRecords(); }}>
                             <CheckCircle2 size={12} /> Reactivate
                           </button>
                         ) : r.status === 'pending' ? (
-                          <button type="button" className="os-ghost-btn" style={{ fontSize: 12 }} onClick={() => { approveAccess(r.id); reload(); }}>
+                          <button type="button" className="os-ghost-btn" style={{ fontSize: 12 }} onClick={() => { approveAccess(r.id); loadRecords(); }}>
                             Approve
                           </button>
                         ) : (
-                          <button type="button" className="os-ghost-btn" style={{ fontSize: 12, color: '#B91C1C' }} onClick={() => { suspendAccess(r.id); reload(); }}>
+                          <button type="button" className="os-ghost-btn" style={{ fontSize: 12, color: '#B91C1C' }} onClick={() => { suspendAccess(r.id); loadRecords(); }}>
                             <XCircle size={12} /> Suspend
                           </button>
                         )}
