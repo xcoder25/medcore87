@@ -218,9 +218,9 @@ export function listActiveStaffCardsForFacility(facilityId: string): StaffCardRe
   });
 }
 
-/** Count of active cards in a facility — source of truth for “card counter”. */
-export function countActiveStaffCards(facilityId: string): number {
-  return listActiveStaffCardsForFacility(facilityId).length;
+/** Count of ACTIVE staff ID cards in a facility (failed creates must not inflate this). */
+export function countActiveStaffCards(facilityId?: string): number {
+  return listActiveStaffCardsForFacility(facilityId || '').length;
 }
 
 export function getStaffCard(badgeId: string): StaffCardRecord | undefined {
@@ -342,16 +342,6 @@ export function commitStaffEnrolment(
   }
 }
 
-/** Count of issued ACTIVE staff ID cards (failed creates must not inflate this). */
-export function countActiveStaffCards(facilityId?: string): number {
-  const fid = String(facilityId || '').toUpperCase();
-  return readCards().filter((c) => {
-    const st = String(c.status || 'ACTIVE').toUpperCase();
-    if (st !== 'ACTIVE') return false;
-    if (fid && String(c.facilityId || '').toUpperCase() !== fid) return false;
-    return true;
-  }).length;
-}
 
 /**
  * Enrol staff in one step (local commit). Prefer Access Control flow:
