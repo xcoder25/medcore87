@@ -1660,7 +1660,7 @@ export function bindFacilityOnboardingToAdmin(input: {
     if (!prov.ok || !prov.badgeId) {
       return { ok: false, error: prov.error || 'No facility admin to bind' };
     }
-    card = readCards().find((c) => c.badgeId === prov.badgeId) || null;
+    card = readCards().find((c) => c.badgeId === prov.badgeId);
   }
 
   if (!card) return { ok: false, error: 'Admin card missing' };
