@@ -788,11 +788,31 @@ export async function deleteStaffFirebaseAuth(opts: {
   let emailDeleted = false;
   if (!badge) return { badgeDeleted, emailDeleted };
 
-  // Admin SDK path (no PIN required)
+  // Admin SDK path (no PIN required) — attach caller ID token when signed in
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const u = getFirebaseAuth().currentUser;
+      if (u) {
+        const idToken = await u.getIdToken(true);
+        headers.Authorization = `Bearer ${idToken}`;
+      }
+    } catch {
+      /* optional */
+    }
+    try {
+      const secret =
+        (typeof process !== 'undefined' &&
+          (process as { env?: Record<string, string> }).env?.NEXT_PUBLIC_ADMIN_API_SECRET) ||
+        (typeof window !== 'undefined' && window.localStorage.getItem('medcore_admin_api_secret')) ||
+        '';
+      if (secret) headers['x-admin-secret'] = String(secret);
+    } catch {
+      /* optional */
+    }
     const res = await fetch('/api/staff/delete-auth', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         badgeId: badge,
         email: opts.email || undefined,

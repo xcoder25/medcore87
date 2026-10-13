@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   adminDeleteAuthUsers,
+  adminVerifyIdToken,
+  adminApiSecretOk,
   isFirebaseAdminConfigured,
 } from '../../../../lib/firebaseAdmin';
 
@@ -9,7 +11,7 @@ export const runtime = 'nodejs';
 /**
  * POST /api/staff/delete-auth
  * Body: { badgeId: string, email?: string }
- * Deletes Firebase Auth accounts via Admin SDK (service account).
+ * Deletes that staff member's Firebase Auth accounts (badge synthetic + optional work email).
  */
 export async function POST(req: NextRequest) {
   if (!isFirebaseAdminConfigured()) {
@@ -20,6 +22,21 @@ export async function POST(req: NextRequest) {
       },
       { status: 503 }
     );
+  }
+
+  const secret = req.headers.get('x-admin-secret');
+  if (!adminApiSecretOk(secret)) {
+    return NextResponse.json({ ok: false, error: 'Invalid admin secret' }, { status: 401 });
+  }
+
+  // Prefer authenticated admin; if token present but invalid, reject when secret is required
+  const authHeader = req.headers.get('authorization') || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (token) {
+    const who = await adminVerifyIdToken(token);
+    if (!who) {
+      return NextResponse.json({ ok: false, error: 'Invalid or expired ID token' }, { status: 401 });
+    }
   }
 
   let body: { badgeId?: string; email?: string } = {};
@@ -52,6 +69,7 @@ export async function POST(req: NextRequest) {
       ok: result.errors.length === 0 || result.deleted.length > 0,
       ...result,
       badgeId: badge,
+      badgeEmail,
     });
   } catch (e) {
     return NextResponse.json(

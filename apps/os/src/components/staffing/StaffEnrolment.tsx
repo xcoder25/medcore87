@@ -622,30 +622,43 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
                 type="button"
                 disabled={deleteBusy}
                 onClick={() => {
-                  setDeleteBusy(true);
-                  setError('');
-                  const id = deleteTarget.badgeId;
-                  const name = deleteTarget.fullName;
-                  try {
-                    const done = deleteStaffMember(id);
-                    if (done) {
-                      setCards(listStaffCards());
-                      if (issued?.badgeId === id) setIssued(null);
-                      if (pendingConfirm?.card.badgeId === id) setPendingConfirm(null);
-                      try {
-                        pushActivity(`Deleted staff · ${id} · ${name}`);
-                      } catch { /* ignore */ }
-                      setDeleteTarget(null);
-                      setDeleteSuccess(`${name} was removed. They can no longer sign in.`);
-                      setTimeout(() => setDeleteSuccess(null), 5000);
-                    } else {
+                  void (async () => {
+                    setDeleteBusy(true);
+                    setError('');
+                    const id = deleteTarget.badgeId;
+                    const name = deleteTarget.fullName;
+                    try {
+                      const done = deleteStaffMember(id);
+                      if (done) {
+                        // Ensure Auth + revoke finish even if store async raced
+                        try {
+                          const { deleteStaffFirebaseAuth, firestoreRevokeStaff } = await import('../../lib/firebase');
+                          const fid = facility?.id || facilityId;
+                          if (fid) await firestoreRevokeStaff(fid, id, { name });
+                          await deleteStaffFirebaseAuth({ badgeId: id });
+                        } catch {
+                          /* best-effort */
+                        }
+                        setCards(listStaffCards());
+                        if (issued?.badgeId === id) setIssued(null);
+                        if (pendingConfirm?.card.badgeId === id) setPendingConfirm(null);
+                        try {
+                          pushActivity(`Deleted staff · ${id} · ${name}`);
+                        } catch { /* ignore */ }
+                        setDeleteTarget(null);
+                        setDeleteSuccess(
+                          `${name} was removed. Card deleted, Auth removed, and they cannot sign in.`
+                        );
+                        setTimeout(() => setDeleteSuccess(null), 6000);
+                      } else {
+                        setError('Could not remove this staff member. Please try again.');
+                      }
+                    } catch {
                       setError('Could not remove this staff member. Please try again.');
+                    } finally {
+                      setDeleteBusy(false);
                     }
-                  } catch {
-                    setError('Could not remove this staff member. Please try again.');
-                  } finally {
-                    setDeleteBusy(false);
-                  }
+                  })();
                 }}
                 style={{
                   padding: '10px 16px',

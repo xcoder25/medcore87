@@ -546,6 +546,16 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     setBusy(true);
     setError('');
     try {
+      // Capture email before local wipe (for Auth delete)
+      let workEmail = '';
+      try {
+        const hit = records.find((r) => String(r.id || '').toUpperCase() === id);
+        workEmail = String((hit as { email?: string })?.email || '');
+      } catch {
+        /* ignore */
+      }
+
+      // Local card + registry + access + revoke flag (also kicks live sessions via revokedStaff)
       deleteStaffMember(id);
       const next = getAccessRecords().filter((r) => String(r.id).toUpperCase() !== id);
       setAccessRecords(next);
@@ -556,8 +566,27 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       }
       if (confirmInfo?.badgeId?.toUpperCase() === id) setConfirmInfo(null);
 
+      let authNote = '';
       try {
-        const { firestoreDeleteStaffMember, firestorePushStaffDirectory } = await import('../../lib/firebase');
+        const {
+          firestoreDeleteStaffMember,
+          firestorePushStaffDirectory,
+          firestoreRevokeStaff,
+          deleteStaffFirebaseAuth,
+        } = await import('../../lib/firebase');
+        // Force-logout signal for any open session on other devices
+        await firestoreRevokeStaff(facilityId, id, { name, revokedBy: session?.badgeId });
+        // Admin SDK deletes Auth so re-login returns "user does not exist"
+        const authResult = await deleteStaffFirebaseAuth({
+          badgeId: id,
+          email: workEmail || undefined,
+        });
+        if (authResult.badgeDeleted || authResult.emailDeleted) {
+          authNote = ' Firebase Auth removed.';
+        } else {
+          authNote =
+            ' (Auth may still exist if Admin SDK is not configured on the server — set FIREBASE_SERVICE_ACCOUNT_JSON.)';
+        }
         await firestoreDeleteStaffMember(facilityId, id);
         await firestorePushStaffDirectory(facilityId, {
           staffCards: listStaffCards(),
@@ -565,13 +594,16 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         });
       } catch {
         /* cloud sync best-effort — local removal already done */
+        authNote = ' Cloud/Auth cleanup best-effort.';
       }
 
       pushActivity(`Account deleted · ${name} · ${id}`);
       emitLiveAction(`Deleted staff ${id}`, { module: 'access' });
       setDeleteTarget(null);
-      setDeleteSuccess(`${name} was removed. They can no longer sign in.`);
-      setTimeout(() => setDeleteSuccess(null), 5000);
+      setDeleteSuccess(
+        `${name} was removed (card + access). They are logged out and cannot sign in.${authNote}`
+      );
+      setTimeout(() => setDeleteSuccess(null), 8000);
     } catch {
       setError('Could not remove this staff member. Please try again.');
     } finally {

@@ -734,20 +734,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           return;
         }
       } else {
-        // PIN matches local — try Firebase quickly, then fall back to local session
+        // PIN matches local — require Firebase Auth when online (do not recreate deleted accounts)
         try {
           if (!fbUser) {
             try {
               fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
-            } catch {
-              try {
-                await withTimeout(firebaseEnsureBadgeAccount(profile.badgeId, pinNorm), 6000);
-                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
-              } catch {
-                fbUser = null; // valid local PIN — proceed without cloud Auth
+            } catch (authMiss: unknown) {
+              if (online) {
+                const { classifyAuthError } = await import('../../lib/firebase');
+                setError(
+                  classifyAuthError(authMiss, { accountKnown: false, mode: 'badge' }) ||
+                    'This account does not exist. The Staff ID was not found or was removed by an administrator.'
+                );
+                setLoading(false);
+                return;
               }
+              fbUser = null; // offline — local PIN only
             }
-          }
         } catch (authErr: unknown) {
           // Offline / Auth disabled / timeout: still allow local PIN session
           console.warn('[auth] firebase badge optional', authErr);
