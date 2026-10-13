@@ -751,9 +751,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               }
               fbUser = null; // offline — local PIN only
             }
+          }
         } catch (authErr: unknown) {
           // Offline / Auth disabled / timeout: still allow local PIN session
           console.warn('[auth] firebase badge optional', authErr);
+          if (online) {
+            const { classifyAuthError } = await import('../../lib/firebase');
+            setError(
+              classifyAuthError(authErr, { accountKnown: false, mode: 'badge' }) ||
+                'This account does not exist. The Staff ID was not found or was removed by an administrator.'
+            );
+            setLoading(false);
+            return;
+          }
           const sessionLocal: UserSession = {
             id: profile.badgeId,
             badgeId: profile.badgeId,
