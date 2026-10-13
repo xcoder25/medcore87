@@ -280,7 +280,7 @@ export function syncAccessRosterFromSources(facilityId: string): {
         clearanceLevel: c.clearanceLevel,
         status: c.status === 'ACTIVE' ? 'active' : String(c.status || 'active').toLowerCase(),
         email: (c as { email?: string }).email,
-        permissions: c.permissions,
+        permissions: (c as { permissions?: string[] }).permissions,
         facilityId: c.facilityId || fid,
         hospitalId: c.facilityId || fid,
       });
@@ -403,8 +403,8 @@ export function purgeOrphanAndDuplicateIdCards(facilityId: string): {
   for (const [, arr] of groups) {
     if (arr.length < 2) continue;
     arr.sort((a, b) => {
-      const ta = Date.parse(String(a.issuedAt || a.createdAt || 0)) || 0;
-      const tb = Date.parse(String(b.issuedAt || b.createdAt || 0)) || 0;
+      const ta = Date.parse(String((a as { issuedAt?: string; createdAt?: string }).issuedAt || (a as { createdAt?: string }).createdAt || 0)) || 0;
+      const tb = Date.parse(String((b as { issuedAt?: string; createdAt?: string }).issuedAt || (b as { createdAt?: string }).createdAt || 0)) || 0;
       if (tb !== ta) return tb - ta;
       return String(b.badgeId).localeCompare(String(a.badgeId));
     });
