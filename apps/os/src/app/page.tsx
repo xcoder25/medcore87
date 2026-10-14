@@ -1049,6 +1049,7 @@ export default function OSPage() {
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
   const [permTick, setPermTick] = useState(0);
   const [showFullDirectory, setShowFullDirectory] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
   const [showCredModal, setShowCredModal] = useState(false);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
