@@ -111,7 +111,7 @@ import {
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck,
   Search, X, LayoutDashboard, MapPin, Ticket, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
-  Command, CornerDownLeft, IdCard,
+  Command, CornerDownLeft, IdCard, Key,
 } from 'lucide-react';
 
 export type ModuleKey =
