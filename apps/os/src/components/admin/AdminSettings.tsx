@@ -19,6 +19,7 @@ import {
   Database,
   CheckCircle2,
   Key,
+  Bell,
 } from 'lucide-react';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 import {
