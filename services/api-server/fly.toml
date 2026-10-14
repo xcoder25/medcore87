@@ -1,5 +1,5 @@
 # Fly.io configuration for MedCore Central API & WebSocket Server
-app = "medcore87-api"
+app = "medcore87"
 primary_region = "iad"
 
 [build]
