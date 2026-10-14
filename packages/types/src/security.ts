@@ -89,10 +89,10 @@ export interface CommissionerSecurityDossier {
     zeroTrustVerified: boolean;
   };
   cryptographySpecs: {
-    atRest: 'AES-256-GCM Field-Level Envelope Encryption';
-    inTransit: 'TLS 1.3 Strict / Perfect Forward Secrecy';
-    auditLedger: 'SHA-256 Chained Hash Immutable Ledger';
-    tokenSigning: 'RS256 Asymmetric JWT with Fine-Grained Scopes';
+    atRest: string;
+    inTransit: string;
+    auditLedger: string;
+    tokenSigning: string;
   };
   auditIntegrity: {
     totalBlocks: number;

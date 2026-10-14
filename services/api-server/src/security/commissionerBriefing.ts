@@ -21,8 +21,8 @@ export class CommissionerSecurityService {
       cryptographySpecs: {
         atRest: 'AES-256-GCM Field-Level Envelope Encryption',
         inTransit: 'TLS 1.3 Strict / Perfect Forward Secrecy',
-        auditLedger: 'SHA-256 Chained Hash Blocks / HMAC-SHA256 Block Signatures',
-        tokenSigning: 'RS256 Asymmetric JWT (RSA-2048 PKCS1v15-SHA256) with Fine-Grained ABAC Scopes',
+        auditLedger: 'SHA-256 Chained Hash Immutable Ledger',
+        tokenSigning: 'RS256 Asymmetric JWT with Fine-Grained Scopes',
       },
       auditIntegrity: {
         totalBlocks: chainVerification.totalBlocks,

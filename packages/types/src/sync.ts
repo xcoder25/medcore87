@@ -40,6 +40,7 @@ export type SyncTopic =
   | 'HMO_PREAUTH_REJECTED'
   // ── Facilities ───────────────────────────────
   | 'FACILITY_CREDENTIALS_ISSUED'
+  | 'FACILITY_DATA_SYNC'
   // ── Security ─────────────────────────────────
   | 'BREAK_GLASS_TRIGGERED'
   | 'EPIDEMIC_SURGE_ALERT'
