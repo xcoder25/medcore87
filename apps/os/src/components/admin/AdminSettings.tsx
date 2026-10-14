@@ -63,6 +63,7 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
   const [lanOk, setLanOk] = useState<boolean | null>(null);
   const [probing, setProbing] = useState(false);
   const [pilotRunning, setPilotRunning] = useState(false);
+  const [pilotResult, setPilotResult] = useState<PilotRunResult | null>(null);
   const [showCredModal, setShowCredModal] = useState(false);
   const [online, setOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
