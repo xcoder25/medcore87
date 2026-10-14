@@ -14,6 +14,7 @@ import {
   subscribeAdminSync,
   pushActivity,
   resetAllPilotData,
+  clearFacilityAllData,
   type AccessRecord,
 } from '../../lib/adminRealtimeStore';
 import {
@@ -780,6 +781,34 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           }}
         >
           Wipe all cards (keep admin)
+        </button>
+        <button
+          type="button"
+          className="os-ghost-btn"
+          disabled={busy}
+          style={{ borderColor: '#DC2626', background: '#FEF2F2', color: '#991B1B', fontWeight: 700 }}
+          onClick={async () => {
+            if (
+              !window.confirm(
+                'COMPLETE FACILITY RESET (' + facilityId + ')?\n\nThis wipes ALL Staff ID cards, Staff Registry, Access Control, and Presence data from both your browser and Firestore.\n\nYou can then start a fresh test with an empty hospital.'
+              )
+            )
+              return;
+            setBusy(true);
+            setPurgeMsg('Wiping facility data (local + cloud)…');
+            try {
+              await clearFacilityAllData(facilityId, true);
+              loadRecords();
+              setPurgeMsg('Facility completely cleared! All staff and ID cards removed.');
+              window.setTimeout(() => setPurgeMsg(null), 8000);
+            } catch (e) {
+              setError((e as Error)?.message || 'Reset failed.');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Reset Facility (Clear All)
         </button>
       </div>
       {purgeMsg && (

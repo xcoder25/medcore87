@@ -33,7 +33,7 @@ import {
 import { AKWA_IBOM_LGAS } from '../../lib/receptionConstants';
 import { getOutboxPendingCount, flushOutbox } from '../../lib/durableOutbox';
 import { probeHospitalApi } from '../../lib/hospitalSync';
-import { pushActivity, resetAllPilotData } from '../../lib/adminRealtimeStore';
+import { pushActivity, resetAllPilotData, clearFacilityAllData } from '../../lib/adminRealtimeStore';
 import { downloadFacilityBackup } from '../../lib/backupService';
 import { downloadDhis2Aggregate } from '../../lib/dhis2Export';
 import { exportAuditCsv, listAudit, appendAudit } from '../../lib/auditLogStore';
@@ -816,13 +816,13 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const ok1 = window.confirm(
-                    'Reset ALL hospital data on this browser?\n\nThis clears staff, patients, queue, payments, clinical orders, audit log, transfers, and settings for every admin page.\n\nYou will stay logged in. Download a backup first if needed.'
+                    'Reset ALL hospital data for ' + (session.facility || facilityId) + '?\n\nThis completely clears all staff cards, staff registry, patient records, clinical orders, bed boards, billing, and cloud data so you can start a completely fresh test.\n\nYou will stay logged in.'
                   );
                   if (!ok1) return;
                   const ok2 = window.confirm(
-                    'Final confirmation: wipe all module data now? This cannot be undone on this device.'
+                    'Final confirmation: wipe all facility data now from both local storage and cloud? This cannot be undone.'
                   );
                   if (!ok2) return;
                   try {
@@ -832,17 +832,17 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
                       actorBadge: session.badgeId,
                       action: 'admin_full_data_reset',
                       entity: 'facility',
-                      detail: 'All local module data wiped',
+                      detail: 'All facility module data wiped (local + cloud)',
                     });
                   } catch { /* ignore */ }
-                  resetAllPilotData({ keepSession: true });
+                  await clearFacilityAllData(facilityId, true);
                   const next = resetAdminSettings(facilityId, session.name);
                   setDraft(next);
                   setSettings(next);
                   setDirty(false);
                   setSavedAt(new Date().toLocaleTimeString('en-GB'));
                   pushActivity(`Full data reset by ${session.name || 'Admin'}`);
-                  window.setTimeout(() => window.location.reload(), 600);
+                  window.location.reload();
                 }}
                 style={{
                   padding: '10px 14px',

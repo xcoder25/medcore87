@@ -431,7 +431,7 @@ export const ALL_PILOT_KEYS = [
 ];
 
 /** Bump this to force a one-time full wipe on every browser that opens the OS. */
-export const PILOT_DATA_VERSION = 'pilot-clean-v6';
+export const PILOT_DATA_VERSION = 'pilot-clean-v7';
 
 const WIPE_PREFIXES = ['medcore_', 'ibom_', 'medcore-'];
 
@@ -501,6 +501,24 @@ export function resetAllPilotData(opts?: { keepSession?: boolean; wipeCloud?: bo
     }
   }
 
+  // Explicit safety wipes for staff cards & presence
+  for (const k of [
+    'medcore_staff_id_cards',
+    'medcore_os_staff_cards',
+    'medcore_staff_cards',
+    'medcore_os_staff_registry',
+    'medcore_staff_registry',
+    'medcore_os_access_control',
+    'medcore_os_staff_presence_v1',
+    'medcore_last_presence',
+  ]) {
+    try {
+      localStorage.removeItem(k);
+    } catch {
+      /* ignore */
+    }
+  }
+
   try {
     sessionStorage.clear();
   } catch {
@@ -534,28 +552,12 @@ export function resetAllPilotData(opts?: { keepSession?: boolean; wipeCloud?: bo
     /* ignore */
   }
 
-  // Cloud wipe — empty facility document fields so other workstations drop stale data
+  // Cloud wipe — complete Firestore cleanup of subcollections & facility document
   if (wipeCloud && facilityId && (typeof navigator === 'undefined' || navigator.onLine)) {
     void (async () => {
       try {
-        const { firestoreWriteFacility } = await import('./firebase');
-        await firestoreWriteFacility(facilityId, {
-          staffCards: [],
-          staffRegistry: [],
-          staffUpdatedAt: new Date().toISOString(),
-          medcore_os_patient_registry_v1: [],
-          medcore_os_reception_ops_v2: null,
-          medcore_os_clinical_orders_v1: [],
-          medcore_os_bed_board_v1: null,
-          medcore_os_notifications_v1: [],
-          medcore_anc_plans_v1: [],
-          medcore_os_him_v1: null,
-          medcore_os_theatre_cases_v1: [],
-          medcore_os_formulary_v1: null,
-          medcore_os_drug_stock_v1: null,
-          resetAt: new Date().toISOString(),
-          resetNote: 'Full data reset from Hospital OS',
-        });
+        const { firestoreClearFacilityAllData } = await import('./firebase');
+        await firestoreClearFacilityAllData(facilityId);
       } catch {
         /* offline / rules */
       }
@@ -567,7 +569,35 @@ export function resetAllPilotData(opts?: { keepSession?: boolean; wipeCloud?: bo
   window.dispatchEvent(new CustomEvent('medcore-reception-ops', { detail: { visits: [], appointments: [], payments: [] } }));
   window.dispatchEvent(new CustomEvent('medcore-clinical-orders', { detail: [] }));
   window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: [] }));
+  window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: [] }));
   window.dispatchEvent(new CustomEvent('medcore-patients-updated', { detail: [] }));
+  window.dispatchEvent(new CustomEvent('medcore-staff-presence', { detail: {} }));
+}
+
+/**
+ * Async complete facility data reset — awaits Firestore wipe before returning.
+ */
+export async function clearFacilityAllData(facilityId: string, keepSession = true): Promise<void> {
+  if (typeof window === 'undefined') return;
+  const fid = facilityId || activeFacilityId || 'IGH-EKT';
+
+  // 1. Wipe local data immediately
+  resetAllPilotData({ keepSession, wipeCloud: false, facilityId: fid });
+
+  // 2. Await cloud wipe
+  try {
+    const { firestoreClearFacilityAllData } = await import('./firebase');
+    await firestoreClearFacilityAllData(fid);
+  } catch (e) {
+    console.warn('[clearFacilityAllData] cloud wipe error', e);
+  }
+
+  // 3. Mark last cloud reset timestamp
+  try {
+    localStorage.setItem('medcore_last_cloud_reset_' + fid, new Date().toISOString());
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Run once per browser when pilot version changes. */

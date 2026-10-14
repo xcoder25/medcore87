@@ -857,8 +857,16 @@ export function applyCloudStaffDirectory(payload: {
   staffRegistry?: unknown[];
   /** When set, only replace cards/registry rows for this facility (keeps other hospitals). */
   facilityId?: string;
+  resetAt?: string;
 }): void {
   if (typeof window === 'undefined') return;
+  const fid = String(payload.facilityId || '').toUpperCase();
+  const isReset = Boolean(
+    payload.resetAt ||
+    (fid && localStorage.getItem('medcore_last_cloud_reset_' + fid)) ||
+    isStaffFlushLocked()
+  );
+
   if (isStaffFlushLocked()) {
     const cards = payload.staffCards;
     const reg = payload.staffRegistry;
@@ -870,11 +878,9 @@ export function applyCloudStaffDirectory(payload: {
   try {
     if (Array.isArray(payload.staffCards)) {
       const cards = payload.staffCards as StaffCardRecord[];
-      // Empty cloud snapshot must NOT wipe all local cards unless flush lock
-      // (switching facility / new hospital often publishes [] briefly)
+      // Empty cloud snapshot clears local cards if facility reset / flush lock
       if (cards.length === 0) {
-        if (isStaffFlushLocked()) {
-          const fid = String(payload.facilityId || '').toUpperCase();
+        if (isReset) {
           if (fid) {
             writeCards(
               readCards().filter((c) => String(c.facilityId || '').toUpperCase() !== fid)
@@ -883,7 +889,6 @@ export function applyCloudStaffDirectory(payload: {
             writeCards([]);
           }
         }
-        // else: ignore empty — protect multi-facility local cache
       } else {
         const byId = new Map<string, StaffCardRecord>();
         for (const c of cards) {
@@ -916,11 +921,9 @@ export function applyCloudStaffDirectory(payload: {
   try {
     if (Array.isArray(payload.staffRegistry)) {
       const incoming = payload.staffRegistry as any[];
-      // Empty registry: only clear under flush lock
-      if (incoming.length === 0 && !isStaffFlushLocked()) {
+      if (incoming.length === 0 && !isReset) {
         /* keep local registry */
       } else {
-        const fid = String(payload.facilityId || '').toUpperCase();
         let nextReg = incoming;
         if (fid && incoming.length >= 0) {
           try {

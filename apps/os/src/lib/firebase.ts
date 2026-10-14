@@ -22,6 +22,7 @@ import {
   onSnapshot,
   enableIndexedDbPersistence,
   deleteDoc,
+  getDocs,
   type Firestore,
 } from 'firebase/firestore';
 
@@ -1032,6 +1033,66 @@ export function firestoreSubscribeStaffCollection(
     }
   })();
   return () => unsub();
+}
+
+/**
+ * Fully wipes all Firestore cloud records for a facility:
+ * - Deletes all docs in facilities/{facilityId}/staff subcollection
+ * - Deletes all docs in facilities/{facilityId}/presence subcollection
+ * - Deletes all docs in facilities/{facilityId}/revokedStaff subcollection
+ * - Resets all fields on the facility doc (staffCards: [], staffRegistry: [], resetAt, etc.)
+ */
+export async function firestoreClearFacilityAllData(facilityId: string): Promise<boolean> {
+  try {
+    await enableFirestoreOffline();
+    const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+    const db = getFirestore();
+
+    // 1. Delete all subcollections: staff, presence, revokedStaff
+    const subcols = ['staff', 'presence', 'revokedStaff'];
+    for (const sub of subcols) {
+      try {
+        const snap = await getDocs(collection(db, 'facilities', fid, sub));
+        for (const d of snap.docs) {
+          try {
+            await deleteDoc(d.ref);
+          } catch {
+            /* ignore individual delete error */
+          }
+        }
+      } catch (err) {
+        fsWarn(`clear subcol ${sub}`, err);
+      }
+    }
+
+    // 2. Reset facility document completely
+    await setDoc(
+      doc(db, 'facilities', fid),
+      stripUndefinedDeep({
+        staffCards: [],
+        staffRegistry: [],
+        staffUpdatedAt: new Date().toISOString(),
+        resetAt: new Date().toISOString(),
+        resetNote: 'Full facility reset',
+        medcore_os_patient_registry_v1: [],
+        medcore_os_reception_ops_v2: null,
+        medcore_os_clinical_orders_v1: [],
+        medcore_os_bed_board_v1: null,
+        medcore_os_notifications_v1: [],
+        medcore_anc_plans_v1: [],
+        medcore_os_him_v1: null,
+        medcore_os_theatre_cases_v1: [],
+        medcore_os_formulary_v1: null,
+        medcore_os_drug_stock_v1: null,
+      }),
+      { merge: false }
+    );
+
+    return true;
+  } catch (e) {
+    fsWarn('clear facility all data', e);
+    return false;
+  }
 }
 
 export async function firestoreRecordLogin(
