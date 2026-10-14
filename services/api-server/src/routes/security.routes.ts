@@ -4,8 +4,30 @@ import { commissionerSecurity } from '../security/commissionerBriefing';
 import { accessControl } from '../security/accessControl';
 import { deidentifyForSurveillance, RawClinicalEvent } from '../security/deidentification';
 import { syncEventBus } from '../sync/eventBus';
+import { getPublicJwks } from '../security/crypto';
+import { getKeyInfo } from '../security/jwtKeys';
 
 const router = Router();
+
+/**
+ * GET /api/v1/security/jwks
+ * JSON Web Key Set — exposes the RS256 public key so external services (MOH portal,
+ * FHIR clients, HMO gateways) can verify MedCore-issued tokens without the private key.
+ * Mirrors the standard /.well-known/jwks.json convention (RFC 7517).
+ */
+router.get('/jwks', (_req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'public, max-age=3600'); // Keys rotate infrequently; 1-hour cache is safe
+  res.json(getPublicJwks());
+});
+
+/**
+ * GET /api/v1/security/key-info
+ * Returns non-sensitive metadata about the active signing key: algorithm, modulus size,
+ * kid, source (env/file/ephemeral), and creation timestamp. Never returns the private key.
+ */
+router.get('/key-info', (_req: Request, res: Response) => {
+  res.json({ success: true, data: getKeyInfo() });
+});
 
 /**
  * GET /api/v1/security/commissioner-briefing

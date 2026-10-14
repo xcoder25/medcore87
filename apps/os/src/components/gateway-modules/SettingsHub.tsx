@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState } from 'react';
 import { UserSession } from '../auth/AuthScreen';
@@ -6,6 +6,7 @@ import {
   Settings, User, ShieldCheck, Bell, Lock, Key,
   CheckCircle2, Building2, Save
 } from 'lucide-react';
+import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 
 interface SettingsHubProps {
   session?: UserSession | null;
@@ -14,6 +15,7 @@ interface SettingsHubProps {
 
 export const SettingsHub: React.FC<SettingsHubProps> = ({ session, onNavigate }) => {
   const [savedNotice, setSavedNotice] = useState(false);
+  const [showCredModal, setShowCredModal] = useState(false);
   const [sigPin, setSigPin] = useState('****');
   const [criticalSmsAlerts, setCriticalSmsAlerts] = useState(true);
   const [autoSaveNotes, setAutoSaveNotes] = useState(true);
@@ -90,8 +92,33 @@ export const SettingsHub: React.FC<SettingsHubProps> = ({ session, onNavigate })
       {/* Clinical Workspace Preferences Form */}
       <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ background: '#132F4C', border: '1px solid #1E446B', borderRadius: 12, padding: 20 }}>
-          <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#00B4A6', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <ShieldCheck size={16} /> Electronic Clinical Signature & Security
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#00B4A6', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <ShieldCheck size={16} /> Electronic Clinical Signature & Security
+            </div>
+            {session && (
+              <button
+                type="button"
+                onClick={() => setShowCredModal(true)}
+                style={{
+                  background: 'linear-gradient(135deg, #0284C7, #0369A1)',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '7px 14px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  boxShadow: '0 2px 8px rgba(2, 132, 199, 0.35)',
+                }}
+              >
+                <Key size={14} />
+                <span>Change Password & PIN</span>
+              </button>
+            )}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -149,6 +176,14 @@ export const SettingsHub: React.FC<SettingsHubProps> = ({ session, onNavigate })
           </button>
         </div>
       </form>
+
+      {session && (
+        <ChangeCredentialsModal
+          session={session}
+          isOpen={showCredModal}
+          onClose={() => setShowCredModal(false)}
+        />
+      )}
     </div>
   );
 };

@@ -16,10 +16,11 @@ import {
   Save,
   RefreshCw,
   Shield,
-  Bell,
   Database,
   CheckCircle2,
+  Key,
 } from 'lucide-react';
+import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 import {
   getAdminSettings,
   saveAdminSettings,
@@ -60,8 +61,8 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
   const [pending, setPending] = useState(0);
   const [lanOk, setLanOk] = useState<boolean | null>(null);
   const [probing, setProbing] = useState(false);
-  const [pilotResult, setPilotResult] = useState<PilotRunResult | null>(null);
   const [pilotRunning, setPilotRunning] = useState(false);
+  const [showCredModal, setShowCredModal] = useState(false);
   const [online, setOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
@@ -396,6 +397,54 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
                   onChange={(e) => patch({ email: e.target.value })}
                 />
               </div>
+            </div>
+          </Section>
+        </div>
+
+        <div style={{ gridColumn: '1 / -1' }}>
+          <Section icon={Key} title="Administrator Security & Login Credentials">
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 16,
+                padding: '16px 20px',
+                borderRadius: 14,
+                background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+                color: '#fff',
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: '#F8FAFC' }}>
+                  Workstation Login Password & Staff PIN
+                </div>
+                <div style={{ fontSize: 13, color: '#94A3B8', marginTop: 4 }}>
+                  Current user: <strong style={{ color: '#38BDF8' }}>{session.name}</strong> ({session.badgeId || 'Admin'}) · Change portal password or 4-8 digit quick sign-in PIN.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCredModal(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 18px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: '#0284C7',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(2, 132, 199, 0.35)',
+                }}
+              >
+                <Key size={16} />
+                <span>Change Password & PIN</span>
+              </button>
             </div>
           </Section>
         </div>
@@ -908,6 +957,12 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
           </button>
         </div>
       )}
+
+      <ChangeCredentialsModal
+        session={session}
+        isOpen={showCredModal}
+        onClose={() => setShowCredModal(false)}
+      />
     </div>
   );
 };

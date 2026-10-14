@@ -43,6 +43,7 @@ import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 // Specialty Suites
 import { AdminShell } from '../components/dashboards/AdminShell';
 import { OsAppShell } from '../components/layout/OsAppShell';
+import { ChangeCredentialsModal } from '../components/auth/ChangeCredentialsModal';
 import { ClinicalUxSuite } from '../components/clinical-ux/ClinicalUxSuite';
 import { DeviceGatewaySettings } from '../components/interop/DeviceGatewaySettings';
 import { KeyboardShortcutsHint } from '../components/layout/KeyboardShortcutsHint';
@@ -1046,9 +1047,9 @@ export default function OSPage() {
   const [currentTime, setCurrentTime] = useState('');
   const [activeEmergencyCode, setActiveEmergencyCode] = useState<string | null>(null);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
-  const [showRoleModal, setShowRoleModal] = useState(false);
   const [permTick, setPermTick] = useState(0);
   const [showFullDirectory, setShowFullDirectory] = useState(false);
+  const [showCredModal, setShowCredModal] = useState(false);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [gotoBuffer, setGotoBuffer] = useState('');
@@ -2198,7 +2199,21 @@ const handleLockScreen = () => {
               <HelpCircle size={17} strokeWidth={2} />
             </button>
 
-            <div className="os-top-hud-user">
+            <button
+              type="button"
+              className="os-top-hud-icon-btn"
+              title="Manage Credentials & Security PIN"
+              onClick={() => setShowCredModal(true)}
+              style={{ color: '#0284C7' }}
+            >
+              <Key size={15} />
+            </button>
+            <div
+              className="os-top-hud-user"
+              onClick={() => setShowCredModal(true)}
+              style={{ cursor: 'pointer' }}
+              title="Click to manage password & PIN"
+            >
               <div className="os-top-hud-avatar">
                 {(userSession?.avatarInitials ||
                   userSession?.name
@@ -2377,6 +2392,14 @@ const handleLockScreen = () => {
           </div>
         </main>
       </div>
+
+      {userSession && (
+        <ChangeCredentialsModal
+          session={userSession}
+          isOpen={showCredModal}
+          onClose={() => setShowCredModal(false)}
+        />
+      )}
     </div>
   );
 }

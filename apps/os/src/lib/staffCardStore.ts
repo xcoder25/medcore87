@@ -2014,4 +2014,85 @@ export function keepOnlyStaffNamesForFacility(
   return removed;
 }
 
+/**
+ * Update staff PIN across cards, registry, and access control.
+ */
+export function updateStaffPin(badgeId: string, newPin: string, facilityId?: string): boolean {
+  if (typeof window === 'undefined') return false;
+  const idNorm = String(badgeId || '').trim().toUpperCase();
+  if (!idNorm) return false;
+
+  let updated = false;
+
+  // 1. Update staff ID cards in storage
+  try {
+    const rawCards = localStorage.getItem(STAFF_CARD_STORAGE_KEY);
+    const cards = rawCards ? JSON.parse(rawCards) : [];
+    if (Array.isArray(cards)) {
+      const nextCards = cards.map((c: any) => {
+        if (String(c.badgeId || '').trim().toUpperCase() === idNorm) {
+          updated = true;
+          return { ...c, pin: newPin };
+        }
+        return c;
+      });
+      localStorage.setItem(STAFF_CARD_STORAGE_KEY, JSON.stringify(nextCards));
+      localStorage.setItem('medcore_os_staff_cards', JSON.stringify(nextCards));
+      localStorage.setItem('medcore_staff_cards', JSON.stringify(nextCards));
+    }
+  } catch (e) {
+    console.warn('[staffCardStore] updateStaffPin cards', e);
+  }
+
+  // 2. Update staff registry in storage
+  for (const regKey of [STAFF_REGISTRY_STORAGE_KEY, 'medcore_os_staff_registry', 'medcore_staff_registry']) {
+    try {
+      const rawReg = localStorage.getItem(regKey);
+      const reg = rawReg ? JSON.parse(rawReg) : [];
+      if (Array.isArray(reg)) {
+        const nextReg = reg.map((r: any) => {
+          if (String(r.badgeId || r.id || '').trim().toUpperCase() === idNorm) {
+            updated = true;
+            return { ...r, pin: newPin };
+          }
+          return r;
+        });
+        localStorage.setItem(regKey, JSON.stringify(nextReg));
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 3. Update access control list
+  try {
+    const accessRaw = localStorage.getItem('medcore_os_access_control');
+    const access = accessRaw ? JSON.parse(accessRaw) : [];
+    if (Array.isArray(access)) {
+      const nextAccess = access.map((a: any) => {
+        if (String(a.id || a.badgeId || '').trim().toUpperCase() === idNorm) {
+          return { ...a, pin: newPin };
+        }
+        return a;
+      });
+      localStorage.setItem('medcore_os_access_control', JSON.stringify(nextAccess));
+    }
+  } catch { /* ignore */ }
+
+  // 4. Update in Firestore if facilityId provided
+  if (facilityId) {
+    try {
+      import('./firebase').then((m) => {
+        m.firestoreUpsertStaffMember(facilityId, { badgeId: idNorm, pin: newPin });
+      }).catch(() => {});
+    } catch { /* ignore */ }
+  }
+
+  // Broadcast events
+  try {
+    window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated'));
+    window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated'));
+  } catch { /* ignore */ }
+
+  return updated;
+}
+
 

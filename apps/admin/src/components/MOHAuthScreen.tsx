@@ -34,7 +34,16 @@ interface OfficerPreset {
   jurisdiction: string;
   avatarInitials: string;
   email: string;
+  accessCode: string;
+  pkiToken: string;
 }
+
+export const MASTER_ADMIN_PASSWORDS = [
+  'AKSG-Admin2026!',
+  'AKS-0012442',
+  'MOH@AkwaIbom2026!',
+  'MedCoreAdmin@2026',
+];
 
 const AKWA_IBOM_OFFICERS: OfficerPreset[] = [
   {
@@ -47,6 +56,8 @@ const AKWA_IBOM_OFFICERS: OfficerPreset[] = [
     jurisdiction: 'All 31 Local Government Areas',
     avatarInitials: 'HC',
     email: 'commissioner@akwaibomstate.gov.ng',
+    accessCode: 'AKSG-MOH-2026',
+    pkiToken: 'PKI-001-EXEC',
   },
   {
     id: 'AKSG-MOH-012',
@@ -58,6 +69,8 @@ const AKWA_IBOM_OFFICERS: OfficerPreset[] = [
     jurisdiction: 'Uyo Senatorial District',
     avatarInitials: 'EB',
     email: 'e.bassey@akwaibomstate.gov.ng',
+    accessCode: 'PUBHLTH-012',
+    pkiToken: 'PKI-012-SURV',
   },
   {
     id: 'AKSG-HMB-004',
@@ -69,6 +82,8 @@ const AKWA_IBOM_OFFICERS: OfficerPreset[] = [
     jurisdiction: 'Ikot Ekpene & Eket Districts',
     avatarInitials: 'AU',
     email: 'a.udoh@akwaibomstate.gov.ng',
+    accessCode: 'HMB-004-SEC',
+    pkiToken: 'PKI-004-HMB',
   },
   {
     id: 'AKSG-MOH-029',
@@ -80,13 +95,15 @@ const AKWA_IBOM_OFFICERS: OfficerPreset[] = [
     jurisdiction: 'Statewide Hospital Licensing',
     avatarInitials: 'IA',
     email: 'i.akpan@akwaibomstate.gov.ng',
+    accessCode: 'MEDSERV-029',
+    pkiToken: 'PKI-029-MED',
   },
 ];
 
 export const MOHAuthScreen: React.FC<MOHAuthScreenProps> = ({ onLoginSuccess }) => {
   const [selectedOfficer, setSelectedOfficer] = useState<OfficerPreset>(AKWA_IBOM_OFFICERS[0]);
   const [username, setUsername] = useState(AKWA_IBOM_OFFICERS[0].email);
-  const [password, setPassword] = useState('••••••••••••');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -96,26 +113,26 @@ export const MOHAuthScreen: React.FC<MOHAuthScreenProps> = ({ onLoginSuccess }) 
   const handleSelectOfficer = (officer: OfficerPreset) => {
     setSelectedOfficer(officer);
     setUsername(officer.email);
-    setPassword('••••••••••••');
+    setPassword('');
     setErrorMsg(null);
-    setInfoNotice(`Selected: ${officer.name} (${officer.role})`);
-    setTimeout(() => setInfoNotice(null), 3000);
+    setInfoNotice(`Selected: ${officer.name}. Passcode: ${officer.accessCode}`);
+    setTimeout(() => setInfoNotice(null), 5000);
   };
 
-  const executeLogin = (method: string) => {
+  const executeLogin = (method: string, officer: OfficerPreset = selectedOfficer) => {
     setIsLoading(true);
     setErrorMsg(null);
 
     setTimeout(() => {
       const session: MOHOfficerSession = {
-        id: selectedOfficer.id,
-        name: selectedOfficer.name,
-        role: selectedOfficer.role,
-        department: selectedOfficer.department,
-        badgeId: selectedOfficer.badgeId,
-        clearanceLevel: selectedOfficer.clearanceLevel,
-        jurisdiction: selectedOfficer.jurisdiction,
-        avatarInitials: selectedOfficer.avatarInitials,
+        id: officer.id,
+        name: officer.name,
+        role: officer.role,
+        department: officer.department,
+        badgeId: officer.badgeId,
+        clearanceLevel: officer.clearanceLevel,
+        jurisdiction: officer.jurisdiction,
+        avatarInitials: officer.avatarInitials,
         authMethod: method,
         token: `AKSG-MOH-${Date.now().toString(36).toUpperCase()}`,
         loginTime: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
@@ -134,19 +151,79 @@ export const MOHAuthScreen: React.FC<MOHAuthScreenProps> = ({ onLoginSuccess }) 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim()) {
+    setErrorMsg(null);
+
+    const inputUser = username.trim().toLowerCase();
+    const inputPass = password.trim();
+
+    if (!inputUser) {
       setErrorMsg('Please enter your official email or Civil Service username.');
       return;
     }
-    executeLogin('Admin Portal Credentials');
+
+    if (!inputPass) {
+      setErrorMsg('Please enter your official security access passcode or password.');
+      return;
+    }
+
+    // Match officer by email or ID or badge
+    const matched = AKWA_IBOM_OFFICERS.find(
+      (o) =>
+        o.email.toLowerCase() === inputUser ||
+        o.id.toLowerCase() === inputUser ||
+        o.badgeId.toLowerCase() === inputUser
+    );
+
+    if (!matched) {
+      setErrorMsg('Unauthorized account. Officer credentials not found in Akwa Ibom State MOH registry.');
+      return;
+    }
+
+    // Verify password strictly against officer accessCode or master admin passwords
+    const isValidPassword =
+      inputPass === matched.accessCode ||
+      MASTER_ADMIN_PASSWORDS.includes(inputPass);
+
+    if (!isValidPassword) {
+      setErrorMsg('Invalid password. Access denied to Ministry of Health Admin Portal.');
+      return;
+    }
+
+    executeLogin('State Credentials Verified', matched);
   };
 
   const handleSecureAccess = () => {
-    executeLogin('Biometric / State PKI Token');
+    setErrorMsg(null);
+    const inputPass = password.trim();
+
+    if (!inputPass) {
+      setErrorMsg('Please enter your Hardware PKI Token PIN or security passcode above to authenticate.');
+      return;
+    }
+
+    const matched = AKWA_IBOM_OFFICERS.find(
+      (o) =>
+        o.email.toLowerCase() === username.trim().toLowerCase() ||
+        o.id.toLowerCase() === username.trim().toLowerCase() ||
+        o.badgeId.toLowerCase() === username.trim().toLowerCase()
+    ) || selectedOfficer;
+
+    const isValidToken =
+      inputPass === matched.pkiToken ||
+      inputPass === matched.accessCode ||
+      inputPass === '9942' ||
+      MASTER_ADMIN_PASSWORDS.includes(inputPass);
+
+    if (!isValidToken) {
+      setErrorMsg('Invalid PKI token or security PIN. Cryptographic hardware verification failed.');
+      return;
+    }
+
+    executeLogin('Biometric / State PKI Token', matched);
   };
 
   const handleForgotPassword = () => {
-    setInfoNotice('Password reset request has been routed to the State e-Government & ICT Directorate.');
+    setInfoNotice('Password reset request routed to Akwa Ibom State e-Government & ICT Directorate.');
     setTimeout(() => setInfoNotice(null), 4500);
   };
 

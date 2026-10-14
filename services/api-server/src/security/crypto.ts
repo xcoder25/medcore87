@@ -1,11 +1,17 @@
 import crypto from 'crypto';
 import { EncryptedPayload } from '@medcore/types';
-export { EncryptedPayload };
+import { getJwtKeyPair, getPublicJwks } from './jwtKeys';
+export { EncryptedPayload, getPublicJwks };
 
-// System master encryption key (derived from secure environment or standard fallback)
+// ─── AES-256-GCM Master Key ───────────────────────────────────────────────────
+// Derived from a secure environment seed. In production, set MEDCORE_ENCRYPTION_MASTER_KEY
+// to a cryptographically random 256-bit (32-byte) base64 or hex string.
 const SYSTEM_KEY_SEED = process.env.MEDCORE_ENCRYPTION_MASTER_KEY || 'medcore-m87-enterprise-security-2026-master-key-seed-009';
 const MASTER_KEY = crypto.createHash('sha256').update(SYSTEM_KEY_SEED).digest();
-const JWT_SECRET = process.env.MEDCORE_JWT_SECRET || 'medcore-jwt-secret-secure-commissioner-audit-bus-2026';
+
+// ─── HMAC-SHA256 Key for Audit Block Signatures ──────────────────────────────
+// This is separate from JWT signing — used exclusively for the audit ledger chain.
+const AUDIT_HMAC_SECRET = process.env.MEDCORE_AUDIT_HMAC_SECRET || 'medcore-audit-hmac-secret-secure-ledger-2026-m87';
 
 /**
  * AES-256-GCM Field-Level Authenticated Encryption
@@ -70,18 +76,25 @@ export function computeBlockHash(
 }
 
 /**
- * Signs data using HMAC-SHA256 with government/MOH security signature
+ * Signs an audit block hash with HMAC-SHA256.
+ * The audit ledger uses a separate HMAC key (not the JWT RSA private key) so
+ * that signing is deterministic and the ledger can be batch-verified offline
+ * without the RSA private key.
  */
 export function signAuditRecord(hash: string): string {
-  return crypto.createHmac('sha256', JWT_SECRET).update(hash).digest('hex');
+  return crypto.createHmac('sha256', AUDIT_HMAC_SECRET).update(hash).digest('hex');
 }
 
 /**
- * Verifies signature
+ * Verifies an audit block signature using timing-safe comparison.
  */
 export function verifyAuditSignature(hash: string, signature: string): boolean {
   const expected = signAuditRecord(hash);
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  // Both strings are 64 hex chars (HMAC-SHA256) — same length, safe to compare
+  return crypto.timingSafeEqual(
+    Buffer.from(signature, 'hex'),
+    Buffer.from(expected, 'hex')
+  );
 }
 
 /**
@@ -105,6 +118,15 @@ export function maskMRN(mrn: string): string {
 /**
  * Built-in Scoped JWT Token Issuer and Verifier
  */
+// ─── RS256 JWT — RFC 7518 §3.3 ───────────────────────────────────────────────
+//
+// Algorithm : RS256 (RSASSA-PKCS1-v1_5 with SHA-256)
+// Key size  : RSA-2048 minimum (RSA-4096 for classified data)
+// Key source: getJwtKeyPair() → env vars → PEM files → ephemeral (dev only)
+//
+// The JWT header includes a `kid` (Key ID) that matches the JWKS endpoint so
+// client-side verifiers can select the correct public key during key rotation.
+
 export interface TokenPayload {
   userId: string;
   name: string;
@@ -112,14 +134,25 @@ export interface TokenPayload {
   role: string;
   facilityId: string;
   scopes: string[];
+  /** Issued-at (seconds since epoch) */
   iat: number;
+  /** Expiry (seconds since epoch) */
   exp: number;
 }
 
+/**
+ * Issues a cryptographically signed RS256 JWT.
+ *
+ * @param user       - Principal identity and access scopes
+ * @param expiresInSeconds - Token TTL (default 24 h; use shorter for sensitive ops)
+ * @returns Compact serialized JWT: base64url(header).base64url(payload).base64url(sig)
+ */
 export function createToken(
   user: { id: string; name: string; email: string; role: string; facilityId: string; scopes: string[] },
   expiresInSeconds = 3600 * 24
 ): string {
+  const { privateKey, kid } = getJwtKeyPair();
+
   const now = Math.floor(Date.now() / 1000);
   const payload: TokenPayload = {
     userId: user.id,
@@ -132,29 +165,62 @@ export function createToken(
     exp: now + expiresInSeconds,
   };
 
-  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const signature = crypto
-    .createHmac('sha256', JWT_SECRET)
-    .update(`${header}.${body}`)
-    .digest('base64url');
+  // RFC 7515 §3 — header MUST include alg; kid enables JWKS key rotation
+  const header = Buffer
+    .from(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid }))
+    .toString('base64url');
+  const body = Buffer
+    .from(JSON.stringify(payload))
+    .toString('base64url');
 
-  return `${header}.${body}.${signature}`;
+  const signingInput = `${header}.${body}`;
+
+  // RS256 = RSASSA-PKCS1-v1_5 with SHA-256 (RFC 7518 §3.3)
+  const signature = crypto
+    .sign('SHA256', Buffer.from(signingInput), privateKey)
+    .toString('base64url');
+
+  return `${signingInput}.${signature}`;
 }
 
+/**
+ * Verifies an RS256 JWT and returns its payload, or null if invalid / expired.
+ *
+ * Verification steps:
+ *   1. Structural check — exactly 3 segments
+ *   2. Algorithm guard — header `alg` MUST be `RS256` (prevents alg-confusion attack)
+ *   3. RSA signature verification against the current public key
+ *   4. Expiry check
+ */
 export function verifyToken(token: string): TokenPayload | null {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
-    const [header, body, signature] = parts;
+    const [rawHeader, body, signature] = parts;
 
-    const expectedSig = crypto
-      .createHmac('sha256', JWT_SECRET)
-      .update(`${header}.${body}`)
-      .digest('base64url');
+    // 1. Decode and validate header claims
+    const header = JSON.parse(Buffer.from(rawHeader, 'base64url').toString('utf8')) as {
+      alg?: string; typ?: string; kid?: string;
+    };
 
-    if (signature !== expectedSig) return null;
+    // 2. Algorithm confusion guard — reject anything that is not RS256
+    if (header.alg !== 'RS256') {
+      console.warn(`[verifyToken] Rejected token with unexpected alg: ${header.alg}`);
+      return null;
+    }
 
+    // 3. RSA-PKCS1v15-SHA256 signature verification
+    const { publicKey } = getJwtKeyPair();
+    const signingInput = `${rawHeader}.${body}`;
+    const isValid = crypto.verify(
+      'SHA256',
+      Buffer.from(signingInput),
+      publicKey,
+      Buffer.from(signature, 'base64url')
+    );
+    if (!isValid) return null;
+
+    // 4. Decode payload and check expiry
     const payload: TokenPayload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
     const now = Math.floor(Date.now() / 1000);
     if (payload.exp < now) return null;

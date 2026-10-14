@@ -8,8 +8,9 @@ import type { UserSession } from '../auth/AuthScreen';
 import { AdminWorkspace } from './AdminWorkspace';
 import {
   LayoutDashboard, Users, Building2, Activity, BedDouble, RefreshCw, PhoneCall,
-  Lock, Shield, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus, Settings,
+  Lock, Shield, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus, Settings, Key,
 } from 'lucide-react';
+import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 
 // Lazy module map — same keys as page.tsx
 import { HospitalStaffTransfer } from '../staffing/HospitalStaffTransfer';
@@ -127,6 +128,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [online, setOnline] = useState(true);
   const [hospitalShare, setHospitalShare] = useState<'local' | 'lan' | 'cloud' | 'probing'>('probing');
   const [pendingSync, setPendingSync] = useState(0);
+  const [showCredModal, setShowCredModal] = useState(false);
   const { connected } = useRealtimeEvents({ app: 'MEDCORE_OS_ADMIN', facilityId: session.hospitalId });
 
   const goModule = (key: AdminModule) => {
@@ -370,7 +372,21 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
               <kbd>⌘K</kbd>
             </div>
             <NotificationBell app="MEDCORE_OS_ADMIN" facilityId={session.facility} />
-            <div className="admin-shell-profile">
+            <button
+              type="button"
+              className="admin-shell-icon-btn"
+              onClick={() => setShowCredModal(true)}
+              title="Manage Security Credentials & PIN"
+              style={{ color: '#0284C7' }}
+            >
+              <Key size={16} />
+            </button>
+            <div
+              className="admin-shell-profile"
+              onClick={() => setShowCredModal(true)}
+              style={{ cursor: 'pointer' }}
+              title="Click to manage password & PIN"
+            >
               <div className="admin-shell-avatar sm">{initials}</div>
               <span>Admin</span>
             </div>
@@ -382,6 +398,12 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         <main className={`admin-shell-content${moduleLoading ? ' is-module-loading' : ''}`}>
           {moduleLoading ? <ModulePageLoader label="Opening workspace…" /> : body}
         </main>
+
+        <ChangeCredentialsModal
+          session={session}
+          isOpen={showCredModal}
+          onClose={() => setShowCredModal(false)}
+        />
       </div>
     </div>
   );

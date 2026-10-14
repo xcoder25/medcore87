@@ -49,7 +49,13 @@ const FACILITIES = [
 router.post('/login', (req: Request, res: Response) => {
   const { email, password } = req.body;
 
-  const user = SEED_USERS.find((u) => u.email === email && u.password === password) || SEED_USERS[0];
+  const user = SEED_USERS.find((u) => u.email === email && u.password === password);
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid email or password. Access denied.',
+    });
+  }
 
   const token = createToken({
     id: user.id,

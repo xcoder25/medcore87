@@ -7,10 +7,11 @@
 import React, { useEffect, useState } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
 import {
-  Building2, Search, LogOut, ChevronLeft, Lock, Brain, AlertTriangle,
+  Building2, Search, LogOut, ChevronLeft, Lock, Brain, AlertTriangle, Key,
 } from 'lucide-react';
 import NotificationBell from '../realtime/NotificationBell';
 import { GlobalPatientContextBar } from '../clinical-core/GlobalPatientContextBar';
+import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 
 export type ShellNavItem = {
   key: string;
@@ -76,6 +77,7 @@ export const OsAppShell: React.FC<Props> = ({
   const [clock, setClock] = useState(formatNow);
   const [online, setOnline] = useState(true);
   const [search, setSearch] = useState('');
+  const [showCredModal, setShowCredModal] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setClock(formatNow()), 1000);
@@ -227,7 +229,21 @@ export const OsAppShell: React.FC<Props> = ({
                 <Lock size={16} />
               </button>
             )}
-            <div className="admin-shell-profile">
+            <button
+              type="button"
+              className="admin-shell-icon-btn"
+              onClick={() => setShowCredModal(true)}
+              title="Manage Password & Security PIN"
+              style={{ color: '#0284C7' }}
+            >
+              <Key size={16} />
+            </button>
+            <div
+              className="admin-shell-profile"
+              onClick={() => setShowCredModal(true)}
+              style={{ cursor: 'pointer' }}
+              title="Click to manage password & PIN"
+            >
               <div className="admin-shell-avatar sm">{initials}</div>
               <span>{(session.role || 'Staff').split('/')[0]}</span>
             </div>
@@ -240,6 +256,12 @@ export const OsAppShell: React.FC<Props> = ({
           <GlobalPatientContextBar onOpen360={() => onNavigate('patient-360')} />
           {children}
         </></main>
+
+        <ChangeCredentialsModal
+          session={session}
+          isOpen={showCredModal}
+          onClose={() => setShowCredModal(false)}
+        />
       </div>
     </div>
   );

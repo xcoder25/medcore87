@@ -1057,3 +1057,72 @@ export async function firestoreRecordLogin(
 export function subscribeFirebaseAuth(cb: (user: User | null) => void): AuthUnsubscribe {
   return onAuthStateChanged(getFirebaseAuth(), cb);
 }
+
+/**
+ * Change the password of the currently authenticated Firebase user or email account.
+ */
+export async function firebaseChangePassword(
+  email: string,
+  currentPass: string,
+  newPass: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const {
+      getAuth,
+      signInWithEmailAndPassword,
+      updatePassword,
+      reauthenticateWithCredential,
+      EmailAuthProvider,
+    } = await import('firebase/auth');
+
+    const auth = getAuth(getFirebaseApp());
+    const currentUser = auth.currentUser;
+
+    if (currentUser && currentUser.email?.toLowerCase() === email.toLowerCase()) {
+      const cred = EmailAuthProvider.credential(email, currentPass);
+      await reauthenticateWithCredential(currentUser, cred);
+      await updatePassword(currentUser, newPass);
+      return { success: true };
+    }
+
+    // If not signed in as current user, use secondary app instance
+    const secondaryName = `PwdChange_${Date.now()}`;
+    const secondary = initializeApp(firebaseConfig, secondaryName);
+    try {
+      const { getAuth: getAuthSec } = await import('firebase/auth');
+      const secAuth = getAuthSec(secondary);
+      const userCred = await signInWithEmailAndPassword(secAuth, email.trim(), currentPass);
+      await updatePassword(userCred.user, newPass);
+      return { success: true };
+    } finally {
+      try {
+        await deleteApp(secondary);
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code || '';
+    if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+      return { success: false, error: 'Current password is incorrect.' };
+    }
+    if (code === 'auth/weak-password') {
+      return { success: false, error: 'New password is too weak. Please use at least 6 characters.' };
+    }
+    return { success: false, error: (err as Error)?.message || 'Failed to update password.' };
+  }
+}
+
+/**
+ * Change the PIN of a staff badge account in Firebase Auth.
+ */
+export async function firebaseChangeBadgePin(
+  badgeId: string,
+  currentPin: string,
+  newPin: string
+): Promise<{ success: boolean; error?: string }> {
+  const email = badgeAuthEmail(badgeId);
+  const oldNorm = normalizeStaffPin(currentPin);
+  const newNorm = normalizeStaffPin(newPin);
+  return firebaseChangePassword(email, oldNorm, newNorm);
+}

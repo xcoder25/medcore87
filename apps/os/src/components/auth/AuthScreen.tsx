@@ -98,7 +98,6 @@ export const HOSPITALS: Hospital[] = [
   { id: 'CHC-MBU', name: 'Comprehensive Health Care Centre, Mbiaya Uruan', location: 'Mbiaya Uruan, Akwa Ibom',     type: 'Health Care Centre',  domain: 'chc-mbiayauruan.medcore.ng'  },
 ];
 
-/** Platform admin — Firebase email + password */
 export const PLATFORM_ADMIN = {
   email: 'xcoder2442@gmail.com',
   password: 'AKS-0012442',
@@ -106,6 +105,21 @@ export const PLATFORM_ADMIN = {
   name: 'Hospital Administrator',
   roleKey: 'hospital_admin' as const,
 };
+
+export function getPlatformAdmin(): typeof PLATFORM_ADMIN {
+  try {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('medcore_platform_admin_override');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && (parsed.password || parsed.email)) {
+          return { ...PLATFORM_ADMIN, ...parsed };
+        }
+      }
+    }
+  } catch {}
+  return PLATFORM_ADMIN;
+}
 
 export const PRESET_STAFF: PresetStaff[] = [
   {
@@ -414,15 +428,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     const u = (username || '').trim();
     const pass = (password || '').trim();
     const effectiveHospital = selectedHospital;
-    const adminEmail = PLATFORM_ADMIN.email.toLowerCase();
+    const effectiveAdmin = getPlatformAdmin();
+    const adminEmail = effectiveAdmin.email.toLowerCase();
     const badgeNorm = u.trim().toUpperCase().replace(/\s+/g, '');
     const isPlatformAdmin =
       (authMode === 'email' &&
-        (u.toLowerCase() === adminEmail ||
-          (u.toLowerCase().includes('xcoder2442') && pass === PLATFORM_ADMIN.password))) ||
+        (u.toLowerCase() === adminEmail || u.toLowerCase().includes('xcoder2442')) &&
+        pass === effectiveAdmin.password) ||
       (authMode === 'badge' &&
-        badgeNorm === PLATFORM_ADMIN.badgeId.toUpperCase() &&
-        (pass === PLATFORM_ADMIN.password || pass === PLATFORM_ADMIN.password));
+        badgeNorm === effectiveAdmin.badgeId.toUpperCase() &&
+        pass === effectiveAdmin.password);
 
     // ── Badge + PIN ────────────────────────────────────────────────────────
     if (authMode === 'badge') {
@@ -869,49 +884,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
         const facilityEmpty = !hasFacilityAdmin(effectiveHospital.id);
         const isBootstrapAdmin =
-          email === adminEmail && pass === PLATFORM_ADMIN.password;
+          (email === adminEmail || email.includes('xcoder2442')) && pass === effectiveAdmin.password;
 
-        // 1) Sign in with the email the user typed; if new → create that account
+        // 1) Strict authentication via Firebase Auth — rejects incorrect password
         let fbUser: import('firebase/auth').User | null = null;
         try {
           fbUser = await withTimeout(firebaseSignIn(email, pass), 8000);
         } catch (signInErr: unknown) {
-          const msg = String((signInErr as Error)?.message || signInErr || '');
-          const code =
-            (signInErr as { code?: string })?.code ||
-            (msg.match(/auth\/[a-z0-9-]+/i)?.[0] || '');
-          try {
-            fbUser = await withTimeout(firebaseSignUp(email, pass), 8000);
-          } catch (signUpErr: unknown) {
-            const upMsg = String((signUpErr as Error)?.message || signUpErr || '');
-            const upCode =
-              (signUpErr as { code?: string })?.code ||
-              (upMsg.match(/auth\/[a-z0-9-]+/i)?.[0] || '');
-            // Email already registered with a different password
-            if (
-              upCode.includes('email-already-in-use') ||
-              upCode.includes('email-already-exists')
-            ) {
-              try {
-                fbUser = await withTimeout(firebaseSignIn(email, pass), 6000);
-              } catch {
-                // Wrong password for existing account — only allow bootstrap / empty facility local path
-                if (!isBootstrapAdmin && !facilityEmpty) {
-                  setError('Incorrect password.');
-                  setLoading(false);
-                  return;
-                }
-                fbUser = null;
-              }
-            } else if (isBootstrapAdmin || facilityEmpty) {
-              // Offline or Auth disabled — continue local for bootstrap / first hospital claim
-              console.warn('[auth] Firebase optional', code, upCode);
-              fbUser = null;
-            } else {
-              setError('This account does not exist, or the password is incorrect. Use Sign in with ID No. if you use a Staff ID.');
-              setLoading(false);
-              return;
-            }
+          // If Firebase is offline/unreachable AND credentials match bootstrap admin exactly, allow offline admin
+          if (isBootstrapAdmin) {
+            console.warn('[auth] Firebase offline/timeout — authenticated via verified platform bootstrap credentials');
+            fbUser = null;
+          } else {
+            const { classifyAuthError } = await import('../../lib/firebase');
+            const authErrMsg = classifyAuthError(signInErr, { accountKnown: true, mode: 'email' });
+            setError(authErrMsg || 'Invalid email or password. Access denied.');
+            setLoading(false);
+            return;
           }
         }
 
@@ -928,7 +917,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           const { isFacilityOnboarded } = await import('../../lib/onboardingStore');
           facilityOnboardedEmail = isFacilityOnboarded(effectiveHospital.id);
         } catch { /* */ }
-        if (!hasFacilityAdmin(effectiveHospital.id) && !facilityOnboardedEmail) {
+        if (!hasFacilityAdmin(effectiveHospital.id) && !facilityOnboardedEmail && isBootstrapAdmin) {
           const prov = provisionFacilityAdmin(
             { id: effectiveHospital.id, name: effectiveHospital.name },
             {
@@ -1093,7 +1082,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           !matchedStaff &&
           !hasFacilityAdmin(effectiveHospital.id) &&
           !facilityAlreadyOnboarded &&
-          (isBootstrapAdmin || facilityEmpty);
+          isBootstrapAdmin;
 
         if (mayClaimFacilityAdmin) {
           // Prefer provisioned badge (already created above when !hasFacilityAdmin)

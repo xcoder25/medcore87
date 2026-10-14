@@ -234,9 +234,8 @@ const DEFAULT_COMMISSIONER_SESSION: MOHOfficerSession = {
 };
 
 export default function MOHAdminPage() {
-  // On reload: always show splash first for 5s, then auth screen (no automatic login)
   const [appState, setAppState] = useState<'splash' | 'auth' | 'app'>('splash');
-  const [officerSession, setOfficerSession] = useState<MOHOfficerSession | null>(DEFAULT_COMMISSIONER_SESSION);
+  const [officerSession, setOfficerSession] = useState<MOHOfficerSession | null>(null);
   const [isLocked, setIsLocked] = useState(false);
   const [unlockPin, setUnlockPin] = useState('');
 
@@ -499,8 +498,21 @@ export default function MOHAdminPage() {
 
 
   const handleSplashComplete = () => {
-    setAppState('app');
-    if (!officerSession) setOfficerSession(DEFAULT_COMMISSIONER_SESSION);
+    try {
+      const saved = localStorage.getItem('medcore_moh_session');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.id) {
+          setOfficerSession(parsed);
+          setAppState('app');
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    setOfficerSession(null);
+    setAppState('auth');
   };
 
   const handleLoginSuccess = (session: MOHOfficerSession) => {
@@ -593,7 +605,7 @@ export default function MOHAdminPage() {
     return <MOHSplashScreen onComplete={handleSplashComplete} />;
   }
 
-  if (appState === 'auth') {
+  if (appState === 'auth' || !officerSession) {
     return <MOHAuthScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
