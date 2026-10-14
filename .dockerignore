@@ -1,0 +1,17 @@
+# Docker ignore for MedCore API Server deployment
+node_modules
+**/node_modules
+.git
+.github
+.next
+**/dist
+apps/care
+apps/clinic
+apps/admin
+apps/os
+docs
+scratch
+*.log
+*.tsbuildinfo
+.env
+.env.local
