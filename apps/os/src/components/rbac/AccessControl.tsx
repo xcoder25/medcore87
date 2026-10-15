@@ -51,8 +51,9 @@ import type { UserSession } from '../auth/AuthScreen';
 import { HOSPITALS } from '../auth/AuthScreen';
 import { getCustomRoles } from '../../lib/rolePermissionsStore';
 import {
-  Shield, Plus, Search, CheckCircle2, XCircle, Lock, UserPlus, IdCard, Trash2,
+  Shield, Plus, Search, CheckCircle2, XCircle, Lock, UserPlus, IdCard, Trash2, Layers, Pencil, Save, X as XIcon,
 } from 'lucide-react';
+import { DuplicateCardModal } from '../staffing/DuplicateCardModal';
 
 const ROLE_OPTIONS = [
   // Clinical specialties — each maps to a scoped desk
@@ -119,6 +120,18 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [purgeMsg, setPurgeMsg] = useState<string | null>(null);
+  const [showDupModal, setShowDupModal] = useState(false);
+
+  // Edit staff state
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editRoleKey, setEditRoleKey] = useState('');
+  const [editDept, setEditDept] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editStatus, setEditStatus] = useState<'active' | 'suspended' | 'pending'>('active');
+  const [editError, setEditError] = useState('');
+  const [editBusy, setEditBusy] = useState(false);
 
   const [fullName, setFullName] = useState('');
   const [roleKey, setRoleKey] = useState('');
@@ -713,119 +726,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 4 }}>
-        <button
-          type="button"
-          className="os-ghost-btn"
-          disabled={busy}
-          onClick={() => {
-            try {
-              const r = syncAccessRosterFromSources(facilityId);
-              loadRecords();
-              setPurgeMsg(`Roster synced — ${r.count} access row(s) from cards + registry.`);
-              setTimeout(() => setPurgeMsg(null), 6000);
-            } catch {
-              setError('Could not sync roster.');
-            }
-          }}
-        >
-          Sync access from ID cards
-        </button>
-        <button
-          type="button"
-          className="os-ghost-btn"
-          disabled={busy}
-          onClick={() => {
-            if (
-              !window.confirm(
-                'Remove orphan & duplicate ID cards for this facility?\n\nKeeps one card per name+role (newest). Admin cards are never removed.'
-              )
-            )
-              return;
-            setBusy(true);
-            setPurgeMsg('Purging…');
-            window.setTimeout(() => {
-              try {
-                const r = purgeOrphanAndDuplicateIdCards(facilityId);
-                setRecords(getAccessRecords());
-                setPurgeMsg(
-                  `Purged ${r.removedDuplicates.length} duplicate(s) and ${r.removedOrphans.length} orphan(s).`
-                );
-                window.setTimeout(() => setPurgeMsg(null), 8000);
-              } catch {
-                setError('Purge failed.');
-              } finally {
-                setBusy(false);
-              }
-            }, 50);
-          }}
-        >
-          Purge orphan / duplicate cards
-        </button>
-        <button
-          type="button"
-          className="os-ghost-btn"
-          disabled={busy}
-          style={{ borderColor: '#FECACA', color: '#B91C1C' }}
-          onClick={() => {
-            if (
-              !window.confirm(
-                'FLUSH ALL STAFF for this hospital?\n\nRemoves every ID card, access row, and registry entry except the administrator.\nPushes empty list to cloud.\n\nThis cannot be undone.'
-              )
-            )
-              return;
-            setBusy(true);
-            setPurgeMsg('Flushing staff…');
-            // Yield so the browser can paint before heavy localStorage work
-            window.setTimeout(() => {
-              try {
-                const n = wipeFacilityStaffExceptAdmin(facilityId);
-                loadRecords();
-                setPurgeMsg(
-                  `Flushed ${n} staff record(s). Only administrator remains. Cloud clearing in background…`
-                );
-                window.setTimeout(() => setPurgeMsg(null), 8000);
-              } catch (e) {
-                setError((e as Error)?.message || 'Wipe failed.');
-              } finally {
-                setBusy(false);
-              }
-            }, 50);
-          }}
-        >
-          Wipe all cards (keep admin)
-        </button>
-        <button
-          type="button"
-          className="os-ghost-btn"
-          disabled={busy}
-          style={{ borderColor: '#DC2626', background: '#FEF2F2', color: '#991B1B', fontWeight: 700 }}
-          onClick={async () => {
-            if (
-              !window.confirm(
-                'COMPLETE FACILITY RESET (' + facilityId + ')?\n\nThis wipes ALL Staff ID cards, Staff Registry, Access Control, and Presence data from both your browser and Firestore.\n\nYou can then start a fresh test with an empty hospital.'
-              )
-            )
-              return;
-            setBusy(true);
-            setPurgeMsg('Wiping facility data (local + cloud)…');
-            try {
-              await clearFacilityAllData(facilityId, true);
-              loadRecords();
-              setPurgeMsg('Facility completely cleared! All staff and ID cards removed.');
-              window.setTimeout(() => setPurgeMsg(null), 8000);
-            } catch (e) {
-              setError((e as Error)?.message || 'Reset failed.');
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          Reset Facility (Clear All)
-        </button>
-      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
       {purgeMsg && (
         <div
           style={{
@@ -865,12 +766,21 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         </div>
         <button
           type="button"
+          className="os-ghost-btn"
+          onClick={() => setShowDupModal(true)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          <Layers size={15} /> Find Duplicate Cards
+        </button>
+        <button
+          type="button"
           className="os-primary-btn"
           onClick={() => {
             setShowCreate((v) => !v);
             setError('');
             setIssued(null);
             setConfirmInfo(null);
+            setEditId(null);
           }}
         >
           <UserPlus size={16} /> {showCreate ? 'Close form' : 'Create staff account'}
@@ -1290,6 +1200,24 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                         <button
                           type="button"
                           className="os-ghost-btn"
+                          style={{ fontSize: 12, color: '#0052D4', borderColor: 'rgba(0,82,212,0.3)' }}
+                          onClick={() => {
+                            setSelectedId(r.id);
+                            setEditId(r.id);
+                            setEditName(r.name);
+                            setEditRoleKey((r as { roleKey?: string }).roleKey || '');
+                            setEditDept(r.department || '');
+                            setEditPhone((r as { phone?: string }).phone || '');
+                            setEditEmail((r as { email?: string }).email || '');
+                            setEditStatus(r.status as 'active' | 'suspended' | 'pending');
+                            setEditError('');
+                          }}
+                        >
+                          <Pencil size={12} /> Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="os-ghost-btn"
                           style={{ fontSize: 12, color: '#991B1B', borderColor: 'rgba(185,28,28,0.35)' }}
                           disabled={busy}
                           onClick={() => handleDelete(r.id, r.name)}
@@ -1310,11 +1238,108 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
             <div style={{ color: '#64748B', fontSize: '0.88rem', textAlign: 'center', padding: 24 }}>
               Select a staff row to view access details and ID card.
             </div>
+          ) : editId === selected.id ? (
+            /* ── Edit mode ── */
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!editName.trim()) { setEditError('Name is required.'); return; }
+                setEditBusy(true); setEditError('');
+                try {
+                  const { setAccessRecords: saveRecords, getAccessRecords: getRecs } = await import('../../lib/adminRealtimeStore');
+                  const all = getRecs();
+                  const updated = all.map((row) =>
+                    row.id === editId
+                      ? { ...row, name: editName.trim(), role: editRoleKey || row.role, department: editDept || row.department, status: editStatus, email: editEmail || undefined }
+                      : row
+                  );
+                  saveRecords(updated);
+                  setRecords(updated);
+                  setEditId(null);
+                } catch {
+                  setEditError('Save failed — please try again.');
+                } finally {
+                  setEditBusy(false);
+                }
+              }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 10, background: 'linear-gradient(135deg,#6366F1,#0052D4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Pencil size={15} color="#fff" />
+                  </div>
+                  <div style={{ fontWeight: 800, fontSize: '0.94rem', color: '#0F172A' }}>Edit staff account</div>
+                </div>
+                <button type="button" onClick={() => setEditId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', padding: 4, borderRadius: 8, display: 'flex', alignItems: 'center' }}>
+                  <XIcon size={16} />
+                </button>
+              </div>
+
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
+                Full name
+                <input className="os-search-input" style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 10px' }}
+                  value={editName} onChange={(e) => setEditName(e.target.value)} />
+              </label>
+
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
+                Department / Unit
+                <input className="os-search-input" style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 10px' }}
+                  value={editDept} onChange={(e) => setEditDept(e.target.value)} />
+              </label>
+
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
+                Work email (optional)
+                <input className="os-search-input" style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 10px' }}
+                  type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+              </label>
+
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
+                Status
+                <select className="os-search-input" style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 10px' }}
+                  value={editStatus} onChange={(e) => setEditStatus(e.target.value as 'active' | 'suspended' | 'pending')}>
+                  <option value="active">Active</option>
+                  <option value="suspended">Suspended</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </label>
+
+              {editError && <div style={{ fontSize: 12, color: '#B91C1C', fontWeight: 600 }}>{editError}</div>}
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <button type="button" onClick={() => setEditId(null)} style={{ flex: 1, padding: '9px 0', borderRadius: 10, border: '1px solid #E2E8F0', background: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', color: '#0F172A' }}>Cancel</button>
+                <button type="submit" disabled={editBusy} style={{ flex: 1, padding: '9px 0', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#0052D4,#0D9488)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: editBusy ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <Save size={13} /> {editBusy ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
+            </form>
           ) : (
+            /* ── View mode ── */
             <>
-              <div style={{ fontWeight: 800, marginBottom: 10 }}>{selected.name}</div>
-              <div style={{ fontSize: '0.8rem', color: '#64748B', marginBottom: 12 }}>
-                {selected.role} · {selected.department}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0F172A' }}>{selected.name}</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: 2 }}>
+                    {selected.role} · {selected.department}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px solid rgba(0,82,212,0.3)', background: '#EFF6FF', color: '#0052D4', fontWeight: 700, fontSize: 12, cursor: 'pointer', flexShrink: 0 }}
+                  onClick={() => {
+                    setEditId(selected.id);
+                    setEditName(selected.name);
+                    setEditRoleKey((selected as { roleKey?: string }).roleKey || '');
+                    setEditDept(selected.department || '');
+                    setEditPhone((selected as { phone?: string }).phone || '');
+                    setEditEmail((selected as { email?: string }).email || '');
+                    setEditStatus(selected.status as 'active' | 'suspended' | 'pending');
+                    setEditError('');
+                  }}
+                >
+                  <Pencil size={12} /> Edit
+                </button>
               </div>
               <div style={{ fontSize: '0.78rem', marginBottom: 8 }}>
                 <strong>Badge:</strong>{' '}
@@ -1408,6 +1433,13 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       )}
       {deleteSuccess && (
         <StaffDeleteSuccessScreen info={deleteSuccess} onClose={() => setDeleteSuccess(null)} />
+      )}
+      {showDupModal && (
+        <DuplicateCardModal
+          facilityId={facilityId}
+          onClose={() => { setShowDupModal(false); loadRecords(); }}
+          onDeleted={() => loadRecords()}
+        />
       )}
     </>
   );
