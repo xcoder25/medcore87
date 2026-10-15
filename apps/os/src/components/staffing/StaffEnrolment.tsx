@@ -337,7 +337,10 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
               )}
             </label>
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
-              Email
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                Email
+                <span style={{ fontSize: '0.68rem', fontWeight: 500, color: '#94A3B8', background: '#F1F5F9', padding: '1px 7px', borderRadius: 999, letterSpacing: '0.02em' }}>optional</span>
+              </span>
               <input
                 className="os-search-input"
                 style={{ display: 'block', width: '100%', marginTop: 6, padding: '10px 12px' }}
