@@ -262,9 +262,9 @@ const DEFAULTS: Record<string, string[]> = {
     'patient.identity', 'patient.imaging', 'patient.problems',
   ],
   reception: [
-    'dashboard', 'patient-flow', 'patient-card', 'triage', 'appointments', 'cashier', 'billing',
+    'dashboard', 'patient-flow', 'patient-card', 'triage', 'appointments',
     'desk-settings', 'notifications', 'my-card',
-    'patient.identity', 'patient.contact', 'patient.demographics', 'patient.billing', 'patient.insurance',
+    'patient.identity', 'patient.contact', 'patient.demographics', 'patient.insurance',
   ],
   records: [
     'dashboard', 'patient-card', 'patient-flow', 'beds', 'emr', 'my-card', 'notifications', 'claims',

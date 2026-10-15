@@ -507,11 +507,9 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           ],
         },
         {
-          label: 'Patient & pay',
+          label: 'Patient records',
           items: [
             { key: 'patient-360', icon: Users, label: 'Patient folder (desk scope)' },
-            { key: 'cashier', icon: CreditCard, label: 'Send / track payment', badge: 'POS' },
-            { key: 'patient-flow', icon: Activity, label: 'Continue after PAID' },
           ],
         },
         {

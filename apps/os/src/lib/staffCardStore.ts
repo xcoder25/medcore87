@@ -1257,7 +1257,7 @@ export function isReceptionRole(roleKey?: string, role?: string, title?: string,
 export function defaultPermissionsForRole(roleKey: string): string[] {
   const map: Record<string, string[]> = {
     reception: [
-      'dashboard', 'patient-flow', 'patient-card', 'appointments', 'cashier', 'billing',
+      'dashboard', 'patient-flow', 'patient-card', 'appointments',
       'desk-settings', 'notifications', 'my-card', 'universal-queue', 'm87-ai', 'ai',
       'front-desk-wq',
     ],
