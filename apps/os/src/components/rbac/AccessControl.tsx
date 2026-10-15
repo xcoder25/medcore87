@@ -49,6 +49,7 @@ import { LogoProgressBar } from '../realtime/LogoProgressBar';
 import type { StaffCardRecord } from '@medcore/types';
 import type { UserSession } from '../auth/AuthScreen';
 import { HOSPITALS } from '../auth/AuthScreen';
+import { getCustomRoles } from '../../lib/rolePermissionsStore';
 import {
   Shield, Plus, Search, CheckCircle2, XCircle, Lock, UserPlus, IdCard, Trash2,
 } from 'lucide-react';
@@ -128,9 +129,23 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const facilityId = session?.hospitalId || HOSPITALS[0]?.id || 'IGH-EKT';
   const facilityName = session?.facility || HOSPITALS.find((h) => h.id === facilityId)?.name || 'Hospital';
 
+  const availableRoles = useMemo(() => {
+    const custom = getCustomRoles().map((c) => ({
+      roleKey: c.roleKey,
+      role: c.label,
+      title: c.title || c.label,
+      shortRole: c.shortRole || c.label,
+      clearanceLevel: c.clearanceLevel || 3,
+      clearanceLabel: c.clearanceLabel || `L${c.clearanceLevel || 3} Custom`,
+      department: c.department || 'Clinical Operations',
+      group: c.group || 'Custom',
+    }));
+    return [...ROLE_OPTIONS, ...custom];
+  }, [showCreate]);
+
   const roleMeta = useMemo(
-    () => ROLE_OPTIONS.find((r) => r.roleKey === roleKey),
-    [roleKey]
+    () => availableRoles.find((r) => r.roleKey === roleKey),
+    [availableRoles, roleKey]
   );
 
   // Read-only refresh — NEVER call syncAccessRoster here (that dispatches admin-sync → infinite loop)
@@ -887,15 +902,19 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                 onChange={(e) => setRoleKey(e.target.value)}
               >
                 <option value="">Select specialty / role *</option>
-                {['Clinical', 'Nursing', 'Front desk', 'Support', 'Admin'].map((g) => (
-                  <optgroup key={g} label={g}>
-                    {ROLE_OPTIONS.filter((r) => (r as { group?: string }).group === g).map((r) => (
-                      <option key={r.roleKey} value={r.roleKey}>
-                        {r.title} · {r.department}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
+                {['Clinical', 'Nursing', 'Front desk', 'Support', 'Admin', 'Custom'].map((g) => {
+                  const inGroup = availableRoles.filter((r) => (r as { group?: string }).group === g);
+                  if (inGroup.length === 0) return null;
+                  return (
+                    <optgroup key={g} label={g}>
+                      {inGroup.map((r) => (
+                        <option key={r.roleKey} value={r.roleKey}>
+                          {r.title} · {r.department}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
               </select>
               {roleMeta && (
                 <div style={{ marginTop: 8, fontSize: 12, color: '#0369A1', background: '#E0F2FE', borderRadius: 8, padding: '8px 10px', lineHeight: 1.45 }}>

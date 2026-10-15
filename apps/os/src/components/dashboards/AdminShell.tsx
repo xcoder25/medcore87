@@ -11,6 +11,7 @@ import {
   Lock, Shield, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus, Settings, Key,
 } from 'lucide-react';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
+import { UserProfileModal } from '../auth/UserProfileModal';
 
 // Lazy module map — same keys as page.tsx
 import { HospitalStaffTransfer } from '../staffing/HospitalStaffTransfer';
@@ -22,7 +23,7 @@ import { PatientFlowVisibility } from '../patient-flow/PatientFlowVisibility';
 import { AccessControl } from '../rbac/AccessControl';
 import { RolePermissionsMatrix } from '../rbac/RolePermissionsMatrix';
 import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
-import { CashierRevenue } from '../cashier/CashierRevenue';
+import { AdminRevenueOverview } from '../admin/AdminRevenueOverview';
 import { AdminSettings } from '../admin/AdminSettings';
 import { ClinicalOrdersPanel } from '../clinical-core/ClinicalOrdersPanel';
 import { AdminAmbulanceDesk } from '../operations/AdminAmbulanceDesk';
@@ -66,32 +67,30 @@ interface NavSection {
 
 const NAV: NavSection[] = [
   {
+    label: 'Command & Analytics',
     items: [
-      { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { key: 'transfer', label: 'Hospital Staff Transfer', icon: Users },
-      { key: 'staffing', label: 'Staffing & Rosters', icon: Users },
-      { key: 'facility', label: 'Clinical facility profile', icon: Building2 },
+      { key: 'dashboard', label: 'Executive Dashboard', icon: LayoutDashboard },
+      { key: 'command', label: 'Hospital Command Centre', icon: Activity },
+      { key: 'beds', label: 'Clinical Bed Census', icon: BedDouble },
+      { key: 'cashier', label: 'Revenue & Finance', icon: BarChart3 },
     ],
   },
   {
-    label: 'Clinical operations & beds',
+    label: 'Workforce & Operations',
     items: [
-      { key: 'command', label: 'Hospital Command Centre', icon: Activity },
-      { key: 'beds', label: 'Clinical bed census', icon: BedDouble },
-      { key: 'patient-flow', label: 'Patient Flow Visibility', icon: RefreshCw },
+      { key: 'rbac', label: 'Staff Access & Directory', icon: Lock },
+      { key: 'staffing', label: 'Staff Presence & Rosters', icon: Users },
+      { key: 'transfer', label: 'Hospital Staff Transfer', icon: Users },
       { key: 'ambulance', label: 'Ambulance & Dispatch', icon: PhoneCall },
     ],
   },
   {
-    label: 'Identity, Security & Finance',
+    label: 'Identity, Security & Governance',
     items: [
-      { key: 'rbac', label: 'Staff Access Control', icon: Lock },
-      { key: 'enrolment', label: 'Staff Enrolment & ID', icon: UserPlus },
-      { key: 'role-permissions', label: 'Role Visibility', icon: Shield },
-      { key: 'compliance', label: 'Compliance & Audit', icon: FileText },
-      { key: 'cashier', label: 'Revenue & Cashier', icon: BarChart3 },
-      { key: 'settings', label: 'Hospital Settings', icon: Settings },
-      { key: 'clinical-orders', label: 'Clinical orders bus', icon: Activity },
+      { key: 'role-permissions', label: 'Role Visibility & Matrix', icon: Shield },
+      { key: 'compliance', label: 'Compliance & Audit Logs', icon: FileText },
+      { key: 'facility', label: 'Clinical Facility Profile', icon: Building2 },
+      { key: 'settings', label: 'Hospital Settings & Identity', icon: Settings },
     ],
   },
 ];
@@ -129,6 +128,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [hospitalShare, setHospitalShare] = useState<'local' | 'lan' | 'cloud' | 'probing'>('probing');
   const [pendingSync, setPendingSync] = useState(0);
   const [showCredModal, setShowCredModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const { connected } = useRealtimeEvents({ app: 'MEDCORE_OS_ADMIN', facilityId: session.hospitalId });
 
   const goModule = (key: AdminModule) => {
@@ -225,15 +225,15 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'role-permissions':
         return <RolePermissionsMatrix />;
       case 'enrolment':
-        return <StaffEnrolment session={session} />;
+        return <AccessControl session={session} />;
       case 'compliance':
         return <ComplianceAuditLogs />;
       case 'cashier':
-        return <CashierRevenue />;
+        return <AdminRevenueOverview session={session} />;
       case 'settings':
         return <AdminSettings session={session} />;
       case 'clinical-orders':
-        return <ClinicalOrdersPanel session={session} />;
+        return <AdminWorkspace session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
       default:
         return <AdminWorkspace session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
     }
@@ -383,9 +383,9 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             </button>
             <div
               className="admin-shell-profile"
-              onClick={() => setShowCredModal(true)}
+              onClick={() => setShowProfileModal(true)}
               style={{ cursor: 'pointer' }}
-              title="Click to manage password & PIN"
+              title="View Administrator Profile & Identity"
             >
               <div className="admin-shell-avatar sm">{initials}</div>
               <span>Admin</span>
@@ -399,6 +399,13 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
           {moduleLoading ? <ModulePageLoader label="Opening workspace…" /> : body}
         </main>
 
+        <UserProfileModal
+          session={session}
+          isOpen={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          onOpenCredentials={() => setShowCredModal(true)}
+          onLogout={onLogout}
+        />
         <ChangeCredentialsModal
           session={session}
           isOpen={showCredModal}

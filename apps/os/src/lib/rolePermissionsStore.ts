@@ -101,6 +101,97 @@ export const CONFIGURABLE_ROLES: { roleKey: string; label: string }[] = [
   { roleKey: 'sysadmin', label: 'ICT / SysAdmin' },
 ];
 
+export interface CustomRoleDefinition {
+  roleKey: string;
+  label: string;
+  shortRole?: string;
+  title?: string;
+  clearanceLevel: number;
+  clearanceLabel?: string;
+  department?: string;
+  group?: 'Clinical' | 'Nursing' | 'Front desk' | 'Support' | 'Admin' | 'Custom';
+  isCustom?: boolean;
+}
+
+export const CUSTOM_ROLES_KEY = 'medcore_os_custom_roles_v1';
+export const CUSTOM_ROLES_EVT = 'medcore-custom-roles-updated';
+
+export function getCustomRoles(): CustomRoleDefinition[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(CUSTOM_ROLES_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomRoles(roles: CustomRoleDefinition[]) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(CUSTOM_ROLES_KEY, JSON.stringify(roles));
+  window.dispatchEvent(new CustomEvent(CUSTOM_ROLES_EVT, { detail: roles }));
+  window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: CUSTOM_ROLES_KEY } }));
+}
+
+export function listConfigurableRoles(): { roleKey: string; label: string; clearanceLevel?: number; department?: string; isCustom?: boolean }[] {
+  const custom = getCustomRoles().map((r) => ({
+    roleKey: r.roleKey,
+    label: r.label,
+    clearanceLevel: r.clearanceLevel,
+    department: r.department,
+    isCustom: true,
+  }));
+  return [...CONFIGURABLE_ROLES, ...custom];
+}
+
+export function createCustomRole(role: CustomRoleDefinition, defaultModules?: string[]): boolean {
+  const roles = getCustomRoles();
+  const slug = role.roleKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  if (!slug) return false;
+
+  // Check exists in presets or custom
+  if (CONFIGURABLE_ROLES.some((r) => r.roleKey === slug) || roles.some((r) => r.roleKey === slug)) {
+    return false;
+  }
+
+  const newRole: CustomRoleDefinition = {
+    ...role,
+    roleKey: slug,
+    label: role.label.trim(),
+    clearanceLevel: role.clearanceLevel || 3,
+    clearanceLabel: role.clearanceLabel || `Level ${role.clearanceLevel || 3} Custom`,
+    department: role.department || 'Clinical Operations',
+    group: role.group || 'Custom',
+    isCustom: true,
+  };
+
+  roles.push(newRole);
+  saveCustomRoles(roles);
+
+  // Set default modules for this role
+  const map = getRolePermissionsMap();
+  map[slug] = defaultModules && defaultModules.length
+    ? defaultModules
+    : ['dashboard', 'my-card', 'patient-360', 'emr', 'notifications'];
+  setRolePermissionsMap(map);
+
+  return true;
+}
+
+export function deleteCustomRole(roleKey: string): boolean {
+  const roles = getCustomRoles();
+  const next = roles.filter((r) => r.roleKey !== roleKey);
+  if (next.length === roles.length) return false;
+  saveCustomRoles(next);
+
+  const map = getRolePermissionsMap();
+  delete map[roleKey];
+  setRolePermissionsMap(map);
+  return true;
+}
+
 const CLINICAL_PATIENT = [
   'patient.identity',
   'patient.contact',

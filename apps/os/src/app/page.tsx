@@ -44,6 +44,7 @@ import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
 import { AdminShell } from '../components/dashboards/AdminShell';
 import { OsAppShell } from '../components/layout/OsAppShell';
 import { ChangeCredentialsModal } from '../components/auth/ChangeCredentialsModal';
+import { UserProfileModal } from '../components/auth/UserProfileModal';
 import { ClinicalUxSuite } from '../components/clinical-ux/ClinicalUxSuite';
 import { DeviceGatewaySettings } from '../components/interop/DeviceGatewaySettings';
 import { KeyboardShortcutsHint } from '../components/layout/KeyboardShortcutsHint';
@@ -1051,6 +1052,7 @@ export default function OSPage() {
   const [showFullDirectory, setShowFullDirectory] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showCredModal, setShowCredModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [gotoBuffer, setGotoBuffer] = useState('');
@@ -2211,9 +2213,9 @@ const handleLockScreen = () => {
             </button>
             <div
               className="os-top-hud-user"
-              onClick={() => setShowCredModal(true)}
+              onClick={() => setShowProfileModal(true)}
               style={{ cursor: 'pointer' }}
-              title="Click to manage password & PIN"
+              title="View Staff Profile & Identity Card"
             >
               <div className="os-top-hud-avatar">
                 {(userSession?.avatarInitials ||
@@ -2393,6 +2395,16 @@ const handleLockScreen = () => {
           </div>
         </main>
       </div>
+
+      {userSession && (
+        <UserProfileModal
+          session={userSession}
+          isOpen={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          onOpenCredentials={() => setShowCredModal(true)}
+          onLogout={handleLogout}
+        />
+      )}
 
       {userSession && (
         <ChangeCredentialsModal

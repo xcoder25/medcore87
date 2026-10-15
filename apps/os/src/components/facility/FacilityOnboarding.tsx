@@ -662,6 +662,26 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
         {/* ── Identity ─────────────────────────────────────────── */}
         {section === 'identity' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div
+              style={{
+                background: '#F0F9FF',
+                border: '1px solid #BAE6FD',
+                borderRadius: 12,
+                padding: '12px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                color: '#0369A1',
+                fontSize: '0.82rem',
+              }}
+            >
+              <Building2 size={20} style={{ flexShrink: 0 }} />
+              <div>
+                <strong style={{ display: 'block', color: '#0C4A6E' }}>Central Hospital Identity Synchronization</strong>
+                <span>Official hospital name, LGA, address, and credentials can also be managed under <strong>Hospital Settings</strong>. Changes made here or in Settings automatically synchronize across clinical and administrative workspaces.</span>
+              </div>
+            </div>
+
             <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0A2540' }}>
               Identity & licensing
             </h3>

@@ -2,31 +2,48 @@
 
 /**
  * Admin configures which modules each role can see.
- * Full MODULE_CATALOG (every sidebar page) + animated Save for realtime apply.
+ * Full MODULE_CATALOG (every sidebar page) + dynamic role creation + animated Save for realtime apply.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   MODULE_CATALOG,
-  CONFIGURABLE_ROLES,
+  listConfigurableRoles,
+  createCustomRole,
+  deleteCustomRole,
+  CUSTOM_ROLES_EVT,
   getRolePermissionsMap,
   setRolePermissionsMap,
   type RolePermissionsMap,
+  type CustomRoleDefinition,
 } from '../../lib/rolePermissionsStore';
 import { emitLiveAction } from '../../lib/liveActions';
 import { pushActivity } from '../../lib/adminRealtimeStore';
-import { Shield, CheckSquare, Square, Save, Loader2, CheckCircle2, RotateCcw } from 'lucide-react';
+import {
+  Shield, CheckSquare, Square, Save, Loader2, CheckCircle2, RotateCcw,
+  Plus, Trash2, X, Briefcase, Lock, Sparkles
+} from 'lucide-react';
 
 export const RolePermissionsMatrix: React.FC = () => {
   const [savedMap, setSavedMap] = useState<RolePermissionsMap>({});
   const [draftMap, setDraftMap] = useState<RolePermissionsMap>({});
-  const [activeRole, setActiveRole] = useState(CONFIGURABLE_ROLES[0].roleKey);
+  const [roles, setRoles] = useState(listConfigurableRoles);
+  const [activeRole, setActiveRole] = useState(listConfigurableRoles()[0]?.roleKey || 'doctor');
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+
+  // Dynamic Role Creation Modal State
+  const [showAddRoleModal, setShowAddRoleModal] = useState(false);
+  const [newRoleLabel, setNewRoleLabel] = useState('');
+  const [newRoleKey, setNewRoleKey] = useState('');
+  const [newRoleDept, setNewRoleDept] = useState('Clinical');
+  const [newRoleClearance, setNewRoleClearance] = useState(3);
+  const [newRoleError, setNewRoleError] = useState<string | null>(null);
 
   const reload = () => {
     const m = getRolePermissionsMap();
     setSavedMap(m);
     setDraftMap(JSON.parse(JSON.stringify(m)));
+    setRoles(listConfigurableRoles());
   };
 
   useEffect(() => {
@@ -34,13 +51,17 @@ export const RolePermissionsMatrix: React.FC = () => {
     const fn = () => reload();
     window.addEventListener('medcore-role-permissions', fn);
     window.addEventListener('medcore-admin-sync', fn);
+    window.addEventListener(CUSTOM_ROLES_EVT, fn);
     return () => {
       window.removeEventListener('medcore-role-permissions', fn);
       window.removeEventListener('medcore-admin-sync', fn);
+      window.removeEventListener(CUSTOM_ROLES_EVT, fn);
     };
   }, []);
 
   const enabled = useMemo(() => new Set(draftMap[activeRole] || []), [draftMap, activeRole]);
+
+  const activeRoleMeta = useMemo(() => roles.find((r) => r.roleKey === activeRole), [roles, activeRole]);
 
   const dirty = useMemo(() => {
     const a = JSON.stringify(savedMap[activeRole] || []);
@@ -49,8 +70,8 @@ export const RolePermissionsMatrix: React.FC = () => {
   }, [savedMap, draftMap, activeRole]);
 
   const anyDirty = useMemo(() => {
-    const roles = new Set([...Object.keys(savedMap), ...Object.keys(draftMap)]);
-    for (const r of roles) {
+    const allRoles = new Set([...Object.keys(savedMap), ...Object.keys(draftMap)]);
+    for (const r of allRoles) {
       if (JSON.stringify(savedMap[r] || []) !== JSON.stringify(draftMap[r] || [])) return true;
     }
     return false;
@@ -74,7 +95,6 @@ export const RolePermissionsMatrix: React.FC = () => {
   };
 
   const clearApps = () => {
-    // keep dashboard + patient identity minimum for safety
     setDraftMap((prev) => ({
       ...prev,
       [activeRole]: ['dashboard', 'my-card', 'patient.identity'],
@@ -88,7 +108,6 @@ export const RolePermissionsMatrix: React.FC = () => {
   const save = async () => {
     if (!anyDirty || saving) return;
     setSaving(true);
-    // brief animation beat
     await new Promise((r) => setTimeout(r, 480));
     setRolePermissionsMap(draftMap);
     setSavedMap(JSON.parse(JSON.stringify(draftMap)));
@@ -99,8 +118,60 @@ export const RolePermissionsMatrix: React.FC = () => {
     window.setTimeout(() => setSavedFlash(false), 2200);
   };
 
+  const handleCreateRole = (e: React.FormEvent) => {
+    e.preventDefault();
+    setNewRoleError(null);
+    if (!newRoleLabel.trim()) {
+      setNewRoleError('Please provide a role name');
+      return;
+    }
+
+    const key = (newRoleKey.trim() || newRoleLabel.trim())
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, '_')
+      .replace(/_+/g, '_');
+
+    const ok = createCustomRole(
+      {
+        roleKey: key,
+        label: newRoleLabel.trim(),
+        shortRole: newRoleLabel.trim().slice(0, 14),
+        title: newRoleLabel.trim(),
+        clearanceLevel: Number(newRoleClearance),
+        clearanceLabel: `Level ${newRoleClearance} Access`,
+        department: newRoleDept,
+        group: 'Custom',
+      },
+      ['dashboard', 'my-card', 'patient-360', 'notifications', 'emr']
+    );
+
+    if (!ok) {
+      setNewRoleError('A role with this key or identifier already exists');
+      return;
+    }
+
+    emitLiveAction(`Custom role created: ${newRoleLabel}`, { module: 'role-permissions' });
+    pushActivity(`Administrator created new role: ${newRoleLabel} (${key})`);
+
+    reload();
+    setActiveRole(key);
+    setShowAddRoleModal(false);
+    setNewRoleLabel('');
+    setNewRoleKey('');
+  };
+
+  const handleDeleteRole = (roleKey: string) => {
+    if (window.confirm(`Are you sure you want to delete the custom role "${activeRoleMeta?.label || roleKey}"?`)) {
+      deleteCustomRole(roleKey);
+      emitLiveAction(`Deleted custom role: ${roleKey}`, { module: 'role-permissions' });
+      pushActivity(`Administrator deleted role ${roleKey}`);
+      reload();
+      setActiveRole(listConfigurableRoles()[0]?.roleKey || 'doctor');
+    }
+  };
+
   const groups = Array.from(new Set(MODULE_CATALOG.map((m) => m.group)));
-  const roleLabel = CONFIGURABLE_ROLES.find((r) => r.roleKey === activeRole)?.label || activeRole;
+  const roleLabel = activeRoleMeta?.label || activeRole;
   const selectedCount = enabled.size;
 
   return (
@@ -168,29 +239,53 @@ export const RolePermissionsMatrix: React.FC = () => {
           border: 1px solid #E2E8F0;
           box-shadow: 0 -8px 32px rgba(15,23,42,0.08);
           display: flex;
-          flex-wrap: wrap;
           align-items: center;
-          justify-content: space-between;
+          justifyContent: space-between;
+          flex-wrap: wrap;
           gap: 12px;
         }
       `}</style>
 
-      <div className="os-insight-banner">
-        <Shield size={18} style={{ color: '#0066FF', flexShrink: 0 }} />
+      {/* Header with Title + Create Role Button */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 4 }}>
-            Role visibility · every screen for every role
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Shield size={24} color="#0052D4" />
+            <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0F172A' }}>
+              Role Visibility & Module Authorization Matrix
+            </h2>
           </div>
-          <div style={{ fontSize: '0.8rem', color: '#64748B', lineHeight: 1.5 }}>
-            Tick modules and patient-data scopes for each role. Changes stay as a draft until you press{' '}
-            <strong>Save visibility</strong> — then sidebars update in realtime for that role.
-          </div>
+          <p style={{ margin: '4px 0 0', color: '#64748B', fontSize: '0.85rem' }}>
+            Control sidebar page access and patient data scopes per hospital role. Changes apply live across workstations.
+          </p>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setShowAddRoleModal(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 18px',
+            borderRadius: 12,
+            border: 'none',
+            background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+            color: '#FFFFFF',
+            fontWeight: 700,
+            fontSize: '0.82rem',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(15, 23, 42, 0.2)',
+          }}
+        >
+          <Plus size={16} color="#38BDF8" />
+          <span>+ Create New Role</span>
+        </button>
       </div>
 
-      {/* Role tabs */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {CONFIGURABLE_ROLES.map((r) => {
+      {/* Role tabs bar */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        {roles.map((r) => {
           const on = activeRole === r.roleKey;
           const roleDirty =
             JSON.stringify(savedMap[r.roleKey] || []) !== JSON.stringify(draftMap[r.roleKey] || []);
@@ -201,14 +296,29 @@ export const RolePermissionsMatrix: React.FC = () => {
               className="os-ghost-btn"
               onClick={() => setActiveRole(r.roleKey)}
               style={{
-                borderColor: on ? '#0052D4' : undefined,
-                color: on ? '#0052D4' : undefined,
-                background: on ? 'rgba(0,82,212,0.08)' : undefined,
+                borderColor: on ? '#0052D4' : r.isCustom ? '#BAE6FD' : undefined,
+                color: on ? '#0052D4' : r.isCustom ? '#0369A1' : undefined,
+                background: on ? 'rgba(0,82,212,0.08)' : r.isCustom ? '#F0F9FF' : undefined,
                 fontWeight: on ? 800 : 600,
                 position: 'relative',
               }}
             >
               {r.label}
+              {r.isCustom && (
+                <span
+                  style={{
+                    fontSize: '0.65rem',
+                    marginLeft: 6,
+                    padding: '1px 5px',
+                    borderRadius: 4,
+                    background: '#0284C7',
+                    color: '#fff',
+                    fontWeight: 700,
+                  }}
+                >
+                  CUSTOM
+                </span>
+              )}
               {roleDirty && (
                 <span
                   style={{
@@ -227,6 +337,7 @@ export const RolePermissionsMatrix: React.FC = () => {
         })}
       </div>
 
+      {/* Module Configuration Card */}
       <div className="os-card" style={{ padding: 18 }}>
         <div
           style={{
@@ -239,9 +350,34 @@ export const RolePermissionsMatrix: React.FC = () => {
           }}
         >
           <div>
-            <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#0A2540' }}>
-              Modules for <span style={{ color: '#0052D4' }}>{roleLabel}</span>
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#0A2540' }}>
+                Modules for <span style={{ color: '#0052D4' }}>{roleLabel}</span>
+              </h3>
+              {activeRoleMeta?.isCustom && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteRole(activeRole)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    background: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    color: '#DC2626',
+                    padding: '3px 8px',
+                    borderRadius: 6,
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                  title="Delete this custom role"
+                >
+                  <Trash2 size={12} />
+                  <span>Delete Role</span>
+                </button>
+              )}
+            </div>
             <div style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>
               {selectedCount} selected · {MODULE_CATALOG.length} pages & scopes in catalog
               {dirty ? ' · unsaved changes' : ' · in sync'}
@@ -252,28 +388,36 @@ export const RolePermissionsMatrix: React.FC = () => {
               Select all
             </button>
             <button type="button" className="os-ghost-btn" style={{ fontSize: 12 }} onClick={clearApps}>
-              Minimal set
+              Reset to minimal
             </button>
-            {dirty && (
-              <button type="button" className="os-ghost-btn" style={{ fontSize: 12 }} onClick={discard}>
-                <RotateCcw size={13} /> Discard
-              </button>
-            )}
+            <button
+              type="button"
+              className="os-ghost-btn"
+              style={{ fontSize: 12 }}
+              onClick={discard}
+              disabled={!dirty}
+            >
+              <RotateCcw size={13} /> Revert
+            </button>
           </div>
         </div>
 
-        {groups.map((g) => (
-          <div key={g} style={{ marginBottom: 18 }}>
+        {/* Grouped Module Checkboxes */}
+        {groups.map((grp) => (
+          <div key={grp} style={{ marginBottom: 20 }}>
             <div
               style={{
                 fontSize: 11,
                 fontWeight: 800,
-                color: '#94A3B8',
-                letterSpacing: '0.08em',
-                marginBottom: 10,
+                textTransform: 'uppercase',
+                letterSpacing: 0.6,
+                color: '#64748B',
+                marginBottom: 8,
+                paddingBottom: 4,
+                borderBottom: '1px solid #E2E8F0',
               }}
             >
-              {g.toUpperCase()} · {MODULE_CATALOG.filter((m) => m.group === g).length}
+              {grp}
             </div>
             <div
               style={{
@@ -282,8 +426,8 @@ export const RolePermissionsMatrix: React.FC = () => {
                 gap: 8,
               }}
             >
-              {MODULE_CATALOG.filter((m) => m.group === g).map((m) => {
-                const on = enabled.has(m.key) || enabled.has('*');
+              {MODULE_CATALOG.filter((m) => m.group === grp).map((m) => {
+                const on = enabled.has(m.key);
                 return (
                   <button
                     key={m.key}
@@ -293,10 +437,10 @@ export const RolePermissionsMatrix: React.FC = () => {
                       display: 'flex',
                       alignItems: 'center',
                       gap: 10,
+                      padding: '10px 12px',
+                      borderRadius: 10,
                       textAlign: 'left',
-                      padding: '11px 12px',
-                      borderRadius: 12,
-                      border: `1.5px solid ${on ? 'rgba(0,82,212,0.4)' : '#E2E8F0'}`,
+                      border: on ? '1.5px solid #0052D4' : '1px solid #E2E8F0',
                       background: on ? 'rgba(0,82,212,0.07)' : '#fff',
                       cursor: 'pointer',
                       fontSize: 13,
@@ -353,6 +497,153 @@ export const RolePermissionsMatrix: React.FC = () => {
           )}
         </button>
       </div>
+
+      {/* Create New Role Modal */}
+      {showAddRoleModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(15, 23, 42, 0.72)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAddRoleModal(false);
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 480,
+              background: '#FFFFFF',
+              borderRadius: 18,
+              boxShadow: '0 25px 60px -15px rgba(0,0,0,0.3)',
+              border: '1px solid #E2E8F0',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+                padding: '20px 24px',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Sparkles size={20} color="#38BDF8" />
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Create New Hospital Role</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddRoleModal(false)}
+                style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateRole} style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {newRoleError && (
+                <div style={{ padding: '8px 12px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, color: '#B91C1C', fontSize: '0.8rem' }}>
+                  {newRoleError}
+                </div>
+              )}
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                  Role Title / Name *
+                </label>
+                <input
+                  type="text"
+                  value={newRoleLabel}
+                  onChange={(e) => {
+                    setNewRoleLabel(e.target.value);
+                    setNewRoleKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'));
+                  }}
+                  placeholder="e.g. Physiotherapist, Triage Officer, Dietitian"
+                  required
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #CBD5E1', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                  Role System Key (identifier)
+                </label>
+                <input
+                  type="text"
+                  value={newRoleKey}
+                  onChange={(e) => setNewRoleKey(e.target.value)}
+                  placeholder="e.g. physiotherapist"
+                  required
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #CBD5E1', boxSizing: 'border-box', fontFamily: 'monospace' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                    Department / Unit
+                  </label>
+                  <select
+                    value={newRoleDept}
+                    onChange={(e) => setNewRoleDept(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #CBD5E1', boxSizing: 'border-box', background: '#fff' }}
+                  >
+                    <option value="Clinical">Clinical</option>
+                    <option value="Nursing">Nursing</option>
+                    <option value="Front desk">Front desk</option>
+                    <option value="Diagnostics">Diagnostics</option>
+                    <option value="Support">Support</option>
+                    <option value="Admin">Admin</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                    Security Clearance
+                  </label>
+                  <select
+                    value={newRoleClearance}
+                    onChange={(e) => setNewRoleClearance(Number(e.target.value))}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #CBD5E1', boxSizing: 'border-box', background: '#fff' }}
+                  >
+                    <option value={1}>L1 — Restricted</option>
+                    <option value={2}>L2 — Support / Front Desk</option>
+                    <option value={3}>L3 — Clinical & Diagnostics</option>
+                    <option value={4}>L4 — Senior Clinical</option>
+                    <option value={5}>L5 — Executive / Directorate</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAddRoleModal(false)}
+                  style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid #CBD5E1', background: '#fff', color: '#475569', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: '#0284C7', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Create Role
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

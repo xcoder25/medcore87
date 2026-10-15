@@ -563,12 +563,12 @@ export function wipeFacilityStaffExceptAdmin(facilityId: string): number {
     const reg = regRaw ? JSON.parse(regRaw) : [];
     const nextReg = Array.isArray(reg)
       ? reg.filter((r: { badgeId?: string; id?: string; hospitalId?: string; facilityId?: string }) => {
-          const b = String(r.badgeId || r.id || '').toUpperCase();
-          if (b.includes('ADM-001') || b === 'AKS-ADM-001') return true;
-          const rowFid = String(r.hospitalId || r.facilityId || '').trim();
-          if (fid && rowFid && rowFid !== fid) return true;
-          return false;
-        })
+        const b = String(r.badgeId || r.id || '').toUpperCase();
+        if (b.includes('ADM-001') || b === 'AKS-ADM-001') return true;
+        const rowFid = String(r.hospitalId || r.facilityId || '').trim();
+        if (fid && rowFid && rowFid !== fid) return true;
+        return false;
+      })
       : [];
     localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(nextReg));
     localStorage.setItem('medcore_os_staff_registry', JSON.stringify(nextReg));
@@ -581,9 +581,9 @@ export function wipeFacilityStaffExceptAdmin(facilityId: string): number {
     const access = accessRaw ? JSON.parse(accessRaw) : [];
     const nextAccess = Array.isArray(access)
       ? access.filter((r: { id?: string }) => {
-          const b = String(r.id || '').toUpperCase();
-          return b.includes('ADM-001') || b === 'AKS-ADM-001';
-        })
+        const b = String(r.id || '').toUpperCase();
+        return b.includes('ADM-001') || b === 'AKS-ADM-001';
+      })
       : [];
     localStorage.setItem('medcore_os_access_control', JSON.stringify(nextAccess));
   } catch {
@@ -857,16 +857,8 @@ export function applyCloudStaffDirectory(payload: {
   staffRegistry?: unknown[];
   /** When set, only replace cards/registry rows for this facility (keeps other hospitals). */
   facilityId?: string;
-  resetAt?: string;
 }): void {
   if (typeof window === 'undefined') return;
-  const fid = String(payload.facilityId || '').toUpperCase();
-  const isReset = Boolean(
-    payload.resetAt ||
-    (fid && localStorage.getItem('medcore_last_cloud_reset_' + fid)) ||
-    isStaffFlushLocked()
-  );
-
   if (isStaffFlushLocked()) {
     const cards = payload.staffCards;
     const reg = payload.staffRegistry;
@@ -878,9 +870,11 @@ export function applyCloudStaffDirectory(payload: {
   try {
     if (Array.isArray(payload.staffCards)) {
       const cards = payload.staffCards as StaffCardRecord[];
-      // Empty cloud snapshot clears local cards if facility reset / flush lock
+      // Empty cloud snapshot must NOT wipe all local cards unless flush lock
+      // (switching facility / new hospital often publishes [] briefly)
       if (cards.length === 0) {
-        if (isReset) {
+        if (isStaffFlushLocked()) {
+          const fid = String(payload.facilityId || '').toUpperCase();
           if (fid) {
             writeCards(
               readCards().filter((c) => String(c.facilityId || '').toUpperCase() !== fid)
@@ -889,6 +883,7 @@ export function applyCloudStaffDirectory(payload: {
             writeCards([]);
           }
         }
+        // else: ignore empty — protect multi-facility local cache
       } else {
         const byId = new Map<string, StaffCardRecord>();
         for (const c of cards) {
@@ -921,9 +916,11 @@ export function applyCloudStaffDirectory(payload: {
   try {
     if (Array.isArray(payload.staffRegistry)) {
       const incoming = payload.staffRegistry as any[];
-      if (incoming.length === 0 && !isReset) {
+      // Empty registry: only clear under flush lock
+      if (incoming.length === 0 && !isStaffFlushLocked()) {
         /* keep local registry */
       } else {
+        const fid = String(payload.facilityId || '').toUpperCase();
         let nextReg = incoming;
         if (fid && incoming.length >= 0) {
           try {
@@ -1051,15 +1048,15 @@ export function deleteStaffMember(badgeId: string): boolean {
     const reg = regRaw ? JSON.parse(regRaw) : [];
     const next = Array.isArray(reg)
       ? reg.filter(
-          (r: { badgeId?: string; id?: string; hospitalId?: string; facilityId?: string }) => {
-            const b = String(r.badgeId || r.id || '').toUpperCase().replace(/\s+/g, '');
-            if (b === id) {
-              facilityId = r.hospitalId || r.facilityId || facilityId;
-              return false;
-            }
-            return true;
+        (r: { badgeId?: string; id?: string; hospitalId?: string; facilityId?: string }) => {
+          const b = String(r.badgeId || r.id || '').toUpperCase().replace(/\s+/g, '');
+          if (b === id) {
+            facilityId = r.hospitalId || r.facilityId || facilityId;
+            return false;
           }
-        )
+          return true;
+        }
+      )
       : [];
     localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(next));
     localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
@@ -1094,7 +1091,7 @@ export function deleteStaffMember(badgeId: string): boolean {
               /* ignore */
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     } catch {
       /* ignore */
@@ -1996,14 +1993,14 @@ export function keepOnlyStaffNamesForFacility(
     const reg = regRaw ? JSON.parse(regRaw) : [];
     const filteredReg = Array.isArray(reg)
       ? reg.filter((r: any) => {
-          const hid = String(r.hospitalId || r.facilityId || '').toUpperCase();
-          if (hid && hid !== fid) return true;
-          const badge = String(r.badgeId || r.id || '')
-            .toUpperCase()
-            .replace(/\s+/g, '');
-          const name = String(r.name || r.fullName || '');
-          return shouldKeep(r.roleKey, badge, r.role, name);
-        })
+        const hid = String(r.hospitalId || r.facilityId || '').toUpperCase();
+        if (hid && hid !== fid) return true;
+        const badge = String(r.badgeId || r.id || '')
+          .toUpperCase()
+          .replace(/\s+/g, '');
+        const name = String(r.name || r.fullName || '');
+        return shouldKeep(r.roleKey, badge, r.role, name);
+      })
       : [];
     localStorage.setItem('medcore_os_staff_registry', JSON.stringify(filteredReg));
     void firestorePushStaffDirectory(fid, {
@@ -2085,7 +2082,7 @@ export function updateStaffPin(badgeId: string, newPin: string, facilityId?: str
     try {
       import('./firebase').then((m) => {
         m.firestoreUpsertStaffMember(facilityId, { badgeId: idNorm, pin: newPin });
-      }).catch(() => {});
+      }).catch(() => { });
     } catch { /* ignore */ }
   }
 

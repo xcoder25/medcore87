@@ -12,6 +12,7 @@ import {
 import NotificationBell from '../realtime/NotificationBell';
 import { GlobalPatientContextBar } from '../clinical-core/GlobalPatientContextBar';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
+import { UserProfileModal } from '../auth/UserProfileModal';
 
 export type ShellNavItem = {
   key: string;
@@ -78,6 +79,7 @@ export const OsAppShell: React.FC<Props> = ({
   const [online, setOnline] = useState(true);
   const [search, setSearch] = useState('');
   const [showCredModal, setShowCredModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setClock(formatNow()), 1000);
@@ -240,9 +242,9 @@ export const OsAppShell: React.FC<Props> = ({
             </button>
             <div
               className="admin-shell-profile"
-              onClick={() => setShowCredModal(true)}
+              onClick={() => setShowProfileModal(true)}
               style={{ cursor: 'pointer' }}
-              title="Click to manage password & PIN"
+              title="View Staff Profile & ID Card"
             >
               <div className="admin-shell-avatar sm">{initials}</div>
               <span>{(session.role || 'Staff').split('/')[0]}</span>
@@ -257,6 +259,13 @@ export const OsAppShell: React.FC<Props> = ({
           {children}
         </></main>
 
+        <UserProfileModal
+          session={session}
+          isOpen={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          onOpenCredentials={() => setShowCredModal(true)}
+          onLogout={onLogout}
+        />
         <ChangeCredentialsModal
           session={session}
           isOpen={showCredModal}

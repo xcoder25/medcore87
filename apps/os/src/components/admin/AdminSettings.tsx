@@ -38,6 +38,7 @@ import { downloadFacilityBackup } from '../../lib/backupService';
 import { downloadDhis2Aggregate } from '../../lib/dhis2Export';
 import { exportAuditCsv, listAudit, appendAudit } from '../../lib/auditLogStore';
 import { runOpdDayPilot, type PilotRunResult } from '../../lib/opdPilotScript';
+import { loadFacilityCatalog, saveFacilityCatalog } from '../../lib/facilityCatalogStore';
 
 interface Props {
   session: UserSession;
@@ -107,6 +108,22 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
     setDraft(next);
     setDirty(false);
     setSavedAt(new Date().toLocaleTimeString('en-GB'));
+
+    // Dual-sync: update facilityCatalogStore so hospital identity is 100% unified
+    try {
+      const cat = loadFacilityCatalog(facilityId, session.facility);
+      saveFacilityCatalog({
+        ...cat,
+        name: next.displayName || cat.name,
+        lga: next.lga || cat.lga,
+        address: next.address || cat.address,
+        phone: next.phone || cat.phone,
+        email: next.email || cat.email,
+      });
+    } catch {
+      /* ignore */
+    }
+
     try {
       pushActivity(`Settings updated · ${session.name || 'Admin'}`);
     } catch {
