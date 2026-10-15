@@ -53,7 +53,7 @@ import { ModulePageLoader } from '../components/layout/ModulePageLoader';
 import { ReceptionWorkspace } from '../components/dashboards/ReceptionWorkspace';
 import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { startOutboxAutoFlush } from '../lib/durableOutbox';
-import { enableFirestoreOffline } from '../lib/firebase';
+import { enableFirestoreOffline, normalizeStaffPin } from '../lib/firebase';
 import { startHospitalCloudSync } from '../lib/facilityCloudSync';
 import { startClinicalPaymentListeners } from '../lib/clinicalEventBus';
 import { reconcileAllVisitPayments } from '../lib/frontDeskAccountsBridge';
@@ -68,7 +68,7 @@ import { RoleDashboard } from '../components/dashboards/RoleDashboard';
 import { DoctorPortal } from '../components/dashboards/DoctorPortal';
 import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
 import { roleCanAccessModule } from '../lib/rolePermissionsStore';
-import { inferRoleKey, isReceptionRole, defaultPermissionsForRole } from '../lib/staffCardStore';
+import { inferRoleKey, isReceptionRole, defaultPermissionsForRole, listStaffCards } from '../lib/staffCardStore';
 import { EmergencyTriageSuite } from '../components/clinical-core/EmergencyTriageSuite';
 import { PharmacyDispensingSuite } from '../components/clinical-core/PharmacyDispensingSuite';
 import { HimSuite } from '../components/him/HimSuite';
@@ -1045,6 +1045,8 @@ export default function OSPage() {
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [isLocked, setIsLocked] = useState(false);
   const [unlockPin, setUnlockPin] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [unlockShake, setUnlockShake] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
   const [activeEmergencyCode, setActiveEmergencyCode] = useState<string | null>(null);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
@@ -1434,11 +1436,47 @@ export default function OSPage() {
 const handleLockScreen = () => {
     setIsLocked(true);
     setUnlockPin('');
+    setUnlockError('');
   };
 
   const handleUnlock = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLocked(false);
+    const entered = unlockPin.trim();
+    if (!entered) return;
+
+    // Resolve the correct PIN for the current session
+    let correctPin: string | undefined;
+
+    if (userSession?.badgeId) {
+      // 1. Try live staff card store first
+      const card = listStaffCards().find(
+        (c) => c.badgeId === userSession!.badgeId
+      );
+      if ((card as any)?.pin) correctPin = String((card as any).pin);
+
+      // 2. Fall back to PRESET_STAFF preset (dev / demo accounts)
+      if (!correctPin) {
+        const preset = PRESET_STAFF.find((p) => p.badgeId === userSession!.badgeId);
+        if (preset?.pin) correctPin = String(preset.pin);
+      }
+    }
+
+    // 3. Accept if PIN matches (normalised) OR no PIN on record (open)
+    const pinMatch =
+      !correctPin ||
+      normalizeStaffPin(entered) === normalizeStaffPin(correctPin) ||
+      entered === correctPin;
+
+    if (pinMatch) {
+      setIsLocked(false);
+      setUnlockPin('');
+      setUnlockError('');
+    } else {
+      setUnlockError('Incorrect PIN. Try again.');
+      setUnlockShake(true);
+      window.setTimeout(() => setUnlockShake(false), 600);
+      setUnlockPin('');
+    }
   };
 
   useEffect(() => {
@@ -1882,7 +1920,11 @@ const handleLockScreen = () => {
       {/* ── Lock Screen Modal ── */}
       {isLocked && (
         <div className="os-lock-modal-backdrop">
-          <div className="os-lock-card">
+          <style>{'@keyframes osLockShake{0%,100%{transform:translateX(0)}15%{transform:translateX(-8px)}30%{transform:translateX(8px)}45%{transform:translateX(-6px)}60%{transform:translateX(6px)}75%{transform:translateX(-3px)}90%{transform:translateX(3px)}}'}</style>
+          <div
+            className="os-lock-card"
+            style={unlockShake ? { animation: 'osLockShake 0.55s ease' } : {}}
+          >
             <div className="os-lock-icon-wrap">
               <Lock size={30} />
             </div>
@@ -1890,20 +1932,42 @@ const handleLockScreen = () => {
               IBOM HEALTH OS · TERMINAL SECURED
             </div>
             <h3 style={{ margin: '10px 0 6px 0', color: '#0A2540', fontFamily: 'var(--os-font-heading)', fontSize: '1.3rem' }}>Workstation Locked</h3>
-            <p style={{ margin: '0 0 22px 0', fontSize: '0.82rem', color: '#94A3B8', lineHeight: 1.5 }}>
+            <p style={{ margin: '0 0 18px 0', fontSize: '0.82rem', color: '#94A3B8', lineHeight: 1.5 }}>
               Staff on Duty: <strong style={{ color: '#FB923C' }}>{userSession?.name}</strong><br />
-              <span style={{ color: '#64748B', fontSize: '0.75rem' }}>Enter your security passcode to resume session.</span>
+              <span style={{ color: '#64748B', fontSize: '0.75rem' }}>Enter your PIN to resume session.</span>
             </p>
             <form onSubmit={handleUnlock}>
               <input
                 type="password"
                 className="os-form-input"
-                placeholder="Enter passcode"
+                placeholder="Enter PIN"
                 value={unlockPin}
-                onChange={(e) => setUnlockPin(e.target.value)}
+                onChange={(e) => { setUnlockPin(e.target.value); if (unlockError) setUnlockError(''); }}
                 autoFocus
-                style={{ textAlign: 'center', letterSpacing: '0.25em', fontSize: '1.1rem', marginBottom: 14 }}
+                style={{
+                  textAlign: 'center',
+                  letterSpacing: '0.25em',
+                  fontSize: '1.1rem',
+                  marginBottom: unlockError ? 8 : 14,
+                  borderColor: unlockError ? '#EF4444' : undefined,
+                  outline: unlockError ? '2px solid rgba(239,68,68,0.25)' : undefined,
+                }}
               />
+              {unlockError && (
+                <div style={{
+                  marginBottom: 12,
+                  fontSize: '0.78rem',
+                  color: '#EF4444',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 5,
+                }}>
+                  <Key size={12} />
+                  {unlockError}
+                </div>
+              )}
               <button type="submit" className="os-login-submit-btn" style={{ margin: 0 }}>
                 <Unlock size={16} />
                 <span>Unlock Terminal</span>
