@@ -97,7 +97,7 @@ type View =
   | 'register'
   | 'queue'
   | 'appointments'
-  | 'payment' | 'send-accounts'
+  | 'payment'
   | 'search'
   | 'scan'
   | 'walkin'
@@ -290,8 +290,10 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [viewHistory, setViewHistory] = useState<View[]>([]);
   /** Navigate with View Transition when browser supports it */
   const goView = useCallback((next: View) => {
-    // Collect payment lives on Accounting desk only — front desk only sends invoices
-    const mapped: View = next === 'payment' || (next as string) === 'cashier' ? 'send-accounts' : next;
+    const mapped: View =
+      next === 'payment' || (next as string) === 'cashier' || (next as string) === 'send-accounts'
+        ? 'home'
+        : next;
     withViewTransition(() => {
       setView((prev) => {
         if (prev !== mapped) {
@@ -383,8 +385,8 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
 
   useEffect(() => {
-    if (initialView === 'payment' || initialView === 'send-accounts') goView('send-accounts');
-  }, [initialView]);
+    if (initialView === 'payment' || (initialView as string) === 'send-accounts') goView('home');
+  }, [initialView, goView]);
 
   const reload = useCallback(() => {
     try {
@@ -593,6 +595,54 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     flash(res.message);
   };
 
+  /** Auto-send payment request to Accounting desk (zero manual clicks required) */
+  const autoSendToAccounts = useCallback(
+    (patient: FacilityPatient, amount: number, purpose: string) => {
+      if (!patient || amount <= 0) return null;
+      try {
+        const req = sendPaymentRequestToAccounts({
+          facilityId,
+          facilityName,
+          patientId: patient.id,
+          hospitalNumber: patient.hospitalNumber,
+          patientName: fullName(patient),
+          amountNgn: amount,
+          purpose,
+          source: 'reception',
+          sentBy: session.name || 'Reception',
+          sentByBadge: session.badgeId,
+          note: 'Auto-sent from Front Desk upon registration / check-in. Patient directed to Accounts to pay.',
+        });
+        try {
+          pushNotification({
+            facilityId,
+            level: 'important',
+            title: 'New payment request from Front Desk',
+            body: `${fullName(patient)} · ₦${amount.toLocaleString()} · ${purpose} · ${req.invoiceNumber}`,
+            module: 'cashier',
+            roleHint: 'accountant',
+          });
+          pushNotification({
+            facilityId,
+            level: 'important',
+            title: 'New payment request from Front Desk',
+            body: `${fullName(patient)} · ₦${amount.toLocaleString()} · ${purpose}`,
+            module: 'cashier',
+            roleHint: 'cashier',
+          });
+        } catch {
+          /* ignore */
+        }
+        emitLiveAction(`FD → Accounts · ${req.invoiceNumber} · ₦${amount}`, { module: 'reception' });
+        return req;
+      } catch (err) {
+        console.warn('[reception] autoSendToAccounts failed', err);
+        return null;
+      }
+    },
+    [facilityId, facilityName, session.name, session.badgeId]
+  );
+
   const saveRegistration = () => {
     if (!reg.firstName.trim() || !reg.lastName.trim() || !reg.phone.trim()) {
       flash('First name, last name and phone are required');
@@ -637,39 +687,21 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     stopCam();
     emitLiveAction(`Patient registered · ${patient.hospitalNumber}`, { module: 'reception' });
 
-    // Digital handoff → Accounts: registration / folder fee for collection
+    // Digital handoff → Accounts: registration / folder fee auto-sent immediately
     const fee =
       patient.category === 'NHIA' || patient.insuranceProvider
         ? Math.round(DEFAULT_REGISTRATION_FEE_NGN * 0.5)
         : DEFAULT_REGISTRATION_FEE_NGN;
-    try {
-      const req = sendPaymentRequestToAccounts({
-        facilityId,
-        facilityName,
-        patientId: patient.id,
-        hospitalNumber: patient.hospitalNumber,
-        patientName: fullName(patient),
-        amountNgn: fee,
-        purpose: 'New folder · Registration fee',
-        source: 'registration',
-        sentBy: session.name || 'Reception',
-        sentByBadge: session.badgeId,
-        note: 'Patient to pay at Accounts, then return to front desk with receipt',
-      });
-      try {
-        pushNotification({
-          facilityId,
-          level: 'important',
-          title: 'Registration fee — pay at Accounts',
-          body: `${fullName(patient)} · ₦${fee.toLocaleString()} · ${req.invoiceNumber} · New folder`,
-          module: 'cashier',
-          roleHint: 'accountant',
-        });
-      } catch { /* ignore */ }
-      flash(
-        `Enrolled · ${patient.hospitalNumber} · PENDING ₦${fee.toLocaleString()} → Accounts (${req.invoiceNumber}). After PAID, continue check-in here.`
-      );
-    } catch {
+    if (fee > 0) {
+      const req = autoSendToAccounts(patient, fee, 'New folder · Registration fee');
+      if (req) {
+        flash(
+          `Registered ${fullName(patient)} · ${patient.hospitalNumber} · Auto-sent ₦${fee.toLocaleString()} invoice to Accounts (${req.invoiceNumber}).`
+        );
+      } else {
+        flash(`Registered ${fullName(patient)} · ${patient.hospitalNumber}`);
+      }
+    } else {
       flash(`Registered ${fullName(patient)} · ${patient.hospitalNumber}`);
     }
   };
@@ -1102,7 +1134,11 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     if (action === 'take_payment') {
       setPosPatient(p);
       setAiCard(null);
-      goView('send-accounts');
+      const fee = DEFAULT_REGISTRATION_FEE_NGN;
+      const req = autoSendToAccounts(p, fee, 'OPD consultation / hospital fee');
+      if (req) {
+        flash(`Auto-sent ₦${fee.toLocaleString()} invoice to Accounts (${req.invoiceNumber})`);
+      }
       return;
     }
     if (action === 'complete_registration' || action === 'review') {
@@ -1822,10 +1858,21 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                               <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: '#D1FAE5', color: '#047857' }}>Consult complete</span>
                             )}
                             {v.paymentStatus === 'pending' && (
-                              <button type="button" onClick={() => {
-                                const p = patients.find((x) => x.id === v.patientId);
-                                if (p) { setSelected(p); setPosPatient(p); goView('send-accounts'); }
-                              }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: '#FEF3C7', color: '#B45309', cursor: 'pointer' }} title="Folder/service fee is collected at Accounts">To Accounts</button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const p = patients.find((x) => x.id === v.patientId);
+                                  if (p) {
+                                    const fee = Number(v.amount) || 5000;
+                                    const req = autoSendToAccounts(p, fee, `${v.department || 'OPD'} consultation`);
+                                    flash(`Auto-sent ₦${fee.toLocaleString()} invoice to Accounts (${req?.invoiceNumber || 'INV'})`);
+                                  }
+                                }}
+                                style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: '#FEF3C7', color: '#B45309', cursor: 'pointer' }}
+                                title="Click to auto-send or re-notify Accounts"
+                              >
+                                Invoice at Accounts
+                              </button>
                             )}
                           </div>
                         </td>
@@ -2118,6 +2165,10 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 type="button"
                 onClick={() => {
                   setCiType('walkin');
+                  if (ciPay === 'pending') {
+                    const fee = Number(ciAmount) || CONSULT_FEES[ciDept] || 5000;
+                    autoSendToAccounts(selected, fee, `${ciDept} consultation fee`);
+                  }
                   doCheckIn(selected);
                   setWalkStep(1);
                   goView('queue');
@@ -2230,6 +2281,8 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       onClick={() => {
                         const p = patients.find((x) => x.id === a.patientId);
                         if (p) {
+                          const fee = CONSULT_FEES[a.department] || 5000;
+                          autoSendToAccounts(p, fee, `${a.department} appointment fee`);
                           const visit = checkInPatient({
                             patient: p,
                             facilityId,
@@ -2238,7 +2291,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                             visitType: 'appointment',
                             reason: a.reason,
                             paymentStatus: 'pending',
-                            amount: CONSULT_FEES[a.department] || 5000,
+                            amount: fee,
                             appointmentId: a.id,
                             appointmentTime: a.scheduledAt.slice(11, 16),
                           });
@@ -2246,8 +2299,8 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                           reload();
                           flash(
                             a.doctor && !/^any/i.test(a.doctor)
-                              ? `Appointment checked in · assigned to ${a.doctor}`
-                              : 'Appointment checked in'
+                              ? `Appointment checked in · assigned to ${a.doctor} · Auto-sent ₦${fee.toLocaleString()} to Accounts`
+                              : `Appointment checked in · Auto-sent ₦${fee.toLocaleString()} to Accounts`
                           );
                         }
                       }}
@@ -2274,296 +2327,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       )}
 
 
-      {/* PAYMENT POS — active cash / POS / card / transfer / HMO / waiver */}
-      {view === 'send-accounts' && (() => {
-        const queueVisits = visits.filter(
-          (v) =>
-            v.status !== 'completed' &&
-            v.status !== 'cancelled' &&
-            (v.paymentStatus === 'pending' || v.paymentStatus === 'partial' || !v.paymentStatus)
-        );
-        const activeAcct = listActiveStaff(facilityId).filter((p) => {
-          const rk = String(p.roleKey || '').toLowerCase();
-          const r = String(p.role || '').toLowerCase();
-          return (
-            rk === 'accountant' ||
-            rk === 'cashier' ||
-            rk === 'hospital_admin' ||
-            r.includes('account') ||
-            r.includes('cashier') ||
-            r.includes('finance') ||
-            r.includes('billing')
-          );
-        });
-        const flowPatients = patients.slice(0, 80);
-        const rows: {
-          key: string;
-          patient: FacilityPatient | null;
-          patientId: string;
-          hospitalNumber: string;
-          name: string;
-          status: string;
-          dept: string;
-          amountHint: number;
-        }[] =
-          sendAcctTab === 'queue'
-            ? queueVisits.map((v) => {
-                const p = patients.find((x) => x.id === v.patientId || x.hospitalNumber === v.hospitalNumber) || null;
-                return {
-                  key: v.id,
-                  patient: p,
-                  patientId: v.patientId || p?.id || '',
-                  hospitalNumber: v.hospitalNumber,
-                  name: v.patientName || (p ? fullName(p) : v.hospitalNumber),
-                  status: `${v.status} · ${v.paymentStatus || 'pending'}`,
-                  dept: v.department || '—',
-                  amountHint: Number(v.amount) || CONSULT_FEES[v.department || ''] || 5000,
-                };
-              })
-            : flowPatients.map((p) => ({
-                key: p.id,
-                patient: p,
-                patientId: p.id,
-                hospitalNumber: p.hospitalNumber,
-                name: fullName(p),
-                status: p.status || 'registered',
-                dept: p.category || '—',
-                amountHint: 5000,
-              }));
 
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 18, color: C.navy }}>Send to Accounts</div>
-                <p style={{ margin: '4px 0 0', fontSize: 13, color: C.muted, maxWidth: 520 }}>
-                  Pick a patient from the live queue or hospital flow, choose an active Accounting desk, then send the invoice.
-                  Payment is collected only at Accounting — not on this desk.
-                </p>
-              </div>
-              <button type="button" onClick={() => goView('home')} style={{ padding: '8px 12px', borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-                ← Front desk home
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <button
-                type="button"
-                onClick={() => setSendAcctTab('queue')}
-                style={{
-                  padding: '8px 14px', borderRadius: 999, border: 'none', fontWeight: 800, fontSize: 12, cursor: 'pointer',
-                  background: sendAcctTab === 'queue' ? C.blue : '#F1F5F9', color: sendAcctTab === 'queue' ? '#fff' : C.muted,
-                }}
-              >
-                In queue · {queueVisits.length}
-              </button>
-              <button
-                type="button"
-                onClick={() => setSendAcctTab('flow')}
-                style={{
-                  padding: '8px 14px', borderRadius: 999, border: 'none', fontWeight: 800, fontSize: 12, cursor: 'pointer',
-                  background: sendAcctTab === 'flow' ? C.blue : '#F1F5F9', color: sendAcctTab === 'flow' ? '#fff' : C.muted,
-                }}
-              >
-                Hospital flow · {flowPatients.length}
-              </button>
-              <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
-                Active Accounting desks · {activeAcct.length || 'none online'}
-              </span>
-            </div>
-
-            <div
-              style={{
-                background: '#fff',
-                borderRadius: 16,
-                border: `1px solid ${C.border}`,
-                padding: 14,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 10,
-              }}
-            >
-              <div style={{ fontWeight: 800, fontSize: 13, color: C.navy }}>Route to desk</div>
-              <select
-                style={{ ...inputStyle, maxWidth: 360 }}
-                value={acctTargetBadge}
-                onChange={(e) => {
-                  const badge = e.target.value;
-                  setAcctTargetBadge(badge);
-                  const hit = activeAcct.find((a) => a.badgeId === badge);
-                  setAcctTargetName(hit?.name || '');
-                }}
-              >
-                <option value="">Any available Accounting desk</option>
-                {activeAcct.map((a) => (
-                  <option key={a.badgeId} value={a.badgeId}>
-                    {a.name} · {a.role || a.roleKey || 'Accounts'} · online
-                  </option>
-                ))}
-              </select>
-              {activeAcct.length === 0 && (
-                <div style={{ fontSize: 12, color: '#B45309', fontWeight: 600 }}>
-                  No accountant online right now — invoice still queues for Accounts when they sign in.
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <label style={{ fontSize: 12, fontWeight: 700, color: C.muted, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  Amount (₦)
-                  <input style={{ ...inputStyle, width: 140 }} value={posAmount} onChange={(e) => setPosAmount(e.target.value.replace(/[^\d]/g, ''))} />
-                </label>
-                <label style={{ fontSize: 12, fontWeight: 700, color: C.muted, display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 180 }}>
-                  Purpose
-                  <input style={inputStyle} value={posPurpose} onChange={(e) => setPosPurpose(e.target.value)} placeholder="OPD consultation · folder fee…" />
-                </label>
-              </div>
-            </div>
-
-            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
-              <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, fontWeight: 800, fontSize: 13 }}>
-                {sendAcctTab === 'queue' ? 'Live queue — unpaid / pending' : 'Patients in hospital flow'}
-              </div>
-              <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-                {rows.length === 0 && (
-                  <div style={{ padding: 24, textAlign: 'center', color: C.muted, fontSize: 13 }}>
-                    {sendAcctTab === 'queue' ? 'No pending-payment patients in queue' : 'No patients registered yet'}
-                  </div>
-                )}
-                {rows.map((row) => {
-                  const selectedRow =
-                    (posPatient || selected)?.id === row.patientId ||
-                    (posPatient || selected)?.hospitalNumber === row.hospitalNumber;
-                  return (
-                    <div
-                      key={row.key}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: '10px 14px',
-                        borderBottom: `1px solid ${C.border}`,
-                        background: selectedRow ? '#F0F9FF' : '#fff',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (row.patient) {
-                            setPosPatient(row.patient);
-                            setSelected(row.patient);
-                          } else if (row.patientId) {
-                            const p = patients.find((x) => x.id === row.patientId);
-                            if (p) {
-                              setPosPatient(p);
-                              setSelected(p);
-                            }
-                          }
-                          setPosAmount(String(row.amountHint || 5000));
-                        }}
-                        style={{
-                          flex: 1,
-                          textAlign: 'left',
-                          border: 'none',
-                          background: 'transparent',
-                          cursor: 'pointer',
-                          padding: 0,
-                        }}
-                      >
-                        <div style={{ fontWeight: 800, fontSize: 13, color: C.navy }}>{row.name}</div>
-                        <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginTop: 2 }}>
-                          {row.hospitalNumber} · {row.dept} · {row.status}
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (row.patient) {
-                            setPosPatient(row.patient);
-                            setSelected(row.patient);
-                          } else {
-                            const p = patients.find((x) => x.id === row.patientId || x.hospitalNumber === row.hospitalNumber);
-                            if (p) {
-                              setPosPatient(p);
-                              setSelected(p);
-                            } else {
-                              flash('Patient record not found — open search and select the patient');
-                              return;
-                            }
-                          }
-                          setPosAmount(String(row.amountHint || posAmount || 5000));
-                          if (row.patient) {
-                            sendToAccountingDesk(row.patient);
-                          } else {
-                            const p = patients.find((x) => x.id === row.patientId || x.hospitalNumber === row.hospitalNumber);
-                            if (p) sendToAccountingDesk(p);
-                            else flash('Patient record not found — open search and select the patient');
-                          }
-                        }}
-                        style={{
-                          padding: '7px 12px',
-                          borderRadius: 10,
-                          border: 'none',
-                          background: 'linear-gradient(135deg,#0D9488,#0284C7)',
-                          color: '#fff',
-                          fontWeight: 800,
-                          fontSize: 11,
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                          boxShadow: '0 4px 12px rgba(13,148,136,0.25)',
-                        }}
-                      >
-                        Send to Accounts
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {(posPatient || selected) && (
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 12,
-                  flexWrap: 'wrap',
-                  padding: 14,
-                  borderRadius: 14,
-                  background: 'linear-gradient(135deg,#ECFDF5,#F0F9FF)',
-                  border: `1px solid #A7F3D0`,
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: 14, color: C.navy }}>
-                    {fullName(posPatient || selected!)} · {(posPatient || selected)!.hospitalNumber}
-                  </div>
-                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                    ₦{(Number(posAmount) || 0).toLocaleString()} · {posPurpose || 'Fee'}
-                    {acctTargetName ? ` · → ${acctTargetName}` : ''}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => sendToAccountingDesk()}
-                  style={{
-                    padding: '10px 18px',
-                    borderRadius: 12,
-                    border: 'none',
-                    background: 'linear-gradient(135deg,#0D9488,#0284C7)',
-                    color: '#fff',
-                    fontWeight: 800,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    boxShadow: '0 8px 20px rgba(2,132,199,0.25)',
-                  }}
-                >
-                  Confirm send to Accounts
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      })()}
 
 
       {/* AI contextual check-in card — human must confirm */}
@@ -2952,13 +2716,15 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 <button
                   type="button"
                   onClick={() => {
-                    setPosPatient(selected);
-                    setPanelOpen(false);
-                    goView('send-accounts');
+                    const fee = 5000;
+                    const req = autoSendToAccounts(selected, fee, 'OPD consultation / hospital fee');
+                    if (req) {
+                      flash(`Invoice auto-sent to Accounts · ₦${fee.toLocaleString()} (${req.invoiceNumber})`);
+                    }
                   }}
                   style={{ padding: 12, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
                 >
-                  Invoice → Accounts
+                  Send Invoice to Accounts
                 </button>
                 <button
                   type="button"

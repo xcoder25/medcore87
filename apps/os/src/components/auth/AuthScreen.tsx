@@ -25,6 +25,7 @@ export interface UserSession {
   authMethod?: string;
   token?: string;
   loginTime?: string;
+  pin?: string;
 }
 
 export interface PresetStaff {
@@ -860,6 +861,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             setLoading(false);
             return;
           }
+          const sessionPin = String(profile.pin || pinNorm || pinQuery || '');
+          try {
+            if (sessionPin && typeof window !== 'undefined') {
+              sessionStorage.setItem('medcore_session_pin', sessionPin);
+            }
+          } catch { /* ignore */ }
           const sessionLocal: UserSession = {
             id: profile.badgeId,
             badgeId: profile.badgeId,
@@ -875,6 +882,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             clearanceLevel: profile.clearanceLevel,
             permissions: profile.permissions,
             authMethod: 'Staff PIN (local)',
+            pin: sessionPin,
             loginTime: new Date().toLocaleTimeString('en-GB', {
               hour: '2-digit',
               minute: '2-digit',
@@ -894,6 +902,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         });
       }
 
+      const sessionPin = String(profile.pin || pinNorm || pinQuery || '');
+      try {
+        if (sessionPin && typeof window !== 'undefined') {
+          sessionStorage.setItem('medcore_session_pin', sessionPin);
+        }
+      } catch { /* ignore */ }
+
       const session: UserSession = {
         id: fbUser?.uid || profile.badgeId,
         badgeId: profile.badgeId,
@@ -909,6 +924,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         clearanceLevel: profile.clearanceLevel,
         permissions: profile.permissions,
         authMethod: fbUser ? 'Firebase · Staff ID' : 'Staff PIN',
+        pin: sessionPin,
         token: fbUser
           ? await withTimeout(fbUser.getIdToken(), 4000).catch(() => `PIN-${Date.now().toString(36)}`)
           : `PIN-${Date.now().toString(36)}`,
@@ -1206,6 +1222,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           .slice(0, 2)
           .toUpperCase();
 
+        const sessionPin = String(matchedStaff.pin || pass || '');
+        try {
+          if (sessionPin && typeof window !== 'undefined') {
+            sessionStorage.setItem('medcore_session_pin', sessionPin);
+          }
+        } catch { /* ignore */ }
+
         const session: UserSession = {
           id: fbUser?.uid || matchedStaff.badgeId || `local-${Date.now().toString(36)}`,
           badgeId: matchedStaff.badgeId,
@@ -1221,6 +1244,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           clearanceLevel: matchedStaff.clearanceLevel,
           permissions: matchedStaff.permissions,
           authMethod: fbUser ? 'Firebase' : 'Local',
+          pin: sessionPin,
           token: fbUser
             ? await withTimeout(fbUser.getIdToken(), 4000).catch(() => `EMAIL-${Date.now().toString(36)}`)
             : `LOCAL-${Date.now().toString(36)}`,

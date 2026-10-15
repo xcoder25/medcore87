@@ -20,7 +20,7 @@ import type { ReceptionVisit, ReceptionAppointment, ReceptionDayStats } from '..
 import {
   Search, UserPlus, CreditCard, Calendar, QrCode, Users, Clock,
   Activity, CheckCircle2, RefreshCw, ChevronRight,
-  TrendingUp, TrendingDown, Heart,
+  TrendingUp, TrendingDown, Heart, Ticket,
 } from 'lucide-react';
 import { useOpdSync, broadcastOpdStage } from '../../hooks/useOpdSync';
 
@@ -30,7 +30,6 @@ export type DeskNav =
   | 'register'
   | 'appointments'
   | 'payment'
-  | 'send-accounts'
   | 'cashier'
   | 'search'
   | 'scan'
@@ -323,7 +322,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     { label: 'Register', desc: 'New patient registration', icon: UserPlus, go: 'register' as DeskNav },
     { label: 'Walk-in', desc: 'No appointment', icon: Users, go: 'walkin' as DeskNav },
     { label: 'Appointments', desc: 'Book · Confirm · Arrive', icon: Calendar, go: 'appointments' as DeskNav },
-    { label: 'Send to Accounts', desc: 'Queue / flow → Accounting desk', icon: CreditCard, go: 'send-accounts' as DeskNav },
+    { label: 'Live Queue', desc: 'Call · Skip · Manage OPD', icon: Ticket, go: 'queue' as DeskNav },
   ];
 
   return (

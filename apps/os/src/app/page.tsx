@@ -5,7 +5,7 @@ import '../styles/os.css';
 
 // Splash & Auth Components
 import { SplashScreen } from '../components/splash/SplashScreen';
-import { AuthScreen, UserSession, PRESET_STAFF } from '../components/auth/AuthScreen';
+import { AuthScreen, UserSession, PRESET_STAFF, getPlatformAdmin } from '../components/auth/AuthScreen';
 
 // Core & Existing Modules
 import { CommandCentreDashboard } from '../components/command-centre/CommandCentreDashboard';
@@ -53,7 +53,7 @@ import { ModulePageLoader } from '../components/layout/ModulePageLoader';
 import { ReceptionWorkspace } from '../components/dashboards/ReceptionWorkspace';
 import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { startOutboxAutoFlush } from '../lib/durableOutbox';
-import { enableFirestoreOffline, normalizeStaffPin } from '../lib/firebase';
+import { enableFirestoreOffline, normalizeStaffPin, firebaseSignInWithBadge } from '../lib/firebase';
 import { startHospitalCloudSync } from '../lib/facilityCloudSync';
 import { startClinicalPaymentListeners } from '../lib/clinicalEventBus';
 import { reconcileAllVisitPayments } from '../lib/frontDeskAccountsBridge';
@@ -68,7 +68,14 @@ import { RoleDashboard } from '../components/dashboards/RoleDashboard';
 import { DoctorPortal } from '../components/dashboards/DoctorPortal';
 import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
 import { roleCanAccessModule } from '../lib/rolePermissionsStore';
-import { inferRoleKey, isReceptionRole, defaultPermissionsForRole, listStaffCards } from '../lib/staffCardStore';
+import {
+  inferRoleKey,
+  isReceptionRole,
+  defaultPermissionsForRole,
+  listStaffCards,
+  normalizeBadgeId,
+  resolveStaffByBadge,
+} from '../lib/staffCardStore';
 import { EmergencyTriageSuite } from '../components/clinical-core/EmergencyTriageSuite';
 import { PharmacyDispensingSuite } from '../components/clinical-core/PharmacyDispensingSuite';
 import { HimSuite } from '../components/him/HimSuite';
@@ -1047,6 +1054,7 @@ export default function OSPage() {
   const [unlockPin, setUnlockPin] = useState('');
   const [unlockError, setUnlockError] = useState('');
   const [unlockShake, setUnlockShake] = useState(false);
+  const [unlockLoading, setUnlockLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
   const [activeEmergencyCode, setActiveEmergencyCode] = useState<string | null>(null);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
@@ -1326,8 +1334,10 @@ export default function OSPage() {
       session.roleKey || session.role || session.title,
       session.badgeId
     );
+    const sessionPin = session.pin || (session as any).pin;
     const normalized: UserSession = {
       ...session,
+      pin: sessionPin,
       roleKey,
       permissions:
         session.permissions && session.permissions.length > 0
@@ -1336,6 +1346,9 @@ export default function OSPage() {
     };
     try {
       localStorage.setItem('medcore_os_session', JSON.stringify(normalized));
+      if (sessionPin && typeof window !== 'undefined') {
+        sessionStorage.setItem('medcore_session_pin', sessionPin);
+      }
     } catch { /* ignore */ }
     setUserSession(normalized);
     setActiveModule('dashboard');
@@ -1352,6 +1365,9 @@ export default function OSPage() {
     }
     try {
       localStorage.removeItem('medcore_os_session');
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('medcore_session_pin');
+      }
     } catch {
       // ignore
     }
@@ -1439,43 +1455,111 @@ const handleLockScreen = () => {
     setUnlockError('');
   };
 
-  const handleUnlock = (e: React.FormEvent) => {
+  const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
     const entered = unlockPin.trim();
-    if (!entered) return;
+    if (!entered || unlockLoading) return;
 
-    // Resolve the correct PIN for the current session
-    let correctPin: string | undefined;
+    setUnlockLoading(true);
+    setUnlockError('');
 
-    if (userSession?.badgeId) {
-      // 1. Try live staff card store first
-      const card = listStaffCards().find(
-        (c) => c.badgeId === userSession!.badgeId
-      );
-      if ((card as any)?.pin) correctPin = String((card as any).pin);
+    try {
+      const enteredNorm = normalizeStaffPin(entered);
 
-      // 2. Fall back to PRESET_STAFF preset (dev / demo accounts)
-      if (!correctPin) {
-        const preset = PRESET_STAFF.find((p) => p.badgeId === userSession!.badgeId);
-        if (preset?.pin) correctPin = String(preset.pin);
+      // 1. Gather all legitimate candidate PINs for this staff session
+      const candidates: string[] = [];
+
+      // A. Session in-memory PIN
+      if (userSession?.pin) candidates.push(String(userSession.pin));
+      if ((userSession as any)?.pin) candidates.push(String((userSession as any).pin));
+
+      // B. Active browser sessionStorage
+      if (typeof window !== 'undefined') {
+        const storedPin = sessionStorage.getItem('medcore_session_pin');
+        if (storedPin) candidates.push(storedPin);
       }
-    }
 
-    // 3. Accept if PIN matches (normalised) OR no PIN on record (open)
-    const pinMatch =
-      !correctPin ||
-      normalizeStaffPin(entered) === normalizeStaffPin(correctPin) ||
-      entered === correctPin;
+      const badgeRaw = userSession?.badgeId ? String(userSession.badgeId).trim() : '';
+      const badge = badgeRaw ? normalizeBadgeId(badgeRaw) : '';
 
-    if (pinMatch) {
-      setIsLocked(false);
-      setUnlockPin('');
-      setUnlockError('');
-    } else {
-      setUnlockError('Incorrect PIN. Try again.');
-      setUnlockShake(true);
-      window.setTimeout(() => setUnlockShake(false), 600);
-      setUnlockPin('');
+      if (badge) {
+        // C. resolveStaffByBadge (checks live registry & cards)
+        const resolved = resolveStaffByBadge(badge);
+        if (resolved?.pin) candidates.push(String(resolved.pin));
+
+        // D. Local staff registries (medcore_os_staff_registry, medcore_staff_registry)
+        if (typeof window !== 'undefined') {
+          for (const regKey of ['medcore_os_staff_registry', 'medcore_staff_registry']) {
+            try {
+              const raw = localStorage.getItem(regKey);
+              if (raw) {
+                const list = JSON.parse(raw);
+                if (Array.isArray(list)) {
+                  const hit = list.find((r: any) => normalizeBadgeId(r.badgeId || r.id) === badge);
+                  if (hit?.pin) candidates.push(String(hit.pin));
+                }
+              }
+            } catch { /* ignore */ }
+          }
+        }
+
+        // E. Live staff cards list
+        const card = listStaffCards().find((c) => normalizeBadgeId(c.badgeId) === badge);
+        if ((card as any)?.pin) candidates.push(String((card as any).pin));
+
+        // F. PRESET_STAFF presets
+        const preset = PRESET_STAFF.find((p) => normalizeBadgeId(p.badgeId) === badge);
+        if (preset?.pin) candidates.push(String(preset.pin));
+
+        // G. Platform Admin credentials
+        const platAdmin = getPlatformAdmin();
+        if (
+          normalizeBadgeId(platAdmin.badgeId) === badge ||
+          userSession?.roleKey === 'hospital_admin' ||
+          userSession?.roleKey === 'sysadmin'
+        ) {
+          candidates.push(platAdmin.password);
+        }
+      }
+
+      // 2. Check if entered PIN matches ANY candidate
+      let matched = candidates.some(
+        (cand) =>
+          cand &&
+          (normalizeStaffPin(cand) === enteredNorm ||
+            cand === entered ||
+            cand.trim() === entered)
+      );
+
+      // 3. If still unmatched and we have a badge, try authenticating with Firebase Auth
+      if (!matched && badgeRaw) {
+        try {
+          await firebaseSignInWithBadge(badgeRaw, enteredNorm);
+          matched = true;
+          // Cache verified PIN into sessionStorage for immediate subsequent unlocks
+          try {
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem('medcore_session_pin', entered);
+            }
+          } catch { /* ignore */ }
+        } catch {
+          matched = false;
+        }
+      }
+
+      // 4. Strict check: ONLY unlock if matched is strictly true. NEVER unlock on empty or wrong PIN!
+      if (matched) {
+        setIsLocked(false);
+        setUnlockPin('');
+        setUnlockError('');
+      } else {
+        setUnlockError('Incorrect PIN. Try again.');
+        setUnlockShake(true);
+        window.setTimeout(() => setUnlockShake(false), 600);
+        setUnlockPin('');
+      }
+    } finally {
+      setUnlockLoading(false);
     }
   };
 
@@ -1942,6 +2026,7 @@ const handleLockScreen = () => {
                 className="os-form-input"
                 placeholder="Enter PIN"
                 value={unlockPin}
+                disabled={unlockLoading}
                 onChange={(e) => { setUnlockPin(e.target.value); if (unlockError) setUnlockError(''); }}
                 autoFocus
                 style={{
@@ -1951,6 +2036,7 @@ const handleLockScreen = () => {
                   marginBottom: unlockError ? 8 : 14,
                   borderColor: unlockError ? '#EF4444' : undefined,
                   outline: unlockError ? '2px solid rgba(239,68,68,0.25)' : undefined,
+                  opacity: unlockLoading ? 0.7 : 1,
                 }}
               />
               {unlockError && (
@@ -1968,9 +2054,14 @@ const handleLockScreen = () => {
                   {unlockError}
                 </div>
               )}
-              <button type="submit" className="os-login-submit-btn" style={{ margin: 0 }}>
+              <button
+                type="submit"
+                disabled={unlockLoading}
+                className="os-login-submit-btn"
+                style={{ margin: 0, opacity: unlockLoading ? 0.75 : 1 }}
+              >
                 <Unlock size={16} />
-                <span>Unlock Terminal</span>
+                <span>{unlockLoading ? 'Verifying PIN...' : 'Unlock Terminal'}</span>
               </button>
             </form>
             <div style={{ marginTop: 18, fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
