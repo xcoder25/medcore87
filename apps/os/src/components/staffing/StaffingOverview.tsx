@@ -194,33 +194,34 @@ export const StaffingOverview: React.FC<Props> = ({ session }) => {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'on-duty' | 'off-duty' | 'leave'>('all');
-  const [tick, setTick] = useState(0);
 
+  // reload is READ-ONLY — never writes to localStorage to avoid triggering its own listeners
   const reload = useCallback(() => {
-    try {
-      syncAccessRosterFromSources(facilityId);
-    } catch {
-      /* ignore */
-    }
     setStaff(buildRows(facilityId));
-    setTick((n) => n + 1);
   }, [facilityId]);
 
   useEffect(() => {
+    // One-time roster sync on mount — writes to localStorage, so kept OUT of the
+    // reload callback to prevent the storage-event → reload → storage-event loop.
+    try { syncAccessRosterFromSources(facilityId); } catch { /* ignore */ }
+
     reload();
     const u1 = subscribeAdminSync(reload);
     const u2 = subscribeStaffPresence(reload);
     const stopCloud = startFacilityPresenceListener(facilityId);
     const bump = () => reload();
-    // Live: presence, admin registry, ID cards, cloud directory, storage peers
+    // Live updates: presence, admin registry, ID cards, cloud directory
+    // NOTE: 'storage' event intentionally OMITTED — it fires on every localStorage write
+    // (including our own syncAccessRosterFromSources calls) and would create an infinite loop.
+    // Cross-tab sync is handled by custom events dispatched after writes.
     window.addEventListener(STAFF_PRESENCE_EVENT, bump);
     window.addEventListener('medcore-admin-sync', bump);
     window.addEventListener('medcore-staff-cards-updated', bump);
     window.addEventListener('medcore-staff-registry-updated', bump);
     window.addEventListener('medcore-data-reset', bump);
-    window.addEventListener('storage', bump);
     window.addEventListener('medcore-facility-cloud', bump);
-    const iv = window.setInterval(reload, 5000);
+    // Periodic refresh every 30s (read-only buildRows — no writes)
+    const iv = window.setInterval(reload, 30_000);
     // Pull staff directory from cloud when online
     let stopDir = () => {};
     void (async () => {
@@ -249,7 +250,6 @@ export const StaffingOverview: React.FC<Props> = ({ session }) => {
       window.removeEventListener('medcore-staff-cards-updated', bump);
       window.removeEventListener('medcore-staff-registry-updated', bump);
       window.removeEventListener('medcore-data-reset', bump);
-      window.removeEventListener('storage', bump);
       window.removeEventListener('medcore-facility-cloud', bump);
       window.clearInterval(iv);
     };
@@ -465,7 +465,7 @@ export const StaffingOverview: React.FC<Props> = ({ session }) => {
         </table>
       </div>
       <div style={{ fontSize: 11, color: '#94A3B8' }}>
-        Snapshot #{tick} · on duty = active login heartbeat for this facility (not full HR headcount)
+        Live snapshot · on duty = active login heartbeat for this facility (not full HR headcount)
       </div>
     </div>
   );
