@@ -50,6 +50,11 @@ export interface FacilityPatient {
   currentMedications?: string[];
   immunizations?: string;
   problems?: string[];
+  /** Statewide Health Card & Interoperability standard fields */
+  shid?: string;
+  emergencyFlag?: boolean;
+  cardIssueDate?: string;
+  cardExpiryDate?: string;
 }
 
 function readAll(): FacilityPatient[] {

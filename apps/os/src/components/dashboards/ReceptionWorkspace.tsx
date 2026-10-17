@@ -1039,11 +1039,29 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     flash(`Payment recorded · ${pay.reference} · ₦${amt.toLocaleString()} · ${posMethod.toUpperCase()}`);
   };
 
+  /**
+   * Clinical governance rule:
+   * – First-time patients (no prior completed/waiting visits) → department pool only,
+   *   routed through nurse triage on arrival.
+   * – Returning patients (prior visit history) → may select a specific follow-up doctor.
+   */
+  const isReturningPatient = (p: FacilityPatient): boolean => {
+    return visits.some(
+      (v) => v.patientId === p.id && (v.status === 'completed' || v.status === 'waiting' || v.status === 'with_provider')
+    );
+  };
+
   const doBookAppt = () => {
     const p = apPatient || selected;
     if (!p) {
       flash('Select a patient to book');
       return;
+    }
+    const returning = isReturningPatient(p);
+    // Enforce triage pathway for first-time patients
+    const effectiveDoctor = returning ? apDoctor : 'Any available';
+    if (!returning && apDoctor !== 'Any available') {
+      flash('First-time patients go through nurse triage — assigned to open pool');
     }
     const scheduledAt = `${apDate}T${apTime}:00`;
     bookAppointment({
@@ -1052,12 +1070,16 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       patientName: fullName(p),
       facilityId,
       department: apDept,
-      doctor: apDoctor,
+      doctor: effectiveDoctor,
       scheduledAt,
       reason: apReason,
     });
     reload();
-    flash(`Appointment booked · ${apDate} ${apTime}`);
+    flash(
+      returning
+        ? `Follow-up booked · ${apDate} ${apTime} · ${effectiveDoctor}`
+        : `Appointment booked · ${apDate} ${apTime} · Routes through nurse triage on arrival`
+    );
   };
 
 
@@ -1946,19 +1968,31 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                     patients.find(
                       (p) =>
                         p.hospitalNumber.toLowerCase() === q ||
+                        (p.shid || '').toLowerCase() === q ||
                         p.id.toLowerCase() === q ||
                         (p.nin || '').replace(/\D/g, '') === q.replace(/\D/g, '') ||
-                        (p.nhiaNumber || '').toLowerCase() === q
+                        (p.nhiaNumber || '').toLowerCase() === q ||
+                        (p.shid && q.includes(p.shid.toLowerCase()))
                     ) ||
                     patients.find(
                       (p) =>
                         p.hospitalNumber.toLowerCase().includes(q) ||
+                        (p.shid || '').toLowerCase().includes(q) ||
                         (p.nhiaNumber || '').toLowerCase().includes(q)
                     );
                   if (hit) {
                     setSelected(hit);
-                    setPanelOpen(true);
-                    flash(`Card matched · ${fullName(hit)}`);
+                    setScanCode('');
+                    // If we came from the walk-in flow, return there with patient pre-selected
+                    const fromWalkIn = viewHistory[viewHistory.length - 1] === 'walkin';
+                    if (fromWalkIn) {
+                      setWalkStep(2);
+                      goView('walkin');
+                      flash(`Card matched · ${fullName(hit)} · Continue check-in below`);
+                    } else {
+                      setPanelOpen(true);
+                      flash(`Card matched · ${fullName(hit)}`);
+                    }
                   } else {
                     flash('No patient found for this scan — register or try Find patient');
                   }
@@ -1978,15 +2012,30 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                     patients.find(
                       (p) =>
                         p.hospitalNumber.toLowerCase() === q ||
+                        (p.shid || '').toLowerCase() === q ||
                         p.id.toLowerCase() === q ||
                         (p.nin || '').replace(/\D/g, '') === q.replace(/\D/g, '') ||
-                        (p.nhiaNumber || '').toLowerCase() === q
+                        (p.nhiaNumber || '').toLowerCase() === q ||
+                        (p.shid && q.includes(p.shid.toLowerCase()))
                     ) ||
-                    patients.find((p) => p.hospitalNumber.toLowerCase().includes(q));
+                    patients.find(
+                      (p) =>
+                        p.hospitalNumber.toLowerCase().includes(q) ||
+                        (p.shid || '').toLowerCase().includes(q)
+                    );
                   if (hit) {
                     setSelected(hit);
-                    setPanelOpen(true);
-                    flash(`Matched · ${fullName(hit)}`);
+                    setScanCode('');
+                    // If we came from the walk-in flow, return there with patient pre-selected
+                    const fromWalkIn = viewHistory[viewHistory.length - 1] === 'walkin';
+                    if (fromWalkIn) {
+                      setWalkStep(2);
+                      goView('walkin');
+                      flash(`Matched · ${fullName(hit)} · Continue check-in below`);
+                    } else {
+                      setPanelOpen(true);
+                      flash(`Matched · ${fullName(hit)}`);
+                    }
                   } else {
                     flash('No match — register new patient');
                     goView('register');
@@ -2027,17 +2076,34 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               <div style={{ marginTop: 16, padding: 12, borderRadius: 12, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
                 <div style={{ fontWeight: 800, color: '#166534' }}>{fullName(selected)}</div>
                 <div style={{ fontSize: 12, color: C.muted }}>{selected.hospitalNumber}</div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCiType('appointment');
-                    doCheckIn(selected);
-                    goView('queue');
-                  }}
-                  style={{ marginTop: 10, width: '100%', padding: 10, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
-                >
-                  Check in now
-                </button>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Use 'walkin' as the visit type — card scan at reception = walk-in arrival
+                      setCiType('walkin');
+                      doCheckIn(selected);
+                      setScanCode('');
+                      goView('queue');
+                    }}
+                    style={{ flex: 1, padding: 10, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
+                  >
+                    Walk-in check-in
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Has an appointment — honour appointment type
+                      setCiType('appointment');
+                      doCheckIn(selected);
+                      setScanCode('');
+                      goView('queue');
+                    }}
+                    style={{ flex: 1, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', color: C.navy, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Appointment check-in
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -2236,20 +2302,37 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 <option key={d}>{d}</option>
               ))}
             </select>
-            <label style={{ ...labelStyle, marginTop: 8 }}>Assign to doctor</label>
-            <select style={inputStyle} value={apDoctor} onChange={(e) => setApDoctor(e.target.value)}>
-              <option value="Any available">Any available (open pool)</option>
-              {facilityDoctors.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-            {facilityDoctors.length === 0 && (
-              <input
-                style={{ ...inputStyle, marginTop: 6 }}
-                placeholder="Doctor full name"
-                value={apDoctor === 'Any available' ? '' : apDoctor}
-                onChange={(e) => setApDoctor(e.target.value || 'Any available')}
-              />
+            {/* Clinical governance: only returning patients may pick a specific doctor */}
+            {apPatient && isReturningPatient(apPatient) ? (
+              <>
+                <label style={{ ...labelStyle, marginTop: 8 }}>Assign to doctor</label>
+                <select style={inputStyle} value={apDoctor} onChange={(e) => setApDoctor(e.target.value)}>
+                  <option value="Any available">Any available (open pool)</option>
+                  {facilityDoctors.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+                {facilityDoctors.length === 0 && (
+                  <input
+                    style={{ ...inputStyle, marginTop: 6 }}
+                    placeholder="Doctor full name"
+                    value={apDoctor === 'Any available' ? '' : apDoctor}
+                    onChange={(e) => setApDoctor(e.target.value || 'Any available')}
+                  />
+                )}
+              </>
+            ) : (
+              <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: '#FFF7ED', border: '1px solid #FED7AA', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <span style={{ fontSize: 16 }}>🩺</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#92400E' }}>Routes through Nurse Triage</div>
+                  <div style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>
+                    {apPatient
+                      ? 'First-time patient — nurse triage assesses and assigns a doctor on arrival.'
+                      : 'Select a patient above to determine if direct doctor booking is available.'}
+                  </div>
+                </div>
+              </div>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
               <div>
