@@ -79,7 +79,35 @@ Pages.nurseDashboard = function() {
 
   root.innerHTML = `
   <div class="page-enter">
-    ${liveBanner(user, 'Ward Nursing Console · Real-time')}
+    <!-- Realtime Office Desk Header (Hero removed) -->
+    <div style="background:#fff;border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 20px;margin-bottom:var(--space-4);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <div>
+        <div style="font-size:18px;font-weight:800;color:var(--text-primary);letter-spacing:-0.3px;">Nursing Office Desk</div>
+        <div style="font-size:12px;color:var(--text-muted);">${user.prefix} ${user.lastName} · ${user.specialty || user.department} — Shift ${user.shift}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--success);font-weight:700;background:rgba(16,185,129,0.08);padding:4px 12px;border-radius:999px;">
+        <span class="live-dot"></span> Realtime Desk Synchronized
+      </div>
+    </div>
+
+    <!-- Quick Actions comes up right at top -->
+    <div class="card" style="margin-bottom:var(--space-4);padding:16px 20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div>
+          <div style="font-weight:800;font-size:15px;color:var(--text-primary);">⚡ Quick Actions</div>
+          <div style="font-size:12px;color:var(--text-muted);">Instant access to nursing tools</div>
+        </div>
+        <span style="font-size:11px;color:var(--text-muted);font-weight:600;">Desk Shortcuts</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">
+        <button class="btn btn-secondary" onclick="window.location.hash='#triage'" style="padding:12px 10px;text-align:center;font-size:12px;font-weight:700;border-radius:var(--radius-md);">🩺 Triage / Vitals</button>
+        <button class="btn btn-secondary" onclick="window.location.hash='#emar'" style="padding:12px 10px;text-align:center;font-size:12px;font-weight:700;border-radius:var(--radius-md);">💊 e-MAR Pass</button>
+        <button class="btn btn-secondary" onclick="window.location.hash='#beds'" style="padding:12px 10px;text-align:center;font-size:12px;font-weight:700;border-radius:var(--radius-md);">🛏️ Bed Census</button>
+        <button class="btn btn-secondary" onclick="alert('Calling next patient in queue...')" style="padding:12px 10px;text-align:center;font-size:12px;font-weight:700;border-radius:var(--radius-md);">📢 Call Next OPD</button>
+        <button class="btn btn-secondary" onclick="alert('Add care task dialog')" style="padding:12px 10px;text-align:center;font-size:12px;font-weight:700;border-radius:var(--radius-md);">➕ Add Task</button>
+        <button class="btn btn-secondary" onclick="window.location.hash='#ai'" style="padding:12px 10px;text-align:center;font-size:12px;font-weight:700;border-radius:var(--radius-md);">🤖 Celestia AI</button>
+      </div>
+    </div>
 
     <div class="content-grid-4" style="margin-bottom:var(--space-6);">
       ${C.statCard({icon:'🛏',iconBg:'rgba(0,180,166,0.12)',value:inpatients.length,label:'My Ward Patients',change:'Live census',changeDir:'up'})}

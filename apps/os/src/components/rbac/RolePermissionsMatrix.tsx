@@ -11,6 +11,7 @@ import {
   createCustomRole,
   deleteCustomRole,
   CUSTOM_ROLES_EVT,
+  ROLE_PERMISSIONS_KEY,
   getRolePermissionsMap,
   setRolePermissionsMap,
   type RolePermissionsMap,
@@ -39,23 +40,43 @@ export const RolePermissionsMatrix: React.FC = () => {
   const [newRoleClearance, setNewRoleClearance] = useState(3);
   const [newRoleError, setNewRoleError] = useState<string | null>(null);
 
-  const reload = () => {
+  const reload = (resetDraft = false) => {
     const m = getRolePermissionsMap();
     setSavedMap(m);
-    setDraftMap(JSON.parse(JSON.stringify(m)));
     setRoles(listConfigurableRoles());
+    if (resetDraft) {
+      setDraftMap(JSON.parse(JSON.stringify(m)));
+    } else {
+      setDraftMap((prev) => {
+        // Preserve user's in-flight edits, but make sure any newly introduced roles exist
+        const next: RolePermissionsMap = { ...m };
+        for (const [rk, mods] of Object.entries(prev)) {
+          next[rk] = mods;
+        }
+        return next;
+      });
+    }
   };
 
   useEffect(() => {
-    reload();
-    const fn = () => reload();
-    window.addEventListener('medcore-role-permissions', fn);
-    window.addEventListener('medcore-admin-sync', fn);
-    window.addEventListener(CUSTOM_ROLES_EVT, fn);
+    reload(true);
+    const onPerms = () => reload(false);
+    const onAdminSync = (e: Event) => {
+      const customEvt = e as CustomEvent<{ key?: string }>;
+      if (customEvt.detail?.key === ROLE_PERMISSIONS_KEY) {
+        reload(false);
+      }
+    };
+    const onRoles = () => {
+      setRoles(listConfigurableRoles());
+    };
+    window.addEventListener('medcore-role-permissions', onPerms);
+    window.addEventListener('medcore-admin-sync', onAdminSync);
+    window.addEventListener(CUSTOM_ROLES_EVT, onRoles);
     return () => {
-      window.removeEventListener('medcore-role-permissions', fn);
-      window.removeEventListener('medcore-admin-sync', fn);
-      window.removeEventListener(CUSTOM_ROLES_EVT, fn);
+      window.removeEventListener('medcore-role-permissions', onPerms);
+      window.removeEventListener('medcore-admin-sync', onAdminSync);
+      window.removeEventListener(CUSTOM_ROLES_EVT, onRoles);
     };
   }, []);
 
@@ -153,7 +174,13 @@ export const RolePermissionsMatrix: React.FC = () => {
     emitLiveAction(`Custom role created: ${newRoleLabel}`, { module: 'role-permissions' });
     pushActivity(`Administrator created new role: ${newRoleLabel} (${key})`);
 
-    reload();
+    const m = getRolePermissionsMap();
+    setSavedMap(m);
+    setDraftMap((prev) => ({
+      ...prev,
+      [key]: m[key] || ['dashboard', 'my-card', 'patient-360', 'notifications', 'emr'],
+    }));
+    setRoles(listConfigurableRoles());
     setActiveRole(key);
     setShowAddRoleModal(false);
     setNewRoleLabel('');
@@ -165,7 +192,7 @@ export const RolePermissionsMatrix: React.FC = () => {
       deleteCustomRole(roleKey);
       emitLiveAction(`Deleted custom role: ${roleKey}`, { module: 'role-permissions' });
       pushActivity(`Administrator deleted role ${roleKey}`);
-      reload();
+      reload(true);
       setActiveRole(listConfigurableRoles()[0]?.roleKey || 'doctor');
     }
   };

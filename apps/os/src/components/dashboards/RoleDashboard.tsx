@@ -8,6 +8,7 @@ import { ReceptionWorkspace } from './ReceptionWorkspace';
 import { DoctorDeskHome } from './DoctorDeskHome';
 import { LabDeskHome } from './LabDeskHome';
 import { RecordsDeskHome } from './RecordsDeskHome';
+import { NurseDeskHome } from './NurseDeskHome';
 import { RoleDeskHome, type RoleDeskConfig } from './RoleDeskHome';
 import { emitLiveAction } from '../../lib/liveActions';
 import {
@@ -71,6 +72,11 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
   // Health records / HIM — intelligent MPI & folder desk (not clinical prescribe)
   if (roleKey === 'records') {
     return <RecordsDeskHome session={session} onNavigate={(k) => onNavigate(k)} />;
+  }
+
+  // Nurse clinical office desk — dedicated real-time workspace (no hero, quick actions first, realtime tools)
+  if (roleKey === 'nurse') {
+    return <NurseDeskHome session={session} onNavigate={(k) => onNavigate(k)} />;
   }
 
   const deskForRole = (key: string): RoleDeskConfig | null => {

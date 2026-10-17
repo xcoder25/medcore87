@@ -41,6 +41,12 @@ import {
   createStaffAccountWithCard,
   bulkCreateStaff,
 } from '../../lib/staffAutomation';
+import {
+  parseRoleAutomationIntent,
+  executeCreateRoleAutomation,
+  executeListRolesAutomation,
+  executeDeleteRoleAutomation,
+} from '../../lib/roleAutomation';
 import { emitLiveAction } from '../../lib/liveActions';
 import {
   Brain, Send, Sparkles, Plus, Activity, Users, Wallet, Stethoscope, RotateCcw, Copy, Check, X, BedDouble,
@@ -63,6 +69,7 @@ interface Props {
   session?: UserSession;
   inDrawer?: boolean;
   onClose?: () => void;
+  onNavigate?: (moduleKey: string) => void;
 }
 
 function sleep(ms: number) {
@@ -755,7 +762,138 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
       }
     }
 
-    // Role visibility automation    // Role visibility automation
+    // Celestia Astra: Custom Role Creation & Management Automation
+    const roleIntent = parseRoleAutomationIntent(query, actorRole);
+    if (roleIntent.handled) {
+      if (roleIntent.error) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: roleIntent.error!,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+        setIsThinking(false);
+        return;
+      }
+
+      if (roleIntent.action === 'list') {
+        const reply = executeListRolesAutomation();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: reply,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+        setIsThinking(false);
+        return;
+      }
+
+      if (roleIntent.action === 'delete') {
+        const steps: TaskStep[] = [
+          { id: 'p1', label: 'Verifying role registry & dependencies…', status: 'pending' },
+          { id: 'p2', label: 'Revoking permissions from RBAC matrix…', status: 'pending' },
+          { id: 'p3', label: 'Broadcasting live sync to hospital terminals…', status: 'pending' },
+        ];
+        setTaskRun({ title: 'Celestia Astra Role Deletion', steps });
+        const mark = (id: string, status: TaskStepStatus) => {
+          setTaskRun((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              steps: prev.steps.map((s) => (s.id === id ? { ...s, status } : s)),
+            };
+          });
+        };
+
+        mark('p1', 'active');
+        await sleep(350);
+        mark('p1', 'done');
+        mark('p2', 'active');
+        const res = executeDeleteRoleAutomation(roleIntent.roleKey || roleIntent.roleName || '');
+        await sleep(300);
+        mark('p2', 'done');
+        mark('p3', 'active');
+        await sleep(250);
+        mark('p3', 'done');
+        await sleep(200);
+        setTaskRun(null);
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: res.message,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+        setIsThinking(false);
+        return;
+      }
+
+      if (roleIntent.action === 'create') {
+        const steps: TaskStep[] = [
+          { id: 'c1', label: `Analyzing ${roleIntent.roleName} role blueprint…`, status: 'pending' },
+          { id: 'c2', label: 'Validating clearance level & department scopes…', status: 'pending' },
+          { id: 'c3', label: `Provisioning ${roleIntent.modules?.length || 0} workstation modules…`, status: 'pending' },
+          { id: 'c4', label: 'Registering role in hospital RBAC catalog…', status: 'pending' },
+          { id: 'c5', label: 'Broadcasting live updates across facility…', status: 'pending' },
+        ];
+        setTaskRun({ title: 'Celestia Astra Role Automation', steps });
+        const mark = (id: string, status: TaskStepStatus) => {
+          setTaskRun((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              steps: prev.steps.map((s) => (s.id === id ? { ...s, status } : s)),
+            };
+          });
+        };
+
+        mark('c1', 'active');
+        await sleep(400);
+        mark('c1', 'done');
+        mark('c2', 'active');
+        await sleep(350);
+        mark('c2', 'done');
+        mark('c3', 'active');
+        const res = executeCreateRoleAutomation(roleIntent, session?.name || 'Administrator');
+        await sleep(350);
+        mark('c3', 'done');
+        mark('c4', 'active');
+        await sleep(300);
+        mark('c4', 'done');
+        mark('c5', 'active');
+        await sleep(250);
+        mark('c5', 'done');
+        await sleep(200);
+        setTaskRun(null);
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: res.message,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+        setIsThinking(false);
+        return;
+      }
+    }
+
+    // Role visibility automation
     const lowerQ = query.toLowerCase();
     if (
       (lowerQ.includes('role') && (lowerQ.includes('can see') || lowerQ.includes('permission') || lowerQ.includes('visibility') || lowerQ.includes('module'))) ||
@@ -1075,6 +1213,11 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
   };
 
   const roleKey = String(session?.roleKey || '').toLowerCase();
+  const isAdmin =
+    roleKey === 'hospital_admin' ||
+    roleKey === 'sysadmin' ||
+    roleKey === 'admin' ||
+    (session?.clearanceLevel ?? 0) >= 5;
 
   const roleIntro = useMemo(() => {
     const map: Record<string, { title: string; sub: string }> = {
@@ -1123,12 +1266,16 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
         sub: 'Your finance copilot. Debtors, HMO claims, daily collections, and what needs follow-up now.',
       },
       hospital_admin: {
-        title: 'Ready to run the hospital?',
-        sub: 'Your admin copilot. Staff on duty, access, occupancy, revenue signals, and what needs your decision.',
+        title: 'Welcome to Celestia Astra',
+        sub: 'Executive & governance intelligence. I can autonomously create custom roles, configure RBAC permissions, audit access, and oversee hospital operations in real time.',
       },
       admin: {
-        title: 'Ready to run the hospital?',
-        sub: 'Your admin copilot. Staff on duty, access, occupancy, revenue signals, and what needs your decision.',
+        title: 'Welcome to Celestia Astra',
+        sub: 'Executive & governance intelligence. I can autonomously create custom roles, configure RBAC permissions, audit access, and oversee hospital operations in real time.',
+      },
+      sysadmin: {
+        title: 'Welcome to Celestia Astra (ICT)',
+        sub: 'System & governance intelligence. I can provision custom roles, configure FHIR/HL7 endpoints, automate staff enrolment, and inspect security logs.',
       },
     };
     return (
@@ -1184,16 +1331,22 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
         { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
       ],
       hospital_admin: [
+        { label: 'Create role Dialysis Nurse', icon: Users, tag: 'New Role' },
+        { label: 'List all custom roles', icon: Activity, tag: 'RBAC' },
         { label: 'Staff logged in now', icon: Users, tag: 'Staff' },
-        { label: 'Bed occupancy', icon: BedDouble, tag: 'Ops' },
-        { label: 'Revenue today', icon: Wallet, tag: 'Finance' },
-        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+        { label: 'Bed occupancy & ICU status', icon: BedDouble, tag: 'Census' },
       ],
       admin: [
+        { label: 'Create role Triage Specialist', icon: Users, tag: 'New Role' },
+        { label: 'List all custom roles', icon: Activity, tag: 'RBAC' },
         { label: 'Staff logged in now', icon: Users, tag: 'Staff' },
-        { label: 'Bed occupancy', icon: BedDouble, tag: 'Ops' },
-        { label: 'Revenue today', icon: Wallet, tag: 'Finance' },
-        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+        { label: 'Bed occupancy & ICU status', icon: BedDouble, tag: 'Census' },
+      ],
+      sysadmin: [
+        { label: 'Create a new hospital role', icon: Users, tag: 'New Role' },
+        { label: 'List all custom roles', icon: Activity, tag: 'RBAC' },
+        { label: 'Staff logged in now', icon: Users, tag: 'Staff' },
+        { label: 'System notices & audit logs', icon: Activity, tag: 'Security' },
       ],
     };
     return (
@@ -1230,8 +1383,26 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
             <img src="/celestia-logo.png" alt="" />
           </div>
           <div className="m87-header-text">
-            <div className="m87-title-row">
-              <h1 className="m87-title celestia-wordmark">celestia</h1>
+            <div className="m87-title-row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h1 className="m87-title celestia-wordmark">
+                {isAdmin ? 'celestia astra' : 'celestia'}
+              </h1>
+              {isAdmin && (
+                <span
+                  style={{
+                    fontSize: '0.62rem',
+                    fontWeight: 800,
+                    background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                    color: '#0F172A',
+                    padding: '2px 7px',
+                    borderRadius: 6,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  ASTRA · ADMIN AI
+                </span>
+              )}
               <span
                 className={`m87-live-dot${geminiOnline === false ? ' is-offline' : geminiOnline ? ' is-online' : ''}`}
                 title={
@@ -1248,7 +1419,9 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
               <span className="celestia-facility-tag">{session?.hospitalId || 'IGH-EKT'}</span>
             </div>
             <div className="celestia-header-sub">
-              Hospital Intelligence {modelVer ? `· v${modelVer}` : ''}
+              {isAdmin
+                ? `Executive Administration & Governance Intelligence ${modelVer ? `· v${modelVer}` : ''}`
+                : `Hospital Intelligence ${modelVer ? `· v${modelVer}` : ''}`}
             </div>
           </div>
         </div>

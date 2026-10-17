@@ -164,6 +164,30 @@ function normName(s: string): string {
     .trim();
 }
 
+/**
+ * Clinical role mapping for notification delivery.
+ * Matches Epic/Cerner In Basket routing rules:
+ * - Direct staff assignments (targetStaff) route only to that specific clinician.
+ * - Role-specific alerts route to relevant specialties.
+ * - Critical emergency / safety alerts (level === 'critical') remain facility-wide unless targeted to a specific staff.
+ */
+const ROLE_NOTIFICATION_MATRIX: Record<string, string[]> = {
+  doctor: ['doctor', 'clinician', 'physician', 'cpoe', 'order', 'lab_result', 'triage', 'consult', 'emergency', 'theatre', 'icu'],
+  surgeon: ['surgeon', 'doctor', 'theatre', 'surgery', 'icu', 'pacu', 'blood_bank', 'trauma', 'emergency'],
+  nurse: ['nurse', 'nursing', 'ward', 'triage', 'bed', 'emar', 'medication_pass', 'vital', 'doctor_order', 'emergency'],
+  midwife: ['midwife', 'maternity', 'labour', 'delivery', 'paediatrics', 'newborn', 'nicu', 'obstetric'],
+  pharmacist: ['pharmacist', 'pharmacy', 'dispense', 'cpoe_rx', 'drug', 'stock', 'formulary', 'contraindication'],
+  lab: ['lab', 'laboratory', 'lis', 'specimen', 'analyzer', 'blood_bank', 'test_order', 'panic_result'],
+  radiologist: ['radiologist', 'radiology', 'ris', 'pacs', 'imaging', 'xray', 'mri', 'ct_scan'],
+  accountant: ['accountant', 'accounts', 'billing', 'cashier', 'pos', 'payment', 'claim', 'insurance', 'nhia', 'hmo', 'ar'],
+  reception: ['reception', 'front_desk', 'queue', 'arrival', 'registration', 'appointment', 'check_in', 'transit', 'mpi'],
+  records: ['records', 'him', 'chart', 'deficiency', 'coding', 'roi', 'document', 'merge', 'mpi'],
+  biomedical: ['biomedical', 'equipment', 'maintenance', 'asset', 'iot', 'analyzer_device', 'facilities', 'oxygen'],
+  hospital_admin: ['*'],
+  medical_director: ['*'],
+  sysadmin: ['*'],
+};
+
 /** True when notification is relevant to this staff session */
 export function notificationVisibleTo(
   n: HospitalNotification,
@@ -177,18 +201,29 @@ export function notificationVisibleTo(
     if (target === 'any available' || target === 'any') return true;
     if (!(target === me || target.includes(me) || me.includes(target))) return false;
   }
-  // Soft role filter: when roleHint is set and viewer role is specialty-scoped,
-  // hide alerts clearly aimed at unrelated desks (e.g. pharmacy stock for midwife).
+
   const role = (opts?.roleKey || '').toLowerCase();
-  const hint = (n.roleHint || '').toLowerCase();
-  if (hint && role && role !== 'hospital_admin' && role !== 'medical_director') {
-    const midwifeHints = ['midwife', 'maternity', 'paediatrics', 'nursing', 'nurse', 'doctor'];
-    if (role === 'midwife' && hint && !midwifeHints.some((h) => hint.includes(h) || h.includes(hint))) {
-      // still show critical facility-wide
-      if (n.level !== 'critical') return false;
-    }
+  if (!role || role === 'hospital_admin' || role === 'medical_director' || role === 'sysadmin') {
+    return true;
   }
-  return true;
+
+  // If notification has a specific roleHint:
+  const hint = (n.roleHint || '').toLowerCase().trim();
+  if (!hint) {
+    return true;
+  }
+
+  // Facility-wide critical alerts (e.g. Sepsis, Fire, Resus) are visible to all clinical staff
+  if (n.level === 'critical' && (role === 'doctor' || role === 'surgeon' || role === 'nurse' || role === 'midwife')) {
+    return true;
+  }
+
+  const allowedHints = ROLE_NOTIFICATION_MATRIX[role];
+  if (!allowedHints) return true;
+  if (allowedHints.includes('*')) return true;
+
+  // Check if hint matches any of the allowed role tags
+  return allowedHints.some((h) => hint.includes(h) || h.includes(hint));
 }
 
 export function listNotifications(
@@ -215,8 +250,11 @@ export function markAllRead(facilityId: string) {
   write(read().map((n) => (n.facilityId === facilityId ? { ...n, read: true } : n)));
 }
 
-export function notificationSummary(facilityId: string) {
-  const list = listNotifications(facilityId, true);
+export function notificationSummary(
+  facilityId: string,
+  opts?: { staffName?: string; roleKey?: string }
+) {
+  const list = listNotifications(facilityId, true, opts);
   return {
     critical: list.filter((n) => n.level === 'critical').length,
     important: list.filter((n) => n.level === 'important').length,

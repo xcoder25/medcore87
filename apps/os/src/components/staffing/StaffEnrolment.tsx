@@ -20,6 +20,7 @@ import {
   defaultPermissionsForRole,
   migrateStaffIdsToNewFormat,
 } from '../../lib/staffCardStore';
+import { getCustomRoles } from '../../lib/rolePermissionsStore';
 import { StaffDeleteSuccessScreen, type StaffDeleteSuccessInfo } from './StaffDeleteSuccessScreen';
 import { isEmailCredential, normalizeStaffPin, ensureStaffCloudIdentity } from '../../lib/firebase';
 import { emitLiveAction } from '../../lib/liveActions';
@@ -94,9 +95,23 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
     if (session?.hospitalId) setFacilityId(session.hospitalId);
   }, [session?.hospitalId]);
 
+  const availableRoles = useMemo(() => {
+    const custom = getCustomRoles().map((c) => ({
+      roleKey: c.roleKey,
+      role: c.label,
+      title: c.title || c.label,
+      shortRole: c.shortRole || c.label,
+      clearanceLevel: c.clearanceLevel || 3,
+      clearanceLabel: c.clearanceLabel || `ACCESS – LEVEL ${c.clearanceLevel || 3}`,
+      department: c.department || 'Clinical Operations',
+      group: c.group || 'Custom',
+    }));
+    return [...ROLE_OPTIONS, ...custom];
+  }, [cards]);
+
   const roleMeta = useMemo(
-    () => ROLE_OPTIONS.find((r) => r.roleKey === roleKey),
-    [roleKey]
+    () => availableRoles.find((r) => r.roleKey === roleKey),
+    [availableRoles, roleKey]
   );
   const facility =
     HOSPITALS.find((h) => h.id === facilityId) ||
@@ -295,15 +310,19 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
                 required
               >
                 <option value="">Select specialty / role *</option>
-                {['Clinical', 'Nursing', 'Front desk', 'Support', 'Admin'].map((g) => (
-                  <optgroup key={g} label={g}>
-                    {ROLE_OPTIONS.filter((r) => (r as { group?: string }).group === g).map((r) => (
-                      <option key={r.roleKey} value={r.roleKey}>
-                        {r.title} · {r.department}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
+                {['Clinical', 'Nursing', 'Front desk', 'Support', 'Admin', 'Custom'].map((g) => {
+                  const matching = availableRoles.filter((r) => ((r as { group?: string }).group || 'Custom') === g);
+                  if (!matching.length) return null;
+                  return (
+                    <optgroup key={g} label={g}>
+                      {matching.map((r) => (
+                        <option key={r.roleKey} value={r.roleKey}>
+                          {r.title} · {r.department}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
               </select>
               {roleMeta && (
                 <div style={{ marginTop: 8, fontSize: 12, color: '#0369A1', background: '#E0F2FE', borderRadius: 8, padding: '8px 10px', lineHeight: 1.45 }}>

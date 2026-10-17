@@ -67,7 +67,7 @@ import { startNetworkNotificationListener } from '../lib/notificationEngine';
 import { RoleDashboard } from '../components/dashboards/RoleDashboard';
 import { DoctorPortal } from '../components/dashboards/DoctorPortal';
 import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
-import { roleCanAccessModule } from '../lib/rolePermissionsStore';
+import { roleCanAccessModule, getModulesForRole } from '../lib/rolePermissionsStore';
 import {
   inferRoleKey,
   isReceptionRole,
@@ -269,38 +269,39 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'doctor':
       return [
         {
-          label: 'My clinical desk',
+          label: 'Physician Workstation',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Clinical desk', badge: 'Live' },
             { key: 'doctor-portal', icon: Stethoscope, label: 'Consultations & worklist', badge: 'OPD' },
-            { key: 'patient-360', icon: Users, label: 'Patient chart', badge: 'Chart' },
-            { key: 'notifications', icon: Bell, label: 'Notifications' },
+            { key: 'patient-360', icon: Users, label: 'Patient chart (360°)', badge: 'Chart' },
+            { key: 'notifications', icon: Bell, label: 'In Basket', badge: 'Inbox' },
           ],
         },
         {
-          label: 'Care & orders',
+          label: 'Care & Orders (CPOE)',
           items: [
             { key: 'emr', icon: FileText, label: 'EMR & clinical notes', badge: 'EMR' },
-            { key: 'pharmacy', icon: Pill, label: 'Prescribe & pharmacy', badge: 'Rx' },
-            { key: 'laboratory', icon: FlaskConical, label: 'Lab orders & results' },
-            { key: 'radiology', icon: Layers, label: 'Imaging orders & reports', badge: 'PACS' },
+            { key: 'pharmacy', icon: Pill, label: 'CPOE / Prescribe & e-Rx', badge: 'Rx' },
+            { key: 'laboratory', icon: FlaskConical, label: 'Lab orders & critical results' },
+            { key: 'radiology', icon: Layers, label: 'Imaging orders & PACS', badge: 'PACS' },
           ],
         },
         {
-          label: 'Wards & acute care',
+          label: 'Inpatient & Acute Care',
           items: [
-            { key: 'emergency', icon: Flame, label: 'A&E triage', badge: 'ESI' },
-            { key: 'beds', icon: BedDouble, label: 'Bed & ward occupancy' },
-            { key: 'nursing', icon: FileText, label: 'Inpatient wards' },
-            { key: 'icu', icon: Wind, label: 'ICU', badge: 'ICU' },
-            { key: 'theatre', icon: Activity, label: 'Theatre schedule', badge: 'OT' },
+            { key: 'emergency', icon: Flame, label: 'A&E emergency triage', badge: 'ESI' },
+            { key: 'beds', icon: BedDouble, label: 'Bed & ward census' },
+            { key: 'nursing', icon: FileText, label: 'Inpatient wards & MAR' },
+            { key: 'icu', icon: Wind, label: 'ICU telemetry', badge: 'ICU' },
+            { key: 'theatre', icon: Activity, label: 'Surgical schedule', badge: 'OT' },
           ],
         },
         {
-          label: 'Assist',
+          label: 'Clinical Assist',
           items: [
-            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
-            { key: 'patient-card', icon: FileText, label: 'Patient health card' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia clinical AI', badge: 'AI' },
+            { key: 'patient-card', icon: FileText, label: 'Digital health card' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
       ];
@@ -308,30 +309,31 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'surgeon':
       return [
         {
-          label: 'Surgery desk',
+          label: 'Surgical Workstation',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Surgeon desk', badge: 'Live' },
-            { key: 'theatre', icon: Activity, label: 'Theatre list & OT', badge: 'OT' },
-            { key: 'doctor-portal', icon: Stethoscope, label: 'Consultations & worklist' },
-            { key: 'notifications', icon: Bell, label: 'Notifications' },
+            { key: 'theatre', icon: Activity, label: 'OR schedule & log (OpTime)', badge: 'OT' },
+            { key: 'doctor-portal', icon: Stethoscope, label: 'Surgical consults & pre-op' },
+            { key: 'notifications', icon: Bell, label: 'In Basket', badge: 'Inbox' },
           ],
         },
         {
-          label: 'Peri-op care',
+          label: 'Peri-Op & PACU Care',
           items: [
-            { key: 'icu', icon: Wind, label: 'ICU / HDU', badge: 'ICU' },
+            { key: 'icu', icon: Wind, label: 'Surgical ICU / HDU', badge: 'ICU' },
             { key: 'beds', icon: BedDouble, label: 'PACU & recovery beds' },
             { key: 'blood-bank', icon: Droplet, label: 'Blood bank & cross-match' },
-            { key: 'emergency', icon: Flame, label: 'Trauma / A&E', badge: 'ESI' },
+            { key: 'emergency', icon: Flame, label: 'Trauma & emergency bay', badge: 'ESI' },
           ],
         },
         {
-          label: 'Workup & records',
+          label: 'Workup & Operative Notes',
           items: [
-            { key: 'laboratory', icon: FlaskConical, label: 'Pre-op labs' },
-            { key: 'radiology', icon: Layers, label: 'Pre-op imaging', badge: 'PACS' },
-            { key: 'emr', icon: FileText, label: 'EMR & notes' },
-            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
+            { key: 'laboratory', icon: FlaskConical, label: 'Pre-op lab workup' },
+            { key: 'radiology', icon: Layers, label: 'Pre-op PACS imaging', badge: 'PACS' },
+            { key: 'emr', icon: FileText, label: 'Operative notes & EMR' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia surgical AI', badge: 'AI' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
       ];
@@ -343,26 +345,29 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Ward station', badge: 'Live' },
             { key: 'nursing', icon: FileText, label: 'Inpatient & e-MAR', badge: 'e-MAR' },
+            { key: 'triage', icon: Heart, label: 'Triage & vitals station', badge: 'NEWS2' },
             { key: 'beds', icon: BedDouble, label: 'Bed occupancy', badge: 'Beds' },
-            { key: 'notifications', icon: Bell, label: 'Notifications' },
+            { key: 'notifications', icon: Bell, label: 'In Basket', badge: 'Inbox' },
           ],
         },
         {
-          label: 'Patient flow',
+          label: 'Patient care',
           items: [
+            { key: 'patient-360', icon: Users, label: 'Patient chart' },
             { key: 'patient-flow', icon: RefreshCw, label: 'Admissions & transit' },
-            { key: 'emergency', icon: Flame, label: 'A&E triage queue', badge: 'ESI' },
-            { key: 'pharmacy', icon: Pill, label: 'Ward pharmacy requests', badge: 'Rx' },
+            { key: 'emergency', icon: Flame, label: 'A&E handover queue', badge: 'ESI' },
+            { key: 'pharmacy', icon: Pill, label: 'Ward med requests', badge: 'Rx' },
             { key: 'blood-bank', icon: Droplet, label: 'Transfusion requests' },
           ],
         },
         {
-          label: 'Units',
+          label: 'Specialty units',
           items: [
-            { key: 'maternity', icon: Stethoscope, label: 'Maternity / labour' },
+            { key: 'maternity', icon: Stethoscope, label: 'Maternity / labour ward' },
             { key: 'paediatrics', icon: Baby, label: 'Paediatrics / NICU' },
-            { key: 'icu', icon: Wind, label: 'ICU', badge: 'ICU' },
-            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
+            { key: 'icu', icon: Wind, label: 'ICU step-down', badge: 'ICU' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia clinical AI', badge: 'AI' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
       ];
@@ -370,22 +375,22 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'midwife':
       return [
         {
-          label: 'Labour & delivery',
+          label: 'Labour & Delivery (L&D)',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Labour ward desk', badge: 'Live' },
-            { key: 'maternity', icon: Stethoscope, label: 'Maternity EMR (CTG)', badge: 'CTG' },
+            { key: 'maternity', icon: Stethoscope, label: 'Maternity EMR & CTG', badge: 'CTG' },
             { key: 'paediatrics', icon: Baby, label: 'Newborn / NICU', badge: 'NICU' },
-            { key: 'notifications', icon: Bell, label: 'Notifications' },
+            { key: 'notifications', icon: Bell, label: 'In Basket (L&D)', badge: 'Inbox' },
           ],
         },
         {
-          label: 'Maternity care',
+          label: 'Maternal Care & Inpatient',
           items: [
-            { key: 'patient-360', icon: Users, label: 'Patient chart (scoped)' },
-            { key: 'beds', icon: BedDouble, label: 'Maternity beds' },
+            { key: 'patient-360', icon: Users, label: 'Maternal chart' },
+            { key: 'beds', icon: BedDouble, label: 'Labour & antenatal beds' },
             { key: 'emergency', icon: Flame, label: 'Obstetric emergency' },
-            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
-            { key: 'my-card', icon: ShieldCheck, label: 'My staff ID' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia midwifery AI', badge: 'AI' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
       ];
@@ -398,16 +403,18 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'dashboard', icon: LayoutDashboard, label: 'Dispensary desk', badge: 'Live' },
             { key: 'pharmacy', icon: Pill, label: 'Dispense queue', badge: 'Rx' },
             { key: 'formulary', icon: Pill, label: 'Formulary & stock', badge: 'EML' },
-            { key: 'notifications', icon: Bell, label: 'Notifications' },
+            { key: 'notifications', icon: Bell, label: 'In Basket', badge: 'Rx' },
           ],
         },
         {
-          label: 'Linked care',
+          label: 'Clinical support',
           items: [
-            { key: 'cashier', icon: CreditCard, label: 'Payments / POS' },
-            { key: 'emr', icon: FileText, label: 'Patient records' },
-            { key: 'patient-flow', icon: RefreshCw, label: 'Clinic queue' },
-            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
+            { key: 'patient-360', icon: Users, label: 'Patient chart (Rx view)' },
+            { key: 'emr', icon: FileText, label: 'Prescription records' },
+            { key: 'patient-flow', icon: RefreshCw, label: 'Clinic & OPD queue' },
+            { key: 'inventory', icon: Package, label: 'Drug store & CMS' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia Rx AI', badge: 'AI' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
       ];
@@ -415,21 +422,22 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'lab':
       return [
         {
-          label: 'Laboratory operations',
+          label: 'Laboratory Operations',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Lab desk', badge: 'Live' },
-            { key: 'laboratory', icon: FlaskConical, label: 'LIS & results', badge: 'LIS' },
+            { key: 'laboratory', icon: FlaskConical, label: 'LIS & result entry', badge: 'LIS' },
             { key: 'lis', icon: Activity, label: 'Specimen pipeline', badge: 'Track' },
-            { key: 'blood-bank', icon: Droplet, label: 'Blood bank & ABO', badge: 'ABO' },
+            { key: 'blood-bank', icon: Droplet, label: 'Blood bank & cross-match', badge: 'ABO' },
           ],
         },
         {
-          label: 'Analyzers & safety',
+          label: 'Analyzers & Safety',
           items: [
-            { key: 'iot-devices', icon: Cpu, label: 'Analyzers & IoT', badge: 'Live' },
-            { key: 'device-gateway', icon: Settings, label: 'Instrument gateway', badge: 'HL7' },
+            { key: 'iot-devices', icon: Cpu, label: 'Analyzers & IoT telemetry', badge: 'Live' },
+            { key: 'device-gateway', icon: Settings, label: 'HL7 / ASTM gateway', badge: 'HL7' },
             { key: 'notifications', icon: Bell, label: 'Critical alerts & panic', badge: 'Panic' },
             { key: 'm87-ai', icon: Brain, label: 'Celestia Lab AI', badge: 'AI' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
       ];
@@ -437,17 +445,17 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'radiologist':
       return [
         {
-          label: 'Imaging desk',
+          label: 'Diagnostic Imaging Suite',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Radiology home', badge: 'Live' },
-            { key: 'radiology', icon: Layers, label: 'RIS / PACS suite', badge: 'DICOM' },
-            { key: 'notifications', icon: Bell, label: 'Notifications' },
+            { key: 'radiology', icon: Layers, label: 'RIS / PACS diagnostic viewer', badge: 'DICOM' },
+            { key: 'notifications', icon: Bell, label: 'In Basket (critical imaging)', badge: 'RIS' },
           ],
         },
         {
-          label: 'Clinical support',
+          label: 'Clinical Context & Tools',
           items: [
-            { key: 'emr', icon: FileText, label: 'Clinical records' },
+            { key: 'emr', icon: FileText, label: 'Clinical records & history' },
             { key: 'm87-ai', icon: Brain, label: 'Celestia imaging AI', badge: 'AI' },
             { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
@@ -457,18 +465,20 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'accountant':
       return [
         {
-          label: 'Accounting desk',
+          label: 'Patient Financial Services',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Accounts home', badge: 'Live' },
-            { key: 'cashier', icon: CreditCard, label: 'Collect payment', badge: 'POS' },
-            { key: 'billing', icon: CreditCard, label: 'Billing office', badge: 'Bill' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Accounts workstation', badge: 'Live' },
+            { key: 'cashier', icon: CreditCard, label: 'Cashier & POS till', badge: 'POS' },
+            { key: 'billing', icon: CreditCard, label: 'Billing office & invoicing', badge: 'Bill' },
+            { key: 'notifications', icon: Bell, label: 'In Basket (billing alerts)', badge: 'Inbox' },
           ],
         },
         {
-          label: 'Claims & ledger',
+          label: 'Claims & Revenue Cycle',
           items: [
             { key: 'claims', icon: ShieldCheck, label: 'Insurance & NHIS claims', badge: 'HMO' },
-            { key: 'revenue-cycle', icon: BarChart3, label: 'AR / Revenue cycle', badge: 'AR' },
+            { key: 'revenue-cycle', icon: BarChart3, label: 'AR / Revenue cycle & remittance', badge: 'AR' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
       ];
@@ -476,19 +486,21 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'biomedical':
       return [
         {
-          label: 'Clinical Engineering Desk',
+          label: 'Clinical Engineering',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Engineering desk', badge: 'Live' },
-            { key: 'biomedical', icon: Wrench, label: 'Clinical device log (not CMMS) Assets', badge: 'PM' },
-            { key: 'iot-devices', icon: Cpu, label: 'Connected Medical IoT Monitors', badge: 'IoT' },
+            { key: 'biomedical', icon: Wrench, label: 'Medical equipment log (PM)', badge: 'PM' },
+            { key: 'iot-devices', icon: Cpu, label: 'Connected medical IoT monitors', badge: 'IoT' },
+            { key: 'notifications', icon: Bell, label: 'Work orders & PM alerts', badge: 'PM' },
           ],
         },
         {
           label: 'Plant, Supplies & Safety',
           items: [
-            { key: 'facilities', icon: Gauge, label: 'Oxygen Plant & Utilities' },
-            { key: 'environmental', icon: Trash2, label: 'Environmental Health & Safety' },
-            { key: 'inventory', icon: Package, label: 'Central Medical Store Parts' },
+            { key: 'facilities', icon: Gauge, label: 'Oxygen plant & utilities' },
+            { key: 'environmental', icon: Trash2, label: 'Environmental health & safety' },
+            { key: 'inventory', icon: Package, label: 'Central medical store spares' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
       ];
@@ -510,13 +522,14 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: 'Patient records',
           items: [
             { key: 'patient-360', icon: Users, label: 'Patient folder (desk scope)' },
+            { key: 'emr', icon: FileText, label: 'Chart view (read only)' },
           ],
         },
         {
           label: 'Intelligence',
           items: [
             { key: 'm87-ai', icon: Brain, label: 'Front-desk AI copilot', badge: 'AI' },
-            { key: 'notifications', icon: Bell, label: 'Desk alerts' },
+            { key: 'notifications', icon: Bell, label: 'In Basket (desk)', badge: 'Alerts' },
             { key: 'analytics', icon: BarChart3, label: 'Throughput reports' },
           ],
         },
@@ -524,40 +537,41 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: 'Settings',
           items: [
             { key: 'desk-settings', icon: Settings, label: 'Front desk settings' },
-            { key: 'sysadmin', icon: Settings, label: 'System settings' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
       ];
     case 'records':
       return [
         {
-          label: 'HIM command',
+          label: 'Health Information Mgmt (HIM)',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Records command', badge: 'Live' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'HIM command', badge: 'Live' },
             { key: 'him', icon: FileText, label: 'HIM workqueues', badge: 'Epic' },
             { key: 'patient-card', icon: FileText, label: 'MPI / Digital health card', badge: 'FHIR' },
             { key: 'emr', icon: FileText, label: 'Chart retrieval (view only)' },
-            { key: 'notifications', icon: Bell, label: 'Notifications' },
+            { key: 'notifications', icon: Bell, label: 'In Basket (HIM)', badge: 'Inbox' },
           ],
         },
         {
-          label: 'HIM workqueues',
+          label: 'HIM Operational Workqueues',
           items: [
-            { key: 'him-deficiency', icon: AlertTriangle, label: 'Deficiency queue' },
-            { key: 'him-coding', icon: FileText, label: 'Coding & abstracting' },
-            { key: 'him-roi', icon: ShieldCheck, label: 'Release of information' },
+            { key: 'him-deficiency', icon: AlertTriangle, label: 'Deficiency tracking' },
+            { key: 'him-coding', icon: FileText, label: 'ICD-10 / CPT coding & abstracting' },
+            { key: 'him-roi', icon: ShieldCheck, label: 'Release of information (ROI)' },
             { key: 'him-chart', icon: CheckCircle2, label: 'Chart complete / bill-hold' },
-            { key: 'him-merge', icon: Users, label: 'MPI merge' },
-            { key: 'him-docs', icon: FileText, label: 'Document index' },
+            { key: 'him-merge', icon: Users, label: 'MPI duplicate merge' },
+            { key: 'him-docs', icon: FileText, label: 'Document index & scanning' },
           ],
         },
         {
-          label: 'Flow & census',
+          label: 'Census & Assist',
           items: [
             { key: 'patient-flow', icon: RefreshCw, label: 'Patient transit & admissions' },
             { key: 'beds', icon: BedDouble, label: 'Bed management board' },
-            { key: 'claims', icon: ShieldCheck, label: 'NHIA eligibility' },
-            { key: 'm87-ai', icon: Brain, label: 'Celestia HIM', badge: 'AI' },
+            { key: 'claims', icon: ShieldCheck, label: 'NHIA eligibility verification' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia HIM copilot', badge: 'AI' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
       ];
@@ -569,8 +583,9 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Medical director home', badge: 'L5' },
             { key: 'command', icon: Activity, label: 'Hospital Operations Hub & Census' },
-            { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
+            { key: 'notifications', icon: Bell, label: 'Executive In Basket', badge: 'Alerts' },
             { key: 'analytics', icon: BarChart3, label: 'Clinical Performance Analytics' },
+            { key: 'm87-ai', icon: Brain, label: 'Celestia Clinical Executive AI', badge: 'AI' },
           ],
         },
         {
@@ -586,12 +601,12 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           ],
         },
         {
-          label: 'Finance & access',
+          label: 'Governance & Finance',
           items: [
             { key: 'revenue-cycle', icon: BarChart3, label: 'Revenue Cycle & Accounting' },
             { key: 'compliance', icon: FileText, label: 'MoH Compliance & Audit Logs' },
-            { key: 'rbac', icon: Lock, label: 'Staff access control' },
-            { key: 'sysadmin', icon: Settings, label: 'System Administration' },
+            { key: 'rbac', icon: Lock, label: 'Staff Access Control' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
       ];
@@ -599,19 +614,20 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
     case 'hospital_admin':
       return [
         {
-          label: '',
+          label: 'Executive Command',
           items: [
-            { key: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-            { key: 'transfer', icon: Users, label: 'Hospital Staff Transfer' },
-            { key: 'staffing', icon: Users, label: 'Staffing & Rosters' },
-            { key: 'facility', icon: Building2, label: 'Hospital Management' },
+            { key: 'dashboard', icon: LayoutDashboard, label: 'Executive Dashboard', badge: 'Admin' },
+            { key: 'command', icon: Activity, label: 'Hospital overview' },
+            { key: 'beds', icon: BedDouble, label: 'Clinical bed census' },
+            { key: 'notifications', icon: Bell, label: 'Admin In Basket', badge: 'Alerts' },
           ],
         },
         {
-          label: 'Operations & Bed Management',
+          label: 'Workforce & Operations',
           items: [
-            { key: 'command', icon: Activity, label: 'Hospital overview' },
-            { key: 'beds', icon: BedDouble, label: 'Clinical bed census' },
+            { key: 'transfer', icon: Users, label: 'Hospital Staff Transfer' },
+            { key: 'staffing', icon: Users, label: 'Staffing & Rosters' },
+            { key: 'facility', icon: Building2, label: 'Hospital Management' },
             { key: 'patient-flow', icon: RefreshCw, label: 'Patient Flow Visibility' },
             { key: 'ambulance', icon: PhoneCall, label: 'Ambulance & Dispatch' },
           ],
@@ -623,17 +639,18 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'enrolment', icon: Users, label: 'Staff Enrolment & ID' },
             { key: 'compliance', icon: FileText, label: 'Compliance & Audit' },
             { key: 'cashier', icon: BarChart3, label: 'Revenue & Cashier' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
       ];
 
     case 'sysadmin':
-    default:
       return [
         {
           label: 'System settings',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Admin home', badge: 'Live' },
+            { key: 'notifications', icon: Bell, label: 'System notices', badge: 'Sys' },
             { key: 'transfer', icon: Users, label: 'Hospital Staff Transfer', badge: 'Admin' },
             { key: 'sysadmin', icon: Settings, label: 'System settings', badge: 'Core' },
           ],
@@ -644,6 +661,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'rbac', icon: Lock, label: 'Role-Based Access Control', badge: 'Admin' },
             { key: 'auth', icon: Shield, label: 'Staff sign-in & identity' },
             { key: 'facility', icon: Building2, label: 'Hospital Facility Setup' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
         {
@@ -658,6 +676,44 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           ],
         },
       ];
+
+    default: {
+      // Dynamic Custom Role: Build workstation sidebar based on permissions assigned by the Admin
+      const roleTitle = session?.role || session?.title || 'Custom Role';
+      const permittedKeys = new Set(
+        session?.permissions && session.permissions.length > 0
+          ? session.permissions
+          : getModulesForRole(roleKey)
+      );
+
+      // Collect items from catalog that this custom role is permitted to see
+      const customItems: NavSection['items'] = [];
+      // Always include dashboard, my-card, notifications
+      customItems.push({ key: 'dashboard', icon: LayoutDashboard, label: `${roleTitle.split('/')[0].trim()} Desk`, badge: 'Live' });
+      customItems.push({ key: 'notifications', icon: Bell, label: 'In Basket', badge: 'Inbox' });
+      customItems.push({ key: 'my-card', icon: IdCard, label: 'My staff ID' });
+
+      // Search MASTER_PILLARS for any other permitted modules
+      for (const pillar of MASTER_PILLARS) {
+        for (const item of pillar.items) {
+          if (permittedKeys.has(item.key) && !customItems.some((c) => c.key === item.key)) {
+            customItems.push({
+              key: item.key,
+              icon: item.icon,
+              label: item.label,
+              badge: item.badge,
+            });
+          }
+        }
+      }
+
+      return [
+        {
+          label: `${roleTitle.split('/')[0].trim()} Workspace`,
+          items: customItems,
+        },
+      ];
+    }
   }
 }
 
@@ -2240,8 +2296,8 @@ const handleLockScreen = () => {
             </div>
           ))}
 
-          {/* Directory Mode Switcher — not for reception desk */}
-          {sidebarOpen && userSession?.roleKey !== 'reception' && (
+          {/* Directory Mode Switcher — privileged administrative roles only */}
+          {sidebarOpen && ['sysadmin', 'hospital_admin', 'medical_director'].includes(userSession?.roleKey || '') && (
             <div style={{ padding: '10px 8px', borderTop: '1px solid #1A2F4C', marginTop: 12 }}>
               <button
                 type="button"
@@ -2344,7 +2400,7 @@ const handleLockScreen = () => {
               Live
             </span>
 
-            <NotificationBell app="MEDCORE_OS" facilityId={userSession?.facility} />
+            <NotificationBell app="MEDCORE_OS" facilityId={userSession?.facility} session={userSession ?? undefined} />
 
             <button
               type="button"

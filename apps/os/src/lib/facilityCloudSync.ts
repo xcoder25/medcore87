@@ -40,6 +40,9 @@ const KEY_EVENTS: Record<string, string[]> = {
   [FACILITY_KEYS.ancSmsPrefs]: ['medcore-anc-plans', 'medcore-admin-sync'],
   [FACILITY_KEYS.him]: ['medcore-him-updated', 'medcore-admin-sync'],
   [FACILITY_KEYS.theatre]: ['medcore-theatre-cases', 'medcore-admin-sync'],
+  // Nursing vitals — triage station on separate device writes here
+  [FACILITY_KEYS.vitals]: ['medcore-vitals', 'medcore-admin-sync'],
+  clinical_vitals: ['medcore-vitals', 'medcore-admin-sync'],
 };
 
 function emitForKey(key: string, value: unknown) {
@@ -71,12 +74,15 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
     emitForKey(key, value);
     return;
   }
+  // Redirect the 'clinical_vitals' alias to the canonical localStorage key used by nursingVitalsStore
+  const canonicalKey =
+    key === 'clinical_vitals' ? FACILITY_KEYS.vitals : key;
   try {
     // Presence maps must MERGE (not replace) so multi-PC logins all stay visible
-    if (key === STAFF_PRESENCE_KEY && value && typeof value === 'object') {
+    if (canonicalKey === STAFF_PRESENCE_KEY && value && typeof value === 'object') {
       let local: Record<string, unknown> = {};
       try {
-        local = JSON.parse(localStorage.getItem(key) || '{}') || {};
+        local = JSON.parse(localStorage.getItem(canonicalKey) || '{}') || {};
       } catch {
         local = {};
       }
@@ -85,16 +91,16 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
         value as Parameters<typeof mergePresenceMaps>[0]
       );
       const next = JSON.stringify(merged);
-      const prev = localStorage.getItem(key);
+      const prev = localStorage.getItem(canonicalKey);
       if (prev === next) return;
-      localStorage.setItem(key, next);
+      localStorage.setItem(canonicalKey, next);
       emitForKey(key, merged);
       return;
     }
     const next = JSON.stringify(value);
-    const prev = localStorage.getItem(key);
+    const prev = localStorage.getItem(canonicalKey);
     if (prev === next) return;
-    localStorage.setItem(key, next);
+    localStorage.setItem(canonicalKey, next);
     emitForKey(key, value);
   } catch {
     /* quota / private mode */

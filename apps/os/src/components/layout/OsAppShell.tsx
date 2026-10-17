@@ -215,7 +215,7 @@ export const OsAppShell: React.FC<Props> = ({
               />
               <kbd>⌘K</kbd>
             </div>
-            <NotificationBell app="MEDCORE_OS" facilityId={session.facility || session.hospitalId} />
+            <NotificationBell app="MEDCORE_OS" facilityId={session.facility || session.hospitalId} session={session} />
             {onOpenAssistant && (
               <button type="button" className="admin-shell-icon-btn" onClick={onOpenAssistant} title="Assistant">
                 <Brain size={16} />

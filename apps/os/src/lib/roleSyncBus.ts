@@ -33,6 +33,7 @@ export const FACILITY_KEYS = {
   ancSmsPrefs: 'medcore_anc_sms_prefs_v1',
   him: 'medcore_os_him_v1',
   theatre: 'medcore_os_theatre_cases_v1',
+  vitals: 'medcore_os_nursing_vitals_v1',
 } as const;
 
 /** Publish facility data. Online = cloud first, then local peers. Offline = local + queue. */

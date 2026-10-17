@@ -45,10 +45,19 @@ function write(list: VitalsRecord[]) {
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: KEY } }));
   const fid = list[0]?.facilityId || 'IGH-EKT';
   try {
+    // Publish under both the canonical KEY (for cloud sync listener matching)
+    // and the legacy 'clinical_vitals' alias — both are registered in facilityCloudSync KEY_EVENTS
+    publishFacilityData(fid, KEY, list);
     publishFacilityData(fid, 'clinical_vitals', list);
   } catch {
     /* ignore */
   }
+  // Cross-tab broadcast so same-PC Triage → Doctor updates instantly
+  try {
+    const bc = new BroadcastChannel('medcore_triage');
+    bc.postMessage({ type: 'vitals', facilityId: fid, at: new Date().toISOString() });
+    bc.close();
+  } catch { /* ignore */ }
 }
 
 function scoreUrgency(v: Partial<VitalsRecord>): VitalsRecord['urgency'] {
@@ -186,5 +195,15 @@ export function subscribeVitals(cb: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
   const fn = () => cb();
   window.addEventListener('medcore-vitals', fn);
-  return () => window.removeEventListener('medcore-vitals', fn);
+  window.addEventListener('medcore-admin-sync', fn);
+  let bc: BroadcastChannel | null = null;
+  try {
+    bc = new BroadcastChannel('medcore_triage');
+    bc.onmessage = (e) => { if (e.data?.type === 'vitals') cb(); };
+  } catch { /* ignore */ }
+  return () => {
+    window.removeEventListener('medcore-vitals', fn);
+    window.removeEventListener('medcore-admin-sync', fn);
+    try { bc?.close(); } catch { /* ignore */ }
+  };
 }

@@ -9,9 +9,11 @@ import { AdminWorkspace } from './AdminWorkspace';
 import {
   LayoutDashboard, Users, Building2, Activity, BedDouble, RefreshCw, PhoneCall,
   Lock, Shield, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus, Settings, Key,
+  Brain, Sparkles,
 } from 'lucide-react';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 import { UserProfileModal } from '../auth/UserProfileModal';
+import { M87AICopilotSuite } from '../ai-insights/M87AICopilotSuite';
 
 // Lazy module map — same keys as page.tsx
 import { HospitalStaffTransfer } from '../staffing/HospitalStaffTransfer';
@@ -52,7 +54,8 @@ type AdminModule =
   | 'compliance'
   | 'cashier'
   | 'settings'
-  | 'clinical-orders';
+  | 'clinical-orders'
+  | 'm87-ai';
 
 interface NavItem {
   key: AdminModule;
@@ -70,6 +73,7 @@ const NAV: NavSection[] = [
     label: 'Command & Analytics',
     items: [
       { key: 'dashboard', label: 'Executive Dashboard', icon: LayoutDashboard },
+      { key: 'm87-ai', label: 'Celestia Astra (Admin AI)', icon: Brain },
       { key: 'command', label: 'Hospital Command Centre', icon: Activity },
       { key: 'beds', label: 'Clinical Bed Census', icon: BedDouble },
       { key: 'cashier', label: 'Revenue & Finance', icon: BarChart3 },
@@ -234,6 +238,8 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         return <AdminSettings session={session} />;
       case 'clinical-orders':
         return <AdminWorkspace session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
+      case 'm87-ai':
+        return <M87AICopilotSuite session={session} onNavigate={(k: string) => goModule(k as AdminModule)} />;
       default:
         return <AdminWorkspace session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
     }
@@ -371,7 +377,16 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
               />
               <kbd>⌘K</kbd>
             </div>
-            <NotificationBell app="MEDCORE_OS_ADMIN" facilityId={session.facility} />
+            <NotificationBell app="MEDCORE_OS_ADMIN" facilityId={session.facility} session={session} />
+            <button
+              type="button"
+              className="admin-shell-icon-btn"
+              onClick={() => goModule('m87-ai')}
+              title="Open Celestia Astra Executive AI"
+              style={{ color: '#F59E0B' }}
+            >
+              <Sparkles size={16} />
+            </button>
             <button
               type="button"
               className="admin-shell-icon-btn"

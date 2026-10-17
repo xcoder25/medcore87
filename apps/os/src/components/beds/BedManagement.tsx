@@ -29,6 +29,7 @@ import {
 import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
 import { emitLiveAction } from '../../lib/liveActions';
 import { listPatients } from '../../lib/patientRegistryStore';
+import { Dhis2TrackerBedBoardSuite } from '../interop/Dhis2TrackerBedBoardSuite';
 
 const BED_STATUS_META: Record<BedStatus, { label: string; color: string }> = {
   occupied: { label: 'Occupied', color: '#EA580C' },
@@ -48,6 +49,7 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
     'IGH-EKT';
   const actor = session?.name || 'Bed manager';
 
+  const [viewMode, setViewMode] = useState<'standard' | 'dhis2_tracker'>('standard');
   const [bedsList, setBedsList] = useState<BedRecord[]>([]);
   const [filterWard, setFilterWard] = useState('All Wards');
   const [filterStatus, setFilterStatus] = useState<'all' | BedStatus>('all');
@@ -225,8 +227,52 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
         </div>
       </div>
 
-      {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 10 }}>
+      {/* Mode Switcher: Standard Hospital Census vs DHIS2 Tracker Simulated Bed Board */}
+      <div style={{ display: 'flex', gap: 6, background: '#FFFFFF', padding: '6px 10px', borderRadius: 12, border: '1px solid #E2E8F0', width: 'fit-content' }}>
+        <button
+          type="button"
+          onClick={() => setViewMode('standard')}
+          style={{
+            padding: '6px 14px',
+            borderRadius: 8,
+            border: 'none',
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+            background: viewMode === 'standard' ? '#2563EB' : 'transparent',
+            color: viewMode === 'standard' ? '#FFF' : '#64748B',
+          }}
+        >
+          Clinical Bed Census
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode('dhis2_tracker')}
+          style={{
+            padding: '6px 14px',
+            borderRadius: 8,
+            border: 'none',
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+            background: viewMode === 'dhis2_tracker' ? '#0D9488' : 'transparent',
+            color: viewMode === 'dhis2_tracker' ? '#FFF' : '#64748B',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: viewMode === 'dhis2_tracker' ? '#4ADE80' : '#0D9488' }} />
+          DHIS2 Tracker Bed Board (Simulated)
+        </button>
+      </div>
+
+      {viewMode === 'dhis2_tracker' ? (
+        <Dhis2TrackerBedBoardSuite facilityId={facilityId} />
+      ) : (
+        <>
+          {/* KPIs */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 10 }}>
         {[
           { l: 'Total', v: census.total, c: '#0F172A' },
           { l: 'Occupied', v: census.occupied, c: '#EA580C' },
@@ -644,6 +690,8 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
             </div>
           </form>
         </div>
+      )}
+        </>
       )}
     </div>
   );

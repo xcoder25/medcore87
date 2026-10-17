@@ -304,7 +304,7 @@ export function getRolePermissionsMap(): RolePermissionsMap {
     // Merge: defaults first, then saved overrides — never drop a role's baseline list entirely if key missing
     const merged: RolePermissionsMap = { ...DEFAULTS };
     for (const [rk, mods] of Object.entries(saved)) {
-      if (Array.isArray(mods) && mods.length) merged[rk] = mods;
+      if (Array.isArray(mods)) merged[rk] = mods;
     }
     return merged;
   } catch {

@@ -1312,7 +1312,21 @@ export function defaultPermissionsForRole(roleKey: string): string[] {
       'facility', 'auth', 'my-card', 'notifications',
     ],
   };
-  return map[roleKey] || ['dashboard', 'my-card'];
+  if (map[roleKey]) return map[roleKey];
+  try {
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem('medcore_os_role_permissions_v4');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed[roleKey] && Array.isArray(parsed[roleKey]) && parsed[roleKey].length > 0) {
+          return parsed[roleKey];
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return ['dashboard', 'my-card', 'patient-360', 'emr', 'notifications'];
 }
 
 
