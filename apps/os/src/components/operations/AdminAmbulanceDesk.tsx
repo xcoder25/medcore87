@@ -43,14 +43,28 @@ export const AdminAmbulanceDesk: React.FC = () => {
     setTimeout(() => setToast(null), 2800);
   };
 
+  const [dispatchUnitTarget, setDispatchUnitTarget] = useState<AmbulanceUnit | null>(null);
+  const [dispatchForm, setDispatchForm] = useState({ location: '', patient: '', crew: '' });
+
   const onDispatch = (u: AmbulanceUnit) => {
-    const location = prompt('Destination / pickup location:', u.location || 'Community call');
-    if (!location) return;
-    const patient = prompt('Patient name (optional):', u.patient || '') || undefined;
-    const crew = prompt('Crew names:', u.crew !== 'Unassigned' ? u.crew : '') || u.crew;
-    dispatchUnit(u.id, { location, patient, crew, notes: 'Dispatched from admin desk' });
+    setDispatchForm({
+      location: u.location && u.location !== 'Station bay' ? u.location : 'Community emergency pickup',
+      patient: u.patient || '',
+      crew: u.crew !== 'Unassigned' ? u.crew : 'Primary EMT crew',
+    });
+    setDispatchUnitTarget(u);
+  };
+
+  const handleConfirmDispatch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dispatchUnitTarget) return;
+    const loc = dispatchForm.location.trim() || 'Community emergency pickup';
+    const crew = dispatchForm.crew.trim() || 'Primary EMT crew';
+    const pat = dispatchForm.patient.trim() || undefined;
+    dispatchUnit(dispatchUnitTarget.id, { location: loc, patient: pat, crew, notes: 'Dispatched from admin desk' });
     reload();
-    flash(`${u.callSign} dispatched to ${location}`);
+    flash(`${dispatchUnitTarget.callSign} dispatched to ${loc}`);
+    setDispatchUnitTarget(null);
   };
 
   return (
@@ -77,7 +91,7 @@ export const AdminAmbulanceDesk: React.FC = () => {
         <div>
           <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>Ambulance &amp; Dispatch</h2>
           <p style={{ margin: '6px 0 0', fontSize: 13, color: '#64748B' }}>
-            Live fleet board — dispatch, update status, return to bay. No demo missions.
+            Live fleet board — dispatch units, update status, and track patient transfers.
           </p>
         </div>
         <button type="button" className="os-ghost-btn mc-btn-live" onClick={reload}>
@@ -243,6 +257,133 @@ export const AdminAmbulanceDesk: React.FC = () => {
           );
         })}
       </div>
+
+      {dispatchUnitTarget && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 16,
+              maxWidth: 440,
+              width: '100%',
+              padding: 24,
+              boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+              border: '1px solid #E2E8F0',
+            }}
+          >
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '1.15rem', fontWeight: 800 }}>
+              Dispatch Ambulance · {dispatchUnitTarget.callSign}
+            </h3>
+            <p style={{ margin: '0 0 16px 0', fontSize: 13, color: '#64748B' }}>
+              Assign mission details and deploy unit to clinical location.
+            </p>
+            <form onSubmit={handleConfirmDispatch} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4 }}>
+                  Destination / Pickup Location *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={dispatchForm.location}
+                  onChange={(e) => setDispatchForm((f) => ({ ...f, location: e.target.value }))}
+                  placeholder="e.g. Sector 4 Clinic, Trauma Ward, External Call"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #CBD5E1',
+                    fontSize: 13,
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4 }}>
+                  Patient Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={dispatchForm.patient}
+                  onChange={(e) => setDispatchForm((f) => ({ ...f, patient: e.target.value }))}
+                  placeholder="e.g. Inpatient referral or unknown casualty"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #CBD5E1',
+                    fontSize: 13,
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4 }}>
+                  Assigned Crew
+                </label>
+                <input
+                  type="text"
+                  value={dispatchForm.crew}
+                  onChange={(e) => setDispatchForm((f) => ({ ...f, crew: e.target.value }))}
+                  placeholder="Crew names or callsign"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #CBD5E1',
+                    fontSize: 13,
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => setDispatchUnitTarget(null)}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 8,
+                    border: '1px solid #CBD5E1',
+                    background: '#F8FAFC',
+                    fontWeight: 600,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: '#2563EB',
+                    color: '#fff',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Confirm Dispatch
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

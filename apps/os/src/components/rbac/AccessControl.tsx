@@ -580,7 +580,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         setConfirmInfo(null);
         setCreateFail(
           firestoreStatus !== 'ok'
-            ? 'Account was not created. Cloud profile could not be saved — no Staff ID was issued. Check network / Firebase and try again.'
+            ? 'Account was not created. Cloud profile could not be saved — no Staff ID was issued. Check your internet connection and try again.'
             : 'Account was not created. No Staff ID was issued.'
         );
       }
@@ -654,14 +654,14 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           );
           if (authResult.badgeDeleted || authResult.emailDeleted) {
             authDeleted = true;
-            authNote = 'Firebase Auth removed.';
+            authNote = 'Portal access permanently revoked.';
           } else {
             authNote =
-              'Auth may still exist if Admin SDK is not configured on the server — set FIREBASE_SERVICE_ACCOUNT_JSON.';
+              'Portal access could not be fully revoked — contact your IT administrator to complete the removal.';
           }
         } catch {
           authNote =
-            'Auth delete timed out or failed — card/access already removed. Check FIREBASE_SERVICE_ACCOUNT_JSON.';
+            'Portal access revocation timed out — staff card and access permissions have been removed. Contact IT to confirm full revocation.';
         }
         await withTimeout(firestoreDeleteStaffMember(facilityId, id), 8000).catch(() => false);
         await withTimeout(

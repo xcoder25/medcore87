@@ -130,8 +130,8 @@ export const StaffDeleteSuccessScreen: React.FC<Props> = ({ info, onClose }) => 
               {
                 icon: ShieldOff,
                 label: info.authDeleted
-                  ? 'Firebase Auth deleted — login will show “user does not exist”'
-                  : 'Auth cleanup attempted (check service account if still able to sign in)',
+                  ? 'Portal access permanently revoked — staff cannot sign in to any workstation'
+                  : 'Portal access revocation attempted — contact IT support if login persists',
                 ok: !!info.authDeleted,
               },
               { icon: LogOut, label: 'Any open session is force-logged out', ok: true },

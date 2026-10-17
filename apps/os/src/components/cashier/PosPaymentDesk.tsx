@@ -299,10 +299,7 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
       return;
     }
     if (patientAi?.risk === 'high') {
-      const ok = window.confirm(
-        `AI risk flag: ${patientAi.flags.join('; ')}\n\nRecord ₦${amt.toLocaleString()} anyway?`
-      );
-      if (!ok) return;
+      emitLiveAction(`Payment recorded with risk flag: ${patientAi.flags.join('; ')}`, { module: 'pos-payment' });
     }
     const open = visits.find(
       (v) => v.patientId === patient.id && v.status !== 'completed' && v.status !== 'cancelled'

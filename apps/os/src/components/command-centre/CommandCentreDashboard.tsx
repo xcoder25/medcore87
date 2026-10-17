@@ -67,7 +67,7 @@ export const CommandCentreDashboard: React.FC = () => {
         <div>
           <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>Hospital Command Centre</h2>
           <p style={{ margin: '6px 0 0', fontSize: 13, color: '#64748B' }}>
-            Live operations pulse — beds, queue, fleet, staff. No demo occupancy figures.
+            Live operations pulse — bed occupancy, emergency queue, fleet status, and active clinical staff.
           </p>
         </div>
         <button

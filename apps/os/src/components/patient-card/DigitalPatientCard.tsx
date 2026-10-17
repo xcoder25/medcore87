@@ -79,6 +79,7 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const reload = useCallback(() => {
     setPatients(listPatients(facilityId));
@@ -266,17 +267,26 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
           <button
             type="button"
             className="os-ghost-btn"
-            style={{ color: '#B91C1C', borderColor: 'rgba(185,28,28,0.3)', fontSize: 12 }}
+            style={{
+              color: confirmReset ? '#fff' : '#B91C1C',
+              background: confirmReset ? '#B91C1C' : 'transparent',
+              borderColor: 'rgba(185,28,28,0.3)',
+              fontSize: 12,
+            }}
             onClick={() => {
-              if (window.confirm('Clear all patients on this browser for a fresh MPI?')) {
+              if (confirmReset) {
                 resetPatientRegistry();
                 setSelectedId(null);
                 reload();
                 flash('Patient registry cleared');
+                setConfirmReset(false);
+              } else {
+                setConfirmReset(true);
+                setTimeout(() => setConfirmReset(false), 4000);
               }
             }}
           >
-            Reset list
+            {confirmReset ? 'Click to confirm reset' : 'Reset list'}
           </button>
         )}
       </div>
@@ -390,7 +400,7 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
             <div className="os-empty-state">
               <div style={{ fontSize: 28, marginBottom: 8 }}>📋</div>
               <div style={{ fontWeight: 700, color: '#0A2540', marginBottom: 6 }}>No patients enrolled yet</div>
-              Demo records are cleared. Click <strong>Register patient</strong> to create the first hospital number and digital card.
+              No patient records found in registry. Click <strong>Register patient</strong> to issue the first hospital number and digital card.
             </div>
           ) : (
             <div style={{ maxHeight: 520, overflowY: 'auto' }}>

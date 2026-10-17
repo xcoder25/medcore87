@@ -36,6 +36,7 @@ export const BillingInvoicingSuite: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<ExtendedInvoice | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [pendingVoidId, setPendingVoidId] = useState<string | null>(null);
 
   // Form State for New Bill
   const [formPatientId, setFormPatientId] = useState('');
@@ -249,16 +250,15 @@ export const BillingInvoicingSuite: React.FC = () => {
   };
 
   const handleDeleteInvoice = (invId: string, invNum: string) => {
-    if (window.confirm(`Void and remove invoice ${invNum}? It will leave the cashier queue.`)) {
-      const updated = invoices.filter(item => item.id !== invId);
-      saveInvoices(updated);
-      try {
-        voidInvoiceBillLine(invId, invNum);
-      } catch {
-        /* ignore */
-      }
-      showToast(`Invoice ${invNum} voided`);
+    const updated = invoices.filter(item => item.id !== invId);
+    saveInvoices(updated);
+    try {
+      voidInvoiceBillLine(invId, invNum);
+    } catch {
+      /* ignore */
     }
+    setPendingVoidId(null);
+    showToast(`Invoice ${invNum} voided`);
   };
 
   const filteredInvoices = invoices.filter(inv => {
@@ -535,18 +535,31 @@ export const BillingInvoicingSuite: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNumber)}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#94A3B8',
-                            cursor: 'pointer',
-                            padding: 4,
-                            borderRadius: 4,
+                          onClick={() => {
+                            if (pendingVoidId === inv.id) {
+                              handleDeleteInvoice(inv.id, inv.invoiceNumber);
+                            } else {
+                              setPendingVoidId(inv.id);
+                              setTimeout(() => setPendingVoidId((cur) => (cur === inv.id ? null : cur)), 4000);
+                            }
                           }}
-                          title="Void Invoice"
+                          style={{
+                            background: pendingVoidId === inv.id ? '#FEE2E2' : 'transparent',
+                            border: pendingVoidId === inv.id ? '1px solid #FCA5A5' : 'none',
+                            color: pendingVoidId === inv.id ? '#DC2626' : '#94A3B8',
+                            cursor: 'pointer',
+                            padding: '3px 6px',
+                            borderRadius: 4,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 3,
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                          }}
+                          title={pendingVoidId === inv.id ? 'Click again to confirm void' : 'Void Invoice'}
                         >
                           <Trash2 size={13} />
+                          {pendingVoidId === inv.id ? 'Confirm?' : null}
                         </button>
                       </div>
                     </td>

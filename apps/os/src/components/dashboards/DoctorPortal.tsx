@@ -2063,7 +2063,7 @@ const PatientsViewLive: React.FC<{ session: UserSession; onNavigate: (k: any) =>
           <Users size={28} style={{ marginBottom: 10, opacity: 0.5 }} />
           <div style={{ fontWeight: 700, color: '#0F172A', marginBottom: 6 }}>No patients on your list yet</div>
           <div style={{ fontSize: '0.84rem', maxWidth: 420, margin: '0 auto' }}>
-            When reception checks a patient in or registers them, they appear here in realtime. No demo cards.
+            When reception checks a patient in or registers them, they appear here in real time.
           </div>
         </div>
       ) : (

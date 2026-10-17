@@ -140,7 +140,7 @@ export const FrontDeskWorkqueues: React.FC<{ session?: UserSession }> = ({ sessi
   };
 
   const onBlock = (slot: ScheduleSlot) => {
-    const reason = window.prompt('Block reason', 'Meeting / admin') || 'Blocked';
+    const reason = 'Meeting / administrative hold';
     if (!blockSlot(slot.id, reason)) {
       flash('Cannot block a booked slot');
       return;

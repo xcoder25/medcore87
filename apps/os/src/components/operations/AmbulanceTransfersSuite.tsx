@@ -11,11 +11,23 @@ const INITIAL_FLEET: AmbulanceUnit[] = [];
 
 export const AmbulanceTransfersSuite: React.FC = () => {
   const [fleet, setFleet] = useState<AmbulanceUnit[]>(INITIAL_FLEET);
+  const [dispatchNotice, setDispatchNotice] = useState<string | null>(null);
+
+  const openRadioDispatch = (callSign: string) => {
+    setDispatchNotice(`Radio dispatch channel opened with ${callSign}. Patch through to Emergency Control Room via VHF Channel 7.`);
+    setTimeout(() => setDispatchNotice(null), 5000);
+  };
 
   const activeMissions = fleet.filter(f => f.status === 'en_route_scene' || f.status === 'patient_onboard').length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {dispatchNotice && (
+        <div style={{ position: 'fixed', top: 22, right: 24, zIndex: 99999, background: '#0F172A', color: '#38BDF8', border: '1px solid #0284C7', borderRadius: 12, padding: '14px 20px', boxShadow: '0 12px 32px rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.88rem', fontWeight: 600 }}>
+          <PhoneCall size={18} color="#38BDF8" />
+          <span>{dispatchNotice}</span>
+        </div>
+      )}
       {/* Top Telemetry */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
         <div className="os-card" style={{ borderLeft: '4px solid var(--ak-orange)' }}>
@@ -97,7 +109,7 @@ export const AmbulanceTransfersSuite: React.FC = () => {
               type="button"
               className="os-ghost-btn"
               style={{ width: '100%', justifyContent: 'center', fontSize: '0.75rem' }}
-              onClick={() => alert(`Radio frequency opened with ${unit.callSign} dispatch unit.`)}
+              onClick={() => openRadioDispatch(unit.callSign)}
             >
               <PhoneCall size={12} /> Open Radio Dispatch Channel
             </button>

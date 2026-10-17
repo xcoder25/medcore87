@@ -39,6 +39,7 @@ export const RolePermissionsMatrix: React.FC = () => {
   const [newRoleDept, setNewRoleDept] = useState('Clinical');
   const [newRoleClearance, setNewRoleClearance] = useState(3);
   const [newRoleError, setNewRoleError] = useState<string | null>(null);
+  const [rolePendingDelete, setRolePendingDelete] = useState<string | null>(null);
 
   const reload = (resetDraft = false) => {
     const m = getRolePermissionsMap();
@@ -188,13 +189,12 @@ export const RolePermissionsMatrix: React.FC = () => {
   };
 
   const handleDeleteRole = (roleKey: string) => {
-    if (window.confirm(`Are you sure you want to delete the custom role "${activeRoleMeta?.label || roleKey}"?`)) {
-      deleteCustomRole(roleKey);
-      emitLiveAction(`Deleted custom role: ${roleKey}`, { module: 'role-permissions' });
-      pushActivity(`Administrator deleted role ${roleKey}`);
-      reload(true);
-      setActiveRole(listConfigurableRoles()[0]?.roleKey || 'doctor');
-    }
+    deleteCustomRole(roleKey);
+    emitLiveAction(`Deleted custom role: ${roleKey}`, { module: 'role-permissions' });
+    pushActivity(`Administrator deleted role ${roleKey}`);
+    reload(true);
+    setRolePendingDelete(null);
+    setActiveRole(listConfigurableRoles()[0]?.roleKey || 'doctor');
   };
 
   const groups = Array.from(new Set(MODULE_CATALOG.map((m) => m.group)));
@@ -382,27 +382,64 @@ export const RolePermissionsMatrix: React.FC = () => {
                 Modules for <span style={{ color: '#0052D4' }}>{roleLabel}</span>
               </h3>
               {activeRoleMeta?.isCustom && (
-                <button
-                  type="button"
-                  onClick={() => handleDeleteRole(activeRole)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    background: '#FEF2F2',
-                    border: '1px solid #FECACA',
-                    color: '#DC2626',
-                    padding: '3px 8px',
-                    borderRadius: 6,
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                  title="Delete this custom role"
-                >
-                  <Trash2 size={12} />
-                  <span>Delete Role</span>
-                </button>
+                rolePendingDelete === activeRole ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteRole(activeRole)}
+                      style={{
+                        background: '#DC2626',
+                        border: 'none',
+                        color: '#fff',
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Confirm Delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRolePendingDelete(null)}
+                      style={{
+                        background: '#F1F5F9',
+                        border: '1px solid #CBD5E1',
+                        color: '#475569',
+                        padding: '3px 6px',
+                        borderRadius: 6,
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setRolePendingDelete(activeRole)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      background: '#FEF2F2',
+                      border: '1px solid #FECACA',
+                      color: '#DC2626',
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                    title="Delete this custom role"
+                  >
+                    <Trash2 size={12} />
+                    <span>Delete Role</span>
+                  </button>
+                )
               )}
             </div>
             <div style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>

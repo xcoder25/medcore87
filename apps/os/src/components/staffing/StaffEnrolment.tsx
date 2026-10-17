@@ -213,7 +213,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
           deleteStaffMember(card.badgeId);
         } catch { /* ignore */ }
         setError(
-          'Account was not created. Cloud profile could not be saved — no Staff ID was issued. Check network / Firebase and try again.'
+          'Staff account could not be created — cloud profile sync failed. Please check your internet connection and try again. If the problem persists, contact your IT administrator.'
         );
         setBusy(false);
         return;

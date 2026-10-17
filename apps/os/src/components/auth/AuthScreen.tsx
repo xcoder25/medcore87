@@ -769,7 +769,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             } catch { /* */ }
             if (facilityAlreadyOnboarded) {
               setError(
-                'This hospital is already set up. Sign in with the hospital admin Staff ID + PIN. A new admin is only created after Firebase Auth accounts for this facility are deleted.'
+                'This hospital is already configured. Sign in with your hospital admin Staff ID + PIN. Contact MedCore support if you need to reset facility access.'
               );
               setLoading(false);
               return;
@@ -1629,7 +1629,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
               <a
                 href="#forgot"
-                onClick={(e) => { e.preventDefault(); alert('Password reset link sent to registered email.'); }}
+                onClick={(e) => { e.preventDefault(); /* Password reset is handled by your IT administrator via the Staff Management module */ }}
                 style={{
                   color: '#0284C7',
                   textDecoration: 'none',

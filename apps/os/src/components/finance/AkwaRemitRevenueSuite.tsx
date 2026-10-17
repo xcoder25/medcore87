@@ -88,6 +88,9 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
   const [newPurpose, setNewPurpose] = useState('');
   const [newPaystackRef, setNewPaystackRef] = useState('');
   const [newDirectRrr, setNewDirectRrr] = useState('');
+  const [remitError, setRemitError] = useState<string | null>(null);
+  const [shiftError, setShiftError] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const reloadData = () => {
     setPayments(listAkwaRemitPayments(facilityId));
@@ -150,12 +153,13 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
 
   const handleExecuteRemit = (e: React.FormEvent) => {
     e.preventDefault();
+    setRemitError(null);
     if (!batchRrr.trim()) {
-      alert('Official AkwaRemit RRR is required for state remittance');
+      setRemitError('Official AkwaRemit RRR is required for state remittance.');
       return;
     }
     if (!witnessName.trim()) {
-      alert('Dual-control second witness name is required for compliance sign-off');
+      setRemitError('Dual-control second witness name is required for compliance sign-off.');
       return;
     }
 
@@ -186,18 +190,19 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
       reloadData();
       setTimeout(() => setRemitSuccessMsg(null), 5000);
     } catch (err: any) {
-      alert(err.message || 'Remittance execution failed');
+      setRemitError(err.message || 'Remittance execution failed. Please check your inputs and try again.');
     }
   };
 
   const handleShiftClose = (e: React.FormEvent) => {
     e.preventDefault();
+    setShiftError(null);
     if (countedCash === '') {
-      alert('Please enter total physical cash counted');
+      setShiftError('Please enter the total physical cash counted before closing the shift.');
       return;
     }
     if (!shiftWitnessName.trim()) {
-      alert('Dual-control witness supervisor sign-off is mandatory');
+      setShiftError('Dual-control witness supervisor sign-off is mandatory for shift closure.');
       return;
     }
 
@@ -230,16 +235,17 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
 
   const handleRecordPayment = (e: React.FormEvent) => {
     e.preventDefault();
+    setPaymentError(null);
     if (!newPatientName.trim() || !newAmount || Number(newAmount) <= 0) {
-      alert('Patient name and valid amount are required');
+      setPaymentError('Patient name and a valid amount are required.');
       return;
     }
     if (newMethod === 'paystack_terminal' && !newPaystackRef.trim()) {
-      alert('Paystack Terminal Transaction Reference / RRN is required for terminal collections');
+      setPaymentError('Paystack Terminal Transaction Reference / RRN is required for terminal collections.');
       return;
     }
     if (newMethod === 'direct_akwaremit' && !newDirectRrr.trim()) {
-      alert('AkwaRemit RRR / Receipt number is required for direct remittances');
+      setPaymentError('AkwaRemit RRR / Receipt number is required for direct remittances.');
       return;
     }
 
@@ -1222,6 +1228,12 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                 />
               </div>
 
+              {remitError && (
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#DC2626', fontSize: '0.82rem', fontWeight: 600 }}>
+                  {remitError}
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
                 <button
                   type="button"
@@ -1357,6 +1369,12 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                   />
                 </div>
               </div>
+
+              {shiftError && (
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#DC2626', fontSize: '0.82rem', fontWeight: 600, marginTop: 4 }}>
+                  {shiftError}
+                </div>
+              )}
 
               <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
                 <button type="button" onClick={() => setShowShiftModal(false)} className="os-ghost-btn" style={{ flex: 1 }}>
@@ -1520,6 +1538,12 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                   style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.85rem' }}
                 />
               </div>
+
+              {paymentError && (
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', color: '#DC2626', fontSize: '0.82rem', fontWeight: 600, marginTop: 4 }}>
+                  {paymentError}
+                </div>
+              )}
 
               <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
                 <button type="button" onClick={() => setShowNewPaymentModal(false)} className="os-ghost-btn" style={{ flex: 1 }}>

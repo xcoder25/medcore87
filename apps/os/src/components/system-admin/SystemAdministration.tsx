@@ -1,7 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { resetAllPilotData } from '../../lib/adminRealtimeStore';
-import { Settings, Server, Database, Wifi, Shield, RefreshCw, CheckCircle2, AlertCircle, HardDrive, Clock } from 'lucide-react';
+import { Settings, Server, Database, Wifi, Shield, RefreshCw, CheckCircle2, AlertCircle, HardDrive, Clock, Trash2, AlertTriangle } from 'lucide-react';
 
 const SYSTEM_SERVICES: any[] = [];
 
@@ -19,25 +19,26 @@ export const SystemAdministration: React.FC = () => {
   const [tab, setTab] = useState<'services' | 'backups'>('services');
   const [authBusy, setAuthBusy] = useState(false);
   const [authMsg, setAuthMsg] = useState<string | null>(null);
+  const [showRevokeModal, setShowRevokeModal] = useState(false);
+  const [revokePhrase, setRevokePhrase] = useState('');
+  const [showResetModal, setShowResetModal] = useState(false);
 
-  const deleteAllFirebaseAuthUsers = async () => {
-    if (typeof window === 'undefined') return;
-    const ok = window.confirm(
-      'DELETE ALL FIREBASE AUTH USERS?\n\nThis permanently removes every Authentication user in the Firebase project (badge logins + email logins).\n\nRequires Admin SDK service account on the server.\n\nThis cannot be undone.'
-    );
-    if (!ok) return;
-    const typed = window.prompt('Type DELETE_ALL_AUTH_USERS to confirm:');
-    if (typed !== 'DELETE_ALL_AUTH_USERS') {
+  const revokeAllStaffAccounts = async () => {
+    if (revokePhrase !== 'REVOKE_ALL_ACCOUNTS') {
       setAuthMsg('Cancelled — confirmation phrase did not match.');
+      setShowRevokeModal(false);
+      setRevokePhrase('');
       return;
     }
+    setShowRevokeModal(false);
+    setRevokePhrase('');
     setAuthBusy(true);
-    setAuthMsg('Deleting Auth users…');
+    setAuthMsg('Revoking all staff portal accounts…');
     try {
       const { getFirebaseAuth } = await import('../../lib/firebase');
       const user = getFirebaseAuth().currentUser;
       if (!user) {
-        setAuthMsg('You must be signed in with Firebase Auth to authorize this action.');
+        setAuthMsg('Administrator must be signed in to authorize this action. Please re-authenticate and try again.');
         setAuthBusy(false);
         return;
       }
@@ -59,16 +60,15 @@ export const SystemAdministration: React.FC = () => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setAuthMsg(data.error || `Failed (${res.status}). Check FIREBASE_SERVICE_ACCOUNT_JSON on Vercel.`);
+        setAuthMsg(data.error || `Revocation failed (code ${res.status}). Contact your system administrator.`);
         setAuthBusy(false);
         return;
       }
       setAuthMsg(
-        `Deleted ${data.deleted ?? 0} Auth user(s).` +
-          (data.errorCount ? ` ${data.errorCount} error(s).` : '') +
-          ' Local data was not cleared — use “Reset all data” if needed.'
+        `Successfully revoked ${data.deleted ?? 0} staff portal account(s).` +
+          (data.errorCount ? ` ${data.errorCount} could not be processed — contact support.` : '') +
+          ' Local records are retained — re-enrol staff to restore access.'
       );
-      // Sign out local session — Auth users are gone
       try {
         const { firebaseSignOut } = await import('../../lib/firebase');
         await firebaseSignOut();
@@ -84,7 +84,7 @@ export const SystemAdministration: React.FC = () => {
         window.location.href = window.location.pathname || '/';
       }, 1200);
     } catch (e) {
-      setAuthMsg((e as Error)?.message || 'Request failed');
+      setAuthMsg((e as Error)?.message || 'Request failed. Check your network connection and try again.');
     } finally {
       setAuthBusy(false);
     }
@@ -130,39 +130,97 @@ export const SystemAdministration: React.FC = () => {
           type="button"
           className="os-ghost-btn"
           style={{ borderColor: '#FECACA', color: '#B91C1C' }}
-          onClick={() => {
-            if (
-              typeof window !== 'undefined' &&
-              window.confirm(
-                'RESET ALL DATA?\n\nThis clears local hospital data on this browser AND empties facility cloud copies (staff list, patients, beds, orders, ANC, etc.).\n\nYou will be signed out. Re-enrol staff to continue.\n\nThis cannot be undone.'
-              )
-            ) {
-              resetAllPilotData({ wipeCloud: true });
-              window.location.href = window.location.pathname || '/';
-            }
-          }}
+          onClick={() => setShowResetModal(true)}
         >
-          Reset all data
+          <Trash2 size={13} style={{ display: 'inline', marginRight: 4 }} />
+          Reset all facility data
         </button>
         <button
           type="button"
           className="os-ghost-btn"
           disabled={authBusy}
           style={{ borderColor: '#7F1D1D', color: '#991B1B', opacity: authBusy ? 0.6 : 1 }}
-          onClick={() => void deleteAllFirebaseAuthUsers()}
+          onClick={() => setShowRevokeModal(true)}
         >
           <Shield size={13} style={{ display: 'inline', marginRight: 4 }} />
-          {authBusy ? 'Deleting Auth…' : 'Delete all Firebase Auth users'}
+          {authBusy ? 'Revoking accounts…' : 'Revoke all staff portal accounts'}
         </button>
       </div>
+
+      {/* Revoke Accounts Modal */}
+      {showRevokeModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#FFF', borderRadius: 18, padding: 32, maxWidth: 460, width: '90%', boxShadow: '0 24px 64px rgba(0,0,0,0.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <AlertTriangle size={22} color="#DC2626" />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: '#0F172A' }}>Revoke All Staff Portal Access</div>
+                <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>This action cannot be undone</div>
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, margin: '0 0 16px' }}>
+              This will immediately revoke portal login access for <strong>every enrolled staff member</strong> across all workstations. Local clinical records are retained. Staff must be re-enrolled to restore access.
+            </p>
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#DC2626', marginBottom: 8 }}>Type <code style={{ background: '#FEF2F2', padding: '2px 6px', borderRadius: 4 }}>REVOKE_ALL_ACCOUNTS</code> to confirm:</p>
+            <input
+              type="text"
+              value={revokePhrase}
+              onChange={e => setRevokePhrase(e.target.value)}
+              placeholder="Type confirmation phrase here"
+              style={{ width: '100%', border: '1.5px solid #FECACA', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontFamily: 'ui-monospace, monospace', outline: 'none', boxSizing: 'border-box' }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
+              <button className="os-ghost-btn" onClick={() => { setShowRevokeModal(false); setRevokePhrase(''); }}>Cancel</button>
+              <button
+                className="os-ghost-btn"
+                style={{ borderColor: '#DC2626', color: '#DC2626', opacity: revokePhrase !== 'REVOKE_ALL_ACCOUNTS' ? 0.5 : 1 }}
+                disabled={revokePhrase !== 'REVOKE_ALL_ACCOUNTS'}
+                onClick={() => void revokeAllStaffAccounts()}
+              >Confirm Revocation</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Data Modal */}
+      {showResetModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#FFF', borderRadius: 18, padding: 32, maxWidth: 460, width: '90%', boxShadow: '0 24px 64px rgba(0,0,0,0.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Trash2 size={22} color="#DC2626" />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: '#0F172A' }}>Reset All Facility Data</div>
+                <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>This action cannot be undone</div>
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, margin: '0 0 20px' }}>
+              This will permanently clear all local hospital records on this workstation and erase facility cloud copies — including staff, patients, beds, orders, and ANC data. You will be signed out immediately.
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="os-ghost-btn" onClick={() => setShowResetModal(false)}>Cancel</button>
+              <button
+                className="os-ghost-btn"
+                style={{ borderColor: '#DC2626', color: '#DC2626' }}
+                onClick={() => { resetAllPilotData({ wipeCloud: true }); window.location.href = window.location.pathname || '/'; }}
+              >Yes, Reset Everything</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {authMsg && (
         <div
           style={{
             padding: '12px 14px',
             borderRadius: 12,
-            background: authMsg.startsWith('Deleted') ? '#ECFDF5' : '#FEF2F2',
-            border: `1px solid ${authMsg.startsWith('Deleted') ? '#A7F3D0' : '#FECACA'}`,
-            color: authMsg.startsWith('Deleted') ? '#065F46' : '#991B1B',
+            background: authMsg.startsWith('Successfully') ? '#ECFDF5' : '#FEF2F2',
+            border: `1px solid ${authMsg.startsWith('Successfully') ? '#A7F3D0' : '#FECACA'}`,
+            color: authMsg.startsWith('Successfully') ? '#065F46' : '#991B1B',
             fontSize: 13,
             fontWeight: 600,
           }}

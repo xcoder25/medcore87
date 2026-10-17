@@ -11,9 +11,21 @@ const INITIAL_INCIDENTS: SafetyIncidentReport[] = [];
 
 export const EnvironmentalSafetySuite: React.FC = () => {
   const [incidents, setIncidents] = useState<SafetyIncidentReport[]>(INITIAL_INCIDENTS);
+  const [incidentNotice, setIncidentNotice] = useState<string | null>(null);
+
+  const handleLogIncident = () => {
+    setIncidentNotice('Safety incident report form opened. Complete all mandatory fields and submit for clinical governance review.');
+    setTimeout(() => setIncidentNotice(null), 4000);
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {incidentNotice && (
+        <div style={{ position: 'fixed', top: 22, right: 24, zIndex: 99999, background: '#0F172A', color: '#38BDF8', border: '1px solid #0284C7', borderRadius: 12, padding: '14px 20px', boxShadow: '0 12px 32px rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.88rem', fontWeight: 600 }}>
+          <CheckCircle2 size={18} color="#38BDF8" />
+          <span>{incidentNotice}</span>
+        </div>
+      )}
       {/* Top Telemetry */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
         <div className="os-card" style={{ borderLeft: '4px solid #10B981' }}>
@@ -63,7 +75,7 @@ export const EnvironmentalSafetySuite: React.FC = () => {
             type="button"
             className="os-action-btn-primary"
             style={{ fontSize: '0.72rem', padding: '6px 12px' }}
-            onClick={() => alert('New clinical safety report form initiated.')}
+            onClick={() => handleLogIncident()}
           >
             <ShieldAlert size={12} /> Log New Safety Incident
           </button>

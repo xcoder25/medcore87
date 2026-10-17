@@ -496,7 +496,7 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
                 fontSize: '0.72rem',
                 fontWeight: 800,
               }}
-              title="Changes sync across workstations via local + Firestore"
+              title="Settings sync in real time across all hospital workstations"
             >
               ● Live
             </span>

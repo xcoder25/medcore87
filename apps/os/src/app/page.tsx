@@ -1462,14 +1462,14 @@ export default function OSPage() {
       setAppState('auth');
       const msg =
         reason === 'auth_deleted' || reason === 'token_invalid'
-          ? 'Your account was removed from Firebase. You have been signed out.'
+          ? 'Your portal access credentials were deactivated. You have been signed out.'
           : reason === 'auth_disabled'
             ? 'Your account was disabled. You have been signed out.'
             : reason === 'removed_from_directory'
               ? 'Your staff record was removed from this facility. You have been signed out.'
               : 'Your staff account was revoked by an administrator. You have been signed out.';
       try {
-        window.alert(msg);
+        sessionStorage.setItem('medcore_auth_notice', msg);
       } catch {
         /* ignore */
       }
@@ -1704,8 +1704,7 @@ const handleLockScreen = () => {
         group: 'Quick Actions',
         icon: AlertTriangle,
         action: () => {
-          const code = prompt('Broadcast Clinical Alert: (Type "BLUE", "RED", or "YELLOW")');
-          if (code) setActiveEmergencyCode(`CODE ${code.toUpperCase()}`);
+          setActiveEmergencyCode('CODE RED — RESUSCITATION / TRAUMA ALERT');
           setCmdPaletteOpen(false);
         },
         badge: 'Emergency'

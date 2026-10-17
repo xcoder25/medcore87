@@ -146,7 +146,7 @@ export const PatientFlowVisibility: React.FC = () => {
             Patient Flow Visibility
           </h2>
           <p style={{ margin: '6px 0 0', fontSize: 13, color: '#64748B' }}>
-            Live from today&apos;s check-ins — no demo patients. Register and check in patients to populate this board.
+            Live from today&apos;s check-ins across triage, consultations, pharmacy, and admissions.
           </p>
         </div>
         <button

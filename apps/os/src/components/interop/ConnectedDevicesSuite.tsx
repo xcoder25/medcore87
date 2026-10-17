@@ -185,7 +185,7 @@ export const ConnectedDevicesSuite: React.FC = () => {
             <div className="os-card" style={{ padding: 28, gridColumn: '1 / -1', textAlign: 'center', color: '#64748B' }}>
               <Server size={28} style={{ marginBottom: 10, opacity: 0.5 }} />
               <div style={{ fontWeight: 700, color: '#0F172A', marginBottom: 6 }}>No lab instruments linked</div>
-              <div style={{ fontSize: 13 }}>Connect analyzers via Device Gateway (HL7 / ASTM / MQTT). Live feeds appear here automatically — no demo data.</div>
+              <div style={{ fontSize: 13 }}>Connect analyzers via Device Gateway (HL7 / ASTM / MQTT). Diagnostic telemetry and specimen feeds appear here automatically.</div>
             </div>
           )}
           {instruments.map(inst => (

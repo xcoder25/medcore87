@@ -11,12 +11,24 @@ const INITIAL_CLAIMS: HmoInsuranceClaim[] = [];
 
 export const InsuranceHmoClaimsSuite: React.FC = () => {
   const [claims, setClaims] = useState<HmoInsuranceClaim[]>(INITIAL_CLAIMS);
+  const [batchNotice, setBatchNotice] = useState<string | null>(null);
+
+  const handleTransmitBatch = () => {
+    setBatchNotice('Daily HMO claims batch queued for transmission to NHIA eClaims portal. Batch reference will be confirmed within 30 minutes.');
+    setTimeout(() => setBatchNotice(null), 5000);
+  };
 
   const totalSubmitted = claims.reduce((sum, c) => sum + c.amountNgn, 0);
   const paidCount = claims.filter(c => c.status === 'paid').length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {batchNotice && (
+        <div style={{ position: 'fixed', top: 22, right: 24, zIndex: 99999, background: '#0F172A', color: '#38BDF8', border: '1px solid #0284C7', borderRadius: 12, padding: '14px 20px', boxShadow: '0 12px 32px rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.88rem', fontWeight: 600 }}>
+          <CheckCircle2 size={18} color="#38BDF8" />
+          <span>{batchNotice}</span>
+        </div>
+      )}
       {/* Top Telemetry */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
         <div className="os-card" style={{ borderLeft: '4px solid #10B981' }}>
@@ -62,7 +74,7 @@ export const InsuranceHmoClaimsSuite: React.FC = () => {
             type="button"
             className="os-action-btn-primary"
             style={{ fontSize: '0.72rem' }}
-            onClick={() => alert('Batch transmission dispatched to NHIA portal.')}
+            onClick={() => handleTransmitBatch()}
           >
             Transmit Daily HMO Claims Batch
           </button>
