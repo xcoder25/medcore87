@@ -9,6 +9,17 @@ export const ADMIN_SETTINGS_KEY = 'medcore_os_admin_settings_v1';
 
 export type SyncPreference = 'auto' | 'local_only' | 'lan_preferred' | 'cloud_preferred';
 
+export interface PosTerminalConfig {
+  id: string;
+  terminalId: string;
+  serialNumber?: string;
+  tillNumber: string;
+  department: string;
+  subaccountCode?: string;
+  active: boolean;
+  notes?: string;
+}
+
 export interface AdminFacilitySettings {
   facilityId: string;
   displayName: string;
@@ -17,27 +28,53 @@ export interface AdminFacilitySettings {
   lga: string;
   address: string;
   phone: string;
+  emergencyPhone: string;
   email: string;
+  hospitalTier: 'district_general' | 'secondary_specialist' | 'tertiary_teaching' | 'primary_health_centre';
+  receiptFooterText: string;
+
   /** Hospital LAN hub base URL e.g. http://192.168.1.10:4000 */
   lanApiUrl: string;
   syncPreference: SyncPreference;
-  /** Reception / OPD */
+
+  /** Revenue & AkwaRemit / POS */
+  akwaremitEnabled: boolean;
+  akwaremitRevenueHead: string;
+  akwaremitRevenueSubhead: string;
+  dualControlShiftEnforced: boolean;
+  cashHoldingLimitNgn: number;
   defaultOpdFeeNgn: number;
+  emergencyTriageFeeNgn: number;
+  defaultLabFeeNgn: number;
+  pharmacyMarkupPercent: number;
+  posTerminals: PosTerminalConfig[];
+
+  /** Operations & Hours */
   workingHoursStart: string;
   workingHoursEnd: string;
-  /** Feature toggles */
+
+  /** Clinical Governance & Protocols */
+  triageProtocol: 'NEWS2' | 'ESI';
+  requireVitalsBeforeConsult: boolean;
+  unattendedQueueAlertMins: number;
+  requireBillingClearanceBeforeDischarge: boolean;
+
+  /** Insurance & NHIA / AKSHIA */
+  nhiaProviderCode: string;
+  akshiaProviderId: string;
+  insuranceCopayPercent: number;
+  preAuthThresholdNgn: number;
+  autoVerifyInsuranceOnCheckin: boolean;
+
+  /** Feature toggles & AI */
   aiReceptionEnabled: boolean;
   aiQueueReminders: boolean;
   requireConfirmBeforeCheckIn: boolean;
   allowWalkInWithoutNin: boolean;
-  /** Soft notice on dashboards */
   maintenanceMessage: string;
-  /** Optional facility fallback only — production must use server GEMINI_API_KEY */
   geminiApiKey: string;
-  /** Paystack public key (pk_live_… / pk_test_…) for reception payments */
   paystackPublicKey: string;
-  /** Default lab fee NGN when order placed */
-  defaultLabFeeNgn: number;
+
   updatedAt: string;
   updatedBy?: string;
 }
@@ -49,12 +86,70 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   lga: 'Eket',
   address: '',
   phone: '',
+  emergencyPhone: '0800-MEDCORE-911',
   email: '',
+  hospitalTier: 'district_general',
+  receiptFooterText: 'Official State Revenue Receipt. Thank you for your service.',
+
   lanApiUrl: '',
   syncPreference: 'auto',
+
+  akwaremitEnabled: true,
+  akwaremitRevenueHead: 'REV-HEAD-AKS-HEALTH',
+  akwaremitRevenueSubhead: 'SUB-HEAD-004-HOSPITAL-OPS',
+  dualControlShiftEnforced: true,
+  cashHoldingLimitNgn: 200000,
   defaultOpdFeeNgn: 5000,
+  emergencyTriageFeeNgn: 3000,
+  defaultLabFeeNgn: 3500,
+  pharmacyMarkupPercent: 10,
+  posTerminals: [
+    {
+      id: 'POS-01',
+      terminalId: 'TERM-IGH-01',
+      serialNumber: 'PS-6481029',
+      tillNumber: 'TILL-01',
+      department: 'Central Cashier',
+      subaccountCode: 'ACCT_eket01',
+      active: true,
+      notes: 'Main Reception Desk POS',
+    },
+    {
+      id: 'POS-02',
+      terminalId: 'TERM-IGH-02',
+      serialNumber: 'PS-9923841',
+      tillNumber: 'TILL-02',
+      department: 'Pharmacy Cashier',
+      subaccountCode: 'ACCT_eket01',
+      active: true,
+      notes: 'Pharmacy Dispensing POS',
+    },
+    {
+      id: 'POS-03',
+      terminalId: 'TERM-IGH-03',
+      serialNumber: 'PS-1184920',
+      tillNumber: 'TILL-03',
+      department: 'Emergency & A&E',
+      subaccountCode: 'ACCT_eket01',
+      active: true,
+      notes: 'A&E Surge POS',
+    },
+  ],
+
   workingHoursStart: '08:00',
   workingHoursEnd: '18:00',
+
+  triageProtocol: 'NEWS2',
+  requireVitalsBeforeConsult: true,
+  unattendedQueueAlertMins: 45,
+  requireBillingClearanceBeforeDischarge: true,
+
+  nhiaProviderCode: 'NHIA-AKS-0042',
+  akshiaProviderId: 'AKSHIA-SEC-019',
+  insuranceCopayPercent: 10,
+  preAuthThresholdNgn: 50000,
+  autoVerifyInsuranceOnCheckin: true,
+
   aiReceptionEnabled: true,
   aiQueueReminders: true,
   requireConfirmBeforeCheckIn: true,
@@ -62,7 +157,6 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   maintenanceMessage: '',
   geminiApiKey: '',
   paystackPublicKey: '',
-  defaultLabFeeNgn: 3500,
   updatedBy: undefined,
 };
 
