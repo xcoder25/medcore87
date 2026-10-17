@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Banknote,
   TrendingUp,
+  Landmark,
 } from 'lucide-react';
 import {
   listAccountsRequests,
@@ -31,9 +32,10 @@ import { PosPaymentDesk } from '../cashier/PosPaymentDesk';
 import { BillingInvoicingSuite } from '../finance/BillingInvoicingSuite';
 import { AccountingArDesk } from '../finance/AccountingArDesk';
 import { InsuranceHmoClaimsSuite } from '../finance/InsuranceHmoClaimsSuite';
+import { AkwaRemitRevenueSuite } from '../finance/AkwaRemitRevenueSuite';
 import { emitLiveAction } from '../../lib/liveActions';
 
-type AccView = 'home' | 'payment' | 'billing' | 'receipts' | 'ar' | 'claims';
+type AccView = 'home' | 'akwaremit' | 'payment' | 'billing' | 'receipts' | 'ar' | 'claims';
 
 interface Props {
   session: UserSession;
@@ -108,6 +110,7 @@ export const AccountingWorkspace: React.FC<Props> = ({
 
   const nav: { id: AccView; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'home', label: 'Accounts home', icon: LayoutDashboard, badge: awaiting.length || undefined },
+    { id: 'akwaremit', label: 'AkwaRemit State Revenue', icon: Landmark },
     { id: 'ar', label: 'AR desk', icon: Wallet, badge: awaiting.length || undefined },
     { id: 'payment', label: 'Collect payment', icon: CreditCard },
     { id: 'billing', label: 'Billing office', icon: FileText },
@@ -692,6 +695,12 @@ export const AccountingWorkspace: React.FC<Props> = ({
             embedded
             onNavigate={(k) => (k === 'dashboard' ? setView('home') : onNavigate?.(k))}
           />
+        </div>
+      )}
+
+      {view === 'akwaremit' && (
+        <div style={{ background: '#fff', borderRadius: 20, border: `1px solid ${C.border}`, overflow: 'hidden', padding: 18 }}>
+          <AkwaRemitRevenueSuite session={session} />
         </div>
       )}
 

@@ -13,6 +13,9 @@ import NotificationBell from '../realtime/NotificationBell';
 import { GlobalPatientContextBar } from '../clinical-core/GlobalPatientContextBar';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 import { UserProfileModal } from '../auth/UserProfileModal';
+import { HybridConnectivityDrawer } from '../realtime/HybridConnectivityDrawer';
+import { startConnectivityCircuitBreaker } from '../../lib/connectivityCircuitBreaker';
+import { startDeltaSyncWorker } from '../../lib/deltaSyncEngine';
 
 export type ShellNavItem = {
   key: string;
@@ -83,6 +86,8 @@ export const OsAppShell: React.FC<Props> = ({
 
   useEffect(() => {
     const id = setInterval(() => setClock(formatNow()), 1000);
+    const stopBreaker = startConnectivityCircuitBreaker();
+    const stopDeltaSync = startDeltaSyncWorker();
     const onOn = () => setOnline(true);
     const onOff = () => setOnline(false);
     setOnline(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -90,6 +95,8 @@ export const OsAppShell: React.FC<Props> = ({
     window.addEventListener('offline', onOff);
     return () => {
       clearInterval(id);
+      stopBreaker();
+      stopDeltaSync();
       window.removeEventListener('online', onOn);
       window.removeEventListener('offline', onOff);
     };
@@ -196,10 +203,7 @@ export const OsAppShell: React.FC<Props> = ({
               <Building2 size={14} />
               <span>{facility}</span>
             </div>
-            <div className="admin-shell-online">
-              <span className={`dot${online ? '' : ' is-off'}`} />
-              {online ? 'Online' : 'Offline'}
-            </div>
+            <HybridConnectivityDrawer />
             <div className="admin-shell-clock">{clock}</div>
           </div>
 

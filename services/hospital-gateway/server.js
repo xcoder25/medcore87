@@ -36,6 +36,9 @@ const store={
   notifications:[{id:"N-1",title:"Critical lab",body:"ICU Bed 3",read:false,level:"critical",time:"2 min ago"}]
 };
 
+const facilityStore = {};
+const facilityEvents = [];
+
 // ─── Official Secondary Health Care Facilities – Akwa Ibom State ────────────
 const AKS_FACILITIES = [
   {facilityId:"AKS-SEC-001",facilityName:"Immanuel General Hospital, Eket",location:"Eket",region:"Eket Region",tier:"district_hospital",enrollmentStatus:"pending",accreditationStatus:"pending",createdAt:"2026-01-01T00:00:00Z"},
@@ -130,6 +133,86 @@ async function api(req,res,pn){
       active:AKS_FACILITIES.filter(f=>f.enrollmentStatus==="active").length,
     }});
   }
+
+  // ─── Hybrid Edge Sync Endpoints ──────────────────────────────────────────
+  if(pn==="/api/v1/sync/status"){
+    return json(res,200,{
+      status:"OK",
+      tier:"ONSITE_EDGE_GATEWAY",
+      uptime:process.uptime(),
+      wsClients:wsClients.size,
+      storedEvents:facilityEvents.length,
+      facilityId:"AKS-SEC-001",
+      syncTimestamp:new Date().toISOString()
+    });
+  }
+  if(pn.startsWith("/api/v1/sync/facility/")){
+    const fid=decodeURIComponent(pn.replace("/api/v1/sync/facility/","").split("/")[0]);
+    if(req.method==="PUT"){
+      const b=await readBody(req);
+      facilityStore[fid]=Object.assign({},facilityStore[fid]||{},b.data||{},{updatedAt:b.updatedAt||new Date().toISOString()});
+      auditLog({actorId:"EDGE_SYNC",actorName:"Onsite Sync Hub",actorRole:"SYSTEM",action:"FACILITY_SYNC_PUT",resourceType:"SYNC",resourceId:fid});
+      broadcast("FACILITY_DATA_SYNCED",{facilityId:fid,updatedAt:facilityStore[fid].updatedAt});
+      return json(res,200,{success:true,updatedAt:facilityStore[fid].updatedAt});
+    }
+    if(req.method==="GET"){
+      const data=facilityStore[fid]||{};
+      return json(res,200,{success:true,data,updatedAt:data.updatedAt||null});
+    }
+  }
+  if(pn==="/api/v1/sync/events"){
+    if(req.method==="POST"){
+      const b=await readBody(req);
+      const incoming=Array.isArray(b.events)?b.events:[];
+      const accepted=[];
+      const conflicts=[];
+      for(const ev of incoming){
+        const exists=facilityEvents.some(e=>e.eventId===ev.eventId);
+        if(!exists){
+          if(ev.entityType==="BED_OCCUPANCY"&&ev.payload&&ev.payload.bedId){
+            const bedConflict=facilityEvents.find(e=>e.entityType==="BED_OCCUPANCY"&&e.payload&&e.payload.bedId===ev.payload.bedId&&e.payload.patientId!==ev.payload.patientId);
+            if(bedConflict){
+              conflicts.push({eventId:ev.eventId,reason:`Concurrent assignment of Bed ${ev.payload.bedId}`});
+              continue;
+            }
+          }
+          facilityEvents.push(ev);
+        }
+        accepted.push(ev.eventId);
+      }
+      return json(res,200,{success:true,acceptedIds:accepted,conflicts,totalEvents:facilityEvents.length});
+    }
+    if(req.method==="GET"){
+      return json(res,200,{success:true,total:facilityEvents.length,events:facilityEvents.slice(-200)});
+    }
+  }
+  // ─── Offline Payments & Receipts ───────────────────────────────────────────
+  if(pn==="/api/v1/payments/offline-receipt"&&req.method==="POST"){
+    const b=await readBody(req);
+    const receiptId=`RCP-OFF-${Date.now().toString(36).toUpperCase()}`;
+    const receiptHash=crypto.createHash("sha256").update(JSON.stringify({receiptId,amount:b.amount,patientId:b.patientId,timestamp:new Date().toISOString()})).digest("hex");
+    auditLog({actorId:b.cashierId||"CASHIER",actorName:b.cashierName||"Cashier",actorRole:"cashier",action:"OFFLINE_PAYMENT_ISSUED",resourceType:"BILLING",resourceId:receiptId});
+    return json(res,200,{success:true,receiptId,receiptHash,status:"ISSUED_OFFLINE_LEDGER"});
+  }
+  // ─── Offline Clinical Triage Assistant ─────────────────────────────────────
+  if(pn==="/api/v1/ai/triage"&&req.method==="POST"){
+    const b=await readBody(req);
+    const vitals=b.vitals||{};
+    const rr=Number(vitals.respirationRate||vitals.rr||16);
+    const spo2=Number(vitals.spo2||vitals.o2||98);
+    const sbp=Number(vitals.systolicBp||vitals.sbp||120);
+    const hr=Number(vitals.heartRate||vitals.hr||75);
+    const temp=Number(vitals.temperature||vitals.temp||36.8);
+    let score=0;
+    if(rr<=8||rr>=25)score+=3;else if(rr>=21)score+=2;else if(rr<=11)score+=1;
+    if(spo2<=91)score+=3;else if(spo2<=93)score+=2;else if(spo2<=95)score+=1;
+    if(sbp<=90||sbp>=220)score+=3;else if(sbp<=100)score+=2;else if(sbp<=110)score+=1;
+    if(hr<=40||hr>=131)score+=3;else if(hr>=111)score+=2;else if(hr<=50||hr>=91)score+=1;
+    if(temp<=35)score+=3;else if(temp>=39.1)score+=2;else if(temp<=36||temp>=38.1)score+=1;
+    const tier=score>=7?"CRITICAL_EMERGENCY":score>=5?"URGENT_TRIAGE":"ROUTINE_OBSERVATION";
+    return json(res,200,{success:true,news2Score:score,triageTier:tier,engine:"Onsite Edge Rule CDS v1.0",timestamp:new Date().toISOString()});
+  }
+
   return json(res,404,{success:false,error:"Not found"});
 }
 const server=http.createServer(async(req,res)=>{const u=new URL(req.url||"/","http://"+req.headers.host);if(u.pathname.startsWith("/api/")){try{await api(req,res,u.pathname);}catch(e){console.error(e);json(res,500,{success:false,error:"err"});}return;}serve(req,res,u.pathname);});

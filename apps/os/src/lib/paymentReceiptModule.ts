@@ -47,6 +47,12 @@ export type PaymentReceiptRecord = {
   voidReason?: string;
   /** DIGITAL vs HOSPITAL DESK */
   category: 'digital' | 'hospital_desk';
+  /** AkwaRemit Central State Revenue Tracking */
+  remittanceStatus?: 'pending' | 'remitted' | 'direct_akwaremit';
+  akwaRemitRrr?: string;
+  remittanceBatchId?: string;
+  remittedAt?: string;
+  remittedBy?: string;
   header?: string;
   footer?: string;
   taxId?: string;
@@ -133,6 +139,7 @@ export type IssueReceiptInput = {
   visitId?: string;
   cashier?: string;
   cashierBadge?: string;
+  akwaRemitRrr?: string;
 };
 
 /** Create + persist receipt, then optionally print */
@@ -147,6 +154,12 @@ export function issuePaymentReceipt(
       return null;
     }
   })();
+
+  const isDirectAkwaRemit =
+    input.method.toLowerCase().includes('akwaremit') ||
+    (input.channel || '').toLowerCase().includes('akwaremit');
+
+  const remittanceStatus = isDirectAkwaRemit ? 'direct_akwaremit' : 'pending';
 
   const receipt: PaymentReceiptRecord = {
     id: `RCPT-${Date.now().toString(36).toUpperCase()}`,
@@ -167,6 +180,8 @@ export function issuePaymentReceipt(
     visitId: input.visitId,
     cashier: input.cashier,
     cashierBadge: input.cashierBadge,
+    remittanceStatus,
+    akwaRemitRrr: input.akwaRemitRrr || (isDirectAkwaRemit ? input.reference : undefined),
     status: 'issued',
     issuedAt: new Date().toISOString(),
     category: inferCategory(input.method, input.channel),
@@ -176,6 +191,45 @@ export function issuePaymentReceipt(
   };
 
   writeAll([receipt, ...readAll()]);
+
+  // AkwaRemit State Revenue Registry auto-record
+  try {
+    const isPaystack =
+      input.method.toLowerCase().includes('paystack') ||
+      input.method.toLowerCase().includes('pos') ||
+      (input.channel || '').toLowerCase().includes('pos') ||
+      Boolean(input.paystackRef);
+
+    const akwaMethod = isDirectAkwaRemit
+      ? 'direct_akwaremit'
+      : isPaystack
+      ? 'paystack_terminal'
+      : 'cash';
+
+    // Lazy import akwaRemitStore to avoid circular dependencies
+    import('./akwaRemitStore').then(({ recordAkwaRemitPayment }) => {
+      recordAkwaRemitPayment({
+        receiptNo: receipt.receiptNo,
+        facilityId: receipt.facilityId,
+        facilityName: receipt.facilityName,
+        patientId: receipt.patientId || 'WALK-IN',
+        patientName: receipt.patientName,
+        hospitalNumber: receipt.hospitalNumber || 'N/A',
+        amountNgn: receipt.amountNgn,
+        method: akwaMethod,
+        serviceCategory: 'general',
+        description: receipt.purpose,
+        cashierName: receipt.cashier || 'Hospital Cashier',
+        cashierBadge: receipt.cashierBadge || 'CASHIER',
+        shiftId: `SHIFT-${new Date().toISOString().slice(0, 10)}`,
+        paystackRef: receipt.paystackRef,
+        akwaRemitRrr: receipt.akwaRemitRrr,
+      });
+    }).catch(() => {});
+  } catch {
+    /* ignore */
+  }
+
   if (opts?.print !== false) {
     printPaymentReceiptDocument(receipt);
   }

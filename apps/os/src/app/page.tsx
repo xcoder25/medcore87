@@ -117,7 +117,7 @@ import {
   AlertTriangle, Building2, Users, BedDouble, RefreshCw, BarChart3, Settings,
   CreditCard, FileText, Stethoscope, Calendar, Heart, HeartPulse, Database, Brain, Sparkles, Flame,
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
-  Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck,
+  Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck, Landmark,
   Search, X, LayoutDashboard, MapPin, Ticket, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
   Command, CornerDownLeft, IdCard, Key,
 } from 'lucide-react';
@@ -135,7 +135,7 @@ export type ModuleKey =
   | 'command' | 'beds' | 'patient-flow' | 'universal-queue' | 'appointments' | 'staffing' | 'ambulance' | 'notifications'
   | 'inventory' | 'biomedical' | 'facilities' | 'environmental'
   // Pillar 4: Finance
-  | 'billing' | 'cashier' | 'claims' | 'revenue-cycle' | 'procurement'
+  | 'billing' | 'cashier' | 'claims' | 'revenue-cycle' | 'procurement' | 'akwaremit'
   // Pillar 5: Data & Interop
   | 'aks-state' | 'data-hub' | 'fhir' | 'analytics' | 'ambient-soap' | 'lis' | 'formulary' | 'mfa-sso' | 'knowledge-graph' | 'predictive-staffing' | 'infection' | 'hie' | 'pacs-advanced'
   // Pillar 6: Connected IoT
@@ -207,6 +207,7 @@ const MASTER_PILLARS: NavSection[] = [
   {
     label: '4. Finance, NHIA & Revenue',
     items: [
+      { key: 'akwaremit', icon: Landmark, label: 'AkwaRemit State Revenue Hub', badge: 'State' },
       { key: 'billing', icon: CreditCard, label: 'Inpatient / Outpatient Billing' },
       { key: 'cashier', icon: CreditCard, label: 'Cashier Shift Tills & POS' },
       { key: 'claims', icon: ShieldCheck, label: 'Insurance, HMO & AKSHIA Claims' },
@@ -468,6 +469,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: 'Patient Financial Services',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Accounts workstation', badge: 'Live' },
+            { key: 'akwaremit', icon: Landmark, label: 'AkwaRemit State Revenue Hub', badge: 'AKS' },
             { key: 'cashier', icon: CreditCard, label: 'Cashier & POS till', badge: 'POS' },
             { key: 'billing', icon: CreditCard, label: 'Billing office & invoicing', badge: 'Bill' },
             { key: 'notifications', icon: Bell, label: 'In Basket (billing alerts)', badge: 'Inbox' },
@@ -603,6 +605,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Governance & Finance',
           items: [
+            { key: 'akwaremit', icon: Landmark, label: 'AkwaRemit State Revenue', badge: 'AKS' },
             { key: 'revenue-cycle', icon: BarChart3, label: 'Revenue Cycle & Accounting' },
             { key: 'compliance', icon: FileText, label: 'MoH Compliance & Audit Logs' },
             { key: 'rbac', icon: Lock, label: 'Staff Access Control' },
@@ -638,6 +641,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'rbac', icon: Lock, label: 'Staff Access Control' },
             { key: 'enrolment', icon: Users, label: 'Staff Enrolment & ID' },
             { key: 'compliance', icon: FileText, label: 'Compliance & Audit' },
+            { key: 'akwaremit', icon: Landmark, label: 'AkwaRemit Revenue Hub', badge: 'AKS' },
             { key: 'cashier', icon: BarChart3, label: 'Revenue & Cashier' },
             { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
@@ -914,6 +918,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   environmental: EnvironmentalSafetySuite,
   billing: BillingInvoicingSuite,
   cashier: PosPaymentDesk as any,
+  akwaremit: (props: any) => <AccountingWorkspace {...props} initialView="akwaremit" />,
   claims: InsuranceHmoClaimsSuite,
   'aks-state': AkwaIbomStateSuite,
   'revenue-cycle': RevenueCycleAccountingSuite,
@@ -989,6 +994,7 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   environmental: { level: 2, label: 'L2 Support', roleDesc: 'Environmental Health & Infection Control' },
   billing: { level: 2, label: 'L2 Finance', roleDesc: 'Hospital Billing Accountants' },
   cashier: { level: 2, label: 'L2 Finance', roleDesc: 'Revenue Collectors & Cashiers' },
+  akwaremit: { level: 2, label: 'L2 Finance', roleDesc: 'AkwaRemit State Revenue Officers & Accountants' },
   claims: { level: 2, label: 'L2 Finance', roleDesc: 'AKSHIA & HMO Adjudicators' },
   'aks-state': { level: 3, label: 'L3 Operations', roleDesc: 'State readiness · AKSHIA · UPI · DHIS2' },
   'revenue-cycle': { level: 2, label: 'L2 Finance', roleDesc: 'Finance Directors & Revenue Officers' },
@@ -2547,6 +2553,12 @@ const handleLockScreen = () => {
                   session={userSession}
                   onNavigate={(k) => handleModuleChange(k as ModuleKey)}
                   initialView="billing"
+                />
+              ) : activeModule === 'akwaremit' && userSession ? (
+                <AccountingWorkspace
+                  session={userSession}
+                  onNavigate={(k) => handleModuleChange(k as ModuleKey)}
+                  initialView="akwaremit"
                 />
               ) : activeModule === 'cashier' && userSession ? (
                 <PosPaymentDesk session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} />

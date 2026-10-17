@@ -42,6 +42,7 @@ export const MODULE_CATALOG: { key: string; label: string; group: string }[] = [
   // Finance
   { key: 'cashier', label: 'Cashier / POS', group: 'Finance' },
   { key: 'billing', label: 'Billing office', group: 'Finance' },
+  { key: 'akwaremit', label: 'AkwaRemit central state revenue', group: 'Finance' },
   { key: 'claims', label: 'Insurance / HMO claims', group: 'Finance' },
   { key: 'revenue-cycle', label: 'Revenue cycle & accounting', group: 'Finance' },
   { key: 'procurement', label: 'Procurement & payroll', group: 'Finance' },
@@ -272,7 +273,7 @@ const DEFAULTS: Record<string, string[]> = {
     'patient.identity', 'patient.contact', 'patient.demographics',
   ],
   accountant: [
-    'dashboard', 'cashier', 'billing', 'claims', 'revenue-cycle', 'procurement',
+    'dashboard', 'cashier', 'billing', 'akwaremit', 'claims', 'revenue-cycle', 'procurement',
     'patient-card', 'analytics', 'my-card', 'notifications',
     'patient.identity', 'patient.billing', 'patient.insurance', 'patient.demographics',
   ],
@@ -284,11 +285,11 @@ const DEFAULTS: Record<string, string[]> = {
     'dashboard', 'command', 'doctor-portal', 'm87-ai', 'ai', 'analytics',
     'emergency', 'theatre', 'icu', 'pharmacy', 'laboratory', 'lab', 'radiology',
     'blood-bank', 'beds', 'nursing', 'ambulance', 'notifications',
-    'compliance', 'my-card', 'patient.full_chart', ...CLINICAL_PATIENT,
+    'compliance', 'akwaremit', 'my-card', 'patient.full_chart', ...CLINICAL_PATIENT,
   ],
   sysadmin: [
     'dashboard', 'staffing', 'analytics', 'ai', 'm87-ai', 'sysadmin', 'rbac', 'enrolment',
-    'facility', 'auth', 'fhir', 'data-hub', 'compliance', 'my-card', 'notifications',
+    'facility', 'auth', 'fhir', 'data-hub', 'compliance', 'akwaremit', 'my-card', 'notifications',
   ],
   hospital_admin: ['*'],
 };
