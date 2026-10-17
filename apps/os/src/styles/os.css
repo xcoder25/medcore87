@@ -4206,12 +4206,20 @@ html, body {
   top: 0;
   z-index: 20;
 }
-.admin-shell-top-left,
+.admin-shell-top-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap !important;
+  min-width: 0;
+  flex-shrink: 1;
+}
 .admin-shell-top-right {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap !important;
+  flex-shrink: 0;
 }
 .admin-shell-facility {
   display: inline-flex;
@@ -4221,9 +4229,18 @@ html, body {
   color: #1E40AF;
   border: 1px solid #BFDBFE;
   border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 0.78rem;
+  padding: 5px 12px;
+  font-size: 0.76rem;
   font-weight: 700;
+  max-width: 220px;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.admin-shell-facility span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .admin-shell-online {
   display: inline-flex;
@@ -4233,9 +4250,11 @@ html, body {
   color: #047857;
   border: 1px solid #A7F3D0;
   border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 0.78rem;
+  padding: 5px 10px;
+  font-size: 0.76rem;
   font-weight: 700;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .admin-shell-online .dot {
   width: 7px;
@@ -4249,6 +4268,8 @@ html, body {
   font-weight: 600;
   color: #64748B;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .admin-shell-search {
   display: flex;
@@ -4258,8 +4279,18 @@ html, body {
   border: 1px solid #E2E8F0;
   border-radius: 999px;
   padding: 6px 12px;
-  min-width: 220px;
+  min-width: 130px;
+  max-width: 240px;
+  width: 180px;
   color: #94A3B8;
+  transition: all 0.2s ease;
+  flex-shrink: 1;
+}
+.admin-shell-search:focus-within {
+  width: 220px;
+  background: #FFFFFF;
+  border-color: #0052D4;
+  box-shadow: 0 0 0 3px rgba(0, 82, 212, 0.1);
 }
 .admin-shell-search input {
   border: none;
@@ -4338,7 +4369,26 @@ html, body {
   color: #0F172A;
   font-size: 1.1rem;
 }
-.admin-placeholder p { margin: 0; font-size: 0.9rem; }
+.admin-shell-profile:hover {
+  background: #F1F5F9;
+  border-color: #CBD5E1;
+}
+
+@media (max-width: 1200px) {
+  .admin-shell-clock {
+    display: none;
+  }
+}
+
+@media (max-width: 1050px) {
+  .admin-shell-facility {
+    max-width: 150px;
+  }
+  .admin-shell-search {
+    width: 140px;
+    min-width: 110px;
+  }
+}
 
 @media (max-width: 900px) {
   .admin-shell-sidebar { width: 72px; }

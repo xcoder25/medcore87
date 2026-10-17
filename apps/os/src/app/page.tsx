@@ -2417,15 +2417,6 @@ const handleLockScreen = () => {
               <HelpCircle size={17} strokeWidth={2} />
             </button>
 
-            <button
-              type="button"
-              className="os-top-hud-icon-btn"
-              title="Manage Credentials & Security PIN"
-              onClick={() => setShowCredModal(true)}
-              style={{ color: '#0284C7' }}
-            >
-              <Key size={15} />
-            </button>
             <div
               className="os-top-hud-user"
               onClick={() => setShowProfileModal(true)}

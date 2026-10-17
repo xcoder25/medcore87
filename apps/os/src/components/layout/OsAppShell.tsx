@@ -7,7 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
 import {
-  Building2, Search, LogOut, ChevronLeft, Lock, Brain, AlertTriangle, Key,
+  Building2, Search, LogOut, ChevronLeft, Lock, Brain, AlertTriangle, Key, ChevronDown,
 } from 'lucide-react';
 import NotificationBell from '../realtime/NotificationBell';
 import { GlobalPatientContextBar } from '../clinical-core/GlobalPatientContextBar';
@@ -235,23 +235,15 @@ export const OsAppShell: React.FC<Props> = ({
                 <Lock size={16} />
               </button>
             )}
-            <button
-              type="button"
-              className="admin-shell-icon-btn"
-              onClick={() => setShowCredModal(true)}
-              title="Manage Password & Security PIN"
-              style={{ color: '#0284C7' }}
-            >
-              <Key size={16} />
-            </button>
             <div
               className="admin-shell-profile"
               onClick={() => setShowProfileModal(true)}
               style={{ cursor: 'pointer' }}
-              title="View Staff Profile & ID Card"
+              title="View Staff Profile & Security"
             >
               <div className="admin-shell-avatar sm">{initials}</div>
               <span>{(session.role || 'Staff').split('/')[0]}</span>
+              <ChevronDown size={13} style={{ color: '#64748B', marginLeft: 2 }} />
             </div>
             <button type="button" className="admin-shell-icon-btn" onClick={onLogout} title="Sign out">
               <LogOut size={16} />

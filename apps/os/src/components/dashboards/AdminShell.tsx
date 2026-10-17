@@ -9,11 +9,12 @@ import { AdminWorkspace } from './AdminWorkspace';
 import {
   LayoutDashboard, Users, Building2, Activity, BedDouble, RefreshCw, PhoneCall,
   Lock, Shield, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus, Settings, Key,
-  Brain, Sparkles,
+  Brain, Sparkles, ChevronDown,
 } from 'lucide-react';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 import { UserProfileModal } from '../auth/UserProfileModal';
 import { M87AICopilotSuite } from '../ai-insights/M87AICopilotSuite';
+import { HybridConnectivityDrawer } from '../realtime/HybridConnectivityDrawer';
 
 // Lazy module map — same keys as page.tsx
 import { HospitalStaffTransfer } from '../staffing/HospitalStaffTransfer';
@@ -324,51 +325,17 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             >
               <ChevronLeft size={18} />
             </button>
-            <div className="admin-shell-facility">
-              <Building2 size={14} />
+            <div className="admin-shell-facility" title={facility}>
+              <Building2 size={14} style={{ flexShrink: 0 }} />
               <span>{facility}</span>
             </div>
-            <div
-              className={`admin-shell-online${
-                !online
-                  ? ' is-offline'
-                  : hospitalShare === 'cloud'
-                    ? ' is-cloud'
-                    : hospitalShare === 'lan'
-                      ? ' is-lan-hub'
-                      : ''
-              }`}
-              title={
-                !online
-                  ? 'Offline'
-                  : hospitalShare === 'cloud'
-                    ? 'Cloud sync active'
-                    : hospitalShare === 'lan'
-                      ? 'Hospital LAN hub active'
-                      : hospitalShare === 'local'
-                        ? 'Local session'
-                        : connected
-                          ? 'Realtime connected'
-                          : 'Online'
-              }
-            >
-              <span className="dot" />
-              {!online
-                ? 'Offline'
-                : hospitalShare === 'cloud'
-                  ? 'Cloud'
-                  : hospitalShare === 'lan'
-                    ? 'LAN hub'
-                    : connected
-                      ? 'Live'
-                      : 'Online'}
-            </div>
+            <HybridConnectivityDrawer />
             <div className="admin-shell-clock">{clock}</div>
           </div>
 
           <div className="admin-shell-top-right">
             <div className="admin-shell-search">
-              <Search size={15} />
+              <Search size={15} style={{ flexShrink: 0 }} />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -387,23 +354,15 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             >
               <Sparkles size={16} />
             </button>
-            <button
-              type="button"
-              className="admin-shell-icon-btn"
-              onClick={() => setShowCredModal(true)}
-              title="Manage Security Credentials & PIN"
-              style={{ color: '#0284C7' }}
-            >
-              <Key size={16} />
-            </button>
             <div
               className="admin-shell-profile"
               onClick={() => setShowProfileModal(true)}
               style={{ cursor: 'pointer' }}
-              title="View Administrator Profile & Identity"
+              title="View Administrator Profile & Security"
             >
               <div className="admin-shell-avatar sm">{initials}</div>
               <span>Admin</span>
+              <ChevronDown size={13} style={{ color: '#64748B', marginLeft: 2 }} />
             </div>
             <button type="button" className="admin-shell-icon-btn" onClick={onLogout} title="Sign out">
               <LogOut size={16} />
