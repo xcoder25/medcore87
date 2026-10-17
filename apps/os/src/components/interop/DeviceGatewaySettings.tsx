@@ -19,6 +19,7 @@ import {
 } from '../../lib/deviceGatewayStore';
 import { listOrders } from '../../lib/clinicalEventBus';
 import { listPatients } from '../../lib/patientRegistryStore';
+import { SearchablePatientSelect } from '../common/SearchablePatientSelect';
 import {
   Server, Activity, FlaskConical, Image, ScanLine, Save, Play, Radio, Wifi,
 } from 'lucide-react';
@@ -387,18 +388,14 @@ export const DeviceGatewaySettings: React.FC<Props> = ({ session }) => {
             </div>
 
             <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Monitor → vitals</div>
-            <select
-              style={{ ...inp, marginBottom: 8 }}
-              value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
-            >
-              <option value="">Select patient…</option>
-              {patients.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.firstName} {p.lastName} · {p.hospitalNumber}
-                </option>
-              ))}
-            </select>
+            <div style={{ marginBottom: 8 }}>
+              <SearchablePatientSelect
+                facilityId={facilityId}
+                value={patientId}
+                onChange={(p) => setPatientId(p?.id || '')}
+                placeholder="Search patient to attach telemetry monitor…"
+              />
+            </div>
             <button
               type="button"
               style={btnSec}

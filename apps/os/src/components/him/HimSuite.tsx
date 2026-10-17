@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { UserSession } from '../auth/AuthScreen';
 import { listPatients } from '../../lib/patientRegistryStore';
+import { SearchablePatientSelect } from '../common/SearchablePatientSelect';
 import {
   subscribeHim,
   himSummary,
@@ -229,18 +230,14 @@ export const HimSuite: React.FC<Props> = ({ session, initialTab }) => {
         }}
       >
         <span style={{ fontSize: 12, fontWeight: 700, color: '#64748B' }}>Patient / folder</span>
-        <select
-          value={patientId}
-          onChange={(e) => setPatientId(e.target.value)}
-          style={{ flex: 1, minWidth: 200, padding: 8, borderRadius: 8, border: '1px solid #CBD5E1' }}
-        >
-          <option value="">Select patient…</option>
-          {patientOpts.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <SearchablePatientSelect
+            facilityId={facilityId}
+            value={patientId}
+            onChange={(p) => setPatientId(p?.id || '')}
+            placeholder="Type patient name or hospital number to open folder…"
+          />
+        </div>
       </div>
 
       {tab === 'deficiency' && (

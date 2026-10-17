@@ -45,6 +45,7 @@ import { VisitStoryboard } from '../clinical-core/VisitStoryboard';
 import { InBasketPanel } from '../clinical-core/InBasketPanel';
 import { getPatientContext, subscribePatientContext } from '../../lib/patientContextStore';
 import { listPatients, subscribePatients } from '../../lib/patientRegistryStore';
+import { SearchablePatientSelect } from '../common/SearchablePatientSelect';
 import { emitLiveAction } from '../../lib/liveActions';
 import { useOpdSync, broadcastOpdStage } from '../../hooks/useOpdSync';
 
@@ -540,18 +541,12 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
       >
         <div>
           <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 6 }}>Order path (sets → lab/Rx bus → bills)</div>
-          <select
+          <SearchablePatientSelect
+            facilityId={facilityId}
             value={orderPatientId}
-            onChange={(e) => setOrderPatientId(e.target.value)}
-            style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #E2E8F0', fontSize: 13 }}
-          >
-            <option value="">Patient…</option>
-            {patients.slice(0, 40).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.firstName} {p.lastName} · {p.hospitalNumber}
-              </option>
-            ))}
-          </select>
+            onChange={(p) => setOrderPatientId(p?.id || '')}
+            placeholder="Type to search patient for orders…"
+          />
         </div>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>Order set</div>

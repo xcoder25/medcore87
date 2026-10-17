@@ -43,6 +43,7 @@ import {
 } from '../../lib/infectionControl';
 import { listEndpoints, saveEndpoints, pushBundle, exportFacilityDhis2, logHie } from '../../lib/hieGateway';
 import { listPatients } from '../../lib/patientRegistryStore';
+import { SearchablePatientSelect } from '../common/SearchablePatientSelect';
 import { listOrders } from '../../lib/clinicalEventBus';
 import { emitLiveAction } from '../../lib/liveActions';
 
@@ -535,14 +536,14 @@ function KnowledgeGraphBoard({ facilityId }: { facilityId: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <h2 style={{ margin: 0, fontWeight: 800 }}>Clinical knowledge graph</h2>
-      <select value={pid} onChange={(e) => setPid(e.target.value)} style={input}>
-        <option value="">Select patient</option>
-        {patients.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.firstName} {p.lastName} · {p.hospitalNumber}
-          </option>
-        ))}
-      </select>
+      <div style={{ maxWidth: 420 }}>
+        <SearchablePatientSelect
+          facilityId={facilityId}
+          value={pid}
+          onChange={(p) => setPid(p?.id || '')}
+          placeholder="Search patient for clinical knowledge graph…"
+        />
+      </div>
       <div style={{ fontSize: 13 }}>
         {sum.nodeCount} nodes · {sum.edgeCount} edges · {JSON.stringify(sum.byType)}
       </div>

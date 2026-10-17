@@ -20,6 +20,7 @@ import { appendAudit } from '../../lib/auditLogStore';
 import { FlaskConical, Pill, Activity, CheckCircle2 } from 'lucide-react';
 import { PatientChartBanner } from './PatientChartBanner';
 import { setPatientContext } from '../../lib/patientContextStore';
+import { SearchablePatientSelect } from '../common/SearchablePatientSelect';
 
 interface Props {
   session: UserSession;
@@ -195,14 +196,19 @@ export const ClinicalOrdersPanel: React.FC<Props> = ({ session }) => {
           </div>
         )}
         <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Patient</label>
-        <select style={{ ...input, marginBottom: 10 }} value={patientId} onChange={(e) => { const id = e.target.value; setPatientId(id); runBpaPreview(id); const p = patients.find(x => x.id === id); if (p) setPatientContext(p); }}>
-          <option value="">Select…</option>
-          {patients.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.firstName} {p.lastName} · {p.hospitalNumber}
-            </option>
-          ))}
-        </select>
+        <div style={{ marginBottom: 10 }}>
+          <SearchablePatientSelect
+            facilityId={facilityId}
+            value={patientId}
+            onChange={(p) => {
+              const id = p?.id || '';
+              setPatientId(id);
+              if (id) runBpaPreview(id);
+              if (p) setPatientContext(p);
+            }}
+            placeholder="Search patient by name or hospital number…"
+          />
+        </div>
         <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>Type</label>
         <select
           style={{ ...input, marginBottom: 10 }}

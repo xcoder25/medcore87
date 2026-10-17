@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState } from 'react';
 import { HospitalAppointment, INITIAL_APPOINTMENTS } from '../../data/hospitalData';
@@ -6,6 +6,7 @@ import {
   Calendar, Clock, User, Plus, Search, CheckCircle2,
   AlertCircle, X, ChevronRight, Stethoscope, UserCheck
 } from 'lucide-react';
+import { SearchablePatientSelect, formatPatientName } from '../common/SearchablePatientSelect';
 
 interface AppointmentsManagerProps {
   onNavigate?: (module: string, param?: any) => void;
@@ -286,13 +287,17 @@ export const AppointmentsManager: React.FC<AppointmentsManagerProps> = ({ onNavi
             <form onSubmit={handleBookSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#94A8BE', marginBottom: 4 }}>PATIENT FULL NAME</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Samuel Uche"
-                  value={formName}
-                  onChange={e => setFormName(e.target.value)}
-                  style={{ width: '100%', padding: '10px 12px', background: '#0A1929', border: '1px solid #1E446B', borderRadius: 8, color: '#0A2540', outline: 'none' }}
+                <SearchablePatientSelect
+                  facilityId="IGH-EKT"
+                  onChange={(p) => {
+                    if (p) setFormName(`${p.firstName} ${p.lastName}`);
+                  }}
+                  placeholder="Type to search patient by name or hospital no…"
+                  inputStyle={{
+                    background: '#0A1929',
+                    border: '1px solid #1E446B',
+                    color: '#F8FAFC',
+                  }}
                 />
               </div>
 

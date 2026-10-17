@@ -21,6 +21,7 @@ import { liveAlert } from '../../lib/manualActions';
 import { DoctorDeskHome } from './DoctorDeskHome';
 import { PatientChartBanner } from '../clinical-core/PatientChartBanner';
 import { setPatientContext } from '../../lib/patientContextStore';
+import { SearchablePatientSelect } from '../common/SearchablePatientSelect';
 import {
   LayoutDashboard, Users, FileText, Stethoscope, Pill, FlaskConical, Layers,
   BedDouble, Calendar, Bell, Settings, ClipboardList, Send, AlertTriangle,
@@ -928,24 +929,18 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
         )}
         <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
           Patient (registry)
-          <select
+        </label>
+        <div style={{ marginTop: 4 }}>
+          <SearchablePatientSelect
+            facilityId={facilityId}
             value={patientId}
-            onChange={(e) => {
-              const id = e.target.value;
-              setPatientId(id);
-              const p = registry.find((x) => x.id === id);
+            onChange={(p) => {
+              setPatientId(p?.id || '');
               if (p) setPatientContext(p, session.name);
             }}
-            style={{ display: 'block', width: '100%', marginTop: 4, padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}
-          >
-            <option value="">Select patient…</option>
-            {registry.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.firstName} {p.lastName} · {p.hospitalNumber}
-              </option>
-            ))}
-          </select>
-        </label>
+            placeholder="Search patient by name or hospital number…"
+          />
+        </div>
         {registry.length === 0 && (
           <div style={{ fontSize: 12, color: '#D97706' }}>No patients registered yet — reception must register first.</div>
         )}

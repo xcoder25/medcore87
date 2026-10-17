@@ -67,6 +67,7 @@ import { hasPaystackKey } from '../../lib/paystackClient';
 import { withViewTransition, measureRect, flipElement } from '../../lib/motion';
 import { appendAudit } from '../../lib/auditLogStore';
 import { sendPatientAlert } from '../../lib/integrations/gateways';
+import { SearchablePatientSelect } from '../common/SearchablePatientSelect';
 import {
   orchestrateArrival,
   orchestrateDeskOverview,
@@ -2059,6 +2060,17 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
           {walkStep === 1 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>Who is arriving?</div>
+              <div style={{ marginBottom: 6 }}>
+                <SearchablePatientSelect
+                  facilityId={facilityId}
+                  selectedPatient={selected}
+                  onChange={(p) => {
+                    setSelected(p);
+                    if (p) setWalkStep(2);
+                  }}
+                  placeholder="Type patient name or hospital number to check in…"
+                />
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -2212,18 +2224,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
           <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
             <div style={{ fontWeight: 800, marginBottom: 12 }}>Book appointment</div>
             <label style={labelStyle}>Patient</label>
-            <select
-              style={inputStyle}
-              value={apPatient?.id || ''}
-              onChange={(e) => setApPatient(patients.find((p) => p.id === e.target.value) || null)}
-            >
-              <option value="">Select patient…</option>
-              {searchPatients(facilityId, '', 200).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {fullName(p)} · {p.hospitalNumber}
-                </option>
-              ))}
-            </select>
+            <SearchablePatientSelect
+              facilityId={facilityId}
+              selectedPatient={apPatient}
+              onChange={(p) => setApPatient(p)}
+              placeholder="Type patient name or hospital number…"
+            />
             <label style={{ ...labelStyle, marginTop: 8 }}>Department</label>
             <select style={inputStyle} value={apDept} onChange={(e) => setApDept(e.target.value)}>
               {RECEPTION_DEPTS.map((d) => (

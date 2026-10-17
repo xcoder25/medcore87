@@ -8,6 +8,7 @@ import type { UserSession } from '../auth/AuthScreen';
 import {
   listPatients, type FacilityPatient, getPatient,
 } from '../../lib/patientRegistryStore';
+import { SearchablePatientSelect } from '../common/SearchablePatientSelect';
 import {
   listProblems, upsertProblem, removeProblem,
   listAllergies, upsertAllergy, removeAllergy,
@@ -129,16 +130,14 @@ export const ClinicalUxSuite: React.FC<Props> = ({ session, onNavigate, onLock, 
           <div style={{ fontSize: 12, color: C.muted }}>Schedule · meds · notes · messages · discharge · more</div>
         </div>
         <span style={{ flex: 1 }} />
-        <select
-          value={patientId}
-          onChange={(e) => selectPatient(e.target.value)}
-          style={{ padding: '8px 12px', borderRadius: 10, border: `1px solid ${C.border}`, minWidth: 220, fontWeight: 600 }}
-        >
-          <option value="">Select patient…</option>
-          {patients.map((p) => (
-            <option key={p.id} value={p.id}>{p.firstName} {p.lastName} · {p.hospitalNumber}</option>
-          ))}
-        </select>
+        <div style={{ minWidth: 260, maxWidth: 360, flex: 1 }}>
+          <SearchablePatientSelect
+            facilityId={facilityId}
+            value={patientId}
+            onChange={(p) => selectPatient(p?.id || '')}
+            placeholder="Search patient to open chart…"
+          />
+        </div>
         {flash && <span style={{ fontSize: 12, fontWeight: 700, color: C.teal }}>{flash}</span>}
       </div>
 
