@@ -78,7 +78,6 @@ import {
   type ArrivalIntent,
 } from '../../lib/receptionAiOrchestrator';
 import { ReceptionDeskHome } from './ReceptionDeskHome';
-import { NursingTriageStation } from '../clinical-core/NursingTriageStation';
 import { markPatientOutstandingPaid } from '../../lib/patientBillingStore';
 import {
   subscribePresence,
@@ -102,8 +101,7 @@ type View =
   | 'payment'
   | 'search'
   | 'scan'
-  | 'walkin'
-  | 'triage';
+  | 'walkin';
 
 type RegStep = 1 | 2 | 3 | 4;
 
@@ -1528,11 +1526,6 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         />
       )}
 
-      {/* TRIAGE / VITALS STATION */}
-      {view === 'triage' && (
-        <NursingTriageStation session={session} onClose={() => goView('home')} />
-      )}
-
       {view === 'search' && (
         <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
           <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
@@ -2907,12 +2900,21 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 </div>
                 <div>
                   <div style={{ fontSize: 20, fontWeight: 800 }}>{fullName(selected)}</div>
-                  <div style={{ fontFamily: 'monospace', fontSize: 13, opacity: 0.95 }}>{selected.hospitalNumber}</div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 800, background: 'rgba(255,255,255,0.22)', padding: '3px 8px', borderRadius: 6 }}>
+                      📁 Folder: {selected.hospitalNumber}
+                    </span>
+                    <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 800, background: 'rgba(255,255,255,0.22)', padding: '3px 8px', borderRadius: 6 }}>
+                      🆔 SHID: {selected.shid || 'AKSHIA-ISSUED'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
             <div style={{ padding: 18, display: 'grid', gap: 10, fontSize: 13 }}>
               {[
+                ['Hospital Folder No.', selected.hospitalNumber],
+                ['State Health ID (SHID)', selected.shid || '—'],
                 ['Sex / DOB', `${selected.sex} · ${selected.dob || '—'}`],
                 ['Phone', selected.phone],
                 ['Email', selected.email || '—'],
@@ -3116,7 +3118,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                     cursor: 'pointer',
                   }}
                 >
-                  Done · Return to Reception Desk
+                  ← Back to Front Desk
                 </button>
               </div>
             </div>

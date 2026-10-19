@@ -17,11 +17,9 @@ import type { FacilityPatient } from '../../lib/patientRegistryStore';
 import type { ReceptionVisit, ReceptionAppointment, ReceptionDayStats } from '../../lib/receptionOpsStore';
 import {
   listAccountsRequests,
-  markAccountsRequestPaid,
   subscribeAccountsRequests,
   type FrontDeskAccountsRequest,
 } from '../../lib/frontDeskAccountsBridge';
-
 
 import {
   Search, UserPlus, CreditCard, Calendar, QrCode, Users, Clock,
@@ -39,8 +37,7 @@ export type DeskNav =
   | 'cashier'
   | 'search'
   | 'scan'
-  | 'walkin'
-  | 'triage';
+  | 'walkin';
 
 interface Props {
   session: UserSession;
@@ -114,16 +111,6 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     reloadAccounts();
     return subscribeAccountsRequests(reloadAccounts);
   }, [reloadAccounts]);
-
-  const handleMarkAccountsPaid = (req: FrontDeskAccountsRequest) => {
-    markAccountsRequestPaid(req.id, {
-      reference: `RCPT-${Date.now().toString(36).toUpperCase()}`,
-      via: 'cashier',
-      paidBy: session.name || 'Reception',
-    });
-    reloadAccounts();
-    onRefresh();
-  };
 
   const recountFrontDeskStaff = useCallback(() => {
     try {
@@ -643,7 +630,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr style={{ textAlign: 'left', color: C.muted, fontSize: 11, fontWeight: 700 }}>
-                      {['#', 'Patient Name', 'Hospital No', 'Invoice / Order', 'Purpose', 'Amount', 'Wait at Accounts', 'Status', 'Action'].map((h) => (
+                      {['#', 'Patient Name', 'Hospital No', 'Invoice / Order', 'Purpose', 'Amount', 'Wait at Accounts', 'Status', 'Handoff Routing'].map((h) => (
                         <th key={h} style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>
                           {h}
                         </th>
@@ -687,24 +674,23 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                             </span>
                           </td>
                           <td style={{ padding: '12px 10px' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleMarkAccountsPaid(req)}
+                            <span
                               style={{
                                 fontSize: 11,
-                                fontWeight: 800,
-                                padding: '6px 12px',
+                                fontWeight: 700,
+                                color: '#0D9488',
+                                background: '#F0FDFA',
+                                padding: '5px 12px',
                                 borderRadius: 8,
-                                border: 'none',
-                                background: 'linear-gradient(135deg, #059669, #0D9488)',
-                                color: '#fff',
-                                cursor: 'pointer',
-                                boxShadow: '0 2px 6px rgba(5,150,105,0.2)',
+                                border: '1px solid #CCFBF1',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 5,
                               }}
-                              title="Confirm cashier payment — moves patient to Triage Queue"
+                              title="When accounts marks paid, patient automatically transfers to the Triage Queue"
                             >
-                              Confirm Paid → To Triage
-                            </button>
+                              ⚡ Auto → Triage on Pay
+                            </span>
                           </td>
                         </tr>
                       ))
@@ -782,28 +768,6 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                       </td>
                       <td style={{ padding: '12px 10px' }}>
                         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                          {(v.status === 'waiting' || v.status === 'called') && (
-                            <button
-                              type="button"
-                              onClick={() => onGo('triage')}
-                              title="Take vitals / triage"
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                padding: '4px 8px',
-                                borderRadius: 6,
-                                border: '1px solid #BBF7D0',
-                                background: '#ECFDF5',
-                                color: '#16A34A',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 3,
-                              }}
-                            >
-                              <Heart size={10} /> Triage
-                            </button>
-                          )}
                           {v.status === 'waiting' && (
                             <button
                               type="button"

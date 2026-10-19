@@ -814,7 +814,7 @@ const ROLE_THEMES: Record<string, RoleThemeConfig> = {
     workspaceTitle: 'Accounts · Cashier & Billing',
   },
   records: {
-    label: 'Health Records & Triage',
+    label: 'Health Records & Patient MPI',
     badge: 'RECORDS COMMAND DESK',
     accent: '#0D9488',
     gradient: 'linear-gradient(135deg, #0D9488 0%, #14B8A6 100%)',
@@ -973,7 +973,7 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   paediatrics: { level: 3, label: 'L3 Clinical', roleDesc: 'Paediatricians & NICU Nurses' },
   'blood-bank': { level: 2, label: 'L2 Support', roleDesc: 'Hematology Technicians & Blood Bank Officers' },
   nursing: { level: 3, label: 'L3 Clinical', roleDesc: 'Inpatient Ward Nurses & Sisters' },
-  triage: { level: 2, label: 'L2 Nursing & OPD', roleDesc: 'Triage Nurses & Front Desk Staff' },
+  triage: { level: 2, label: 'L2 Nursing & OPD', roleDesc: 'Triage Nurses & OPD Clinical Officers' },
   'workflow-intelligence': { level: 2, label: 'L2 Clinical & Operations', roleDesc: 'Doctors, Nurses, Admin & Quality Officers' },
   'intel-hub': { level: 2, label: 'L2 Clinical & Operations', roleDesc: 'Doctors, Nurses, Admin & Quality Officers' },
   'patient-card': { level: 1, label: 'L2 Support', roleDesc: 'Records & Front Desk Officers' },
