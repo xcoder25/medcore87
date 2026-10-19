@@ -2544,6 +2544,18 @@ const handleLockScreen = () => {
                   onNavigate={(k) => handleModuleChange(k as ModuleKey)}
                   initialView="billing"
                 />
+              ) : activeModule === 'claims' && userSession && (userSession.roleKey === 'accountant' || userSession.roleKey === 'cashier') ? (
+                <AccountingWorkspace
+                  session={userSession}
+                  onNavigate={(k) => handleModuleChange(k as ModuleKey)}
+                  initialView="claims"
+                />
+              ) : activeModule === 'revenue-cycle' && userSession && (userSession.roleKey === 'accountant' || userSession.roleKey === 'cashier') ? (
+                <AccountingWorkspace
+                  session={userSession}
+                  onNavigate={(k) => handleModuleChange(k as ModuleKey)}
+                  initialView="ar"
+                />
               ) : activeModule === 'akwaremit' && userSession ? (
                 <AccountingWorkspace
                   session={userSession}

@@ -79,9 +79,25 @@ interface Props {
   onNavigate?: (key: string) => void;
   /** When true (Accounting desk), hide duplicate hero — parent provides chrome */
   embedded?: boolean;
+  initialPatientId?: string;
+  initialPatient?: FacilityPatient | null;
+  initialAmount?: number;
+  initialPurpose?: string;
+  accountsRequestId?: string;
+  onPaymentComplete?: (pay: ReceptionPayment) => void;
 }
 
-export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded }) => {
+export const PosPaymentDesk: React.FC<Props> = ({
+  session,
+  onNavigate,
+  embedded,
+  initialPatientId,
+  initialPatient,
+  initialAmount,
+  initialPurpose,
+  accountsRequestId,
+  onPaymentComplete,
+}) => {
   const facilityId = session?.hospitalId || 'IGH-EKT';
   const facilityName = session?.facility || 'Hospital';
   const cashier = session?.name || 'Cashier';
@@ -131,9 +147,39 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
     };
   }, [reload]);
 
-  // Default charge to open hospital bill when patient selected
+  // Pre-populate patient and charges when launched from Front Desk / Accounts request
+  useEffect(() => {
+    if (initialPatient) {
+      setPatient(initialPatient);
+      if (initialAmount && initialAmount > 0) {
+        setAmount(String(initialAmount));
+        setLines([{ label: initialPurpose || 'Consultation', amount: initialAmount }]);
+      }
+      if (initialPurpose) setPurpose(initialPurpose);
+      return;
+    }
+    if (initialPatientId && patients.length > 0) {
+      const pNorm = initialPatientId.toUpperCase().trim();
+      const found = patients.find(
+        (p) =>
+          p.id.toUpperCase().trim() === pNorm ||
+          (p.hospitalNumber && p.hospitalNumber.toUpperCase().trim() === pNorm)
+      );
+      if (found) {
+        setPatient(found);
+        if (initialAmount && initialAmount > 0) {
+          setAmount(String(initialAmount));
+          setLines([{ label: initialPurpose || 'Consultation', amount: initialAmount }]);
+        }
+        if (initialPurpose) setPurpose(initialPurpose);
+      }
+    }
+  }, [initialPatientId, initialPatient, initialAmount, initialPurpose, patients]);
+
+  // Default charge to open hospital bill when patient selected (if no explicit amount passed)
   useEffect(() => {
     if (!patient) return;
+    if (initialAmount && initialAmount > 0) return;
     const bal = patientBalance(facilityId, patient.id);
     const bal2 = patient.hospitalNumber
       ? patientBalance(facilityId, patient.hospitalNumber)
@@ -144,7 +190,7 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
       setPurpose('Hospital bill');
       setLines([{ label: 'Hospital bill (open charges)', amount: due }]);
     }
-  }, [patient?.id, facilityId]);
+  }, [patient?.id, facilityId, initialAmount]);
 
   const deskAi = useMemo(() => orchestratePosDesk(payments, visits), [payments, visits]);
   const patientAi = useMemo(
@@ -268,7 +314,14 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
         reference: result.paystackRef || result.reference || pay.reference,
         via: 'paystack',
         paidBy: cashier,
+        requestId: accountsRequestId,
+        hospitalNumber: patient.hospitalNumber,
+        patientName: fullName(patient),
+        amountNgn: result.amountNgn,
       });
+    } catch { /* ignore */ }
+    try {
+      onPaymentComplete?.(pay);
     } catch { /* ignore */ }
     emitLiveAction(`Paystack ${result.paystackRef} · ₦${result.amountNgn}`, { module: 'cashier' });
     setPaystackOpen(false);
@@ -356,8 +409,17 @@ export const PosPaymentDesk: React.FC<Props> = ({ session, onNavigate, embedded 
         reference: pay.reference,
         via: method === 'cash' ? 'cash' : String(method),
         paidBy: cashier,
+        requestId: accountsRequestId,
+        hospitalNumber: patient.hospitalNumber,
+        patientName: fullName(patient),
+        amountNgn: amt,
       });
       releaseOrdersForPatient(facilityId, patient.id);
+    } catch {
+      /* ignore */
+    }
+    try {
+      onPaymentComplete?.(pay);
     } catch {
       /* ignore */
     }

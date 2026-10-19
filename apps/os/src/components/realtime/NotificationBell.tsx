@@ -11,74 +11,12 @@ import {
   notificationSummary,
   type HospitalNotification,
 } from '../../lib/notificationEngine';
-
-// ── Epic In Basket folder taxonomy ─────────────────────────────────────────
-const FOLDERS: {
-  id: string;
-  label: string;
-  icon: React.ElementType;
-  color: string;
-  bg: string;
-  matcher: (n: HospitalNotification) => boolean;
-}[] = [
-  {
-    id: 'critical',
-    label: 'Critical Results',
-    icon: AlertCircle,
-    color: '#DC2626',
-    bg: '#FEF2F2',
-    matcher: (n) => n.level === 'critical',
-  },
-  {
-    id: 'triage',
-    label: 'Triage & Early Warnings',
-    icon: HeartPulse,
-    color: '#D97706',
-    bg: '#FFFBEB',
-    matcher: (n) =>
-      n.level === 'important' &&
-      !!['triage', 'vitals', 'news2', 'early', 'deteriorat', 'sepsis'].some((kw) =>
-        (n.body + n.title).toLowerCase().includes(kw)
-      ),
-  },
-  {
-    id: 'orders',
-    label: 'Orders & Consults',
-    icon: ClipboardList,
-    color: '#2563EB',
-    bg: '#EFF6FF',
-    matcher: (n) =>
-      !!['order', 'prescri', 'consult', 'lab result', 'radiology', 'dispens', 'sign-off', 'cpoe'].some((kw) =>
-        (n.body + n.title).toLowerCase().includes(kw)
-      ),
-  },
-  {
-    id: 'messages',
-    label: 'Messages & Handoffs',
-    icon: MessageSquare,
-    color: '#7C3AED',
-    bg: '#F5F3FF',
-    matcher: (n) =>
-      !!['message', 'sbar', 'handoff', 'handover', 'staff', 'assign'].some((kw) =>
-        (n.body + n.title).toLowerCase().includes(kw)
-      ),
-  },
-  {
-    id: 'system',
-    label: 'System & Facility',
-    icon: Megaphone,
-    color: '#0891B2',
-    bg: '#ECFEFF',
-    matcher: () => true, // catch-all
-  },
-];
-
-function classifyNotification(n: HospitalNotification): typeof FOLDERS[number] {
-  for (const folder of FOLDERS) {
-    if (folder.matcher(n)) return folder;
-  }
-  return FOLDERS[FOLDERS.length - 1];
-}
+import {
+  getRoleInBasketFolders,
+  classifyNotificationForRole,
+  type InBasketFolderDef,
+} from '../../lib/inBasketTaxonomy';
+import { inferRoleKey } from '../../lib/staffCardStore';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -103,7 +41,10 @@ export const NotificationBell: React.FC<Props> = ({
   onOpenInbox,
 }) => {
   const fid = facilityId || session?.hospitalId || 'IGH-EKT';
-  const sessionOpts = { staffName: session?.name, roleKey: session?.roleKey };
+  const roleKey = inferRoleKey(session?.roleKey || session?.role || session?.title, session?.badgeId);
+  const sessionOpts = { staffName: session?.name, roleKey: session?.roleKey || roleKey };
+
+  const folders = React.useMemo(() => getRoleInBasketFolders(roleKey), [roleKey]);
 
   const [items, setItems] = useState<HospitalNotification[]>([]);
   const [sum, setSum] = useState({ critical: 0, important: 0, info: 0, total: 0 });
@@ -121,7 +62,7 @@ export const NotificationBell: React.FC<Props> = ({
     reload();
     return subscribeNotifications(reload);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fid, session?.roleKey, session?.name]);
+  }, [fid, session?.roleKey, session?.name, roleKey]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -137,13 +78,13 @@ export const NotificationBell: React.FC<Props> = ({
     activeFolder === 'all'
       ? items.slice(0, 50)
       : items.filter((n) => {
-          const f = FOLDERS.find((x) => x.id === activeFolder);
+          const f = folders.find((x) => x.id === activeFolder);
           return f ? f.matcher(n) : true;
         }).slice(0, 50);
 
   // Folder counts
   const folderCounts: Record<string, number> = { all: items.filter((n) => !n.read).length };
-  for (const folder of FOLDERS) {
+  for (const folder of folders) {
     folderCounts[folder.id] = items.filter((n) => !n.read && folder.matcher(n)).length;
   }
 
@@ -341,7 +282,7 @@ export const NotificationBell: React.FC<Props> = ({
                 </span>
               )}
             </button>
-            {FOLDERS.map((folder) => {
+            {folders.map((folder) => {
               const FIcon = folder.icon;
               const cnt = folderCounts[folder.id] || 0;
               return (
@@ -366,7 +307,7 @@ export const NotificationBell: React.FC<Props> = ({
                   }}
                 >
                   <FIcon size={12} />
-                  {folder.label}
+                  {folder.epicLabel || folder.label}
                   {cnt > 0 && (
                     <span
                       style={{
@@ -406,7 +347,7 @@ export const NotificationBell: React.FC<Props> = ({
               </div>
             ) : (
               visibleItems.map((n) => {
-                const folder = classifyNotification(n);
+                const folder = classifyNotificationForRole(n, folders);
                 const FIcon = folder.icon;
                 return (
                   <button

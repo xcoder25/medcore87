@@ -284,17 +284,35 @@ export function markAccountsRequestPaid(
   return list[i];
 }
 
-/** When POS settles a patient, sync matching awaiting requests → paid */
+/** When POS settles a patient, sync matching awaiting requests → paid and auto-move to Triage */
 export function syncAccountsRequestsForPatientPayment(
   facilityId: string,
   patientId: string,
-  opts: { reference: string; via?: string; paidBy?: string }
+  opts: {
+    reference: string;
+    via?: string;
+    paidBy?: string;
+    requestId?: string;
+    hospitalNumber?: string;
+    patientName?: string;
+    amountNgn?: number;
+  }
 ): void {
   const list = read();
   let changed = false;
+  const pNorm = (patientId || '').toUpperCase().trim();
+  const hNorm = (opts.hospitalNumber || '').toUpperCase().trim();
+  const reqId = opts.requestId;
+
   const next = list.map((r) => {
     if (r.facilityId !== facilityId) return r;
-    if (r.patientId !== patientId && r.hospitalNumber !== patientId) return r;
+    const rPid = (r.patientId || '').toUpperCase().trim();
+    const rHosp = (r.hospitalNumber || '').toUpperCase().trim();
+    const matchId = reqId && r.id === reqId;
+    const matchPatient =
+      (pNorm && (rPid === pNorm || rHosp === pNorm)) ||
+      (hNorm && (rPid === hNorm || rHosp === hNorm));
+    if (!matchId && !matchPatient) return r;
     if (r.status !== 'awaiting_payment' && r.status !== 'partial') return r;
     changed = true;
     return {
@@ -306,43 +324,115 @@ export function syncAccountsRequestsForPatientPayment(
       paidBy: opts.paidBy,
     };
   });
+
   if (changed) {
     write(next);
-    try {
-      if (typeof window !== 'undefined') {
-        const row = next.find(
-          (r) =>
-            r.facilityId === facilityId &&
-            (r.patientId === patientId || r.hospitalNumber === patientId) &&
-            r.status === 'paid'
-        );
-        if (row) {
-          window.dispatchEvent(
-            new CustomEvent('medcore-accounts-paid', {
-              detail: {
-                facilityId: row.facilityId,
-                patientId: row.patientId,
-                hospitalNumber: row.hospitalNumber,
-                patientName: row.patientName,
-                invoiceNumber: row.invoiceNumber,
-                amountNgn: row.amountNgn,
-                reference: opts.reference,
-                paidAt: row.paidAt,
-              },
-            })
-          );
-        }
-      }
-    } catch {
-      /* ignore */
+  }
+
+  // Find the matching paid request or fallback to parameters
+  const paidRows = next.filter(
+    (r) =>
+      r.facilityId === facilityId &&
+      ((reqId && r.id === reqId) ||
+        (pNorm &&
+          ((r.patientId || '').toUpperCase().trim() === pNorm ||
+            (r.hospitalNumber || '').toUpperCase().trim() === pNorm)) ||
+        (hNorm &&
+          ((r.patientId || '').toUpperCase().trim() === hNorm ||
+            (r.hospitalNumber || '').toUpperCase().trim() === hNorm))) &&
+      r.status === 'paid'
+  );
+
+  const targetRow = paidRows[0];
+  const finalPatientId = targetRow?.patientId || patientId;
+  const finalHospitalNumber = targetRow?.hospitalNumber || opts.hospitalNumber || patientId;
+  const finalPatientName = targetRow?.patientName || opts.patientName || 'Patient';
+  const finalAmount = targetRow?.amountNgn || opts.amountNgn || 5000;
+
+  // 1. Move patient into Triage Queue with status 'waiting', department 'Triage', paymentStatus 'paid'
+  try {
+    ensureTriageVisitOnPaymentPaid({
+      facilityId,
+      patientId: finalPatientId,
+      hospitalNumber: finalHospitalNumber,
+      patientName: finalPatientName,
+      invoiceNumber: targetRow?.invoiceNumber,
+      amountNgn: finalAmount,
+    });
+  } catch {
+    /* ignore */
+  }
+
+  // 2. Mark visits paid for patient across reception stores
+  try {
+    markVisitsPaidForPatient(facilityId, finalPatientId, {
+      hospitalNumber: finalHospitalNumber,
+      method: opts.via === 'hmo' ? 'hmo' : opts.via === 'waiver' ? 'waived' : 'paid',
+    });
+    syncVisitPaymentFromAccounts(facilityId, finalPatientId, 'paid');
+    syncVisitPaymentFromAccounts(facilityId, finalHospitalNumber, 'paid');
+    reconcileVisitPaymentsFromAccounts(facilityId, [finalPatientId, finalHospitalNumber]);
+  } catch {
+    /* ignore */
+  }
+
+  // 3. Push notifications to Front Desk and Nurse Station
+  try {
+    pushNotification({
+      facilityId,
+      level: 'important',
+      title: 'Payment Cleared · Auto → Triage',
+      body: `${finalPatientName} (${finalHospitalNumber}) paid ₦${finalAmount.toLocaleString()} — automatically queued for nurse vitals in Triage.`,
+      module: 'reception',
+      patientId: finalPatientId,
+      roleHint: 'reception',
+    });
+    pushNotification({
+      facilityId,
+      level: 'important',
+      title: 'Patient Ready for Triage',
+      body: `${finalPatientName} (${finalHospitalNumber}) paid ₦${finalAmount.toLocaleString()} — automatically queued for nurse vitals in Triage.`,
+      module: 'nurse-portal',
+      patientId: finalPatientId,
+      roleHint: 'nurse',
+    });
+  } catch {
+    /* ignore */
+  }
+
+  // 4. Dispatch events for live reactive UI updates across all tabs and components
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('medcore-accounts-paid', {
+          detail: {
+            facilityId,
+            patientId: finalPatientId,
+            hospitalNumber: finalHospitalNumber,
+            patientName: finalPatientName,
+            invoiceNumber: targetRow?.invoiceNumber,
+            amountNgn: finalAmount,
+            reference: opts.reference,
+            paidAt: targetRow?.paidAt || new Date().toISOString(),
+          },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent('medcore-opd-stage', {
+          detail: {
+            facilityId,
+            patientId: finalPatientId,
+            hospitalNumber: finalHospitalNumber,
+            patientName: finalPatientName,
+            stage: 'paid_moved_to_triage',
+          },
+        })
+      );
+      window.dispatchEvent(new CustomEvent('medcore-reception-ops'));
+      window.dispatchEvent(new CustomEvent('medcore-billing'));
     }
-    try {
-      markVisitsPaidForPatient(facilityId, patientId, {
-        method: opts.via === 'hmo' ? 'hmo' : opts.via === 'waiver' ? 'waived' : 'paid',
-      });
-    } catch {
-      /* ignore */
-    }
+  } catch {
+    /* ignore */
   }
 }
 

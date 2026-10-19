@@ -207,9 +207,30 @@ export function notificationVisibleTo(
     return true;
   }
 
+  // Front desk / reception role guard: strictly filter out clinical NEWS2, panic values, operative alerts
+  const isReception = role === 'reception' || role.includes('front');
+  if (isReception) {
+    const text = ((n.title || '') + ' ' + (n.body || '')).toLowerCase();
+    if (
+      text.includes('news2') ||
+      text.includes('early warning') ||
+      text.includes('panic value') ||
+      text.includes('sepsis escalation') ||
+      text.includes('critical lab result')
+    ) {
+      return false;
+    }
+  }
+
   // If notification has a specific roleHint:
   const hint = (n.roleHint || '').toLowerCase().trim();
   if (!hint) {
+    // When no roleHint is set, guard against clinical module notifications leaking to non-clinical staff
+    if (isReception) {
+      const mod = (n.module || '').toLowerCase().trim();
+      const CLINICAL_MODULES = ['doctor-portal', 'laboratory', 'theatre', 'icu', 'radiology', 'emr', 'nursing', 'triage'];
+      if (CLINICAL_MODULES.includes(mod)) return false;
+    }
     return true;
   }
 

@@ -673,26 +673,58 @@ export const AccountingWorkspace: React.FC<Props> = ({
               <span style={{ color: C.muted }}>{selectedReq.hospitalNumber}</span>
               <span style={{ fontWeight: 800, color: '#B45309' }}>₦{selectedReq.amountNgn.toLocaleString()}</span>
               <span style={{ color: C.muted }}>{selectedReq.purpose}</span>
-              <button
-                type="button"
-                onClick={() => setSelectedReq(null)}
-                style={{
-                  marginLeft: 'auto',
-                  border: 'none',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  fontWeight: 700,
-                  color: C.muted,
-                  fontSize: 12,
-                }}
-              >
-                Clear
-              </button>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    quickMarkPaid(selectedReq);
+                    setSelectedReq(null);
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: '#059669',
+                    color: '#fff',
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    boxShadow: '0 2px 6px rgba(5,150,105,0.3)',
+                  }}
+                >
+                  <CheckCircle2 size={14} /> Quick Mark Paid & Move to Triage
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedReq(null)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    color: C.muted,
+                    fontSize: 12,
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
             </div>
           )}
           <PosPaymentDesk
             session={session}
             embedded
+            initialPatientId={selectedReq?.patientId || selectedReq?.hospitalNumber}
+            initialAmount={selectedReq?.amountNgn}
+            initialPurpose={selectedReq?.purpose}
+            accountsRequestId={selectedReq?.id}
+            onPaymentComplete={() => {
+              setSelectedReq(null);
+              bump();
+            }}
             onNavigate={(k) => (k === 'dashboard' ? setView('home') : onNavigate?.(k))}
           />
         </div>

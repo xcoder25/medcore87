@@ -15,6 +15,15 @@ import {
 import { scanEarlyWarnings } from '../../lib/clinicalEarlyWarning';
 import { buildOpsIntelligence } from '../../lib/opsIntelligence';
 import {
+  getRoleInBasketFolders,
+  classifyNotificationForRole,
+  getRoleInBasketMeta,
+  type InBasketFolderDef,
+} from '../../lib/inBasketTaxonomy';
+import { inferRoleKey } from '../../lib/staffCardStore';
+import { listAppointments, todayVisits } from '../../lib/receptionOpsStore';
+import { listAccountsRequests } from '../../lib/frontDeskAccountsBridge';
+import {
   AlertCircle,
   HeartPulse,
   ClipboardList,
@@ -27,88 +36,6 @@ import {
   ChevronRight,
   Inbox,
 } from 'lucide-react';
-
-// ── Epic In Basket folder taxonomy ──────────────────────────────────────────
-interface FolderDef {
-  id: string;
-  label: string;
-  epicLabel: string;
-  icon: React.ElementType;
-  color: string;
-  bg: string;
-  borderColor: string;
-  matcher: (n: HospitalNotification) => boolean;
-}
-
-const FOLDERS: FolderDef[] = [
-  {
-    id: 'critical',
-    label: 'Critical Results & Panic Values',
-    epicLabel: 'Crit Results',
-    icon: AlertCircle,
-    color: '#DC2626',
-    bg: '#FEF2F2',
-    borderColor: '#FCA5A5',
-    matcher: (n) => n.level === 'critical',
-  },
-  {
-    id: 'triage',
-    label: 'Triage & Early Warnings (NEWS2)',
-    epicLabel: 'EWS / Triage',
-    icon: HeartPulse,
-    color: '#D97706',
-    bg: '#FFFBEB',
-    borderColor: '#FDE68A',
-    matcher: (n) =>
-      n.level !== 'critical' &&
-      ['triage', 'vitals', 'news2', 'early warning', 'deteriorat', 'sepsis', 'ews', 'score'].some((kw) =>
-        (n.body + n.title).toLowerCase().includes(kw)
-      ),
-  },
-  {
-    id: 'orders',
-    label: 'Orders, Sign-off & Consults',
-    epicLabel: 'Orders',
-    icon: ClipboardList,
-    color: '#2563EB',
-    bg: '#EFF6FF',
-    borderColor: '#BFDBFE',
-    matcher: (n) =>
-      ['order', 'prescri', 'consult', 'lab result', 'radiology', 'dispens', 'cpoe', 'sign', 'result ready'].some((kw) =>
-        (n.body + n.title).toLowerCase().includes(kw)
-      ),
-  },
-  {
-    id: 'messages',
-    label: 'Messages & Staff Handoffs',
-    epicLabel: 'Msg / Handoff',
-    icon: MessageSquare,
-    color: '#7C3AED',
-    bg: '#F5F3FF',
-    borderColor: '#DDD6FE',
-    matcher: (n) =>
-      ['message', 'sbar', 'handoff', 'handover', 'assign', 'refer', 'transfer'].some((kw) =>
-        (n.body + n.title).toLowerCase().includes(kw)
-      ),
-  },
-  {
-    id: 'system',
-    label: 'System & Facility Notices',
-    epicLabel: 'Notices',
-    icon: Megaphone,
-    color: '#0891B2',
-    bg: '#ECFEFF',
-    borderColor: '#A5F3FC',
-    matcher: () => true,
-  },
-];
-
-function classifyFolder(n: HospitalNotification): FolderDef {
-  for (const f of FOLDERS) {
-    if (f.matcher(n)) return f;
-  }
-  return FOLDERS[FOLDERS.length - 1];
-}
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -125,7 +52,12 @@ interface Props {
 
 export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => {
   const facilityId = session?.hospitalId || 'IGH-EKT';
-  const sessionOpts = { staffName: session?.name, roleKey: session?.roleKey };
+  const roleKey = inferRoleKey(session?.roleKey || session?.role || session?.title, session?.badgeId);
+  const isReception = roleKey === 'reception' || roleKey.includes('front');
+  const sessionOpts = { staffName: session?.name, roleKey: session?.roleKey || roleKey };
+
+  const folders = useMemo(() => getRoleInBasketFolders(roleKey), [roleKey]);
+  const roleMeta = useMemo(() => getRoleInBasketMeta(roleKey), [roleKey]);
 
   const [items, setItems] = useState<HospitalNotification[]>([]);
   const [sum, setSum] = useState({ critical: 0, important: 0, info: 0, total: 0 });
@@ -139,54 +71,160 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
   };
 
   useEffect(() => {
-    // Seed intelligence-driven notifications if store is empty
+    // If reception, synchronize live operational attention items into notifications
+    if (isReception) {
+      try {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        // 1. Arriving booked appointments scheduled today
+        const appts = listAppointments(facilityId).filter(
+          (a) => a.scheduledAt.startsWith(todayStr) && a.status === 'booked'
+        );
+        for (const a of appts.slice(0, 6)) {
+          pushNotification({
+            facilityId,
+            level: 'important',
+            title: `Arriving Appointment · ${a.patientName}`,
+            body: `Scheduled for ${a.scheduledAt.slice(11, 16)} with ${a.doctor || 'Clinician'} (${a.department || 'OPD'}) · Check-in pending`,
+            module: 'appointments',
+            patientId: a.patientId,
+            roleHint: 'reception',
+          });
+        }
+
+        // 2. Overdue waiting queue (> 20 mins)
+        const overdue = todayVisits(facilityId).filter((v) => {
+          if (v.status !== 'waiting') return false;
+          const mins = Math.max(0, Math.round((Date.now() - new Date(v.checkedInAt).getTime()) / 60000));
+          return mins >= 20;
+        });
+        for (const v of overdue.slice(0, 6)) {
+          const mins = Math.max(0, Math.round((Date.now() - new Date(v.checkedInAt).getTime()) / 60000));
+          pushNotification({
+            facilityId,
+            level: 'important',
+            title: `Overdue Wait Alert (${mins}m) · ${v.department}`,
+            body: `${v.queueNumber} · ${v.patientName} (${v.hospitalNumber}) waiting without being called`,
+            module: 'patient-flow',
+            patientId: v.patientId,
+            roleHint: 'reception',
+          });
+        }
+
+        // 3. Paid accounts requests recently cleared
+        const paidReqs = listAccountsRequests(facilityId, { status: 'paid' }).slice(0, 4);
+        for (const p of paidReqs) {
+          pushNotification({
+            facilityId,
+            level: 'info',
+            title: `Payment Cleared · ₦${p.amountNgn.toLocaleString()}`,
+            body: `${p.patientName} (${p.hospitalNumber}) · Cleared at Accounts & auto-transferred to Triage Queue`,
+            module: 'patient-flow',
+            patientId: p.patientId,
+            roleHint: 'reception',
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Seed role-specific intelligence notifications if store is empty
     const existing = listNotifications(facilityId, false, sessionOpts);
     if (existing.length === 0) {
-      for (const w of scanEarlyWarnings(facilityId).slice(0, 5)) {
+      if (isReception) {
         pushNotification({
           facilityId,
-          level: w.level === 'high' ? 'critical' : w.level === 'medium' ? 'important' : 'info',
-          title: 'Early Warning — NEWS2',
-          body: `${w.patientName}: ${w.message}`,
-          module: w.module,
-          patientId: w.patientId,
-          roleHint: session?.roleKey,
+          level: 'important',
+          title: 'Appointment Arriving · Chief Okon',
+          body: 'Booked 10:00 AM consultation with Dr. Udoh (Cardiology) — patient due at Front Desk',
+          module: 'appointments',
+          roleHint: 'reception',
         });
-      }
-      for (const r of buildOpsIntelligence(facilityId)
-        .filter((x) => x.level === 'critical' || x.level === 'warn')
-        .slice(0, 3)) {
         pushNotification({
           facilityId,
-          level: r.level === 'critical' ? 'critical' : 'important',
-          title: r.title,
-          body: r.detail,
-          module: r.module,
-          roleHint: session?.roleKey,
+          level: 'important',
+          title: 'Queue Overdue Alert (>20m)',
+          body: 'Patient Sarah Bassey (IGH-2026-0042) waiting 24 minutes in General OPD queue without call',
+          module: 'patient-flow',
+          roleHint: 'reception',
         });
+        pushNotification({
+          facilityId,
+          level: 'info',
+          title: 'Payment Cleared · Accounts Desk',
+          body: '₦5,000 consult fee for Emmanuel Victor confirmed paid — auto-promoted to Triage Queue',
+          module: 'patient-flow',
+          roleHint: 'reception',
+        });
+        pushNotification({
+          facilityId,
+          level: 'info',
+          title: 'State Digital Health Card Issued',
+          body: 'Akwa Ibom State Health ID AKSHIA-8419 issued for new registration Mercy Effiong',
+          module: 'patient-card',
+          roleHint: 'reception',
+        });
+        pushNotification({
+          facilityId,
+          level: 'info',
+          title: 'Front Desk Daily Handover',
+          body: 'Morning shift reconciliation complete · 42 check-ins registered, 8 booked clinics active',
+          module: 'patient-flow',
+          roleHint: 'reception',
+        });
+      } else {
+        // Clinical roles seed clinical alerts
+        for (const w of scanEarlyWarnings(facilityId).slice(0, 5)) {
+          pushNotification({
+            facilityId,
+            level: w.level === 'high' ? 'critical' : w.level === 'medium' ? 'important' : 'info',
+            title: 'Early Warning — NEWS2',
+            body: `${w.patientName}: ${w.message}`,
+            module: w.module,
+            patientId: w.patientId,
+            roleHint: roleKey,
+          });
+        }
+        for (const r of buildOpsIntelligence(facilityId)
+          .filter((x) => x.level === 'critical' || x.level === 'warn')
+          .slice(0, 3)) {
+          pushNotification({
+            facilityId,
+            level: r.level === 'critical' ? 'critical' : 'important',
+            title: r.title,
+            body: r.detail,
+            module: r.module,
+            roleHint: roleKey,
+          });
+        }
       }
     }
     reload();
     return subscribeNotifications(reload);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facilityId]);
+  }, [facilityId, isReception, roleKey]);
 
   // Memoised folder counts
   const folderCounts = useMemo(() => {
-    const counts: Record<string, { total: number; unread: number }> = { all: { total: items.length, unread: items.filter((n) => !n.read).length } };
-    for (const f of FOLDERS) {
+    const counts: Record<string, { total: number; unread: number }> = {
+      all: { total: items.length, unread: items.filter((n) => !n.read).length },
+    };
+    for (const f of folders) {
       const matched = items.filter((n) => f.matcher(n));
       counts[f.id] = { total: matched.length, unread: matched.filter((n) => !n.read).length };
     }
     return counts;
-  }, [items]);
+  }, [items, folders]);
 
   // Visible items based on active folder + level filter
   const visibleItems = useMemo(() => {
-    let list = activeFolder === 'all' ? items : items.filter((n) => classifyFolder(n).id === activeFolder);
+    let list =
+      activeFolder === 'all'
+        ? items
+        : items.filter((n) => classifyNotificationForRole(n, folders).id === activeFolder);
     if (filterLevel !== 'all') list = list.filter((n) => n.level === filterLevel);
     return list;
-  }, [items, activeFolder, filterLevel]);
+  }, [items, activeFolder, filterLevel, folders]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -211,11 +249,24 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
               <Inbox size={20} color="#93C5FD" />
               <h2 style={{ margin: 0, fontWeight: 900, fontSize: 20, color: '#fff', letterSpacing: '-0.02em' }}>
-                In Basket
+                {roleMeta.title}
               </h2>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  letterSpacing: '0.06em',
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  background: 'rgba(255,255,255,0.18)',
+                  color: '#FFFFFF',
+                }}
+              >
+                {roleMeta.scopeBadge}
+              </span>
               {sum.critical > 0 && (
                 <span
                   style={{
@@ -234,7 +285,7 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
               )}
             </div>
             <p style={{ margin: 0, fontSize: 12, color: '#93C5FD' }}>
-              {session?.role ? `${session.role.split('/')[0].trim()} · ` : ''}{sum.total} open · {sum.critical} critical · {sum.important} important
+              {roleMeta.subtitle} · {sum.total} open · {sum.critical} critical · {sum.important} important
             </p>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -345,7 +396,7 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
           )}
         </button>
 
-        {FOLDERS.map((folder) => {
+        {folders.map((folder) => {
           const FIcon = folder.icon;
           const cnt = folderCounts[folder.id];
           const active = activeFolder === folder.id;
@@ -451,7 +502,7 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
         )}
 
         {visibleItems.map((n) => {
-          const folder = classifyFolder(n);
+          const folder = classifyNotificationForRole(n, folders);
           const FIcon = folder.icon;
           const tok = levelToken(n.level);
           return (
