@@ -211,15 +211,17 @@ const CLINICAL_PATIENT = [
 const DEFAULTS: Record<string, string[]> = {
   // General physician / MO — full clinical desk, not platform admin tools
   doctor: [
-    'dashboard', 'doctor-portal', 'workflow-intelligence', 'patient-360', 'notifications',
+    'dashboard', 'doctor-portal', 'universal-queue', 'patient-flow', 'appointments',
+    'workflow-intelligence', 'patient-360', 'notifications',
     'emr', 'pharmacy', 'laboratory', 'lab', 'radiology',
-    'emergency', 'beds', 'nursing', 'icu', 'theatre',
+    'emergency', 'beds', 'icu', 'theatre',
     'm87-ai', 'ai', 'patient-card', 'my-card',
     ...CLINICAL_PATIENT, 'patient.full_chart',
   ],
   // Surgeons — OT-first; no general pharmacy inventory / finance / admin
   surgeon: [
-    'dashboard', 'theatre', 'doctor-portal', 'workflow-intelligence', 'notifications',
+    'dashboard', 'theatre', 'doctor-portal', 'universal-queue', 'patient-flow', 'appointments',
+    'workflow-intelligence', 'notifications',
     'icu', 'beds', 'blood-bank', 'emergency',
     'laboratory', 'lab', 'radiology', 'emr',
     'm87-ai', 'ai', 'patient-card', 'my-card',

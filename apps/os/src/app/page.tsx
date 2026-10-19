@@ -97,6 +97,7 @@ import { FacilitiesUtilitiesSuite } from '../components/operations/FacilitiesUti
 import { EnvironmentalSafetySuite } from '../components/operations/EnvironmentalSafetySuite';
 import { BillingInvoicingSuite } from '../components/finance/BillingInvoicingSuite';
 import { InsuranceHmoClaimsSuite } from '../components/finance/InsuranceHmoClaimsSuite';
+import { AkwaRemitRevenueSuite } from '../components/finance/AkwaRemitRevenueSuite';
 import { AkwaIbomStateSuite } from '../components/interop/AkwaIbomStateSuite';
 import { RevenueCycleAccountingSuite } from '../components/finance/RevenueCycleAccountingSuite';
 import { AccountingArDesk } from '../components/finance/AccountingArDesk';
@@ -273,7 +274,8 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: 'Physician Workstation',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Clinical desk', badge: 'Live' },
-            { key: 'doctor-portal', icon: Stethoscope, label: 'Consultations & worklist', badge: 'OPD' },
+            { key: 'universal-queue', icon: Clock, label: 'OPD waiting queue', badge: 'Queue' },
+            { key: 'doctor-portal', icon: Stethoscope, label: 'Consultations & clinic', badge: 'OPD' },
             { key: 'patient-360', icon: Users, label: 'Patient chart (360°)', badge: 'Chart' },
             { key: 'notifications', icon: Bell, label: 'In Basket', badge: 'Inbox' },
           ],
@@ -282,9 +284,9 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: 'Care & Orders (CPOE)',
           items: [
             { key: 'emr', icon: FileText, label: 'EMR & clinical notes', badge: 'EMR' },
-            { key: 'pharmacy', icon: Pill, label: 'CPOE / Prescribe & e-Rx', badge: 'Rx' },
-            { key: 'laboratory', icon: FlaskConical, label: 'Lab orders & critical results' },
-            { key: 'radiology', icon: Layers, label: 'Imaging orders & PACS', badge: 'PACS' },
+            { key: 'pharmacy', icon: Pill, label: 'e-Prescribing (CPOE)', badge: 'Rx' },
+            { key: 'laboratory', icon: FlaskConical, label: 'Lab test orders', badge: 'Lab' },
+            { key: 'radiology', icon: Layers, label: 'Imaging & radiology orders', badge: 'PACS' },
           ],
         },
         {
@@ -292,7 +294,6 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           items: [
             { key: 'emergency', icon: Flame, label: 'A&E emergency triage', badge: 'ESI' },
             { key: 'beds', icon: BedDouble, label: 'Bed & ward census' },
-            { key: 'nursing', icon: FileText, label: 'Inpatient wards & MAR' },
             { key: 'icu', icon: Wind, label: 'ICU telemetry', badge: 'ICU' },
             { key: 'theatre', icon: Activity, label: 'Surgical schedule', badge: 'OT' },
           ],
@@ -301,6 +302,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: 'Clinical Assist',
           items: [
             { key: 'm87-ai', icon: Brain, label: 'Celestia clinical AI', badge: 'AI' },
+            { key: 'appointments', icon: Calendar, label: 'Clinic schedule', badge: 'Appt' },
             { key: 'patient-card', icon: FileText, label: 'Digital health card' },
             { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
@@ -315,6 +317,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
             { key: 'dashboard', icon: LayoutDashboard, label: 'Surgeon desk', badge: 'Live' },
             { key: 'theatre', icon: Activity, label: 'OR schedule & log (OpTime)', badge: 'OT' },
             { key: 'doctor-portal', icon: Stethoscope, label: 'Surgical consults & pre-op' },
+            { key: 'universal-queue', icon: Clock, label: 'Surgical waiting queue', badge: 'Queue' },
             { key: 'notifications', icon: Bell, label: 'In Basket', badge: 'Inbox' },
           ],
         },
@@ -330,10 +333,12 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
         {
           label: 'Workup & Operative Notes',
           items: [
-            { key: 'laboratory', icon: FlaskConical, label: 'Pre-op lab workup' },
+            { key: 'pharmacy', icon: Pill, label: 'e-Prescribing (CPOE)', badge: 'Rx' },
+            { key: 'laboratory', icon: FlaskConical, label: 'Pre-op lab workup', badge: 'Lab' },
             { key: 'radiology', icon: Layers, label: 'Pre-op PACS imaging', badge: 'PACS' },
             { key: 'emr', icon: FileText, label: 'Operative notes & EMR' },
             { key: 'm87-ai', icon: Brain, label: 'Celestia surgical AI', badge: 'AI' },
+            { key: 'appointments', icon: Calendar, label: 'Surgical schedule', badge: 'Appt' },
             { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
@@ -918,7 +923,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
   environmental: EnvironmentalSafetySuite,
   billing: BillingInvoicingSuite,
   cashier: PosPaymentDesk as any,
-  akwaremit: (props: any) => <AccountingWorkspace {...props} initialView="akwaremit" />,
+  akwaremit: AkwaRemitRevenueSuite as any,
   claims: InsuranceHmoClaimsSuite,
   'aks-state': AkwaIbomStateSuite,
   'revenue-cycle': RevenueCycleAccountingSuite,
@@ -2557,17 +2562,21 @@ const handleLockScreen = () => {
                   initialView="ar"
                 />
               ) : activeModule === 'akwaremit' && userSession ? (
-                <AccountingWorkspace
-                  session={userSession}
-                  onNavigate={(k) => handleModuleChange(k as ModuleKey)}
-                  initialView="akwaremit"
-                />
+                <AkwaRemitRevenueSuite session={userSession} />
               ) : activeModule === 'cashier' && userSession ? (
                 <PosPaymentDesk session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} />
               ) : activeModule === 'dashboard' && userSession && isReceptionRole(userSession.roleKey, userSession.role, userSession.title, userSession.badgeId) ? (
                 <ReceptionWorkspace session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} initialView="home" />
               ) : activeModule === 'dashboard' && userSession ? (
                 <RoleDashboard session={userSession} onNavigate={handleModuleChange} />
+              ) : activeModule === 'doctor-portal' && userSession ? (
+                <DoctorPortal session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} initialModule="consultation" />
+              ) : activeModule === 'pharmacy' && userSession && (activeRoleKey === 'doctor' || activeRoleKey === 'surgeon') ? (
+                <DoctorPortal session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} initialModule="prescriptions" />
+              ) : activeModule === 'laboratory' && userSession && (activeRoleKey === 'doctor' || activeRoleKey === 'surgeon') ? (
+                <DoctorPortal session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} initialModule="lab-orders" />
+              ) : activeModule === 'radiology' && userSession && (activeRoleKey === 'doctor' || activeRoleKey === 'surgeon') ? (
+                <DoctorPortal session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} initialModule="radiology-orders" />
               ) : (
                 <ActiveComponent
                   session={userSession!}

@@ -108,15 +108,25 @@ Nigerian OPD (MedCore model) — pay-before-service, multi-desk, auto-routing:
 Queue board: desk only CALLS the next patient. In-room and complete are driven by doctor activity and orders — not manual Done/Pay on the clinical row.
 `.trim();
 
-export function opdStageHint(visitStatus: string, paymentStatus: string): string {
+export function opdStageHint(
+  visitStatus: string,
+  paymentStatus: string,
+  department?: string,
+  triagedAt?: string
+): string {
   if (paymentStatus === 'pending') {
     return 'Awaiting Accounts (folder or order fees) — pay-before-service.';
   }
+  const inTriage = department === 'Triage' || !triagedAt;
   switch (visitStatus) {
     case 'waiting':
-      return 'In OPD wait — Call next when a consult room is free.';
+      return inTriage
+        ? 'In Triage Queue — nurse will record vitals, then patient moves to Doctor queue.'
+        : 'In Doctor queue — call when consult room is free.';
     case 'called':
-      return 'Called — becomes With doctor when the clinician opens the chart.';
+      return inTriage
+        ? 'Being assessed by Nurse — vitals in progress.'
+        : 'Called — becomes With doctor when the clinician opens the chart.';
     case 'with_provider':
       return 'With doctor — completes when Rx/lab/imaging orders are submitted.';
     case 'completed':

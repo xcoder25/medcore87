@@ -1262,12 +1262,14 @@ export function defaultPermissionsForRole(roleKey: string): string[] {
       'front-desk-wq',
     ],
     doctor: [
-      'dashboard', 'doctor-portal', 'patient-360', 'notifications', 'emr', 'pharmacy',
-      'laboratory', 'radiology', 'emergency', 'beds', 'nursing', 'icu', 'theatre',
+      'dashboard', 'doctor-portal', 'universal-queue', 'patient-flow', 'appointments',
+      'patient-360', 'notifications', 'emr', 'pharmacy',
+      'laboratory', 'radiology', 'emergency', 'beds', 'icu', 'theatre',
       'm87-ai', 'ai', 'patient-card', 'my-card',
     ],
     surgeon: [
-      'dashboard', 'theatre', 'doctor-portal', 'notifications', 'icu', 'beds', 'blood-bank',
+      'dashboard', 'theatre', 'doctor-portal', 'universal-queue', 'patient-flow', 'appointments',
+      'notifications', 'icu', 'beds', 'blood-bank',
       'emergency', 'laboratory', 'radiology', 'emr', 'm87-ai', 'ai', 'patient-card', 'my-card',
     ],
     nurse: [

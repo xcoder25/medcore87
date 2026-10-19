@@ -2036,7 +2036,16 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                           <div style={{ fontWeight: 700 }}>{v.patientName}</div>
                           <div style={{ fontSize: 11, color: C.muted }}>{v.hospitalNumber}</div>
                         </td>
-                        <td style={{ padding: 10 }}>{v.department}</td>
+                        <td style={{ padding: 10 }}>
+                          {v.department === 'Triage' || !v.triagedAt ? (
+                            <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: '#F0FDFA', color: '#0D9488', border: '1px solid #99F6E4' }}>Triage</span>
+                          ) : (
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 12 }}>{v.department || 'General OPD'}</div>
+                              {v.doctor && v.doctor !== 'Any available' && <div style={{ fontSize: 10, color: '#6B7280' }}>Dr. {v.doctor}</div>}
+                            </div>
+                          )}
+                        </td>
                         <td style={{ padding: 10 }}>{v.visitType}</td>
                         <td style={{ padding: 10 }}>
                           <span style={{
@@ -2048,15 +2057,23 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                         <td style={{ padding: 10 }}>
                           <div>
                           <span style={{ fontSize: 11, fontWeight: 700 }}>{v.status}{v.aiReminderSent ? ' 🔔' : ''}</span>
-                          <div style={{ fontSize: 10, color: C.muted, marginTop: 2, maxWidth: 160 }}>{opdStageHint(v.status, v.paymentStatus)}</div>
+                          <div style={{ fontSize: 10, color: C.muted, marginTop: 2, maxWidth: 160 }}>{opdStageHint(v.status, v.paymentStatus, v.department, v.triagedAt)}</div>
                         </div>
                         </td>
                         <td style={{ padding: 10 }}>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                            {v.status === 'waiting' && (
+                            {/* Triage-stage: patient paid but not yet nurse-assessed */}
+                            {v.status === 'waiting' && (v.department === 'Triage' || !v.triagedAt) && (
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: '#FEF9C3', color: '#854D0E', display: 'inline-flex', alignItems: 'center', gap: 5 }}>🩺 Awaiting Nurse Vitals</span>
+                            )}
+                            {/* Doctor-stage: nurse done, patient in OPD doctor queue */}
+                            {v.status === 'waiting' && v.department !== 'Triage' && v.triagedAt && (
                               <button type="button" onClick={() => { updateVisitStatus(v.id, 'called'); reload(); flash(`Called ${v.queueNumber}`); }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: C.blue, color: '#fff', cursor: 'pointer' }}>Call next</button>
                             )}
-                            {v.status === 'called' && (
+                            {v.status === 'called' && (v.department === 'Triage' || !v.triagedAt) && (
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: '#FEF9C3', color: '#854D0E' }}>In Nurse Triage · being assessed</span>
+                            )}
+                            {v.status === 'called' && v.department !== 'Triage' && v.triagedAt && (
                               <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: '#E0F2FE', color: '#0369A1' }}>Called · auto in-room when doctor starts</span>
                             )}
                             {v.status === 'with_provider' && (

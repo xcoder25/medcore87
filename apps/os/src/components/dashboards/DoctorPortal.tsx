@@ -38,6 +38,7 @@ import { AmbientSoapPanel } from '../clinical-core/AmbientSoapPanel';
 interface DoctorPortalProps {
   session: UserSession;
   onNavigate: (moduleKey: any) => void;
+  initialModule?: SubModule;
 }
 
 type SubModule =
@@ -1818,8 +1819,12 @@ const NAV_ITEMS: { key: SubModule; icon: React.ComponentType<any>; label: string
 
 // -- MAIN EXPORT: single workspace (no nested Doctor Portal chrome) ------------
 
-export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate }) => {
-  const [activeModule, setActiveModule] = useState<SubModule>('dashboard');
+export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate, initialModule }) => {
+  const [activeModule, setActiveModule] = useState<SubModule>(initialModule || 'consultation');
+
+  useEffect(() => {
+    if (initialModule) setActiveModule(initialModule);
+  }, [initialModule]);
 
   const renderContent = () => {
     switch (activeModule) {
