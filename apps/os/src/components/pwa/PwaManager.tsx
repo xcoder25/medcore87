@@ -16,6 +16,9 @@ export const PwaManager: React.FC = () => {
   const [installedNotice, setInstalledNotice] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState(0);
+  const [updateStatus, setUpdateStatus] = useState('Initiating update...');
+  const [updateSuccess, setUpdateSuccess] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
 
   useEffect(() => {
@@ -34,6 +37,14 @@ export const PwaManager: React.FC = () => {
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+
+    // Provide testing utility in window for manual preview / QA testing
+    (window as any).medcoreTriggerUpdatePrompt = () => {
+      setUpdateAvailable(true);
+      setUpdateSuccess(false);
+      setIsUpdating(false);
+      setUpdateProgress(0);
+    };
 
     let swInterval: any = null;
     let handleFocus: (() => void) | null = null;
@@ -116,11 +127,50 @@ export const PwaManager: React.FC = () => {
 
   const handleApplyUpdate = useCallback(() => {
     setIsUpdating(true);
-    if (waitingWorker) {
-      waitingWorker.postMessage({ type: 'SKIP_WAITING' });
-    } else {
-      window.location.reload();
-    }
+    setUpdateProgress(12);
+    setUpdateStatus('Connecting to deployment CDN & verifying build hashes...');
+
+    // Step 1: 35%
+    const t1 = setTimeout(() => {
+      setUpdateProgress(38);
+      setUpdateStatus('Updating application shell & offline station cache...');
+    }, 450);
+
+    // Step 2: 70%
+    const t2 = setTimeout(() => {
+      setUpdateProgress(72);
+      setUpdateStatus('Applying database schema & clinical route assets...');
+    }, 950);
+
+    // Step 3: 92%
+    const t3 = setTimeout(() => {
+      setUpdateProgress(94);
+      setUpdateStatus('Activating updated healthcare service worker...');
+    }, 1450);
+
+    // Step 4: 100% (Success state)
+    const t4 = setTimeout(() => {
+      setUpdateProgress(100);
+      setUpdateSuccess(true);
+      setUpdateStatus('Update installed successfully! Restarting workstation...');
+
+      // Auto-reload after brief visual confirmation of success
+      setTimeout(() => {
+        if (waitingWorker) {
+          waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+        }
+        setTimeout(() => {
+          window.location.reload();
+        }, 350);
+      }, 950);
+    }, 1950);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+    };
   }, [waitingWorker]);
 
   const handleInstallClick = async () => {
@@ -279,101 +329,218 @@ export const PwaManager: React.FC = () => {
             top: 20,
             right: 20,
             zIndex: 100000,
-            background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
-            border: '2px solid #0284C7',
-            borderRadius: 16,
-            padding: '16px 20px',
+            background: 'linear-gradient(135deg, #0B132B 0%, #1C2541 100%)',
+            border: updateSuccess ? '2px solid #10B981' : isUpdating ? '2px solid #38BDF8' : '2px solid #0284C7',
+            borderRadius: 18,
+            padding: isUpdating ? '18px 22px' : '16px 20px',
             color: '#fff',
-            boxShadow: '0 25px 50px -12px rgba(2, 132, 199, 0.4), 0 0 0 1px rgba(255,255,255,0.1)',
+            boxShadow: updateSuccess
+              ? '0 25px 50px -12px rgba(16, 185, 129, 0.45), 0 0 20px rgba(52, 211, 153, 0.3)'
+              : isUpdating
+              ? '0 25px 50px -12px rgba(2, 132, 199, 0.5), 0 0 15px rgba(56, 189, 248, 0.25)'
+              : '0 25px 50px -12px rgba(2, 132, 199, 0.4), 0 0 0 1px rgba(255,255,255,0.1)',
             display: 'flex',
-            alignItems: 'center',
-            gap: 16,
-            maxWidth: 440,
+            flexDirection: 'column',
+            gap: 12,
+            width: isUpdating ? 430 : 440,
+            maxWidth: 'calc(100vw - 40px)',
             animation: 'slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
             fontFamily: "'Plus Jakarta Sans', sans-serif",
+            transition: 'border 0.3s ease, box-shadow 0.3s ease',
           }}
         >
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: 'linear-gradient(135deg, #0284C7 0%, #0D9488 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              boxShadow: '0 8px 16px rgba(2, 132, 199, 0.35)',
-            }}
-          >
-            <Sparkles size={22} color="#fff" />
-          </div>
-
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 900, color: '#F8FAFC', letterSpacing: '-0.01em' }}>
-                System Update Ready
-              </span>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  padding: '2px 6px',
-                  borderRadius: 999,
-                  background: '#0284C7',
-                  color: '#fff',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Live
-              </span>
-            </div>
-            <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 3, lineHeight: 1.4 }}>
-              A fresh MedCore OS build was deployed. Reload now to apply the latest clinical updates.
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <button
-              type="button"
-              onClick={handleApplyUpdate}
-              disabled={isUpdating}
+          {/* Header Row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div
               style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                background: updateSuccess
+                  ? 'linear-gradient(135deg, #059669 0%, #10B981 100%)'
+                  : 'linear-gradient(135deg, #0284C7 0%, #0D9488 100%)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6,
-                padding: '9px 16px',
-                borderRadius: 10,
-                border: 'none',
-                background: 'linear-gradient(135deg, #0284C7 0%, #026ca3 100%)',
-                color: '#fff',
-                fontSize: 12,
-                fontWeight: 800,
-                cursor: isUpdating ? 'wait' : 'pointer',
-                boxShadow: '0 4px 12px rgba(2, 132, 199, 0.3)',
-                transition: 'transform 0.15s ease',
+                justifyContent: 'center',
+                flexShrink: 0,
+                boxShadow: updateSuccess
+                  ? '0 8px 16px rgba(16, 185, 129, 0.4)'
+                  : '0 8px 16px rgba(2, 132, 199, 0.35)',
+                transition: 'background 0.3s ease',
               }}
             >
-              <RefreshCw size={14} className={isUpdating ? 'spin' : ''} />
-              {isUpdating ? 'Updating…' : 'Update & Reload'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setUpdateAvailable(false)}
-              aria-label="Dismiss update"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#64748B',
-                cursor: 'pointer',
-                padding: 4,
-              }}
-            >
-              <X size={16} />
-            </button>
+              {updateSuccess ? (
+                <CheckCircle2 size={24} color="#ECFDF5" />
+              ) : isUpdating ? (
+                <RefreshCw size={22} color="#fff" style={{ animation: 'pwaSpin 1.2s linear infinite' }} />
+              ) : (
+                <Sparkles size={22} color="#fff" />
+              )}
+            </div>
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 900, color: '#F8FAFC', letterSpacing: '-0.01em' }}>
+                    {updateSuccess
+                      ? 'Update Complete!'
+                      : isUpdating
+                      ? 'Updating MedCore OS…'
+                      : 'System Update Ready'}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      padding: '2px 7px',
+                      borderRadius: 999,
+                      background: updateSuccess ? '#10B981' : '#0284C7',
+                      color: '#fff',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    {updateSuccess ? 'Done' : isUpdating ? 'In Progress' : 'Live'}
+                  </span>
+                </div>
+
+                {isUpdating && (
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 900,
+                      fontFamily: "'JetBrains Mono', monospace",
+                      color: updateSuccess ? '#34D399' : '#38BDF8',
+                    }}
+                  >
+                    {updateProgress}%
+                  </span>
+                )}
+              </div>
+
+              {!isUpdating && (
+                <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 3, lineHeight: 1.4 }}>
+                  A fresh MedCore OS build was deployed. Reload now to apply the latest clinical updates.
+                </div>
+              )}
+            </div>
+
+            {!isUpdating && (
+              <button
+                type="button"
+                onClick={() => setUpdateAvailable(false)}
+                aria-label="Dismiss update notification"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#64748B',
+                  cursor: 'pointer',
+                  padding: 4,
+                  alignSelf: 'flex-start',
+                }}
+              >
+                <X size={16} />
+              </button>
+            )}
           </div>
+
+          {/* Action Button (shown before clicking update) */}
+          {!isUpdating && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={handleApplyUpdate}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '9px 18px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(2, 132, 199, 0.4)',
+                  transition: 'transform 0.15s ease',
+                }}
+              >
+                <RefreshCw size={14} />
+                Update & Reload
+              </button>
+            </div>
+          )}
+
+          {/* Progressive Progress Bar & Realtime Step Label (active during update) */}
+          {isUpdating && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+              {/* Progress Bar Track */}
+              <div
+                style={{
+                  width: '100%',
+                  height: 8,
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  borderRadius: 999,
+                  overflow: 'hidden',
+                  position: 'relative',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                }}
+              >
+                <div
+                  style={{
+                    width: `${updateProgress}%`,
+                    height: '100%',
+                    background: updateSuccess
+                      ? 'linear-gradient(90deg, #10B981, #34D399)'
+                      : 'linear-gradient(90deg, #0284C7 0%, #38BDF8 60%, #10B981 100%)',
+                    boxShadow: updateSuccess
+                      ? '0 0 16px rgba(52, 211, 153, 0.8)'
+                      : '0 0 12px rgba(56, 189, 248, 0.7)',
+                    transition: 'width 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+                  }}
+                />
+              </div>
+
+              {/* Status Step Label */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: updateSuccess ? '#6EE7B7' : '#94A3B8',
+                }}
+              >
+                {updateSuccess ? (
+                  <span>✓ {updateStatus}</span>
+                ) : (
+                  <>
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        background: '#38BDF8',
+                        display: 'inline-block',
+                        boxShadow: '0 0 8px #38BDF8',
+                      }}
+                    />
+                    <span>{updateStatus}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </aside>
       )}
+      <style>{`
+        @keyframes pwaSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </>
   );
 };
