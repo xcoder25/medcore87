@@ -4,7 +4,7 @@
  * Provides offline shell caching, background sync resilience, and instant PWA installability.
  */
 
-const CACHE_NAME = 'medcore-os-shell-v1';
+const CACHE_NAME = 'medcore-os-shell-v2';
 const PRECACHE_ASSETS = [
   '/',
   '/manifest.json',
@@ -22,7 +22,6 @@ self.addEventListener('install', (event) => {
     caches
       .open(CACHE_NAME)
       .then((cache) => cache.addAll(PRECACHE_ASSETS))
-      .then(() => self.skipWaiting())
       .catch((err) => {
         console.warn('[MedCore SW] Pre-caching warning:', err);
       })
