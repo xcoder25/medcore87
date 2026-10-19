@@ -24,7 +24,7 @@ import {
 import {
   Search, UserPlus, CreditCard, Calendar, QrCode, Users, Clock,
   Activity, CheckCircle2, RefreshCw, ChevronRight,
-  TrendingUp, TrendingDown, Heart, Ticket,
+  TrendingUp, TrendingDown, Heart, Ticket, Inbox,
 } from 'lucide-react';
 import { useOpdSync, broadcastOpdStage } from '../../hooks/useOpdSync';
 
@@ -37,7 +37,8 @@ export type DeskNav =
   | 'cashier'
   | 'search'
   | 'scan'
-  | 'walkin';
+  | 'walkin'
+  | 'inbasket';
 
 interface Props {
   session: UserSession;
@@ -100,6 +101,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   const [deptFilter, setDeptFilter] = useState('all');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activeFrontDesk, setActiveFrontDesk] = useState(0);
+  const [inBasketOpen, setInBasketOpen] = useState(false);
   const [queueTab, setQueueTab] = useState<'all' | 'accounts' | 'triage' | 'doctor' | 'completed'>('all');
   const [accountsRequests, setAccountsRequests] = useState<FrontDeskAccountsRequest[]>([]);
 
@@ -347,6 +349,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   ];
 
   const quick = [
+    { label: 'In Basket', desc: 'Tasks & desk attention', icon: Inbox, go: 'inbasket' as DeskNav },
     { label: 'Find Patient', desc: 'Search by name/ID', icon: Search, go: 'search' as DeskNav },
     { label: 'Scan ID / QR', desc: 'Card scan · badge lookup', icon: QrCode, go: 'scan' as DeskNav },
     { label: 'Register', desc: 'New patient registration', icon: UserPlus, go: 'register' as DeskNav },
@@ -356,17 +359,6 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <InBasketPanel
-        facilityId={facilityId}
-        roleKey="reception"
-        staffName={session.name}
-        onNavigate={(k) => {
-          if (k === 'patient-flow' || k === 'dashboard') onGo('queue');
-          else if (k === 'patient-360') onGo('search');
-          else onGo('home');
-        }}
-      />
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
       {/* Quick Actions — first thing the desk officer sees */}
       <div
@@ -378,9 +370,34 @@ export const ReceptionDeskHome: React.FC<Props> = ({
           boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
         }}
       >
-        <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Quick Actions</div>
-        <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>
-          Speed up your workflow with essential actions
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Quick Actions</div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+              Speed up your workflow with essential actions
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setInBasketOpen(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 7,
+              padding: '8px 14px',
+              borderRadius: 10,
+              border: '1px solid #BFDBFE',
+              background: '#EFF6FF',
+              color: '#1D4ED8',
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(37,99,235,0.1)',
+            }}
+          >
+            <Inbox size={15} />
+            <span>Open In-Basket</span>
+          </button>
         </div>
         <div className="mc-stagger-desk" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
           {quick.map((q) => {
@@ -389,7 +406,13 @@ export const ReceptionDeskHome: React.FC<Props> = ({
               <button
                 key={q.label}
                 type="button"
-                onClick={() => onGo(q.go)}
+                onClick={() => {
+                  if (q.go === 'inbasket') {
+                    setInBasketOpen(true);
+                  } else {
+                    onGo(q.go);
+                  }
+                }}
                 className="mc-btn-live"
                 style={{
                   border: `1px solid ${C.border}`,
@@ -1001,7 +1024,48 @@ export const ReceptionDeskHome: React.FC<Props> = ({
           </div>
         </div>
       </div>
-    </div>
+
+      {/* Front Desk In-Basket Dedicated Slide-Over Drawer */}
+      {inBasketOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,0.45)',
+            zIndex: 90,
+            display: 'flex',
+            justifyContent: 'flex-end',
+          }}
+          onClick={() => setInBasketOpen(false)}
+        >
+          <div
+            style={{
+              width: 'min(460px, 100%)',
+              height: '100%',
+              background: '#fff',
+              boxShadow: '-8px 0 40px rgba(0,0,0,0.15)',
+              overflowY: 'auto',
+              padding: 20,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <InBasketPanel
+              facilityId={facilityId}
+              roleKey="reception"
+              staffName={session.name}
+              title="Front Desk In-Basket"
+              onClose={() => setInBasketOpen(false)}
+              onNavigate={(k) => {
+                setInBasketOpen(false);
+                if (k === 'patient-flow' || k === 'dashboard') onGo('queue');
+                else if (k === 'patient-360') onGo('search');
+                else if (k === 'appointments') onGo('appointments');
+                else onGo('home');
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

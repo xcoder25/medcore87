@@ -2,24 +2,39 @@
 
 /**
  * Epic In Basket–style unified attention list for the role.
+ * Role-partitioned: Front Desk only receives reception-specific attention items.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Inbox, FlaskConical, AlertTriangle, Pill, ClipboardList, ChevronRight } from 'lucide-react';
+import {
+  Inbox,
+  FlaskConical,
+  AlertTriangle,
+  Pill,
+  ClipboardList,
+  ChevronRight,
+  X,
+  Calendar,
+  Clock,
+  Banknote,
+  Bell,
+} from 'lucide-react';
 import { listOrders, subscribeOrders } from '../../lib/clinicalEventBus';
 import { listPendingCriticalAcks, subscribeIntelligence } from '../../lib/clinicalIntelligenceEngine';
 import { isReviewed, subscribeResultReviews } from '../../lib/resultReviewStore';
 import {
   todayVisits,
   visitAssignedToDoctor,
+  listAppointments,
   subscribeReceptionOps,
 } from '../../lib/receptionOpsStore';
+import { listAccountsRequests, subscribeAccountsRequests } from '../../lib/frontDeskAccountsBridge';
 import { setPatientContext } from '../../lib/patientContextStore';
 import { getPatient } from '../../lib/patientRegistryStore';
 import { listNotifications, subscribeNotifications } from '../../lib/notificationEngine';
 
 export type BasketItem = {
   id: string;
-  kind: 'critical' | 'result' | 'rx' | 'queue' | 'task' | 'assignment';
+  kind: 'critical' | 'result' | 'rx' | 'queue' | 'task' | 'assignment' | 'appt' | 'accounts' | 'notice';
   title: string;
   detail: string;
   patientId?: string;
@@ -34,6 +49,8 @@ interface Props {
   /** Logged-in staff display name — filters assigned patients for doctors */
   staffName?: string;
   onNavigate?: (moduleKey: string) => void;
+  onClose?: () => void;
+  title?: string;
   limit?: number;
 }
 
@@ -42,7 +59,9 @@ export const InBasketPanel: React.FC<Props> = ({
   roleKey,
   staffName,
   onNavigate,
-  limit = 12,
+  onClose,
+  title,
+  limit = 16,
 }) => {
   const [tick, setTick] = useState(0);
   const reload = () => setTick((t) => t + 1);
@@ -53,12 +72,14 @@ export const InBasketPanel: React.FC<Props> = ({
     const u3 = subscribeResultReviews(reload);
     const u4 = subscribeReceptionOps(reload);
     const u5 = subscribeNotifications(reload);
+    const u6 = subscribeAccountsRequests(reload);
     return () => {
       u1();
       u2();
       u3();
       u4();
       u5();
+      u6();
     };
   }, []);
 
@@ -66,36 +87,49 @@ export const InBasketPanel: React.FC<Props> = ({
     const out: BasketItem[] = [];
     const role = (roleKey || '').toLowerCase();
     const isDoctor = role.includes('doctor') || role.includes('surgeon') || role.includes('consultant');
+    const isNurse = role.includes('nurse') || role.includes('matron') || role.includes('sister');
+    const isReception = role.includes('recep') || role.includes('record') || role.includes('front');
+    const isPharmacy = role.includes('pharm');
 
-    for (const a of listPendingCriticalAcks(facilityId)) {
-      out.push({
-        id: `crit-${a.orderId}`,
-        kind: 'critical',
-        title: 'Critical result — acknowledge',
-        detail: a.summary,
-        patientId: a.patientId,
-        patientName: a.patientName,
-        at: a.resultAt,
-        module: 'doctor-portal',
-      });
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 1. CLINICAL MEDICAL ALERTS (Physicians & Ward Nurses ONLY)
+    // ─────────────────────────────────────────────────────────────────────────────
+    if (!isReception) {
+      for (const a of listPendingCriticalAcks(facilityId)) {
+        out.push({
+          id: `crit-${a.orderId}`,
+          kind: 'critical',
+          title: 'Critical result — acknowledge',
+          detail: a.summary,
+          patientId: a.patientId,
+          patientName: a.patientName,
+          at: a.resultAt,
+          module: 'doctor-portal',
+        });
+      }
+
+      if (isDoctor || isNurse) {
+        const resulted = listOrders(facilityId).filter((o) => o.status === 'resulted' && !isReviewed(o.id));
+        for (const o of resulted.slice(0, 20)) {
+          if (o.type === 'rx') continue;
+          out.push({
+            id: `res-${o.id}`,
+            kind: 'result',
+            title: `${o.type === 'imaging' ? 'Imaging' : 'Lab'} result ready`,
+            detail: `${o.name} · ${o.resultSummary || 'Available'}`,
+            patientId: o.patientId,
+            patientName: o.patientName,
+            at: o.resultAt || o.updatedAt,
+            module: 'doctor-portal',
+          });
+        }
+      }
     }
 
-    const resulted = listOrders(facilityId).filter((o) => o.status === 'resulted' && !isReviewed(o.id));
-    for (const o of resulted.slice(0, 20)) {
-      if (o.type === 'rx') continue;
-      out.push({
-        id: `res-${o.id}`,
-        kind: 'result',
-        title: `${o.type === 'imaging' ? 'Imaging' : 'Lab'} result ready`,
-        detail: `${o.name} · ${o.resultSummary || 'Available'}`,
-        patientId: o.patientId,
-        patientName: o.patientName,
-        at: o.resultAt || o.updatedAt,
-        module: 'doctor-portal',
-      });
-    }
-
-    if (role.includes('pharm') || role.includes('admin') || !role) {
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 2. PHARMACY DISPENSING ORDERS (Pharmacy Staff ONLY)
+    // ─────────────────────────────────────────────────────────────────────────────
+    if (isPharmacy || (!isReception && !isDoctor && role.includes('admin'))) {
       for (const o of listOrders(facilityId).filter((x) => x.type === 'rx' && x.status === 'ordered')) {
         out.push({
           id: `rx-${o.id}`,
@@ -110,7 +144,9 @@ export const InBasketPanel: React.FC<Props> = ({
       }
     }
 
-    // Assignment alerts for this doctor
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 3. DOCTOR ASSIGNMENT ALERTS (Assigned Clinician ONLY)
+    // ─────────────────────────────────────────────────────────────────────────────
     if (isDoctor && staffName) {
       for (const n of listNotifications(facilityId, true, { staffName, roleKey })) {
         if (n.roleHint !== 'doctor' && n.module !== 'doctor-portal') continue;
@@ -128,10 +164,92 @@ export const InBasketPanel: React.FC<Props> = ({
       }
     }
 
-    if (role.includes('recep') || isDoctor || role.includes('admin') || !role) {
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 4. FRONT DESK RECEPTION EXCLUSIVE IN-BASKET (Desk-Relevant Concerns Only)
+    // ─────────────────────────────────────────────────────────────────────────────
+    if (isReception) {
+      // (a) Booked appointments scheduled for today awaiting arrival check-in
+      try {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const appts = listAppointments(facilityId).filter(
+          (a) => a.scheduledAt.startsWith(todayStr) && a.status === 'booked'
+        );
+        for (const a of appts.slice(0, 8)) {
+          out.push({
+            id: `appt-${a.id}`,
+            kind: 'appt',
+            title: `Arriving Appointment · ${a.patientName}`,
+            detail: `Time ${a.scheduledAt.slice(11, 16)} · ${a.department} (${a.doctor})`,
+            patientId: a.patientId,
+            patientName: a.patientName,
+            at: a.scheduledAt,
+            module: 'appointments',
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+
+      // (b) Extended front desk wait (> 20 mins)
+      const queueVisits = todayVisits(facilityId).filter((x) => {
+        if (x.status !== 'waiting') return false;
+        const mins = Math.max(0, Math.round((Date.now() - new Date(x.checkedInAt).getTime()) / 60000));
+        return mins >= 20;
+      });
+      for (const v of queueVisits.slice(0, 6)) {
+        const mins = Math.max(0, Math.round((Date.now() - new Date(v.checkedInAt).getTime()) / 60000));
+        out.push({
+          id: `q-${v.id}`,
+          kind: 'queue',
+          title: `Overdue Wait (${mins}m) · ${v.department}`,
+          detail: `${v.queueNumber} · ${v.patientName} waiting for consult`,
+          patientId: v.patientId,
+          patientName: v.patientName,
+          at: v.checkedInAt,
+          module: 'patient-flow',
+        });
+      }
+
+      // (c) Accounts clearance alerts (Auto-promoted to Triage)
+      try {
+        const paidReqs = listAccountsRequests(facilityId, { status: 'paid' }).filter((r) => {
+          const ageMins = Math.max(0, Math.round((Date.now() - new Date(r.paidAt || r.sentAt).getTime()) / 60000));
+          return ageMins <= 90; // Recent payments
+        });
+        for (const p of paidReqs.slice(0, 6)) {
+          out.push({
+            id: `paid-${p.id}`,
+            kind: 'accounts',
+            title: `Payment Cleared · ₦${p.amountNgn.toLocaleString()}`,
+            detail: `${p.patientName} (${p.hospitalNumber}) · Auto-promoted to Triage Queue`,
+            patientId: p.patientId,
+            patientName: p.patientName,
+            at: p.paidAt || p.sentAt,
+            module: 'patient-flow',
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+
+      // (d) Front Desk targeted notifications
+      for (const n of listNotifications(facilityId, true, { staffName, roleKey })) {
+        if (n.module !== 'reception' && n.roleHint !== 'reception') continue;
+        out.push({
+          id: `notif-${n.id}`,
+          kind: 'notice',
+          title: n.title,
+          detail: n.body,
+          patientId: n.patientId,
+          patientName: undefined,
+          at: n.createdAt,
+          module: 'reception',
+        });
+      }
+    } else {
+      // Generic queue visits for non-reception roles (e.g. Doctors)
       const queueVisits = todayVisits(facilityId).filter((x) => {
         if (x.status !== 'waiting' && x.status !== 'called') return false;
-        // Doctors only see patients assigned to them (or open pool)
         if (isDoctor && staffName) return visitAssignedToDoctor(x, staffName);
         return true;
       });
@@ -153,12 +271,15 @@ export const InBasketPanel: React.FC<Props> = ({
       const rank: Record<BasketItem['kind'], number> = {
         critical: 0,
         assignment: 1,
-        result: 2,
-        rx: 3,
-        queue: 4,
-        task: 5,
+        notice: 2,
+        appt: 3,
+        accounts: 4,
+        result: 5,
+        rx: 6,
+        queue: 7,
+        task: 8,
       };
-      const d = rank[a.kind] - rank[b.kind];
+      const d = (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9);
       if (d !== 0) return d;
       return b.at.localeCompare(a.at);
     });
@@ -170,7 +291,10 @@ export const InBasketPanel: React.FC<Props> = ({
     if (k === 'assignment') return <ClipboardList size={14} color="#0D9488" />;
     if (k === 'result') return <FlaskConical size={14} color="#D97706" />;
     if (k === 'rx') return <Pill size={14} color="#7C3AED" />;
-    if (k === 'queue') return <ClipboardList size={14} color="#2563EB" />;
+    if (k === 'queue') return <Clock size={14} color="#2563EB" />;
+    if (k === 'appt') return <Calendar size={14} color="#0D9488" />;
+    if (k === 'accounts') return <Banknote size={14} color="#16A34A" />;
+    if (k === 'notice') return <Bell size={14} color="#0284C7" />;
     return <Inbox size={14} />;
   };
 
@@ -201,10 +325,9 @@ export const InBasketPanel: React.FC<Props> = ({
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <Inbox size={16} color="#0052D4" />
-        <span style={{ fontWeight: 800, fontSize: 14 }}>Needs attention</span>
+        <span style={{ fontWeight: 800, fontSize: 14 }}>{title || 'Needs attention'}</span>
         <span
           style={{
-            marginLeft: 'auto',
             fontSize: 11,
             fontWeight: 800,
             background: items.length ? '#FEE2E2' : '#ECFDF5',
@@ -215,9 +338,26 @@ export const InBasketPanel: React.FC<Props> = ({
         >
           {items.length}
         </span>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close in basket"
+            style={{
+              marginLeft: 'auto',
+              background: 'transparent',
+              border: 'none',
+              color: '#64748B',
+              cursor: 'pointer',
+              padding: 4,
+            }}
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
       {items.length === 0 && (
-        <div style={{ fontSize: 12, color: '#64748B', padding: '8px 0' }}>Nothing waiting — good time to clear the queue.</div>
+        <div style={{ fontSize: 12, color: '#64748B', padding: '8px 0' }}>Nothing waiting — all desk tasks cleared.</div>
       )}
       {items.map((item) => (
         <button
