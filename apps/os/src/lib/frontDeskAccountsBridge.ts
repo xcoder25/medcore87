@@ -7,7 +7,13 @@
  */
 import { publishFacilityData } from './roleSyncBus';
 import { postInvoiceForPayment, markPatientOutstandingPaid } from './patientBillingStore';
-import { markVisitsPaidForPatient, syncVisitPaymentFromAccounts, reconcileVisitPaymentsFromAccounts } from './receptionOpsStore';
+import {
+  markVisitsPaidForPatient,
+  syncVisitPaymentFromAccounts,
+  reconcileVisitPaymentsFromAccounts,
+  ensureTriageVisitOnPaymentPaid,
+} from './receptionOpsStore';
+import { pushNotification } from './notificationEngine';
 
 export const FD_ACCOUNTS_KEY = 'medcore_os_fd_accounts_requests_v1';
 export const FD_ACCOUNTS_EVENT = 'medcore-fd-accounts';
@@ -207,6 +213,53 @@ export function markAccountsRequestPaid(
   } catch {
     /* ignore */
   }
+
+  // Automatic OPD handoff: Move patient to Triage Queue once marked paid
+  try {
+    ensureTriageVisitOnPaymentPaid({
+      facilityId: row.facilityId,
+      patientId: row.patientId,
+      hospitalNumber: row.hospitalNumber,
+      patientName: row.patientName,
+      invoiceNumber: row.invoiceNumber,
+      amountNgn: row.amountNgn,
+    });
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    pushNotification({
+      facilityId: row.facilityId,
+      level: 'important',
+      title: 'Patient Ready for Triage',
+      body: `${row.patientName} (${row.hospitalNumber}) paid ₦${row.amountNgn.toLocaleString()} — automatically queued for nurse vitals in Triage.`,
+      module: 'nurse-portal',
+      roleHint: 'nurse',
+    });
+  } catch {
+    /* ignore */
+  }
+
+  // Broadcast to Triage and Doctor buses
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('medcore-opd-stage', {
+          detail: {
+            facilityId: row.facilityId,
+            patientId: row.patientId,
+            hospitalNumber: row.hospitalNumber,
+            patientName: row.patientName,
+            stage: 'paid_moved_to_triage',
+          },
+        })
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+
   // Orders release: clinicalEventBus listens to medcore-accounts-paid
   try {
     if (typeof window !== 'undefined') {

@@ -15,6 +15,12 @@ import {
 import { listStaffCards, isReceptionRole } from '../../lib/staffCardStore';
 import type { FacilityPatient } from '../../lib/patientRegistryStore';
 import type { ReceptionVisit, ReceptionAppointment, ReceptionDayStats } from '../../lib/receptionOpsStore';
+import {
+  listAccountsRequests,
+  markAccountsRequestPaid,
+  subscribeAccountsRequests,
+  type FrontDeskAccountsRequest,
+} from '../../lib/frontDeskAccountsBridge';
 
 
 import {
@@ -97,6 +103,27 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   const [deptFilter, setDeptFilter] = useState('all');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activeFrontDesk, setActiveFrontDesk] = useState(0);
+  const [queueTab, setQueueTab] = useState<'all' | 'accounts' | 'triage' | 'doctor' | 'completed'>('all');
+  const [accountsRequests, setAccountsRequests] = useState<FrontDeskAccountsRequest[]>([]);
+
+  const reloadAccounts = useCallback(() => {
+    setAccountsRequests(listAccountsRequests(facilityId, { status: 'awaiting_payment' }));
+  }, [facilityId]);
+
+  useEffect(() => {
+    reloadAccounts();
+    return subscribeAccountsRequests(reloadAccounts);
+  }, [reloadAccounts]);
+
+  const handleMarkAccountsPaid = (req: FrontDeskAccountsRequest) => {
+    markAccountsRequestPaid(req.id, {
+      reference: `RCPT-${Date.now().toString(36).toUpperCase()}`,
+      via: 'cashier',
+      paidBy: session.name || 'Reception',
+    });
+    reloadAccounts();
+    onRefresh();
+  };
 
   const recountFrontDeskStaff = useCallback(() => {
     try {
@@ -231,11 +258,27 @@ export const ReceptionDeskHome: React.FC<Props> = ({
       ? 0
       : Math.round(waiting.reduce((s, v) => s + waitMins(v.checkedInAt), 0) / waiting.length);
 
+  const triageVisits = useMemo(
+    () => visits.filter((v) => (v.status === 'waiting' || v.status === 'called') && (v.department === 'Triage' || !v.triagedAt)),
+    [visits]
+  );
+  const doctorVisits = useMemo(
+    () => visits.filter((v) => (v.status === 'waiting' || v.status === 'called' || v.status === 'with_provider') && v.department !== 'Triage' && v.triagedAt),
+    [visits]
+  );
+
   const filtered = useMemo(() => {
     let list = [...visits].filter((v) => v.status !== 'cancelled');
     if (deptFilter !== 'all') list = list.filter((v) => v.department === deptFilter);
+    if (queueTab === 'triage') {
+      list = list.filter((v) => (v.status === 'waiting' || v.status === 'called') && (v.department === 'Triage' || !v.triagedAt));
+    } else if (queueTab === 'doctor') {
+      list = list.filter((v) => (v.status === 'waiting' || v.status === 'called' || v.status === 'with_provider') && v.department !== 'Triage' && v.triagedAt);
+    } else if (queueTab === 'completed') {
+      list = list.filter((v) => v.status === 'completed');
+    }
     return list.sort((a, b) => a.checkedInAt.localeCompare(b.checkedInAt));
-  }, [visits, deptFilter]);
+  }, [visits, deptFilter, queueTab]);
 
   const depts = useMemo(() => {
     const s = new Set(visits.map((v) => v.department));
@@ -556,45 +599,134 @@ export const ReceptionDeskHome: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* Status chips */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+            {/* Stage tabs: Accounts Queue vs Triage Queue vs Doctor Queue vs Completed */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
               {[
-                { l: 'Waiting', v: waiting.length, bg: '#EFF6FF', c: '#1D4ED8' },
-                { l: 'Called', v: called.length, bg: '#ECFDF5', c: '#047857' },
-                { l: 'With Provider', v: withProv.length, bg: '#F5F3FF', c: '#6D28D9' },
-                { l: 'Completed Today', v: completed.length, bg: '#F0FDF4', c: '#15803D' },
-                { l: 'Unpaid in Queue', v: unpaid.length, bg: '#FEF2F2', c: '#B91C1C' },
-              ].map((x) => (
-                <div
-                  key={x.l}
-                  style={{
-                    flex: 1,
-                    minWidth: 100,
-                    background: x.bg,
-                    borderRadius: 12,
-                    padding: '10px 12px',
-                  }}
-                >
-                  <div style={{ fontSize: 11, fontWeight: 600, color: x.c }}>{x.l}</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: x.c }}>{x.v}</div>
-                </div>
-              ))}
+                { id: 'all' as const, l: 'All Active OPD', v: waiting.length + called.length + withProv.length, c: '#2563EB', bg: '#EFF6FF' },
+                { id: 'accounts' as const, l: '💳 Accounts Queue (Awaiting Pay)', v: accountsRequests.length, c: '#D97706', bg: '#FFFBEB' },
+                { id: 'triage' as const, l: '🩺 Triage Queue (Paid · Vitals)', v: triageVisits.length, c: '#0D9488', bg: '#F0FDFA' },
+                { id: 'doctor' as const, l: '👨‍⚕️ Doctor Consult Queue', v: doctorVisits.length, c: '#7C3AED', bg: '#F5F3FF' },
+                { id: 'completed' as const, l: '🏁 Completed Today', v: completed.length, c: '#16A34A', bg: '#F0FDF4' },
+              ].map((tab) => {
+                const active = queueTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setQueueTab(tab.id)}
+                    style={{
+                      flex: '1 1 140px',
+                      padding: '10px 14px',
+                      borderRadius: 12,
+                      border: active ? `2px solid ${tab.c}` : `1px solid ${C.border}`,
+                      background: active ? tab.bg : '#FFFFFF',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      boxShadow: active ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 700, color: active ? tab.c : C.muted }}>
+                      {tab.l}
+                    </div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: tab.c, marginTop: 2 }}>
+                      {tab.v}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Table */}
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', color: C.muted, fontSize: 11, fontWeight: 700 }}>
-                    {['#', 'Patient Name', 'ID', 'Department', 'Type', 'Wait Time', 'Status', 'Actions'].map(
-                      (h) => (
+            {/* If Accounts Queue tab is active, render dedicated Accounts Queue */}
+            {queueTab === 'accounts' ? (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', color: C.muted, fontSize: 11, fontWeight: 700 }}>
+                      {['#', 'Patient Name', 'Hospital No', 'Invoice / Order', 'Purpose', 'Amount', 'Wait at Accounts', 'Status', 'Action'].map((h) => (
                         <th key={h} style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>
                           {h}
                         </th>
-                      )
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accountsRequests.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} style={{ padding: 28, textAlign: 'center', color: C.muted }}>
+                          No patients currently waiting at Accounts. New registrations are automatically queued here.
+                        </td>
+                      </tr>
+                    ) : (
+                      accountsRequests.map((req, idx) => (
+                        <tr key={req.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                          <td style={{ padding: '12px 10px', color: C.muted }}>{idx + 1}</td>
+                          <td style={{ padding: '12px 10px', fontWeight: 800, color: C.text }}>{req.patientName}</td>
+                          <td style={{ padding: '12px 10px', color: C.muted, fontSize: 12 }}>{req.hospitalNumber}</td>
+                          <td style={{ padding: '12px 10px', fontFamily: 'monospace', fontSize: 12 }}>
+                            {req.invoiceNumber || req.id}
+                          </td>
+                          <td style={{ padding: '12px 10px', color: C.muted }}>{req.purpose}</td>
+                          <td style={{ padding: '12px 10px', fontWeight: 800, color: '#B45309' }}>
+                            ₦{req.amountNgn.toLocaleString()}
+                          </td>
+                          <td style={{ padding: '12px 10px' }}>{waitMins(req.sentAt)} min</td>
+                          <td style={{ padding: '12px 10px' }}>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 700,
+                                padding: '4px 10px',
+                                borderRadius: 999,
+                                background: '#FEF3C7',
+                                color: '#92400E',
+                                border: '1px solid #FDE68A',
+                              }}
+                            >
+                              ⏳ Awaiting Payment
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 10px' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleMarkAccountsPaid(req)}
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 800,
+                                padding: '6px 12px',
+                                borderRadius: 8,
+                                border: 'none',
+                                background: 'linear-gradient(135deg, #059669, #0D9488)',
+                                color: '#fff',
+                                cursor: 'pointer',
+                                boxShadow: '0 2px 6px rgba(5,150,105,0.2)',
+                              }}
+                              title="Confirm cashier payment — moves patient to Triage Queue"
+                            >
+                              Confirm Paid → To Triage
+                            </button>
+                          </td>
+                        </tr>
+                      ))
                     )}
-                  </tr>
-                </thead>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              /* Table */
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', color: C.muted, fontSize: 11, fontWeight: 700 }}>
+                      {['#', 'Patient Name', 'ID', 'Department', 'Type', 'Wait Time', 'Status', 'Actions'].map(
+                        (h) => (
+                          <th key={h} style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>
+                            {h}
+                          </th>
+                        )
+                      )}
+                    </tr>
+                  </thead>
                 <tbody>
                   {filtered.length === 0 && (
                     <tr>
@@ -734,6 +866,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                 </tbody>
               </table>
             </div>
+            )}
             <div
               style={{
                 display: 'flex',

@@ -120,11 +120,28 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   }, []);
 
   const doctorName = session.name || '';
-  /** Only visits assigned to this doctor (or open pool "Any available") */
-  const visits = useMemo(
+  const [selectedDept, setSelectedDept] = useState<string>('all');
+
+  /** All visits assigned to this doctor or department open pool */
+  const allDoctorVisits = useMemo(
     () => visitsForDoctor(facilityId, doctorName),
     [facilityId, doctorName, tick]
   );
+
+  /** Departments with active patients waiting */
+  const availableDepts = useMemo(() => {
+    const s = new Set<string>();
+    for (const v of allDoctorVisits) {
+      if (v.department && v.department !== 'Triage') s.add(v.department);
+    }
+    return Array.from(s).sort();
+  }, [allDoctorVisits]);
+
+  /** Filtered by selected department */
+  const visits = useMemo(() => {
+    if (selectedDept === 'all') return allDoctorVisits;
+    return allDoctorVisits.filter((v) => v.department === selectedDept);
+  }, [allDoctorVisits, selectedDept]);
   const orders = useMemo(() => listOrders(facilityId), [facilityId, tick]);
   const criticalAcks = useMemo(() => listPendingCriticalAcks(facilityId), [facilityId, tick]);
   const pulse = useMemo(() => facilityIntelligencePulse(facilityId), [facilityId, tick]);
@@ -790,6 +807,83 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
               <button type="button" className="os-ghost-btn mc-btn-live" onClick={reload}>
                 <RefreshCw size={13} /> Refresh
               </button>
+            </div>
+
+            {/* Department Filter Pills */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+              <button
+                type="button"
+                onClick={() => setSelectedDept('all')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 999,
+                  border: selectedDept === 'all' ? 'none' : `1px solid ${C.border}`,
+                  background: selectedDept === 'all' ? 'linear-gradient(135deg, #2563EB 0%, #0D9488 100%)' : '#F8FAFC',
+                  color: selectedDept === 'all' ? '#fff' : C.text,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  boxShadow: selectedDept === 'all' ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
+                }}
+              >
+                <span>All Departments</span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    padding: '1px 6px',
+                    borderRadius: 999,
+                    background: selectedDept === 'all' ? 'rgba(255,255,255,0.25)' : '#E2E8F0',
+                    color: selectedDept === 'all' ? '#fff' : C.muted,
+                    fontWeight: 800,
+                  }}
+                >
+                  {allDoctorVisits.filter((v) => v.status === 'waiting' || v.status === 'called').length}
+                </span>
+              </button>
+              {availableDepts.map((d) => {
+                const count = allDoctorVisits.filter(
+                  (v) => v.department === d && (v.status === 'waiting' || v.status === 'called')
+                ).length;
+                const isSelected = selectedDept === d;
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setSelectedDept(d)}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 999,
+                      border: isSelected ? 'none' : `1px solid ${C.border}`,
+                      background: isSelected ? 'linear-gradient(135deg, #2563EB 0%, #0D9488 100%)' : '#F8FAFC',
+                      color: isSelected ? '#fff' : C.text,
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      boxShadow: isSelected ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
+                    }}
+                  >
+                    <span>{d}</span>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        padding: '1px 6px',
+                        borderRadius: 999,
+                        background: isSelected ? 'rgba(255,255,255,0.25)' : '#E2E8F0',
+                        color: isSelected ? '#fff' : C.muted,
+                        fontWeight: 800,
+                      }}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* SECTION 1: Active Consultation Card (if seeing a patient) */}

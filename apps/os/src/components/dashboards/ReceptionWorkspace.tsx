@@ -704,6 +704,29 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     [facilityId, facilityName, session.name, session.badgeId]
   );
 
+  // Auto-send payment request to Accounts whenever Patient Reception View is shown
+  useEffect(() => {
+    if (panelOpen && selected) {
+      const existing = listAccountsRequests(facilityId, { patientId: selected.id });
+      const day = new Date().toISOString().slice(0, 10);
+      const hasActiveToday = existing.some(
+        (r) =>
+          r.sentAt.slice(0, 10) === day &&
+          (r.status === 'awaiting_payment' || r.status === 'paid')
+      );
+      if (!hasActiveToday) {
+        const fee =
+          selected.category === 'NHIA' || selected.insuranceProvider
+            ? Math.round(DEFAULT_REGISTRATION_FEE_NGN * 0.5)
+            : DEFAULT_REGISTRATION_FEE_NGN;
+        const req = autoSendToAccounts(selected, fee, 'OPD consultation / hospital fee');
+        if (req) {
+          flash(`⚡ Auto-sent ₦${fee.toLocaleString()} invoice to Accounts (${req.invoiceNumber})`);
+        }
+      }
+    }
+  }, [panelOpen, selected, facilityId, autoSendToAccounts]);
+
   const saveRegistration = () => {
     if (!reg.firstName.trim() || !reg.lastName.trim() || !reg.phone.trim()) {
       flash('First name, last name and phone are required');
@@ -2997,79 +3020,103 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
               {(() => {
                 const gate = getPaymentGate(facilityId, selected.id, selected.hospitalNumber);
+                const reqs = listAccountsRequests(facilityId, { patientId: selected.id });
+                const latestReq = reqs[0];
                 return (
                   <div
                     style={{
                       marginTop: 8,
-                      padding: '12px 14px',
-                      borderRadius: 12,
-                      border: gate.tone === 'wait' ? '1px solid #FDE68A' : gate.tone === 'ok' ? '1px solid #A7F3D0' : `1px solid ${C.border}`,
-                      background: gate.tone === 'wait' ? 'linear-gradient(135deg,#FFFBEB,#FEF3C7)' : gate.tone === 'ok' ? 'linear-gradient(135deg,#ECFDF5,#D1FAE5)' : '#F8FAFC',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: gate.tone === 'wait' ? '#92400E' : gate.tone === 'ok' ? '#047857' : C.muted,
+                      padding: '16px',
+                      borderRadius: 14,
+                      border: gate.tone === 'wait' ? '1.5px solid #FCD34D' : gate.tone === 'ok' ? '1.5px solid #6EE7B7' : `1px solid ${C.border}`,
+                      background: gate.tone === 'wait' ? 'linear-gradient(135deg,#FFFBEB 0%,#FEF3C7 100%)' : gate.tone === 'ok' ? 'linear-gradient(135deg,#ECFDF5 0%,#D1FAE5 100%)' : '#F8FAFC',
                     }}
                   >
-                    {gate.tone === 'wait' ? '⏳ ' : gate.tone === 'ok' ? '✓ ' : ''}
-                    {gate.label}
-                    {gate.tone === 'wait' && (
-                      <div style={{ marginTop: 6, fontWeight: 500 }}>
-                        Patient pays at Accounts desk, then returns here with receipt.
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 800,
+                          letterSpacing: '0.04em',
+                          textTransform: 'uppercase',
+                          color: gate.tone === 'wait' ? '#B45309' : gate.tone === 'ok' ? '#047857' : C.muted,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        {gate.tone === 'wait' ? '⚡ Auto-Sent to Accounts' : gate.tone === 'ok' ? '✓ Payment Cleared' : 'Accounts Handoff'}
+                      </span>
+                      {latestReq && (
+                        <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700, color: C.navy, background: 'rgba(255,255,255,0.7)', padding: '2px 8px', borderRadius: 6 }}>
+                          {latestReq.invoiceNumber || latestReq.id}
+                        </span>
+                      )}
+                    </div>
+
+                    <div style={{ fontSize: 13, fontWeight: 700, color: gate.tone === 'wait' ? '#92400E' : gate.tone === 'ok' ? '#065F46' : C.navy, lineHeight: 1.4 }}>
+                      {gate.tone === 'wait'
+                        ? `Invoice ₦${(latestReq?.amountNgn || 5000).toLocaleString()} is in Accounts Queue.`
+                        : `Payment confirmed · Automatically queued for Triage.`}
+                    </div>
+
+                    <p style={{ margin: '8px 0 0', fontSize: 12, color: gate.tone === 'wait' ? '#B45309' : '#047857', lineHeight: 1.45 }}>
+                      {gate.tone === 'wait'
+                        ? 'Patient is currently in the Accounts Queue awaiting payment. Once cashier confirms payment, patient will automatically advance to the Triage Queue for vital signs.'
+                        : 'Patient has cleared payment and automatically moved to the Triage Queue. Nurse will collect vitals and assign department.'}
+                    </p>
                   </div>
                 );
               })()}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+
+              {/* Action Buttons: "Register New Patient" is next; removed all other buttons */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
                 <button
                   type="button"
-                  disabled={!getPaymentGate(facilityId, selected.id, selected.hospitalNumber).cleared}
                   onClick={() => {
-                    doCheckIn(selected);
                     setPanelOpen(false);
-                    goView('queue');
+                    setSelected(null);
+                    setReg(emptyReg);
+                    setRegStep(1);
+                    goView('register');
                   }}
                   style={{
-                    padding: 12,
-                    borderRadius: 10,
+                    width: '100%',
+                    padding: '14px 18px',
+                    borderRadius: 12,
                     border: 'none',
-                    background: getPaymentGate(facilityId, selected.id, selected.hospitalNumber).cleared
-                      ? C.blue
-                      : '#94A3B8',
+                    background: 'linear-gradient(135deg, #0284C7 0%, #0D9488 100%)',
                     color: '#fff',
                     fontWeight: 800,
-                    cursor: getPaymentGate(facilityId, selected.id, selected.hospitalNumber).cleared
-                      ? 'pointer'
-                      : 'not-allowed',
+                    fontSize: 14,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    boxShadow: '0 4px 14px rgba(2,132,199,0.3)',
                   }}
                 >
-                  {getPaymentGate(facilityId, selected.id, selected.hospitalNumber).cleared
-                    ? 'Check in'
-                    : 'Pay at Accounts first'}
+                  <UserPlus size={18} />
+                  <span>Register New Patient</span>
                 </button>
+
                 <button
                   type="button"
-                  onClick={() => {
-                    const fee = 5000;
-                    const req = autoSendToAccounts(selected, fee, 'OPD consultation / hospital fee');
-                    if (req) {
-                      flash(`Invoice auto-sent to Accounts · ₦${fee.toLocaleString()} (${req.invoiceNumber})`);
-                    }
+                  onClick={() => setPanelOpen(false)}
+                  style={{
+                    width: '100%',
+                    padding: '11px 16px',
+                    borderRadius: 10,
+                    border: `1px solid ${C.border}`,
+                    background: '#F8FAFC',
+                    color: C.navy,
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: 'pointer',
                   }}
-                  style={{ padding: 12, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
                 >
-                  Send Invoice to Accounts
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setApPatient(selected);
-                    setPanelOpen(false);
-                    goView('appointments');
-                  }}
-                  style={{ padding: 12, borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', fontWeight: 700, cursor: 'pointer', gridColumn: '1 / -1' }}
-                >
-                  Book appointment
+                  Done · Return to Reception Desk
                 </button>
               </div>
             </div>

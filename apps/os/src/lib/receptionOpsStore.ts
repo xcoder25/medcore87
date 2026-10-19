@@ -44,6 +44,8 @@ export interface ReceptionVisit {
   vitalsTemp?: number;
   vitalsSpo2?: number;
   vitalsWeight?: number;
+  triagedAt?: string;
+  triagedBy?: string;
 }
 
 export interface ReceptionAppointment {
@@ -545,3 +547,124 @@ export function reconcileVisitPaymentsFromAccounts(
   if (n) save(state);
   return n;
 }
+
+/**
+ * Super-intelligent handoff: when Accounts marks payment as PAID,
+ * automatically ensure patient exists in the Triage Queue for nurse vitals & dept routing.
+ */
+export function ensureTriageVisitOnPaymentPaid(input: {
+  facilityId: string;
+  patientId: string;
+  hospitalNumber: string;
+  patientName: string;
+  invoiceNumber?: string;
+  amountNgn?: number;
+}): ReceptionVisit {
+  const state = load();
+  const day = new Date().toISOString().slice(0, 10);
+  const fid = input.facilityId || 'IGH-EKT';
+
+  // Check if today visit already exists
+  const existingIndex = state.visits.findIndex(
+    (v) =>
+      v.facilityId === fid &&
+      (v.patientId === input.patientId || v.hospitalNumber === input.hospitalNumber) &&
+      v.checkedInAt.slice(0, 10) === day &&
+      v.status !== 'cancelled' &&
+      v.status !== 'completed'
+  );
+
+  if (existingIndex >= 0) {
+    const existing = state.visits[existingIndex];
+    const updated: ReceptionVisit = {
+      ...existing,
+      paymentStatus: 'paid',
+      status: existing.status === 'with_provider' ? 'with_provider' : 'waiting',
+      department: existing.department && existing.department !== 'OPD' ? existing.department : 'Triage',
+    };
+    state.visits[existingIndex] = updated;
+    save(state);
+    return updated;
+  }
+
+  // Create new visit awaiting triage
+  const letter = 'T';
+  const n = (state.queueSeq[letter] || 0) + 1;
+  state.queueSeq[letter] = n;
+  const queueNumber = `T-${String(n).padStart(3, '0')}`;
+
+  const newVisit: ReceptionVisit = {
+    id: `V-TRG-${Date.now().toString(36).toUpperCase()}`,
+    patientId: input.patientId,
+    hospitalNumber: input.hospitalNumber,
+    patientName: input.patientName,
+    facilityId: fid,
+    department: 'Triage',
+    doctor: 'Triage Nurse',
+    visitType: 'walkin',
+    reason: 'Initial vitals collection & department routing',
+    paymentStatus: 'paid',
+    amount: input.amountNgn || 5000,
+    queueNumber,
+    status: 'waiting',
+    checkedInAt: new Date().toISOString(),
+    estimatedWaitMin: 6,
+    triageUrgency: 'routine',
+  };
+
+  state.visits = [newVisit, ...state.visits];
+  save(state);
+  return newVisit;
+}
+
+/**
+ * Triage nurse assigns collected vitals and routes patient to specific Department & Doctor.
+ * Moves patient from Triage to Doctor's live consult queue.
+ */
+export function assignVisitTriageAndDepartment(input: {
+  visitId: string;
+  facilityId: string;
+  department: string;
+  doctor?: string;
+  triageUrgency?: 'routine' | 'urgent' | 'critical';
+  vitalsSummary?: string;
+  vitalsBp?: string;
+  vitalsPulse?: number;
+  vitalsTemp?: number;
+  vitalsSpo2?: number;
+  vitalsWeight?: number;
+  triagedBy?: string;
+}): ReceptionVisit | null {
+  const state = load();
+  let updated: ReceptionVisit | null = null;
+  const targetDept = (input.department || 'General OPD').trim();
+  const targetDoctor = (input.doctor || 'Any available').trim();
+
+  state.visits = state.visits.map((v) => {
+    if (v.id !== input.visitId && v.patientId !== input.visitId && v.hospitalNumber !== input.visitId) {
+      return v;
+    }
+    updated = {
+      ...v,
+      department: targetDept,
+      doctor: targetDoctor,
+      triageUrgency: input.triageUrgency || v.triageUrgency || 'routine',
+      vitalsSummary: input.vitalsSummary || v.vitalsSummary,
+      vitalsBp: input.vitalsBp || v.vitalsBp,
+      vitalsPulse: input.vitalsPulse !== undefined ? input.vitalsPulse : v.vitalsPulse,
+      vitalsTemp: input.vitalsTemp !== undefined ? input.vitalsTemp : v.vitalsTemp,
+      vitalsSpo2: input.vitalsSpo2 !== undefined ? input.vitalsSpo2 : v.vitalsSpo2,
+      vitalsWeight: input.vitalsWeight !== undefined ? input.vitalsWeight : v.vitalsWeight,
+      triagedAt: new Date().toISOString(),
+      triagedBy: input.triagedBy || v.triagedBy || 'Triage Nurse',
+      status: 'waiting', // now in doctor queue waiting to be attended
+    };
+    return updated;
+  });
+
+  if (updated) {
+    save(state);
+  }
+  return updated;
+}
+

@@ -11,7 +11,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
-import { listVisits, subscribeReceptionOps } from '../../lib/receptionOpsStore';
+import { listVisits, subscribeReceptionOps, assignVisitTriageAndDepartment } from '../../lib/receptionOpsStore';
 import {
   listVitals,
   saveVitals,
@@ -19,6 +19,9 @@ import {
   type VitalsRecord,
 } from '../../lib/nursingVitalsStore';
 import { useOpdSync, broadcastOpdStage } from '../../hooks/useOpdSync';
+import { listStaffCards } from '../../lib/staffCardStore';
+import { RECEPTION_DEPTS } from '../../lib/receptionConstants';
+import { pushNotification } from '../../lib/notificationEngine';
 import {
   Heart,
   Thermometer,
@@ -290,6 +293,38 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
     [queue, selectedId]
   );
 
+  const [targetDept, setTargetDept] = useState<string>('General OPD');
+  const [targetDoctor, setTargetDoctor] = useState<string>('Any available');
+
+  useEffect(() => {
+    if (selectedVisit) {
+      if (selectedVisit.department && selectedVisit.department !== 'Triage' && selectedVisit.department !== 'OPD') {
+        setTargetDept(selectedVisit.department);
+      } else {
+        setTargetDept('General OPD');
+      }
+      if (selectedVisit.doctor && selectedVisit.doctor !== 'Triage Nurse') {
+        setTargetDoctor(selectedVisit.doctor);
+      } else {
+        setTargetDoctor('Any available');
+      }
+    }
+  }, [selectedVisit]);
+
+  const facilityDoctors = useMemo(() => {
+    const CLINICAL = new Set(['doctor', 'surgeon', 'medical_director', 'consultant']);
+    return listStaffCards()
+      .filter(
+        (c) =>
+          (c.facilityId === facilityId || !c.facilityId) &&
+          c.status === 'ACTIVE' &&
+          (CLINICAL.has((c.roleKey || '').toLowerCase()) ||
+            /doctor|surgeon|consultant|physician/i.test(c.role || c.title || ''))
+      )
+      .map((c) => c.fullName)
+      .filter(Boolean);
+  }, [facilityId]);
+
   const analytics = useMemo(() => computeClinicalAnalytics(form), [form]);
 
   // Quick Preset Handlers
@@ -328,6 +363,17 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
     if (!selectedVisit) return;
     setSaving(true);
     try {
+      const summaryStr = [
+        form.bpSystolic && form.bpDiastolic ? `BP ${form.bpSystolic}/${form.bpDiastolic} mmHg` : '',
+        form.pulse ? `HR ${form.pulse} bpm` : '',
+        form.tempC ? `Temp ${form.tempC}°C` : '',
+        form.spo2 ? `SpO₂ ${form.spo2}%` : '',
+        form.respRate ? `RR ${form.respRate} cpm` : '',
+        analytics.newsPoints !== undefined ? `NEWS2: ${analytics.newsPoints}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+
       const record = saveVitals({
         facilityId,
         patientId: selectedVisit.patientId,
@@ -352,6 +398,37 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
         recordedBy: nurseName,
       });
 
+      // Assign visit to target department & doctor, and move to doctor's consultation queue
+      assignVisitTriageAndDepartment({
+        visitId: selectedVisit.id,
+        facilityId,
+        department: targetDept,
+        doctor: targetDoctor,
+        triageUrgency: analytics.urgency,
+        vitalsSummary: summaryStr,
+        vitalsBp: form.bpSystolic && form.bpDiastolic ? `${form.bpSystolic}/${form.bpDiastolic}` : undefined,
+        vitalsPulse: form.pulse ? Number(form.pulse) : undefined,
+        vitalsTemp: form.tempC ? Number(form.tempC) : undefined,
+        vitalsSpo2: form.spo2 ? Number(form.spo2) : undefined,
+        vitalsWeight: form.weightKg ? Number(form.weightKg) : undefined,
+        triagedBy: nurseName,
+      });
+
+      // Push notification to attending physicians in the assigned department
+      try {
+        pushNotification({
+          facilityId,
+          level: analytics.urgency === 'critical' ? 'critical' : 'important',
+          title: analytics.urgency === 'critical' ? '🚨 STAT: Critical Triaged Patient' : 'Triaged Patient Ready',
+          body: `${selectedVisit.patientName} (${selectedVisit.hospitalNumber}) assigned to ${targetDept}${targetDoctor !== 'Any available' ? ` (Dr. ${targetDoctor})` : ''} · ${summaryStr}`,
+          module: 'doctor-portal',
+          roleHint: 'doctor',
+          targetStaff: targetDoctor !== 'Any available' ? targetDoctor : undefined,
+        });
+      } catch {
+        /* ignore */
+      }
+
       setLastSaved(record);
       setSavedSuccess(true);
       setForm({ ...EMPTY_FORM });
@@ -365,14 +442,17 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
         hospitalNumber: selectedVisit.hospitalNumber,
         patientName: selectedVisit.patientName,
         stage: 'vitals_done',
+        department: targetDept,
+        doctor: targetDoctor,
         urgency: record.urgency,
-        vitalsSummary: record.urgency,
+        vitalsSummary: summaryStr,
       });
 
       broadcastOpdStage('medcore_reception', {
         facilityId,
         patientId: selectedVisit.patientId,
         stage: 'vitals_done',
+        department: targetDept,
         urgency: record.urgency,
       });
 
@@ -1649,6 +1729,91 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
                       />
                     </div>
 
+                    {/* Clinical Department & Doctor Routing Card */}
+                    <div
+                      style={{
+                        padding: 16,
+                        borderRadius: 14,
+                        background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)',
+                        border: '1.5px solid #7DD3FC',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: '#0369A1', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <Stethoscope size={16} /> Clinical Department & Doctor Assignment
+                        </span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#0284C7', background: '#FFFFFF', padding: '3px 8px', borderRadius: 6, border: '1px solid #BAE6FD' }}>
+                          Automatic Routing to Doctor Queue
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                        <div>
+                          <label style={{ fontSize: 11, fontWeight: 800, color: '#0369A1', display: 'block', marginBottom: 4 }}>
+                            ASSIGN TO DEPARTMENT *
+                          </label>
+                          <select
+                            value={targetDept}
+                            onChange={(e) => setTargetDept(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '10px 12px',
+                              borderRadius: 10,
+                              border: '1.5px solid #38BDF8',
+                              background: '#FFFFFF',
+                              fontSize: 13,
+                              fontWeight: 700,
+                              color: '#0F172A',
+                              outline: 'none',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {RECEPTION_DEPTS.map((dept) => (
+                              <option key={dept} value={dept}>
+                                {dept}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: 11, fontWeight: 800, color: '#0369A1', display: 'block', marginBottom: 4 }}>
+                            ASSIGN SPECIFIC DOCTOR (OR POOL)
+                          </label>
+                          <select
+                            value={targetDoctor}
+                            onChange={(e) => setTargetDoctor(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '10px 12px',
+                              borderRadius: 10,
+                              border: '1.5px solid #38BDF8',
+                              background: '#FFFFFF',
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: '#0F172A',
+                              outline: 'none',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="Any available">Any Available Doctor ({targetDept} Pool)</option>
+                            {facilityDoctors.map((doc) => (
+                              <option key={doc} value={doc}>
+                                Dr. {doc.replace(/^Dr\.?\s*/i, '')}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: 11, color: '#0369A1', lineHeight: 1.45, fontWeight: 500 }}>
+                        ✓ Once authorized, <strong>{selectedVisit.patientName}</strong> will immediately appear at the top of the live queue for doctors in <strong>{targetDept}</strong>, complete with collected vitals and clinical warning risk.
+                      </div>
+                    </div>
+
                     {/* Early Warning Score (NEWS2) & Urgency HUD */}
                     <div
                       style={{
@@ -1747,7 +1912,7 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
                         }}
                       >
                         <Send size={15} />
-                        <span>{saving ? 'Transmitting to EMR...' : 'Authorize Vitals & Dispatch to Doctor'}</span>
+                        <span>{saving ? 'Transmitting to EMR & Routing...' : `Authorize Vitals & Route to ${targetDept}`}</span>
                       </button>
                     </div>
                   </div>
