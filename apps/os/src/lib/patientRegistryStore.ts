@@ -107,8 +107,47 @@ export function listPatients(facilityId?: string): FacilityPatient[] {
 }
 
 export function getPatient(id: string): FacilityPatient | undefined {
-  return readAll().find((p) => p.id === id || p.hospitalNumber === id);
+  const q = (id || '').trim();
+  const qDigits = q.replace(/\D/g, '');
+  return readAll().find(
+    (p) =>
+      p.id === q ||
+      p.hospitalNumber === q ||
+      // Invisible NIN binding — NIN resolves to the same patient as their ID
+      (qDigits.length === 11 && (p.nin || '').replace(/\D/g, '') === qDigits)
+  );
 }
+
+/**
+ * Look up a patient by their NIN (invisible binding).
+ * Returns undefined if no match — callers must not expose NIN as a "search mode"
+ * to end users; NIN resolution should feel transparent.
+ */
+export function getPatientByNin(nin: string, facilityId?: string): FacilityPatient | undefined {
+  const digits = (nin || '').replace(/\D/g, '');
+  if (digits.length !== 11) return undefined;
+  const all = facilityId ? listPatients(facilityId) : readAll();
+  return all.find((p) => (p.nin || '').replace(/\D/g, '') === digits);
+}
+
+/**
+ * Cross-facility lookup: check if a NIN exists in ANY facility in the registry.
+ * Enables federated demographic import when a patient transfers or presents at a new facility.
+ */
+export function getCrossFacilityPatientByNin(
+  nin: string,
+  excludeFacilityId?: string
+): FacilityPatient | undefined {
+  const digits = (nin || '').replace(/\D/g, '');
+  if (digits.length !== 11) return undefined;
+  const all = readAll();
+  return all.find(
+    (p) =>
+      (p.nin || '').replace(/\D/g, '') === digits &&
+      (!excludeFacilityId || p.facilityId !== excludeFacilityId)
+  );
+}
+
 
 export function upsertPatient(patient: FacilityPatient): FacilityPatient {
   const all = readAll();

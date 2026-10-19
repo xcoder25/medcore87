@@ -33,6 +33,7 @@ export interface StatewideHealthCard {
   cardStatus: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' | 'REVOKED';
   issuingAuthority: string;
   stateMinistry: string;
+  nin?: string;
 }
 
 export type ScanRoleMode = 'paramedic' | 'clinic' | 'public';
@@ -211,6 +212,7 @@ export function getOrCreateStateHealthCard(patient: FacilityPatient): StatewideH
     cardStatus: patient.status === 'inactive' ? 'SUSPENDED' : 'ACTIVE',
     issuingAuthority: 'ARISE State Health Information Exchange',
     stateMinistry: 'Akwa Ibom State Ministry of Health',
+    nin: patient.nin,
   };
 }
 
@@ -351,6 +353,20 @@ export function generateFhirR4Bundle(card: StatewideHealthCard, patient: Facilit
         system: `http://facility.medcore.ng/${patient.facilityId}/mrn`,
         value: patient.hospitalNumber,
       },
+      ...(patient.nin ? [{
+        use: 'official' as const,
+        type: {
+          coding: [
+            {
+              system: 'http://terminology.hl7.org/CodeSystem/v2-0203',
+              code: 'NNNG',
+              display: 'National Identity Number',
+            },
+          ],
+        },
+        system: 'http://nimc.gov.ng/nin',
+        value: patient.nin,
+      }] : []),
     ],
     active: patient.status !== 'inactive',
     name: [

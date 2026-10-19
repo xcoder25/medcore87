@@ -790,6 +790,20 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
                     {activeCard.cardStatus} · Rotatable Token
                   </div>
                 </div>
+
+                <div>
+                  <div style={{ color: '#64748B', fontWeight: 600 }}>National Identity (NIN)</div>
+                  <div style={{ fontWeight: 800, color: activeCard.nin ? '#047857' : '#64748B', marginTop: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    {activeCard.nin ? (
+                      <>
+                        <ShieldCheck size={14} color="#047857" />
+                        <span>Bound ({activeCard.nin.slice(0, 4)}••••{activeCard.nin.slice(-3)})</span>
+                      </>
+                    ) : (
+                      <span>Unbound (Optional)</span>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Emergency Alert Reasons if any */}
@@ -1324,6 +1338,35 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
                   <option value="AB+">AB+</option>
                   <option value="AB-">AB-</option>
                 </select>
+              </label>
+            </div>
+
+            {/* National Identity & Health Insurance Identification */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>
+                National Identity Number (NIN)
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#047857', marginLeft: 6 }}>
+                  (Binds to Digital Health Card)
+                </span>
+                <input
+                  type="text"
+                  maxLength={11}
+                  value={form.nin}
+                  onChange={(e) => setForm({ ...form, nin: e.target.value.replace(/\D/g, '').slice(0, 11) })}
+                  style={{ width: '100%', padding: '8px 12px', marginTop: 4, borderRadius: 8, border: '1px solid #CBD5E1' }}
+                  placeholder="11-digit NIN (e.g. 12345678901)"
+                />
+              </label>
+
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>
+                NHIA / State Scheme Number
+                <input
+                  type="text"
+                  value={form.nhiaNumber}
+                  onChange={(e) => setForm({ ...form, nhiaNumber: e.target.value })}
+                  style={{ width: '100%', padding: '8px 12px', marginTop: 4, borderRadius: 8, border: '1px solid #CBD5E1' }}
+                  placeholder="e.g. AKSHIA-POL-88201"
+                />
               </label>
             </div>
 

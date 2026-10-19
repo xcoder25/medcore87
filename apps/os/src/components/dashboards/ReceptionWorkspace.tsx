@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * World-class Reception OS — register, NIN quick-reg, queue, POS, insurance, appointments
+ * World-class Reception OS — register, queue, POS, insurance, appointments
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
@@ -47,7 +47,6 @@ import {
   NIGERIA_INSURANCE,
   RECEPTION_DEPTS,
   CONSULT_FEES,
-  lookupNin,
   verifyInsurance,
 } from '../../lib/receptionConstants';
 import { emitLiveAction } from '../../lib/liveActions';
@@ -66,7 +65,9 @@ import { PaystackBrandedCheckout } from '../reception/PaystackBrandedCheckout';
 import { hasPaystackKey } from '../../lib/paystackClient';
 import { withViewTransition, measureRect, flipElement } from '../../lib/motion';
 import { appendAudit } from '../../lib/auditLogStore';
-import { sendPatientAlert } from '../../lib/integrations/gateways';
+import { sendPatientAlert, verifyNinLive } from '../../lib/integrations/gateways';
+import { getPatientByNin, getCrossFacilityPatientByNin } from '../../lib/patientRegistryStore';
+import { getOrCreateStateHealthCard } from '../../lib/stateHealthCardService';
 import { SearchablePatientSelect } from '../common/SearchablePatientSelect';
 import {
   orchestrateArrival,
@@ -327,8 +328,10 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [panelOpen, setPanelOpen] = useState(false);
   const [regStep, setRegStep] = useState<RegStep>(1);
   const [reg, setReg] = useState(emptyReg);
-  const [ninBusy, setNinBusy] = useState(false);
-  const [ninMsg, setNinMsg] = useState('');
+  /** 'idle' | 'checking' | 'prefilled' | 'conflict' | 'invalid' */
+  const [ninStatus, setNinStatus] = useState<'idle' | 'checking' | 'prefilled' | 'conflict' | 'invalid'>('idle');
+  const [ninConflictPatient, setNinConflictPatient] = useState<FacilityPatient | null>(null);
+  const [crossFacilityPatient, setCrossFacilityPatient] = useState<FacilityPatient | null>(null);
   const [insVerify, setInsVerify] = useState<ReturnType<typeof verifyInsurance> | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [aiCard, setAiCard] = useState<AiCheckInCard | null>(null);
@@ -483,6 +486,97 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     setCiAmount(String(CONSULT_FEES[ciDept] ?? 5000));
   }, [ciDept]);
 
+  // ── #4 Smart NIN validation (runs synchronously on every change) ──────────
+  const ninValidationWarning = useMemo(() => {
+    const digits = reg.nin.replace(/\D/g, '');
+    if (!digits || digits.length < 11) return null;
+    // Detect all-same digit (e.g. 11111111111)
+    if (/^(\d)\1{10}$/.test(digits)) return 'Looks like a placeholder — all digits are the same';
+    // Detect sequential run (12345678901, etc.)
+    const isSequential = [...digits].every((d, i, a) => i === 0 || Math.abs(Number(d) - Number(a[i - 1])) <= 1);
+    if (isSequential) return 'Possible sequential pattern — verify the NIN with the patient';
+    return null;
+  }, [reg.nin]);
+
+  // ── #1 & #3 NIN Conflict Guard & Cross-Facility Continuity ─────────────
+  useEffect(() => {
+    const digits = reg.nin.replace(/\D/g, '');
+    if (digits.length !== 11) {
+      setNinStatus('idle');
+      setNinConflictPatient(null);
+      setCrossFacilityPatient(null);
+      return;
+    }
+
+    // 1. Check local facility duplicate
+    const existing = getPatientByNin(digits, facilityId);
+    if (existing) {
+      setNinStatus('conflict');
+      setNinConflictPatient(existing);
+      setCrossFacilityPatient(null);
+      return;
+    }
+    setNinConflictPatient(null);
+
+    // 2. Check cross-facility statewide match (Feature #3)
+    const crossExisting = getCrossFacilityPatientByNin(digits, facilityId);
+    if (crossExisting) {
+      setCrossFacilityPatient(crossExisting);
+      setNinStatus('prefilled');
+      // If name fields are still empty, auto-populate demographics from cross-facility record
+      const namesEmpty = !reg.firstName.trim() && !reg.lastName.trim();
+      if (namesEmpty) {
+        setReg((prev) => ({
+          ...prev,
+          firstName: crossExisting.firstName || prev.firstName,
+          lastName: crossExisting.lastName || prev.lastName,
+          middleName: crossExisting.middleName || prev.middleName,
+          dob: crossExisting.dob || prev.dob,
+          sex: crossExisting.sex || prev.sex,
+          phone: crossExisting.phone || prev.phone,
+          email: crossExisting.email || prev.email,
+          address: crossExisting.address || prev.address,
+          state: crossExisting.state || prev.state,
+          lga: crossExisting.lga || prev.lga,
+          bloodGroup: crossExisting.bloodGroup || prev.bloodGroup,
+          genotype: crossExisting.genotype || prev.genotype,
+          emergencyContact: crossExisting.emergencyContact || prev.emergencyContact,
+          emergencyRelation: crossExisting.emergencyRelation || prev.emergencyRelation,
+          occupation: crossExisting.occupation || prev.occupation,
+        }));
+      }
+      return;
+    }
+    setCrossFacilityPatient(null);
+
+    // ── #2 Gateway Auto-Prefill — silent, non-blocking ──────────────────────
+    // Only prefill if the main name fields are still empty (don't overwrite deliberate entries)
+    const namesEmpty = !reg.firstName.trim() && !reg.lastName.trim();
+    if (!namesEmpty) {
+      setNinStatus('idle');
+      return;
+    }
+    setNinStatus('checking');
+    void verifyNinLive(digits).then((result) => {
+      if (!result.ok || !result.data) {
+        setNinStatus('idle');
+        return;
+      }
+      const d = result.data;
+      setReg((prev) => ({
+        ...prev,
+        firstName:    d.firstName  || prev.firstName,
+        lastName:     d.lastName   || prev.lastName,
+        middleName:   d.middleName || prev.middleName,
+        dob:          d.dob        || prev.dob,
+        sex:          (d.sex && ['Male','Female','Other'].includes(d.sex) ? d.sex as FacilityPatient['sex'] : prev.sex),
+        phone:        d.phone      || prev.phone,
+      }));
+      setNinStatus('prefilled');
+    }).catch(() => setNinStatus('idle'));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reg.nin, facilityId]);
+
   const flash = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
@@ -556,40 +650,6 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     reader.readAsDataURL(file);
   };
 
-  const runNinLookup = () => {
-    const nin = reg.nin.replace(/\\D/g, '');
-    if (nin.length < 11) {
-      setNinMsg('Enter 11-digit NIN');
-      return;
-    }
-    setNinBusy(true);
-    setNinMsg('Querying identity service…');
-    setTimeout(() => {
-      const hit = lookupNin(nin);
-      setNinBusy(false);
-      if (!hit) {
-        setNinMsg('No match in pilot directory — continue manual entry');
-        return;
-      }
-      setReg((r) => ({
-        ...r,
-        nin,
-        firstName: hit.firstName,
-        lastName: hit.lastName,
-        middleName: hit.middleName || '',
-        dob: hit.dob,
-        sex: hit.sex,
-        phone: hit.phone,
-        address: hit.address,
-        state: hit.state,
-        lga: hit.lga,
-      }));
-      setNinMsg('NIN verified — fields auto-filled');
-      setRegStep(2);
-      flash('Quick registration from NIN ready');
-    }, 700);
-  };
-
   const runInsVerify = () => {
     const res = verifyInsurance(reg.insuranceProvider, reg.insuranceId || reg.nhiaNumber || '');
     setInsVerify(res);
@@ -649,9 +709,26 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       flash('First name, last name and phone are required');
       return;
     }
+
+    // ── #1 NIN Conflict Guard — hard block on duplicate NIN ─────────────────
+    if (reg.nin) {
+      const digits = reg.nin.replace(/\D/g, '');
+      if (digits.length === 11) {
+        const conflict = getPatientByNin(digits, facilityId);
+        if (conflict) {
+          flash(`NIN already registered to ${conflict.firstName} ${conflict.lastName} (${conflict.hospitalNumber}). Check if this is a duplicate registration.`);
+          setNinStatus('conflict');
+          setNinConflictPatient(conflict);
+          return;
+        }
+      }
+    }
+
+    const shid = `AKSHIA-${Date.now().toString(36).toUpperCase().slice(-6)}`;
     const patient: FacilityPatient = {
       id: `PT-${Date.now().toString(36).toUpperCase()}`,
       hospitalNumber: generateHospitalNumber(facilityId),
+      shid,
       firstName: reg.firstName.trim(),
       middleName: reg.middleName.trim() || undefined,
       lastName: reg.lastName.trim(),
@@ -677,16 +754,40 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       facilityName,
       status: 'active',
       registeredAt: new Date().toISOString(),
+      cardIssueDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      cardExpiryDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 3)
+        .toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     };
     upsertPatient(patient);
+
+    // ── #5 Auto-draft Statewide Digital Health Card ──────────────────────────
+    // Non-blocking — card is created in background; receptionist sees confirmation badge
+    void (async () => {
+      try {
+        getOrCreateStateHealthCard(patient); // Warms the card service & persists via upsert pipeline
+        appendAudit({
+          facilityId,
+          actor: session.name,
+          actorBadge: session.badgeId,
+          action: 'card_auto_issued',
+          entity: 'patient',
+          entityId: patient.id,
+          detail: `SHID ${shid}${patient.nin ? ` · NIN bound` : ' · No NIN'}`,
+        });
+      } catch { /* non-critical */ }
+    })();
+
     setSelected(patient);
     setPanelOpen(true);
     goView('home');
     setReg(emptyReg);
     setRegStep(1);
+    setNinStatus('idle');
+    setNinConflictPatient(null);
+    setCrossFacilityPatient(null);
     setInsVerify(null);
     stopCam();
-    emitLiveAction(`Patient registered · ${patient.hospitalNumber}`, { module: 'reception' });
+    emitLiveAction(`Patient registered · ${patient.hospitalNumber}${patient.nin ? ' · NIN bound' : ''}`, { module: 'reception' });
 
     // Digital handoff → Accounts: registration / folder fee auto-sent immediately
     const fee =
@@ -697,13 +798,15 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       const req = autoSendToAccounts(patient, fee, 'New folder · Registration fee');
       if (req) {
         flash(
-          `Registered ${fullName(patient)} · ${patient.hospitalNumber} · Auto-sent ₦${fee.toLocaleString()} invoice to Accounts (${req.invoiceNumber}).`
+          `Registered ${fullName(patient)} · ${patient.hospitalNumber}${
+            patient.nin ? ' · 🔗 NIN bound' : ''
+          } · Auto-sent ₦${fee.toLocaleString()} to Accounts (${req.invoiceNumber}).`
         );
       } else {
-        flash(`Registered ${fullName(patient)} · ${patient.hospitalNumber}`);
+        flash(`Registered ${fullName(patient)} · ${patient.hospitalNumber}${patient.nin ? ' · NIN bound' : ''}`);
       }
     } else {
-      flash(`Registered ${fullName(patient)} · ${patient.hospitalNumber}`);
+      flash(`Registered ${fullName(patient)} · ${patient.hospitalNumber}${patient.nin ? ' · 🔗 NIN bound to digital card' : ''}`);
     }
   };
 
@@ -1199,7 +1302,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const tools = [
     { id: 'search' as View, icon: Search, label: 'Find patient', desc: 'Name · phone · hospital no.' },
     { id: 'scan' as View, icon: QrCode, label: 'Scan ID / QR', desc: 'Card scan · badge lookup' },
-    { id: 'register' as View, icon: UserPlus, label: 'Register', desc: 'Full form · NIN quick' },
+    { id: 'register' as View, icon: UserPlus, label: 'Register', desc: 'New patient · full form' },
     { id: 'walkin' as View, icon: Users, label: 'Walk-in', desc: 'No appointment · queue now' },
     { id: 'appointments' as View, icon: Calendar, label: 'Appointments', desc: 'Book · confirm · arrive' },
     { id: 'queue' as View, icon: Ticket, label: 'Live queue', desc: 'Call · skip · complete' },
@@ -1465,7 +1568,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
           <div style={{ background: 'linear-gradient(90deg,#0284C7,#0D9488)', color: '#fff', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontWeight: 800, fontSize: 16 }}>Patient registration</div>
-              <div style={{ fontSize: 12, opacity: 0.9 }}>Step {regStep} of 4 · NIN quick-reg available</div>
+              <div style={{ fontSize: 12, opacity: 0.9 }}>Step {regStep} of 4</div>
             </div>
             <button type="button" onClick={() => goView('home')} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
               Cancel
@@ -1493,39 +1596,99 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
           <div style={{ padding: 18 }}>
             {regStep === 1 && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <div style={{ gridColumn: '1 / -1', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 12, padding: 14 }}>
-                  <div style={{ fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <ScanLine size={16} /> Quick reg with NIN
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                    <input
-                      style={inputStyle}
-                      placeholder="11-digit NIN"
-                      value={reg.nin}
-                      onChange={(e) => setReg({ ...reg, nin: e.target.value })}
-                      maxLength={11}
-                    />
-                    <button
-                      type="button"
-                      disabled={ninBusy}
-                      onClick={runNinLookup}
-                      style={{
-                        background: C.teal,
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: 10,
-                        padding: '0 16px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {ninBusy ? 'Looking up…' : 'Lookup & fill'}
-                    </button>
-                  </div>
-                  {ninMsg && <div style={{ fontSize: 12, marginTop: 8, color: '#166534' }}>{ninMsg}</div>}
-                  <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>Pilot: 12345678901 · 98765432109 · 11122233344</div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={labelStyle}>
+                    National Identity Number (NIN)
+                    <span style={{ fontSize: 11, fontWeight: 500, color: C.muted, marginLeft: 6 }}>(optional)</span>
+                    {ninStatus === 'checking' && (
+                      <span style={{ fontSize: 11, color: C.blue, marginLeft: 8 }}>⟳ Checking…</span>
+                    )}
+                    {ninStatus === 'prefilled' && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#059669', marginLeft: 8 }}>✓ Prefilled from NIMC</span>
+                    )}
+                  </label>
+                  <input
+                    style={{
+                      ...inputStyle,
+                      borderColor: ninStatus === 'conflict' ? '#EF4444'
+                                 : ninStatus === 'prefilled' ? '#10B981'
+                                 : ninStatus === 'checking' ? C.blue
+                                 : C.border,
+                      transition: 'border-color 0.2s',
+                    }}
+                    placeholder="11-digit NIN (e.g. 12345678901)"
+                    value={reg.nin}
+                    onChange={(e) => {
+                      setNinStatus('idle');
+                      setNinConflictPatient(null);
+                      setReg({ ...reg, nin: e.target.value.replace(/\D/g, '').slice(0, 11) });
+                    }}
+                    maxLength={11}
+                  />
+                  {/* #1 Conflict banner */}
+                  {ninStatus === 'conflict' && ninConflictPatient && (
+                    <div style={{ marginTop: 6, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+                      <span style={{ color: '#B91C1C', fontWeight: 700 }}>⚠ Duplicate NIN detected — </span>
+                      <span style={{ color: '#7F1D1D' }}>
+                        already registered to <strong>{ninConflictPatient.firstName} {ninConflictPatient.lastName}</strong> ({ninConflictPatient.hospitalNumber}).
+                        Open their record or clear the NIN to continue.
+                      </span>
+                    </div>
+                  )}
+                  {/* #3 Cross-Facility Recognized Link */}
+                  {crossFacilityPatient && ninStatus !== 'conflict' && (
+                    <div style={{ marginTop: 6, background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                        <span style={{ color: '#1E40AF', fontWeight: 600 }}>
+                          🌐 <strong>State Registry Match:</strong> Recognized from {crossFacilityPatient.facilityName || 'network facility'} ({crossFacilityPatient.hospitalNumber}).
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReg((prev) => ({
+                              ...prev,
+                              firstName: crossFacilityPatient.firstName || prev.firstName,
+                              middleName: crossFacilityPatient.middleName || prev.middleName,
+                              lastName: crossFacilityPatient.lastName || prev.lastName,
+                              dob: crossFacilityPatient.dob || prev.dob,
+                              sex: crossFacilityPatient.sex || prev.sex,
+                              phone: crossFacilityPatient.phone || prev.phone,
+                              email: crossFacilityPatient.email || prev.email,
+                              address: crossFacilityPatient.address || prev.address,
+                              state: crossFacilityPatient.state || prev.state,
+                              lga: crossFacilityPatient.lga || prev.lga,
+                              bloodGroup: crossFacilityPatient.bloodGroup || prev.bloodGroup,
+                              genotype: crossFacilityPatient.genotype || prev.genotype,
+                              emergencyContact: crossFacilityPatient.emergencyContact || prev.emergencyContact,
+                              emergencyRelation: crossFacilityPatient.emergencyRelation || prev.emergencyRelation,
+                              occupation: crossFacilityPatient.occupation || prev.occupation,
+                            }));
+                            flash(`✓ Demographics loaded from ${crossFacilityPatient.facilityName || 'State Registry'}`);
+                          }}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: 6,
+                            border: 'none',
+                            background: '#2563EB',
+                            color: '#fff',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Re-import Demographics
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {/* #4 Suspicious pattern warning */}
+                  {ninValidationWarning && ninStatus !== 'conflict' && (
+                    <div style={{ marginTop: 6, background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '6px 10px', fontSize: 11, color: '#92400E' }}>
+                      ⚠ {ninValidationWarning}
+                    </div>
+                  )}
                 </div>
+
                 <div>
                   <label style={labelStyle}>First name *</label>
                   <input style={inputStyle} value={reg.firstName} onChange={(e) => setReg({ ...reg, firstName: e.target.value })} />
@@ -1748,7 +1911,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       Insurance:{' '}
                       {NIGERIA_INSURANCE.find((i) => i.id === reg.insuranceProvider)?.name || reg.insuranceProvider}
                     </div>
-                    {reg.nin && <div>NIN: {reg.nin}</div>}
+                    {reg.nin ? (
+                      <div style={{ color: '#047857', fontWeight: 700 }}>
+                        NIN (Bound to Card): {reg.nin}
+                      </div>
+                    ) : (
+                      <div style={{ color: C.muted }}>NIN: Not provided</div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1994,7 +2163,35 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       flash(`Card matched · ${fullName(hit)}`);
                     }
                   } else {
-                    flash('No patient found for this scan — register or try Find patient');
+                    const cross = getCrossFacilityPatientByNin(q, facilityId);
+                    if (cross) {
+                      setReg({
+                        ...emptyReg,
+                        firstName: cross.firstName || '',
+                        middleName: cross.middleName || '',
+                        lastName: cross.lastName || '',
+                        dob: cross.dob || '',
+                        sex: cross.sex || 'Female',
+                        phone: cross.phone || '',
+                        email: cross.email || '',
+                        address: cross.address || '',
+                        state: cross.state || 'Akwa Ibom',
+                        lga: cross.lga || 'Uyo',
+                        bloodGroup: cross.bloodGroup || '',
+                        genotype: cross.genotype || '',
+                        emergencyContact: cross.emergencyContact || '',
+                        emergencyRelation: cross.emergencyRelation || '',
+                        occupation: cross.occupation || '',
+                        nin: cross.nin || q.replace(/\D/g, ''),
+                      });
+                      setCrossFacilityPatient(cross);
+                      setNinStatus('prefilled');
+                      setScanCode('');
+                      goView('register');
+                      flash(`🌐 Patient recognized in State Registry from ${cross.facilityName || 'network facility'}! Demographics prefilled.`);
+                    } else {
+                      flash('No patient found for this scan — register or try Find patient');
+                    }
                   }
                 }
               }}
@@ -2026,7 +2223,6 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   if (hit) {
                     setSelected(hit);
                     setScanCode('');
-                    // If we came from the walk-in flow, return there with patient pre-selected
                     const fromWalkIn = viewHistory[viewHistory.length - 1] === 'walkin';
                     if (fromWalkIn) {
                       setWalkStep(2);
@@ -2037,13 +2233,62 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       flash(`Matched · ${fullName(hit)}`);
                     }
                   } else {
-                    flash('No match — register new patient');
-                    goView('register');
+                    const cross = getCrossFacilityPatientByNin(q, facilityId);
+                    if (cross) {
+                      setReg({
+                        ...emptyReg,
+                        firstName: cross.firstName || '',
+                        middleName: cross.middleName || '',
+                        lastName: cross.lastName || '',
+                        dob: cross.dob || '',
+                        sex: cross.sex || 'Female',
+                        phone: cross.phone || '',
+                        email: cross.email || '',
+                        address: cross.address || '',
+                        state: cross.state || 'Akwa Ibom',
+                        lga: cross.lga || 'Uyo',
+                        bloodGroup: cross.bloodGroup || '',
+                        genotype: cross.genotype || '',
+                        emergencyContact: cross.emergencyContact || '',
+                        emergencyRelation: cross.emergencyRelation || '',
+                        occupation: cross.occupation || '',
+                        nin: cross.nin || q.replace(/\D/g, ''),
+                      });
+                      setCrossFacilityPatient(cross);
+                      setNinStatus('prefilled');
+                      setScanCode('');
+                      goView('register');
+                      flash(`🌐 Patient recognized in State Registry from ${cross.facilityName || 'network facility'}! Demographics prefilled.`);
+                    } else {
+                      flash('No match — register new patient');
+                      goView('register');
+                    }
                   }
                 }}
                 style={{ padding: '12px 18px', borderRadius: 10, border: 'none', background: C.blue, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
               >
                 Look up card
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const q = scanCode.trim();
+                  if (!q) {
+                    flash('Enter NIN or card number first');
+                    return;
+                  }
+                  emitPatientPresence({
+                    facilityId,
+                    patientKey: q,
+                    source: 'kiosk',
+                    intent: 'qr_scan',
+                  });
+                  setScanCode('');
+                  flash('⚡ Self-service arrival registered — Front desk notified!');
+                }}
+                style={{ padding: '12px 18px', borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
+              >
+                Self-Service Check-in
               </button>
               <button
                 type="button"

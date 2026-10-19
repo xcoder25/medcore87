@@ -618,3 +618,78 @@ export function scrubInsuranceClaim(input: {
     flags,
   };
 }
+
+/* =====================================================================
+ * WORKFLOW 1 EXTENSION: NATIONAL IDENTITY (NIN) DATA FIDELITY KPI
+ * ===================================================================== */
+
+export interface NinCompletenessReport {
+  facilityId: string;
+  totalPatients: number;
+  boundNinCount: number;
+  missingNinCount: number;
+  completenessPercent: number; // 0 - 100
+  qualityTier: 'gold' | 'silver' | 'bronze' | 'action_needed';
+  nudgeMessage: string;
+  recentlyUnbound: FacilityPatient[];
+}
+
+/**
+ * Computes National Identity Number (NIN) binding completeness score for a facility.
+ * Used by Medical Directors, HIM officers, and Front Desk leads to monitor compliance
+ * for State Health Insurance (AKSHIA/NHIA) and longitudinal record linkage.
+ */
+export function calculateNinCompleteness(facilityId: string): NinCompletenessReport {
+  const patients = listPatients(facilityId);
+  const total = patients.length;
+  if (total === 0) {
+    return {
+      facilityId,
+      totalPatients: 0,
+      boundNinCount: 0,
+      missingNinCount: 0,
+      completenessPercent: 100,
+      qualityTier: 'gold',
+      nudgeMessage: 'No patients registered yet.',
+      recentlyUnbound: [],
+    };
+  }
+
+  const bound = patients.filter((p) => {
+    const d = (p.nin || '').replace(/\D/g, '');
+    return d.length === 11;
+  });
+
+  const unbound = patients.filter((p) => {
+    const d = (p.nin || '').replace(/\D/g, '');
+    return d.length !== 11;
+  });
+
+  const percent = Math.round((bound.length / total) * 100);
+
+  let qualityTier: NinCompletenessReport['qualityTier'] = 'gold';
+  let nudge = 'Outstanding identity fidelity — high coverage for state/national health cards.';
+
+  if (percent < 40) {
+    qualityTier = 'action_needed';
+    nudge = `${unbound.length} patient${unbound.length === 1 ? '' : 's'} missing national identity link. Capture at check-in to enable digital health card lookup.`;
+  } else if (percent < 70) {
+    qualityTier = 'bronze';
+    nudge = `${unbound.length} patient${unbound.length === 1 ? '' : 's'} missing NIN. Target 85%+ for automated insurance pre-auth.`;
+  } else if (percent < 85) {
+    qualityTier = 'silver';
+    nudge = 'Good identity compliance. Encourage capture for returning walk-ins.';
+  }
+
+  return {
+    facilityId,
+    totalPatients: total,
+    boundNinCount: bound.length,
+    missingNinCount: unbound.length,
+    completenessPercent: percent,
+    qualityTier,
+    nudgeMessage: nudge,
+    recentlyUnbound: unbound.slice(0, 10),
+  };
+}
+

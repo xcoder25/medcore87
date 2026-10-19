@@ -32,7 +32,7 @@ export type PresencePayload = {
   intent?: ArrivalIntent;
   /** ISO time of arrival / gesture */
   at?: string;
-  source?: 'mobile_app' | 'gesture' | 'qr' | 'beacon' | 'sim';
+  source?: 'mobile_app' | 'gesture' | 'qr' | 'beacon' | 'sim' | 'kiosk';
   displayName?: string;
 };
 

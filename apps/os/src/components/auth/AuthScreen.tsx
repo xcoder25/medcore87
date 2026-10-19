@@ -201,6 +201,20 @@ export const PRESET_STAFF: PresetStaff[] = [
     permissions: ['*'],
     pin: '1234', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#374151',
   },
+  {
+    badgeId: 'IGH-REC-011', name: 'Blessing Bassey', role: 'Front Desk Officer', shortRole: 'Reception',
+    title: 'Senior Reception Officer', roleKey: 'reception', clearanceLevel: 2, clearanceLabel: 'Front Desk',
+    department: 'Patient Access & Front Desk', initials: 'BB',
+    permissions: ['dashboard', 'patient-flow', 'patient-card', 'appointments', 'desk-settings', 'front-desk-wq', 'ai'],
+    pin: '1234', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#0284C7',
+  },
+  {
+    badgeId: 'GHI-MID-012', name: 'Sister Mary Ekong', role: 'Chief Midwife', shortRole: 'Midwife',
+    title: 'Chief Nursing & Midwifery Officer', roleKey: 'midwife', clearanceLevel: 4, clearanceLabel: 'Maternity',
+    department: 'Maternity & Labour Ward', initials: 'ME',
+    permissions: ['dashboard', 'maternity', 'paediatrics', 'beds', 'nursing', 'emergency', 'blood-bank', 'ai'],
+    pin: '1234', hospitalId: 'GH-IKE', hospitalName: 'General Hospital, Ikot Ekpene', color: '#DB2777',
+  },
 ];
 
 export interface AuthScreenProps {

@@ -19,6 +19,7 @@ import {
   evaluateLabDeltaCheck,
   generateAiDischargeSummary,
   scrubInsuranceClaim,
+  calculateNinCompleteness,
   type ClinicalProtocol,
 } from '../../lib/workflowIntelligenceSuite';
 import { listPatients, type FacilityPatient } from '../../lib/patientRegistryStore';
@@ -28,6 +29,7 @@ import { listVitals } from '../../lib/nursingVitalsStore';
 import {
   Brain,
   ShieldAlert,
+  Fingerprint,
   Sparkles,
   Users,
   Activity,
@@ -84,6 +86,7 @@ export const WorkflowIntelligenceHub: React.FC<Props> = ({ session, onClose }) =
     });
   }, [facilityId, testName, testPhone]);
   const waitPrediction = useMemo(() => predictQueueWaitTime(facilityId), [facilityId]);
+  const ninReport = useMemo(() => calculateNinCompleteness(facilityId), [facilityId, patients.length]);
 
   // Workflow 2 States (qSOFA & Sepsis)
   const [qBpSys, setQBpSys] = useState('95');
@@ -487,6 +490,99 @@ export const WorkflowIntelligenceHub: React.FC<Props> = ({ session, onClose }) =
                   </div>
                   <div style={{ fontSize: 10, color: '#94A3B8' }}>Target Throughput</div>
                 </div>
+              </div>
+            </div>
+
+            {/* National Identity (NIN) Linkage & Statewide Health Card Readiness */}
+            <div style={{ gridColumn: '1 / -1', background: '#FFFFFF', borderRadius: 16, border: '1px solid #E2E8F0', padding: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Fingerprint size={22} color="#0284C7" />
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#0F172A' }}>
+                      National Identity (NIN) Fidelity & Statewide Health Card Readiness
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748B' }}>
+                      Automated linkage fidelity tracking for State Health Insurance (AKSHIA/NHIA) and longitudinal MPI continuity
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      padding: '4px 12px',
+                      borderRadius: 8,
+                      background:
+                        ninReport.qualityTier === 'gold'
+                          ? '#ECFDF5'
+                          : ninReport.qualityTier === 'silver'
+                          ? '#EFF6FF'
+                          : ninReport.qualityTier === 'bronze'
+                          ? '#FFFBEB'
+                          : '#FEF2F2',
+                      color:
+                        ninReport.qualityTier === 'gold'
+                          ? '#059669'
+                          : ninReport.qualityTier === 'silver'
+                          ? '#2563EB'
+                          : ninReport.qualityTier === 'bronze'
+                          ? '#D97706'
+                          : '#DC2626',
+                      border: `1px solid ${
+                        ninReport.qualityTier === 'gold'
+                          ? '#A7F3D0'
+                          : ninReport.qualityTier === 'silver'
+                          ? '#BFDBFE'
+                          : ninReport.qualityTier === 'bronze'
+                          ? '#FDE68A'
+                          : '#FECACA'
+                      }`,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Tier: {ninReport.qualityTier.replace('_', ' ')}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+                <div style={{ background: '#F8FAFC', padding: 14, borderRadius: 12, border: '1px solid #E2E8F0', textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>BINDING RATE</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: ninReport.completenessPercent >= 80 ? '#059669' : '#D97706', marginTop: 4 }}>
+                    {ninReport.completenessPercent}%
+                  </div>
+                  <div style={{ fontSize: 10, color: '#94A3B8' }}>Registry Compliance</div>
+                </div>
+                <div style={{ background: '#F8FAFC', padding: 14, borderRadius: 12, border: '1px solid #E2E8F0', textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>BOUND NINS</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: '#0284C7', marginTop: 4 }}>
+                    {ninReport.boundNinCount}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#94A3B8' }}>Digital Health Cards Ready</div>
+                </div>
+                <div style={{ background: '#F8FAFC', padding: 14, borderRadius: 12, border: '1px solid #E2E8F0', textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>UNBOUND PATIENTS</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: ninReport.missingNinCount > 0 ? '#E11D48' : '#059669', marginTop: 4 }}>
+                    {ninReport.missingNinCount}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#94A3B8' }}>Action Needed at Desk</div>
+                </div>
+                <div style={{ background: '#F8FAFC', padding: 14, borderRadius: 12, border: '1px solid #E2E8F0', textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>TOTAL REGISTRY</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: '#0F172A', marginTop: 4 }}>
+                    {ninReport.totalPatients}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#94A3B8' }}>Enrolled Facility Folders</div>
+                </div>
+              </div>
+
+              <div style={{ padding: '10px 14px', borderRadius: 10, background: '#F1F5F9', border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 14 }}>💡</span>
+                <span style={{ fontSize: 12, color: '#334155', fontWeight: 600 }}>
+                  <strong>Operational Guidance:</strong> {ninReport.nudgeMessage}
+                </span>
               </div>
             </div>
           </div>

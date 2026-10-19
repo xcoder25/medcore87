@@ -635,7 +635,7 @@ export const StatewideHealthCardRenderer: React.FC<Props> = ({
                 }}
               />
               <div style={{ fontSize: 13.5, fontWeight: 800, color: '#FFFFFF', letterSpacing: '0.01em' }}>
-                {card.fullName} – {card.shid ? `+1 (555) 123-4567` : '+234 802 000 7842'}
+                {card.fullName} · {card.shid}
               </div>
             </div>
 

@@ -1,0 +1,77 @@
+{
+  "name": "MedCore OS • Intelligent Hospital Command Centre",
+  "short_name": "MedCore OS",
+  "description": "Enterprise Hospital Operating System unifying EMR, Clinical CPOE, Bed Management, Real-time Queue Telemetry, LIS, Pharmacy, and Celestia AI.",
+  "id": "com.medcore.os",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0F172A",
+  "theme_color": "#0284C7",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": [
+    "medical",
+    "health",
+    "productivity",
+    "business"
+  ],
+  "icons": [
+    {
+      "src": "/medcore-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/medcore-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Front Desk & Check-in",
+      "short_name": "Front Desk",
+      "description": "Patient Registration, Walk-ins, and Live Queue",
+      "url": "/?view=reception",
+      "icons": [{ "src": "/medcore-logo.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Doctor Clinical Portal",
+      "short_name": "Doctor Portal",
+      "description": "Doctor OPD consultations, CPOE, and e-Prescriptions",
+      "url": "/?view=doctor",
+      "icons": [{ "src": "/medcore-logo.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Nursing Station & Triage",
+      "short_name": "Triage Station",
+      "description": "Vitals capture, NEWS2, qSOFA, and ward telemetry",
+      "url": "/?view=nurse",
+      "icons": [{ "src": "/medcore-logo.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Hospital Command Centre",
+      "short_name": "Command Centre",
+      "description": "Hospital bed capacity, patient flow, and executive analytics",
+      "url": "/?view=command",
+      "icons": [{ "src": "/medcore-logo.png", "sizes": "96x96" }]
+    }
+  ],
+  "prefer_related_applications": false
+}
