@@ -1,10 +1,10 @@
 /**
  * MedCore OS • High-Availability Healthcare Service Worker
- * Version: 1.0.0
+ * Version: 1.1.0
  * Provides offline shell caching, background sync resilience, and instant PWA installability.
  */
 
-const CACHE_NAME = 'medcore-os-shell-v2';
+const CACHE_NAME = 'medcore-os-shell-v3';
 const PRECACHE_ASSETS = [
   '/',
   '/manifest.json',
@@ -26,6 +26,7 @@ self.addEventListener('install', (event) => {
         console.warn('[MedCore SW] Pre-caching warning:', err);
       })
   );
+  self.skipWaiting();
 });
 
 // Activate Event — cleanup outdated caches & claim clients immediately
@@ -56,6 +57,22 @@ self.addEventListener('fetch', (event) => {
 
   // Ignore chrome-extension or third-party tracking
   if (!url.protocol.startsWith('http')) return;
+
+  // CRITICAL: NEVER intercept external APIs, Firestore, or backend endpoints!
+  // Let the browser and Firebase SDK handle their own network/offline state.
+  const isExternal = url.origin !== self.location.origin;
+  const isGoogleFont =
+    url.hostname.includes('fonts.googleapis.com') ||
+    url.hostname.includes('fonts.gstatic.com');
+
+  if (isExternal && !isGoogleFont) {
+    return;
+  }
+
+  // Also skip internal API routes and realtime websockets
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io/')) {
+    return;
+  }
 
   // 1. Navigation requests (HTML pages) -> Network-First with Cache Fallback
   if (req.mode === 'navigate') {
@@ -106,13 +123,26 @@ self.addEventListener('fetch', (event) => {
   // 2. Static assets (images, fonts, stylesheets, scripts) -> Stale-While-Revalidate
   const isStatic =
     url.pathname.match(/\.(png|jpg|jpeg|svg|gif|webp|ico|css|js|woff2?|ttf|otf)$/) ||
-    url.hostname.includes('fonts.googleapis.com') ||
-    url.hostname.includes('fonts.gstatic.com');
+    isGoogleFont;
 
   if (isStatic) {
     event.respondWith(
       caches.match(req).then((cached) => {
-        const fetchPromise = fetch(req)
+        if (cached) {
+          // Revalidate in background
+          fetch(req)
+            .then((networkResponse) => {
+              if (networkResponse && networkResponse.status === 200) {
+                const clone = networkResponse.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+              }
+            })
+            .catch(() => {});
+          return cached;
+        }
+
+        // Not in cache: fetch from network and cache
+        return fetch(req)
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
               const clone = networkResponse.clone();
@@ -120,16 +150,22 @@ self.addEventListener('fetch', (event) => {
             }
             return networkResponse;
           })
-          .catch(() => cached);
-        return cached || fetchPromise;
+          .catch(async () => {
+            const fallback = await caches.match('/favicon.ico');
+            return fallback || new Response('', { status: 408, statusText: 'Request Timeout' });
+          });
       })
     );
     return;
   }
 
-  // 3. All other requests -> Network with fallback to cache
+  // 3. All other same-origin requests -> Network with fallback to cache or clean 503
   event.respondWith(
-    fetch(req).catch(() => caches.match(req))
+    fetch(req).catch(async () => {
+      const match = await caches.match(req);
+      if (match) return match;
+      return new Response('Network unavailable', { status: 503, statusText: 'Service Unavailable' });
+    })
   );
 });
 
