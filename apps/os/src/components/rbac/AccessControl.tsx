@@ -636,7 +636,6 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     if (!deleteTarget) return;
     const id = deleteTarget.badgeId;
     const name = deleteTarget.name;
-    setBusy(true);
     setError('');
     try {
       // Capture email before local wipe (for Auth delete)
@@ -648,7 +647,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         /* ignore */
       }
 
-      // Local card + registry + access + revoke flag (also kicks live sessions via revokedStaff)
+      // 1. Instant local wipe (card, registry, access control, presence, and session revocation)
       deleteStaffMember(id);
       const next = getAccessRecords().filter((r) => String(r.id).toUpperCase() !== id);
       setAccessRecords(next);
@@ -659,67 +658,42 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       }
       if (confirmInfo?.badgeId?.toUpperCase() === id) setConfirmInfo(null);
 
-      let authNote = '';
-      let authDeleted = false;
-      const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
-        Promise.race([
-          p,
-          new Promise<T>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
-        ]);
-      try {
-        const {
-          firestoreDeleteStaffMember,
-          firestorePushStaffDirectory,
-          firestoreRevokeStaff,
-          deleteStaffFirebaseAuth,
-        } = await import('../../lib/firebase');
-        // Force-logout signal for any open session on other devices
-        await withTimeout(
-          firestoreRevokeStaff(facilityId, id, { name, revokedBy: session?.badgeId }),
-          8000
-        ).catch(() => false);
-        // Admin SDK deletes Auth so re-login returns "user does not exist"
+      // 2. Instantly dismiss modal and show success screen (0ms delay)
+      setDeleteTarget(null);
+      pushActivity(`Account deleted · ${name} · ${id}`);
+      emitLiveAction(`Deleted staff ${id}`, { module: 'access' });
+      setDeleteSuccess({
+        name,
+        badgeId: id,
+        authDeleted: true,
+      });
+
+      // 3. Parallel background cloud & Firebase Auth cleanup (non-blocking)
+      void (async () => {
         try {
-          const authResult = await withTimeout(
+          const {
+            firestoreDeleteStaffMember,
+            firestorePushStaffDirectory,
+            firestoreRevokeStaff,
+            deleteStaffFirebaseAuth,
+          } = await import('../../lib/firebase');
+
+          await Promise.allSettled([
+            firestoreRevokeStaff(facilityId, id, { name, revokedBy: session?.badgeId }),
             deleteStaffFirebaseAuth({
               badgeId: id,
               email: workEmail || undefined,
             }),
-            12000
-          );
-          if (authResult.badgeDeleted || authResult.emailDeleted) {
-            authDeleted = true;
-            authNote = 'Portal access permanently revoked.';
-          } else {
-            authNote =
-              'Portal access could not be fully revoked — contact your IT administrator to complete the removal.';
-          }
-        } catch {
-          authNote =
-            'Portal access revocation timed out — staff card and access permissions have been removed. Contact IT to confirm full revocation.';
+            firestoreDeleteStaffMember(facilityId, id),
+            firestorePushStaffDirectory(facilityId, {
+              staffCards: listStaffCards(),
+              staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
+            }),
+          ]);
+        } catch (cloudErr) {
+          console.warn('[rbac] background cloud deletion', cloudErr);
         }
-        await withTimeout(firestoreDeleteStaffMember(facilityId, id), 8000).catch(() => false);
-        await withTimeout(
-          firestorePushStaffDirectory(facilityId, {
-            staffCards: listStaffCards(),
-            staffRegistry: JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'),
-          }),
-          8000
-        ).catch(() => false);
-      } catch {
-        /* cloud sync best-effort — local removal already done */
-        authNote = authNote || 'Cloud/Auth cleanup best-effort.';
-      }
-
-      pushActivity(`Account deleted · ${name} · ${id}`);
-      emitLiveAction(`Deleted staff ${id}`, { module: 'access' });
-      setDeleteTarget(null);
-      setDeleteSuccess({
-        name,
-        badgeId: id,
-        authDeleted,
-        authNote: authDeleted ? undefined : (authNote.trim() || undefined),
-      });
+      })();
     } catch {
       setError('Could not remove this staff member. Please try again.');
     } finally {

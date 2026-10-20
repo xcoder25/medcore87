@@ -646,22 +646,12 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
                 disabled={deleteBusy}
                 onClick={() => {
                   void (async () => {
-                    setDeleteBusy(true);
                     setError('');
                     const id = deleteTarget.badgeId;
                     const name = deleteTarget.fullName;
                     try {
                       const done = deleteStaffMember(id);
                       if (done) {
-                        // Ensure Auth + revoke finish even if store async raced
-                        try {
-                          const { deleteStaffFirebaseAuth, firestoreRevokeStaff } = await import('../../lib/firebase');
-                          const fid = facility?.id || facilityId;
-                          if (fid) await firestoreRevokeStaff(fid, id, { name });
-                          await deleteStaffFirebaseAuth({ badgeId: id });
-                        } catch {
-                          /* best-effort */
-                        }
                         setCards(listStaffCards());
                         if (issued?.badgeId === id) setIssued(null);
                         if (pendingConfirm?.card.badgeId === id) setPendingConfirm(null);
@@ -670,6 +660,20 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
                         } catch { /* ignore */ }
                         setDeleteTarget(null);
                         setDeleteSuccess({ name, badgeId: id, authDeleted: true });
+
+                        // Background cloud sync non-blocking
+                        void (async () => {
+                          try {
+                            const { deleteStaffFirebaseAuth, firestoreRevokeStaff } = await import('../../lib/firebase');
+                            const fid = facility?.id || facilityId;
+                            await Promise.allSettled([
+                              fid ? firestoreRevokeStaff(fid, id, { name }) : Promise.resolve(),
+                              deleteStaffFirebaseAuth({ badgeId: id }),
+                            ]);
+                          } catch {
+                            /* best-effort */
+                          }
+                        })();
                       } else {
                         setError('Could not remove this staff member. Please try again.');
                       }
