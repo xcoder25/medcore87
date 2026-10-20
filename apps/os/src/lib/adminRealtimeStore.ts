@@ -85,7 +85,12 @@ function write(key: string, value: unknown) {
   // 2) Outbox → Firestore/LAN when online (retries after outage)
   try {
     broadcastLocal(activeFacilityId, key, value);
-    enqueueFacilitySync(activeFacilityId, key, value);
+    // Never enqueue an empty access list to Firestore outbox to avoid clearing shared cloud staff
+    if (key === KEYS.access && Array.isArray(value) && value.length === 0) {
+      // Keep empty access list local-only
+    } else {
+      enqueueFacilitySync(activeFacilityId, key, value);
+    }
   } catch {
     /* still safe locally */
   }
@@ -93,7 +98,13 @@ function write(key: string, value: unknown) {
 
 export function ensureAdminDefaults() {
   if (typeof window === 'undefined') return;
-  if (!localStorage.getItem(KEYS.access)) write(KEYS.access, DEFAULT_ACCESS);
+  if (!localStorage.getItem(KEYS.access)) {
+    try {
+      localStorage.setItem(KEYS.access, JSON.stringify(DEFAULT_ACCESS));
+    } catch {
+      /* ignore */
+    }
+  }
   if (!localStorage.getItem(KEYS.compliance)) write(KEYS.compliance, DEFAULT_COMPLIANCE);
   if (!localStorage.getItem(KEYS.activity)) write(KEYS.activity, []);
   if (!localStorage.getItem(KEYS.positions)) write(KEYS.positions, { open: 0 });

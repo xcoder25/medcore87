@@ -229,7 +229,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     const unsubCol = firestoreSubscribeStaffCollection(facilityId, (staffRows) => {
       try {
         if (isStaffFlushLocked()) return;
-        if (!Array.isArray(staffRows)) return;
+        if (!Array.isArray(staffRows) || staffRows.length === 0) return;
         const registry = staffRows.slice(0, 200).map((s: Record<string, unknown>) => {
           const badgeId = String(s.badgeId || s.id || '')
             .toUpperCase()
@@ -261,6 +261,26 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       }
     });
 
+    const onOnline = () => {
+      try {
+        if (!isStaffFlushLocked()) {
+          syncAccessRosterFromSources(facilityId);
+          const localCards = listStaffCards().filter(
+            (c) => !c.facilityId || c.facilityId.toUpperCase() === facilityId.toUpperCase()
+          );
+          if (localCards.length > 0) {
+            void import('../../lib/firebase').then(({ firestorePushStaffDirectory }) => {
+              void firestorePushStaffDirectory(facilityId, { staffCards: localCards });
+            });
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      scheduleLoad();
+    };
+
+    window.addEventListener('online', onOnline);
     window.addEventListener('medcore-staff-cards-updated', scheduleLoad);
     window.addEventListener('medcore-staff-registry-updated', scheduleLoad);
 
@@ -269,6 +289,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       unsubAdmin();
       unsubDir();
       unsubCol();
+      window.removeEventListener('online', onOnline);
       window.removeEventListener('medcore-staff-cards-updated', scheduleLoad);
       window.removeEventListener('medcore-staff-registry-updated', scheduleLoad);
     };

@@ -206,7 +206,7 @@ const BillingOffice: React.FC<{ session: UserSession; onCollect: (patientId: str
           }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.3 }}>
-                {foundPatient.fullName || `${foundPatient.firstName || ''} ${foundPatient.lastName || ''}`.trim()}
+                {`${foundPatient.firstName || ''} ${foundPatient.lastName || ''}`.trim() || (foundPatient as any).fullName || foundPatient.hospitalNumber}
               </div>
               <div style={{ opacity: 0.85, fontSize: 13, marginTop: 4, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 <span>{foundPatient.hospitalNumber}</span>

@@ -18,6 +18,7 @@ import {
   generateHospitalNumber,
   searchPatients,
   countPatients,
+  clearAllPatients,
   type FacilityPatient,
 } from '../../lib/patientRegistryStore';
 import {
@@ -1536,6 +1537,30 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
+            {patients.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm(`Delete all ${patients.length} registered patients and their visit records for a fresh test?`)) {
+                    clearAllPatients(facilityId);
+                    reload();
+                    flash('All patients deleted. Ready for a fresh test.');
+                  }
+                }}
+                style={{
+                  ...inputStyle,
+                  width: 'auto',
+                  cursor: 'pointer',
+                  background: '#FEF2F2',
+                  color: '#DC2626',
+                  borderColor: '#FCA5A5',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Delete All Patients
+              </button>
+            )}
             <button type="button" onClick={() => goView('home')} style={{ ...inputStyle, width: 'auto', cursor: 'pointer' }}>
               Close
             </button>

@@ -39,6 +39,11 @@ import { startFacilitySyncLoop, probeHospitalApi, isHospitalApiKnown } from '../
 import { firestoreSubscribeFacility, enableFirestoreOffline } from '../../lib/firebase';
 import { getOutboxPendingCount, startOutboxAutoFlush, flushOutbox } from '../../lib/durableOutbox';
 import { isBrowserOnline } from '../../services/offlineStorage';
+import {
+  applyCloudStaffDirectory,
+  isStaffFlushLocked,
+  syncAccessRosterFromSources,
+} from '../../lib/staffCardStore';
 
 type AdminModule =
   | 'dashboard'
@@ -173,6 +178,34 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
     const applyKey = (key: string, value: unknown) => {
       try {
         if (value === undefined) return;
+        // Protect staff from empty or destructive remote overwrites
+        if (
+          key === 'medcore_os_access_control' ||
+          key === 'medcore_os_staff_registry' ||
+          key === 'medcore_staff_id_cards' ||
+          key === 'medcore_os_staff_cards' ||
+          key === 'medcore_staff_cards'
+        ) {
+          if (!Array.isArray(value) || value.length === 0) {
+            if (!isStaffFlushLocked()) return;
+          }
+          if (
+            key === 'medcore_staff_id_cards' ||
+            key === 'medcore_os_staff_cards' ||
+            key === 'medcore_staff_cards'
+          ) {
+            applyCloudStaffDirectory({ staffCards: value as any[], facilityId: fid });
+            return;
+          }
+          if (key === 'medcore_os_staff_registry') {
+            applyCloudStaffDirectory({ staffRegistry: value as any[], facilityId: fid });
+            return;
+          }
+          if (key === 'medcore_os_access_control') {
+            syncAccessRosterFromSources(fid);
+            return;
+          }
+        }
         localStorage.setItem(key, JSON.stringify(value));
         window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key } }));
       } catch { /* ignore */ }

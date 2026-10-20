@@ -298,5 +298,92 @@ export function subscribePatients(cb: () => void): () => void {
 
 /** Wipe all local patient records (fresh facility) */
 export function resetPatientRegistry() {
-  writeAll([]);
+  clearAllPatients();
 }
+
+/**
+ * Completely delete all patients and related patient records (queues, bills, vitals, beds)
+ * for a fresh test, notifying all UI components and updating cloud stores.
+ */
+export function clearAllPatients(facilityId?: string) {
+  if (typeof window === 'undefined') return;
+  const fid = facilityId || 'IGH-EKT';
+
+  try {
+    localStorage.setItem(PATIENT_REGISTRY_KEY, '[]');
+  } catch {
+    try {
+      localStorage.removeItem(PATIENT_REGISTRY_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Clear related clinical / queue / billing records tied to patients
+  const relatedKeys = [
+    'medcore_os_patient_registry_v1',
+    'medcore_os_patient_cache_v1',
+    'medcore_os_reception_ops_v2',
+    'medcore_os_reception_ops_v1',
+    'medcore_os_patient_bills_v1',
+    'medcore_os_payment_receipts_v1',
+    'medcore_os_fd_accounts_requests_v1',
+    'medcore_os_clinical_orders_v1',
+    'medcore_os_nursing_vitals_v1',
+    'medcore_os_bed_board_v1',
+    'medcore_os_theatre_cases_v1',
+    'medcore_os_delta_events_v1',
+    'medcore_os_reconcile_queue_v1',
+  ];
+
+  for (const k of relatedKeys) {
+    try {
+      localStorage.removeItem(k);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Broadcast to all open tabs and active React components
+  window.dispatchEvent(new CustomEvent('medcore-patients-updated', { detail: [] }));
+  window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: PATIENT_REGISTRY_KEY } }));
+  window.dispatchEvent(new CustomEvent('medcore-reception-ops', { detail: { visits: [], appointments: [], payments: [] } }));
+  window.dispatchEvent(new CustomEvent('medcore-clinical-orders', { detail: [] }));
+  window.dispatchEvent(new CustomEvent('medcore-bed-board', { detail: [] }));
+  window.dispatchEvent(new CustomEvent('medcore-vitals', { detail: [] }));
+  window.dispatchEvent(new CustomEvent('medcore-patient-bills', { detail: [] }));
+
+  try {
+    const bc = new BroadcastChannel('medcore_patients');
+    bc.postMessage({ type: 'patients', list: [] });
+    bc.close();
+  } catch {
+    /* ignore */
+  }
+
+  // Sync to facility hub
+  publishFacilityData(fid, FACILITY_KEYS.patients, []);
+  publishFacilityData(fid, FACILITY_KEYS.reception, { visits: [], appointments: [], payments: [] });
+  publishFacilityData(fid, FACILITY_KEYS.clinical, []);
+  publishFacilityData(fid, FACILITY_KEYS.beds, []);
+  publishFacilityData(fid, FACILITY_KEYS.vitals, []);
+
+  // Update cloud facility document
+  void (async () => {
+    try {
+      const { firestoreWriteFacility } = await import('./firebase');
+      await firestoreWriteFacility(fid, {
+        [FACILITY_KEYS.patients]: [],
+        patientsCount: 0,
+        patientsUpdatedAt: new Date().toISOString(),
+      });
+    } catch {
+      /* ignore */
+    }
+  })();
+}
+
+if (typeof window !== 'undefined') {
+  (window as unknown as { __medcoreClearAllPatients?: (fid?: string) => void }).__medcoreClearAllPatients = clearAllPatients;
+}
+

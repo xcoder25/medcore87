@@ -329,19 +329,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               const localRaw = localStorage.getItem('medcore_os_staff_registry');
               const localArr: any[] = localRaw ? JSON.parse(localRaw) : [];
               const byBadge = new Map<string, any>();
-              // Keep records from OTHER facilities
+              // Keep all local records first
               for (const s of Array.isArray(localArr) ? localArr : []) {
-                const sFid = String(s.hospitalId || s.facilityId || '').toUpperCase();
-                if (sFid && sFid !== fid) {
-                  const b = String(s.badgeId || s.id || '').toUpperCase();
-                  if (b) byBadge.set(b, s);
-                }
+                const b = String(s.badgeId || s.id || '').toUpperCase();
+                if (b) byBadge.set(b, s);
               }
-              // Add this facility's registry from remote
+              // Merge/update with remote
               for (const s of data.staffRegistry as any[]) {
                 const b = String(s.badgeId || s.id || '').toUpperCase();
                 if (!b) continue;
-                byBadge.set(b, { ...s, badgeId: b, pin: s.pin || '1234' });
+                const prev = byBadge.get(b);
+                byBadge.set(b, prev ? { ...prev, ...s, badgeId: b } : { ...s, badgeId: b, pin: s.pin || '1234' });
               }
               localStorage.setItem('medcore_os_staff_registry', JSON.stringify(Array.from(byBadge.values())));
             } catch { /* ignore */ }
@@ -352,18 +350,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             try {
               const localCards = JSON.parse(localStorage.getItem('medcore_staff_id_cards') || '[]');
               const byId = new Map<string, any>();
-              // Keep cards from OTHER facilities
+              // Keep all local cards first
               for (const c of Array.isArray(localCards) ? localCards : []) {
-                const cFid = String(c.facilityId || '').toUpperCase();
-                if (cFid && cFid !== fid) {
-                  const b = String(c.badgeId || '').toUpperCase();
-                  if (b) byId.set(b, c);
-                }
+                const b = String(c.badgeId || '').toUpperCase();
+                if (b) byId.set(b, c);
               }
-              // Add this facility's cards from remote
+              // Merge/update with remote
               for (const c of data.staffCards as any[]) {
                 const b = String(c.badgeId || '').toUpperCase();
-                if (b) byId.set(b, { ...c, badgeId: b });
+                if (!b) continue;
+                const prev = byId.get(b);
+                byId.set(b, prev ? { ...prev, ...c, badgeId: b } : { ...c, badgeId: b });
               }
               const nextCards = Array.from(byId.values());
               localStorage.setItem('medcore_staff_id_cards', JSON.stringify(nextCards));
@@ -375,33 +372,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
         // Live staff docs (enrolment on any PC appears here immediately)
         unsubCol = firestoreSubscribeStaffCollection(selectedHospital.id, (rows) => {
-          const fid = String(selectedHospital.id || '').toUpperCase();
           if (!rows.length) {
-            // Empty cloud collection: clean this facility's local registry & cards
-            try {
-              const localRaw = localStorage.getItem('medcore_os_staff_registry');
-              const localArr: any[] = localRaw ? JSON.parse(localRaw) : [];
-              const keptReg = (Array.isArray(localArr) ? localArr : []).filter(
-                (s: any) => {
-                  const sFid = String(s.hospitalId || s.facilityId || '').toUpperCase();
-                  return sFid && sFid !== fid;
-                }
-              );
-              localStorage.setItem('medcore_os_staff_registry', JSON.stringify(keptReg));
-
-              const localCardsRaw = localStorage.getItem('medcore_staff_id_cards');
-              const localCards: any[] = localCardsRaw ? JSON.parse(localCardsRaw) : [];
-              const keptCards = (Array.isArray(localCards) ? localCards : []).filter(
-                (c: any) => {
-                  const cFid = String(c.facilityId || '').toUpperCase();
-                  return cFid && cFid !== fid;
-                }
-              );
-              localStorage.setItem('medcore_staff_id_cards', JSON.stringify(keptCards));
-              localStorage.setItem('medcore_os_staff_cards', JSON.stringify(keptCards));
-              localStorage.setItem('medcore_staff_cards', JSON.stringify(keptCards));
-              mergeLocal();
-            } catch { /* ignore */ }
+            // Empty cloud collection: never wipe local registry or cards
             return;
           }
           try {

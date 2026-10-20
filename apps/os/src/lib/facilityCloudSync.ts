@@ -12,6 +12,11 @@ import { startOutboxAutoFlush, flushOutbox } from './durableOutbox';
 import { FACILITY_KEYS } from './roleSyncBus';
 import { applyHimRemote, HIM_STORAGE_KEY } from './himStore';
 import { mergePresenceMaps, STAFF_PRESENCE_KEY } from './staffPresenceStore';
+import {
+  applyCloudStaffDirectory,
+  isStaffFlushLocked,
+  syncAccessRosterFromSources,
+} from './staffCardStore';
 
 /** Map storage keys → CustomEvents so existing subscribe*() hooks refresh live */
 const KEY_EVENTS: Record<string, string[]> = {
@@ -77,6 +82,40 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
   // Redirect the 'clinical_vitals' alias to the canonical localStorage key used by nursingVitalsStore
   const canonicalKey =
     key === 'clinical_vitals' ? FACILITY_KEYS.vitals : key;
+
+  // Protect staff data from destructive overwrite
+  const cKey = String(canonicalKey);
+  if (
+    cKey === 'medcore_os_access_control' ||
+    cKey === 'medcore_os_staff_registry' ||
+    cKey === 'medcore_staff_id_cards' ||
+    cKey === 'medcore_os_staff_cards' ||
+    cKey === 'medcore_staff_cards'
+  ) {
+    if (!Array.isArray(value) || value.length === 0) {
+      if (!isStaffFlushLocked()) return;
+    }
+    try {
+      if (
+        cKey === 'medcore_staff_id_cards' ||
+        cKey === 'medcore_os_staff_cards' ||
+        cKey === 'medcore_staff_cards'
+      ) {
+        applyCloudStaffDirectory({ staffCards: value as any[] });
+        return;
+      }
+      if (cKey === 'medcore_os_staff_registry') {
+        applyCloudStaffDirectory({ staffRegistry: value as any[] });
+        return;
+      }
+      if (cKey === 'medcore_os_access_control') {
+        syncAccessRosterFromSources('');
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   try {
     // Presence maps must MERGE (not replace) so multi-PC logins all stay visible
     if (canonicalKey === STAFF_PRESENCE_KEY && value && typeof value === 'object') {

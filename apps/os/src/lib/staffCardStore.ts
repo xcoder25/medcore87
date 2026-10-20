@@ -282,7 +282,7 @@ export function syncAccessRosterFromSources(facilityId: string): {
     if (!id) return;
     const rowFid = String(raw.hospitalId || raw.facilityId || '').trim();
     // Skip other facilities when we know the row's facility; allow legacy empty
-    if (fid && rowFid && rowFid !== fid) return;
+    if (fid && rowFid && rowFid.toUpperCase() !== fid.toUpperCase()) return;
     const prev = byId.get(id) || {};
     byId.set(id, {
       ...prev,
@@ -312,7 +312,7 @@ export function syncAccessRosterFromSources(facilityId: string): {
 
   try {
     for (const c of listStaffCards()) {
-      if (fid && c.facilityId && c.facilityId !== fid) continue;
+      if (fid && c.facilityId && c.facilityId.toUpperCase() !== fid.toUpperCase()) continue;
       ingest({
         badgeId: c.badgeId,
         fullName: c.fullName,
@@ -340,7 +340,7 @@ export function syncAccessRosterFromSources(facilityId: string): {
     if (Array.isArray(reg)) {
       for (const s of reg) {
         const rowFid = String(s.hospitalId || s.facilityId || '');
-        if (fid && rowFid && rowFid !== fid) continue;
+        if (fid && rowFid && rowFid.toUpperCase() !== fid.toUpperCase()) continue;
         ingest(s as Record<string, unknown>);
       }
     }
@@ -885,29 +885,23 @@ export function applyCloudStaffDirectory(payload: {
         }
         // else: ignore empty — protect multi-facility local cache
       } else {
-        const byId = new Map<string, StaffCardRecord>();
+        const incomingMap = new Map<string, StaffCardRecord>();
         for (const c of cards) {
           const id = String(c?.badgeId || '').toUpperCase();
           if (!id) continue;
-          byId.set(id, c as StaffCardRecord);
+          incomingMap.set(id, c as StaffCardRecord);
         }
-        const incoming = Array.from(byId.values());
-        // Facilities represented in this payload
-        const fids = new Set(
-          incoming
-            .map((c) => String(c.facilityId || payload.facilityId || '').toUpperCase())
-            .filter(Boolean)
-        );
-        if (payload.facilityId) fids.add(String(payload.facilityId).toUpperCase());
-        if (fids.size > 0) {
-          // Keep cards from other facilities; replace only this facility set
-          const kept = readCards().filter(
-            (c) => !fids.has(String(c.facilityId || '').toUpperCase())
-          );
-          writeCards([...kept, ...incoming]);
-        } else {
-          writeCards(incoming);
+        // Non-destructive merge: preserve existing local cards and merge incoming cloud cards
+        const mergedById = new Map<string, StaffCardRecord>();
+        for (const c of readCards()) {
+          const id = String(c?.badgeId || '').toUpperCase();
+          if (id) mergedById.set(id, c);
         }
+        for (const [id, incomingCard] of incomingMap) {
+          const prev = mergedById.get(id);
+          mergedById.set(id, prev ? { ...prev, ...incomingCard } : incomingCard);
+        }
+        writeCards(Array.from(mergedById.values()));
       }
     }
   } catch {
@@ -919,27 +913,51 @@ export function applyCloudStaffDirectory(payload: {
       // Empty registry: only clear under flush lock
       if (incoming.length === 0 && !isStaffFlushLocked()) {
         /* keep local registry */
-      } else {
+      } else if (isStaffFlushLocked()) {
         const fid = String(payload.facilityId || '').toUpperCase();
-        let nextReg = incoming;
-        if (fid && incoming.length >= 0) {
-          try {
-            const prevRaw =
-              localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY) ||
-              localStorage.getItem('medcore_os_staff_registry') ||
-              '[]';
-            const prev = JSON.parse(prevRaw);
-            if (Array.isArray(prev)) {
-              const kept = prev.filter((r: any) => {
-                const rowFid = String(r.hospitalId || r.facilityId || '').toUpperCase();
-                return rowFid && rowFid !== fid;
-              });
-              nextReg = [...kept, ...incoming];
-            }
-          } catch {
-            nextReg = incoming;
-          }
+        const prevRaw =
+          localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY) ||
+          localStorage.getItem('medcore_os_staff_registry') ||
+          '[]';
+        let prevArr: any[] = [];
+        try {
+          prevArr = JSON.parse(prevRaw) || [];
+        } catch {
+          prevArr = [];
         }
+        const kept = fid
+          ? prevArr.filter(
+              (r: any) => String(r.hospitalId || r.facilityId || '').toUpperCase() !== fid
+            )
+          : [];
+        const regJson = JSON.stringify(kept);
+        localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, regJson);
+        localStorage.setItem('medcore_os_staff_registry', regJson);
+      } else {
+        const prevRaw =
+          localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY) ||
+          localStorage.getItem('medcore_os_staff_registry') ||
+          '[]';
+        let prevArr: any[] = [];
+        try {
+          const parsed = JSON.parse(prevRaw);
+          if (Array.isArray(parsed)) prevArr = parsed;
+        } catch {
+          prevArr = [];
+        }
+        // Additive merge: keep existing local records and merge incoming
+        const mergedReg = new Map<string, any>();
+        for (const r of prevArr) {
+          const id = String(r.badgeId || r.id || '').toUpperCase();
+          if (id) mergedReg.set(id, r);
+        }
+        for (const s of incoming) {
+          const id = String(s.badgeId || s.id || '').toUpperCase();
+          if (!id) continue;
+          const prev = mergedReg.get(id);
+          mergedReg.set(id, prev ? { ...prev, ...s } : s);
+        }
+        const nextReg = Array.from(mergedReg.values());
         const regJson = JSON.stringify(nextReg);
         const prevReg = localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY) || '';
         if (prevReg !== regJson) {
@@ -957,41 +975,9 @@ export function applyCloudStaffDirectory(payload: {
   } catch {
     /* ignore */
   }
-  // Rebuild access control rows from registry so Access UI matches DB
+  // Reconcile access control rows from all sources (cards + registry) so staff never disappear
   try {
-    const regRaw = localStorage.getItem('medcore_os_staff_registry');
-    const reg = regRaw ? JSON.parse(regRaw) : [];
-    if (!Array.isArray(reg)) return;
-    const access = reg
-      .map((s: any) => {
-        const id = String(s.badgeId || s.id || '')
-          .toUpperCase()
-          .replace(/\s+/g, '');
-        if (!id) return null;
-        const st = String(s.status || 'active').toLowerCase();
-        const status =
-          st === 'suspended' ? 'suspended' : st === 'pending' ? 'pending' : 'active';
-        return {
-          id,
-          name: s.name || s.fullName || id,
-          role: s.role || s.shortRole || s.roleKey || 'Staff',
-          department: s.department || '—',
-          clearance: Number(s.clearanceLevel || 2),
-          status,
-          lastLogin: s.lastLoginAt || s.lastLogin || '—',
-          permissions: Array.isArray(s.permissions) ? s.permissions : [],
-          email: s.email || s.workEmail || undefined,
-        };
-      })
-      .filter(Boolean);
-    const prev = localStorage.getItem('medcore_os_access_control') || '';
-    const next = JSON.stringify(access);
-    if (prev !== next) {
-      localStorage.setItem('medcore_os_access_control', next);
-      window.dispatchEvent(
-        new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_access_control' } })
-      );
-    }
+    syncAccessRosterFromSources(payload.facilityId || '');
   } catch {
     /* ignore */
   }
