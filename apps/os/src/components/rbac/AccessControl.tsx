@@ -94,6 +94,7 @@ interface Props {
 
 export const AccessControl: React.FC<Props> = ({ session }) => {
   const [records, setRecords] = useState<AccessRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -172,10 +173,13 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
   const busyRef = React.useRef(busy);
   const confirmRef = React.useRef(confirmInfo);
+  const isMounted = React.useRef(true);
   busyRef.current = busy;
   confirmRef.current = confirmInfo;
 
   useEffect(() => {
+    isMounted.current = true;
+
     try {
       (window as unknown as { __medcoreFlushStaff?: (fid?: string) => number }).__medcoreFlushStaff = (
         fid?: string
@@ -184,37 +188,43 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       /* ignore */
     }
 
-    try {
-      migrateStaffIdsToNewFormat();
-    } catch {
-      /* ignore */
-    }
-
-    // One-time roster align on mount only (not on every event)
-    try {
-      if (!isStaffFlushLocked()) {
-        syncAccessRosterFromSources(facilityId);
-      }
-    } catch {
-      /* ignore */
-    }
-    loadRecords();
-
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleLoad = () => {
+      if (!isMounted.current) return;
       if (busyRef.current) return;
       if (confirmRef.current && !confirmRef.current.listed) return;
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        loadRecords();
-      }, 300);
+        if (isMounted.current) loadRecords();
+      }, 400);
     };
+
+    // ── Deferred heavy work: runs after first paint so the page renders immediately ──
+    const deferTimer = setTimeout(() => {
+      if (!isMounted.current) return;
+      try {
+        migrateStaffIdsToNewFormat();
+      } catch {
+        /* ignore */
+      }
+      try {
+        if (!isStaffFlushLocked()) {
+          syncAccessRosterFromSources(facilityId);
+        }
+      } catch {
+        /* ignore */
+      }
+      if (isMounted.current) {
+        loadRecords();
+        setIsLoading(false);
+      }
+    }, 0);
 
     const unsubAdmin = subscribeAdminSync(scheduleLoad);
 
     const unsubDir = firestoreSubscribeStaffDirectory(facilityId, (data) => {
       try {
-        if (isStaffFlushLocked()) return;
+        if (!isMounted.current || isStaffFlushLocked()) return;
         applyCloudStaffDirectory({
           staffCards: data.staffCards,
           staffRegistry: data.staffRegistry,
@@ -228,7 +238,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
     const unsubCol = firestoreSubscribeStaffCollection(facilityId, (staffRows) => {
       try {
-        if (isStaffFlushLocked()) return;
+        if (!isMounted.current || isStaffFlushLocked()) return;
         if (!Array.isArray(staffRows) || staffRows.length === 0) return;
         const registry = staffRows.slice(0, 200).map((s: Record<string, unknown>) => {
           const badgeId = String(s.badgeId || s.id || '')
@@ -263,6 +273,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
     const onOnline = () => {
       try {
+        if (!isMounted.current) return;
         if (!isStaffFlushLocked()) {
           syncAccessRosterFromSources(facilityId);
           const localCards = listStaffCards().filter(
@@ -270,7 +281,8 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           );
           if (localCards.length > 0) {
             void import('../../lib/firebase').then(({ firestorePushStaffDirectory }) => {
-              void firestorePushStaffDirectory(facilityId, { staffCards: localCards });
+              if (isMounted.current)
+                void firestorePushStaffDirectory(facilityId, { staffCards: localCards });
             });
           }
         }
@@ -285,6 +297,8 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     window.addEventListener('medcore-staff-registry-updated', scheduleLoad);
 
     return () => {
+      isMounted.current = false;
+      clearTimeout(deferTimer);
       if (debounceTimer) clearTimeout(debounceTimer);
       unsubAdmin();
       unsubDir();
@@ -712,6 +726,26 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       setBusy(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="os-module-layout" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {/* Instant skeleton — prevents main-thread block on first paint */}
+        <div className="os-shimmer" style={{ height: 72, borderRadius: 14 }} />
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div className="os-shimmer" style={{ height: 60, flex: 1, borderRadius: 12 }} />
+          <div className="os-shimmer" style={{ height: 60, flex: 1, borderRadius: 12 }} />
+          <div className="os-shimmer" style={{ height: 60, flex: 1, borderRadius: 12 }} />
+        </div>
+        <div className="os-shimmer" style={{ height: 44, borderRadius: 10 }} />
+        <div style={{ height: 240, borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[1, 0.85, 0.7, 0.55, 0.4].map((opacity, i) => (
+            <div key={i} className="os-shimmer" style={{ height: 40, borderRadius: 8, opacity }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
