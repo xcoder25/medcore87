@@ -3,18 +3,23 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import '../styles/os.css';
 
-// Splash & Auth Components
+import dynamic from 'next/dynamic';
+
+// Must be a static import so it is always available as a loading placeholder
+import { ModulePageLoader } from '../components/layout/ModulePageLoader';
+
+// Splash & Auth — small, needed synchronously for first paint
 import { SplashScreen } from '../components/splash/SplashScreen';
 import { AuthScreen, UserSession, PRESET_STAFF, getPlatformAdmin } from '../components/auth/AuthScreen';
 
-import dynamic from 'next/dynamic';
-
-// Core & Existing Modules (Statically imported for immediate shell render)
-import { CommandCentreDashboard } from '../components/command-centre/CommandCentreDashboard';
-import { RoleDashboard } from '../components/dashboards/RoleDashboard';
-import { DoctorPortal } from '../components/dashboards/DoctorPortal';
-import { ReceptionWorkspace } from '../components/dashboards/ReceptionWorkspace';
-import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
+// Core & Specialty Modules — ALL lazy loaded via next/dynamic.
+// The service worker pre-caches their chunks after first login so they open
+// instantly on subsequent visits even on 2G / offline.
+const CommandCentreDashboard = dynamic(() => import('../components/command-centre/CommandCentreDashboard').then(m => m.CommandCentreDashboard), { loading: () => <ModulePageLoader label="Opening Command Centre…" /> });
+const RoleDashboard = dynamic(() => import('../components/dashboards/RoleDashboard').then(m => m.RoleDashboard), { loading: () => <ModulePageLoader label="Opening Dashboard…" /> });
+const DoctorPortal = dynamic(() => import('../components/dashboards/DoctorPortal').then(m => m.DoctorPortal), { loading: () => <ModulePageLoader label="Opening Doctor Portal…" /> });
+const ReceptionWorkspace = dynamic(() => import('../components/dashboards/ReceptionWorkspace').then(m => m.ReceptionWorkspace), { loading: () => <ModulePageLoader label="Opening Reception Workspace…" /> });
+const M87AICopilotSuite = dynamic(() => import('../components/ai-insights/M87AICopilotSuite').then(m => m.M87AICopilotSuite), { loading: () => <ModulePageLoader label="Opening Celestia AI…" /> });
 
 // Lazy-loaded Specialty & Operations Suites (Code-split into on-demand chunks for fast runtime)
 const BedManagement = dynamic(() => import('../components/beds/BedManagement').then(m => m.BedManagement), { loading: () => <ModulePageLoader label="Opening Bed Management…" /> });
@@ -32,8 +37,10 @@ const FrontDeskSettings = dynamic(() => import('../components/reception/FrontDes
 const FrontDeskWorkqueues = dynamic(() => import('../components/reception/FrontDeskWorkqueues').then(m => m.FrontDeskWorkqueues), { loading: () => <ModulePageLoader label="Opening Workqueues…" /> });
 
 import { FacilityOnboarding } from '../components/facility/FacilityOnboarding';
-import { HospitalOnboardingWizard, resolveOnboardingMode } from '../components/onboarding/HospitalOnboardingWizard';
-import { RoleFirstRunGuide } from '../components/onboarding/RoleFirstRunGuide';
+// resolveOnboardingMode is a tiny pure function — import it statically
+import { resolveOnboardingMode } from '../components/onboarding/HospitalOnboardingWizard';
+const HospitalOnboardingWizard = dynamic(() => import('../components/onboarding/HospitalOnboardingWizard').then(m => ({ default: m.HospitalOnboardingWizard })), { loading: () => <ModulePageLoader label="Loading onboarding…" /> });
+const RoleFirstRunGuide = dynamic(() => import('../components/onboarding/RoleFirstRunGuide').then(m => ({ default: m.RoleFirstRunGuide })), { loading: () => <ModulePageLoader label="Loading guide…" /> });
 import { shouldShowRoleGuide } from '../lib/roleFirstRunGuide';
 import { subscribeOnboarding } from '../lib/onboardingStore';
 import { startSessionGuard, clearOsSessionStorage } from '../lib/sessionGuard';
@@ -57,7 +64,6 @@ const ClinicalUxSuite = dynamic(() => import('../components/clinical-ux/Clinical
 const DeviceGatewaySettings = dynamic(() => import('../components/interop/DeviceGatewaySettings').then(m => m.DeviceGatewaySettings), { loading: () => <ModulePageLoader label="Opening Device Gateway…" /> });
 import { KeyboardShortcutsHint } from '../components/layout/KeyboardShortcutsHint';
 import { listPatients } from '../lib/patientRegistryStore';
-import { ModulePageLoader } from '../components/layout/ModulePageLoader';
 import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { startOutboxAutoFlush } from '../lib/durableOutbox';
 import { enableFirestoreOffline, normalizeStaffPin, firebaseSignInWithBadge } from '../lib/firebase';
@@ -1062,26 +1068,50 @@ const TopHudClock = React.memo(function TopHudClock() {
 });
 
 export default function OSPage() {
-  // One-time clean pilot data (wipes old demo seeds)
+  // One-time deferred startup — runs AFTER first paint so it never delays UI render.
+  // requestIdleCallback (or 100ms fallback) ensures the browser finishes painting
+  // the splash/auth screen before executing any heavy initialisation work.
   useEffect(() => {
-    try {
-      ensureCleanPilot();
-    } catch {
-      /* ignore */
+    let stopClinicalPay: (() => void) | null = null;
+    let stopOutbox: (() => void) | null = null;
+
+    const runStartup = () => {
+      try { ensureCleanPilot(); } catch { /* ignore */ }
+
+      // Firestore offline persistence — non-blocking (promise not awaited)
+      void enableFirestoreOffline();
+
+      // Clinical payment event listeners
+      stopClinicalPay = startClinicalPaymentListeners();
+
+      // Payment reconciliation — deferred further so it never races with render
+      setTimeout(() => {
+        try {
+          const fid =
+            (typeof window !== 'undefined' &&
+              (window as unknown as { __medcoreFacilityId?: string }).__medcoreFacilityId) ||
+            'IGH-EKT';
+          reconcileAllVisitPayments(fid);
+        } catch { /* ignore */ }
+      }, 2000);
+
+      // Outbox auto-flush — give the app 500ms head-start before starting background sync
+      setTimeout(() => {
+        stopOutbox = startOutboxAutoFlush(12000);
+      }, 500);
+    };
+
+    // Use idle callback so startup work runs during browser idle time, not during paint
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(runStartup, { timeout: 1500 });
+    } else {
+      setTimeout(runStartup, 100);
     }
-    void enableFirestoreOffline();
-    const stopClinicalPay = startClinicalPaymentListeners();
-    try {
-      const fid =
-        (typeof window !== 'undefined' &&
-          (window as unknown as { __medcoreFacilityId?: string }).__medcoreFacilityId) ||
-        'IGH-EKT';
-      reconcileAllVisitPayments(fid);
-    } catch {
-      /* ignore */
-    }
-    const stopOutbox = startOutboxAutoFlush(12000);
-    return () => { stopOutbox(); try { stopClinicalPay(); } catch { /* */ } };
+
+    return () => {
+      if (stopOutbox) stopOutbox();
+      try { if (stopClinicalPay) stopClinicalPay(); } catch { /* */ }
+    };
   }, []);
 
   const [appState, setAppState] = useState<'splash' | 'auth' | 'app'>('splash');
@@ -1364,6 +1394,13 @@ export default function OSPage() {
     setUserSession(normalized);
     setActiveModule('dashboard');
     setAppState('app');
+
+    // Signal the service worker to prefetch all Next.js chunks in the background.
+    // This ensures every module the user clicks opens instantly (served from cache)
+    // even on 2G after the first login — no per-click network wait.
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'PREFETCH_CHUNKS' });
+    }
   };
 
   const handleLogout = () => {
