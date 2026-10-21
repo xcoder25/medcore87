@@ -1229,6 +1229,9 @@ export default function OSPage() {
         const fixed = { ...restored, roleKey };
         setUserSession(fixed);
         setActiveModule('dashboard');
+        if (typeof window !== 'undefined' && sessionStorage.getItem('medcore_splash_done') === '1') {
+          setAppState('app');
+        }
         try {
           localStorage.setItem('medcore_os_session', JSON.stringify(fixed));
         } catch { /* ignore */ }
@@ -1646,11 +1649,10 @@ const handleLockScreen = () => {
 
   const handleModuleChange = (key: ModuleKey) => {
     if (key === activeModule) return;
-    setModuleLoading(true);
     setModuleHistory((h) => [...h.slice(-19), activeModule]);
     setActiveModule(key);
     setModuleKey(prev => prev + 1);
-    window.setTimeout(() => setModuleLoading(false), 420);
+    setModuleLoading(false);
   };
 
   const handleSwitchCadre = (staff: typeof PRESET_STAFF[0]) => {

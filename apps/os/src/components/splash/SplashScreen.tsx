@@ -16,8 +16,8 @@ const BOOT_STATUSES = [
   'Ready',
 ];
 
-/** Hard cap: splash finishes in ~1.8s (always under 5s). */
-const SPLASH_MS = 1400;
+/** Rapid splash: completes in ~500ms max (300ms on low network), 0ms for returning visits */
+const SPLASH_MS = 500;
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
   const [progress, setProgress] = useState(0);
@@ -32,10 +32,20 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     doneRef.current = true;
     setProgress(100);
     setStatusText(BOOT_STATUSES[4]);
+    try { sessionStorage.setItem('medcore_splash_done', '1'); } catch {}
     onCompleteRef.current();
   };
 
   useEffect(() => {
+    // If already shown once this browser session, finish instantly (0ms)
+    try {
+      if (sessionStorage.getItem('medcore_splash_done') === '1') {
+        doneRef.current = true;
+        onCompleteRef.current();
+        return;
+      }
+    } catch {}
+
     doneRef.current = false;
     const startTime = Date.now();
 
@@ -47,13 +57,14 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       }
     } catch {}
 
-    const targetDuration = isLowNet ? 700 : SPLASH_MS;
+    const targetDuration = isLowNet ? 300 : SPLASH_MS;
 
     const finish = () => {
       if (doneRef.current) return;
       doneRef.current = true;
       setProgress(100);
       setStatusText(BOOT_STATUSES[4]);
+      try { sessionStorage.setItem('medcore_splash_done', '1'); } catch {}
       onCompleteRef.current();
     };
 

@@ -4,7 +4,7 @@
  * Optimized for 2G, slow 3G, spotty hospital connections, and offline clinical stations.
  */
 
-const CACHE_NAME = 'medcore-os-shell-v4-low-network';
+const CACHE_NAME = 'medcore-os-shell-v5-instant';
 
 // Only lightweight, essential shell files are precached at install time.
 // Multi-megabyte images are NOT placed here so that slow networks (2G/3G)
@@ -102,34 +102,23 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 1. Navigation requests (HTML pages) -> Low-Network Race with Instant Cache Fallback
+  // 1. Navigation requests (HTML pages) -> Instant Stale-While-Revalidate (0ms Cache-First)
   if (req.mode === 'navigate') {
     event.respondWith(
       (async () => {
         const cachedResponse = (await caches.match(req)) || (await caches.match('/'));
 
-        // If we have a cached shell, race network with a 1500ms timeout.
-        // If the network is on 2G / slow / stalled, serve the cached shell instantly!
+        // If cached shell is available, serve it INSTANTLY with 0ms network latency
         if (cachedResponse) {
-          try {
-            const networkResponse = await fetchWithTimeout(req, 1500);
-            if (networkResponse && networkResponse.status === 200) {
-              const clone = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
-              return networkResponse;
-            }
-          } catch {
-            // Network is too slow or offline: serve cached shell immediately
-            // Revalidate silently in background when network returns
-            fetch(req)
-              .then((bgRes) => {
-                if (bgRes && bgRes.status === 200) {
-                  caches.open(CACHE_NAME).then((c) => c.put(req, bgRes));
-                }
-              })
-              .catch(() => {});
-            return cachedResponse;
-          }
+          // Revalidate in the background silently without blocking initial render
+          fetch(req)
+            .then((networkResponse) => {
+              if (networkResponse && networkResponse.status === 200) {
+                const clone = networkResponse.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+              }
+            })
+            .catch(() => {});
           return cachedResponse;
         }
 
