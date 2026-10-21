@@ -1364,16 +1364,19 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
       className={`m87-chat-shell celestia-cosmic celestia-grok${inDrawer ? ' is-in-drawer' : ' is-fullscreen'}`}
       ref={shellRef}
     >
-      {/* Looping cosmic space video background with fallback gradient */}
-      <video
-        className="celestia-bg-video"
-        src="/celestia-bg.mp4"
-        autoPlay
-        muted
-        loop
-        playsInline
-        aria-hidden
-      />
+      {/* Looping cosmic space video background (disabled on data saver / low network, fallback to cosmic gradient) */}
+      {typeof navigator !== 'undefined' && !(navigator as any)?.connection?.saveData && (
+        <video
+          className="celestia-bg-video"
+          src="/celestia-bg.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="none"
+          aria-hidden
+        />
+      )}
       <div className="celestia-bg-veil" aria-hidden />
 
       {/* Header — Always Persistent to eliminate layout shifts */}

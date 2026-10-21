@@ -17,18 +17,37 @@ const BOOT_STATUSES = [
 ];
 
 /** Hard cap: splash finishes in ~1.8s (always under 5s). */
-const SPLASH_MS = 1800;
+const SPLASH_MS = 1400;
 
 export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState(BOOT_STATUSES[0]);
+  const [isLowNet, setIsLowNet] = useState(false);
   const doneRef = useRef(false);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
 
+  const handleImmediateEnter = () => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    setProgress(100);
+    setStatusText(BOOT_STATUSES[4]);
+    onCompleteRef.current();
+  };
+
   useEffect(() => {
     doneRef.current = false;
     const startTime = Date.now();
+
+    // Check for low-bandwidth or offline condition
+    try {
+      const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+      if (conn && (conn.saveData || ['slow-2g', '2g', '3g'].includes(conn.effectiveType) || (conn.rtt && conn.rtt > 600))) {
+        setIsLowNet(true);
+      }
+    } catch {}
+
+    const targetDuration = isLowNet ? 700 : SPLASH_MS;
 
     const finish = () => {
       if (doneRef.current) return;
@@ -40,7 +59,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
 
     const timer = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      const pct = Math.min(Math.round((elapsed / SPLASH_MS) * 100), 100);
+      const pct = Math.min(Math.round((elapsed / targetDuration) * 100), 100);
       setProgress(pct);
 
       if (pct < 25) setStatusText(BOOT_STATUSES[0]);
@@ -49,19 +68,27 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       else if (pct < 95) setStatusText(BOOT_STATUSES[3]);
       else setStatusText(BOOT_STATUSES[4]);
 
-      if (elapsed >= SPLASH_MS) {
+      if (elapsed >= targetDuration) {
         clearInterval(timer);
         finish();
       }
     }, 32);
 
-    const hardCap = setTimeout(finish, 5000);
+    const hardCap = setTimeout(finish, isLowNet ? 1200 : 3500);
+
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
+        finish();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
 
     return () => {
       clearInterval(timer);
       clearTimeout(hardCap);
+      window.removeEventListener('keydown', handleKey);
     };
-  }, []);
+  }, [isLowNet]);
 
   return (
     <div
@@ -166,6 +193,29 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334D6E', letterSpacing: '0.015em' }}>
             {statusText}
           </span>
+
+          <button
+            type="button"
+            onClick={handleImmediateEnter}
+            aria-label="Enter station immediately"
+            style={{
+              marginTop: 10,
+              padding: '5px 12px',
+              borderRadius: 8,
+              border: '1px solid rgba(0, 82, 212, 0.2)',
+              background: 'rgba(255, 255, 255, 0.85)',
+              color: '#0052D4',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <span>Enter Station</span>
+            <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>↵</span>
+          </button>
         </div>
       </div>
 

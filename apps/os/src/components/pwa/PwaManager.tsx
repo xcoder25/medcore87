@@ -12,6 +12,7 @@ export const PwaManager: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  const [isLowNetwork, setIsLowNetwork] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [installedNotice, setInstalledNotice] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -30,13 +31,29 @@ export const PwaManager: React.FC = () => {
       (window.navigator as any).standalone === true;
     setIsStandalone(checkStandalone);
 
-    setIsOnline(navigator.onLine);
+    const checkNetwork = () => {
+      setIsOnline(navigator.onLine);
+      try {
+        const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+        if (conn) {
+          const slow = conn.saveData || ['slow-2g', '2g', '3g'].includes(conn.effectiveType) || (conn.rtt && conn.rtt > 600);
+          setIsLowNetwork(Boolean(slow));
+        }
+      } catch {}
+    };
 
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    checkNetwork();
+
+    const handleOnline = () => checkNetwork();
+    const handleOffline = () => checkNetwork();
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+
+    const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+    if (conn) {
+      conn.addEventListener('change', checkNetwork);
+    }
 
     // Provide testing utility in window for manual preview / QA testing
     (window as any).medcoreTriggerUpdatePrompt = () => {
@@ -50,7 +67,7 @@ export const PwaManager: React.FC = () => {
     let handleFocus: (() => void) | null = null;
 
     // Register Service Worker with intelligent update detection
-    if ('serviceWorker' in navigator && process.env.NODE_ENV !== 'development') {
+    if ('serviceWorker' in navigator) {
       navigator.serviceWorker
         .register('/sw.js')
         .then((reg) => {
@@ -120,6 +137,7 @@ export const PwaManager: React.FC = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      if (conn) conn.removeEventListener('change', checkNetwork);
       if (handleFocus) window.removeEventListener('focus', handleFocus);
       if (swInterval) clearInterval(swInterval);
     };
@@ -209,6 +227,35 @@ export const PwaManager: React.FC = () => {
         >
           <WifiOff size={16} color="#FECACA" />
           <span>Offline Mode Active • Local station data cache operational</span>
+        </aside>
+      )}
+
+      {/* Low Bandwidth Network Alert Strip */}
+      {isOnline && isLowNetwork && (
+        <aside
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            bottom: 16,
+            left: 20,
+            zIndex: 99998,
+            background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+            color: '#38BDF8',
+            border: '1px solid #0284C7',
+            borderRadius: 12,
+            padding: '8px 14px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 12,
+            fontWeight: 700,
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
+          }}
+        >
+          <Wifi size={14} color="#38BDF8" />
+          <span>Low-Bandwidth Mode Active • High-speed offline caching enabled</span>
         </aside>
       )}
 
