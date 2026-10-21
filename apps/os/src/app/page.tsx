@@ -7,22 +7,29 @@ import '../styles/os.css';
 import { SplashScreen } from '../components/splash/SplashScreen';
 import { AuthScreen, UserSession, PRESET_STAFF, getPlatformAdmin } from '../components/auth/AuthScreen';
 
-// Core & Existing Modules
+import dynamic from 'next/dynamic';
+
+// Core & Existing Modules (Statically imported for immediate shell render)
 import { CommandCentreDashboard } from '../components/command-centre/CommandCentreDashboard';
-import { BedManagement } from '../components/beds/BedManagement';
-import { PatientFlowVisibility } from '../components/patient-flow/PatientFlowVisibility';
-import { StaffingOverview } from '../components/staffing/StaffingOverview';
-import { IntegratedDataHub } from '../components/data-hub/IntegratedDataHub';
-import { PerformanceAnalytics } from '../components/analytics/PerformanceAnalytics';
-import { AccessControl } from '../components/rbac/AccessControl';
-import { SystemAdministration } from '../components/system-admin/SystemAdministration';
-import { ComplianceAuditLogs } from '../components/compliance/ComplianceAuditLogs';
-import { AICommandInsights } from '../components/ai-insights/AICommandInsights';
-import { CashierRevenue } from '../components/cashier/CashierRevenue';
-import { PosPaymentDesk } from '../components/cashier/PosPaymentDesk';
-import { AccountingWorkspace } from '../components/dashboards/AccountingWorkspace';
-import { FrontDeskSettings } from '../components/reception/FrontDeskSettings';
-import { FrontDeskWorkqueues } from '../components/reception/FrontDeskWorkqueues';
+import { RoleDashboard } from '../components/dashboards/RoleDashboard';
+import { DoctorPortal } from '../components/dashboards/DoctorPortal';
+import { ReceptionWorkspace } from '../components/dashboards/ReceptionWorkspace';
+import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
+
+// Lazy-loaded Specialty & Operations Suites (Code-split into on-demand chunks for fast runtime)
+const BedManagement = dynamic(() => import('../components/beds/BedManagement').then(m => m.BedManagement), { loading: () => <ModulePageLoader label="Opening Bed Management…" /> });
+const PatientFlowVisibility = dynamic(() => import('../components/patient-flow/PatientFlowVisibility').then(m => m.PatientFlowVisibility), { loading: () => <ModulePageLoader label="Opening Patient Flow…" /> });
+const StaffingOverview = dynamic(() => import('../components/staffing/StaffingOverview').then(m => m.StaffingOverview), { loading: () => <ModulePageLoader label="Opening Staffing Overview…" /> });
+const IntegratedDataHub = dynamic(() => import('../components/data-hub/IntegratedDataHub').then(m => m.IntegratedDataHub), { loading: () => <ModulePageLoader label="Opening Data Hub…" /> });
+const PerformanceAnalytics = dynamic(() => import('../components/analytics/PerformanceAnalytics').then(m => m.PerformanceAnalytics), { loading: () => <ModulePageLoader label="Opening Analytics…" /> });
+const AccessControl = dynamic(() => import('../components/rbac/AccessControl').then(m => m.AccessControl), { loading: () => <ModulePageLoader label="Opening Access Control…" /> });
+const SystemAdministration = dynamic(() => import('../components/system-admin/SystemAdministration').then(m => m.SystemAdministration), { loading: () => <ModulePageLoader label="Opening System Admin…" /> });
+const ComplianceAuditLogs = dynamic(() => import('../components/compliance/ComplianceAuditLogs').then(m => m.ComplianceAuditLogs), { loading: () => <ModulePageLoader label="Opening Compliance Audit Logs…" /> });
+const AICommandInsights = dynamic(() => import('../components/ai-insights/AICommandInsights').then(m => m.AICommandInsights), { loading: () => <ModulePageLoader label="Opening AI Insights…" /> });
+const PosPaymentDesk = dynamic(() => import('../components/cashier/PosPaymentDesk').then(m => m.PosPaymentDesk), { loading: () => <ModulePageLoader label="Opening POS Payment Desk…" /> });
+const AccountingWorkspace = dynamic(() => import('../components/dashboards/AccountingWorkspace').then(m => m.AccountingWorkspace), { loading: () => <ModulePageLoader label="Opening Accounting Workspace…" /> });
+const FrontDeskSettings = dynamic(() => import('../components/reception/FrontDeskSettings').then(m => m.FrontDeskSettings), { loading: () => <ModulePageLoader label="Opening Front Desk Settings…" /> });
+const FrontDeskWorkqueues = dynamic(() => import('../components/reception/FrontDeskWorkqueues').then(m => m.FrontDeskWorkqueues), { loading: () => <ModulePageLoader label="Opening Workqueues…" /> });
 
 import { FacilityOnboarding } from '../components/facility/FacilityOnboarding';
 import { HospitalOnboardingWizard, resolveOnboardingMode } from '../components/onboarding/HospitalOnboardingWizard';
@@ -30,27 +37,27 @@ import { RoleFirstRunGuide } from '../components/onboarding/RoleFirstRunGuide';
 import { shouldShowRoleGuide } from '../lib/roleFirstRunGuide';
 import { subscribeOnboarding } from '../lib/onboardingStore';
 import { startSessionGuard, clearOsSessionStorage } from '../lib/sessionGuard';
-import { AuthIdentity } from '../components/auth/AuthIdentity';
-import { DigitalPatientCard } from '../components/patient-card/DigitalPatientCard';
-import { MyStaffIdPanel } from '../components/staffing/MyStaffIdPanel';
-import { Patient360View } from '../components/patients/Patient360View';
-import { UniversalQueueBoard } from '../components/queue/UniversalQueueBoard';
-import { NotificationCentre } from '../components/notifications/NotificationCentre';
-import { AdvancedHospitalSuites } from '../components/advanced/AdvancedHospitalSuites';
-import { HospitalStaffTransfer } from '../components/staffing/HospitalStaffTransfer';
-import { StaffEnrolment } from '../components/staffing/StaffEnrolment';
+
+const AuthIdentity = dynamic(() => import('../components/auth/AuthIdentity').then(m => m.AuthIdentity), { loading: () => <ModulePageLoader label="Opening Auth Identity…" /> });
+const DigitalPatientCard = dynamic(() => import('../components/patient-card/DigitalPatientCard').then(m => m.DigitalPatientCard), { loading: () => <ModulePageLoader label="Opening Patient Card…" /> });
+const MyStaffIdPanel = dynamic(() => import('../components/staffing/MyStaffIdPanel').then(m => m.MyStaffIdPanel), { loading: () => <ModulePageLoader label="Opening Staff Card…" /> });
+const Patient360View = dynamic(() => import('../components/patients/Patient360View').then(m => m.Patient360View), { loading: () => <ModulePageLoader label="Opening Patient 360 Chart…" /> });
+const UniversalQueueBoard = dynamic(() => import('../components/queue/UniversalQueueBoard').then(m => m.UniversalQueueBoard), { loading: () => <ModulePageLoader label="Opening Universal Queue…" /> });
+const NotificationCentre = dynamic(() => import('../components/notifications/NotificationCentre').then(m => m.NotificationCentre), { loading: () => <ModulePageLoader label="Opening Notification Centre…" /> });
+const AdvancedHospitalSuites = dynamic(() => import('../components/advanced/AdvancedHospitalSuites').then(m => m.AdvancedHospitalSuites), { loading: () => <ModulePageLoader label="Opening Advanced Suite…" /> });
+const HospitalStaffTransfer = dynamic(() => import('../components/staffing/HospitalStaffTransfer').then(m => m.HospitalStaffTransfer), { loading: () => <ModulePageLoader label="Opening Staff Transfer…" /> });
+const StaffEnrolment = dynamic(() => import('../components/staffing/StaffEnrolment').then(m => m.StaffEnrolment), { loading: () => <ModulePageLoader label="Opening Staff Enrolment…" /> });
 
 // Specialty Suites
 import { AdminShell } from '../components/dashboards/AdminShell';
 import { OsAppShell } from '../components/layout/OsAppShell';
 import { ChangeCredentialsModal } from '../components/auth/ChangeCredentialsModal';
 import { UserProfileModal } from '../components/auth/UserProfileModal';
-import { ClinicalUxSuite } from '../components/clinical-ux/ClinicalUxSuite';
-import { DeviceGatewaySettings } from '../components/interop/DeviceGatewaySettings';
+const ClinicalUxSuite = dynamic(() => import('../components/clinical-ux/ClinicalUxSuite').then(m => m.ClinicalUxSuite), { loading: () => <ModulePageLoader label="Opening Clinical UX…" /> });
+const DeviceGatewaySettings = dynamic(() => import('../components/interop/DeviceGatewaySettings').then(m => m.DeviceGatewaySettings), { loading: () => <ModulePageLoader label="Opening Device Gateway…" /> });
 import { KeyboardShortcutsHint } from '../components/layout/KeyboardShortcutsHint';
 import { listPatients } from '../lib/patientRegistryStore';
 import { ModulePageLoader } from '../components/layout/ModulePageLoader';
-import { ReceptionWorkspace } from '../components/dashboards/ReceptionWorkspace';
 import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { startOutboxAutoFlush } from '../lib/durableOutbox';
 import { enableFirestoreOffline, normalizeStaffPin, firebaseSignInWithBadge } from '../lib/firebase';
@@ -61,12 +68,8 @@ import {
   startStaffPresenceHeartbeat,
   startFacilityPresenceListener,
   markStaffOffline,
-
 } from '../lib/staffPresenceStore';
 import { startNetworkNotificationListener } from '../lib/notificationEngine';
-import { RoleDashboard } from '../components/dashboards/RoleDashboard';
-import { DoctorPortal } from '../components/dashboards/DoctorPortal';
-import { M87AICopilotSuite } from '../components/ai-insights/M87AICopilotSuite';
 import { roleCanAccessModule, getModulesForRole } from '../lib/rolePermissionsStore';
 import {
   inferRoleKey,
@@ -76,37 +79,38 @@ import {
   normalizeBadgeId,
   resolveStaffByBadge,
 } from '../lib/staffCardStore';
-import { EmergencyTriageSuite } from '../components/clinical-core/EmergencyTriageSuite';
-import { PharmacyDispensingSuite } from '../components/clinical-core/PharmacyDispensingSuite';
-import { HimSuite } from '../components/him/HimSuite';
-import { PharmacyFormularyWorkspace } from '../components/pharmacy/PharmacyFormularyWorkspace';
-import { LaboratorySuite } from '../components/clinical-core/LaboratorySuite';
-import { RadiologyPacsSuite } from '../components/clinical-core/RadiologyPacsSuite';
-import { OperatingTheatreSuite } from '../components/clinical-core/OperatingTheatreSuite';
-import { CriticalCareIcuSuite } from '../components/clinical-core/CriticalCareIcuSuite';
-import { MaternityOgSuite } from '../components/clinical-core/MaternityOgSuite';
-import { PaediatricsNicuSuite } from '../components/clinical-core/PaediatricsNicuSuite';
-import { BloodBankSuite } from '../components/clinical-core/BloodBankSuite';
-import { InpatientNursingSuite } from '../components/clinical-core/InpatientNursingSuite';
-import { NursingTriageStation } from '../components/clinical-core/NursingTriageStation';
-import { WorkflowIntelligenceHub } from '../components/clinical-core/WorkflowIntelligenceHub';
-import { AmbulanceTransfersSuite } from '../components/operations/AmbulanceTransfersSuite';
-import { SupplyChainInventorySuite } from '../components/operations/SupplyChainInventorySuite';
-import { BiomedicalEquipmentSuite } from '../components/operations/BiomedicalEquipmentSuite';
-import { FacilitiesUtilitiesSuite } from '../components/operations/FacilitiesUtilitiesSuite';
-import { EnvironmentalSafetySuite } from '../components/operations/EnvironmentalSafetySuite';
-import { BillingInvoicingSuite } from '../components/finance/BillingInvoicingSuite';
-import { InsuranceHmoClaimsSuite } from '../components/finance/InsuranceHmoClaimsSuite';
-import { AkwaRemitRevenueSuite } from '../components/finance/AkwaRemitRevenueSuite';
-import { AkwaIbomStateSuite } from '../components/interop/AkwaIbomStateSuite';
-import { RevenueCycleAccountingSuite } from '../components/finance/RevenueCycleAccountingSuite';
-import { AccountingArDesk } from '../components/finance/AccountingArDesk';
-import { ProcurementHrSuite } from '../components/finance/ProcurementHrSuite';
-import { FhirHl7GatewaySuite } from '../components/interop/FhirHl7GatewaySuite';
-import { ConnectedDevicesSuite } from '../components/interop/ConnectedDevicesSuite';
-import { ClinicalSafetyBcpSuite } from '../components/interop/ClinicalSafetyBcpSuite';
-import { EMRManager } from '../components/gateway-modules/EMRManager';
-import { AppointmentsManager } from '../components/gateway-modules/AppointmentsManager';
+
+const EmergencyTriageSuite = dynamic(() => import('../components/clinical-core/EmergencyTriageSuite').then(m => m.EmergencyTriageSuite), { loading: () => <ModulePageLoader label="Opening Emergency Triage…" /> });
+const PharmacyDispensingSuite = dynamic(() => import('../components/clinical-core/PharmacyDispensingSuite').then(m => m.PharmacyDispensingSuite), { loading: () => <ModulePageLoader label="Opening Pharmacy Dispensary…" /> });
+const HimSuite = dynamic(() => import('../components/him/HimSuite').then(m => m.HimSuite), { loading: () => <ModulePageLoader label="Opening HIM Health Records…" /> });
+const PharmacyFormularyWorkspace = dynamic(() => import('../components/pharmacy/PharmacyFormularyWorkspace').then(m => m.PharmacyFormularyWorkspace), { loading: () => <ModulePageLoader label="Opening Formulary…" /> });
+const LaboratorySuite = dynamic(() => import('../components/clinical-core/LaboratorySuite').then(m => m.LaboratorySuite), { loading: () => <ModulePageLoader label="Opening Laboratory LIS…" /> });
+const RadiologyPacsSuite = dynamic(() => import('../components/clinical-core/RadiologyPacsSuite').then(m => m.RadiologyPacsSuite), { loading: () => <ModulePageLoader label="Opening Radiology PACS…" /> });
+const OperatingTheatreSuite = dynamic(() => import('../components/clinical-core/OperatingTheatreSuite').then(m => m.OperatingTheatreSuite), { loading: () => <ModulePageLoader label="Opening Operating Theatre…" /> });
+const CriticalCareIcuSuite = dynamic(() => import('../components/clinical-core/CriticalCareIcuSuite').then(m => m.CriticalCareIcuSuite), { loading: () => <ModulePageLoader label="Opening Critical Care ICU…" /> });
+const MaternityOgSuite = dynamic(() => import('../components/clinical-core/MaternityOgSuite').then(m => m.MaternityOgSuite), { loading: () => <ModulePageLoader label="Opening Maternity Suite…" /> });
+const PaediatricsNicuSuite = dynamic(() => import('../components/clinical-core/PaediatricsNicuSuite').then(m => m.PaediatricsNicuSuite), { loading: () => <ModulePageLoader label="Opening Paediatrics NICU…" /> });
+const BloodBankSuite = dynamic(() => import('../components/clinical-core/BloodBankSuite').then(m => m.BloodBankSuite), { loading: () => <ModulePageLoader label="Opening Blood Bank…" /> });
+const InpatientNursingSuite = dynamic(() => import('../components/clinical-core/InpatientNursingSuite').then(m => m.InpatientNursingSuite), { loading: () => <ModulePageLoader label="Opening Inpatient Nursing…" /> });
+const NursingTriageStation = dynamic(() => import('../components/clinical-core/NursingTriageStation').then(m => m.NursingTriageStation), { loading: () => <ModulePageLoader label="Opening Nursing Triage…" /> });
+const WorkflowIntelligenceHub = dynamic(() => import('../components/clinical-core/WorkflowIntelligenceHub').then(m => m.WorkflowIntelligenceHub), { loading: () => <ModulePageLoader label="Opening Workflow Hub…" /> });
+const AmbulanceTransfersSuite = dynamic(() => import('../components/operations/AmbulanceTransfersSuite').then(m => m.AmbulanceTransfersSuite), { loading: () => <ModulePageLoader label="Opening Ambulance Fleet…" /> });
+const SupplyChainInventorySuite = dynamic(() => import('../components/operations/SupplyChainInventorySuite').then(m => m.SupplyChainInventorySuite), { loading: () => <ModulePageLoader label="Opening Medical Inventory…" /> });
+const BiomedicalEquipmentSuite = dynamic(() => import('../components/operations/BiomedicalEquipmentSuite').then(m => m.BiomedicalEquipmentSuite), { loading: () => <ModulePageLoader label="Opening Biomedical Equipment…" /> });
+const FacilitiesUtilitiesSuite = dynamic(() => import('../components/operations/FacilitiesUtilitiesSuite').then(m => m.FacilitiesUtilitiesSuite), { loading: () => <ModulePageLoader label="Opening Facilities Utilities…" /> });
+const EnvironmentalSafetySuite = dynamic(() => import('../components/operations/EnvironmentalSafetySuite').then(m => m.EnvironmentalSafetySuite), { loading: () => <ModulePageLoader label="Opening Environmental Safety…" /> });
+const BillingInvoicingSuite = dynamic(() => import('../components/finance/BillingInvoicingSuite').then(m => m.BillingInvoicingSuite), { loading: () => <ModulePageLoader label="Opening Billing Invoicing…" /> });
+const InsuranceHmoClaimsSuite = dynamic(() => import('../components/finance/InsuranceHmoClaimsSuite').then(m => m.InsuranceHmoClaimsSuite), { loading: () => <ModulePageLoader label="Opening Claims Suite…" /> });
+const AkwaRemitRevenueSuite = dynamic(() => import('../components/finance/AkwaRemitRevenueSuite').then(m => m.AkwaRemitRevenueSuite), { loading: () => <ModulePageLoader label="Opening AkwaRemit…" /> });
+const AkwaIbomStateSuite = dynamic(() => import('../components/interop/AkwaIbomStateSuite').then(m => m.AkwaIbomStateSuite), { loading: () => <ModulePageLoader label="Opening State Readiness…" /> });
+const RevenueCycleAccountingSuite = dynamic(() => import('../components/finance/RevenueCycleAccountingSuite').then(m => m.RevenueCycleAccountingSuite), { loading: () => <ModulePageLoader label="Opening Revenue Cycle…" /> });
+const AccountingArDesk = dynamic(() => import('../components/finance/AccountingArDesk').then(m => m.AccountingArDesk), { loading: () => <ModulePageLoader label="Opening Accounting AR Desk…" /> });
+const ProcurementHrSuite = dynamic(() => import('../components/finance/ProcurementHrSuite').then(m => m.ProcurementHrSuite), { loading: () => <ModulePageLoader label="Opening Procurement & HR…" /> });
+const FhirHl7GatewaySuite = dynamic(() => import('../components/interop/FhirHl7GatewaySuite').then(m => m.FhirHl7GatewaySuite), { loading: () => <ModulePageLoader label="Opening FHIR HL7 Gateway…" /> });
+const ConnectedDevicesSuite = dynamic(() => import('../components/interop/ConnectedDevicesSuite').then(m => m.ConnectedDevicesSuite), { loading: () => <ModulePageLoader label="Opening IoT Connected Devices…" /> });
+const ClinicalSafetyBcpSuite = dynamic(() => import('../components/interop/ClinicalSafetyBcpSuite').then(m => m.ClinicalSafetyBcpSuite), { loading: () => <ModulePageLoader label="Opening Clinical Safety BCP…" /> });
+const EMRManager = dynamic(() => import('../components/gateway-modules/EMRManager').then(m => m.EMRManager), { loading: () => <ModulePageLoader label="Opening EMR Manager…" /> });
+const AppointmentsManager = dynamic(() => import('../components/gateway-modules/AppointmentsManager').then(m => m.AppointmentsManager), { loading: () => <ModulePageLoader label="Opening Appointments Manager…" /> });
 import NotificationBell from '../components/realtime/NotificationBell';
 import AlertBanner from '../components/realtime/AlertBanner';
 import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
@@ -865,7 +869,7 @@ const ROLE_THEMES: Record<string, RoleThemeConfig> = {
   },
 };
 
-const MODULE_COMPONENTS: Record<ModuleKey, React.FC<any>> = {
+const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
   dashboard: RoleDashboard as any,
   'doctor-portal': DoctorPortal as any,
   'm87-ai': M87AICopilotSuite,
@@ -1030,6 +1034,33 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   'front-desk-wq': { level: 1, label: 'L2 Front Desk', roleDesc: 'Epic/Cerner workqueues — grid, recall, referrals' },
 };
 
+const TopHudClock = React.memo(function TopHudClock() {
+  const [time, setTime] = useState('');
+  useEffect(() => {
+    const update = () => {
+      const now = new Date();
+      setTime(now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    };
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="os-top-hud-datetime">
+      <span className="os-top-hud-date">
+        {new Date().toLocaleDateString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })}
+      </span>
+      <span className="os-top-hud-time">{time || '—'}</span>
+    </div>
+  );
+});
+
 export default function OSPage() {
   // One-time clean pilot data (wipes old demo seeds)
   useEffect(() => {
@@ -1120,7 +1151,6 @@ export default function OSPage() {
   const [unlockError, setUnlockError] = useState('');
   const [unlockShake, setUnlockShake] = useState(false);
   const [unlockLoading, setUnlockLoading] = useState(false);
-  const [currentTime, setCurrentTime] = useState('');
   const [activeEmergencyCode, setActiveEmergencyCode] = useState<string | null>(null);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
   const [permTick, setPermTick] = useState(0);
@@ -1133,46 +1163,6 @@ export default function OSPage() {
   const [gotoBuffer, setGotoBuffer] = useState('');
   const [cmdSearch, setCmdSearch] = useState('');
   const [wsConnected, setWsConnected] = useState(true);
-  const [wsLatency, setWsLatency] = useState(12);
-
-  // Live real-time hospital telemetry stream
-  const [realtimeEvents, setRealtimeEvents] = useState<LiveTelemetryEvent[]>([
-    {
-      id: 'EVT-01',
-      time: '09:28:14',
-      category: 'RX',
-      message: 'RX-PAT-991002 routed to MedPlus Pharmacy Ikoyi — Patient notified',
-      badgeColor: '#38BDF8',
-    },
-    {
-      id: 'EVT-02',
-      time: '09:26:40',
-      category: 'TRIAGE',
-      message: 'A&E Triage update: 14 patients waiting • ESI-2 priority allocated to Bay 4',
-      badgeColor: '#F59E0B',
-    },
-    {
-      id: 'EVT-03',
-      time: '09:25:05',
-      category: 'BED',
-      message: 'Ward 4-West: Robert Chen (MRN-849102) vital signs recorded • SpO2 96% BP 142/88',
-      badgeColor: '#10B981',
-    },
-    {
-      id: 'EVT-04',
-      time: '09:23:30',
-      category: 'SURGERY',
-      message: 'Theatre 2: WHO Surgical Safety Time-Out completed for Case #4892',
-      badgeColor: '#A855F7',
-    },
-    {
-      id: 'EVT-05',
-      time: '09:21:12',
-      category: 'BILLING',
-      message: 'Cashier Till #1: ₦38,200 AKSHIA HMO co-pay settled • Transaction TX-90412',
-      badgeColor: '#34D399',
-    },
-  ]);
 
   const isModulePermitted = (key: ModuleKey): boolean => {
     if (!userSession) return false;
@@ -1240,13 +1230,6 @@ export default function OSPage() {
       // ignore
     }
 
-    const updateClock = () => {
-      const now = new Date();
-      setCurrentTime(now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    };
-    updateClock();
-    const interval = setInterval(updateClock, 1000);
-
     // Optional hospital-hub WebSocket (only when configured or on localhost)
     let ws: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1275,42 +1258,9 @@ export default function OSPage() {
         ws.onopen = () => {
           wsAttempts = 0;
           setWsConnected(true);
-          setWsLatency(Math.floor(Math.random() * 8) + 8);
         };
-        ws.onmessage = (evt) => {
-          try {
-            const data = JSON.parse(evt.data);
-            if (data.topic) {
-              const nowStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-              let cat: LiveTelemetryEvent['category'] = 'BED';
-              let color = '#38BDF8';
-              if (data.topic.includes('PRESCRIPTION') || data.topic.includes('MEDICATION')) {
-                cat = 'RX';
-                color = '#38BDF8';
-              } else if (data.topic.includes('SURGE') || data.topic.includes('TRIAGE')) {
-                cat = 'TRIAGE';
-                color = '#EF4444';
-              } else if (data.topic.includes('BILL') || data.topic.includes('PAYMENT')) {
-                cat = 'BILLING';
-                color = '#34D399';
-              } else if (data.topic.includes('LAB')) {
-                cat = 'LAB';
-                color = '#A855F7';
-              }
-
-              const newEvt: LiveTelemetryEvent = {
-                id: `WS-${Date.now()}`,
-                time: nowStr,
-                category: cat,
-                message: data.payload?.message || `${data.topic} event logged at ${nowStr}`,
-                badgeColor: color,
-              };
-
-              setRealtimeEvents(prev => [newEvt, ...prev.slice(0, 19)]);
-            }
-          } catch {
-            // ignore non-json
-          }
+        ws.onmessage = () => {
+          // Realtime events routed through event bus
         };
         ws.onclose = () => {
           setWsConnected(false);
@@ -1329,11 +1279,6 @@ export default function OSPage() {
     };
 
     initWebSocket();
-
-    // Heartbeat latency jitter
-    const latencyInterval = setInterval(() => {
-      setWsLatency(Math.floor(Math.random() * 6) + 9);
-    }, 10000);
 
     // Global keyboard shortcuts (Cmd+K / Ctrl+K and Escape)
     const handleGlobalKey = (e: KeyboardEvent) => {
@@ -1380,8 +1325,6 @@ export default function OSPage() {
     window.addEventListener('keydown', handleGlobalKey);
 
     return () => {
-      clearInterval(interval);
-      clearInterval(latencyInterval);
       window.removeEventListener('keydown', handleGlobalKey);
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (ws) ws.close();
@@ -2381,17 +2324,7 @@ const handleLockScreen = () => {
           </button>
 
           <div className="os-top-hud-trail">
-            <div className="os-top-hud-datetime">
-              <span className="os-top-hud-date">
-                {new Date().toLocaleDateString('en-US', {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
-              </span>
-              <span className="os-top-hud-time">{currentTime || '—'}</span>
-            </div>
+            <TopHudClock />
 
             
             <button
