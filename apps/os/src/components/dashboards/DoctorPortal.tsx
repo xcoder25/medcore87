@@ -66,57 +66,42 @@ interface Task {
   due: string; done: boolean; type: 'clinical' | 'admin' | 'review';
 }
 
-// -- Mock Data ------------------------------------------------------------------
+// -- Patient Registry Sourced Data -----------------------------------------------
 
-const PATIENTS: Patient[] = [
-  {
-    id: 'MRN-004821', name: 'Adaobi Nwosu', age: 45, gender: 'F', ward: 'Medical Ward', bed: 'B4-12',
-    diagnosis: 'Type 2 DM + Hypertension', status: 'inpatient', nextAction: 'Review fasting BGL result',
-    admitDate: '2026-09-15', vitals: { bp: '148/92', hr: 88, temp: 37.2, spo2: 97, rr: 18 },
-    flags: ['High BP', 'Diabetic'],
-  },
-  {
-    id: 'MRN-005103', name: 'Emeka Eze', age: 62, gender: 'M', ward: 'ICU', bed: 'ICU-03',
-    diagnosis: 'Acute MI � Post-PCI Day 2', status: 'critical', nextAction: 'Cardiology review + Echo',
-    admitDate: '2026-09-17', vitals: { bp: '102/60', hr: 112, temp: 37.8, spo2: 93, rr: 24 },
-    flags: ['CRITICAL', 'Cardiac Monitor', 'NPO'],
-  },
-  {
-    id: 'MRN-003990', name: 'Fatima Al-Hassan', age: 33, gender: 'F', ward: 'Gynaecology', bed: 'G2-05',
-    diagnosis: 'Pelvic Inflammatory Disease', status: 'inpatient', nextAction: 'Ultrasound review pending',
-    admitDate: '2026-09-16', vitals: { bp: '118/76', hr: 92, temp: 38.4, spo2: 98, rr: 20 },
-    flags: ['Febrile', 'IV Antibiotics'],
-  },
-  {
-    id: 'MRN-006417', name: 'Chukwudi Obi', age: 28, gender: 'M', ward: 'OPD - Clinic 3', bed: undefined,
-    diagnosis: 'Malaria + Dehydration (suspected)', status: 'outpatient', nextAction: 'Await RDT + FBC result',
-    admitDate: '2026-09-18', vitals: { bp: '110/70', hr: 104, temp: 39.1, spo2: 97, rr: 22 },
-    flags: ['Febrile', 'Malaria RDT Pending'],
-  },
-  {
-    id: 'MRN-007284', name: 'Grace Afolabi', age: 71, gender: 'F', ward: 'Medical Ward', bed: 'B3-08',
-    diagnosis: 'Chronic Heart Failure � Exacerbation', status: 'inpatient', nextAction: 'Fluid balance + Lasix dose',
-    admitDate: '2026-09-14', vitals: { bp: '130/80', hr: 78, temp: 36.8, spo2: 91, rr: 26 },
-    flags: ['Fluid Restriction', 'O2 2L/min', 'Oedema'],
-  },
-  {
-    id: 'MRN-002931', name: 'Ibrahim Salisu', age: 55, gender: 'M', ward: 'Surgical Ward', bed: 'S1-02',
-    diagnosis: 'Post-Op Hernia Repair Day 1', status: 'inpatient', nextAction: 'Wound inspect + ambulate',
-    admitDate: '2026-09-17', vitals: { bp: '126/82', hr: 82, temp: 37.0, spo2: 98, rr: 16 },
-    flags: ['Post-Op', 'DVT Prophylaxis'],
-  },
-];
+function mapFacilityPatient(p: FacilityPatient): Patient {
+  const birthYear = p.dob ? new Date(p.dob).getFullYear() : 0;
+  const age = birthYear ? Math.max(0, new Date().getFullYear() - birthYear) : 32;
+  return {
+    id: p.mrn || p.id,
+    name: p.name,
+    age,
+    gender: p.gender === 'Female' ? 'F' : 'M',
+    ward: 'General OPD',
+    bed: undefined,
+    diagnosis: p.chronicConditions && p.chronicConditions.length > 0 ? p.chronicConditions.join(', ') : 'Clinical Consultation',
+    status: 'inpatient',
+    nextAction: 'Review clinical notes',
+    admitDate: p.enrolledAt ? p.enrolledAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    vitals: {
+      bp: p.lastVitals?.bp || '120/80',
+      hr: p.lastVitals?.pulse || 76,
+      temp: p.lastVitals?.temp || 36.8,
+      spo2: p.lastVitals?.spo2 || 98,
+      rr: 18,
+    },
+    flags: p.allergies && p.allergies.length > 0 ? p.allergies : ['Admitted'],
+  };
+}
 
-const APPOINTMENTS: Appointment[] = [
-  { id: 'A-01', patientName: 'Chukwudi Obi', patientId: 'MRN-006417', time: '08:30', type: 'Follow-Up OPD', status: 'done' },
-  { id: 'A-02', patientName: 'Ngozi Bello', patientId: 'MRN-008112', time: '09:00', type: 'New Consultation', status: 'done' },
-  { id: 'A-03', patientName: 'Yusuf Adamu', patientId: 'MRN-008230', time: '09:45', type: 'Diabetes Review', status: 'waiting' },
-  { id: 'A-04', patientName: 'Chidinma Ike', patientId: 'MRN-005490', time: '10:15', type: 'Post-Op Checkup', status: 'scheduled' },
-  { id: 'A-05', patientName: 'Ladi Okonkwo', patientId: 'MRN-003380', time: '10:45', type: 'Hypertension Review', status: 'scheduled' },
-  { id: 'A-06', patientName: 'Sola Adeyemi', patientId: 'MRN-009001', time: '11:30', type: 'Lab Results Review', status: 'scheduled' },
-  { id: 'A-07', patientName: 'Mary Okafor', patientId: 'MRN-006780', time: '14:00', type: 'New Consultation', status: 'scheduled' },
-  { id: 'A-08', patientName: 'Bello Usman', patientId: 'MRN-004020', time: '14:45', type: 'Referral Follow-Up', status: 'scheduled' },
-];
+export function loadDoctorPatients(facilityId?: string): Patient[] {
+  if (typeof window === 'undefined') return [];
+  const registered = listPatients(facilityId);
+  return registered.map(mapFacilityPatient);
+}
+
+const PATIENTS: Patient[] = typeof window !== 'undefined' ? loadDoctorPatients() : [];
+
+const APPOINTMENTS: Appointment[] = [];
 
 const INITIAL_TASKS: Task[] = [];
 
@@ -390,7 +375,14 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
                 </tr>
               </thead>
               <tbody>
-                {PATIENTS.map((p, i) => (
+                {PATIENTS.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: '36px 14px', textAlign: 'center', color: '#94A3B8', fontSize: '0.84rem' }}>
+                      No patients registered in this facility yet. Patients enrolled at Reception appear here automatically.
+                    </td>
+                  </tr>
+                ) : (
+                  PATIENTS.map((p, i) => (
                   <tr key={p.id}
                     style={{ borderBottom: i < PATIENTS.length - 1 ? '1px solid #FFFFFF' : 'none', background: p.status === 'critical' ? 'rgba(239,68,68,0.03)' : 'transparent', transition: 'background 0.15s' }}
                     onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.025)'}
@@ -424,7 +416,7 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
                       <button type="button" style={{ background: 'rgba(2,132,199,0.1)', border: '1px solid rgba(2,132,199,0.22)', color: '#0052D4', fontSize: '0.7rem', fontWeight: 600, padding: '4px 9px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>View ?</button>
                     </td>
                   </tr>
-                ))}
+                )))}
               </tbody>
             </table>
           </div>
@@ -550,7 +542,14 @@ const PatientsView: React.FC = () => {
         </div>
 
         {/* Cards */}
-        {filtered.map(p => (
+        {filtered.length === 0 ? (
+          <div style={{ padding: 48, textAlign: 'center', background: 'rgba(15,23,42,0.85)', borderRadius: 14, border: '1px dashed #334155', color: '#94A3B8' }}>
+            <Users size={32} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
+            <div style={{ fontWeight: 700, color: '#F8FAFC', marginBottom: 4 }}>No Patients Found</div>
+            <div style={{ fontSize: '0.8rem' }}>No patients currently registered in this facility. New registrations from Reception appear here in real-time.</div>
+          </div>
+        ) : (
+          filtered.map(p => (
           <div key={p.id} onClick={() => setSelected(p)} style={{
             background: selected?.id === p.id ? 'rgba(2,132,199,0.07)' : 'rgba(15,23,42,0.85)',
             border: `1px solid ${selected?.id === p.id ? 'rgba(2,132,199,0.38)' : p.status === 'critical' ? 'rgba(239,68,68,0.22)' : '#E2E8F0'}`,
@@ -585,7 +584,7 @@ const PatientsView: React.FC = () => {
               </div>
             </div>
           </div>
-        ))}
+        )))}
       </div>
 
       {/* Detail Panel */}
@@ -1576,18 +1575,16 @@ const RadiologyOrdersView: React.FC<{ session: UserSession }> = ({ session }) =>
           Place on bus
         </button>
         <div style={{ fontSize: 11, color: '#64748B', lineHeight: 1.4 }}>
-          Orders bill automatically. Post report when complete — appears on doctor results inbox. Full PACS/DICOM needs hospital Orthanc/dcm4chee URL.
         </div>
       </div>
     </div>
   );
 };
 
-
 // -- WARD ROUND ----------------------------------------------------------------
 
 const WardRoundView: React.FC = () => {
-  const [expanded, setExpanded] = useState<string | null>(PATIENTS[0].id);
+  const [expanded, setExpanded] = useState<string | null>(PATIENTS[0]?.id || null);
   const inpatients = PATIENTS.filter(p => p.status !== 'outpatient' && p.status !== 'discharged');
 
   return (
@@ -1595,14 +1592,19 @@ const WardRoundView: React.FC = () => {
       <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0A2540', display: 'flex', alignItems: 'center', gap: 8 }}><BedDouble size={17} color="#A78BFA" /> Ward Round Console</h2>
-          <p style={{ margin: '3px 0 0', color: '#64748B', fontSize: '0.78rem' }}>{inpatients.length} inpatients � {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+          <p style={{ margin: '3px 0 0', color: '#64748B', fontSize: '0.78rem' }}>{inpatients.length} inpatients · {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
         </div>
         <button type="button" style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', border: 'none', color: '#fff', padding: '9px 17px', borderRadius: 9, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
           <Save size={13} /> Sign All Notes
         </button>
       </div>
-      {inpatients.map(p => (
-        <div key={p.id} style={{ background: 'rgba(15,23,42,0.85)', border: `1px solid ${p.status === 'critical' ? 'rgba(239,68,68,0.28)' : '#E2E8F0'}`, borderRadius: 14, overflow: 'hidden' }}>
+      {inpatients.length === 0 ? (
+        <div style={{ padding: 40, textAlign: 'center', background: 'rgba(15,23,42,0.85)', borderRadius: 14, border: '1px dashed #334155', color: '#94A3B8' }}>
+          No inpatients currently admitted. Admitted patients from wards will appear here.
+        </div>
+      ) : (
+        inpatients.map(p => (
+          <div key={p.id} style={{ background: 'rgba(15,23,42,0.85)', border: `1px solid ${p.status === 'critical' ? 'rgba(239,68,68,0.28)' : '#E2E8F0'}`, borderRadius: 14, overflow: 'hidden' }}>
           <div onClick={() => setExpanded(x => x === p.id ? null : p.id)} style={{ padding: '13px 18px', display: 'flex', alignItems: 'center', gap: 13, cursor: 'pointer', background: p.status === 'critical' ? 'rgba(239,68,68,0.03)' : 'transparent' }}>
             <div style={{ width: 38, height: 38, borderRadius: 10, background: p.status === 'critical' ? 'rgba(239,68,68,0.18)' : 'rgba(2,132,199,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: p.status === 'critical' ? '#F87171' : '#38BDF8', fontSize: '0.85rem', flexShrink: 0 }}>
               {p.name.split(' ').map(n => n[0]).join('')}
@@ -1640,7 +1642,7 @@ const WardRoundView: React.FC = () => {
             </div>
           )}
         </div>
-      ))}
+      )))}
     </div>
   );
 };

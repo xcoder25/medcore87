@@ -1,32 +1,51 @@
-import React, { useState, useEffect } from 'react';
-import { CommandCentreDashboard } from './components/command-centre/CommandCentreDashboard';
-import { BedManagement } from './components/beds/BedManagement';
-import { PatientFlowVisibility } from './components/patient-flow/PatientFlowVisibility';
-import { StaffingOverview } from './components/staffing/StaffingOverview';
-import { HospitalStaffTransfer } from './components/staffing/HospitalStaffTransfer';
-import { StaffEnrolment } from './components/staffing/StaffEnrolment';
-import { StaffIdCardView } from './components/staffing/StaffIdCardView';
-import { ensureCardForSession } from './lib/staffCardStore';
-import { IntegratedDataHub } from './components/data-hub/IntegratedDataHub';
-import { PerformanceAnalytics } from './components/analytics/PerformanceAnalytics';
-import { AccessControl } from './components/rbac/AccessControl';
-import { SystemAdministration } from './components/system-admin/SystemAdministration';
-import { ComplianceAuditLogs } from './components/compliance/ComplianceAuditLogs';
-import { AICommandInsights } from './components/ai-insights/AICommandInsights';
-import { CashierRevenue } from './components/cashier/CashierRevenue';
-import { FacilityOnboarding } from './components/facility/FacilityOnboarding';
-import { AuthIdentity } from './components/auth/AuthIdentity';
-import { DigitalPatientCard } from './components/patient-card/DigitalPatientCard';
-import { RoleDashboard } from './components/dashboards/RoleDashboard';
-import { EMRManager } from './components/gateway-modules/EMRManager';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
+
+// ── Always-needed (small, on the critical path) ─────────────────────────────
 import { AuthScreen, UserSession } from './components/auth/AuthScreen';
 import { HospitalOnboardingWizard, resolveOnboardingMode } from './components/onboarding/HospitalOnboardingWizard';
 import { RoleFirstRunGuide } from './components/onboarding/RoleFirstRunGuide';
-import { shouldShowRoleGuide } from './lib/roleFirstRunGuide';
-import { inferRoleKey } from './lib/staffCardStore';
-import { subscribeOnboarding } from './lib/onboardingStore';
 import { RealtimeChrome } from './components/realtime/RealtimeChrome';
+import { shouldShowRoleGuide } from './lib/roleFirstRunGuide';
+import { inferRoleKey, ensureCardForSession } from './lib/staffCardStore';
+import { subscribeOnboarding } from './lib/onboardingStore';
+import { hydratePatientRegistry } from './lib/patientRegistryStore';
+import { hydrateBedBoard } from './lib/bedBoardStore';
+import { migrateLocalStorageToIDB } from './lib/idb';
 import './styles/os.css';
+
+// ── Heavy modules — loaded on demand (lazy) ───────────────────────────────
+// Each import() creates a separate JS chunk; the browser only fetches the
+// chunk when the user first navigates to that module.
+const RoleDashboard       = lazy(() => import('./components/dashboards/RoleDashboard').then(m => ({ default: m.RoleDashboard })));
+const CommandCentreDashboard = lazy(() => import('./components/command-centre/CommandCentreDashboard').then(m => ({ default: m.CommandCentreDashboard })));
+const AICommandInsights   = lazy(() => import('./components/ai-insights/AICommandInsights').then(m => ({ default: m.AICommandInsights })));
+const EMRManager          = lazy(() => import('./components/gateway-modules/EMRManager').then(m => ({ default: m.EMRManager })));
+const BedManagement       = lazy(() => import('./components/beds/BedManagement').then(m => ({ default: m.BedManagement })));
+const PatientFlowVisibility = lazy(() => import('./components/patient-flow/PatientFlowVisibility').then(m => ({ default: m.PatientFlowVisibility })));
+const StaffingOverview    = lazy(() => import('./components/staffing/StaffingOverview').then(m => ({ default: m.StaffingOverview })));
+const HospitalStaffTransfer = lazy(() => import('./components/staffing/HospitalStaffTransfer').then(m => ({ default: m.HospitalStaffTransfer })));
+const StaffEnrolment      = lazy(() => import('./components/staffing/StaffEnrolment').then(m => ({ default: m.StaffEnrolment })));
+const StaffIdCardView     = lazy(() => import('./components/staffing/StaffIdCardView').then(m => ({ default: m.StaffIdCardView })));
+const CashierRevenue      = lazy(() => import('./components/cashier/CashierRevenue').then(m => ({ default: m.CashierRevenue })));
+const DigitalPatientCard  = lazy(() => import('./components/patient-card/DigitalPatientCard').then(m => ({ default: m.DigitalPatientCard })));
+const AuthIdentity        = lazy(() => import('./components/auth/AuthIdentity').then(m => ({ default: m.AuthIdentity })));
+const FacilityOnboarding  = lazy(() => import('./components/facility/FacilityOnboarding').then(m => ({ default: m.FacilityOnboarding })));
+const IntegratedDataHub   = lazy(() => import('./components/data-hub/IntegratedDataHub').then(m => ({ default: m.IntegratedDataHub })));
+const PerformanceAnalytics = lazy(() => import('./components/analytics/PerformanceAnalytics').then(m => ({ default: m.PerformanceAnalytics })));
+const AccessControl       = lazy(() => import('./components/rbac/AccessControl').then(m => ({ default: m.AccessControl })));
+const SystemAdministration = lazy(() => import('./components/system-admin/SystemAdministration').then(m => ({ default: m.SystemAdministration })));
+const ComplianceAuditLogs = lazy(() => import('./components/compliance/ComplianceAuditLogs').then(m => ({ default: m.ComplianceAuditLogs })));
+
+// ── Module skeleton shown while a lazy chunk is downloading ──────────────────
+const ModuleSkeleton: React.FC = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 24, animation: 'os-pulse 1.4s ease-in-out infinite' }}>
+    <div style={{ height: 32, width: '40%', background: 'rgba(15,23,42,0.06)', borderRadius: 8 }} />
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      {[1,2,3,4].map(i => <div key={i} style={{ height: 88, background: 'rgba(15,23,42,0.06)', borderRadius: 12 }} />)}
+    </div>
+    <div style={{ height: 240, background: 'rgba(15,23,42,0.04)', borderRadius: 12 }} />
+  </div>
+);
 
 type ModuleKey =
   | 'dashboard' | 'command' | 'ai' | 'emr' | 'beds' | 'patient-flow' | 'staffing'
@@ -99,6 +118,23 @@ export const App: React.FC = () => {
     }, session.hospitalId);
     return unsub;
   }, [session?.hospitalId, session?.badgeId]);
+
+  // ── Post-login: hydrate IndexedDB caches & run one-time migration ────────
+  useEffect(() => {
+    if (!session) return;
+    // Run in the background — does not block rendering
+    void Promise.all([
+      hydratePatientRegistry(),
+      hydrateBedBoard(),
+      migrateLocalStorageToIDB([
+        { lsKey: 'medcore_os_patient_registry_v1', idbStore: 'patient_registry', idbKey: 'all' },
+        { lsKey: 'medcore_os_bed_board_v1',        idbStore: 'bed_board',        idbKey: 'state' },
+        { lsKey: 'medcore_os_bed_audit_v1',        idbStore: 'bed_audit',        idbKey: 'all' },
+        { lsKey: 'medcore_os_staff_cards_v1',      idbStore: 'staff_cards',      idbKey: 'all' },
+        { lsKey: 'medcore_os_staff_registry_v1',   idbStore: 'staff_registry',   idbKey: 'all' },
+      ]),
+    ]);
+  }, [session?.badgeId]);
 
   if (!session) {
     return <AuthScreen onLogin={(s) => { setSession(s); setActiveModule('dashboard'); }} />;
@@ -300,7 +336,9 @@ export const App: React.FC = () => {
 
         <main className="os-content">
           <div className="os-content-inner os-active-module-wrap">
-            {renderModule()}
+            <Suspense fallback={<ModuleSkeleton />}>
+              {renderModule()}
+            </Suspense>
           </div>
         </main>
       </div>

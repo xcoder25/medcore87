@@ -63,7 +63,8 @@ import { UserProfileModal } from '../components/auth/UserProfileModal';
 const ClinicalUxSuite = dynamic(() => import('../components/clinical-ux/ClinicalUxSuite').then(m => m.ClinicalUxSuite), { loading: () => <ModulePageLoader label="Opening Clinical UX…" /> });
 const DeviceGatewaySettings = dynamic(() => import('../components/interop/DeviceGatewaySettings').then(m => m.DeviceGatewaySettings), { loading: () => <ModulePageLoader label="Opening Device Gateway…" /> });
 import { KeyboardShortcutsHint } from '../components/layout/KeyboardShortcutsHint';
-import { listPatients } from '../lib/patientRegistryStore';
+import { listPatients, hydratePatientRegistry } from '../lib/patientRegistryStore';
+import { hydrateBedBoard } from '../lib/bedBoardStore';
 import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { startOutboxAutoFlush } from '../lib/durableOutbox';
 import { enableFirestoreOffline, normalizeStaffPin, firebaseSignInWithBadge } from '../lib/firebase';
@@ -1249,6 +1250,8 @@ export default function OSPage() {
         const fixed = { ...restored, roleKey };
         setUserSession(fixed);
         setActiveModule('dashboard');
+        void hydratePatientRegistry();
+        void hydrateBedBoard();
         if (typeof window !== 'undefined' && sessionStorage.getItem('medcore_splash_done') === '1') {
           setAppState('app');
         }
@@ -1394,6 +1397,8 @@ export default function OSPage() {
     setUserSession(normalized);
     setActiveModule('dashboard');
     setAppState('app');
+    void hydratePatientRegistry();
+    void hydrateBedBoard();
 
     // Signal the service worker to prefetch all Next.js chunks in the background.
     // This ensures every module the user clicks opens instantly (served from cache)

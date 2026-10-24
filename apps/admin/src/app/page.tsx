@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import type { 
   RegionalFacilityOverview, 
   EpidemiologicalAlert, 
@@ -13,13 +13,16 @@ import { AdminTopBar } from '../components/AdminTopBar';
 import { AdminSidebar, ExtendedAdminTab } from '../components/AdminSidebar';
 import { HospitalAdminHeader } from '../components/HospitalAdminHeader';
 import { HospitalAdminSidebar, HospitalAdminTab } from '../components/HospitalAdminSidebar';
-import { HospitalAdminDashboard } from '../components/HospitalAdminDashboard';
+// Always-visible structural pieces (small — keep static)
 import { AdminCommandPalette } from '../components/AdminCommandPalette';
 import { AdminNotificationsDrawer, AdminNotification } from '../components/AdminNotificationsDrawer';
-import { 
-  TransferReviewDrawer, 
-  AccessReviewDrawer, 
-  ComplianceDrawer, 
+import { FacilityDetailDrawer } from '../components/FacilityDetailDrawer';
+import { BroadcastDirectiveModal } from '../components/BroadcastDirectiveModal';
+import { ScheduleAuditModal } from '../components/ScheduleAuditModal';
+import {
+  TransferReviewDrawer,
+  AccessReviewDrawer,
+  ComplianceDrawer,
   StaffDirectoryDrawer,
   QuickAddStaffModal,
   QuickTransferModal,
@@ -27,20 +30,30 @@ import {
   QuickIncidentModal,
   QuickAssignBedModal
 } from '../components/AdminModals';
-import { NationalCommandHud } from '../components/NationalCommandHud';
-import { FacilitySurveillanceView } from '../components/FacilitySurveillanceView';
-import { EpidemiologicalRadarView } from '../components/EpidemiologicalRadarView';
-import { LicensingAccreditationView } from '../components/LicensingAccreditationView';
-import { WorkforceSurveillanceView } from '../components/WorkforceSurveillanceView';
-import { DirectivesEnforcementView } from '../components/DirectivesEnforcementView';
-import { FacilityDetailDrawer } from '../components/FacilityDetailDrawer';
-import { BroadcastDirectiveModal } from '../components/BroadcastDirectiveModal';
-import { ScheduleAuditModal } from '../components/ScheduleAuditModal';
-import { M87AIAssistantView } from '../components/M87AIAssistantView';
-import { VitalStatisticsView } from '../components/VitalStatisticsView';
-import { FinancialRevenueView } from '../components/FinancialRevenueView';
-import { SecurityAuditLedgerView } from '../components/SecurityAuditLedgerView';
-import { FacilityRegistryView } from '../components/FacilityRegistryView';
+
+// Heavy tab-content views — loaded on first tab visit only
+const HospitalAdminDashboard  = lazy(() => import('../components/HospitalAdminDashboard').then(m => ({ default: m.HospitalAdminDashboard })));
+const NationalCommandHud       = lazy(() => import('../components/NationalCommandHud').then(m => ({ default: m.NationalCommandHud })));
+const WorkforceSurveillanceView = lazy(() => import('../components/WorkforceSurveillanceView').then(m => ({ default: m.WorkforceSurveillanceView })));
+const FacilityRegistryView     = lazy(() => import('../components/FacilityRegistryView').then(m => ({ default: m.FacilityRegistryView })));
+const FacilitySurveillanceView = lazy(() => import('../components/FacilitySurveillanceView').then(m => ({ default: m.FacilitySurveillanceView })));
+const EpidemiologicalRadarView = lazy(() => import('../components/EpidemiologicalRadarView').then(m => ({ default: m.EpidemiologicalRadarView })));
+const LicensingAccreditationView = lazy(() => import('../components/LicensingAccreditationView').then(m => ({ default: m.LicensingAccreditationView })));
+const DirectivesEnforcementView = lazy(() => import('../components/DirectivesEnforcementView').then(m => ({ default: m.DirectivesEnforcementView })));
+const M87AIAssistantView       = lazy(() => import('../components/M87AIAssistantView').then(m => ({ default: m.M87AIAssistantView })));
+const VitalStatisticsView      = lazy(() => import('../components/VitalStatisticsView').then(m => ({ default: m.VitalStatisticsView })));
+const FinancialRevenueView     = lazy(() => import('../components/FinancialRevenueView').then(m => ({ default: m.FinancialRevenueView })));
+const SecurityAuditLedgerView  = lazy(() => import('../components/SecurityAuditLedgerView').then(m => ({ default: m.SecurityAuditLedgerView })));
+
+const AdminSkeleton: React.FC = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 28, animation: 'admin-pulse 1.4s ease-in-out infinite' }}>
+    <div style={{ height: 30, width: '30%', background: 'rgba(0,0,0,0.06)', borderRadius: 8 }} />
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14 }}>
+      {[1,2,3,4].map(i => <div key={i} style={{ height: 90, background: 'rgba(0,0,0,0.05)', borderRadius: 12 }} />)}
+    </div>
+    <div style={{ height: 260, background: 'rgba(0,0,0,0.04)', borderRadius: 12 }} />
+  </div>
+);
 import { MOHSplashScreen } from '../components/MOHSplashScreen';
 import { MOHAuthScreen, MOHOfficerSession } from '../components/MOHAuthScreen';
 import {
@@ -676,6 +689,7 @@ export default function MOHAdminPage() {
 
         {/* Content Canvas */}
         <div style={{ flex: 1, minWidth: 0 }}>
+          <Suspense fallback={<AdminSkeleton />}>
           {adminTab === 'dashboard' && (
             <HospitalAdminDashboard
               onNavigateToTab={(t) => setAdminTab(t)}
@@ -774,6 +788,7 @@ export default function MOHAdminPage() {
               />
             </div>
           )}
+          </Suspense>
         </div>
       </div>
 

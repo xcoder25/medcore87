@@ -1,3 +1,9 @@
+/* Skeleton loading pulse used by lazy-loaded module boundaries */
+@keyframes os-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
 /* Fonts loaded asynchronously via HTML head with local system-ui fallbacks */
 :root {
   /* Akwa Ibom State Official Signature Palette */

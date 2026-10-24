@@ -1,15 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { UserSession } from '../auth/AuthScreen';
 import { inferRoleKey, isReceptionRole } from '../../lib/staffCardStore';
-import { AdminWorkspace } from './AdminWorkspace';
-import { ReceptionWorkspace } from './ReceptionWorkspace';
-import { DoctorDeskHome } from './DoctorDeskHome';
-import { LabDeskHome } from './LabDeskHome';
-import { RecordsDeskHome } from './RecordsDeskHome';
-import { NurseDeskHome } from './NurseDeskHome';
-import { RoleDeskHome, type RoleDeskConfig } from './RoleDeskHome';
 import { emitLiveAction } from '../../lib/liveActions';
 import {
   Stethoscope, Activity, Flame, Wind, Pill, FlaskConical, Layers, Baby, Droplet,
@@ -19,6 +12,25 @@ import {
   Lock, Check, AlertCircle, Heart, HeartPulse, Shield, BarChart3, Database, Cpu, Zap, LogOut, Send, UserCheck
 } from 'lucide-react';
 
+// Heavy role workspaces — loaded only when the matching role logs in
+const AdminWorkspace     = lazy(() => import('./AdminWorkspace').then(m => ({ default: m.AdminWorkspace })));
+const ReceptionWorkspace = lazy(() => import('./ReceptionWorkspace').then(m => ({ default: m.ReceptionWorkspace })));
+const DoctorDeskHome     = lazy(() => import('./DoctorDeskHome').then(m => ({ default: m.DoctorDeskHome })));
+const LabDeskHome        = lazy(() => import('./LabDeskHome').then(m => ({ default: m.LabDeskHome })));
+const RecordsDeskHome    = lazy(() => import('./RecordsDeskHome').then(m => ({ default: m.RecordsDeskHome })));
+const NurseDeskHome      = lazy(() => import('./NurseDeskHome').then(m => ({ default: m.NurseDeskHome })));
+const RoleDeskHome       = lazy(() => import('./RoleDeskHome').then(m => ({ default: m.RoleDeskHome })));
+import type { RoleDeskConfig } from './RoleDeskHome';
+
+const WorkspaceSkeleton: React.FC = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 20, animation: 'os-pulse 1.4s ease-in-out infinite' }}>
+    <div style={{ height: 28, width: '35%', background: 'rgba(15,23,42,0.06)', borderRadius: 8 }} />
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+      {[1,2,3,4].map(i => <div key={i} style={{ height: 80, background: 'rgba(15,23,42,0.06)', borderRadius: 12 }} />)}
+    </div>
+    <div style={{ height: 200, background: 'rgba(15,23,42,0.04)', borderRadius: 12 }} />
+  </div>
+);
 interface RoleDashboardProps {
   session: UserSession;
   onNavigate: (moduleKey: any) => void;
@@ -54,29 +66,31 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
             <span>{actionNotice}</span>
           </div>
         )}
-        <ReceptionWorkspace session={session} onNavigate={(k) => onNavigate(k)} />
+        <Suspense fallback={<WorkspaceSkeleton />}>
+          <ReceptionWorkspace session={session} onNavigate={(k) => onNavigate(k)} />
+        </Suspense>
       </div>
     );
   }
 
   // Doctor clinical desk — same pattern as reception Front Desk
   if (roleKey === 'doctor') {
-    return <DoctorDeskHome session={session} onNavigate={(k) => onNavigate(k)} />;
+    return <Suspense fallback={<WorkspaceSkeleton />}><DoctorDeskHome session={session} onNavigate={(k) => onNavigate(k)} /></Suspense>;
   }
 
   // Laboratory desk — dedicated real-time EMR lab operations workspace
   if (roleKey === 'lab') {
-    return <LabDeskHome session={session} onNavigate={(k) => onNavigate(k)} />;
+    return <Suspense fallback={<WorkspaceSkeleton />}><LabDeskHome session={session} onNavigate={(k) => onNavigate(k)} /></Suspense>;
   }
 
   // Health records / HIM — intelligent MPI & folder desk (not clinical prescribe)
   if (roleKey === 'records') {
-    return <RecordsDeskHome session={session} onNavigate={(k) => onNavigate(k)} />;
+    return <Suspense fallback={<WorkspaceSkeleton />}><RecordsDeskHome session={session} onNavigate={(k) => onNavigate(k)} /></Suspense>;
   }
 
   // Nurse clinical office desk — dedicated real-time workspace (no hero, quick actions first, realtime tools)
   if (roleKey === 'nurse') {
-    return <NurseDeskHome session={session} onNavigate={(k) => onNavigate(k)} />;
+    return <Suspense fallback={<WorkspaceSkeleton />}><NurseDeskHome session={session} onNavigate={(k) => onNavigate(k)} /></Suspense>;
   }
 
   const deskForRole = (key: string): RoleDeskConfig | null => {

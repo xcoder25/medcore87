@@ -1,8 +1,9 @@
 /**
  * Clinical bed census — patient placement IDs shared across Nursing, Theatre, Maternity. Not facilities/CMMS.
- * Local-first, facility-scoped, realtime via events + role sync.
+ * Storage: IndexedDB (async) with in-memory cache. Non-blocking writes prevent UI stutter during busy wards.
  */
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
+import { idbGet, idbSet } from './idb';
 
 export type BedStatus = 'occupied' | 'available' | 'maintenance' | 'isolation' | 'reserved' | 'cleaning';
 
@@ -46,21 +47,40 @@ const EVT = 'medcore-bed-board';
 
 type State = { beds: BedRecord[] };
 
+let _state: State | null = null;
+let _audit: BedAuditEntry[] | null = null;
+
 function load(): State {
+  if (_state !== null) return _state;
   if (typeof window === 'undefined') return { beds: [] };
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { beds: [] };
-    const p = JSON.parse(raw);
-    return { beds: Array.isArray(p.beds) ? p.beds : [] };
+    _state = raw ? JSON.parse(raw) : { beds: [] };
+    if (!Array.isArray(_state!.beds)) _state = { beds: [] };
+    return _state!;
   } catch {
-    return { beds: [] };
+    _state = { beds: [] };
+    return _state;
   }
+}
+
+/** Pre-warm from IndexedDB after login */
+export async function hydrateBedBoard(): Promise<void> {
+  const [s, a] = await Promise.all([
+    idbGet<State>('bed_board', 'state'),
+    idbGet<BedAuditEntry[]>('bed_audit', 'all'),
+  ]);
+  if (s && Array.isArray(s.beds)) _state = s;
+  if (a && Array.isArray(a)) _audit = a;
 }
 
 function save(state: State) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(KEY, JSON.stringify(state));
+  _state = state;
+  // Non-blocking async write — does not stall the main thread
+  idbSet('bed_board', 'state', state).catch(() =>
+    localStorage.setItem(KEY, JSON.stringify(state)) // fallback
+  );
   window.dispatchEvent(new CustomEvent(EVT, { detail: state }));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: KEY } }));
   const fid = state.beds[0]?.facilityId || 'IGH-EKT';
@@ -68,11 +88,14 @@ function save(state: State) {
 }
 
 function loadAudit(): BedAuditEntry[] {
+  if (_audit !== null) return _audit;
   if (typeof window === 'undefined') return [];
   try {
-    return JSON.parse(localStorage.getItem(AUDIT_KEY) || '[]');
+    _audit = JSON.parse(localStorage.getItem(AUDIT_KEY) || '[]');
+    return _audit!;
   } catch {
-    return [];
+    _audit = [];
+    return _audit;
   }
 }
 
@@ -83,8 +106,11 @@ function pushAudit(entry: Omit<BedAuditEntry, 'id' | 'at'>) {
     id: `BA-${Date.now().toString(36)}`,
     at: new Date().toISOString(),
   };
-  const list = [row, ...loadAudit()].slice(0, 2000);
-  localStorage.setItem(AUDIT_KEY, JSON.stringify(list));
+  _audit = [row, ...loadAudit()].slice(0, 2000);
+  // Async write — non-blocking
+  idbSet('bed_audit', 'all', _audit).catch(() =>
+    localStorage.setItem(AUDIT_KEY, JSON.stringify(_audit))
+  );
   window.dispatchEvent(new CustomEvent(EVT));
 }
 

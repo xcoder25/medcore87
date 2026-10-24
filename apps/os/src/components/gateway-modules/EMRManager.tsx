@@ -103,28 +103,7 @@ interface PacsRecord {
 }
 
 const MOCK_PACS_STUDIES: Record<string, PacsRecord[]> = {
-  default: [
-    {
-      id: 'IMG-CXR-0922',
-      modality: 'CXR',
-      title: 'Chest PA & Lateral View',
-      date: '2026-09-18',
-      radiologist: 'Dr. Stella Okon (Consultant Radiologist)',
-      status: 'Verified',
-      findings: 'Cardiac silhouette is mildly enlarged with cardiothoracic ratio of 0.54. Mild vascular redistribution in upper zones. Bilateral costophrenic angles are sharp. No overt focal consolidation or pneumothorax.',
-      impression: 'Mild cardiomegaly with early cephalization of pulmonary vasculature, compatible with early congestive changes.',
-    },
-    {
-      id: 'IMG-US-0891',
-      modality: 'US',
-      title: 'Abdominal & Renal Ultrasound',
-      date: '2026-09-16',
-      radiologist: 'Dr. Tarik Mansoor (Sonologist)',
-      status: 'Reported',
-      findings: 'Liver demonstrates diffuse increase in echogenicity suggestive of moderate hepatic steatosis. Bilateral kidneys are normal in size (Right: 10.8 cm, Left: 11.2 cm) with preserved corticomedullary differentiation.',
-      impression: 'Grade 2 hepatic steatosis. Normal renal sonographic architecture.',
-    },
-  ],
+  default: [],
 };
 
 export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavigate, session }) => {
@@ -1606,8 +1585,15 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                 </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
-                {(MOCK_PACS_STUDIES.default).map(study => (
+              <div style={{ display: 'grid', gridTemplateColumns: (MOCK_PACS_STUDIES.default || []).length > 0 ? 'repeat(2, 1fr)' : '1fr', gap: 14 }}>
+                {(MOCK_PACS_STUDIES.default || []).length === 0 ? (
+                  <div style={{ padding: 48, textAlign: 'center', background: '#0F172A', borderRadius: 12, border: '1px dashed #1E293B', color: '#94A3B8' }}>
+                    <Layers size={32} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
+                    <div style={{ fontWeight: 700, color: '#F8FAFC', marginBottom: 4 }}>No Imaging Studies Recorded</div>
+                    <div style={{ fontSize: '0.8rem' }}>No PACS imaging studies or reports found for this patient. Click &apos;Request Imaging Study&apos; to dispatch an order.</div>
+                  </div>
+                ) : (
+                  (MOCK_PACS_STUDIES.default).map(study => (
                   <div
                     key={study.id}
                     style={{
@@ -1650,7 +1636,7 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
                       </button>
                     </div>
                   </div>
-                ))}
+                )))}
               </div>
             </div>
           )}

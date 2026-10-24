@@ -1,9 +1,12 @@
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
+import { idbGet, idbSet } from './idb';
 /**
  * Facility patient registry — realtime local + optional Firestore mirror.
- * No seed/demo patients.
+ * Storage: IndexedDB (async, no 5MB cap) with in-memory cache for sync callers.
  */
 export const PATIENT_REGISTRY_KEY = 'medcore_os_patient_registry_v1';
+const IDB_STORE = 'patient_registry' as const;
+const IDB_KEY = 'all';
 
 export type PatientSex = 'Male' | 'Female' | 'Other';
 
@@ -57,37 +60,60 @@ export interface FacilityPatient {
   cardExpiryDate?: string;
 }
 
-function readAll(): FacilityPatient[] {
+/** In-memory cache — avoids repeated IDB reads for synchronous callers */
+let _cache: FacilityPatient[] | null = null;
+
+/** Async read from IndexedDB (preferred — used on initial hydration) */
+async function readAllAsync(): Promise<FacilityPatient[]> {
+  if (_cache !== null) return _cache;
+  // Try IndexedDB first
+  const idbData = await idbGet<FacilityPatient[]>(IDB_STORE, IDB_KEY);
+  if (idbData && Array.isArray(idbData)) {
+    _cache = idbData;
+    return _cache;
+  }
+  // Fallback: read from localStorage (pre-migration data)
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(PATIENT_REGISTRY_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
+    _cache = raw ? (JSON.parse(raw) as FacilityPatient[]) : [];
+    return _cache;
   } catch {
-    return [];
+    _cache = [];
+    return _cache;
   }
+}
+
+/** Synchronous accessor using in-memory cache */
+function readAll(): FacilityPatient[] {
+  if (_cache !== null) return _cache;
+  // Cold start — read localStorage synchronously (only until first async hydration)
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(PATIENT_REGISTRY_KEY);
+    _cache = raw ? (JSON.parse(raw) as FacilityPatient[]) : [];
+    return _cache;
+  } catch {
+    _cache = [];
+    return _cache;
+  }
+}
+
+/** Pre-warm the cache from IndexedDB — call once after login */
+export async function hydratePatientRegistry(): Promise<void> {
+  await readAllAsync();
 }
 
 function writeAll(list: FacilityPatient[]) {
   if (typeof window === 'undefined') return;
-  const payload = JSON.stringify(list);
-  // localStorage ~5MB; keep headroom for bills/visits
-  if (payload.length > 4_500_000) {
-    console.warn(
-      `[MedCore] Patient registry ~${(payload.length / 1e6).toFixed(1)}MB — nearing browser storage limit. Prefer Firestore for multi-thousand archives.`
-    );
-  }
-  try {
-    localStorage.setItem(PATIENT_REGISTRY_KEY, payload);
-  } catch (e) {
-    console.error('[MedCore] Patient registry write failed (quota?).', e);
-    throw e;
-  }
+  _cache = list;
+  // Write to IndexedDB asynchronously (non-blocking — no main thread stall)
+  idbSet(IDB_STORE, IDB_KEY, list).catch((e) =>
+    console.warn('[MedCore] Patient registry IDB write failed:', e)
+  );
   window.dispatchEvent(new CustomEvent('medcore-patients-updated', { detail: list }));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: PATIENT_REGISTRY_KEY } }));
   const fid = list[0]?.facilityId || 'IGH-EKT';
-  // Sync summary only on bus (not full 10k dump to every tab every time)
   publishFacilityData(fid, FACILITY_KEYS.patients, list.length > 2000 ? list.slice(0, 2000) : list);
   try {
     const bc = new BroadcastChannel('medcore_patients');
