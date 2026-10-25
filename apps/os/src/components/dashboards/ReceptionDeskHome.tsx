@@ -27,6 +27,7 @@ import {
   TrendingUp, TrendingDown, Heart, Ticket, Inbox,
 } from 'lucide-react';
 import { useOpdSync, broadcastOpdStage } from '../../hooks/useOpdSync';
+import { listPageSize } from '../../lib/poorNetwork';
 
 export type DeskNav =
   | 'home'
@@ -744,7 +745,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                       </td>
                     </tr>
                   )}
-                  {filtered.slice(0, 10).map((v, i) => (
+                  {filtered.slice(0, listPageSize()).map((v, i) => (
                     <tr key={v.id} className={`mc-queue-row${busyId === v.id ? ' is-updating' : ''}`} style={{ borderBottom: `1px solid ${C.border}` }}>
                       <td style={{ padding: '12px 10px', color: C.muted }}>{i + 1}</td>
                       <td style={{ padding: '12px 10px', fontWeight: 700, color: C.text }}>{v.patientName}</td>

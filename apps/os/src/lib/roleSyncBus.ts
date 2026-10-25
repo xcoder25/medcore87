@@ -16,6 +16,7 @@
 import { broadcastLocal, isLanApiEligible, pushFacilityData } from './hospitalSync';
 import { enqueueFacilitySync } from './durableOutbox';
 import { firestoreWriteFacility } from './firebase';
+import { isCriticalFacilityKey } from './poorNetwork';
 
 export const FACILITY_KEYS = {
   patients: 'medcore_os_patient_registry_v1',
@@ -71,9 +72,9 @@ export function publishFacilityData(facilityId: string, key: string, value: unkn
     /* ignore */
   }
 
-  // 4) Outbox when offline so reconnect flushes to hub + cloud
-  //    (flushOutbox already prefers LAN hub, then Firestore)
-  if (!online) {
+  // 4) Critical-path outbox only when offline (orders, vitals, staff, reception…)
+  //    Non-critical keys are best-effort cloud/hub — keeps queue small on 2G.
+  if (!online && isCriticalFacilityKey(key)) {
     try {
       void enqueueFacilitySync(facilityId, key, value);
     } catch {

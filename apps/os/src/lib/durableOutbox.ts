@@ -7,7 +7,8 @@
  */
 
 import { firestoreWriteFacility } from './firebase';
-import { pushFacilityData } from './hospitalSync';
+import { pushFacilityData, isLanApiEligible } from './hospitalSync';
+import { isCriticalFacilityKey } from './poorNetwork';
 
 const OUTBOX_KEY = 'medcore_os_sync_outbox_v1';
 
@@ -64,6 +65,8 @@ export function enqueueFacilitySync(
   value: unknown
 ): void {
   if (typeof window === 'undefined' || !facilityId) return;
+  // Drop non-critical keys — poor networks must not queue analytics-sized blobs
+  if (!isCriticalFacilityKey(key)) return;
   const items = readOutbox();
   // Coalesce: keep only latest value per facility+key
   const filtered = items.filter(
@@ -89,12 +92,18 @@ export function getOutboxPendingCount(): number {
 /** Push pending items to Firestore + LAN; remove only on success */
 export async function flushOutbox(): Promise<{ synced: number; remaining: number }> {
   if (typeof window === 'undefined') return { synced: 0, remaining: 0 };
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+
+  const online = typeof navigator === 'undefined' || navigator.onLine;
+  // ISP blackout: still try LAN hub if configured; only skip when no path at all
+  if (!online && !isLanApiEligible()) {
     return { synced: 0, remaining: readOutbox().length };
   }
 
-  const items = readOutbox();
-  if (items.length === 0) return { synced: 0, remaining: 0 };
+  const items = readOutbox().filter((i) => isCriticalFacilityKey(i.key));
+  if (items.length === 0) {
+    writeOutbox([]);
+    return { synced: 0, remaining: 0 };
+  }
 
   // Group by facility for fewer writes
   const byFacility = new Map<string, Record<string, unknown>>();
@@ -115,8 +124,9 @@ export async function flushOutbox(): Promise<{ synced: number; remaining: number
     } catch {
       okLan = false;
     }
-    const okFs = await firestoreWriteFacility(facilityId, partial);
-    // Success if either hub or cloud accepted (local already saved)
+    // Skip cloud when browser reports offline (avoids long hangs on 2G blackhole routes)
+    const okFs = online ? await firestoreWriteFacility(facilityId, partial) : false;
+    // Success if either hub or cloud accepted
     if (okLan || okFs) {
       synced += Object.keys(partial).length;
     } else {
