@@ -8,7 +8,7 @@
  * Heavy data is NOT written to durable localStorage.
  */
 import { firestoreSubscribeFacility, enableFirestoreOffline } from './firebase';
-import { startFacilitySyncLoop, probeHospitalApi } from './hospitalSync';
+import { startFacilitySyncLoop, probeHospitalApi, isLanApiEligible } from './hospitalSync';
 import { startOutboxAutoFlush, flushOutbox } from './durableOutbox';
 import { FACILITY_KEYS } from './roleSyncBus';
 import { applyHimRemote, HIM_STORAGE_KEY } from './himStore';
@@ -200,12 +200,12 @@ export function startHospitalCloudSync(facilityId: string): () => void {
   })();
 
   // Outbox only for brief offline catch-up; payloads stay in memory (edgeCloudOnly)
-  const stopOutbox = startOutboxAutoFlush(2500);
+  const stopOutbox = startOutboxAutoFlush(20000);
   void flushOutbox();
 
-  // LAN hub (when available on hospital network)
-  const stopLan = startFacilitySyncLoop(facilityId, applyKey, 2500);
-  void probeHospitalApi();
+  // LAN hub — slower poll; only probe when a hub URL is configured
+  const stopLan = startFacilitySyncLoop(facilityId, applyKey, 15000);
+  if (isLanApiEligible()) void probeHospitalApi();
 
   // Cloud realtime — other PCs / phones on same hospital (overrides local when newer)
   const stopFs = firestoreSubscribeFacility(facilityId, (data) => {

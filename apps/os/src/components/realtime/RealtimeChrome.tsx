@@ -34,12 +34,14 @@ export function RealtimeChrome({ facilityId, app = 'MEDCORE_OS' }: RealtimeChrom
       setHubOk(isHospitalApiKnown());
     };
     tick();
-    const id = setInterval(tick, 8000);
+    const id = setInterval(tick, 30000);
     const onNet = () => tick();
     window.addEventListener('online', onNet);
     window.addEventListener('offline', onNet);
     if (isLanApiEligible()) {
       void probeHospitalApi().then((ok) => setHubOk(ok));
+    } else {
+      setHubOk(null);
     }
     return () => {
       clearInterval(id);

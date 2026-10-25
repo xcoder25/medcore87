@@ -375,20 +375,18 @@ export function firestoreSubscribeFacility(
   onData: (data: Record<string, unknown>) => void
 ): () => void {
   let unsub = () => {};
-  void (async () => {
-    try {
-      await enableFirestoreOffline();
-      unsub = onSnapshot(
-        facilityStoreRef(facilityId),
-        (snap) => {
-          if (snap.exists()) onData(snap.data() as Record<string, unknown>);
-        },
-        (err) => fsWarn('snapshot', err)
-      );
-    } catch (e) {
-      fsWarn('subscribe failed', e);
-    }
-  })();
+  try {
+    void enableFirestoreOffline();
+    unsub = onSnapshot(
+      facilityStoreRef(facilityId),
+      (snap) => {
+        if (snap.exists()) onData(snap.data() as Record<string, unknown>);
+      },
+      (err) => fsWarn('snapshot', err)
+    );
+  } catch (e) {
+    fsWarn('subscribe failed', e);
+  }
   return () => unsub();
 }
 
@@ -1016,23 +1014,22 @@ export function firestoreSubscribeStaffCollection(
   onData: (staff: Record<string, unknown>[]) => void
 ): () => void {
   let unsub = () => {};
-  void (async () => {
-    try {
-      await enableFirestoreOffline();
-      const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
-      const col = collection(getFirestore(), 'facilities', fid, 'staff');
-      unsub = onSnapshot(
-        col,
-        (snap) => {
-          const rows = snap.docs.map((d) => ({ badgeId: d.id, ...d.data() }));
-          onData(rows);
-        },
-        (err) => fsWarn('staff collection', err)
-      );
-    } catch (e) {
-      fsWarn('staff subscribe', e);
-    }
-  })();
+  try {
+    // Do not block first paint on offline persistence init
+    void enableFirestoreOffline();
+    const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+    const col = collection(getFirestore(), 'facilities', fid, 'staff');
+    unsub = onSnapshot(
+      col,
+      (snap) => {
+        const rows = snap.docs.map((d) => ({ badgeId: d.id, ...d.data() }));
+        onData(rows);
+      },
+      (err) => fsWarn('staff collection', err)
+    );
+  } catch (e) {
+    fsWarn('staff subscribe', e);
+  }
   return () => unsub();
 }
 

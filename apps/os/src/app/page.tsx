@@ -1111,7 +1111,7 @@ export default function OSPage() {
 
       // Outbox auto-flush — give the app 500ms head-start before starting background sync
       setTimeout(() => {
-        stopOutbox = startOutboxAutoFlush(12000);
+        stopOutbox = startOutboxAutoFlush(20000);
       }, 500);
     };
 

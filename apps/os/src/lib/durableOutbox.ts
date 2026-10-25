@@ -143,7 +143,7 @@ export async function flushOutbox(): Promise<{ synced: number; remaining: number
 }
 
 /** Start listeners: flush when network returns + periodic retry */
-export function startOutboxAutoFlush(intervalMs = 3000): () => void {
+export function startOutboxAutoFlush(intervalMs = 20000): () => void {
   if (typeof window === 'undefined') return () => {};
 
   const onOnline = () => {
