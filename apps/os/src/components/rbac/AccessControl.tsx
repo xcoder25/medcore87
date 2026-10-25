@@ -132,7 +132,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const [editBusy, setEditBusy] = useState(false);
 
   const [fullName, setFullName] = useState('');
-  const [roleKey, setRoleKey] = useState('');
+  const [roleKey, setRoleKey] = useState(ROLE_OPTIONS[0]?.roleKey || 'doctor');
   const [pin, setPin] = useState('123456');
   const [email, setEmail] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string>('');
@@ -140,19 +140,8 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const facilityId = session?.hospitalId || HOSPITALS[0]?.id || 'IGH-EKT';
   const facilityName = session?.facility || HOSPITALS.find((h) => h.id === facilityId)?.name || 'Hospital';
 
-  const availableRoles = useMemo(() => {
-    const custom = getCustomRoles().map((c) => ({
-      roleKey: c.roleKey,
-      role: c.label,
-      title: c.title || c.label,
-      shortRole: c.shortRole || c.label,
-      clearanceLevel: c.clearanceLevel || 3,
-      clearanceLabel: c.clearanceLabel || `L${c.clearanceLevel || 3} Custom`,
-      department: c.department || 'Clinical Operations',
-      group: c.group || 'Custom',
-    }));
-    return [...ROLE_OPTIONS, ...custom];
-  }, [showCreate]);
+  // Static list — avoid getCustomRoles()/storage work when opening the form
+  const availableRoles = ROLE_OPTIONS;
 
   const roleMeta = useMemo(
     () => availableRoles.find((r) => r.roleKey === roleKey),
@@ -420,7 +409,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     let preparedEntry: ReturnType<typeof prepareStaffEnrolment>['entry'] | null = null;
     const pinNorm = normalizeStaffPin(pin);
     const nameSnap = fullName.trim();
-    const mail = email.trim();
+    const mail = ''; // email field removed from form — badge/PIN only
 
     try {
       // Prepare only — no local/cloud write until Firestore profile succeeds (no phantom ID cards)
@@ -846,20 +835,11 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                 value={roleKey}
                 onChange={(e) => setRoleKey(e.target.value)}
               >
-                <option value="">Select specialty / role *</option>
-                {['Clinical', 'Nursing', 'Front desk', 'Support', 'Admin', 'Custom'].map((g) => {
-                  const inGroup = availableRoles.filter((r) => (r as { group?: string }).group === g);
-                  if (inGroup.length === 0) return null;
-                  return (
-                    <optgroup key={g} label={g}>
-                      {inGroup.map((r) => (
-                        <option key={r.roleKey} value={r.roleKey}>
-                          {r.title} · {r.department}
-                        </option>
-                      ))}
-                    </optgroup>
-                  );
-                })}
+                {availableRoles.map((r) => (
+                  <option key={r.roleKey} value={r.roleKey}>
+                    {r.title} · {r.department}
+                  </option>
+                ))}
               </select>
               {roleMeta && (
                 <div style={{ marginTop: 8, fontSize: 12, color: '#0369A1', background: '#E0F2FE', borderRadius: 8, padding: '8px 10px', lineHeight: 1.45 }}>
@@ -875,17 +855,6 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
               >
                 {facilityName} · locked
               </div>
-            </label>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
-              Email
-              <input
-                className="os-search-input"
-                style={{ display: 'block', width: '100%', marginTop: 6, padding: '10px 12px' }}
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="staff@hospital.gov.ng"
-              />
             </label>
 
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B', gridColumn: '1 / -1' }}>
