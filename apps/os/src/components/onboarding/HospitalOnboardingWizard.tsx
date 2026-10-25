@@ -91,10 +91,10 @@ function Toggle({ checked, onChange, label, desc }: { checked: boolean; onChange
 }
 
 const ADMIN_STEPS = [
-  { id: 1, label: 'Organization', icon: Building2 },
+  { id: 1, label: 'Facility profile', icon: Building2 },
   { id: 2, label: 'Compliance', icon: Shield },
-  { id: 3, label: 'Integrations', icon: Plug },
-  { id: 4, label: 'Users & roles', icon: Users },
+  { id: 3, label: 'Services & desks', icon: Plug },
+  { id: 4, label: 'Access & payments', icon: Users },
 ];
 
 const STAFF_STEPS = [
@@ -280,6 +280,12 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
         lga: final.lga || settings.lga,
         workingHoursStart: final.operatingHoursStart,
         workingHoursEnd: final.operatingHoursEnd,
+        nhiaProviderCode: final.nhiaFacilityCode || settings.nhiaProviderCode,
+        akwaremitEnabled: final.enablePaystack ? settings.akwaremitEnabled : settings.akwaremitEnabled,
+        autoVerifyInsuranceOnCheckin: final.enableNhisBilling,
+        // Clinical governance defaults used by triage / OPD in this app
+        requireVitalsBeforeConsult: settings.requireVitalsBeforeConsult,
+        requireBillingClearanceBeforeDischarge: settings.requireBillingClearanceBeforeDischarge,
         updatedAt: new Date().toISOString(),
         updatedBy: session.badgeId || session.name,
       });
@@ -308,7 +314,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
   };
 
   return (
-    <WizardShell title="Hospital onboarding" subtitle={`${session.facility || draft.facilityName || session.hospitalId} · First-time facility setup`} steps={ADMIN_STEPS} step={step} session={session}>
+    <WizardShell title="Facility setup" subtitle={`${session.facility || draft.facilityName || session.hospitalId} · First-time facility setup`} steps={ADMIN_STEPS} step={step} session={session}>
       {error && (
         <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '10px 14px', color: '#B91C1C', fontSize: '0.84rem', fontWeight: 600, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
           <AlertTriangle size={16} />{error}
@@ -345,7 +351,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
             </Field>
           </div>
           <SectionTitle>Specialty configuration</SectionTitle>
-          <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>Select all that apply — tailors clinical templates, order sets, and desks.</p>
+          <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>Select services this facility runs — unlocks matching desks in MedCore (OPD, theatre, lab, pharmacy, maternity, etc.).</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {SPECIALTY_OPTIONS.map((s) => (
               <Chip key={s.key} active={draft.specialties.includes(s.key)} onClick={() => toggleSpecialty(s.key)}>{s.label}</Chip>
@@ -369,15 +375,13 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <SectionTitle>Regulatory & compliance verification</SectionTitle>
           <Toggle checked={draft.ndprAccepted} onChange={(v) => patch({ ndprAccepted: v })} label="Nigeria Data Protection Regulation (NDPR)" desc="I confirm this facility will process patient data in line with NDPR and applicable privacy law." />
-          <Toggle checked={draft.baaAccepted} onChange={(v) => patch({ baaAccepted: v })} label="Business Associate / Data Processing Agreement" desc="Digital acceptance of MedCore BAA covering safeguards, GDPR principles where applicable, and local residency." />
+          <Toggle checked={draft.baaAccepted} onChange={(v) => patch({ baaAccepted: v })} label="Business Associate / Data Processing Agreement" desc="Accept MedCore data processing terms for this facility (NDPR-aligned storage and audit)." />
           <Field label="Signatory full name *"><input style={inputStyle} value={draft.baaSignedBy} onChange={(e) => patch({ baaSignedBy: e.target.value })} placeholder="Name of authorised officer" /></Field>
           <Field label="Data storage region" hint="Choose residency for clinical data">
             <select style={inputStyle} value={draft.storageRegion} onChange={(e) => patch({ storageRegion: e.target.value as StorageRegion })}>
-              <option value="ng-lagos">Nigeria · Lagos (recommended)</option>
-              <option value="af-south">AWS Africa (Cape Town)</option>
-              <option value="eu-west">EU West</option>
-              <option value="us-east">US East</option>
-              <option value="local_only">On-premise / local only</option>
+              <option value="ng-lagos">Nigeria cloud (Firebase · recommended)</option>
+              <option value="local_only">Onsite hub preferred (LAN + cloud when online)</option>
+              <option value="af-south">Africa region (if configured)</option>
             </select>
           </Field>
           <Field label="Audit log retention (years)">
@@ -387,30 +391,84 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
       )}
 
       {step === 3 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <SectionTitle>Systems & third-party integrations</SectionTitle>
-          <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>Enable what this facility will use. Change later under Settings.</p>
-          <Toggle checked={draft.enableFhir} onChange={(v) => patch({ enableFhir: v })} label="FHIR gateway" desc="Modern interoperability (patient, encounter, observation)." />
-          <Toggle checked={draft.enableHl7} onChange={(v) => patch({ enableHl7: v })} label="HL7 messaging" desc="Legacy ADT / ORU / ORM feeds." />
-          <Toggle checked={draft.enablePacs} onChange={(v) => patch({ enablePacs: v })} label="PACS (radiology)" desc="Connect imaging archive / Orthanc." />
-          <Toggle checked={draft.enableLis} onChange={(v) => patch({ enableLis: v })} label="LIS (laboratory)" desc="Specimen and result pipeline." />
-          <Toggle checked={draft.enableEprescribe} onChange={(v) => patch({ enableEprescribe: v })} label="e-Prescriptions" desc="Electronic prescribing to facility pharmacy network." />
-          <Toggle checked={draft.enableNhisBilling} onChange={(v) => patch({ enableNhisBilling: v })} label="NHIA / insurance billing" desc="Claims, ICD-10 / procedure coding support." />
-          <Toggle checked={draft.enablePaystack} onChange={(v) => patch({ enablePaystack: v })} label="Paystack payments" desc="Reception and cashier card / transfer collections." />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <SectionTitle>Clinical desks & modules (in this app)</SectionTitle>
+          <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
+            Enable what this facility will run. Each toggle maps to a real MedCore workspace: Reception, Doctor, Nursing/Maternity, Laboratory, Pharmacy, Radiology, Theatre, Beds, Records (HIM), Accounts/Cashier, and Ambulance.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Toggle checked={draft.enableEprescribe} onChange={(v) => patch({ enableEprescribe: v })} label="e-Prescribing & pharmacy" desc="Orders from doctors → Pharmacy dispense queue." />
+            <Toggle checked={draft.enableLis} onChange={(v) => patch({ enableLis: v })} label="Laboratory" desc="Lab orders, results, critical value alerts." />
+            <Toggle checked={draft.enablePacs} onChange={(v) => patch({ enablePacs: v })} label="Radiology / imaging" desc="Radiology desk and imaging requests." />
+            <Toggle checked={draft.enableNhisBilling} onChange={(v) => patch({ enableNhisBilling: v })} label="NHIA / insurance flags" desc="Check-in and Accounts insurance workflow." />
+            <Toggle checked={draft.enablePaystack} onChange={(v) => patch({ enablePaystack: v })} label="Paystack payments" desc="Cashier card/transfer — keys in Admin Settings." />
+            <Toggle checked={draft.enableFhir} onChange={(v) => patch({ enableFhir: v })} label="FHIR export (optional)" desc="Only if an HIE partner requires export." />
+            <Toggle checked={draft.enableHl7} onChange={(v) => patch({ enableHl7: v })} label="HL7 device gateway" desc="Only if analysers/devices will connect." />
+          </div>
+          <SectionTitle>How patients present</SectionTitle>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {([['in_person', 'Walk-in / OPD'], ['telehealth', 'Telehealth'], ['home_visit', 'Home visit'], ['outreach', 'Outreach']] as [AppointmentType, string][]).map(([k, lab]) => (
+              <Chip key={k} active={draft.appointmentTypes.includes(k)} onClick={() => toggleAppt(k)}>{lab}</Chip>
+            ))}
+          </div>
+          <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: 12, fontSize: '0.8rem', color: '#334155', lineHeight: 1.45 }}>
+            <strong>Always available:</strong> Staff Access (enrol + ID cards), Command Centre, patient registry, notifications, Firebase cloud sync. Optional onsite LAN hub is set in Admin Settings when a hospital server is on UPS.
+          </div>
         </div>
       )}
 
       {step === 4 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <SectionTitle>User & role provisioning</SectionTitle>
-          <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>Seed role categories for RBAC. Staff enrolment assigns individuals to these roles.</p>
+          <SectionTitle>Roles this facility will enrol</SectionTitle>
+          <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
+            Same roles as Staff Access. After setup, create each staff member with <strong>Staff ID + PIN</strong>. Email + password is for administrators only.
+          </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {draft.seedRoles.map((r) => (
-              <span key={r} style={{ background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 999, padding: '6px 12px', fontSize: '0.78rem', fontWeight: 650, color: '#334155' }}>{r}</span>
-            ))}
+            {([
+              ['hospital_admin', 'Hospital Admin'],
+              ['doctor', 'Medical Officer'],
+              ['surgeon', 'Surgeon'],
+              ['nurse', 'Nursing'],
+              ['midwife', 'Midwife'],
+              ['reception', 'Reception'],
+              ['records', 'Records / HIM'],
+              ['accountant', 'Accounts'],
+              ['pharmacist', 'Pharmacy'],
+              ['lab', 'Laboratory'],
+              ['radiologist', 'Radiology'],
+              ['sysadmin', 'ICT / SysAdmin'],
+            ] as [string, string][]).map(([key, lab]) => {
+              const on = draft.seedRoles.includes(key);
+              return (
+                <Chip
+                  key={key}
+                  active={on}
+                  onClick={() =>
+                    patch({
+                      seedRoles: on
+                        ? draft.seedRoles.filter((r) => r !== key)
+                        : [...draft.seedRoles, key],
+                    })
+                  }
+                >
+                  {lab}
+                </Chip>
+              );
+            })}
           </div>
-          <Toggle checked={draft.requireMfa} onChange={(v) => patch({ requireMfa: v })} label="Mandatory multi-factor authentication (MFA)" desc="Require authenticator or SMS second factor for clinical and admin roles." />
-          <Toggle checked={draft.enableSso} onChange={(v) => patch({ enableSso: v })} label="Single Sign-On (SSO)" desc="Optional integration with hospital directory." />
+          <SectionTitle>Access policy</SectionTitle>
+          <Toggle
+            checked={draft.requireMfa}
+            onChange={(v) => patch({ requireMfa: v })}
+            label="Stronger MFA for admin email logins (optional)"
+            desc="Desk staff continue with Staff ID + PIN. MFA is not required for PIN sign-in."
+          />
+          <Toggle
+            checked={draft.enableSso}
+            onChange={(v) => patch({ enableSso: v })}
+            label="SSO via hospital directory (optional)"
+            desc="Only if ICT will connect Azure AD / AD later. Not needed for badge desks."
+          />
           {draft.enableSso && (
             <Field label="SSO provider">
               <select style={inputStyle} value={draft.ssoProvider} onChange={(e) => patch({ ssoProvider: e.target.value as FacilityOnboardDraft['ssoProvider'] })}>
@@ -421,8 +479,13 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
               </select>
             </Field>
           )}
-          <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 12, padding: 14, fontSize: '0.82rem', color: '#0C4A6E' }}>
-            <strong>Next:</strong> Use Staff Enrolment to add clinicians. Test-patient / sandbox mode is available from clinical desks.
+          <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12, padding: 14, fontSize: '0.82rem', color: '#065F46', lineHeight: 1.5 }}>
+            <strong>This completes facility configuration.</strong>
+            <ol style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+              <li>Open <strong>Staff Access</strong> and enrol real staff (badge + PIN).</li>
+              <li>Reception starts the patient queue; each role uses its own desk.</li>
+              <li>Admin Settings: Paystack keys, NHIA codes, onsite hub URL if used.</li>
+            </ol>
           </div>
         </div>
       )}
@@ -434,7 +497,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
         onFinish={finish}
         onSkip={finish}
         skipLabel={step < 4 ? 'Skip remaining (configure later)' : undefined}
-        finishLabel="Complete hospital setup"
+        finishLabel="Complete facility setup"
       />
     </WizardShell>
   );
