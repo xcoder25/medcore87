@@ -29,6 +29,7 @@ import {
   defaultPermissionsForRole,
   applyCloudStaffDirectory,
 } from '../../lib/staffCardStore';
+import { compressStaffPhotoFile, resolveStaffPhotoForEnrol } from '../../lib/staffPhoto';
 import { StaffDeleteSuccessScreen, type StaffDeleteSuccessInfo } from '../staffing/StaffDeleteSuccessScreen';
 import {
   firestoreSubscribeStaffCollection,
@@ -136,6 +137,8 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const [pin, setPin] = useState('123456');
   const [email, setEmail] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string>('');
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoMeta, setPhotoMeta] = useState<string>('');
 
   const facilityId = session?.hospitalId || HOSPITALS[0]?.id || 'IGH-EKT';
   const facilityName = session?.facility || HOSPITALS.find((h) => h.id === facilityId)?.name || 'Hospital';
@@ -301,49 +304,25 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const selected = records.find((r) => r.id === selectedId) || null;
   const selectedCard = selectedId ? getStaffCard(selectedId) : undefined;
 
-  const readPhotoFile = (file: File | null) => {
+  const readPhotoFile = async (file: File | null) => {
     if (!file) {
       setPhotoUrl('');
+      setPhotoMeta('');
       return;
     }
-    if (!file.type.startsWith('image/')) {
-      setError('Photo must be an image (JPG or PNG).');
-      return;
+    setPhotoBusy(true);
+    setError('');
+    try {
+      const result = await compressStaffPhotoFile(file);
+      setPhotoUrl(result.dataUrl);
+      setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB`);
+    } catch (err) {
+      setPhotoUrl('');
+      setPhotoMeta('');
+      setError((err as Error)?.message || 'Could not process photo.');
+    } finally {
+      setPhotoBusy(false);
     }
-    if (file.size > 4 * 1024 * 1024) {
-      setError('Photo must be under 4 MB.');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const data = String(reader.result || '');
-      // Compress via canvas for storage size
-      const img = new Image();
-      img.onload = () => {
-        const max = 480;
-        let w = img.width;
-        let h = img.height;
-        if (w > max || h > max) {
-          const scale = max / Math.max(w, h);
-          w = Math.round(w * scale);
-          h = Math.round(h * scale);
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          setPhotoUrl(data);
-          return;
-        }
-        ctx.drawImage(img, 0, 0, w, h);
-        setPhotoUrl(canvas.toDataURL('image/jpeg', 0.82));
-        setError('');
-      };
-      img.onerror = () => setPhotoUrl(data);
-      img.src = data;
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -419,6 +398,19 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       const badgeId = card.badgeId;
       preparedEntry = prepared.entry;
 
+      // Upload photo to Storage when possible; keep compact data URL offline
+      let resolvedPhoto = photoUrl || undefined;
+      if (resolvedPhoto) {
+        try {
+          resolvedPhoto = await resolveStaffPhotoForEnrol(facilityId, badgeId, resolvedPhoto);
+          if (resolvedPhoto && card) {
+            card = { ...card, photoUrl: resolvedPhoto };
+          }
+        } catch {
+          /* keep local data URL */
+        }
+      }
+
       accessRow = {
         id: badgeId,
         name: nameSnap,
@@ -454,6 +446,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
               email: mail || undefined,
               authEmail: badgeAuthEmail(badgeId),
               status: 'active',
+              photoUrl: resolvedPhoto || photoUrl || undefined,
             },
           }),
           14000,
@@ -933,20 +926,32 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                 <div style={{ flex: 1, minWidth: 160 }}>
                   <input
                     type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    capture="environment"
-                    onChange={(e) => readPhotoFile(e.target.files?.[0] || null)}
+                    accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp"
+                    capture="user"
+                    disabled={photoBusy || busy}
+                    onChange={(e) => {
+                      void readPhotoFile(e.target.files?.[0] || null);
+                      e.target.value = '';
+                    }}
                     style={{ fontSize: 13, width: '100%' }}
                   />
                   <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6 }}>
-                    Clear headshot · JPG/PNG · used on the vertical staff ID card
+                    {photoBusy
+                      ? 'Compressing headshot…'
+                      : photoMeta
+                        ? `Ready · ${photoMeta} · ID card + cloud profile`
+                        : 'Clear headshot · camera or gallery · auto-cropped for ID card'}
                   </div>
                   {photoUrl && (
                     <button
                       type="button"
                       className="os-ghost-btn"
                       style={{ fontSize: 11, marginTop: 6 }}
-                      onClick={() => setPhotoUrl('')}
+                      disabled={photoBusy || busy}
+                      onClick={() => {
+                        setPhotoUrl('');
+                        setPhotoMeta('');
+                      }}
                     >
                       Remove photo
                     </button>
