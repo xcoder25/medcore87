@@ -1689,60 +1689,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           </div>
 
 
-          {/* Divider */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            margin: '22px 0',
-            color: '#94A3B8',
-            fontSize: '0.78rem',
-            fontWeight: 600,
-          }}>
-            <div style={{ flex: 1, height: 1, background: '#E2E8F0' }} />
-            <span style={{ padding: '0 14px', letterSpacing: '0.05em' }}>OR</span>
-            <div style={{ flex: 1, height: 1, background: '#E2E8F0' }} />
-          </div>
-
-          {/* Toggle email ↔ badge + PIN */}
-          <button
-            type="button"
-            onClick={() => {
-              setError(null);
-              setSuccess(false);
-              setUsername('');
-              setPassword('');
-              setAuthMode((m) => (m === 'badge' ? 'email' : 'badge'));
-            }}
-            style={{
-              width: '100%',
-              height: 44,
-              borderRadius: 10,
-              background: authMode === 'badge' ? 'rgba(0, 82, 212, 0.06)' : '#FFFFFF',
-              border: authMode === 'badge' ? '1px solid rgba(0, 82, 212, 0.35)' : '1px solid #E2E8F0',
-              color: authMode === 'badge' ? '#0052D4' : '#334155',
-              fontWeight: 600,
-              fontSize: '0.88rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              cursor: 'pointer',
-              transition: 'background 0.15s ease, border-color 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              if (authMode !== 'badge') e.currentTarget.style.background = '#F8FAFC';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = authMode === 'badge' ? 'rgba(0, 82, 212, 0.06)' : '#FFFFFF';
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="5" width="20" height="14" rx="2" />
-              <circle cx="8" cy="12" r="2" />
-              <path d="M14 9h4M14 12h4M14 15h2" />
-            </svg>
-            <span>{authMode === 'badge' ? 'Use Admin email + password' : 'Use Staff ID + PIN'}</span>
-          </button>
 
           {/* Footer */}
           <div style={{
