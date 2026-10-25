@@ -2,17 +2,18 @@
  * Cross-role sync bus — every clinical/admin write should publish here
  * so Reception, Doctors, Lab, Pharmacy, Admin, and other PCs stay aligned.
  *
- * ONLINE (edge + cloud only):
- *  1. Firestore write immediately (source of truth for all hospital PCs)
- *  2. BroadcastChannel (same PC tabs) — no durable localStorage for heavy data
- *  3. Outbox only offline (in-memory via edgeCloudOnly)
+ * ONLINE (edge + cloud):
+ *  1. Firestore write (internet / multi-site)
+ *  2. Onsite hospital hub (LAN) when NEXT_PUBLIC_API_URL is set — survives ISP blackout
+ *  3. BroadcastChannel (same PC tabs)
  *
- * OFFLINE:
- *  1. In-memory + events
- *  2. Outbox queues until online → then cloud
+ * OFFLINE / blackout:
+ *  1. Still try onsite hub (LAN server on UPS often stays up)
+ *  2. Outbox queues until cloud or hub accepts (edgeCloudOnly keeps queue in RAM)
+ *  3. flushOutbox prefers hub first, then Firestore
  */
 
-import { broadcastLocal } from './hospitalSync';
+import { broadcastLocal, isLanApiEligible, pushFacilityData } from './hospitalSync';
 import { enqueueFacilitySync } from './durableOutbox';
 import { firestoreWriteFacility } from './firebase';
 
@@ -35,26 +36,43 @@ export const FACILITY_KEYS = {
   vitals: 'medcore_os_nursing_vitals_v1',
 } as const;
 
-/** Publish facility data. Online = Firestore only (+ tab broadcast). Offline = memory + outbox. */
+/**
+ * Publish facility data.
+ * Cloud (when online) + onsite LAN hub (when configured) + same-PC tabs.
+ * During ISP blackout, hub still receives writes if the hospital server is up.
+ */
 export function publishFacilityData(facilityId: string, key: string, value: unknown) {
   if (typeof window === 'undefined' || !facilityId) return;
   const online = typeof navigator === 'undefined' || navigator.onLine;
-  // 1) CLOUD FIRST when online — source of truth for other workstations
+  const payload = { [key]: value };
+
+  // 1) Cloud when browser reports online
   if (online) {
     try {
-      void firestoreWriteFacility(facilityId, { [key]: value });
+      void firestoreWriteFacility(facilityId, payload);
     } catch {
       /* ignore */
     }
   }
-  // 2) Same-origin tabs / same PC (in-memory peers — no disk)
+
+  // 2) Onsite hospital hub — independent of internet (UPS / local server)
+  if (isLanApiEligible()) {
+    try {
+      void pushFacilityData(facilityId, payload);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // 3) Same-origin tabs / same PC
   try {
     broadcastLocal(facilityId, key, value);
   } catch {
     /* ignore */
   }
-  // 3) Outbox only when offline (or cloud path may need retry). Online path skips
-  //    durable disk queue — edgeCloudOnly keeps any queue entries in RAM only.
+
+  // 4) Outbox when offline so reconnect flushes to hub + cloud
+  //    (flushOutbox already prefers LAN hub, then Firestore)
   if (!online) {
     try {
       void enqueueFacilitySync(facilityId, key, value);
