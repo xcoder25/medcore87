@@ -29,21 +29,34 @@ declare global {
 const SCRIPT_URL = 'https://js.paystack.co/v1/inline.js';
 
 /**
- * Public key — env only (NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY).
- * Never from localStorage / admin form (avoids key drift and leaks).
+ * Public key: Vercel env first, then Hospital Admin Settings (realtime).
  */
 export function getPaystackPublicKey(): string {
   const fromEnv =
     (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY) ||
     (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PAYSTACK_KEY) ||
     '';
-  return String(fromEnv || '').trim();
+  if (String(fromEnv || '').trim()) return String(fromEnv).trim();
+  if (typeof window === 'undefined') return '';
+  try {
+    const { getAdminSettings } = require('./adminSettingsStore') as typeof import('./adminSettingsStore');
+    const k = getAdminSettings().paystackPublicKey?.trim();
+    if (k) return k;
+  } catch {
+    /* ignore */
+  }
+  return '';
 }
 
-/** @deprecated Keys must come from env — no-op kept for call-site compatibility */
-export function setPaystackPublicKeyLocal(_key: string) {
-  if (typeof console !== 'undefined') {
-    console.warn('[Paystack] Public key must be set via NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY env, not localStorage');
+/** Persist public key into Admin Settings (synced realtime with facility). */
+export function setPaystackPublicKeyLocal(key: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const { getAdminSettings, saveAdminSettings } = require('./adminSettingsStore') as typeof import('./adminSettingsStore');
+    const s = getAdminSettings();
+    saveAdminSettings({ facilityId: s.facilityId, paystackPublicKey: String(key || '').trim() });
+  } catch {
+    /* ignore */
   }
 }
 
@@ -63,6 +76,15 @@ export function getPaystackTerminalId(): string {
     '';
   if (String(fromEnv || '').trim()) return String(fromEnv).trim();
   if (typeof window === 'undefined') return '';
+  try {
+    const { getAdminSettings } = require('./adminSettingsStore') as typeof import('./adminSettingsStore');
+    const terminals = getAdminSettings().posTerminals || [];
+    const active = terminals.find((t) => t.active && t.terminalId?.trim());
+    if (active?.terminalId) return String(active.terminalId).trim();
+    if (terminals[0]?.terminalId) return String(terminals[0].terminalId).trim();
+  } catch {
+    /* ignore */
+  }
   try {
     const raw = localStorage.getItem('medcore_os_front_desk_settings');
     if (raw) {

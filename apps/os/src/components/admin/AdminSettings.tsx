@@ -123,36 +123,62 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
     };
   }, [facilityId, dirty]);
 
-  const patch = useCallback((partial: Partial<AdminFacilitySettings>) => {
-    setDraft((d) => ({ ...d, ...partial }));
-    setDirty(true);
-  }, []);
+  const autoSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const persistSettings = useCallback(
+    (nextDraft: AdminFacilitySettings) => {
+      const next = saveAdminSettings(
+        { ...nextDraft, facilityId },
+        session.name || session.badgeId
+      );
+      setSettings(next);
+      setDraft(next);
+      setDirty(false);
+      setSavedAt(new Date().toLocaleTimeString('en-GB'));
+      // Apply LAN immediately for hub sync
+      if (next.lanApiUrl) {
+        try {
+          (window as unknown as { __MEDCORE_API_URL?: string }).__MEDCORE_API_URL = next.lanApiUrl;
+          localStorage.setItem('medcore_lan_api_url', next.lanApiUrl);
+        } catch {
+          /* ignore */
+        }
+      }
+      try {
+        const cat = loadFacilityCatalog(facilityId, session.facility);
+        saveFacilityCatalog({
+          ...cat,
+          name: next.displayName || cat.name,
+          lga: next.lga || cat.lga,
+          address: next.address || cat.address,
+          phone: next.phone || cat.phone,
+          email: next.email || cat.email,
+        });
+      } catch {
+        /* ignore */
+      }
+    },
+    [facilityId, session.name, session.badgeId, session.facility]
+  );
+
+  const patch = useCallback(
+    (partial: Partial<AdminFacilitySettings>) => {
+      setDraft((d) => {
+        const merged = { ...d, ...partial };
+        if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+        autoSaveTimer.current = setTimeout(() => {
+          persistSettings(merged);
+        }, 600);
+        return merged;
+      });
+      setDirty(true);
+    },
+    [persistSettings]
+  );
 
   const save = () => {
-    const next = saveAdminSettings(
-      { ...draft, facilityId },
-      session.name || session.badgeId
-    );
-    setSettings(next);
-    setDraft(next);
-    setDirty(false);
-    setSavedAt(new Date().toLocaleTimeString('en-GB'));
-
-    // Dual-sync: update facilityCatalogStore so hospital identity is 100% unified
-    try {
-      const cat = loadFacilityCatalog(facilityId, session.facility);
-      saveFacilityCatalog({
-        ...cat,
-        name: next.displayName || cat.name,
-        lga: next.lga || cat.lga,
-        address: next.address || cat.address,
-        phone: next.phone || cat.phone,
-        email: next.email || cat.email,
-      });
-    } catch {
-      /* ignore */
-    }
-
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    persistSettings(draft);
     try {
       pushActivity(`Settings updated · ${session.name || 'Admin'}`);
     } catch {

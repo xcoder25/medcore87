@@ -11,16 +11,55 @@ let syncAvailable: boolean | null = null;
 let lastProbeFailAt = 0;
 const PROBE_COOLDOWN_MS = 120_000;
 
-/** True only when a real hospital hub URL is configured or we are on localhost. */
+function runtimeLanUrl(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const w = (window as unknown as { __MEDCORE_API_URL?: string }).__MEDCORE_API_URL;
+    if (w && String(w).trim()) return String(w).replace(/\/$/, '');
+  } catch {
+    /* ignore */
+  }
+  try {
+    const stored = localStorage.getItem('medcore_lan_api_url');
+    if (stored && stored.trim()) return stored.trim().replace(/\/$/, '');
+  } catch {
+    /* ignore */
+  }
+  try {
+    // Dynamic import avoided — read settings key directly
+    const fid = (() => {
+      try {
+        const s = localStorage.getItem('medcore_os_session');
+        if (s) return String(JSON.parse(s)?.hospitalId || '');
+      } catch {
+        /* ignore */
+      }
+      return '';
+    })();
+    const scoped = fid
+      ? localStorage.getItem(`medcore_os_admin_settings_v1:${fid}`)
+      : null;
+    const raw = scoped || localStorage.getItem('medcore_os_admin_settings_v1');
+    if (raw) {
+      const j = JSON.parse(raw) as { lanApiUrl?: string };
+      if (j.lanApiUrl?.trim()) return j.lanApiUrl.trim().replace(/\/$/, '');
+    }
+  } catch {
+    /* ignore */
+  }
+  return '';
+}
+
+/** True when env, Admin Settings LAN URL, or localhost hub is available. */
 export function isLanApiEligible(): boolean {
   if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) {
     return true;
   }
+  if (runtimeLanUrl()) return true;
   if (typeof window !== 'undefined') {
     const h = window.location.hostname;
     return h === 'localhost' || h === '127.0.0.1';
   }
-  // SSR: never assume LAN
   return false;
 }
 
@@ -28,6 +67,8 @@ export function resolveApiBase(): string {
   if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) {
     return String(process.env.NEXT_PUBLIC_API_URL).replace(/\/$/, '');
   }
+  const fromSettings = runtimeLanUrl();
+  if (fromSettings) return fromSettings;
   if (typeof window !== 'undefined') {
     const h = window.location.hostname;
     if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:4000';
