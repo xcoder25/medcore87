@@ -77,7 +77,7 @@ export function exportFacilityFhirBundle(input: {
     resources.push({
       resourceType: 'Encounter',
       id: v.id,
-      status: v.status === 'completed' || v.status === 'checked_out' ? 'finished' : 'in-progress',
+      status: v.status === 'completed' || v.status === 'no_show' || v.status === 'cancelled' ? 'finished' : 'in-progress',
       class: { code: 'AMB', display: 'ambulatory' },
       subject: { display: v.patientName },
       period: { start: v.checkedInAt },

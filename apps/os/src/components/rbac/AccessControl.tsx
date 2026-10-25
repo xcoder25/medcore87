@@ -133,6 +133,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
   const [fullName, setFullName] = useState('');
   const [roleKey, setRoleKey] = useState(ROLE_OPTIONS[0]?.roleKey || 'doctor');
+  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [pin, setPin] = useState('123456');
   const [email, setEmail] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string>('');
@@ -830,41 +831,85 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                 placeholder="e.g. Dr. Uduak Essien"
               />
             </label>
-            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B', gridColumn: '1 / -1' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B', position: 'relative' }}>
               Role
-              <div
+              <button
+                type="button"
+                onClick={() => setRoleMenuOpen((o) => !o)}
                 style={{
-                  marginTop: 8,
                   display: 'flex',
-                  flexWrap: 'wrap',
+                  width: '100%',
+                  marginTop: 6,
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
                   gap: 8,
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: '1px solid #E2E8F0',
+                  background: '#FFF',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  fontSize: '0.88rem',
+                  fontWeight: 600,
+                  color: '#0F172A',
                 }}
               >
-                {ROLE_OPTIONS.map((r) => {
-                  const on = roleKey === r.roleKey;
-                  return (
-                    <button
-                      key={r.roleKey}
-                      type="button"
-                      onClick={() => setRoleKey(r.roleKey)}
-                      style={{
-                        border: on ? '1.5px solid #0052D4' : '1px solid #E2E8F0',
-                        background: on ? '#EFF6FF' : '#FFF',
-                        color: on ? '#0C4A6E' : '#475569',
-                        borderRadius: 999,
-                        padding: '7px 12px',
-                        fontSize: '0.78rem',
-                        fontWeight: 650,
-                        cursor: 'pointer',
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      {r.shortRole}
-                      <span style={{ opacity: 0.75, fontWeight: 500 }}> · {r.department}</span>
-                    </button>
-                  );
-                })}
-              </div>
+                <span>
+                  {roleMeta?.title || 'Select role'} · {roleMeta?.department || ''}
+                </span>
+                <span style={{ color: '#94A3B8', fontSize: 12 }}>{roleMenuOpen ? '▲' : '▼'}</span>
+              </button>
+              {roleMenuOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    zIndex: 40,
+                    left: 0,
+                    right: 0,
+                    top: '100%',
+                    marginTop: 4,
+                    maxHeight: 260,
+                    overflowY: 'auto',
+                    overflowX: 'hidden',
+                    background: '#FFF',
+                    border: '1px solid #E2E8F0',
+                    borderRadius: 12,
+                    boxShadow: '0 12px 28px rgba(15,23,42,0.12)',
+                  }}
+                >
+                  {ROLE_OPTIONS.map((r) => {
+                    const on = roleKey === r.roleKey;
+                    return (
+                      <button
+                        key={r.roleKey}
+                        type="button"
+                        onClick={() => {
+                          setRoleKey(r.roleKey);
+                          setRoleMenuOpen(false);
+                        }}
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          textAlign: 'left',
+                          border: 'none',
+                          borderBottom: '1px solid #F1F5F9',
+                          background: on ? '#EFF6FF' : '#FFF',
+                          color: on ? '#0C4A6E' : '#334155',
+                          padding: '10px 12px',
+                          cursor: 'pointer',
+                          fontSize: '0.84rem',
+                          fontWeight: on ? 700 : 500,
+                        }}
+                      >
+                        <div>{r.title}</div>
+                        <div style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>
+                          {r.shortRole} · {r.department} · {r.clearanceLabel}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               {roleMeta && (
                 <div style={{ marginTop: 8, fontSize: 12, color: '#0369A1', background: '#E0F2FE', borderRadius: 8, padding: '8px 10px', lineHeight: 1.45 }}>
                   <strong>{roleMeta.title}</strong> — {roleMeta.clearanceLabel}. Desk modules outside this role stay locked.
