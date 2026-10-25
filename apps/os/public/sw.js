@@ -122,15 +122,65 @@ function fetchWithTimeout(request, timeoutMs = 5000) {
   });
 }
 
+// ─── Hybrid Edge Server Configuration (Technical Brief Section 2.B) ─────────
+let LOCAL_EDGE_SERVER = (self.location && (self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1'))
+  ? 'http://localhost:4000/api/v1'
+  : 'https://local-emr-edge.local/api/v1';
+
 // ─── Fetch ───────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // Only handle GET requests
-  if (req.method !== 'GET') return;
   // Only handle http(s)
   if (!url.protocol.startsWith('http')) return;
+
+  // ── 0. Hybrid Dynamic API Routing via Service Worker (Technical Brief 2.B) ─
+  // Intercept outbound relative /api/v1/* requests.
+  // Attempt Cloud pipeline first; if connection drops or times out (4s),
+  // capture payload and route parameters over to the local on-premises hardware node.
+  if (url.pathname.startsWith('/api/v1/')) {
+    event.respondWith(
+      fetchWithTimeout(req, 4000)
+        .catch(async (cloudErr) => {
+          console.warn('[SW-Proxy] Cloud endpoint unreachable, falling back to Local Hospital Edge:', cloudErr);
+          try {
+            const relativePath = url.pathname.replace('/api/v1', '');
+            const fallbackBase = LOCAL_EDGE_SERVER.replace(/\/$/, '');
+            const fallbackUrl = (fallbackBase.endsWith('/api/v1') ? fallbackBase : fallbackBase + '/api/v1') + relativePath + url.search;
+
+            const clonedRequest = req.clone();
+            const requestBody = (req.method !== 'GET' && req.method !== 'HEAD') ? await clonedRequest.blob() : null;
+
+            const fallbackHeaders = new Headers(req.headers);
+            fallbackHeaders.set('X-MedCore-Proxy', 'ServiceWorker-EdgeFallback');
+
+            return await fetch(new Request(fallbackUrl, {
+              method: req.method,
+              headers: fallbackHeaders,
+              body: requestBody,
+              mode: 'cors',
+              credentials: 'omit'
+            }));
+          } catch (edgeErr) {
+            console.error('[SW-Proxy] Local Edge Server also unreachable:', edgeErr);
+            return new Response(JSON.stringify({
+              offline: true,
+              edgeFallbackFailed: true,
+              timestamp: new Date().toISOString(),
+              message: 'Cloud and Local Edge Server currently unreachable. Queued to local storage.'
+            }), {
+              status: 503,
+              headers: { 'Content-Type': 'application/json', 'X-MedCore-Offline': 'true' }
+            });
+          }
+        })
+    );
+    return;
+  }
+
+  // Only handle GET requests for static/nav caching below
+  if (req.method !== 'GET') return;
 
   // NEVER intercept external APIs, Firestore, auth backends
   const isExternal = url.origin !== self.location.origin;
@@ -139,8 +189,8 @@ self.addEventListener('fetch', (event) => {
     url.hostname.includes('fonts.gstatic.com');
   if (isExternal && !isGoogleFont) return;
 
-  // Skip internal API routes and WebSocket upgrades
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io/')) return;
+  // Skip other internal routes like WebSockets
+  if (url.pathname.startsWith('/socket.io/')) return;
 
   // ── 1. Next.js static chunks (content-hashed = immutable) ─────────────────
   //    Pure cache-first: serve from cache instantly, NEVER re-fetch immutable files.
@@ -283,8 +333,14 @@ self.addEventListener('fetch', (event) => {
 // ─── Message handler ─────────────────────────────────────────────────────────
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+  // Dynamic Local Edge Server re-assignment
+  if (event.data?.type === 'SET_LOCAL_EDGE_SERVER' && event.data.url) {
+    LOCAL_EDGE_SERVER = event.data.url;
+    console.log('[SW] LOCAL_EDGE_SERVER reconfigured to:', LOCAL_EDGE_SERVER);
+  }
   // Allow clients to trigger a manual chunk prefetch (e.g. after first login)
   if (event.data?.type === 'PREFETCH_CHUNKS') {
     prefetchNextChunks().catch(() => {});
   }
 });
+

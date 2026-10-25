@@ -1,7 +1,10 @@
 /**
  * MedCore Hospital OS Offline Storage & Mutation Queue
  * Guarantees zero clinical data loss when workstation WAN or local hospital WiFi drops.
+ * Upgraded to IndexedDB (localforage) per Technical Brief Phase 1.
  */
+
+import { offlineMutationStore, patientCacheStore } from '../hooks/usePatientData';
 
 export interface PendingAction {
   id: string;
@@ -18,6 +21,7 @@ const PATIENT_CACHE_KEY = 'medcore_os_patient_cache_v1';
 class OfflineStorageService {
   private queue: PendingAction[] = [];
   private isOnline: boolean = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  private initialized: boolean = false;
 
   constructor() {
     this.restoreQueue();
@@ -32,23 +36,57 @@ class OfflineStorageService {
     }
   }
 
-  private restoreQueue(): void {
+  private async restoreQueue(): Promise<void> {
     try {
+      // 1. First attempt to restore from IndexedDB
+      const items: PendingAction[] = [];
+      await offlineMutationStore.iterate<PendingAction, void>((value) => {
+        if (value && value.id) items.push(value);
+      });
+
+      if (items.length > 0) {
+        this.queue = items.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        this.initialized = true;
+        return;
+      }
+
+      // 2. Fallback / migrate from legacy localStorage if present
       if (typeof window !== 'undefined' && window.localStorage) {
         const stored = window.localStorage.getItem(ACTION_QUEUE_KEY);
-        if (stored) this.queue = JSON.parse(stored);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            this.queue = parsed;
+            // Migrate to IndexedDB
+            for (const item of parsed) {
+              await offlineMutationStore.setItem(item.id, item);
+            }
+            window.localStorage.removeItem(ACTION_QUEUE_KEY);
+          }
+        }
       }
-    } catch {
-      this.queue = [];
+    } catch (err) {
+      console.warn('[OfflineStorageService] Error restoring queue from IndexedDB:', err);
+    } finally {
+      this.initialized = true;
     }
   }
 
-  private persistQueue(): void {
+  private async persistQueueAsync(): Promise<void> {
     try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(ACTION_QUEUE_KEY, JSON.stringify(this.queue));
+      // Clear and re-populate IndexedDB mutation store
+      await offlineMutationStore.clear();
+      for (const item of this.queue) {
+        await offlineMutationStore.setItem(item.id, item);
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[OfflineStorageService] IDB persist error, using localStorage backup:', err);
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem(ACTION_QUEUE_KEY, JSON.stringify(this.queue));
+        }
+      } catch {}
+    }
   }
 
   public enqueueAction(action: Omit<PendingAction, 'id' | 'timestamp'>): PendingAction {
@@ -58,7 +96,8 @@ class OfflineStorageService {
       timestamp: new Date().toISOString(),
     };
     this.queue.push(record);
-    this.persistQueue();
+    // Non-blocking async persistence to IndexedDB
+    this.persistQueueAsync();
     return record;
   }
 
@@ -77,6 +116,7 @@ class OfflineStorageService {
         });
         if (res.ok) {
           synced++;
+          await offlineMutationStore.removeItem(act.id);
         } else {
           remaining.push(act);
         }
@@ -86,20 +126,33 @@ class OfflineStorageService {
     }
 
     this.queue = remaining;
-    this.persistQueue();
+    await this.persistQueueAsync();
     return { synced, remaining: remaining.length };
   }
 
-  public cachePatientList(patients: any[]): void {
+  public async cachePatientList(patients: any[]): Promise<void> {
     try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(PATIENT_CACHE_KEY, JSON.stringify(patients));
+      if (Array.isArray(patients)) {
+        for (const p of patients) {
+          if (p && p.id) {
+            await patientCacheStore.setItem(p.id, p);
+          }
+        }
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[OfflineStorageService] Error caching patients to IndexedDB:', err);
+    }
   }
 
-  public getCachedPatientList(): any[] {
+  public async getCachedPatientList(): Promise<any[]> {
     try {
+      const list: any[] = [];
+      await patientCacheStore.iterate((value) => {
+        list.push(value);
+      });
+      if (list.length > 0) return list;
+
+      // Legacy fallback
       if (typeof window !== 'undefined' && window.localStorage) {
         const raw = window.localStorage.getItem(PATIENT_CACHE_KEY);
         if (raw) return JSON.parse(raw);
@@ -118,7 +171,6 @@ class OfflineStorageService {
 }
 
 export const offlineStorage = new OfflineStorageService();
-
 
 export function isBrowserOnline(): boolean {
   if (typeof navigator === 'undefined') return true;

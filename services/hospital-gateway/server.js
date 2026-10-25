@@ -4,6 +4,8 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { URL } = require("url");
+const { evaluateClinicalDelta, getVerificationQueue, resolveConflict } = require("./conflictResolver");
+const { runCloudToLocalMirror } = require("./cloudMirror");
 const PORT = process.env.PORT || 4000;
 const ROOT = path.resolve(__dirname, "../..");
 const auditChain = [];
@@ -213,8 +215,83 @@ async function api(req,res,pn){
     return json(res,200,{success:true,news2Score:score,triageTier:tier,engine:"Onsite Edge Rule CDS v1.0",timestamp:new Date().toISOString()});
   }
 
+  // ─── Deterministic Clinical Conflict Avoidance Endpoints (Technical Brief 3.B)
+  if(pn==="/api/v1/clinical/conflicts"&&req.method==="GET"){
+    const list=getVerificationQueue();
+    return json(res,200,{success:true,total:list.length,conflicts:list});
+  }
+
+  if(pn==="/api/v1/clinical/conflicts/resolve"&&req.method==="POST"){
+    const b=await readBody(req);
+    const resolved=resolveConflict({
+      conflictId:b.conflictId,
+      clinicianId:b.clinicianId||(user?user.id:"DOC-ON-DUTY"),
+      resolutionChoice:b.resolutionChoice,
+      customValue:b.customValue
+    });
+    if(!resolved)return json(res,404,{success:false,error:"Conflict record not found or already resolved"});
+
+    // Apply resolved state to local store
+    const patient=store.patients.find(p=>p.id===resolved.patientId);
+    if(patient){
+      patient.is_conflict=false;
+      delete patient.conflictDetails;
+      if(b.resolutionChoice==="USE_CLOUD"&&b.incomingValue!==undefined){
+        Object.assign(patient,b.incomingValue);
+      } else if(b.resolutionChoice==="CUSTOM"&&b.customValue!==undefined){
+        Object.assign(patient,b.customValue);
+      }
+    }
+
+    auditLog({
+      actorId:b.clinicianId||(user?user.id:"DOC-ON-DUTY"),
+      actorName:user?user.name:"Attending Clinician",
+      actorRole:user?user.role:"doctor",
+      action:"CLINICAL_CONFLICT_RESOLVED",
+      resourceType:"PATIENT_CHART",
+      resourceId:resolved.patientId
+    });
+
+    broadcast("CLINICAL_CONFLICT_RESOLVED",{conflictId:b.conflictId,patientId:resolved.patientId,resolvedAt:new Date().toISOString()});
+    return json(res,200,{success:true,resolved});
+  }
+
+  if(pn==="/api/v1/clinical/patients/merge"&&req.method==="POST"){
+    const b=await readBody(req);
+    const incomingPatient=b.patient;
+    if(!incomingPatient||!incomingPatient.id)return json(res,400,{success:false,error:"Missing patient object or id"});
+
+    const existing=store.patients.find(p=>p.id===incomingPatient.id);
+    const evalResult=evaluateClinicalDelta({
+      localRecord:existing,
+      incomingRecord:incomingPatient,
+      baseRecord:b.baseRecord||{}
+    });
+
+    if(existing){
+      const idx=store.patients.indexOf(existing);
+      store.patients[idx]=evalResult.mergedRecord;
+    } else {
+      store.patients.push(evalResult.mergedRecord);
+    }
+
+    if(evalResult.isConflict){
+      broadcast("CLINICAL_CONFLICT_DETECTED",evalResult.conflictReport);
+    } else {
+      broadcast("PATIENT_UPDATED",evalResult.mergedRecord);
+    }
+
+    return json(res,200,{
+      success:true,
+      isConflict:evalResult.isConflict,
+      conflictReport:evalResult.conflictReport,
+      patient:evalResult.mergedRecord
+    });
+  }
+
   return json(res,404,{success:false,error:"Not found"});
 }
 const server=http.createServer(async(req,res)=>{const u=new URL(req.url||"/","http://"+req.headers.host);if(u.pathname.startsWith("/api/")){try{await api(req,res,u.pathname);}catch(e){console.error(e);json(res,500,{success:false,error:"err"});}return;}serve(req,res,u.pathname);});
 server.on("upgrade",(req,socket)=>{const u=new URL(req.url||"/","http://x");if(u.pathname!=="/ws"){socket.destroy();return;}const key=req.headers["sec-websocket-key"];if(!key){socket.destroy();return;}socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "+wsKey(key)+"\r\n\r\n");const id="CLI-"+Date.now().toString(36);wsClients.set(id,{id,socket});wsSend(socket,{topic:"CONNECTED",timestamp:new Date().toISOString(),payload:{clientId:id,message:"Connected to Hospital OS Realtime Hub",activeClients:wsClients.size}});let buf=Buffer.alloc(0);socket.on("data",chunk=>{buf=Buffer.concat([buf,chunk]);const r=parseFrame(buf,text=>{try{const m=JSON.parse(text);if(m.action==="AUTH"&&m.token&&sessions.get(m.token)){const s=sessions.get(m.token);wsSend(socket,{topic:"AUTH_OK",payload:{userId:s.user.id,role:s.user.role}});}if(m.action==="PING")wsSend(socket,{topic:"PONG",timestamp:new Date().toISOString()});}catch(e){}});buf=r.rest;if(r.close){wsClients.delete(id);socket.end();}});socket.on("close",()=>wsClients.delete(id));socket.on("error",()=>wsClients.delete(id));});
-server.listen(PORT,()=>{console.log("=============================================================");console.log("  Hospital OS Gateway v2.0 — Ready for clinical use");console.log("  UI:        http://localhost:"+PORT);console.log("  API:       http://localhost:"+PORT+"/api/v1");console.log("  WebSocket: ws://localhost:"+PORT+"/ws");console.log("  Health:    http://localhost:"+PORT+"/api/v1/health");console.log("=============================================================");USERS.forEach(u=>console.log("  "+u.role.padEnd(12)+" "+u.email+" / "+u.password));console.log("=============================================================");auditLog({actorId:"SYSTEM",actorName:"Gateway",actorRole:"SYSTEM",action:"SERVER_START",resourceType:"SYSTEM",resourceId:"gateway"});});
+server.listen(PORT,()=>{console.log("=============================================================");console.log("  Hospital OS Gateway v2.0 — Ready for clinical use");console.log("  UI:        http://localhost:"+PORT);console.log("  API:       http://localhost:"+PORT+"/api/v1");console.log("  WebSocket: ws://localhost:"+PORT+"/ws");console.log("  Health:    http://localhost:"+PORT+"/api/v1/health");console.log("=============================================================");USERS.forEach(u=>console.log("  "+u.role.padEnd(12)+" "+u.email+" / "+u.password));console.log("=============================================================");auditLog({actorId:"SYSTEM",actorName:"Gateway",actorRole:"SYSTEM",action:"SERVER_START",resourceType:"SYSTEM",resourceId:"gateway"});try{runCloudToLocalMirror({localStore:store,onRecordUpdated:r=>broadcast("PATIENT_UPDATED",r),onConflictDetected:c=>broadcast("CLINICAL_CONFLICT_DETECTED",c)});}catch(e){console.warn("[Gateway] Cloud mirror initialization notice:",e.message);}});
+

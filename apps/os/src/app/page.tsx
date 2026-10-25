@@ -54,6 +54,7 @@ const NotificationCentre = dynamic(() => import('../components/notifications/Not
 const AdvancedHospitalSuites = dynamic(() => import('../components/advanced/AdvancedHospitalSuites').then(m => m.AdvancedHospitalSuites), { loading: () => <ModulePageLoader label="Opening Advanced Suite…" /> });
 const HospitalStaffTransfer = dynamic(() => import('../components/staffing/HospitalStaffTransfer').then(m => m.HospitalStaffTransfer), { loading: () => <ModulePageLoader label="Opening Staff Transfer…" /> });
 const StaffEnrolment = dynamic(() => import('../components/staffing/StaffEnrolment').then(m => m.StaffEnrolment), { loading: () => <ModulePageLoader label="Opening Staff Enrolment…" /> });
+const ClinicalVerificationDashboard = dynamic(() => import('../components/sync/ClinicalVerificationDashboard').then(m => m.ClinicalVerificationDashboard), { loading: () => <ModulePageLoader label="Opening Offline Sync & Verification…" /> });
 
 // Specialty Suites
 import { AdminShell } from '../components/dashboards/AdminShell';
@@ -149,7 +150,7 @@ export type ModuleKey =
   // Pillar 4: Finance
   | 'billing' | 'cashier' | 'claims' | 'revenue-cycle' | 'procurement' | 'akwaremit'
   // Pillar 5: Data & Interop
-  | 'aks-state' | 'data-hub' | 'fhir' | 'analytics' | 'ambient-soap' | 'lis' | 'formulary' | 'mfa-sso' | 'knowledge-graph' | 'predictive-staffing' | 'infection' | 'hie' | 'pacs-advanced'
+  | 'aks-state' | 'data-hub' | 'fhir' | 'analytics' | 'offline-sync' | 'ambient-soap' | 'lis' | 'formulary' | 'mfa-sso' | 'knowledge-graph' | 'predictive-staffing' | 'infection' | 'hie' | 'pacs-advanced'
   // Pillar 6: Connected IoT
   | 'iot-devices'
   // Pillar 7: Security & Governance
@@ -235,6 +236,7 @@ const MASTER_PILLARS: NavSection[] = [
       { key: 'device-gateway', icon: Server, label: 'Device gateway', badge: 'Hub' },
             { key: 'fhir', icon: FileCode, label: 'FHIR R4 & HL7 Message Gateway', badge: 'R4' },
       { key: 'analytics', icon: BarChart3, label: 'Clinical Performance Analytics' },
+      { key: 'offline-sync', icon: RefreshCw, label: 'Offline Sync & Clinical Verification', badge: 'Hybrid' },
     ],
   },
   {
@@ -951,6 +953,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
   'data-hub': IntegratedDataHub,
   fhir: FhirHl7GatewaySuite,
   analytics: PerformanceAnalytics,
+  'offline-sync': ClinicalVerificationDashboard,
   'iot-devices': ConnectedDevicesSuite,
   'device-gateway': DeviceGatewaySettings,
   auth: AuthIdentity,
@@ -968,6 +971,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
 
 const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDesc: string }> = {
   dashboard: { level: 2, label: 'L2 All Roles', roleDesc: 'Your main work desk' },
+  'offline-sync': { level: 2, label: 'L2 All Roles', roleDesc: 'Offline Sync & Clinical Verification Dashboard' },
   'doctor-portal': { level: 3, label: 'L3 Clinical', roleDesc: 'Licensed Medical Doctors & Clinical Officers' },
   emr: { level: 2, label: 'L2 Clinical & Records', roleDesc: 'Physicians, Clinical Officers & Records' },
   him: { level: 2, label: 'L2 HIM', roleDesc: 'Health Records Officers' },
