@@ -114,9 +114,28 @@ export function dataUrlToBlob(dataUrl: string): Blob | null {
 }
 
 /**
- * Upload compressed photo to Firebase Storage.
+ * Firebase Storage client upload is OFF by default.
+ * Browser uploads to firebasestorage.googleapis.com fail with CORS when the
+ * bucket has no CORS config / rules (common on new projects). Photos still
+ * work via compressed data URLs on the ID card + staff profile.
+ *
+ * Opt-in: set NEXT_PUBLIC_ENABLE_STAFF_PHOTO_STORAGE=1 after configuring
+ * Storage rules + CORS on the bucket.
+ */
+export function isStaffPhotoStorageEnabled(): boolean {
+  try {
+    return (
+      String(process.env.NEXT_PUBLIC_ENABLE_STAFF_PHOTO_STORAGE || '').trim() === '1' ||
+      String(process.env.NEXT_PUBLIC_ENABLE_STAFF_PHOTO_STORAGE || '').toLowerCase() === 'true'
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Upload compressed photo to Firebase Storage (opt-in only).
  * Path: staff-photos/{facilityId}/{badgeId}.jpg
- * Returns download URL or null if Storage is unavailable / denied.
  */
 export async function uploadStaffPhotoToStorage(
   facilityId: string,
@@ -124,7 +143,8 @@ export async function uploadStaffPhotoToStorage(
   dataUrl: string
 ): Promise<string | null> {
   if (typeof window === 'undefined') return null;
-  if (!dataUrl.startsWith('data:')) return dataUrl; // already remote
+  if (!isStaffPhotoStorageEnabled()) return null;
+  if (!dataUrl.startsWith('data:')) return dataUrl;
   const blob = dataUrlToBlob(dataUrl);
   if (!blob) return null;
 
@@ -139,20 +159,26 @@ export async function uploadStaffPhotoToStorage(
       .replace(/\s+/g, '');
     const path = `staff-photos/${fid}/${bid}.jpg`;
     const storageRef = ref(storage, path);
-    await uploadBytes(storageRef, blob, {
-      contentType: 'image/jpeg',
-      cacheControl: 'public,max-age=31536000',
-      customMetadata: { facilityId: fid, badgeId: bid },
-    });
-    return await getDownloadURL(storageRef);
-  } catch (e) {
-    console.warn('[staff-photo] storage upload skipped', e);
+    // Single attempt — no long SDK retry loop for CORS failures
+    const result = await Promise.race([
+      (async () => {
+        await uploadBytes(storageRef, blob, {
+          contentType: 'image/jpeg',
+          cacheControl: 'public,max-age=31536000',
+          customMetadata: { facilityId: fid, badgeId: bid },
+        });
+        return await getDownloadURL(storageRef);
+      })(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
+    ]);
+    return result;
+  } catch {
     return null;
   }
 }
 
 /**
- * Resolve final photo URL for enrolment: prefer Storage URL, else compact data URL.
+ * Resolve photo for enrolment — compressed data URL by default (no CORS).
  */
 export async function resolveStaffPhotoForEnrol(
   facilityId: string,
@@ -161,9 +187,12 @@ export async function resolveStaffPhotoForEnrol(
 ): Promise<string | undefined> {
   if (!localDataUrl) return undefined;
   if (!localDataUrl.startsWith('data:')) return localDataUrl;
-  const remote = await uploadStaffPhotoToStorage(facilityId, badgeId, localDataUrl);
-  if (remote) return remote;
-  // Fallback: keep compact data URL for ID card offline display
+
+  if (isStaffPhotoStorageEnabled()) {
+    const remote = await uploadStaffPhotoToStorage(facilityId, badgeId, localDataUrl);
+    if (remote) return remote;
+  }
+
   if (localDataUrl.length <= MAX_DATA_URL_CHARS) return localDataUrl;
   return localDataUrl.slice(0, MAX_DATA_URL_CHARS);
 }
