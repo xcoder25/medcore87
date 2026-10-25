@@ -2,15 +2,14 @@
  * Cross-role sync bus — every clinical/admin write should publish here
  * so Reception, Doctors, Lab, Pharmacy, Admin, and other PCs stay aligned.
  *
- * ONLINE (cloud-first):
- *  1. Firestore write immediately (other hospital PCs)
- *  2. localStorage + events (this browser)
- *  3. BroadcastChannel (same PC tabs)
- *  4. durable outbox (retry if cloud write failed)
+ * ONLINE (edge + cloud only):
+ *  1. Firestore write immediately (source of truth for all hospital PCs)
+ *  2. BroadcastChannel (same PC tabs) — no durable localStorage for heavy data
+ *  3. Outbox only offline (in-memory via edgeCloudOnly)
  *
  * OFFLINE:
- *  1. localStorage + events
- *  2. outbox queues until online → then cloud
+ *  1. In-memory + events
+ *  2. Outbox queues until online → then cloud
  */
 
 import { broadcastLocal } from './hospitalSync';
@@ -36,7 +35,7 @@ export const FACILITY_KEYS = {
   vitals: 'medcore_os_nursing_vitals_v1',
 } as const;
 
-/** Publish facility data. Online = cloud first, then local peers. Offline = local + queue. */
+/** Publish facility data. Online = Firestore only (+ tab broadcast). Offline = memory + outbox. */
 export function publishFacilityData(facilityId: string, key: string, value: unknown) {
   if (typeof window === 'undefined' || !facilityId) return;
   const online = typeof navigator === 'undefined' || navigator.onLine;
@@ -48,17 +47,20 @@ export function publishFacilityData(facilityId: string, key: string, value: unkn
       /* ignore */
     }
   }
-  // 2) Same-origin tabs / same PC
+  // 2) Same-origin tabs / same PC (in-memory peers — no disk)
   try {
     broadcastLocal(facilityId, key, value);
   } catch {
     /* ignore */
   }
-  // 3) Durable outbox (always) — retries failed cloud writes / offline catch-up
-  try {
-    void enqueueFacilitySync(facilityId, key, value);
-  } catch {
-    /* ignore */
+  // 3) Outbox only when offline (or cloud path may need retry). Online path skips
+  //    durable disk queue — edgeCloudOnly keeps any queue entries in RAM only.
+  if (!online) {
+    try {
+      void enqueueFacilitySync(facilityId, key, value);
+    } catch {
+      /* ignore */
+    }
   }
 }
 

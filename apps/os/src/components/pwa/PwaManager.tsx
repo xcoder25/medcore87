@@ -66,9 +66,13 @@ export const PwaManager: React.FC = () => {
     let swInterval: any = null;
     let handleFocus: (() => void) | null = null;
 
-    // Register Service Worker with intelligent update detection
+    // Edge + cloud only: do not register SW (avoids stale disk caches / slow runtime).
+    // Unregister any existing workers so hospital PCs stay on live Firestore data.
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker
+      void navigator.serviceWorker.getRegistrations().then((regs) => {
+        for (const r of regs) void r.unregister();
+      });
+      if (false) navigator.serviceWorker
         .register('/sw.js')
         .then((reg) => {
           console.log('[MedCore PWA] ServiceWorker registered with scope:', reg.scope);

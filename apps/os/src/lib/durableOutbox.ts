@@ -1,14 +1,9 @@
 /**
- * Durable outbox — survives power loss / offline on this PC.
+ * Sync outbox — brief offline catch-up only (edge + cloud mode).
  *
- * Order of safety:
- * 1. Write to localStorage immediately (sync) — data is on disk in the browser profile.
- * 2. Enqueue the same change for cloud/LAN sync.
- * 3. When online, flush the outbox to Firestore (and optional LAN API).
- * 4. Firestore IndexedDB persistence also keeps a second offline copy.
- *
- * Power outage mid-type: only the last uncommitted keystroke may be lost;
- * every completed Save/Approve/Enrol is already in localStorage before the UI confirms.
+ * Heavy payloads are NOT written to durable localStorage (edgeCloudOnly shim
+ * keeps OUTBOX_KEY in session RAM). When online, publishFacilityData writes
+ * Firestore directly and skips enqueue.
  */
 
 import { firestoreWriteFacility } from './firebase';

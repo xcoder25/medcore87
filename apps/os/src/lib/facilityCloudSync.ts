@@ -2,9 +2,10 @@
  * Same-hospital live sync — when online, all workstations share facility data via Firestore
  * without requiring a browser reload.
  *
- * Pipeline:
- *  local write → publishFacilityData → outbox → Firestore
- *  Firestore onSnapshot → apply to localStorage → domain events → UI subscribers
+ * Pipeline (edge + cloud only):
+ *  local write → publishFacilityData → Firestore (source of truth)
+ *  Firestore onSnapshot → in-memory apply (edgeCloudOnly) → domain events → UI
+ * Heavy data is NOT written to durable localStorage.
  */
 import { firestoreSubscribeFacility, enableFirestoreOffline } from './firebase';
 import { startFacilitySyncLoop, probeHospitalApi } from './hospitalSync';
@@ -17,6 +18,7 @@ import {
   isStaffFlushLocked,
   syncAccessRosterFromSources,
 } from './staffCardStore';
+import { enableEdgeCloudOnlyRuntime } from './edgeCloudOnly';
 
 /** Map storage keys → CustomEvents so existing subscribe*() hooks refresh live */
 const KEY_EVENTS: Record<string, string[]> = {
@@ -67,8 +69,9 @@ function emitForKey(key: string, value: unknown) {
 }
 
 /**
- * Apply a remote facility document field into localStorage and notify UI.
- * Skips identical payloads to avoid feedback loops.
+ * Apply a remote facility document field into session memory and notify UI.
+ * Skips identical payloads to avoid feedback loops. Durable disk is not used
+ * for heavy keys (edgeCloudOnly).
  */
 export function applyFacilityRemoteKey(key: string, value: unknown): void {
   if (typeof window === 'undefined') return;
@@ -153,10 +156,11 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
 export function startHospitalCloudSync(facilityId: string): () => void {
   if (typeof window === 'undefined' || !facilityId) return () => {};
 
+  enableEdgeCloudOnlyRuntime();
   void enableFirestoreOffline();
   const applyKey = (key: string, value: unknown) => applyFacilityRemoteKey(key, value);
 
-  // CLOUD-FIRST bootstrap: pull shared facility doc before relying on local cache
+  // CLOUD-FIRST bootstrap: shared facility doc is the only durable store
   void (async () => {
     try {
       const { firestoreReadFacility } = await import('./firebase');
@@ -173,6 +177,7 @@ export function startHospitalCloudSync(facilityId: string): () => void {
     }
   })();
 
+  // Outbox only for brief offline catch-up; payloads stay in memory (edgeCloudOnly)
   const stopOutbox = startOutboxAutoFlush(2500);
   void flushOutbox();
 

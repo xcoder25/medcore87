@@ -70,6 +70,10 @@ import { ensureCleanPilot } from '../lib/adminRealtimeStore';
 import { startOutboxAutoFlush } from '../lib/durableOutbox';
 import { enableFirestoreOffline, normalizeStaffPin, firebaseSignInWithBadge } from '../lib/firebase';
 import { startHospitalCloudSync } from '../lib/facilityCloudSync';
+import { enableEdgeCloudOnlyRuntime } from '../lib/edgeCloudOnly';
+
+// Cloud + in-memory only — no heavy localStorage / SW cache (fixes slow runtime)
+enableEdgeCloudOnlyRuntime();
 import { startClinicalPaymentListeners } from '../lib/clinicalEventBus';
 import { reconcileAllVisitPayments } from '../lib/frontDeskAccountsBridge';
 import {

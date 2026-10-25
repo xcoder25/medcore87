@@ -85,10 +85,11 @@ export function getFirestore(): Firestore {
   return db;
 }
 
-/** Offline cache on device — reads/writes work offline, sync when online */
+/** Cloud / edge only — no Firestore IndexedDB persistence on the device. */
 export async function enableFirestoreOffline(): Promise<void> {
-  // Skip IndexedDB persistence on web: avoids multi-tab failed-precondition
-  // and enableIndexedDbPersistence deprecation noise. Firestore still works online.
+  // No enableIndexedDbPersistence / persistentLocalCache.
+  // Facility data lives in Firestore; browser RAM holds the live session copy
+  // via edgeCloudOnly. Avoids multi-tab locks and slow disk hydration.
   persistenceEnabled = true;
 }
 
