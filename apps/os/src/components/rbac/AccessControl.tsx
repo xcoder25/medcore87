@@ -141,11 +141,9 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const facilityName = session?.facility || HOSPITALS.find((h) => h.id === facilityId)?.name || 'Hospital';
 
   // Static list — avoid getCustomRoles()/storage work when opening the form
-  const availableRoles = ROLE_OPTIONS;
-
   const roleMeta = useMemo(
-    () => availableRoles.find((r) => r.roleKey === roleKey),
-    [availableRoles, roleKey]
+    () => ROLE_OPTIONS.find((r) => r.roleKey === roleKey) || ROLE_OPTIONS[0],
+    [roleKey]
   );
 
   // Read-only refresh — NEVER call syncAccessRoster here (that dispatches admin-sync → infinite loop)
@@ -159,9 +157,11 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
   const busyRef = React.useRef(busy);
   const confirmRef = React.useRef(confirmInfo);
+  const showCreateRef = React.useRef(showCreate);
   const isMounted = React.useRef(true);
   busyRef.current = busy;
   confirmRef.current = confirmInfo;
+  showCreateRef.current = showCreate;
 
   useEffect(() => {
     isMounted.current = true;
@@ -206,7 +206,10 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         if (row) byId.set(row.id, row);
       }
       const next = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
-      setRecords(next);
+      // Do not re-render the create form / role picker on every Firestore tick
+      if (!showCreateRef.current && !busyRef.current) {
+        setRecords(next);
+      }
       setIsLoading(false);
       // Mirror into access store for other admin modules (memory only under edgeCloudOnly)
       try {
@@ -827,26 +830,47 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                 placeholder="e.g. Dr. Uduak Essien"
               />
             </label>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B', gridColumn: '1 / -1' }}>
               Role
-              <select
-                className="os-form-select"
-                style={{ display: 'block', width: '100%', marginTop: 6 }}
-                value={roleKey}
-                onChange={(e) => setRoleKey(e.target.value)}
+              <div
+                style={{
+                  marginTop: 8,
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                }}
               >
-                {availableRoles.map((r) => (
-                  <option key={r.roleKey} value={r.roleKey}>
-                    {r.title} · {r.department}
-                  </option>
-                ))}
-              </select>
+                {ROLE_OPTIONS.map((r) => {
+                  const on = roleKey === r.roleKey;
+                  return (
+                    <button
+                      key={r.roleKey}
+                      type="button"
+                      onClick={() => setRoleKey(r.roleKey)}
+                      style={{
+                        border: on ? '1.5px solid #0052D4' : '1px solid #E2E8F0',
+                        background: on ? '#EFF6FF' : '#FFF',
+                        color: on ? '#0C4A6E' : '#475569',
+                        borderRadius: 999,
+                        padding: '7px 12px',
+                        fontSize: '0.78rem',
+                        fontWeight: 650,
+                        cursor: 'pointer',
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {r.shortRole}
+                      <span style={{ opacity: 0.75, fontWeight: 500 }}> · {r.department}</span>
+                    </button>
+                  );
+                })}
+              </div>
               {roleMeta && (
                 <div style={{ marginTop: 8, fontSize: 12, color: '#0369A1', background: '#E0F2FE', borderRadius: 8, padding: '8px 10px', lineHeight: 1.45 }}>
-                  <strong>{roleMeta.shortRole}</strong> desk only — modules outside this specialty stay locked.
+                  <strong>{roleMeta.title}</strong> — {roleMeta.clearanceLabel}. Desk modules outside this role stay locked.
                 </div>
               )}
-            </label>
+            </div>
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
               Facility
               <div
