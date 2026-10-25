@@ -58,6 +58,17 @@ export interface FacilityPatient {
   emergencyFlag?: boolean;
   cardIssueDate?: string;
   cardExpiryDate?: string;
+  /** Optional cross-module compatibility aliases */
+  mrn?: string;
+  name?: string;
+  gender?: string;
+  enrolledAt?: string;
+  lastVitals?: {
+    bp?: string;
+    pulse?: number;
+    temp?: number;
+    spo2?: number;
+  };
 }
 
 /** In-memory cache — avoids repeated IDB reads for synchronous callers */

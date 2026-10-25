@@ -45,7 +45,8 @@ async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKe
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt,
+      // Cast to ArrayBuffer: TS5 types Uint8Array.buffer as ArrayBufferLike but PBKDF2 requires ArrayBuffer
+      salt: salt.buffer as ArrayBuffer,
       iterations: 100000,
       hash: 'SHA-256',
     },
@@ -137,8 +138,8 @@ export async function exportSneakernetPackageToUSB(options: {
 
   const container: EncryptedContainer = {
     format: 'MEDCORE_SNEAKERNET_V1',
-    saltHex: bufToHex(salt.buffer),
-    ivHex: bufToHex(iv.buffer),
+    saltHex: bufToHex(salt.buffer as ArrayBuffer),
+    ivHex: bufToHex(iv.buffer as ArrayBuffer),
     ciphertextHex: bufToHex(ciphertextBuffer),
     facilityId,
     timestamp: new Date().toISOString(),
@@ -249,9 +250,9 @@ export async function importSneakernetPackageFromUSB(passphrase = 'medcore-offli
   let decryptedBuf: ArrayBuffer;
   try {
     decryptedBuf = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
+      { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
       key,
-      ciphertext
+      ciphertext.buffer as ArrayBuffer
     );
   } catch {
     throw new Error('Decryption failed: Incorrect passphrase or corrupted EMR container.');

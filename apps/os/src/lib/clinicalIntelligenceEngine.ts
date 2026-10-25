@@ -314,7 +314,7 @@ const CLINICAL_ACK_ROLES = new Set([
 export function canAcknowledgeCritical(roleKey?: string, roleLabel?: string): boolean {
   const raw = `${roleKey || ''} ${roleLabel || ''}`.toLowerCase();
   if (!raw.trim()) return true; // desk without role still doctor portal
-  for (const r of CLINICAL_ACK_ROLES) {
+  for (const r of Array.from(CLINICAL_ACK_ROLES)) {
     if (raw.includes(r.replace('_', ' ')) || raw.includes(r)) return true;
   }
   // Lab/pharmacy/reception cannot ACK clinical critical results

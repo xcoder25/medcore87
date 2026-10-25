@@ -112,7 +112,7 @@ export async function flushOutbox(): Promise<{ synced: number; remaining: number
   let synced = 0;
   const failedFacilities = new Set<string>();
 
-  for (const [facilityId, partial] of byFacility) {
+  for (const [facilityId, partial] of Array.from(byFacility)) {
     // Hospital hub first (LAN), then cloud — matches "UPS hub is source of truth on site"
     let okLan = false;
     try {

@@ -47,7 +47,7 @@ function write(list: HospitalNotification[]) {
       .filter(Boolean)
   );
   if (fids.size === 0) fids.add('IGH-EKT');
-  for (const fid of fids) {
+  for (const fid of Array.from(fids)) {
     try {
       const subset = list.filter((n) => !n.facilityId || n.facilityId === fid);
       publishFacilityData(fid, KEY, subset.length ? subset : list);

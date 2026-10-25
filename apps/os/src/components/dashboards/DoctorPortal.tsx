@@ -71,17 +71,20 @@ interface Task {
 function mapFacilityPatient(p: FacilityPatient): Patient {
   const birthYear = p.dob ? new Date(p.dob).getFullYear() : 0;
   const age = birthYear ? Math.max(0, new Date().getFullYear() - birthYear) : 32;
+  const patientName = p.name || (p.firstName && p.lastName ? `${p.firstName} ${p.lastName}` : (p.firstName || p.lastName || 'Patient'));
+  const patientId = p.mrn || p.hospitalNumber || p.id;
+  const isFemale = p.gender === 'Female' || p.sex === 'Female';
   return {
-    id: p.mrn || p.id,
-    name: p.name,
+    id: patientId,
+    name: patientName,
     age,
-    gender: p.gender === 'Female' ? 'F' : 'M',
+    gender: isFemale ? 'F' : 'M',
     ward: 'General OPD',
     bed: undefined,
     diagnosis: p.chronicConditions && p.chronicConditions.length > 0 ? p.chronicConditions.join(', ') : 'Clinical Consultation',
     status: 'inpatient',
     nextAction: 'Review clinical notes',
-    admitDate: p.enrolledAt ? p.enrolledAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    admitDate: p.enrolledAt ? p.enrolledAt.slice(0, 10) : p.registeredAt ? p.registeredAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
     vitals: {
       bp: p.lastVitals?.bp || '120/80',
       hr: p.lastVitals?.pulse || 76,

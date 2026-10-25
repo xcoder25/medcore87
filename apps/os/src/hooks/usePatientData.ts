@@ -52,12 +52,13 @@ export function usePatientData(patientId: string | null | undefined) {
       return;
     }
 
+    const targetId: string = patientId;
     let isMounted = true;
     setIsLoading(true);
 
     async function loadData() {
       try {
-        const offlineCachedRecord = await patientCacheStore.getItem<PatientRecord>(patientId);
+        const offlineCachedRecord = await patientCacheStore.getItem<PatientRecord>(targetId);
         if (isMounted) {
           if (offlineCachedRecord) {
             setData(offlineCachedRecord);
@@ -66,7 +67,7 @@ export function usePatientData(patientId: string | null | undefined) {
         }
       } catch (err: any) {
         if (isMounted) {
-          console.warn(`[usePatientData] Error retrieving patient ${patientId} from IndexedDB:`, err);
+          console.warn(`[usePatientData] Error retrieving patient ${targetId} from IndexedDB:`, err);
           setError(err instanceof Error ? err : new Error(String(err)));
           setIsLoading(false);
         }
@@ -83,14 +84,15 @@ export function usePatientData(patientId: string | null | undefined) {
   const updateCachedPatient = useCallback(
     async (updater: Partial<PatientRecord> | ((prev: PatientRecord | null) => PatientRecord)) => {
       if (!patientId) return;
+      const targetId: string = patientId;
       try {
-        const current = (await patientCacheStore.getItem<PatientRecord>(patientId)) || data;
-        const updated = typeof updater === 'function' ? updater(current) : { ...current, ...updater, id: patientId };
-        await patientCacheStore.setItem(patientId, updated);
+        const current = (await patientCacheStore.getItem<PatientRecord>(targetId)) || data;
+        const updated = typeof updater === 'function' ? updater(current) : { ...current, ...updater, id: targetId };
+        await patientCacheStore.setItem(targetId, updated);
         setData(updated);
         return updated;
       } catch (err) {
-        console.error(`[usePatientData] Failed to write cache for ${patientId}:`, err);
+        console.error(`[usePatientData] Failed to write cache for ${targetId}:`, err);
         throw err;
       }
     },
