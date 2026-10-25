@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import { PwaManager } from '../components/pwa/PwaManager';
 import '../styles/os.css';
 
@@ -65,6 +66,7 @@ export default function RootLayout({
       </head>
       <body>
         <PwaManager />
+        <SpeedInsights />
         {children}
       </body>
     </html>
