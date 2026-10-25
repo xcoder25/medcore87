@@ -11,7 +11,6 @@ import {
   approveAccess,
   suspendAccess,
   reactivateAccess,
-  subscribeAdminSync,
   pushActivity,
   resetAllPilotData,
   clearFacilityAllData,
@@ -22,7 +21,6 @@ import {
   commitStaffEnrolment,
   listStaffCards,
   countActiveStaffCards,
-  syncAccessRosterFromSources,
   purgeOrphanAndDuplicateIdCards,
   wipeFacilityStaffExceptAdmin,
   isStaffFlushLocked,
@@ -30,7 +28,6 @@ import {
   deleteStaffMember,
   defaultPermissionsForRole,
   applyCloudStaffDirectory,
-  migrateStaffIdsToNewFormat,
 } from '../../lib/staffCardStore';
 import { StaffDeleteSuccessScreen, type StaffDeleteSuccessInfo } from '../staffing/StaffDeleteSuccessScreen';
 import {
@@ -188,40 +185,85 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       /* ignore */
     }
 
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    const scheduleLoad = () => {
-      if (!isMounted.current) return;
-      if (busyRef.current) return;
-      if (confirmRef.current && !confirmRef.current.listed) return;
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        if (isMounted.current) loadRecords();
-      }, 400);
+    /** Map Firestore staff doc → AccessRecord (cloud is source of truth). */
+    const rowFromCloud = (s: Record<string, unknown>): AccessRecord | null => {
+      const badgeId = String(s.badgeId || s.id || '')
+        .toUpperCase()
+        .replace(/\s+/g, '');
+      if (!badgeId) return null;
+      const st = String(s.status || 'active').toLowerCase();
+      const status: AccessRecord['status'] =
+        st === 'suspended' ? 'suspended' : st === 'pending' ? 'pending' : 'active';
+      return {
+        id: badgeId,
+        name: String(s.name || s.fullName || badgeId),
+        role: String(s.role || s.shortRole || s.roleKey || 'Staff'),
+        department: String(s.department || '—'),
+        clearance: Number(s.clearanceLevel ?? s.clearance ?? 2),
+        status,
+        lastLogin: String(s.lastLoginAt || s.lastLogin || '—'),
+        permissions: Array.isArray(s.permissions)
+          ? (s.permissions as string[])
+          : defaultPermissionsForRole(String(s.roleKey || s.role || 'staff')),
+        email: s.email || s.workEmail ? String(s.email || s.workEmail) : undefined,
+      };
     };
 
-    // ── Deferred heavy work: runs after first paint so the page renders immediately ──
-    const deferTimer = setTimeout(() => {
+    const applyCloudRows = (staffRows: Record<string, unknown>[]) => {
       if (!isMounted.current) return;
+      const byId = new Map<string, AccessRecord>();
+      for (const s of staffRows) {
+        const row = rowFromCloud(s);
+        if (row) byId.set(row.id, row);
+      }
+      const next = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+      setRecords(next);
+      setIsLoading(false);
+      // Mirror into access store for other admin modules (memory only under edgeCloudOnly)
       try {
-        migrateStaffIdsToNewFormat();
+        setAccessRecords(next);
       } catch {
         /* ignore */
       }
+    };
+
+    // Firestore staff collection = only source for the directory table
+    const unsubCol = firestoreSubscribeStaffCollection(facilityId, (staffRows) => {
       try {
-        if (!isStaffFlushLocked()) {
-          syncAccessRosterFromSources(facilityId);
+        if (!isMounted.current || isStaffFlushLocked()) return;
+        const rows = Array.isArray(staffRows) ? staffRows : [];
+        applyCloudRows(rows as Record<string, unknown>[]);
+        // Keep staff cards/registry aligned for enrolment UI (side effect, not list source)
+        if (rows.length > 0) {
+          const registry = rows.slice(0, 500).map((s: Record<string, unknown>) => {
+            const badgeId = String(s.badgeId || s.id || '')
+              .toUpperCase()
+              .replace(/\s+/g, '');
+            return {
+              id: badgeId,
+              badgeId,
+              name: s.name || s.fullName || badgeId,
+              fullName: s.fullName || s.name,
+              role: s.role || s.shortRole || s.roleKey || 'Staff',
+              shortRole: s.shortRole,
+              roleKey: s.roleKey,
+              title: s.title,
+              department: s.department || '—',
+              clearanceLevel: Number(s.clearanceLevel ?? s.clearance ?? 2),
+              status: s.status || 'active',
+              email: s.email || s.workEmail,
+              hospitalId: facilityId,
+              facilityId,
+            };
+          });
+          applyCloudStaffDirectory({ staffRegistry: registry, facilityId });
         }
       } catch {
         /* ignore */
       }
-      if (isMounted.current) {
-        loadRecords();
-        setIsLoading(false);
-      }
-    }, 0);
+    });
 
-    const unsubAdmin = subscribeAdminSync(scheduleLoad);
-
+    // Shared facility directory doc (staffCards) — merge when collection is sparse
     const unsubDir = firestoreSubscribeStaffDirectory(facilityId, (data) => {
       try {
         if (!isMounted.current || isStaffFlushLocked()) return;
@@ -230,84 +272,48 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           staffRegistry: data.staffRegistry,
           facilityId,
         });
-        scheduleLoad();
-      } catch {
-        /* ignore */
-      }
-    });
-
-    const unsubCol = firestoreSubscribeStaffCollection(facilityId, (staffRows) => {
-      try {
-        if (!isMounted.current || isStaffFlushLocked()) return;
-        if (!Array.isArray(staffRows) || staffRows.length === 0) return;
-        const registry = staffRows.slice(0, 200).map((s: Record<string, unknown>) => {
-          const badgeId = String(s.badgeId || s.id || '')
-            .toUpperCase()
-            .replace(/\s+/g, '');
-          return {
-            id: badgeId,
-            badgeId,
-            name: s.name || s.fullName || badgeId,
-            fullName: s.fullName || s.name,
-            role: s.role || s.shortRole || s.roleKey || 'Staff',
-            shortRole: s.shortRole,
-            roleKey: s.roleKey,
-            title: s.title,
-            department: s.department || '—',
-            clearanceLevel: Number(s.clearanceLevel || 2),
-            clearanceLabel: s.clearanceLabel,
-            permissions: Array.isArray(s.permissions) ? s.permissions : [],
-            hospitalId: s.hospitalId || s.facilityId || facilityId,
-            facilityId: s.facilityId || facilityId,
-            status: s.status || 'active',
-            email: s.email || s.workEmail,
-            lastLoginAt: s.lastLoginAt || s.lastLogin,
-          };
-        });
-        applyCloudStaffDirectory({ staffRegistry: registry, facilityId });
-        scheduleLoad();
-      } catch {
-        /* ignore */
-      }
-    });
-
-    const onOnline = () => {
-      try {
-        if (!isMounted.current) return;
-        if (!isStaffFlushLocked()) {
-          syncAccessRosterFromSources(facilityId);
-          const localCards = listStaffCards().filter(
-            (c) => !c.facilityId || c.facilityId.toUpperCase() === facilityId.toUpperCase()
-          );
-          if (localCards.length > 0) {
-            void import('../../lib/firebase').then(({ firestorePushStaffDirectory }) => {
-              if (isMounted.current)
-                void firestorePushStaffDirectory(facilityId, { staffCards: localCards });
-            });
-          }
+        const cards = Array.isArray(data.staffCards) ? data.staffCards : [];
+        const reg = Array.isArray(data.staffRegistry) ? data.staffRegistry : [];
+        const merged = [...cards, ...reg] as Record<string, unknown>[];
+        if (merged.length > 0) {
+          // Only apply if we still have no rows (collection empty / lagging)
+          setRecords((prev) => {
+            if (prev.length > 0) return prev;
+            const byId = new Map<string, AccessRecord>();
+            for (const s of merged) {
+              const row = rowFromCloud(s);
+              if (row) byId.set(row.id, row);
+            }
+            const next = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+            if (next.length) {
+              try {
+                setAccessRecords(next);
+              } catch {
+                /* ignore */
+              }
+            }
+            return next.length ? next : prev;
+          });
         }
+        setIsLoading(false);
       } catch {
-        /* ignore */
+        setIsLoading(false);
       }
-      scheduleLoad();
-    };
+    });
 
-    window.addEventListener('online', onOnline);
-    window.addEventListener('medcore-staff-cards-updated', scheduleLoad);
-    window.addEventListener('medcore-staff-registry-updated', scheduleLoad);
+    // Safety: stop skeleton after 4s even if cloud is slow
+    const safety = setTimeout(() => {
+      if (isMounted.current) setIsLoading(false);
+    }, 4000);
 
     return () => {
       isMounted.current = false;
-      clearTimeout(deferTimer);
-      if (debounceTimer) clearTimeout(debounceTimer);
-      unsubAdmin();
-      unsubDir();
+      clearTimeout(safety);
       unsubCol();
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('medcore-staff-cards-updated', scheduleLoad);
-      window.removeEventListener('medcore-staff-registry-updated', scheduleLoad);
+      unsubDir();
     };
-  }, [facilityId, loadRecords]);
+  }, [facilityId]);
+
 
   const filtered = records.filter(
     (s) =>

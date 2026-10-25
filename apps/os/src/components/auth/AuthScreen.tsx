@@ -123,98 +123,7 @@ export function getPlatformAdmin(): typeof PLATFORM_ADMIN {
 }
 
 export const PRESET_STAFF: PresetStaff[] = [
-  {
-    badgeId: 'AKS-ADM-001', name: 'Hospital Administrator', role: 'Hospital Administrator', shortRole: 'Admin',
-    title: 'Hospital Administrator', roleKey: 'hospital_admin', clearanceLevel: 5, clearanceLabel: 'Administrator',
-    department: 'Hospital Management', initials: 'HA',
-    permissions: ['dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing', 'enrolment', 'my-card', 'cashier', 'patient-card', 'auth', 'facility', 'data-hub', 'analytics', 'rbac', 'sysadmin', 'compliance', 'transfer', 'ai'],
-    pin: 'AKS-0012442', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#EA580C',
-  },
-
-  {
-    badgeId: 'IGH-DOC-001', name: 'Dr. Amara Okafor', role: 'Medical Officer', shortRole: 'Doctor',
-    title: 'Medical Officer', roleKey: 'doctor', clearanceLevel: 4, clearanceLabel: 'Clinical',
-    department: 'Internal Medicine', initials: 'AO',
-    permissions: ['dashboard', 'doctor-portal', 'emergency', 'beds', 'patient-flow', 'staffing', 'patient-card', 'ai', 'm87-ai'],
-    pin: '1234', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#0284C7',
-  },
-  {
-    badgeId: 'GHI-SUR-002', name: 'Dr. Emeka Adeyemi', role: 'Consultant Surgeon', shortRole: 'Surgeon',
-    title: 'Consultant Surgeon', roleKey: 'surgeon', clearanceLevel: 5, clearanceLabel: 'Consultant',
-    department: 'Surgery & Theatre', initials: 'EA',
-    permissions: ['dashboard', 'theatre', 'icu', 'doctor-portal', 'emergency', 'ai'],
-    pin: '1234', hospitalId: 'GH-IKE', hospitalName: 'General Hospital, Ikot Ekpene', color: '#DC2626',
-  },
-  {
-    badgeId: 'MSG-NUR-003', name: 'Nurse Aisha Bello', role: 'Senior Nursing Officer', shortRole: 'Nurse',
-    title: 'Senior Nursing Officer', roleKey: 'nurse', clearanceLevel: 3, clearanceLabel: 'Nursing',
-    department: 'Female Medical Ward', initials: 'AB',
-    permissions: ['dashboard', 'nursing', 'beds', 'patient-flow', 'emergency', 'maternity'],
-    pin: '1234', hospitalId: 'MSG-ITU', hospitalName: 'Mary Slessor General Hospital, Itu', color: '#7C3AED',
-  },
-  {
-    badgeId: 'IGH-ADM-004', name: 'Adm. Ngozi Eze', role: 'Hospital Administrator', shortRole: 'Admin',
-    title: 'Hospital Administrator', roleKey: 'hospital_admin', clearanceLevel: 5, clearanceLabel: 'Administrator',
-    department: 'Hospital Administration', initials: 'NE',
-    permissions: ['*'],
-    pin: '1234', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#D97706',
-  },
-  {
-    badgeId: 'GHE-PHA-005', name: 'Pharm. Chidi Otu', role: 'Chief Pharmacist', shortRole: 'Pharmacist',
-    title: 'Chief Pharmacist', roleKey: 'pharmacist', clearanceLevel: 3, clearanceLabel: 'Pharmacy',
-    department: 'Pharmacy', initials: 'CO',
-    permissions: ['dashboard', 'pharmacy', 'inventory'],
-    pin: '1234', hospitalId: 'GH-ETN', hospitalName: 'General Hospital, Etinan', color: '#059669',
-  },
-  {
-    badgeId: 'GHI-LAB-006', name: 'Kelechi Obiora', role: 'Senior Lab Scientist', shortRole: 'Lab',
-    title: 'Senior Lab Scientist', roleKey: 'lab', clearanceLevel: 3, clearanceLabel: 'Laboratory',
-    department: 'Laboratory', initials: 'KO',
-    permissions: ['dashboard', 'laboratory', 'blood-bank'],
-    pin: '1234', hospitalId: 'GH-IKE', hospitalName: 'General Hospital, Ikot Ekpene', color: '#0891B2',
-  },
-  {
-    badgeId: 'MGH-RAD-007', name: 'Dr. Fatima Al-Hassan', role: 'Radiologist', shortRole: 'Radiology',
-    title: 'Consultant Radiologist', roleKey: 'radiologist', clearanceLevel: 5, clearanceLabel: 'Radiology',
-    department: 'Radiology', initials: 'FA',
-    permissions: ['dashboard', 'radiology'],
-    pin: '1234', hospitalId: 'MGH-ITM', hospitalName: 'Methodist General Hospital, Ituk Mbang', color: '#6D28D9',
-  },
-  {
-    badgeId: 'GHA-REC-008', name: 'Bisi Adewale', role: 'Records Officer', shortRole: 'Records',
-    title: 'Health Records Officer', roleKey: 'records', clearanceLevel: 2, clearanceLabel: 'Records',
-    department: 'Medical Records', initials: 'BA',
-    permissions: ['dashboard', 'patient-card', 'command'],
-    pin: '1234', hospitalId: 'GH-IAB', hospitalName: 'General Hospital, Ikot Abasi', color: '#0F766E',
-  },
-  {
-    badgeId: 'PSY-ACC-009', name: 'Amaka Oguike', role: 'Accountant', shortRole: 'Accounts',
-    title: 'Finance Officer', roleKey: 'accountant', clearanceLevel: 3, clearanceLabel: 'Finance',
-    department: 'Finance & Accounts', initials: 'AO',
-    permissions: ['dashboard', 'cashier', 'billing', 'claims', 'revenue-cycle'],
-    pin: '1234', hospitalId: 'PSY-EKT', hospitalName: 'Psychiatric Hospital, Eket', color: '#B45309',
-  },
-  {
-    badgeId: 'MHQB-ICT-010', name: 'Ola Bankole', role: 'ICT / System Admin', shortRole: 'SysAdmin',
-    title: 'Chief Information Officer', roleKey: 'sysadmin', clearanceLevel: 6, clearanceLabel: 'IT Admin',
-    department: 'IT & Infrastructure', initials: 'OB',
-    permissions: ['*'],
-    pin: '1234', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#374151',
-  },
-  {
-    badgeId: 'IGH-REC-011', name: 'Blessing Bassey', role: 'Front Desk Officer', shortRole: 'Reception',
-    title: 'Senior Reception Officer', roleKey: 'reception', clearanceLevel: 2, clearanceLabel: 'Front Desk',
-    department: 'Patient Access & Front Desk', initials: 'BB',
-    permissions: ['dashboard', 'patient-flow', 'patient-card', 'appointments', 'desk-settings', 'front-desk-wq', 'ai'],
-    pin: '1234', hospitalId: 'IGH-EKT', hospitalName: 'Immanuel General Hospital, Eket', color: '#0284C7',
-  },
-  {
-    badgeId: 'GHI-MID-012', name: 'Sister Mary Ekong', role: 'Chief Midwife', shortRole: 'Midwife',
-    title: 'Chief Nursing & Midwifery Officer', roleKey: 'midwife', clearanceLevel: 4, clearanceLabel: 'Maternity',
-    department: 'Maternity & Labour Ward', initials: 'ME',
-    permissions: ['dashboard', 'maternity', 'paediatrics', 'beds', 'nursing', 'emergency', 'blood-bank', 'ai'],
-    pin: '1234', hospitalId: 'GH-IKE', hospitalName: 'General Hospital, Ikot Ekpene', color: '#DB2777',
-  },
+  // Demo/hardcoded staff removed — only enrolled Firestore staff + PLATFORM_ADMIN bootstrap.
 ];
 
 export interface AuthScreenProps {
@@ -231,7 +140,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [staffRegistry, setStaffRegistry] = useState<PresetStaff[]>(PRESET_STAFF);
+  const [staffRegistry, setStaffRegistry] = useState<PresetStaff[]>([]);
   /** email = work email form; badge = Staff ID No. + PIN */
   const [authMode, setAuthMode] = useState<'email' | 'badge'>('email');
   const [firebaseLive, setFirebaseLive] = useState(false);
@@ -250,7 +159,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       department: p.department || '',
       initials: p.initials || String(p.name || 'S').slice(0, 2).toUpperCase(),
       permissions: (p.permissions && p.permissions.length) ? p.permissions : defaultPermissionsForRole(inferRoleKey(String(p.roleKey || p.role || p.title || ''), String(p.badgeId || p.id || ''))),
-      pin: p.pin || '1234',
+      pin: p.pin || '',
       hospitalId: p.hospitalId || p.facilityId || selectedHospital.id,
       hospitalName: p.hospitalName || p.facilityName || selectedHospital.name,
       color: p.color || '#0052D4',
@@ -263,12 +172,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         const enrolled = Array.isArray(parsed) ? parsed.map(mapEntry) : [];
         // Bootstrap platform admin always available (can claim empty facilities); enrolled staff appended (dedupe by badge)
         const byBadge = new Map<string, PresetStaff>();
-        for (const s of PRESET_STAFF.filter((x) => x.roleKey === 'hospital_admin' || x.badgeId === PLATFORM_ADMIN.badgeId)) {
-          byBadge.set(s.badgeId, s);
-        }
-        // Prefer only PLATFORM_ADMIN from presets if present
-        const admin = PRESET_STAFF.find((x) => x.badgeId === PLATFORM_ADMIN.badgeId);
-        if (admin) byBadge.set(admin.badgeId, admin);
+        // Only enrolled staff + optional platform bootstrap badge (no demo presets)
         for (const s of enrolled) {
           if (s.badgeId) byBadge.set(s.badgeId, s);
         }

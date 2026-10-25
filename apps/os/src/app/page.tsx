@@ -2004,7 +2004,7 @@ const handleLockScreen = () => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, marginTop: 16 }}>
-              {PRESET_STAFF.map(staff => {
+              {(PRESET_STAFF.length ? PRESET_STAFF : []).map(staff => {
                 const isCurrent = userSession?.badgeId === staff.badgeId;
                 return (
                   <div
