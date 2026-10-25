@@ -5,6 +5,7 @@
  */
 
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
+import { getAdminSettings } from './adminSettingsStore';
 import { firestoreSubscribeFacility } from './firebase';
 
 export const FACILITY_ONBOARD_KEY = 'medcore_admin_onboarding_done';
@@ -247,16 +248,41 @@ export function markStaffOnboarded(badgeId: string) {
 
 export function loadFacilityDraft(facilityId: string, facilityName?: string): FacilityOnboardDraft {
   if (typeof window === 'undefined') return DEFAULT_FACILITY(facilityId, facilityName);
+  const base = DEFAULT_FACILITY(facilityId, facilityName);
+  // Prefer existing Hospital Settings so onboarding never asks twice
+  let fromSettings: Partial<FacilityOnboardDraft> = {};
   try {
-    const raw = localStorage.getItem(ONBOARD_DRAFT_KEY);
-    if (raw) {
-      const all = JSON.parse(raw) as Record<string, FacilityOnboardDraft>;
-      if (all[facilityId]) return { ...DEFAULT_FACILITY(facilityId, facilityName), ...all[facilityId] };
+    const s = getAdminSettings(facilityId);
+    if (s && (s.displayName || s.address || s.phone || s.nhiaProviderCode)) {
+      fromSettings = {
+        facilityName: s.displayName || facilityName || '',
+        physicalAddress: s.address || '',
+        contactPhone: s.phone || '',
+        contactEmail: s.email || '',
+        state: s.state || base.state,
+        lga: s.lga || '',
+        operatingHoursStart: s.workingHoursStart || base.operatingHoursStart,
+        operatingHoursEnd: s.workingHoursEnd || base.operatingHoursEnd,
+        nhiaFacilityCode: s.nhiaProviderCode || '',
+        enableNhisBilling: Boolean(s.autoVerifyInsuranceOnCheckin),
+        enablePaystack: Boolean(s.paystackPublicKey) || base.enablePaystack,
+      };
     }
   } catch {
     /* ignore */
   }
-  return DEFAULT_FACILITY(facilityId, facilityName);
+  let fromDraft: Partial<FacilityOnboardDraft> = {};
+  try {
+    const raw = localStorage.getItem(ONBOARD_DRAFT_KEY);
+    if (raw) {
+      const all = JSON.parse(raw) as Record<string, FacilityOnboardDraft>;
+      if (all[facilityId]) fromDraft = all[facilityId];
+    }
+  } catch {
+    /* ignore */
+  }
+  // Draft overrides settings only where the user already typed onboarding fields
+  return { ...base, ...fromSettings, ...fromDraft, facilityId };
 }
 
 export function saveFacilityDraft(draft: FacilityOnboardDraft) {

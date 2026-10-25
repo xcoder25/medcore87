@@ -41,6 +41,8 @@ const KEY_EVENTS: Record<string, string[]> = {
   medcore_os_pharmacy_stock_log_v1: ['medcore-pharmacy-log', 'medcore-formulary', 'medcore-admin-sync'],
   [FACILITY_KEYS.audit]: ['medcore-admin-sync'],
   [FACILITY_KEYS.facilityCatalog]: ['medcore-facility-catalog', 'medcore-admin-sync'],
+  medcore_os_admin_settings_v1: ['medcore-admin-settings', 'medcore-admin-sync'],
+  adminSettings: ['medcore-admin-settings', 'medcore-admin-sync'],
   [FACILITY_KEYS.onboarding]: ['medcore-onboarding-sync', 'medcore-admin-sync'],
   [FACILITY_KEYS.onboardingDraft]: ['medcore-onboarding-sync', 'medcore-admin-sync'],
   [FACILITY_KEYS.ancPlans]: ['medcore-anc-plans', 'medcore-admin-sync'],
@@ -77,6 +79,26 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
   if (typeof window === 'undefined') return;
   if (value === undefined || value === null) return;
   if (key === 'updatedAt' || key === 'resetAt') return;
+  // Hospital settings from cloud → scoped storage used by Admin Settings UI
+  if (
+    (key === 'medcore_os_admin_settings_v1' || key === 'adminSettings') &&
+    value &&
+    typeof value === 'object'
+  ) {
+    try {
+      const s = value as { facilityId?: string };
+      const fid = String(s.facilityId || '').trim();
+      const payload = JSON.stringify(value);
+      localStorage.setItem('medcore_os_admin_settings_v1', payload);
+      if (fid) localStorage.setItem(`medcore_os_admin_settings_v1:${fid}`, payload);
+      window.dispatchEvent(new CustomEvent('medcore-admin-settings', { detail: value }));
+      window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key } }));
+      emitForKey(key, value);
+      return;
+    } catch {
+      /* fall through */
+    }
+  }
   if (key === HIM_STORAGE_KEY || key === FACILITY_KEYS.him || key === 'medcore_os_him_v1') {
     applyHimRemote(value);
     emitForKey(key, value);

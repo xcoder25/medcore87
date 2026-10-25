@@ -4,6 +4,7 @@
  */
 import { enqueueFacilitySync } from './durableOutbox';
 import { getActiveFacilityId } from './adminRealtimeStore';
+import { publishFacilityData } from './roleSyncBus';
 
 export const ADMIN_SETTINGS_KEY = 'medcore_os_admin_settings_v1';
 
@@ -191,14 +192,33 @@ function writeRaw(settings: AdminFacilitySettings) {
   } catch {
     /* ignore */
   }
-  // Durable cloud / hub
-  void enqueueFacilitySync(settings.facilityId, ADMIN_SETTINGS_KEY, settings);
-  void enqueueFacilitySync(settings.facilityId, 'adminSettings', settings);
+  // Realtime cloud + onsite hub (same path as clinical facility data)
+  try {
+    publishFacilityData(settings.facilityId, ADMIN_SETTINGS_KEY, settings);
+    publishFacilityData(settings.facilityId, 'adminSettings', settings);
+  } catch {
+    void enqueueFacilitySync(settings.facilityId, ADMIN_SETTINGS_KEY, settings);
+    void enqueueFacilitySync(settings.facilityId, 'adminSettings', settings);
+  }
 }
 
 export function getAdminSettings(facilityId?: string): AdminFacilitySettings {
   const fid = facilityId || getActiveFacilityId() || 'DEFAULT-HOSPITAL';
-  const existing = readRaw(fid);
+  let existing = readRaw(fid);
+  // Fallback: cloud/onboarding may have written the unscoped key
+  if (!existing && typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(ADMIN_SETTINGS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as AdminFacilitySettings;
+        if (!parsed.facilityId || parsed.facilityId === fid || parsed.facilityId === 'DEFAULT-HOSPITAL') {
+          existing = parsed;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   if (existing) {
     return { ...DEFAULTS, ...existing, facilityId: fid };
   }

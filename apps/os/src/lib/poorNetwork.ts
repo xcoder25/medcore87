@@ -26,6 +26,8 @@ export const CRITICAL_FACILITY_KEYS = new Set<string>([
   'medcore_os_fd_accounts_requests_v1',
   'medcore_os_formulary_v1',
   'medcore_os_drug_stock_v1',
+  'medcore_os_admin_settings_v1',
+  'adminSettings',
 ]);
 
 export function isCriticalFacilityKey(key: string): boolean {
