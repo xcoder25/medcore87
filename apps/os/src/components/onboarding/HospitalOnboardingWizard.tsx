@@ -104,8 +104,10 @@ const STAFF_STEPS = [
 ];
 
 export function resolveOnboardingMode(session: UserSession): 'facility' | 'staff' | null {
+  // Hospital / facility admins only run facility setup — never the clinical workspace wizard
   if (isFacilityAdminRole(session.roleKey, session.role, session.title)) {
     if (!isFacilityOnboarded(session.hospitalId)) return 'facility';
+    return null;
   }
   const key = session.badgeId || session.id;
   if (key && !isStaffOnboarded(key)) return 'staff';
