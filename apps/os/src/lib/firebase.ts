@@ -620,7 +620,7 @@ export async function firestoreUpsertStaffMember(
   staff: Record<string, unknown> & { badgeId: string }
 ): Promise<boolean> {
   try {
-    await enableFirestoreOffline();
+    void enableFirestoreOffline();
     const badgeId = String(staff.badgeId);
     const payload = stripUndefinedDeep({
       ...staff,
@@ -698,69 +698,90 @@ export async function ensureStaffCloudIdentity(opts: {
   let firestoreOk = false;
   const mail = (opts.email || '').trim().toLowerCase();
 
-  // 1) Create badge Auth account (secondary app), then sign in on PRIMARY so Firestore rules allow write
-  for (let attempt = 0; attempt < 2 && !badgeAuth; attempt++) {
+  const profilePayload = {
+    ...opts.profile,
+    badgeId: opts.badgeId,
+    ...(mail ? { email: mail } : {}),
+    pin,
+    authEmail: badgeAuthEmail(opts.badgeId),
+    status: 'active',
+    roleKey: opts.profile.roleKey || opts.profile.role || '',
+  };
+
+  const withMs = async <T,>(p: Promise<T>, ms: number): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const res = await firebaseEnsureBadgeAccount(opts.badgeId, pin);
+      return await Promise.race([
+        p,
+        new Promise<T>((_, rej) => {
+          timer = setTimeout(() => rej(new Error(`timeout ${ms}ms`)), ms);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  // Parallel: badge Auth + staff doc (do not wait on full directory push)
+  const authTask = (async () => {
+    try {
+      const res = await withMs(firebaseEnsureBadgeAccount(opts.badgeId, pin), 9000);
       if (res?.email) {
-        try {
-          await firebaseSignInWithBadge(opts.badgeId, pin);
-        } catch {
-          /* primary sign-in may fail if already signed in as admin — still try write */
-        }
         badgeAuth = true;
-      }
-    } catch (e) {
-      console.warn('[staff-cloud] badge auth attempt', attempt + 1, e);
-      await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
-    }
-  }
-
-  // 2) Firestore staff profile (needs Auth for typical security rules)
-  for (let attempt = 0; attempt < 3 && !firestoreOk; attempt++) {
-    try {
-      const ok = await firestoreUpsertStaffMember(opts.facilityId, {
-        ...opts.profile,
-        badgeId: opts.badgeId,
-        ...(mail ? { email: mail } : {}),
-        pin,
-        authEmail: badgeAuthEmail(opts.badgeId),
-        status: 'active',
-        roleKey: opts.profile.roleKey || opts.profile.role || '',
-      });
-      firestoreOk = ok;
-      if (ok) {
         try {
-          const cardsRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('medcore_staff_id_cards') : null;
-          const regRaw =
-            typeof localStorage !== 'undefined'
-              ? localStorage.getItem('medcore_os_staff_registry') ||
-                localStorage.getItem('medcore_staff_registry')
-              : null;
-          await firestorePushStaffDirectory(opts.facilityId, {
-            staffCards: cardsRaw ? JSON.parse(cardsRaw) : [],
-            staffRegistry: regRaw ? JSON.parse(regRaw) : [],
-          });
+          await withMs(firebaseSignInWithBadge(opts.badgeId, pin), 4000);
         } catch {
-          /* ignore */
+          /* admin session may already own primary Auth */
         }
       }
     } catch (e) {
-      console.warn('[staff-cloud] firestore attempt', attempt + 1, e);
-      await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+      console.warn('[staff-cloud] badge auth', e);
+    }
+  })();
+
+  const fsTask = (async () => {
+    try {
+      // One attempt with timeout — no 3x retry loops that stack to 30s+
+      const ok = await withMs(
+        firestoreUpsertStaffMember(opts.facilityId, profilePayload),
+        10000
+      );
+      firestoreOk = Boolean(ok);
+    } catch (e) {
+      console.warn('[staff-cloud] firestore upsert', e);
+      // single retry
+      try {
+        const ok2 = await withMs(
+          firestoreUpsertStaffMember(opts.facilityId, profilePayload),
+          8000
+        );
+        firestoreOk = Boolean(ok2);
+      } catch (e2) {
+        console.warn('[staff-cloud] firestore retry', e2);
+      }
+    }
+  })();
+
+  await Promise.all([authTask, fsTask]);
+
+  // If Auth finished after Firestore and rules needed Auth, retry upsert once quickly
+  if (badgeAuth && !firestoreOk) {
+    try {
+      firestoreOk = Boolean(
+        await withMs(firestoreUpsertStaffMember(opts.facilityId, profilePayload), 8000)
+      );
+    } catch {
+      /* ignore */
     }
   }
 
-  // 3) Optional email Auth
+  // Optional work email Auth (rare) — short timeout
   if (mail && isEmailCredential(mail)) {
-    for (let attempt = 0; attempt < 2 && !emailAuth; attempt++) {
-      try {
-        const res = await firebaseEnsureEmailAccount(mail, pin);
-        emailAuth = Boolean(res?.email);
-      } catch (e) {
-        console.warn('[staff-cloud] email auth attempt', attempt + 1, e);
-        await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
-      }
+    try {
+      const res = await withMs(firebaseEnsureEmailAccount(mail, pin), 8000);
+      emailAuth = Boolean(res?.email);
+    } catch {
+      emailAuth = false;
     }
   } else {
     emailAuth = true;
@@ -768,6 +789,7 @@ export async function ensureStaffCloudIdentity(opts: {
 
   return { badgeAuth, emailAuth: mail ? emailAuth : true, firestore: firestoreOk };
 }
+
 
 
 

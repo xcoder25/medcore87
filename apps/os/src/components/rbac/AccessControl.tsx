@@ -456,28 +456,13 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
               status: 'active',
             },
           }),
-          18000,
+          14000,
           'Cloud identity'
         );
         firebaseAuth = cloud.badgeAuth ? 'ok' : 'fail';
         emailAuth = mail ? (cloud.emailAuth ? 'ok' : 'fail') : 'skipped';
         firestoreStatus = cloud.firestore ? 'ok' : 'fail';
-        // Verify peer-readable staff doc (other Chrome profiles depend on this)
-        if (firestoreStatus === 'ok') {
-          try {
-            const { firestoreGetStaffByBadge } = await import('../../lib/firebase');
-            const verified = await withTimeout(
-              firestoreGetStaffByBadge(facilityId, badgeId),
-              5000,
-              'Firestore verify staff'
-            );
-            if (!verified || !verified.roleKey) {
-              firestoreStatus = 'fail';
-            }
-          } catch {
-            firestoreStatus = 'fail';
-          }
-        }
+        // Trust upsert result — no extra getStaffByBadge round-trip (was causing long hangs)
         const permsSnap = accessRow.permissions;
         // Background retry if anything failed (network blip)
         if (!cloud.badgeAuth || (mail && !cloud.emailAuth) || !cloud.firestore) {
