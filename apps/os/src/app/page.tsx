@@ -26,6 +26,7 @@ const BedManagement = dynamic(() => import('../components/beds/BedManagement').t
 const PatientFlowVisibility = dynamic(() => import('../components/patient-flow/PatientFlowVisibility').then(m => m.PatientFlowVisibility), { loading: () => <ModulePageLoader label="Opening Patient Flow…" /> });
 const StaffingOverview = dynamic(() => import('../components/staffing/StaffingOverview').then(m => m.StaffingOverview), { loading: () => <ModulePageLoader label="Opening Staffing Overview…" /> });
 const IntegratedDataHub = dynamic(() => import('../components/data-hub/IntegratedDataHub').then(m => m.IntegratedDataHub), { loading: () => <ModulePageLoader label="Opening Data Hub…" /> });
+const StatewideEmrSuite = dynamic(() => import('../components/interop/StatewideEmrSuite').then(m => m.StatewideEmrSuite), { loading: () => <ModulePageLoader label="Opening statewide suite…" /> });
 const PerformanceAnalytics = dynamic(() => import('../components/analytics/PerformanceAnalytics').then(m => m.PerformanceAnalytics), { loading: () => <ModulePageLoader label="Opening Analytics…" /> });
 const AccessControl = dynamic(() => import('../components/rbac/AccessControl').then(m => m.AccessControl), { loading: () => <ModulePageLoader label="Opening Access Control…" /> });
 const SystemAdministration = dynamic(() => import('../components/system-admin/SystemAdministration').then(m => m.SystemAdministration), { loading: () => <ModulePageLoader label="Opening System Admin…" /> });
@@ -154,7 +155,7 @@ export type ModuleKey =
   // Pillar 4: Finance
   | 'billing' | 'cashier' | 'claims' | 'revenue-cycle' | 'procurement' | 'akwaremit'
   // Pillar 5: Data & Interop
-  | 'aks-state' | 'data-hub' | 'fhir' | 'analytics' | 'offline-sync' | 'ambient-soap' | 'lis' | 'formulary' | 'mfa-sso' | 'knowledge-graph' | 'predictive-staffing' | 'infection' | 'hie' | 'pacs-advanced'
+  | 'aks-state' | 'data-hub' | 'fhir' | 'analytics' | 'offline-sync' | 'ambient-soap' | 'lis' | 'formulary' | 'mfa-sso' | 'knowledge-graph' | 'predictive-staffing' | 'infection' | 'hie' | 'pacs-advanced' | 'statewide-emr'
   // Pillar 6: Connected IoT
   | 'iot-devices'
   // Pillar 7: Security & Governance
@@ -239,6 +240,7 @@ const MASTER_PILLARS: NavSection[] = [
       { key: 'data-hub', icon: Database, label: 'Central Telemetry Data Hub' },
       { key: 'device-gateway', icon: Server, label: 'Device gateway', badge: 'Hub' },
             { key: 'fhir', icon: FileCode, label: 'FHIR R4 & HL7 Message Gateway', badge: 'R4' },
+      { key: 'statewide-emr', icon: ShieldCheck, label: 'Statewide EMR suite', badge: 'Full' },
       { key: 'analytics', icon: BarChart3, label: 'Clinical Performance Analytics' },
       { key: 'offline-sync', icon: RefreshCw, label: 'Offline Sync & Clinical Verification', badge: 'Hybrid' },
     ],
@@ -694,6 +696,7 @@ function getRoleNavSections(session: UserSession | null, showFullDirectory: bool
           label: 'Interoperability & Hardware',
           items: [
             { key: 'fhir', icon: FileCode, label: 'FHIR R4 & HL7 Message Gateway', badge: 'R4' },
+      { key: 'statewide-emr', icon: ShieldCheck, label: 'Statewide EMR suite', badge: 'Full' },
             { key: 'data-hub', icon: Database, label: 'Central Telemetry Data Hub' },
             { key: 'iot-devices', icon: Cpu, label: 'Medical Devices & IoT', badge: 'IoT' },
             { key: 'biomedical', icon: Wrench, label: 'Clinical device log (not CMMS) Assets' },
@@ -956,6 +959,7 @@ const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
   'pacs-advanced': (props: any) => <AdvancedHospitalSuites {...props} mode="pacs-advanced" />,
   'data-hub': IntegratedDataHub,
   fhir: FhirHl7GatewaySuite,
+  'statewide-emr': StatewideEmrSuite as any,
   analytics: PerformanceAnalytics,
   'offline-sync': ClinicalVerificationDashboard,
   'iot-devices': ConnectedDevicesSuite,
@@ -1034,6 +1038,7 @@ const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDe
   'pacs-advanced': { level: 3, label: 'L3 Advanced', roleDesc: 'Clinical & operations advanced module' },
   'data-hub': { level: 4, label: 'L4 Senior Clinical', roleDesc: 'Health Informaticians & Clinical Directors' },
   fhir: { level: 4, label: 'L4 Senior Clinical', roleDesc: 'Interoperability Engineers & MoH Liaisons' },
+  'statewide-emr': { level: 5, label: 'L5 Executive', roleDesc: 'Hospital Admin · statewide completeness suite' },
   analytics: { level: 3, label: 'L3 Clinical', roleDesc: 'Clinical Audit & Quality Analysts' },
   'iot-devices': { level: 2, label: 'L2 Support', roleDesc: 'Biomedical & Telemetry Technicians' },
   auth: { level: 5, label: 'L5 Executive', roleDesc: 'Hospital IAM Administrator' },

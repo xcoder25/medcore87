@@ -63,3 +63,26 @@ export function buildFhirBundle(resources: object[]) {
     entry: resources.map((r) => ({ resource: r })),
   };
 }
+
+/** Full facility FHIR collection for HIE / offline transfer */
+export function exportFacilityFhirBundle(input: {
+  patients: FacilityPatient[];
+  orders: ClinicalOrder[];
+  visits?: ReceptionVisit[];
+}) {
+  const resources: object[] = [];
+  for (const p of input.patients) resources.push(patientToFhir(p));
+  for (const o of input.orders) resources.push(orderToFhirServiceRequest(o));
+  for (const v of input.visits || []) {
+    resources.push({
+      resourceType: 'Encounter',
+      id: v.id,
+      status: v.status === 'completed' || v.status === 'checked_out' ? 'finished' : 'in-progress',
+      class: { code: 'AMB', display: 'ambulatory' },
+      subject: { display: v.patientName },
+      period: { start: v.checkedInAt },
+      serviceType: { text: v.department },
+    });
+  }
+  return buildFhirBundle(resources);
+}
