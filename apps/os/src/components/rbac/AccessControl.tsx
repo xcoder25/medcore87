@@ -503,7 +503,10 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         } catch { /* */ }
 
         // Background retry if Auth or Firestore failed
-        if (firebaseAuth !== 'ok' || firestoreStatus !== 'ok') {
+        // (status vars are updated in async callbacks — read via locals TS can accept)
+        const authDone = firebaseAuth as 'ok' | 'fail' | 'skipped';
+        const fsDone = firestoreStatus as 'ok' | 'fail';
+        if (authDone !== 'ok' || fsDone !== 'ok') {
           window.setTimeout(() => {
             void ensureStaffCloudIdentity({
               facilityId,
