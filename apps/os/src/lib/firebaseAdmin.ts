@@ -145,6 +145,13 @@ export async function adminDeleteAuthUsersByEmail(emails: string[]): Promise<{
   return { deleted, missing, errors };
 }
 
+
+/** @deprecated Prefer adminDeleteAuthUsersByEmail — kept for /api/staff/delete-auth */
+export async function adminDeleteAuthUsers(emails: string[]) {
+  return adminDeleteAuthUsersByEmail(emails);
+}
+
+
 export async function adminListAllAuthUsers(max = 500): Promise<{
   users: Array<{ uid: string; email?: string; disabled?: boolean }>;
   errors: string[];
