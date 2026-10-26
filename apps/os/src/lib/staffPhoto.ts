@@ -89,14 +89,35 @@ function canvasToJpegDataUrl(
 }
 
 export async function compressStaffPhotoFile(file: File): Promise<StaffPhotoResult> {
-  if (!file.type.startsWith('image/') && !/\.(jpe?g|png|webp|gif)$/i.test(file.name)) {
+  const okType =
+    !file.type ||
+    file.type.startsWith('image/') ||
+    /\.(jpe?g|png|webp|gif|heic|heif|bmp)$/i.test(file.name);
+  if (!okType) {
     throw new Error('Photo must be JPG, PNG, or WebP');
   }
   if (file.size > 12 * 1024 * 1024) {
     throw new Error('Photo must be under 12 MB before compression');
   }
-  const img = await loadImageFromFile(file);
-  return canvasToJpegDataUrl(img, MAX_EDGE, JPEG_QUALITY);
+  try {
+    const img = await loadImageFromFile(file);
+    return canvasToJpegDataUrl(img, MAX_EDGE, JPEG_QUALITY);
+  } catch {
+    // Fallback: raw FileReader data URL (may be larger)
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Could not read image file'));
+      reader.readAsDataURL(file);
+    });
+    if (!dataUrl.startsWith('data:')) throw new Error('Could not read image file');
+    return {
+      dataUrl: dataUrl.length > MAX_DATA_URL_CHARS ? dataUrl.slice(0, MAX_DATA_URL_CHARS) : dataUrl,
+      width: 0,
+      height: 0,
+      bytesApprox: Math.round((dataUrl.length * 3) / 4),
+    };
+  }
 }
 
 export function dataUrlToBlob(dataUrl: string): Blob | null {

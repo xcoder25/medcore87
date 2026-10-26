@@ -328,12 +328,17 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setCreateFail(null);
     if (!fullName.trim()) {
       setError('Enter staff full name.');
       return;
     }
     if (!roleKey || !roleMeta) {
       setError('Select a specialty / role — this locks which desk and modules they can open.');
+      return;
+    }
+    if (!String(pin || '').trim()) {
+      setError('Enter a PIN (min 6 characters recommended).');
       return;
     }
     if (roleMeta.roleKey === 'hospital_admin') {
@@ -343,41 +348,27 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           (c.roleKey === 'hospital_admin' || (c.role || '').toLowerCase().includes('administrator'))
       );
       if (existing.length > 0) {
-        setError(`This hospital already has an administrator (${existing[0].fullName || existing[0].badgeId}).`);
+        setError(
+          `This hospital already has an administrator (${existing[0].fullName || existing[0].badgeId}).`
+        );
         return;
       }
     }
 
-    const withTimeout = async <T,>(p: Promise<T>, ms: number, label: string): Promise<T> => {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        return await Promise.race([
-          p,
-          new Promise<T>((_, reject) => {
-            timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-          }),
-        ]);
-      } finally {
-        if (timer) clearTimeout(timer);
-      }
-    };
-
     setBusy(true);
     setConfirmInfo(null);
-    setError('');
+
+    const pinNorm = normalizeStaffPin(pin);
+    const nameSnap = fullName.trim();
+    const mail = (email || '').trim().toLowerCase();
+    const photoSnap = photoUrl || undefined;
 
     let firebaseAuth: 'ok' | 'fail' | 'skipped' = 'skipped';
     let firestoreStatus: 'ok' | 'fail' = 'fail';
     let emailAuth: 'ok' | 'fail' | 'skipped' = 'skipped';
-    let card: StaffCardRecord | null = null;
-    let accessRow: AccessRecord | null = null;
-    let preparedEntry: ReturnType<typeof prepareStaffEnrolment>['entry'] | null = null;
-    const pinNorm = normalizeStaffPin(pin);
-    const nameSnap = fullName.trim();
-    const mail = (email || '').trim().toLowerCase();
 
     try {
-      // Prepare only — no local/cloud write until Firestore profile succeeds (no phantom ID cards)
+      // 1) Build card + registry entry (includes photo data URL)
       const prepared = prepareStaffEnrolment({
         fullName: nameSnap,
         role: roleMeta.role,
@@ -391,27 +382,16 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         pin: pinNorm,
         shortRole: roleMeta.shortRole,
         permissions: defaultPermissionsForRole(roleMeta.roleKey),
-        photoUrl: photoUrl || undefined,
+        photoUrl: photoSnap,
         email: mail || undefined,
       });
-      card = prepared.card;
+      let card = prepared.card;
       const badgeId = card.badgeId;
-      preparedEntry = prepared.entry;
-
-      // Upload photo to Storage when possible; keep compact data URL offline
-      let resolvedPhoto = photoUrl || undefined;
-      if (resolvedPhoto) {
-        try {
-          resolvedPhoto = await resolveStaffPhotoForEnrol(facilityId, badgeId, resolvedPhoto);
-          if (resolvedPhoto && card) {
-            card = { ...card, photoUrl: resolvedPhoto };
-          }
-        } catch {
-          /* keep local data URL */
-        }
+      if (photoSnap) {
+        card = { ...card, photoUrl: photoSnap };
       }
 
-      accessRow = {
+      const accessRow: AccessRecord = {
         id: badgeId,
         name: nameSnap,
         role: roleMeta.role,
@@ -423,7 +403,33 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         email: mail || undefined,
       };
 
-      // Fast parallel: Firebase Auth (login) + Firestore profile — required for immediate sign-in
+      // 2) Commit LOCAL first — ID card + registry always issued
+      commitStaffEnrolment(
+        {
+          fullName: nameSnap,
+          role: roleMeta.role,
+          roleKey: roleMeta.roleKey,
+          title: roleMeta.title,
+          department: roleMeta.department,
+          facilityId,
+          facilityName,
+          clearanceLevel: roleMeta.clearanceLevel,
+          clearanceLabel: roleMeta.clearanceLabel,
+          pin: pinNorm,
+          shortRole: roleMeta.shortRole,
+          permissions: accessRow.permissions,
+          photoUrl: photoSnap,
+          email: mail || undefined,
+        },
+        card,
+        { ...prepared.entry, pin: pinNorm, email: mail || undefined }
+      );
+
+      const nextAccess = [accessRow, ...getAccessRecords().filter((r) => r.id !== accessRow.id)];
+      setAccessRecords(nextAccess);
+      setRecords(nextAccess);
+
+      // 3) Cloud: Auth + Firestore in parallel (needed for login on other devices)
       try {
         const {
           firebaseEnsureBadgeAccount,
@@ -432,7 +438,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           firestorePushStaffDirectory,
         } = await import('../../lib/firebase');
 
-        const profilePayload = {
+        const profilePayload: Record<string, unknown> = {
           badgeId,
           name: nameSnap,
           fullName: nameSnap,
@@ -451,45 +457,33 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           workEmail: mail || undefined,
           authEmail: badgeAuthEmail(badgeId),
           status: 'active',
-          photoUrl: resolvedPhoto || photoUrl || undefined,
+          photoUrl: photoSnap,
         };
 
-        const authP = withTimeout(
-          firebaseEnsureBadgeAccount(badgeId, pinNorm),
-          7000,
-          'Badge Auth'
-        ).then(() => {
-          firebaseAuth = 'ok';
-        }).catch((e) => {
-          console.warn('[access] badge auth', e);
-          firebaseAuth = 'fail';
-        });
+        const race = <T,>(p: Promise<T>, ms: number) =>
+          Promise.race([
+            p,
+            new Promise<T>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
+          ]);
 
-        const fsP = withTimeout(
-          firestoreUpsertStaffMember(facilityId, profilePayload),
-          6000,
-          'Firestore profile'
-        ).then((ok) => {
-          firestoreStatus = ok ? 'ok' : 'fail';
-        }).catch((e) => {
-          console.warn('[access] firestore', e);
-          firestoreStatus = 'fail';
-        });
-
-        const emailP =
+        const results = await Promise.allSettled([
+          race(firebaseEnsureBadgeAccount(badgeId, pinNorm), 8000),
+          race(firestoreUpsertStaffMember(facilityId, profilePayload), 7000),
           mail
-            ? withTimeout(firebaseEnsureEmailAccount(mail, pinNorm), 7000, 'Email Auth')
-                .then(() => {
-                  emailAuth = 'ok';
-                })
-                .catch(() => {
-                  emailAuth = 'fail';
-                })
-            : Promise.resolve();
+            ? race(firebaseEnsureEmailAccount(mail, pinNorm), 8000)
+            : Promise.resolve(null),
+        ]);
 
-        await Promise.all([authP, fsP, emailP]);
+        firebaseAuth = results[0].status === 'fulfilled' ? 'ok' : 'fail';
+        if (results[1].status === 'fulfilled') {
+          const v = (results[1] as PromiseFulfilledResult<boolean | unknown>).value;
+          firestoreStatus = v === false ? 'fail' : 'ok';
+        } else {
+          firestoreStatus = 'fail';
+        }
+        emailAuth = !mail ? 'skipped' : results[2].status === 'fulfilled' ? 'ok' : 'fail';
 
-        // Non-blocking directory publish for other workstations
+        // Push full directory (best effort)
         try {
           const cardsRaw =
             localStorage.getItem('medcore_staff_id_cards') ||
@@ -500,13 +494,11 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
             staffCards: JSON.parse(cardsRaw),
             staffRegistry: JSON.parse(regRaw),
           });
-        } catch { /* */ }
+        } catch {
+          /* */
+        }
 
-        // Background retry if Auth or Firestore failed
-        // (status vars are updated in async callbacks — read via locals TS can accept)
-        const authDone = firebaseAuth as 'ok' | 'fail' | 'skipped';
-        const fsDone = firestoreStatus as 'ok' | 'fail';
-        if (authDone !== 'ok' || fsDone !== 'ok') {
+        if (firebaseAuth !== 'ok' || firestoreStatus !== 'ok') {
           window.setTimeout(() => {
             void ensureStaffCloudIdentity({
               facilityId,
@@ -515,109 +507,46 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
               email: mail || undefined,
               profile: profilePayload,
             });
-          }, 1500);
+          }, 1200);
         }
-      } catch (err) {
-        console.warn('[access] cloud identity', err);
+      } catch (cloudErr) {
+        console.warn('[access] cloud', cloudErr);
         firebaseAuth = 'fail';
-        if (mail) emailAuth = 'fail';
         firestoreStatus = 'fail';
       }
 
       pushActivity(`Account created · ${nameSnap} · ${badgeId} · ID card issued`);
       emitLiveAction(`Account + ID card · ${badgeId}`, { module: 'access' });
-    } catch (err: any) {
+
+      setIssued(card);
+      setShowCreate(false);
+      setSelectedId(badgeId);
+      setConfirmInfo({
+        badgeId,
+        name: nameSnap,
+        role: roleMeta.role,
+        roleKey: roleMeta.roleKey,
+        department: roleMeta.department,
+        clearanceLabel: roleMeta.clearanceLabel,
+        facilityName,
+        pin: pinNorm,
+        email: mail || undefined,
+        firebaseAuth,
+        firestore: firestoreStatus,
+        emailAuth,
+        accessRow,
+        listed: true,
+      });
+      setFullName('');
+      setEmail('');
+      setPhotoUrl('');
+      setPhotoMeta('');
+    } catch (err: unknown) {
       console.error('[access] create failed', err);
-      setError(err?.message || 'Account creation failed.');
+      setError((err as Error)?.message || 'Account creation failed.');
+      setCreateFail((err as Error)?.message || 'Account creation failed.');
     } finally {
       setBusy(false);
-      // Commit local ID card when prepared — cloud may lag; do not block admin on Firestore
-      if (card && accessRow) {
-        // Persist ID card + registry only after cloud profile succeeded
-        try {
-          if (preparedEntry) {
-            commitStaffEnrolment(
-              {
-                fullName: nameSnap,
-                role: roleMeta.role,
-                roleKey: roleMeta.roleKey,
-                title: roleMeta.title,
-                department: roleMeta.department,
-                facilityId,
-                facilityName,
-                clearanceLevel: roleMeta.clearanceLevel,
-                clearanceLabel: roleMeta.clearanceLabel,
-                pin: pinNorm,
-                shortRole: roleMeta.shortRole,
-                permissions: defaultPermissionsForRole(roleMeta.roleKey),
-                photoUrl: photoUrl || undefined,
-                email: mail || undefined,
-              },
-              card,
-              preparedEntry
-            );
-          }
-        } catch { /* ignore */ }
-
-        const issuedCard = card;
-        const row = accessRow;
-        setIssued(issuedCard);
-        setShowCreate(false);
-        setCreateFail(null);
-        const nextAccess = [row, ...getAccessRecords().filter((r) => r.id !== row.id)];
-        setAccessRecords(nextAccess);
-        setRecords(nextAccess);
-        setConfirmInfo({
-          badgeId: issuedCard.badgeId,
-          name: nameSnap,
-          role: roleMeta.role,
-          roleKey: roleMeta.roleKey,
-          department: roleMeta.department,
-          clearanceLabel: roleMeta.clearanceLabel,
-          facilityName,
-          pin: pinNorm,
-          email: mail || undefined,
-          firebaseAuth,
-          firestore: firestoreStatus,
-          emailAuth,
-          accessRow: row,
-          listed: true,
-        });
-        setFullName('');
-        setEmail('');
-        setPhotoUrl('');
-        setSelectedId(issuedCard.badgeId);
-        // Publish directory so other workstations see the new staff immediately
-        try {
-          const cardsRaw = localStorage.getItem('medcore_staff_id_cards') || localStorage.getItem('medcore_os_staff_cards') || '[]';
-          const regRaw = localStorage.getItem('medcore_os_staff_registry') || '[]';
-          void import('../../lib/firebase').then((m) =>
-            m.firestorePushStaffDirectory(facilityId, {
-              staffCards: JSON.parse(cardsRaw),
-              staffRegistry: JSON.parse(regRaw),
-            })
-          );
-        } catch { /* */ }
-      } else if (card) {
-        // Roll back local ID so failed creates leave no badge
-        const badId = card.badgeId;
-        try {
-          deleteStaffMember(badId);
-        } catch { /* ignore */ }
-        try {
-          const next = getAccessRecords().filter((r) => String(r.id).toUpperCase() !== badId.toUpperCase());
-          setAccessRecords(next);
-          setRecords(next);
-        } catch { /* ignore */ }
-        try {
-          void import('../../lib/firebase').then((m) => m.firestoreDeleteStaffMember(facilityId, badId));
-        } catch { /* ignore */ }
-        setIssued(null);
-        setConfirmInfo(null);
-        setCreateFail(
-          'Account was not created. No Staff ID was issued. Check your connection and try again.'
-        );
-      }
     }
   };
 
