@@ -442,7 +442,7 @@ export const ALL_PILOT_KEYS = [
 ];
 
 /** Bump this to force a one-time full wipe on every browser that opens the OS. */
-export const PILOT_DATA_VERSION = 'pilot-clean-v7';
+export const PILOT_DATA_VERSION = 'pilot-clean-v8-full-reset';
 
 const WIPE_PREFIXES = ['medcore_', 'ibom_', 'medcore-'];
 
