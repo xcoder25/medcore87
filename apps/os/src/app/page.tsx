@@ -9,6 +9,8 @@ import {
   MODULE_CLEARANCE,
   type ModuleKey,
   CommandCentreDashboard,
+  RoleDashboard,
+  M87AICopilotSuite,
   HospitalOnboardingWizard,
   RoleFirstRunGuide,
   AccountingWorkspace,
