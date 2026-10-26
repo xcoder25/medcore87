@@ -1,25 +1,15 @@
+# Copy to .github/workflows/os-ci.yml when your GitHub token has the `workflow` scope.
 name: OS CI
-
 on:
   push:
     branches: [main, master]
-    paths:
-      - 'apps/os/**'
-      - 'packages/**'
-      - '.github/workflows/os-ci.yml'
+    paths: ['apps/os/**', 'packages/**']
   pull_request:
     branches: [main, master]
-    paths:
-      - 'apps/os/**'
-      - 'packages/**'
-      - '.github/workflows/os-ci.yml'
-
+    paths: ['apps/os/**', 'packages/**']
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/os
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,11 +17,8 @@ jobs:
           node-version: '20'
           cache: npm
           cache-dependency-path: package-lock.json
-      - name: Install
-        working-directory: .
-        run: npm ci || npm install
-      - name: Typecheck / production build
-        working-directory: apps/os
+      - run: npm ci || npm install
+      - working-directory: apps/os
         env:
           NEXT_TELEMETRY_DISABLED: '1'
         run: npm run build
