@@ -1,3 +1,4 @@
+import { authLog } from './authLog';
 /**
  * Force logout only when the account is clearly deleted/revoked.
  *
@@ -81,7 +82,7 @@ export function startSessionGuard(session: UserSession, onForceLogout: LogoutFn)
     }
     stopped = true;
     try {
-      console.warn('[sessionGuard] force logout', reason, { badgeId, hospitalId, admin, localPin });
+      authLog('session_force_logout', { facilityId: hospitalId, badgeId, reason });
     } catch {
       /* */
     }

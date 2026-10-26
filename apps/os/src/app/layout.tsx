@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { PwaManager } from '../components/pwa/PwaManager';
+import { OfflineBanner } from '../components/common/OfflineBanner';
 import '../styles/os.css';
 
 export const metadata: Metadata = {
@@ -67,6 +68,7 @@ export default function RootLayout({
       <body>
         <PwaManager />
         <SpeedInsights />
+        <OfflineBanner />
         {children}
       </body>
     </html>

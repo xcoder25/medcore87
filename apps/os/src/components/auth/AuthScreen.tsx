@@ -1,5 +1,6 @@
 'use client';
 
+import { authLog, emailDomainOnly } from '../../lib/authLog';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Building2, Lock, User, Eye, EyeOff, ArrowRight, CheckCircle2, AlertCircle
@@ -767,7 +768,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               return;
             }
           } else {
-            setError(classifyAuthError(signInErr, { accountKnown: true, mode: 'email' }));
+            const _msg = classifyAuthError(signInErr, { accountKnown: true, mode: 'email' });
+            authLog('sign_in_fail', { mode: 'email', facilityId: effectiveHospital.id, emailDomain: emailDomainOnly(email), code: String((signInErr as { code?: string })?.code || ''), reason: _msg });
+            setError(_msg);
             setLoading(false);
             return;
           }

@@ -622,8 +622,10 @@ export async function firestoreUpsertStaffMember(
   try {
     void enableFirestoreOffline();
     const badgeId = String(staff.badgeId);
+    // Never persist PIN/password to Firestore (Auth is source of truth for secrets)
+    const { pin: _pin, password: _password, ...safeStaff } = staff as Record<string, unknown>;
     const payload = stripUndefinedDeep({
-      ...staff,
+      ...safeStaff,
       badgeId,
       facilityId,
       updatedAt: new Date().toISOString(),

@@ -72,13 +72,21 @@ function mergeNotifications(local: HospitalNotification[], remote: HospitalNotif
 }
 
 /** Apply remote/network notification rows into local list (live, no reload) */
-export function applyRemoteNotifications(rows: unknown[]): void {
+export function applyRemoteNotifications(rows: unknown[], facilityId?: string): void {
   if (typeof window === 'undefined' || !Array.isArray(rows)) return;
+  const fid = String(facilityId || '').trim();
   const remote = rows
     .filter((r) => r && typeof r === 'object')
-    .map((r) => r as HospitalNotification)
-    .filter((n) => n.id);
+    .map((r) => {
+      const n = r as HospitalNotification;
+      return {
+        ...n,
+        facilityId: String(n.facilityId || fid || '').trim(),
+      };
+    })
+    .filter((n) => n.id && n.facilityId);
   if (!remote.length) return;
+  // Merge only same-facility rows into the global list (multi-facility safe)
   const merged = mergeNotifications(read(), remote);
   localStorage.setItem(KEY, JSON.stringify(merged));
   window.dispatchEvent(new CustomEvent(EVT, { detail: merged }));
@@ -92,7 +100,7 @@ export function startNetworkNotificationListener(facilityId: string): () => void
     try {
       const { firestoreSubscribeNetworkNotifications } = await import('./firebase');
       stop = firestoreSubscribeNetworkNotifications(facilityId, (rows) => {
-        applyRemoteNotifications(rows);
+        applyRemoteNotifications(rows, facilityId);
       });
     } catch {
       /* offline */

@@ -45,6 +45,8 @@ const RoleFirstRunGuide = dynamic(() => import('../components/onboarding/RoleFir
 import { shouldShowRoleGuide } from '../lib/roleFirstRunGuide';
 import { subscribeOnboarding } from '../lib/onboardingStore';
 import { startSessionGuard, clearOsSessionStorage } from '../lib/sessionGuard';
+import { ModuleErrorBoundary } from '../components/common/ModuleErrorBoundary';
+import { authLog } from '../lib/authLog';;
 
 const AuthIdentity = dynamic(() => import('../components/auth/AuthIdentity').then(m => m.AuthIdentity), { loading: () => <ModulePageLoader label="Opening Auth Identity…" /> });
 const DigitalPatientCard = dynamic(() => import('../components/patient-card/DigitalPatientCard').then(m => m.DigitalPatientCard), { loading: () => <ModulePageLoader label="Opening Patient Card…" /> });
@@ -1455,6 +1457,7 @@ export default function OSPage() {
     const badgeId = userSession.badgeId;
     const hospitalId = userSession.hospitalId;
     const stop = startSessionGuard(userSession, (reason) => {
+      authLog('session_force_logout', { facilityId: userSession.hospitalId, badgeId: userSession.badgeId, reason });
       try {
         if (badgeId && hospitalId) markStaffOffline(badgeId, hospitalId);
       } catch {
@@ -2509,6 +2512,7 @@ const handleLockScreen = () => {
           )}
 
           <div key={moduleKey} className={`os-active-module-wrap${moduleLoading ? '' : ' is-entering'}`}>
+            <ModuleErrorBoundary moduleName={String(activeModule)} key={`eb-${moduleKey}`}>
             {moduleLoading ? (
               <ModulePageLoader label="Opening workspace…" />
             ) : isModulePermitted(activeModule) ? (
@@ -2605,6 +2609,7 @@ const handleLockScreen = () => {
                 </button>
               </div>
             )}
+            </ModuleErrorBoundary>
           </div>
         </main>
       </div>

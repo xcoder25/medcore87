@@ -20,3 +20,9 @@ out/
 
 # OS files
 Thumbs.db
+
+# Secrets — never commit
+**/serviceAccount*.json
+**/firebase-adminsdk*.json
+.env.local
+.env*.local
