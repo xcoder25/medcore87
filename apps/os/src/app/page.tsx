@@ -22,7 +22,37 @@ import { getRoleNavSections, type NavSection } from '../os/roleNav';
 import { useOsBootstrap } from '../os/useOsBootstrap';
 import { useOsCloudSession } from '../os/useOsCloudSession';
 
-// Must be a static import so it is always available as a loading placeholder
+import { shouldShowRoleGuide } from '../lib/roleFirstRunGuide';
+import { subscribeOnboarding } from '../lib/onboardingStore';
+import { clearOsSessionStorage } from '../lib/sessionGuard';
+import { ModuleErrorBoundary } from '../components/common/ModuleErrorBoundary';
+import { authLog } from '../lib/authLog';
+import { AdminShell } from '../components/dashboards/AdminShell';
+import { OsAppShell } from '../components/layout/OsAppShell';
+import { ChangeCredentialsModal } from '../components/auth/ChangeCredentialsModal';
+import { UserProfileModal } from '../components/auth/UserProfileModal';
+import { KeyboardShortcutsHint } from '../components/layout/KeyboardShortcutsHint';
+import { listPatients, hydratePatientRegistry } from '../lib/patientRegistryStore';
+import { hydrateBedBoard } from '../lib/bedBoardStore';
+import { normalizeStaffPin, firebaseSignInWithBadge } from '../lib/firebase';
+import { enableEdgeCloudOnlyRuntime } from '../lib/edgeCloudOnly';
+import { markStaffOffline } from '../lib/staffPresenceStore';
+import { roleCanAccessModule, getModulesForRole } from '../lib/rolePermissionsStore';
+import {
+  inferRoleKey,
+  isReceptionRole,
+  defaultPermissionsForRole,
+  listStaffCards,
+  normalizeBadgeId,
+  resolveStaffByBadge,
+} from '../lib/staffCardStore';
+import NotificationBell from '../components/realtime/NotificationBell';
+import AlertBanner from '../components/realtime/AlertBanner';
+import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
+
+// Cloud + in-memory only — no heavy localStorage / SW cache
+enableEdgeCloudOnlyRuntime();
+
 import { ModulePageLoader } from '../components/layout/ModulePageLoader';
 
 // Splash & Auth — small, needed synchronously for first paint
