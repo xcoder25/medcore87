@@ -468,7 +468,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
 
         const results = await Promise.allSettled([
           race(firebaseEnsureBadgeAccount(badgeId, pinNorm), 8000),
-          race(firestoreUpsertStaffMember(facilityId, profilePayload), 7000),
+          race(firestoreUpsertStaffMember(facilityId, profilePayload as Record<string, unknown> & { badgeId: string }), 7000),
           mail
             ? race(firebaseEnsureEmailAccount(mail, pinNorm), 8000)
             : Promise.resolve(null),
@@ -505,7 +505,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
               badgeId,
               pin: pinNorm,
               email: mail || undefined,
-              profile: profilePayload,
+              profile: profilePayload as Record<string, unknown>,
             });
           }, 1200);
         }
