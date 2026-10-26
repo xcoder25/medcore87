@@ -10,7 +10,7 @@ import { ModulePageLoader } from '../components/layout/ModulePageLoader';
 
 // Splash & Auth — small, needed synchronously for first paint
 import { SplashScreen } from '../components/splash/SplashScreen';
-import { AuthScreen, UserSession, PRESET_STAFF, getPlatformAdmin } from '../components/auth/AuthScreen';
+import { AuthScreen, UserSession, PRESET_STAFF } from '../components/auth/AuthScreen';
 
 // Core & Specialty Modules — ALL lazy loaded via next/dynamic.
 // The service worker pre-caches their chunks after first login so they open
@@ -1577,15 +1577,6 @@ const handleLockScreen = () => {
         const preset = PRESET_STAFF.find((p) => normalizeBadgeId(p.badgeId) === badge);
         if (preset?.pin) candidates.push(String(preset.pin));
 
-        // G. Platform Admin credentials
-        const platAdmin = getPlatformAdmin();
-        if (
-          normalizeBadgeId(platAdmin.badgeId) === badge ||
-          userSession?.roleKey === 'hospital_admin' ||
-          userSession?.roleKey === 'sysadmin'
-        ) {
-          candidates.push(platAdmin.password);
-        }
       }
 
       // 2. Check if entered PIN matches ANY candidate
