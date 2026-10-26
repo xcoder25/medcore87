@@ -11,20 +11,18 @@ import {
 } from '../lib/staffPresenceStore';
 import { startNetworkNotificationListener } from '../lib/notificationEngine';
 
+const PRESENCE_DEFER_MS = 1500;
+const CLOUD_SYNC_DEFER_MS = 800;
+
 /**
  * Facility cloud sync, session force-logout guard, and staff presence.
+ * Presence + network notifications are deferred so home desk paints first.
  */
 export function useOsCloudSession(
   userSession: UserSession | null,
   onForceLogout: () => void
 ): void {
-  // Same-hospital live cloud sync
-  useEffect(() => {
-    if (!userSession?.hospitalId) return;
-    return startHospitalCloudSync(userSession.hospitalId);
-  }, [userSession?.hospitalId]);
-
-  // Force logout when Auth revoked / staff removed
+  // Session guard immediately (security) — lightweight
   useEffect(() => {
     if (!userSession?.badgeId || !userSession?.hospitalId) return;
     const stop = startSessionGuard(userSession, (reason) => {
@@ -51,24 +49,57 @@ export function useOsCloudSession(
     return () => stop();
   }, [userSession?.badgeId, userSession?.hospitalId, onForceLogout]);
 
-  // Staff presence + network notifications
+  // Facility cloud sync — slight defer so first paint wins
+  useEffect(() => {
+    if (!userSession?.hospitalId) return;
+    let stop: (() => void) | undefined;
+    const t = window.setTimeout(() => {
+      stop = startHospitalCloudSync(userSession.hospitalId);
+    }, CLOUD_SYNC_DEFER_MS);
+    return () => {
+      window.clearTimeout(t);
+      try {
+        stop?.();
+      } catch {
+        /* */
+      }
+    };
+  }, [userSession?.hospitalId]);
+
+  // Staff presence + network notifications — after home desk paints
   useEffect(() => {
     const badgeId = userSession?.badgeId;
     const hospitalId = userSession?.hospitalId;
     if (!hospitalId || !badgeId) return;
-    const stopHb = startStaffPresenceHeartbeat({
-      badgeId,
-      facilityId: hospitalId,
-      name: userSession?.name || badgeId,
-      roleKey: userSession?.roleKey || '',
-      role: userSession?.role,
-    });
-    const stopListen = startFacilityPresenceListener(hospitalId);
-    const stopNotif = startNetworkNotificationListener(hospitalId);
+
+    let stopHb: (() => void) | undefined;
+    let stopListen: (() => void) | undefined;
+    let stopNotif: (() => void) | undefined;
+    let cancelled = false;
+
+    const t = window.setTimeout(() => {
+      if (cancelled) return;
+      stopHb = startStaffPresenceHeartbeat({
+        badgeId,
+        facilityId: hospitalId,
+        name: userSession?.name || badgeId,
+        roleKey: userSession?.roleKey || '',
+        role: userSession?.role,
+      });
+      stopListen = startFacilityPresenceListener(hospitalId);
+      stopNotif = startNetworkNotificationListener(hospitalId);
+    }, PRESENCE_DEFER_MS);
+
     return () => {
-      stopHb();
-      stopListen();
-      stopNotif();
+      cancelled = true;
+      window.clearTimeout(t);
+      try {
+        stopHb?.();
+        stopListen?.();
+        stopNotif?.();
+      } catch {
+        /* */
+      }
       try {
         markStaffOffline(badgeId, hospitalId);
       } catch {

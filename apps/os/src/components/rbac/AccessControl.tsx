@@ -244,63 +244,99 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       }
     };
 
-    // Single cloud listener only — no parallel facility directory snapshot
+    // Prefer Aurora Postgres when healthy — skip heavy Firestore staff listener
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let lastSig = '';
-    const unsubCol = firestoreSubscribeStaffCollection(facilityId, (staffRows) => {
-      try {
-        if (!isMounted.current || isStaffFlushLocked()) return;
-        const rows = Array.isArray(staffRows) ? staffRows : [];
-        const sig =
-          rows.length +
-          ':' +
-          rows
-            .map((s: Record<string, unknown>) => String(s.badgeId || s.id || ''))
-            .join('|');
-        if (sig === lastSig) {
-          setIsLoading(false);
-          return;
-        }
-        lastSig = sig;
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          if (!isMounted.current) return;
-          applyCloudRows(rows as Record<string, unknown>[]);
-          if (rows.length > 0 && !showCreateRef.current) {
-            try {
-              const registry = rows.slice(0, 200).map((s: Record<string, unknown>) => {
-                const badgeId = String(s.badgeId || s.id || '')
-                  .toUpperCase()
-                  .replace(/\s+/g, '');
-                return {
-                  id: badgeId,
-                  badgeId,
-                  name: s.name || s.fullName || badgeId,
-                  fullName: s.fullName || s.name,
-                  role: s.role || s.shortRole || s.roleKey || 'Staff',
-                  shortRole: s.shortRole,
-                  roleKey: s.roleKey,
-                  title: s.title,
-                  department: s.department || '—',
-                  clearanceLevel: Number(s.clearanceLevel ?? s.clearance ?? 2),
-                  status: s.status || 'active',
-                  email: s.email || s.workEmail,
-                  hospitalId: facilityId,
-                  facilityId,
-                };
-              });
-              applyCloudStaffDirectory({ staffRegistry: registry, facilityId });
-            } catch {
-              /* ignore */
-            }
-          }
-        }, 100);
-      } catch {
-        setIsLoading(false);
-      }
-    });
+    let unsubCol: (() => void) | undefined;
 
-    // Paint immediately; cloud fills in when ready
+    void (async () => {
+      const pgOk = await apiDbHealth();
+      if (!isMounted.current) return;
+      if (pgOk) {
+        try {
+          const res = await apiListStaff(facilityId);
+          if (res.ok && res.staff?.length) {
+            const rows = res.staff.map((s) => ({
+              badgeId: s.badge_id || s.badgeId,
+              fullName: s.full_name || s.fullName,
+              name: s.full_name || s.name,
+              role: s.role,
+              roleKey: s.role_key || s.roleKey,
+              department: s.department,
+              clearanceLevel: s.clearance_level || s.clearanceLevel,
+              status: s.status,
+              email: s.email,
+              permissions: s.permissions,
+            }));
+            applyCloudRows(rows as Record<string, unknown>[]);
+          }
+        } catch {
+          /* fall through to Firestore */
+        }
+        setIsLoading(false);
+        return; // Postgres is source of truth — no Firestore staff collection
+      }
+
+      unsubCol = firestoreSubscribeStaffCollection(facilityId, (staffRows) => {
+        try {
+          if (!isMounted.current || isStaffFlushLocked()) return;
+          const rows = Array.isArray(staffRows) ? staffRows : [];
+          // Never apply empty cloud list over local (prevents wipe after reload)
+          if (rows.length === 0) {
+            setIsLoading(false);
+            return;
+          }
+          const sig =
+            rows.length +
+            ':' +
+            rows
+              .map((s: Record<string, unknown>) => String(s.badgeId || s.id || ''))
+              .join('|');
+          if (sig === lastSig) {
+            setIsLoading(false);
+            return;
+          }
+          lastSig = sig;
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            if (!isMounted.current) return;
+            applyCloudRows(rows as Record<string, unknown>[]);
+            if (!showCreateRef.current) {
+              try {
+                const registry = rows.slice(0, 200).map((s: Record<string, unknown>) => {
+                  const badgeId = String(s.badgeId || s.id || '')
+                    .toUpperCase()
+                    .replace(/\s+/g, '');
+                  return {
+                    id: badgeId,
+                    badgeId,
+                    name: s.name || s.fullName || badgeId,
+                    fullName: s.fullName || s.name,
+                    role: s.role || s.shortRole || s.roleKey || 'Staff',
+                    shortRole: s.shortRole,
+                    roleKey: s.roleKey,
+                    title: s.title,
+                    department: s.department || '—',
+                    clearanceLevel: Number(s.clearanceLevel ?? s.clearance ?? 2),
+                    status: s.status || 'active',
+                    email: s.email || s.workEmail,
+                    hospitalId: facilityId,
+                    facilityId,
+                  };
+                });
+                applyCloudStaffDirectory({ staffRegistry: registry, facilityId });
+              } catch {
+                /* ignore */
+              }
+            }
+          }, 100);
+        } catch {
+          setIsLoading(false);
+        }
+      });
+    })();
+
+    // Paint immediately; data fills in when ready
     setIsLoading(false);
     const safety = setTimeout(() => {
       if (isMounted.current) setIsLoading(false);
@@ -310,7 +346,11 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       isMounted.current = false;
       if (debounceTimer) clearTimeout(debounceTimer);
       clearTimeout(safety);
-      unsubCol();
+      try {
+        unsubCol?.();
+      } catch {
+        /* */
+      }
     };
   }, [facilityId]);
 

@@ -64,3 +64,22 @@ export async function apiUpsertPatient(payload: Record<string, unknown>) {
     return { ok: false, error: (e as Error).message };
   }
 }
+
+
+let _pgOk: boolean | null = null;
+let _pgCheckedAt = 0;
+
+/** Cached Postgres health (30s). */
+export async function apiDbHealth(): Promise<boolean> {
+  const now = Date.now();
+  if (_pgOk !== null && now - _pgCheckedAt < 30_000) return _pgOk;
+  try {
+    const res = await fetch('/api/db/health');
+    const j = (await res.json()) as { ok?: boolean };
+    _pgOk = Boolean(j.ok);
+  } catch {
+    _pgOk = false;
+  }
+  _pgCheckedAt = now;
+  return _pgOk;
+}

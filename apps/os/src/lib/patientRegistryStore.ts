@@ -248,11 +248,64 @@ export function countPatients(facilityId: string): number {
  * Search patients without rendering the full registry.
  * Default limit 50 — suitable for typeahead at 1,000–10,000 patients.
  */
+
+/** Pull patient list/search from Aurora when configured; merge into local cache. */
+export async function hydratePatientsFromPostgres(facilityId: string, q?: string): Promise<number> {
+  try {
+    const res = await apiListPatients(facilityId, q);
+    if (!res?.ok || !Array.isArray(res.patients) || !res.patients.length) return 0;
+    const all = readAll();
+    const byId = new Map(all.map((p) => [p.id, p]));
+    let n = 0;
+    for (const row of res.patients as Array<Record<string, unknown>>) {
+      const id = String(row.id || '');
+      if (!id) continue;
+      const name = String(row.full_name || row.fullName || '');
+      const parts = name.trim().split(/\s+/);
+      const firstName = parts[0] || 'Patient';
+      const lastName = parts.slice(1).join(' ') || firstName;
+      const sexRaw = String(row.sex || 'Other');
+      const sex: PatientSex =
+        sexRaw === 'Male' || sexRaw === 'Female' ? sexRaw : 'Other';
+      const prev = byId.get(id);
+      const next: FacilityPatient = {
+        ...(prev || {}),
+        id,
+        hospitalNumber: String(row.hospital_number || row.hospitalNumber || prev?.hospitalNumber || id),
+        firstName,
+        lastName,
+        dob: String(row.date_of_birth || row.dateOfBirth || prev?.dob || ''),
+        sex,
+        phone: String(row.phone || prev?.phone || ''),
+        email: row.email ? String(row.email) : prev?.email,
+        address: row.address ? String(row.address) : prev?.address,
+        facilityId,
+        facilityName: String(row.facility_name || prev?.facilityName || facilityId),
+      };
+      byId.set(id, { ...byId.get(id), ...next } as FacilityPatient);
+      n++;
+    }
+    const merged = Array.from(byId.values());
+    _cache = merged;
+    try {
+      localStorage.setItem(PATIENT_REGISTRY_KEY, JSON.stringify(merged));
+    } catch { /* */ }
+    try {
+      window.dispatchEvent(new CustomEvent('medcore-patients-updated'));
+    } catch { /* */ }
+    return n;
+  } catch {
+    return 0;
+  }
+}
+
 export function searchPatients(
   facilityId: string,
   query: string,
   limit = 50
 ): FacilityPatient[] {
+  void hydratePatientsFromPostgres(facilityId, query);
+
   const q = (query || '').trim().toLowerCase();
   const all = listPatients(facilityId);
   if (!q) {
