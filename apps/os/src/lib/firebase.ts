@@ -210,15 +210,8 @@ export async function firebaseEnsureBadgeAccount(
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code || '';
       if (code === 'auth/email-already-in-use') {
-        // Verify PIN matches existing account (on secondary only)
-        try {
-          const cred = await signInSecondary(secAuth, email, password);
-          await signOutSecondary(secAuth);
-          return { email, uid: cred.user.uid, created: false };
-        } catch {
-          // Account exists (possibly different PIN) — enrol still OK; badge login works
-          return { email: email.trim(), created: false };
-        }
+        // Account already exists — skip PIN verify for speed (login will validate)
+        return { email, created: false };
       }
       throw err;
     }
