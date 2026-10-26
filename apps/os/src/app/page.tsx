@@ -21,6 +21,7 @@ import {
 import { getRoleNavSections, type NavSection } from '../os/roleNav';
 import { useOsBootstrap } from '../os/useOsBootstrap';
 import { useOsCloudSession } from '../os/useOsCloudSession';
+import { ROLE_THEMES } from '../os/roleThemes';
 
 import { shouldShowRoleGuide } from '../lib/roleFirstRunGuide';
 import { subscribeOnboarding } from '../lib/onboardingStore';
