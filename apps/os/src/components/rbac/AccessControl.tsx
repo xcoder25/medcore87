@@ -615,9 +615,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         setIssued(null);
         setConfirmInfo(null);
         setCreateFail(
-          firestoreStatus !== 'ok'
-            ? 'Account was not created. Cloud profile could not be saved — no Staff ID was issued. Check your internet connection and try again.'
-            : 'Account was not created. No Staff ID was issued.'
+          'Account was not created. No Staff ID was issued. Check your connection and try again.'
         );
       }
     }
