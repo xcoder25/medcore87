@@ -34,6 +34,7 @@ import { StaffDeleteSuccessScreen, type StaffDeleteSuccessInfo } from '../staffi
 import {
   firestoreSubscribeStaffCollection,
 } from '../../lib/firebase';
+import { apiCreateStaff, apiListStaff } from '../../lib/db/clientApi';
 import {
   isEmailCredential,
   badgeAuthEmail,
@@ -156,7 +157,28 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     } catch {
       /* ignore */
     }
-  }, []);
+    // Prefer Aurora when available
+    void apiListStaff(facilityId).then((res) => {
+      if (!res.ok || !res.staff?.length) return;
+      try {
+        const mapped = res.staff.map((s) => ({
+          id: String(s.badge_id || s.badgeId || ''),
+          name: String(s.full_name || s.fullName || s.name || ''),
+          role: String(s.role || ''),
+          department: String(s.department || ''),
+          clearance: Number(s.clearance_level || s.clearanceLevel || 1),
+          status: (String(s.status || 'active') as 'active' | 'suspended' | 'pending'),
+          lastLogin: '—',
+          permissions: Array.isArray(s.permissions) ? (s.permissions as string[]) : [],
+          email: s.email ? String(s.email) : undefined,
+        }));
+        if (mapped.length) {
+          setAccessRecords(mapped);
+          setRecords(mapped);
+        }
+      } catch { /* */ }
+    });
+  }, [facilityId]);
 
   const busyRef = React.useRef(busy);
   const confirmRef = React.useRef(confirmInfo);
@@ -428,6 +450,28 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       const nextAccess = [accessRow, ...getAccessRecords().filter((r) => r.id !== accessRow.id)];
       setAccessRecords(nextAccess);
       setRecords(nextAccess);
+
+      // 2b) Aurora Postgres system of record (non-blocking if not configured)
+      try {
+        void apiCreateStaff({
+          badgeId,
+          facilityId,
+          facilityName,
+          fullName: nameSnap,
+          role: roleMeta.role,
+          roleKey: roleMeta.roleKey,
+          title: roleMeta.title,
+          department: roleMeta.department,
+          email: mail || undefined,
+          status: 'active',
+          clearanceLevel: roleMeta.clearanceLevel,
+          clearanceLabel: roleMeta.clearanceLabel,
+          permissions: accessRow.permissions,
+          photoUrl: photoSnap,
+          pin: pinNorm,
+          authEmail: badgeAuthEmail(badgeId),
+        });
+      } catch { /* */ }
 
       // 3) Cloud: Auth + Firestore in parallel (needed for login on other devices)
       try {

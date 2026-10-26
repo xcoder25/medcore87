@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@medcore/types'],
+  serverExternalPackages: ['pg'],
 
   // Tree-shake lucide-react icons so only the icons actually used are bundled
   experimental: {

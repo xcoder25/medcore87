@@ -1,3 +1,4 @@
+import { apiUpsertPatient } from './db/clientApi';
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 import { idbGet, idbSet } from './idb';
 /**
@@ -195,6 +196,18 @@ export function upsertPatient(patient: FacilityPatient): FacilityPatient {
     try {
       const { firestoreWriteFacility } = await import('./firebase');
       const count = listPatients(patient.facilityId).length;
+      void apiUpsertPatient({
+        id: patient.id,
+        facilityId: patient.facilityId,
+        facilityName: patient.facilityName,
+        fullName: [patient.firstName, patient.middleName, patient.lastName].filter(Boolean).join(' '),
+        hospitalNumber: patient.hospitalNumber,
+        sex: patient.sex,
+        dateOfBirth: patient.dob,
+        phone: patient.phone,
+        email: patient.email,
+        address: patient.address,
+      });
       await firestoreWriteFacility(patient.facilityId, {
         [`patient_${patient.id}`]: patient,
         patientsCount: count,
