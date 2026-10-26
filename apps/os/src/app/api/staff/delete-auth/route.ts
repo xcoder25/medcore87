@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  adminDeleteAuthUsers,
+  adminDeleteAuthUsersByEmail,
   adminVerifyIdToken,
   adminApiSecretOk,
   isFirebaseAdminConfigured,
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await adminDeleteAuthUsers(emails);
+    const result = await adminDeleteAuthUsersByEmail(emails);
     return NextResponse.json({
       ok: result.errors.length === 0 || result.deleted.length > 0,
       ...result,
