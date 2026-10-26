@@ -34,7 +34,7 @@ import { StaffDeleteSuccessScreen, type StaffDeleteSuccessInfo } from '../staffi
 import {
   firestoreSubscribeStaffCollection,
 } from '../../lib/firebase';
-import { apiCreateStaff, apiListStaff } from '../../lib/db/clientApi';
+import { apiCreateStaff, apiListStaff, apiDbHealth } from '../../lib/db/clientApi';
 import {
   isEmailCredential,
   badgeAuthEmail,
