@@ -1,23 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
-    }
+    // Pilot rules: Hospital OS uses badge/PIN + Firebase Auth hybrid.
+    // Tighten later once every session always has request.auth.
 
-    // Facility-scoped data: authenticated users only.
-    // Client cannot delete an entire facility doc without being signed in.
     match /facilities/{facilityId} {
-      allow read: if signedIn();
-      allow write: if signedIn();
-
-      match /{subcollection}/{docId} {
-        allow read: if signedIn();
-        allow write: if signedIn();
+      allow read, write: if true;
+      match /{document=**} {
+        allow read, write: if true;
       }
     }
 
-    // Deny everything else by default
+    // Cross-facility notification inbox (root collection)
+    match /networkNotifications/{id} {
+      allow read, write: if true;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

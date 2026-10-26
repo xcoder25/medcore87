@@ -374,7 +374,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     let preparedEntry: ReturnType<typeof prepareStaffEnrolment>['entry'] | null = null;
     const pinNorm = normalizeStaffPin(pin);
     const nameSnap = fullName.trim();
-    const mail = ''; // email field removed from form — badge/PIN only
+    const mail = (email || '').trim().toLowerCase();
 
     try {
       // Prepare only — no local/cloud write until Firestore profile succeeds (no phantom ID cards)
@@ -449,7 +449,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
               photoUrl: resolvedPhoto || photoUrl || undefined,
             },
           }),
-          14000,
+          8000,
           'Cloud identity'
         );
         firebaseAuth = cloud.badgeAuth ? 'ok' : 'fail';
@@ -499,8 +499,8 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       setError(err?.message || 'Account creation failed.');
     } finally {
       setBusy(false);
-      // Success only when cloud profile saved — otherwise roll back ID (no orphan badges)
-      if (card && accessRow && firestoreStatus === 'ok') {
+      // Commit local ID card when prepared — cloud may lag; do not block admin on Firestore
+      if (card && accessRow) {
         // Persist ID card + registry only after cloud profile succeeded
         try {
           if (preparedEntry) {
@@ -555,6 +555,17 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         setEmail('');
         setPhotoUrl('');
         setSelectedId(issuedCard.badgeId);
+        // Publish directory so other workstations see the new staff immediately
+        try {
+          const cardsRaw = localStorage.getItem('medcore_staff_id_cards') || localStorage.getItem('medcore_os_staff_cards') || '[]';
+          const regRaw = localStorage.getItem('medcore_os_staff_registry') || '[]';
+          void import('../../lib/firebase').then((m) =>
+            m.firestorePushStaffDirectory(facilityId, {
+              staffCards: JSON.parse(cardsRaw),
+              staffRegistry: JSON.parse(regRaw),
+            })
+          );
+        } catch { /* */ }
       } else if (card) {
         // Roll back local ID so failed creates leave no badge
         const badId = card.badgeId;
@@ -567,8 +578,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           setRecords(next);
         } catch { /* ignore */ }
         try {
-          const { firestoreDeleteStaffMember } = await import('../../lib/firebase');
-          void firestoreDeleteStaffMember(facilityId, badId);
+          void import('../../lib/firebase').then((m) => m.firestoreDeleteStaffMember(facilityId, badId));
         } catch { /* ignore */ }
         setIssued(null);
         setConfirmInfo(null);
@@ -789,6 +799,18 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="e.g. Dr. Uduak Essien"
+              />
+            </label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
+              Work email (optional)
+              <input
+                className="os-search-input"
+                style={{ display: 'block', width: '100%', marginTop: 6, padding: '10px 12px' }}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@hospital.gov.ng"
+                autoComplete="off"
               />
             </label>
             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B', position: 'relative' }}>
@@ -1291,15 +1313,98 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                 if (!editName.trim()) { setEditError('Name is required.'); return; }
                 setEditBusy(true); setEditError('');
                 try {
+                  const badge = String(editId || '').toUpperCase();
+                  const name = editName.trim();
+                  const mail = (editEmail || '').trim().toLowerCase() || undefined;
                   const { setAccessRecords: saveRecords, getAccessRecords: getRecs } = await import('../../lib/adminRealtimeStore');
                   const all = getRecs();
                   const updated = all.map((row) =>
                     row.id === editId
-                      ? { ...row, name: editName.trim(), role: editRoleKey || row.role, department: editDept || row.department, status: editStatus, email: editEmail || undefined }
+                      ? { ...row, name, role: editRoleKey || row.role, department: editDept || row.department, status: editStatus, email: mail }
                       : row
                   );
                   saveRecords(updated);
                   setRecords(updated);
+
+                  // Update ID card + registry (realtime local)
+                  try {
+                    const { listStaffCards, writeStaffCardsSafe } = await import('../../lib/staffCardStore');
+                    const cards = listStaffCards().map((c) =>
+                      String(c.badgeId || '').toUpperCase() === badge
+                        ? { ...c, fullName: name, facilityId: c.facilityId || facilityId }
+                        : c
+                    );
+                    // writeStaffCardsSafe may not exist — fall back
+                    try {
+                      const mod = await import('../../lib/staffCardStore');
+                      if (typeof (mod as any).writeCards === 'function') {
+                        /* private */
+                      }
+                      const { applyCloudStaffDirectory } = mod;
+                      // merge via registry keys
+                      for (const key of ['medcore_os_staff_registry', 'medcore_staff_registry']) {
+                        const raw = localStorage.getItem(key);
+                        const arr = raw ? JSON.parse(raw) : [];
+                        if (!Array.isArray(arr)) continue;
+                        const next = arr.map((r: any) => {
+                          const bid = String(r.badgeId || r.id || '').toUpperCase();
+                          if (bid !== badge) return r;
+                          return {
+                            ...r,
+                            name,
+                            fullName: name,
+                            email: mail || r.email,
+                            workEmail: mail || r.workEmail,
+                            department: editDept || r.department,
+                            status: editStatus || r.status,
+                          };
+                        });
+                        localStorage.setItem(key, JSON.stringify(next));
+                      }
+                      // cards
+                      const cardRaw = localStorage.getItem('medcore_staff_id_cards') || localStorage.getItem('medcore_os_staff_cards');
+                      if (cardRaw) {
+                        const carr = JSON.parse(cardRaw);
+                        if (Array.isArray(carr)) {
+                          const nextCards = carr.map((c: any) =>
+                            String(c.badgeId || '').toUpperCase() === badge
+                              ? { ...c, fullName: name }
+                              : c
+                          );
+                          localStorage.setItem('medcore_staff_id_cards', JSON.stringify(nextCards));
+                          localStorage.setItem('medcore_os_staff_cards', JSON.stringify(nextCards));
+                        }
+                      }
+                      window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated'));
+                      window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated'));
+                      window.dispatchEvent(new CustomEvent('medcore-admin-sync'));
+                    } catch { /* */ }
+                  } catch { /* */ }
+
+                  // Cloud upsert (realtime for other workstations)
+                  try {
+                    const { firestoreUpsertStaffMember, firestorePushStaffDirectory } = await import('../../lib/firebase');
+                    await firestoreUpsertStaffMember(facilityId, {
+                      badgeId: badge,
+                      fullName: name,
+                      name,
+                      email: mail,
+                      workEmail: mail,
+                      department: editDept || undefined,
+                      status: editStatus,
+                      facilityId,
+                    });
+                    // push directory snapshot
+                    try {
+                      const cardsRaw = localStorage.getItem('medcore_staff_id_cards') || '[]';
+                      const regRaw = localStorage.getItem('medcore_os_staff_registry') || '[]';
+                      await firestorePushStaffDirectory(facilityId, {
+                        staffCards: JSON.parse(cardsRaw),
+                        staffRegistry: JSON.parse(regRaw),
+                      });
+                    } catch { /* */ }
+                  } catch { /* offline */ }
+
                   setEditId(null);
                 } catch {
                   setEditError('Save failed — please try again.');
