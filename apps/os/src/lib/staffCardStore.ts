@@ -737,6 +737,7 @@ export type StaffRegistryEntry = {
   hospitalName: string;
   status: string;
   email?: string;
+  photoUrl?: string;
 };
 
 /** Build card + registry entry in memory — does NOT write local or cloud (no ID consumed until commit). */
@@ -764,6 +765,7 @@ export function prepareStaffEnrolment(
     hospitalName: input.facilityName,
     status: 'active',
     email: (input.email || '').trim().toLowerCase() || undefined,
+    photoUrl: input.photoUrl || card.photoUrl || undefined,
   };
   return { card, badgeId: id, entry };
 }

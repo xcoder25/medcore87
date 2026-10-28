@@ -15,17 +15,41 @@ const MAX_EDGE = 360;
 const JPEG_QUALITY = 0.72;
 const MAX_DATA_URL_CHARS = 90_000; // ~67KB binary — safe for staff doc field
 
-function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+function loadViaFileReader(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
       img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error('Could not read image'));
+      img.onerror = () => reject(new Error('Could not decode image'));
       img.src = String(reader.result || '');
     };
     reader.onerror = () => reject(new Error('Could not read file'));
     reader.readAsDataURL(file);
+  });
+}
+
+function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    if (typeof window !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      try {
+        const objUrl = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          try { URL.revokeObjectURL(objUrl); } catch { /* ignore */ }
+          resolve(img);
+        };
+        img.onerror = () => {
+          try { URL.revokeObjectURL(objUrl); } catch { /* ignore */ }
+          loadViaFileReader(file).then(resolve, reject);
+        };
+        img.src = objUrl;
+        return;
+      } catch {
+        // Fallback to FileReader below
+      }
+    }
+    loadViaFileReader(file).then(resolve, reject);
   });
 }
 
@@ -70,13 +94,13 @@ function canvasToJpegDataUrl(
 
   let q = quality;
   let dataUrl = canvas.toDataURL('image/jpeg', q);
-  // Step down quality if still huge
+  // Step down quality if still large
   while (dataUrl.length > MAX_DATA_URL_CHARS && q > 0.4) {
     q -= 0.08;
     dataUrl = canvas.toDataURL('image/jpeg', q);
   }
-  if (dataUrl.length > MAX_DATA_URL_CHARS) {
-    // Last resort: smaller edge
+  if (dataUrl.length > MAX_DATA_URL_CHARS && maxEdge > 120) {
+    // Step down dimensions if still large, bounded to prevent deep recursion
     return canvasToJpegDataUrl(img, Math.floor(maxEdge * 0.75), 0.55);
   }
 
@@ -92,18 +116,18 @@ export async function compressStaffPhotoFile(file: File): Promise<StaffPhotoResu
   const okType =
     !file.type ||
     file.type.startsWith('image/') ||
-    /\.(jpe?g|png|webp|gif|heic|heif|bmp)$/i.test(file.name);
+    /\.(jpe?g|png|webp|gif|heic|heif|bmp|svg)$/i.test(file.name);
   if (!okType) {
     throw new Error('Photo must be JPG, PNG, or WebP');
   }
-  if (file.size > 12 * 1024 * 1024) {
-    throw new Error('Photo must be under 12 MB before compression');
+  if (file.size > 15 * 1024 * 1024) {
+    throw new Error('Photo must be under 15 MB before compression');
   }
   try {
     const img = await loadImageFromFile(file);
     return canvasToJpegDataUrl(img, MAX_EDGE, JPEG_QUALITY);
   } catch {
-    // Fallback: raw FileReader data URL (may be larger)
+    // Fallback: raw FileReader data URL (kept valid, NEVER sliced)
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ''));
@@ -112,7 +136,7 @@ export async function compressStaffPhotoFile(file: File): Promise<StaffPhotoResu
     });
     if (!dataUrl.startsWith('data:')) throw new Error('Could not read image file');
     return {
-      dataUrl: dataUrl.length > MAX_DATA_URL_CHARS ? dataUrl.slice(0, MAX_DATA_URL_CHARS) : dataUrl,
+      dataUrl,
       width: 0,
       height: 0,
       bytesApprox: Math.round((dataUrl.length * 3) / 4),
@@ -214,6 +238,5 @@ export async function resolveStaffPhotoForEnrol(
     if (remote) return remote;
   }
 
-  if (localDataUrl.length <= MAX_DATA_URL_CHARS) return localDataUrl;
-  return localDataUrl.slice(0, MAX_DATA_URL_CHARS);
+  return localDataUrl;
 }

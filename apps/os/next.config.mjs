@@ -6,12 +6,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  compress: true,
+  poweredByHeader: false,
   transpilePackages: ['@medcore/types'],
   serverExternalPackages: ['pg'],
 
-  // Tree-shake lucide-react icons so only the icons actually used are bundled
+  // Tree-shake lucide-react and heavy dependencies so only used symbols are bundled
   experimental: {
-    optimizePackageImports: ['lucide-react'],
+    optimizePackageImports: ['lucide-react', 'localforage'],
   },
 
   webpack: (config, { isServer }) => {
@@ -45,11 +47,11 @@ const nextConfig = {
               priority: 25,
               enforce: true,
             },
-            // All other node_modules merged into a single stable vendor chunk
+            // All other common node_modules (initial load only, letting dynamic modules stay split)
             vendors: {
               test: /[\\/]node_modules[\\/]/,
               name: 'vendor-common',
-              chunks: 'all',
+              chunks: 'initial',
               priority: 10,
               reuseExistingChunk: true,
             },

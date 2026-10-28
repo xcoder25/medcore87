@@ -28,13 +28,26 @@ import { ROLE_THEMES } from '../os/roleThemes';
 import { shouldShowRoleGuide } from '../lib/roleFirstRunGuide';
 import { subscribeOnboarding } from '../lib/onboardingStore';
 import { clearOsSessionStorage } from '../lib/sessionGuard';
+import dynamic from 'next/dynamic';
 import { ModuleErrorBoundary } from '../components/common/ModuleErrorBoundary';
 import { authLog } from '../lib/authLog';
-import { AdminShell } from '../components/dashboards/AdminShell';
-import { OsAppShell } from '../components/layout/OsAppShell';
-import { ChangeCredentialsModal } from '../components/auth/ChangeCredentialsModal';
-import { UserProfileModal } from '../components/auth/UserProfileModal';
-import { KeyboardShortcutsHint } from '../components/layout/KeyboardShortcutsHint';
+
+const AdminShell = dynamic(
+  () => import('../components/dashboards/AdminShell').then((m) => m.AdminShell),
+  { loading: () => <ModulePageLoader label="Opening Hospital Admin…" /> }
+);
+const ChangeCredentialsModal = dynamic(
+  () => import('../components/auth/ChangeCredentialsModal').then((m) => m.ChangeCredentialsModal),
+  { ssr: false }
+);
+const UserProfileModal = dynamic(
+  () => import('../components/auth/UserProfileModal').then((m) => m.UserProfileModal),
+  { ssr: false }
+);
+const KeyboardShortcutsHint = dynamic(
+  () => import('../components/layout/KeyboardShortcutsHint').then((m) => m.KeyboardShortcutsHint),
+  { ssr: false }
+);
 import { listPatients, hydratePatientRegistry } from '../lib/patientRegistryStore';
 import { hydrateBedBoard } from '../lib/bedBoardStore';
 import { normalizeStaffPin, firebaseSignInWithBadge } from '../lib/firebase';

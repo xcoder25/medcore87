@@ -8,13 +8,16 @@ import {
   Baby,
   Building2,
   CreditCard,
+  FileText,
   FlaskConical,
   HeartPulse,
   Layers,
   Pill,
   Settings,
+  Shield,
   Stethoscope,
   Users,
+  Wrench,
 } from 'lucide-react';
 
 export interface RoleThemeConfig {

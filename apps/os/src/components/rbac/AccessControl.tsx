@@ -226,9 +226,45 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     const applyCloudRows = (staffRows: Record<string, unknown>[]) => {
       if (!isMounted.current) return;
       const byId = new Map<string, AccessRecord>();
+
+      // Ingest existing local records first so any locally-enrolled staff is never dropped
+      try {
+        const local = getAccessRecords();
+        for (const r of local) {
+          if (r && r.id) byId.set(String(r.id).toUpperCase(), r);
+        }
+      } catch {
+        /* ignore */
+      }
+
+      // Also ingest local staff cards so all enrolled badges stay visible
+      try {
+        for (const c of listStaffCards()) {
+          const cid = String(c.badgeId || '').toUpperCase();
+          if (!cid) continue;
+          if (c.facilityId && facilityId && c.facilityId.toUpperCase() !== facilityId.toUpperCase()) continue;
+          if (!byId.has(cid)) {
+            byId.set(cid, {
+              id: cid,
+              name: c.fullName || cid,
+              role: c.role || (c as { shortRole?: string }).shortRole || 'Staff',
+              department: c.department || '—',
+              clearance: c.clearanceLevel || 2,
+              status: c.status === 'ACTIVE' ? 'active' : 'suspended',
+              lastLogin: 'Never',
+              permissions: (c as { permissions?: string[] }).permissions || defaultPermissionsForRole(c.roleKey || 'staff'),
+              email: (c as { email?: string }).email,
+            });
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
+      // Merge cloud rows (cloud updates take precedence for overlapping ids)
       for (const s of staffRows) {
         const row = rowFromCloud(s);
-        if (row) byId.set(row.id, row);
+        if (row) byId.set(row.id.toUpperCase(), row);
       }
       const next = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
       // Do not re-render the create form / role picker on every Firestore tick
@@ -449,8 +485,16 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       });
       let card = prepared.card;
       const badgeId = card.badgeId;
-      if (photoSnap) {
-        card = { ...card, photoUrl: photoSnap };
+
+      let finalPhoto = photoSnap;
+      try {
+        finalPhoto = (await resolveStaffPhotoForEnrol(facilityId, badgeId, photoSnap)) || photoSnap;
+      } catch {
+        finalPhoto = photoSnap;
+      }
+
+      if (finalPhoto) {
+        card = { ...card, photoUrl: finalPhoto };
       }
 
       const accessRow: AccessRecord = {
@@ -480,11 +524,11 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           pin: pinNorm,
           shortRole: roleMeta.shortRole,
           permissions: accessRow.permissions,
-          photoUrl: photoSnap,
+          photoUrl: finalPhoto,
           email: mail || undefined,
         },
         card,
-        { ...prepared.entry, pin: pinNorm, email: mail || undefined }
+        { ...prepared.entry, pin: pinNorm, email: mail || undefined, photoUrl: finalPhoto }
       );
 
       const nextAccess = [accessRow, ...getAccessRecords().filter((r) => r.id !== accessRow.id)];
@@ -541,7 +585,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           workEmail: mail || undefined,
           authEmail: badgeAuthEmail(badgeId),
           status: 'active',
-          photoUrl: photoSnap,
+          photoUrl: finalPhoto,
         };
 
         const race = <T,>(p: Promise<T>, ms: number) =>
@@ -991,8 +1035,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                 <div style={{ flex: 1, minWidth: 160 }}>
                   <input
                     type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp"
-                    capture="user"
+                    accept="image/*,.jpg,.jpeg,.png,.webp,.gif"
                     disabled={photoBusy || busy}
                     onChange={(e) => {
                       void readPhotoFile(e.target.files?.[0] || null);
@@ -1002,16 +1045,16 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
                   />
                   <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6 }}>
                     {photoBusy
-                      ? 'Compressing headshot…'
+                      ? 'Processing & compressing headshot…'
                       : photoMeta
                         ? `Ready · ${photoMeta} · ID card + cloud profile`
-                        : 'Clear headshot · camera or gallery · auto-cropped for ID card'}
+                        : 'Select headshot · works with any photo from device or camera'}
                   </div>
                   {photoUrl && (
                     <button
                       type="button"
                       className="os-ghost-btn"
-                      style={{ fontSize: 11, marginTop: 6 }}
+                      style={{ fontSize: 11, marginTop: 6, color: '#DC2626' }}
                       disabled={photoBusy || busy}
                       onClick={() => {
                         setPhotoUrl('');

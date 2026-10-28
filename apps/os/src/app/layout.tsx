@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { SpeedInsights } from '@vercel/speed-insights/next';
+import { SpeedInsights } from '../components/common/SpeedInsights';
 import { PwaManager } from '../components/pwa/PwaManager';
 import { OfflineBanner } from '../components/common/OfflineBanner';
 import '../styles/os.css';

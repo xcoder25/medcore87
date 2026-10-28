@@ -23,6 +23,7 @@ import {
 import { getCustomRoles } from '../../lib/rolePermissionsStore';
 import { StaffDeleteSuccessScreen, type StaffDeleteSuccessInfo } from './StaffDeleteSuccessScreen';
 import { isEmailCredential, normalizeStaffPin, ensureStaffCloudIdentity } from '../../lib/firebase';
+import { compressStaffPhotoFile, resolveStaffPhotoForEnrol } from '../../lib/staffPhoto';
 import { emitLiveAction } from '../../lib/liveActions';
 import { StaffIdCardView } from './StaffIdCardView';
 import type { StaffCardRecord } from '@medcore/types';
@@ -61,8 +62,32 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
   const [facilityId, setFacilityId] = useState(lockedFacilityId);
   const [pin, setPin] = useState('1234');
   const [email, setEmail] = useState('');
+  const [photoUrl, setPhotoUrl] = useState<string>('');
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoMeta, setPhotoMeta] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [issued, setIssued] = useState<StaffCardRecord | null>(null);
+
+  const readPhotoFile = async (file: File | null) => {
+    if (!file) {
+      setPhotoUrl('');
+      setPhotoMeta('');
+      return;
+    }
+    setPhotoBusy(true);
+    setError('');
+    try {
+      const result = await compressStaffPhotoFile(file);
+      setPhotoUrl(result.dataUrl);
+      setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB`);
+    } catch (err) {
+      setPhotoUrl('');
+      setPhotoMeta('');
+      setError((err as Error)?.message || 'Could not process photo.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
   /** Card created but not yet confirmed into the roster list */
   const [pendingConfirm, setPendingConfirm] = useState<{
     card: StaffCardRecord;
@@ -161,6 +186,8 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
       }
 
       const pinNorm = normalizeStaffPin(pin);
+      const photoSnap = photoUrl || undefined;
+
       const prepared = prepareStaffEnrolment({
         fullName: fullName.trim(),
         role: roleMeta.role,
@@ -174,13 +201,56 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
         pin: pinNorm,
         shortRole: roleMeta.shortRole,
         permissions: defaultPermissionsForRole(roleMeta.roleKey),
+        photoUrl: photoSnap,
         email: mail || undefined,
       });
-      const { card, entry } = prepared;
 
-      let cloudOk = false;
+      let card = prepared.card;
+      const badgeId = card.badgeId;
+
+      let finalPhoto = photoSnap;
       try {
-        const cloud = await ensureStaffCloudIdentity({
+        finalPhoto = (await resolveStaffPhotoForEnrol(facility.id, badgeId, photoSnap)) || photoSnap;
+      } catch {
+        finalPhoto = photoSnap;
+      }
+
+      if (finalPhoto) {
+        card = { ...card, photoUrl: finalPhoto };
+      }
+
+      const entry = {
+        ...prepared.entry,
+        pin: pinNorm,
+        email: mail || undefined,
+        photoUrl: finalPhoto,
+      };
+
+      // 1. Commit LOCAL first — ID card and local access roster are always issued
+      commitStaffEnrolment(
+        {
+          fullName: fullName.trim(),
+          role: roleMeta.role,
+          roleKey: roleMeta.roleKey,
+          title: roleMeta.title,
+          department: roleMeta.department,
+          facilityId: facility.id,
+          facilityName: facility.name,
+          clearanceLevel: roleMeta.clearanceLevel,
+          clearanceLabel: roleMeta.clearanceLabel,
+          pin: pinNorm,
+          shortRole: roleMeta.shortRole,
+          permissions: defaultPermissionsForRole(roleMeta.roleKey),
+          photoUrl: finalPhoto,
+          email: mail || undefined,
+        },
+        card,
+        entry
+      );
+
+      // 2. Cloud Auth + Firestore in parallel (non-blocking)
+      try {
+        void ensureStaffCloudIdentity({
           facilityId: facility.id,
           badgeId: card.badgeId,
           pin: pinNorm,
@@ -199,45 +269,12 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
             permissions: defaultPermissionsForRole(roleMeta.roleKey),
             email: mail || undefined,
             status: 'active',
+            photoUrl: finalPhoto,
           },
         });
-        cloudOk = Boolean(cloud.firestore);
       } catch (err) {
-        console.warn('[enrol] cloud identity', err);
-        cloudOk = false;
+        console.warn('[enrol] cloud identity sync', err);
       }
-
-      if (!cloudOk) {
-        // No local card, no ID count — failed cloud must not issue Staff ID
-        try {
-          deleteStaffMember(card.badgeId);
-        } catch { /* ignore */ }
-        setError(
-          'Staff account could not be created — cloud profile sync failed. Please check your internet connection and try again. If the problem persists, contact your IT administrator.'
-        );
-        setBusy(false);
-        return;
-      }
-
-      commitStaffEnrolment(
-        {
-          fullName: fullName.trim(),
-          role: roleMeta.role,
-          roleKey: roleMeta.roleKey,
-          title: roleMeta.title,
-          department: roleMeta.department,
-          facilityId: facility.id,
-          facilityName: facility.name,
-          clearanceLevel: roleMeta.clearanceLevel,
-          clearanceLabel: roleMeta.clearanceLabel,
-          pin: pinNorm,
-          shortRole: roleMeta.shortRole,
-          permissions: defaultPermissionsForRole(roleMeta.roleKey),
-          email: mail || undefined,
-        },
-        card,
-        entry
-      );
 
       try {
         pushActivity(`Enrolled ${fullName.trim()} · ${roleMeta.shortRole} · ${card.badgeId}`);
@@ -252,6 +289,8 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
       setIssued(card);
       setFullName('');
       setEmail('');
+      setPhotoUrl('');
+      setPhotoMeta('');
     } catch (err: any) {
       console.error('[enrol] fatal', err);
       setError(err?.message || 'Enrolment failed. Please try again.');
@@ -369,6 +408,79 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
                 placeholder="staff@hospital.gov.ng"
               />
             </label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
+              Staff photo (for ID card)
+              <div
+                style={{
+                  marginTop: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
+                  flexWrap: 'wrap',
+                  padding: 12,
+                  borderRadius: 12,
+                  border: '1px dashed #CBD5E1',
+                  background: '#F8FAFC',
+                }}
+              >
+                <div
+                  style={{
+                    width: 72,
+                    height: 72,
+                    borderRadius: 14,
+                    overflow: 'hidden',
+                    background: 'linear-gradient(145deg, #E0F2FE, #ECFDF5)',
+                    border: '2px solid #0052D4',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  {photoUrl ? (
+                    <img src={photoUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <span style={{ fontSize: 11, color: '#64748B', fontWeight: 600, textAlign: 'center', padding: 4 }}>
+                      No photo
+                    </span>
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <input
+                    type="file"
+                    accept="image/*,.jpg,.jpeg,.png,.webp,.gif"
+                    disabled={photoBusy || busy}
+                    onChange={(e) => {
+                      void readPhotoFile(e.target.files?.[0] || null);
+                      e.target.value = '';
+                    }}
+                    style={{ fontSize: 13, width: '100%' }}
+                  />
+                  <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6 }}>
+                    {photoBusy
+                      ? 'Processing & compressing headshot…'
+                      : photoMeta
+                        ? `Ready · ${photoMeta} · ID card + cloud profile`
+                        : 'Select headshot · works with any photo from device or camera'}
+                  </div>
+                  {photoUrl && (
+                    <button
+                      type="button"
+                      className="os-ghost-btn"
+                      style={{ fontSize: 11, marginTop: 6, color: '#DC2626' }}
+                      disabled={photoBusy || busy}
+                      onClick={() => {
+                        setPhotoUrl('');
+                        setPhotoMeta('');
+                      }}
+                    >
+                      Remove photo
+                    </button>
+                  )}
+                </div>
+              </div>
+            </label>
+
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>
               Initial PIN (min 6 characters)
               <input

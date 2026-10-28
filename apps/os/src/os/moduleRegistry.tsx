@@ -30,17 +30,12 @@ export const AccountingWorkspace = dynamic(() => import('../components/dashboard
 export const FrontDeskSettings = dynamic(() => import('../components/reception/FrontDeskSettings').then(m => m.FrontDeskSettings), { loading: () => <ModulePageLoader label="Opening Front Desk Settings…" /> });
 export const FrontDeskWorkqueues = dynamic(() => import('../components/reception/FrontDeskWorkqueues').then(m => m.FrontDeskWorkqueues), { loading: () => <ModulePageLoader label="Opening Workqueues…" /> });
 
-import { FacilityOnboarding } from '../components/facility/FacilityOnboarding';
 // resolveOnboardingMode is a tiny pure function — import it statically
 import { resolveOnboardingMode } from '../components/onboarding/HospitalOnboardingWizard';
 export { resolveOnboardingMode };
 export const HospitalOnboardingWizard = dynamic(() => import('../components/onboarding/HospitalOnboardingWizard').then(m => ({ default: m.HospitalOnboardingWizard })), { loading: () => <ModulePageLoader label="Loading onboarding…" /> });
 export const RoleFirstRunGuide = dynamic(() => import('../components/onboarding/RoleFirstRunGuide').then(m => ({ default: m.RoleFirstRunGuide })), { loading: () => <ModulePageLoader label="Loading guide…" /> });
-import { shouldShowRoleGuide } from '../lib/roleFirstRunGuide';
-import { subscribeOnboarding } from '../lib/onboardingStore';
-import { startSessionGuard, clearOsSessionStorage } from '../lib/sessionGuard';
-import { ModuleErrorBoundary } from '../components/common/ModuleErrorBoundary';
-import { authLog } from '../lib/authLog';;
+export const FacilityOnboarding = dynamic(() => import('../components/facility/FacilityOnboarding').then(m => m.FacilityOnboarding), { loading: () => <ModulePageLoader label="Opening Facility Onboarding…" /> });
 
 export const AuthIdentity = dynamic(() => import('../components/auth/AuthIdentity').then(m => m.AuthIdentity), { loading: () => <ModulePageLoader label="Opening Auth Identity…" /> });
 export const DigitalPatientCard = dynamic(() => import('../components/patient-card/DigitalPatientCard').then(m => m.DigitalPatientCard), { loading: () => <ModulePageLoader label="Opening Patient Card…" /> });
@@ -53,41 +48,8 @@ export const HospitalStaffTransfer = dynamic(() => import('../components/staffin
 export const StaffEnrolment = dynamic(() => import('../components/staffing/StaffEnrolment').then(m => m.StaffEnrolment), { loading: () => <ModulePageLoader label="Opening Staff Enrolment…" /> });
 export const ClinicalVerificationDashboard = dynamic(() => import('../components/sync/ClinicalVerificationDashboard').then(m => m.ClinicalVerificationDashboard), { loading: () => <ModulePageLoader label="Opening Offline Sync & Verification…" /> });
 
-// Specialty Suites
-import { AdminShell } from '../components/dashboards/AdminShell';
-import { OsAppShell } from '../components/layout/OsAppShell';
-import { ChangeCredentialsModal } from '../components/auth/ChangeCredentialsModal';
-import { UserProfileModal } from '../components/auth/UserProfileModal';
 export const ClinicalUxSuite = dynamic(() => import('../components/clinical-ux/ClinicalUxSuite').then(m => m.ClinicalUxSuite), { loading: () => <ModulePageLoader label="Opening Clinical UX…" /> });
 export const DeviceGatewaySettings = dynamic(() => import('../components/interop/DeviceGatewaySettings').then(m => m.DeviceGatewaySettings), { loading: () => <ModulePageLoader label="Opening Device Gateway…" /> });
-import { KeyboardShortcutsHint } from '../components/layout/KeyboardShortcutsHint';
-import { listPatients, hydratePatientRegistry } from '../lib/patientRegistryStore';
-import { hydrateBedBoard } from '../lib/bedBoardStore';
-import { ensureCleanPilot } from '../lib/adminRealtimeStore';
-import { startOutboxAutoFlush } from '../lib/durableOutbox';
-import { enableFirestoreOffline, normalizeStaffPin, firebaseSignInWithBadge } from '../lib/firebase';
-import { startHospitalCloudSync } from '../lib/facilityCloudSync';
-import { enableEdgeCloudOnlyRuntime } from '../lib/edgeCloudOnly';
-
-// Cloud + in-memory only — no heavy localStorage / SW cache (fixes slow runtime)
-enableEdgeCloudOnlyRuntime();
-import { startClinicalPaymentListeners } from '../lib/clinicalEventBus';
-import { reconcileAllVisitPayments } from '../lib/frontDeskAccountsBridge';
-import {
-  startStaffPresenceHeartbeat,
-  startFacilityPresenceListener,
-  markStaffOffline,
-} from '../lib/staffPresenceStore';
-import { startNetworkNotificationListener } from '../lib/notificationEngine';
-import { roleCanAccessModule, getModulesForRole } from '../lib/rolePermissionsStore';
-import {
-  inferRoleKey,
-  isReceptionRole,
-  defaultPermissionsForRole,
-  listStaffCards,
-  normalizeBadgeId,
-  resolveStaffByBadge,
-} from '../lib/staffCardStore';
 
 export const EmergencyTriageSuite = dynamic(() => import('../components/clinical-core/EmergencyTriageSuite').then(m => m.EmergencyTriageSuite), { loading: () => <ModulePageLoader label="Opening Emergency Triage…" /> });
 export const PharmacyDispensingSuite = dynamic(() => import('../components/clinical-core/PharmacyDispensingSuite').then(m => m.PharmacyDispensingSuite), { loading: () => <ModulePageLoader label="Opening Pharmacy Dispensary…" /> });
@@ -120,9 +82,6 @@ export const ConnectedDevicesSuite = dynamic(() => import('../components/interop
 export const ClinicalSafetyBcpSuite = dynamic(() => import('../components/interop/ClinicalSafetyBcpSuite').then(m => m.ClinicalSafetyBcpSuite), { loading: () => <ModulePageLoader label="Opening Clinical Safety BCP…" /> });
 export const EMRManager = dynamic(() => import('../components/gateway-modules/EMRManager').then(m => m.EMRManager), { loading: () => <ModulePageLoader label="Opening EMR Manager…" /> });
 export const AppointmentsManager = dynamic(() => import('../components/gateway-modules/AppointmentsManager').then(m => m.AppointmentsManager), { loading: () => <ModulePageLoader label="Opening Appointments Manager…" /> });
-import NotificationBell from '../components/realtime/NotificationBell';
-import AlertBanner from '../components/realtime/AlertBanner';
-import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
 
 
 export type ModuleKey =

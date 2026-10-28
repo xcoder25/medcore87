@@ -3,7 +3,26 @@
  * Supports Vercel AWS RDS integration env (MEDCORE_AWS_DB_*) and standard DATABASE_URL.
  */
 import { createHash } from 'crypto';
-import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
+
+export interface QueryResultRow {
+  [column: string]: any;
+}
+export interface QueryResult<R extends QueryResultRow = any> {
+  rows: R[];
+  rowCount: number | null;
+  command: string;
+  oid: number;
+  fields: any[];
+}
+export interface PoolClient {
+  query<T extends QueryResultRow = QueryResultRow>(text: string, params?: unknown[]): Promise<QueryResult<T>>;
+  release(err?: Error | boolean): void;
+}
+export interface Pool {
+  query<T extends QueryResultRow = QueryResultRow>(text: string, params?: unknown[]): Promise<QueryResult<T>>;
+  connect(): Promise<PoolClient>;
+  on(event: string, listener: (...args: any[]) => void): this;
+}
 
 let pool: Pool | null = null;
 let schemaReady: Promise<void> | null = null;
@@ -74,16 +93,23 @@ export function getPool(): Pool {
       'Postgres not configured. Set MEDCORE_AWS_DB_PGHOST + MEDCORE_AWS_DB_PGPASSWORD (or DATABASE_URL) on Vercel.'
     );
   }
-  pool = new Pool({
+  let PgPoolClass: any;
+  try {
+    const pg = require('pg');
+    PgPoolClass = pg.Pool;
+  } catch (err) {
+    throw new Error('Postgres client package ("pg") is not installed: ' + (err as Error).message);
+  }
+  pool = new PgPoolClass({
     ...cfg,
     max: 5,
     idleTimeoutMillis: 20_000,
     connectionTimeoutMillis: 8_000,
   });
-  pool.on('error', (err) => {
+  pool!.on('error', (err: Error) => {
     console.error('[postgres] pool error', err.message);
   });
-  return pool;
+  return pool!;
 }
 
 export async function query<T extends QueryResultRow = QueryResultRow>(

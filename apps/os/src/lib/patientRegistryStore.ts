@@ -1,4 +1,4 @@
-import { apiUpsertPatient } from './db/clientApi';
+import { apiListPatients, apiUpsertPatient } from './db/clientApi';
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 import { idbGet, idbSet } from './idb';
 /**
@@ -281,6 +281,8 @@ export async function hydratePatientsFromPostgres(facilityId: string, q?: string
         address: row.address ? String(row.address) : prev?.address,
         facilityId,
         facilityName: String(row.facility_name || prev?.facilityName || facilityId),
+        status: row.status === 'inactive' ? 'inactive' : prev?.status || 'active',
+        registeredAt: String(row.created_at || row.registeredAt || prev?.registeredAt || new Date().toISOString()),
       };
       byId.set(id, { ...byId.get(id), ...next } as FacilityPatient);
       n++;
