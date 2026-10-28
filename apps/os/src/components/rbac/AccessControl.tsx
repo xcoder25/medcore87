@@ -86,13 +86,58 @@ const STATUS_META = {
   pending: { label: 'Pending', color: '#EA580C' },
 };
 
+function getInitialStaffAccessRecords(facilityId: string): AccessRecord[] {
+  if (typeof window === 'undefined') return [];
+  const fid = (facilityId || '').trim().toUpperCase();
+  const byId = new Map<string, AccessRecord>();
+
+  // Ingest existing local records first
+  try {
+    const local = getAccessRecords();
+    for (const r of local) {
+      if (r && r.id) byId.set(String(r.id).toUpperCase(), r);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // Also ingest local staff cards so all enrolled badges are immediately visible
+  try {
+    for (const c of listStaffCards()) {
+      const cid = String(c.badgeId || '').toUpperCase();
+      if (!cid) continue;
+      if (c.facilityId && fid && String(c.facilityId).toUpperCase() !== fid) continue;
+      if (!byId.has(cid)) {
+        byId.set(cid, {
+          id: cid,
+          name: c.fullName || cid,
+          role: c.role || (c as { shortRole?: string }).shortRole || 'Staff',
+          department: c.department || '—',
+          clearance: c.clearanceLevel || 2,
+          status: c.status === 'ACTIVE' ? 'active' : 'suspended',
+          lastLogin: 'Never',
+          permissions: (c as { permissions?: string[] }).permissions || defaultPermissionsForRole(c.roleKey || 'staff'),
+          email: (c as { email?: string }).email,
+        });
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 interface Props {
   session?: UserSession;
 }
 
 export const AccessControl: React.FC<Props> = ({ session }) => {
-  const [records, setRecords] = useState<AccessRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const facilityId = session?.hospitalId || HOSPITALS[0]?.id || 'IGH-EKT';
+  const facilityName = session?.facility || HOSPITALS.find((h) => h.id === facilityId)?.name || 'Hospital';
+
+  const [records, setRecords] = useState<AccessRecord[]>(() => getInitialStaffAccessRecords(facilityId));
+  const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -141,9 +186,6 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoMeta, setPhotoMeta] = useState<string>('');
 
-  const facilityId = session?.hospitalId || HOSPITALS[0]?.id || 'IGH-EKT';
-  const facilityName = session?.facility || HOSPITALS.find((h) => h.id === facilityId)?.name || 'Hospital';
-
   // Static list — avoid getCustomRoles()/storage work when opening the form
   const roleMeta = useMemo(
     () => ROLE_OPTIONS.find((r) => r.roleKey === roleKey) || ROLE_OPTIONS[0],
@@ -153,7 +195,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
   // Read-only refresh — NEVER call syncAccessRoster here (that dispatches admin-sync → infinite loop)
   const loadRecords = useCallback(() => {
     try {
-      setRecords(getAccessRecords());
+      setRecords(getInitialStaffAccessRecords(facilityId));
     } catch {
       /* ignore */
     }
@@ -280,19 +322,29 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       }
     };
 
+    // Paint immediately from local sources so the list is instant (0ms)
+    applyCloudRows([]);
+
     // Prefer Aurora Postgres when healthy — skip heavy Firestore staff listener
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let lastSig = '';
     let unsubCol: (() => void) | undefined;
 
     void (async () => {
-      const pgOk = await apiDbHealth();
+      // Race apiDbHealth with a 2-second timeout so a slow or unreachable database never stalls the UI
+      const pgOk = await Promise.race([
+        apiDbHealth(),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2000)),
+      ]);
       if (!isMounted.current) return;
       if (pgOk) {
         try {
-          const res = await apiListStaff(facilityId);
+          const res = await Promise.race([
+            apiListStaff(facilityId),
+            new Promise<any>((resolve) => setTimeout(() => resolve({ ok: false }), 3000)),
+          ]);
           if (res.ok && res.staff?.length) {
-            const rows = res.staff.map((s) => ({
+            const rows = res.staff.map((s: any) => ({
               badgeId: s.badge_id || s.badgeId,
               fullName: s.full_name || s.fullName,
               name: s.full_name || s.name,
@@ -305,9 +357,11 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
               permissions: s.permissions,
             }));
             applyCloudRows(rows as Record<string, unknown>[]);
+          } else {
+            applyCloudRows([]);
           }
         } catch {
-          /* fall through to Firestore */
+          applyCloudRows([]);
         }
         setIsLoading(false);
         return; // Postgres is source of truth — no Firestore staff collection
@@ -317,8 +371,9 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         try {
           if (!isMounted.current || isStaffFlushLocked()) return;
           const rows = Array.isArray(staffRows) ? staffRows : [];
-          // Never apply empty cloud list over local (prevents wipe after reload)
+          // Never apply empty cloud list over local (keeps local staff cards visible)
           if (rows.length === 0) {
+            applyCloudRows([]);
             setIsLoading(false);
             return;
           }
