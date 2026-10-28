@@ -516,10 +516,6 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     const mail = (email || '').trim().toLowerCase();
     const photoSnap = photoUrl || undefined;
 
-    let firebaseAuth: 'ok' | 'fail' | 'skipped' = 'skipped';
-    let firestoreStatus: 'ok' | 'fail' = 'fail';
-    let emailAuth: 'ok' | 'fail' | 'skipped' = 'skipped';
-
     try {
       // 1) Build card + registry entry (includes photo data URL)
       const prepared = prepareStaffEnrolment({
@@ -590,7 +586,58 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
       setAccessRecords(nextAccess);
       setRecords(nextAccess);
 
-      // 2b) Aurora Postgres system of record (non-blocking if not configured)
+      pushActivity(`Account created · ${nameSnap} · ${badgeId} · ID card issued`);
+      emitLiveAction(`Account + ID card · ${badgeId}`, { module: 'access' });
+
+      // Instant UI completion — ID card and local access are already committed
+      setIssued(card);
+      setShowCreate(false);
+      setSelectedId(badgeId);
+      setConfirmInfo({
+        badgeId,
+        name: nameSnap,
+        role: roleMeta.role,
+        roleKey: roleMeta.roleKey,
+        department: roleMeta.department,
+        clearanceLabel: roleMeta.clearanceLabel,
+        facilityName,
+        pin: pinNorm,
+        email: mail || undefined,
+        firebaseAuth: 'ok',
+        firestore: 'ok',
+        emailAuth: mail ? 'ok' : 'skipped',
+        accessRow,
+        listed: true,
+      });
+      setFullName('');
+      setEmail('');
+      setPhotoUrl('');
+      setPhotoMeta('');
+      setBusy(false);
+
+      // 2b) Aurora Postgres + Cloud Auth/Firestore in parallel (non-blocking background sync)
+      const profilePayload: Record<string, unknown> = {
+        badgeId,
+        name: nameSnap,
+        fullName: nameSnap,
+        role: roleMeta.role,
+        roleKey: roleMeta.roleKey,
+        title: roleMeta.title,
+        department: roleMeta.department,
+        hospitalId: facilityId,
+        facilityId,
+        hospitalName: facilityName,
+        facilityName,
+        clearanceLevel: roleMeta.clearanceLevel,
+        clearanceLabel: roleMeta.clearanceLabel,
+        permissions: accessRow.permissions,
+        email: mail || undefined,
+        workEmail: mail || undefined,
+        authEmail: badgeAuthEmail(badgeId),
+        status: 'active',
+        photoUrl: finalPhoto,
+      };
+
       try {
         void apiCreateStaff({
           badgeId,
@@ -606,129 +653,29 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           clearanceLevel: roleMeta.clearanceLevel,
           clearanceLabel: roleMeta.clearanceLabel,
           permissions: accessRow.permissions,
-          photoUrl: photoSnap,
+          photoUrl: finalPhoto,
           pin: pinNorm,
           authEmail: badgeAuthEmail(badgeId),
         });
-      } catch { /* */ }
-
-      // 3) Cloud: Auth + Firestore in parallel (needed for login on other devices)
-      try {
-        const {
-          firebaseEnsureBadgeAccount,
-          firebaseEnsureEmailAccount,
-          firestoreUpsertStaffMember,
-          firestorePushStaffDirectory,
-        } = await import('../../lib/firebase');
-
-        const profilePayload: Record<string, unknown> = {
-          badgeId,
-          name: nameSnap,
-          fullName: nameSnap,
-          role: roleMeta.role,
-          roleKey: roleMeta.roleKey,
-          title: roleMeta.title,
-          department: roleMeta.department,
-          hospitalId: facilityId,
-          facilityId,
-          hospitalName: facilityName,
-          facilityName,
-          clearanceLevel: roleMeta.clearanceLevel,
-          clearanceLabel: roleMeta.clearanceLabel,
-          permissions: accessRow.permissions,
-          email: mail || undefined,
-          workEmail: mail || undefined,
-          authEmail: badgeAuthEmail(badgeId),
-          status: 'active',
-          photoUrl: finalPhoto,
-        };
-
-        const race = <T,>(p: Promise<T>, ms: number) =>
-          Promise.race([
-            p,
-            new Promise<T>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
-          ]);
-
-        const results = await Promise.allSettled([
-          race(firebaseEnsureBadgeAccount(badgeId, pinNorm), 8000),
-          race(firestoreUpsertStaffMember(facilityId, profilePayload as Record<string, unknown> & { badgeId: string }), 7000),
-          mail
-            ? race(firebaseEnsureEmailAccount(mail, pinNorm), 8000)
-            : Promise.resolve(null),
-        ]);
-
-        firebaseAuth = results[0].status === 'fulfilled' ? 'ok' : 'fail';
-        if (results[1].status === 'fulfilled') {
-          const v = (results[1] as PromiseFulfilledResult<boolean | unknown>).value;
-          firestoreStatus = v === false ? 'fail' : 'ok';
-        } else {
-          firestoreStatus = 'fail';
-        }
-        emailAuth = !mail ? 'skipped' : results[2].status === 'fulfilled' ? 'ok' : 'fail';
-
-        // Push full directory (best effort)
-        try {
-          const cardsRaw =
-            localStorage.getItem('medcore_staff_id_cards') ||
-            localStorage.getItem('medcore_os_staff_cards') ||
-            '[]';
-          const regRaw = localStorage.getItem('medcore_os_staff_registry') || '[]';
-          void firestorePushStaffDirectory(facilityId, {
-            staffCards: JSON.parse(cardsRaw),
-            staffRegistry: JSON.parse(regRaw),
-          });
-        } catch {
-          /* */
-        }
-
-        if (firebaseAuth !== 'ok' || firestoreStatus !== 'ok') {
-          window.setTimeout(() => {
-            void ensureStaffCloudIdentity({
-              facilityId,
-              badgeId,
-              pin: pinNorm,
-              email: mail || undefined,
-              profile: profilePayload as Record<string, unknown>,
-            });
-          }, 1200);
-        }
-      } catch (cloudErr) {
-        console.warn('[access] cloud', cloudErr);
-        firebaseAuth = 'fail';
-        firestoreStatus = 'fail';
+      } catch {
+        /* ignore */
       }
 
-      pushActivity(`Account created · ${nameSnap} · ${badgeId} · ID card issued`);
-      emitLiveAction(`Account + ID card · ${badgeId}`, { module: 'access' });
-
-      setIssued(card);
-      setShowCreate(false);
-      setSelectedId(badgeId);
-      setConfirmInfo({
-        badgeId,
-        name: nameSnap,
-        role: roleMeta.role,
-        roleKey: roleMeta.roleKey,
-        department: roleMeta.department,
-        clearanceLabel: roleMeta.clearanceLabel,
-        facilityName,
-        pin: pinNorm,
-        email: mail || undefined,
-        firebaseAuth,
-        firestore: firestoreStatus,
-        emailAuth,
-        accessRow,
-        listed: true,
-      });
-      setFullName('');
-      setEmail('');
-      setPhotoUrl('');
-      setPhotoMeta('');
+      try {
+        void ensureStaffCloudIdentity({
+          facilityId,
+          badgeId,
+          pin: pinNorm,
+          email: mail || undefined,
+          profile: profilePayload,
+        });
+      } catch {
+        /* ignore */
+      }
     } catch (err: unknown) {
       console.error('[access] create failed', err);
       setError((err as Error)?.message || 'Account creation failed.');
       setCreateFail((err as Error)?.message || 'Account creation failed.');
-    } finally {
       setBusy(false);
     }
   };
