@@ -31,6 +31,8 @@ import {
   downloadNdrLineList,
   autoSubmitDhis2,
 } from '../../lib/dhis2Export';
+import { downloadRadetCsv, downloadNdrJson } from '../../lib/lamisStore';
+import { exportNpcVitalStatistics } from '../../lib/ecrvsService';
 import { runOfflineTabletCertification, certSummary } from '../../lib/offlineTabletCert';
 
 type Tab = 'akshia' | 'upi' | 'wallet' | 'anc' | 'reports' | 'cert';
@@ -426,7 +428,7 @@ export const AkwaIbomStateSuite: React.FC<{ session?: any }> = ({ session }) => 
 
       {tab === 'reports' && (
         <div style={card}>
-          <h3 style={{ marginTop: 0 }}>DHIS2 · NHMIS · NDR</h3>
+          <h3 style={{ marginTop: 0 }}>DHIS2 · NHMIS · LAMIS · RADET · e-CRVS</h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <button type="button" style={btn} onClick={() => { downloadDhis2Aggregate(facilityId); setMsg('DHIS2 daily JSON downloaded'); }}>
               Download DHIS2 daily
@@ -434,8 +436,14 @@ export const AkwaIbomStateSuite: React.FC<{ session?: any }> = ({ session }) => 
             <button type="button" style={btn} onClick={() => { downloadNhmisMonthly(facilityId); setMsg('NHMIS monthly JSON downloaded'); }}>
               Download NHMIS monthly
             </button>
-            <button type="button" style={btn} onClick={() => { downloadNdrLineList(facilityId); setMsg('NDR line list downloaded'); }}>
-              Download NDR line list
+            <button type="button" style={{ ...btn, background: '#059669', color: '#FFF' }} onClick={() => { downloadRadetCsv(facilityId); setMsg('RADET PEPFAR CSV downloaded'); }}>
+              Download RADET (PEPFAR)
+            </button>
+            <button type="button" style={{ ...btn, background: '#0284C7', color: '#FFF' }} onClick={() => { downloadNdrJson(facilityId); setMsg('NDR container JSON downloaded'); }}>
+              Download NDR Container (MoH)
+            </button>
+            <button type="button" style={{ ...btn, background: '#D97706', color: '#FFF' }} onClick={() => { exportNpcVitalStatistics(facilityId); setMsg('NPC e-CRVS Vital Stats JSON downloaded'); }}>
+              Download NPC e-CRVS (Births/Deaths)
             </button>
             <button
               type="button"

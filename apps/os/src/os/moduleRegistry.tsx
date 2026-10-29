@@ -82,6 +82,11 @@ export const ConnectedDevicesSuite = dynamic(() => import('../components/interop
 export const ClinicalSafetyBcpSuite = dynamic(() => import('../components/interop/ClinicalSafetyBcpSuite').then(m => m.ClinicalSafetyBcpSuite), { loading: () => <ModulePageLoader label="Opening Clinical Safety BCP…" /> });
 export const EMRManager = dynamic(() => import('../components/gateway-modules/EMRManager').then(m => m.EMRManager), { loading: () => <ModulePageLoader label="Opening EMR Manager…" /> });
 export const AppointmentsManager = dynamic(() => import('../components/gateway-modules/AppointmentsManager').then(m => m.AppointmentsManager), { loading: () => <ModulePageLoader label="Opening Appointments Manager…" /> });
+export const LamisNdrSuite = dynamic(() => import('../components/interop/LamisNdrSuite').then(m => m.LamisNdrSuite), { loading: () => <ModulePageLoader label="Opening LAMIS & NDR Suite…" /> });
+export const ClinicalAiAutomationsSuite = dynamic(() => import('../components/ai-insights/ClinicalAiAutomationsSuite').then(m => m.ClinicalAiAutomationsSuite), { loading: () => <ModulePageLoader label="Opening Clinical AI Automations…" /> });
+export const RapidNurseTriageIntake = dynamic(() => import('../components/clinical-core/RapidNurseTriageIntake').then(m => m.RapidNurseTriageIntake), { loading: () => <ModulePageLoader label="Opening 60-Sec Rapid Triage…" /> });
+export const ClinicalGoogleSearchSuite = dynamic(() => import('../components/ai-insights/ClinicalGoogleSearchSuite').then(m => m.ClinicalGoogleSearchSuite), { loading: () => <ModulePageLoader label="Opening Clinical Google Search…" /> });
+export const TelehealthMeshSuite = dynamic(() => import('../components/interop/TelehealthMeshSuite').then(m => m.TelehealthMeshSuite), { loading: () => <ModulePageLoader label="Opening Satellite & Telehealth Mesh…" /> });
 
 
 export type ModuleKey =
@@ -89,17 +94,17 @@ export type ModuleKey =
   // Doctor full portal
   | 'doctor-portal'
   // Pillar 1: AI
-  | 'm87-ai' | 'ai'
+  | 'm87-ai' | 'ai' | 'ai-automations' | 'clinical-search'
   // Pillar 2: Core
   | 'emr' | 'emergency' | 'theatre' | 'icu' | 'pharmacy' | 'laboratory' | 'radiology' | 'him' | 'him-deficiency' | 'him-coding' | 'him-roi' | 'him-chart' | 'him-merge' | 'him-docs'
-  | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'triage' | 'workflow-intelligence' | 'intel-hub' | 'patient-card' | 'patient-360' | 'clinical-ux' | 'device-gateway'
+  | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'triage' | 'rapid-triage' | 'workflow-intelligence' | 'intel-hub' | 'patient-card' | 'patient-360' | 'clinical-ux' | 'device-gateway'
   // Pillar 3: Operations
   | 'command' | 'beds' | 'patient-flow' | 'universal-queue' | 'appointments' | 'staffing' | 'ambulance' | 'notifications'
   | 'inventory' | 'biomedical' | 'facilities' | 'environmental'
   // Pillar 4: Finance
   | 'billing' | 'cashier' | 'claims' | 'revenue-cycle' | 'procurement' | 'akwaremit'
   // Pillar 5: Data & Interop
-  | 'aks-state' | 'data-hub' | 'fhir' | 'analytics' | 'offline-sync' | 'ambient-soap' | 'lis' | 'formulary' | 'mfa-sso' | 'knowledge-graph' | 'predictive-staffing' | 'infection' | 'hie' | 'pacs-advanced' | 'statewide-emr'
+  | 'aks-state' | 'lamis' | 'data-hub' | 'fhir' | 'analytics' | 'offline-sync' | 'satellite-mesh' | 'ambient-soap' | 'lis' | 'formulary' | 'mfa-sso' | 'knowledge-graph' | 'predictive-staffing' | 'infection' | 'hie' | 'pacs-advanced' | 'statewide-emr'
   // Pillar 6: Connected IoT
   | 'iot-devices'
   // Pillar 7: Security & Governance
@@ -120,6 +125,8 @@ export const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
   'doctor-portal': DoctorPortal as any,
   'm87-ai': M87AICopilotSuite,
   ai: AICommandInsights,
+  'ai-automations': ClinicalAiAutomationsSuite,
+  'clinical-search': ClinicalGoogleSearchSuite as any,
   emr: EMRManager,
   him: HimSuite,
   'him-deficiency': (props: any) => <HimSuite {...props} initialTab="deficiency" />,
@@ -142,6 +149,12 @@ export const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
     <NursingTriageStation
       session={props.session || props.userSession}
       onClose={() => props.onNavigate?.('dashboard')}
+    />
+  ),
+  'rapid-triage': (props: any) => (
+    <RapidNurseTriageIntake
+      session={props.session || props.userSession}
+      onClose={() => props.onNavigate?.('triage')}
     />
   ),
   'workflow-intelligence': (props: any) => (
@@ -176,6 +189,7 @@ export const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
   akwaremit: AkwaRemitRevenueSuite as any,
   claims: InsuranceHmoClaimsSuite,
   'aks-state': AkwaIbomStateSuite,
+  lamis: LamisNdrSuite,
   'revenue-cycle': RevenueCycleAccountingSuite,
   procurement: ProcurementHrSuite,
   'ambient-soap': (props: any) => <AdvancedHospitalSuites {...props} mode="ambient-soap" />,
@@ -192,6 +206,7 @@ export const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
   'statewide-emr': StatewideEmrSuite as any,
   analytics: PerformanceAnalytics,
   'offline-sync': ClinicalVerificationDashboard,
+  'satellite-mesh': TelehealthMeshSuite as any,
   'iot-devices': ConnectedDevicesSuite,
   'device-gateway': DeviceGatewaySettings,
   auth: AuthIdentity,
@@ -210,6 +225,7 @@ export const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
 export const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDesc: string }> = {
   dashboard: { level: 2, label: 'L2 All Roles', roleDesc: 'Your main work desk' },
   'offline-sync': { level: 2, label: 'L2 All Roles', roleDesc: 'Offline Sync & Clinical Verification Dashboard' },
+  'satellite-mesh': { level: 3, label: 'L3 Operations', roleDesc: 'Decentralized Telehealth Mesh & Satellite Uplink' },
   'doctor-portal': { level: 3, label: 'L3 Clinical', roleDesc: 'Licensed Medical Doctors & Clinical Officers' },
   emr: { level: 2, label: 'L2 Clinical & Records', roleDesc: 'Physicians, Clinical Officers & Records' },
   him: { level: 2, label: 'L2 HIM', roleDesc: 'Health Records Officers' },
@@ -221,6 +237,8 @@ export const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string;
   'him-docs': { level: 2, label: 'L2 HIM', roleDesc: 'Health Records Officers' },
   'm87-ai': { level: 3, label: 'L3 Clinical', roleDesc: 'Clinical Officers & Nursing Supervisors' },
   ai: { level: 3, label: 'L3 Clinical', roleDesc: 'Clinical Decision Support & Physicians' },
+  'ai-automations': { level: 2, label: 'L2 Clinical & Admin', roleDesc: 'AI Scribing, Discharge, Triage & Safety Automations' },
+  'clinical-search': { level: 2, label: 'L2 Clinical', roleDesc: 'Clinical Google EMR Search & Patient Dossier Q&A' },
   emergency: { level: 3, label: 'L3 Clinical', roleDesc: 'A&E Triage Officers & Medical Doctors' },
   theatre: { level: 4, label: 'L4 Senior Clinical', roleDesc: 'Consultant Surgeons & Anesthetists' },
   icu: { level: 4, label: 'L4 Senior Clinical', roleDesc: 'Intensivists & Critical Care Specialists' },
@@ -232,6 +250,7 @@ export const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string;
   'blood-bank': { level: 2, label: 'L2 Support', roleDesc: 'Hematology Technicians & Blood Bank Officers' },
   nursing: { level: 3, label: 'L3 Clinical', roleDesc: 'Inpatient Ward Nurses & Sisters' },
   triage: { level: 2, label: 'L2 Nursing & OPD', roleDesc: 'Triage Nurses & OPD Clinical Officers' },
+  'rapid-triage': { level: 2, label: 'L2 Nursing', roleDesc: '60-Sec Rapid Nurse Triage Station' },
   'workflow-intelligence': { level: 2, label: 'L2 Clinical & Operations', roleDesc: 'Doctors, Nurses, Admin & Quality Officers' },
   'intel-hub': { level: 2, label: 'L2 Clinical & Operations', roleDesc: 'Doctors, Nurses, Admin & Quality Officers' },
   'patient-card': { level: 1, label: 'L2 Support', roleDesc: 'Records & Front Desk Officers' },
@@ -255,6 +274,7 @@ export const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string;
   akwaremit: { level: 2, label: 'L2 Finance', roleDesc: 'AkwaRemit State Revenue Officers & Accountants' },
   claims: { level: 2, label: 'L2 Finance', roleDesc: 'AKSHIA & HMO Adjudicators' },
   'aks-state': { level: 3, label: 'L3 Operations', roleDesc: 'State readiness · AKSHIA · UPI · DHIS2' },
+  lamis: { level: 2, label: 'L2 Records & HIV Clinic', roleDesc: 'LAMIS · NDR · RADET Surveillance' },
   'revenue-cycle': { level: 2, label: 'L2 Finance', roleDesc: 'Finance Directors & Revenue Officers' },
   procurement: { level: 2, label: 'L2 Finance', roleDesc: 'Procurement & HR Officers' },
   'ambient-soap': { level: 3, label: 'L3 Advanced', roleDesc: 'Clinical & operations advanced module' },

@@ -1242,6 +1242,20 @@ export function isReceptionRole(roleKey?: string, role?: string, title?: string,
   return inferRoleKey(roleKey || role || title || '', badgeId) === 'reception';
 }
 
+/** True when this role is a clinical care provider (doctor, nurse, surgeon, midwife, pharmacy, lab, radiology) */
+export function isClinicalRole(roleKey?: string, role?: string, title?: string, badgeId?: string): boolean {
+  const k = inferRoleKey(roleKey || role || title || '', badgeId);
+  return (
+    k === 'doctor' ||
+    k === 'surgeon' ||
+    k === 'nurse' ||
+    k === 'midwife' ||
+    k === 'pharmacist' ||
+    k === 'lab' ||
+    k === 'radiologist'
+  );
+}
+
 export function defaultPermissionsForRole(roleKey: string): string[] {
   const map: Record<string, string[]> = {
     reception: [

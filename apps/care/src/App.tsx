@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MyAncPanel } from './components/maternity/MyAncPanel';
+import { MyDischargeSummaryPanel } from './components/discharge/MyDischargeSummaryPanel';
 
 const { width, height } = Dimensions.get('window');
 const patLogo = require('./assets/patmedcore.png');
@@ -56,7 +57,8 @@ export type SubView =
   | 'family'
   | 'mentalHealth'
   | 'healthEdu'
-  | 'myAnc';
+  | 'myAnc'
+  | 'dischargeSummary';
 
 export interface DoctorInfo {
   id: string;
@@ -1812,6 +1814,7 @@ export const App: React.FC = () => {
             {subView === 'mentalHealth' && 'Mental Health & Wellness'}
             {subView === 'healthEdu' && 'Health Education'}
             {subView === 'myAnc' && 'My ANC'}
+            {subView === 'dischargeSummary' && 'AI Discharge & Care Bot'}
           </Text>
           <View style={{ width: 40 }} />
         </View>
@@ -3175,6 +3178,12 @@ export const App: React.FC = () => {
           />
         )}
 
+        {subView === 'dischargeSummary' && (
+          <MyDischargeSummaryPanel
+            onBack={() => setSubView('none')}
+          />
+        )}
+
         {subView === 'immunization' && (
           <View style={styles.subViewContainer}>
             {/* Registry Info Card */}
@@ -3684,6 +3693,13 @@ export const App: React.FC = () => {
                   </View>
                   <Text style={styles.glassTileTitle}>My ANC</Text>
                   <Text style={styles.glassTileSub}>EDD · visits · SMS</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.glassTile} onPress={() => setSubView('dischargeSummary')} activeOpacity={0.84}>
+                  <View style={[styles.glassTileIconBadge, { backgroundColor: 'rgba(13, 148, 136, 0.16)' }]}>
+                    <Text style={{ fontSize: 18 }}>📋</Text>
+                  </View>
+                  <Text style={styles.glassTileTitle}>AI Discharge</Text>
+                  <Text style={styles.glassTileSub}>Multi-lingual & Bot</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.glassTile} onPress={() => setSubView('feedback')} activeOpacity={0.84}>
                   <View style={[styles.glassTileIconBadge, { backgroundColor: 'rgba(234, 179, 8, 0.16)' }]}>

@@ -29,7 +29,7 @@ import {
   type StorageRegion,
   type AppointmentType,
 } from '../../lib/onboardingStore';
-import { bindFacilityOnboardingToAdmin } from '../../lib/staffCardStore';
+import { bindFacilityOnboardingToAdmin, isClinicalRole } from '../../lib/staffCardStore';
 import { getAdminSettings, saveAdminSettings } from '../../lib/adminSettingsStore';
 
 interface Props {
@@ -107,6 +107,11 @@ export function resolveOnboardingMode(session: UserSession): 'facility' | 'staff
   // Hospital / facility admins only run facility setup — never the clinical workspace wizard
   if (isFacilityAdminRole(session.roleKey, session.role, session.title)) {
     if (!isFacilityOnboarded(session.hospitalId)) return 'facility';
+    return null;
+  }
+  // Clinical workspace wizard is only for clinical providers (doctors, nurses, surgeons, etc.)
+  // Non-clinical roles (front desk / reception, records, finance/cashier) skip clinical setup
+  if (!isClinicalRole(session.roleKey, session.role, session.title, session.badgeId)) {
     return null;
   }
   const key = session.badgeId || session.id;

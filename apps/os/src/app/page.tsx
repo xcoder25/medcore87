@@ -330,6 +330,10 @@ export default function OSPage() {
         e.preventDefault();
         setCmdPaletteOpen((prev) => !prev);
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        handleModuleChange('clinical-search');
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === '/') {
         e.preventDefault();
         setShortcutsOpen((prev) => !prev);
@@ -1298,6 +1302,32 @@ const handleLockScreen = () => {
               Search patients, staff, ID, queue…
             </span>
             <span className="os-top-hud-kbd">⌘K</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleModuleChange('clinical-search')}
+            title="Clinical Google — Ask Patient File (⌘J)"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 7,
+              padding: '6px 14px',
+              borderRadius: 10,
+              background: activeModule === 'clinical-search' ? '#0D9488' : 'linear-gradient(135deg, rgba(13, 148, 136, 0.12) 0%, rgba(20, 184, 166, 0.22) 100%)',
+              border: '1px solid rgba(13, 148, 136, 0.35)',
+              color: activeModule === 'clinical-search' ? '#FFFFFF' : '#0D9488',
+              fontWeight: 800,
+              fontSize: '0.78rem',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 2px 8px rgba(13, 148, 136, 0.15)',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Sparkles size={14} />
+            <span>Ask Patient File</span>
+            <span style={{ opacity: 0.8, fontSize: '0.68rem', background: activeModule === 'clinical-search' ? 'rgba(255,255,255,0.2)' : 'rgba(13,148,136,0.15)', padding: '1px 5px', borderRadius: 4 }}>⌘J</span>
           </button>
 
           <div className="os-top-hud-trail">

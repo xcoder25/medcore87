@@ -143,10 +143,8 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
 
   const goModule = (key: AdminModule) => {
     if (key === module) return;
-    setModuleLoading(true);
     setModuleHistory((h) => [...h.slice(-19), module]);
     setModule(key);
-    window.setTimeout(() => setModuleLoading(false), 420);
   };
 
   const goBack = () => {
@@ -156,9 +154,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         return h;
       }
       const prev = h[h.length - 1];
-      setModuleLoading(true);
       setModule(prev);
-      window.setTimeout(() => setModuleLoading(false), 420);
       return h.slice(0, -1);
     });
   };
@@ -402,8 +398,8 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             </button>
           </div>
         </header>
-        <main className={`admin-shell-content${moduleLoading ? ' is-module-loading' : ''}`}>
-          {moduleLoading ? <ModulePageLoader label="Opening workspace…" /> : body}
+        <main className="admin-shell-content">
+          {body}
         </main>
 
         <UserProfileModal

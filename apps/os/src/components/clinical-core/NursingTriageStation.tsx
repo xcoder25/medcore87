@@ -10,6 +10,7 @@
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { RapidNurseTriageIntake } from './RapidNurseTriageIntake';
 import type { UserSession } from '../auth/AuthScreen';
 import { listVisits, subscribeReceptionOps, assignVisitTriageAndDepartment } from '../../lib/receptionOpsStore';
 import {
@@ -262,7 +263,7 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [lastSaved, setLastSaved] = useState<VitalsRecord | null>(null);
-  const [tab, setTab] = useState<'station' | 'log'>('station');
+  const [tab, setTab] = useState<'station' | 'log' | 'rapid-intake'>('station');
   const [lastSync, setLastSync] = useState<Date>(new Date());
 
   // Real-time OPD bus synchronization
@@ -642,6 +643,24 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
             >
               Vitals Log ({vitalsLog.length})
             </button>
+            <button
+              type="button"
+              onClick={() => setTab('rapid-intake')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: 9,
+                fontSize: 12,
+                fontWeight: 700,
+                border: 'none',
+                cursor: 'pointer',
+                background: tab === 'rapid-intake' ? '#FFFFFF' : 'transparent',
+                color: tab === 'rapid-intake' ? '#7C3AED' : C.muted,
+                boxShadow: tab === 'rapid-intake' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              ⚡ 60-Sec Rapid Intake
+            </button>
           </div>
 
           <button
@@ -750,8 +769,18 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
       {/* ------------------------------------------------------------------
        * Main Body View
        * ------------------------------------------------------------------ */}
-      <div style={{ flex: 1, overflow: 'hidden', padding: 20 }}>
-        {tab === 'station' ? (
+      <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
+        {tab === 'rapid-intake' ? (
+          <RapidNurseTriageIntake
+            facilityId={facilityId}
+            nurseName={nurseName}
+            onComplete={(record) => {
+              setTab('station');
+              reload();
+            }}
+            onCancel={() => setTab('station')}
+          />
+        ) : tab === 'station' ? (
           <div
             style={{
               display: 'grid',

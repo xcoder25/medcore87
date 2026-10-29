@@ -16,7 +16,7 @@ import {
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck, Landmark,
   Search, X, LayoutDashboard, MapPin, Ticket, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
-  Command, CornerDownLeft, IdCard, Key,
+  Command, CornerDownLeft, IdCard, Key, Radio,
 } from 'lucide-react';
 
 // Master 7-Pillar Hospital Blueprint Directory
@@ -26,6 +26,8 @@ const MASTER_PILLARS: NavSection[] = [
     items: [
       { key: 'm87-ai', icon: Brain, label: 'Celestia', badge: 'AI' },
       { key: 'ai', icon: Sparkles, label: 'Decision support', badge: 'AI' },
+      { key: 'ai-automations', icon: Zap, label: 'AI Clinical Automations', badge: 'Live' },
+      { key: 'clinical-search', icon: Search, label: 'Clinical Google (Search EMR)', badge: 'GenAI' },
     ],
   },
   {
@@ -77,12 +79,14 @@ const MASTER_PILLARS: NavSection[] = [
     label: '5. Data & Interoperability',
     items: [
       { key: 'aks-state', icon: Building2, label: 'Akwa Ibom State (AKSHIA · UPI · DHIS2)', badge: 'AKS' },
+      { key: 'lamis', icon: Activity, label: 'LAMIS · NDR & e-CRVS (HIV & PEPFAR)', badge: 'RADET' },
       { key: 'data-hub', icon: Database, label: 'Central Telemetry Data Hub' },
       { key: 'device-gateway', icon: Server, label: 'Device gateway', badge: 'Hub' },
             { key: 'fhir', icon: FileCode, label: 'FHIR R4 & HL7 Message Gateway', badge: 'R4' },
       { key: 'statewide-emr', icon: ShieldCheck, label: 'Statewide EMR suite', badge: 'Full' },
       { key: 'analytics', icon: BarChart3, label: 'Clinical Performance Analytics' },
       { key: 'offline-sync', icon: RefreshCw, label: 'Offline Sync & Clinical Verification', badge: 'Hybrid' },
+      { key: 'satellite-mesh', icon: Radio, label: 'Satellite & Telehealth Mesh', badge: 'Mesh DTN' },
     ],
   },
   {
@@ -161,7 +165,9 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
         {
           label: 'Clinical Assist',
           items: [
+            { key: 'clinical-search', icon: Search, label: 'Clinical Google (Ask File)', badge: 'GenAI' },
             { key: 'm87-ai', icon: Brain, label: 'Celestia clinical AI', badge: 'AI' },
+            { key: 'ai-automations', icon: Zap, label: 'AI Clinical Automations', badge: 'Live' },
             { key: 'appointments', icon: Calendar, label: 'Clinic schedule', badge: 'Appt' },
             { key: 'patient-card', icon: FileText, label: 'Digital health card' },
             { key: 'my-card', icon: IdCard, label: 'My staff ID' },
