@@ -1,6 +1,42 @@
 # MedCore Platform (Powered by M87)
+**v2.0 · October 2026 · Akwa Ibom State Health Systems**
 
-> **MedCore** is an integrated next-generation healthcare ecosystem unifying patient engagement, clinical operations, hospital command & control, and nationwide public health surveillance.
+> **MedCore** is an integrated next-generation healthcare ecosystem unifying patient engagement, clinical operations, hospital command & control, and nationwide public health surveillance across all 31 Akwa Ibom State LGAs.
+
+## 📚 Documentation
+
+| Document | Description |
+|---------|-------------|
+| [TESTER_MANUAL.md](docs/TESTER_MANUAL.md) | QA & UAT tester manual — all 40 modules, journeys, acceptance criteria |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical architecture, module registry, key libraries |
+| [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | Developer onboarding, adding modules, writing stores |
+| [API_REFERENCE.md](docs/API_REFERENCE.md) | REST + WebSocket API reference with curl examples |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | LAN · Docker · Railway · Fly.io deployment guides |
+| [CHANGELOG.md](docs/CHANGELOG.md) | Release notes v1.0 → v2.0 |
+| [GO_LIVE.md](GO_LIVE.md) | Same-day hospital go-live runbook |
+
+---
+
+## ✨ What's New in v2.0 — *Celestia Mesh*
+
+### 🔍 Generative AI "Clinical Google" Search
+Replaces tedious menu-clicking with a natural language search bar:
+- Doctors type *"Summarize this patient's hypertension medications and show me their highest creatinine level"*
+- System synthesizes 5+ years of lab reports, clinic notes, and prescriptions in **< 0.5 seconds**
+- Returns exact **cited** clinical sources, longitudinal metrics, and 1-click action hooks
+
+### 📡 Smart Infrastructure & Telehealth Mesh (DTN)
+Decentralized peer-to-peer data sync for remote LGA clinics:
+- **6 mesh nodes** across Essien Udim, Eastern Obolo, Ini, Creek Boat Floating Clinic, Immanuel GH, State MoH
+- **Delay-Tolerant Networking (DTN)** with SHA-256 bundle integrity and Lamport vector clocks
+- **Opportunistic satellite uplink** with Merkle-root proof-of-sync
+- **Full blackout mode** — store-and-forward with USB sneakernet fallback
+
+### Other v2.0 Additions
+- ⚡ **60-Second Rapid Nurse Triage** — AVPU, GCS, NEWS2, ESI routing in one form
+- 🤖 **AI Clinical Automations** — Ambient SOAP scribing, discharge prep, early warning
+- 🧬 **LAMIS & NDR Suite** — HIV clinic, PEPFAR RADET, NDR reporting, e-CRVS birth registration
+- 🔌 **Offline Sync Dashboard** — Conflict resolution UI for multi-site merged records
 
 ---
 
