@@ -631,67 +631,26 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           return;
         }
       } else {
-        // PIN matches local — require Firebase Auth when online (do not recreate deleted accounts)
+        // PIN matches local profile — attempt Firebase Auth for cloud sync
         try {
           if (!fbUser) {
             try {
-              fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
-            } catch (authMiss: unknown) {
-              if (online) {
-                const { classifyAuthError } = await import('../../lib/firebase');
-                setError(
-                  classifyAuthError(authMiss, { accountKnown: false, mode: 'badge' }) ||
-                    'This account does not exist. The Staff ID was not found or was removed by an administrator.'
-                );
-                setLoading(false);
-                return;
+              fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 4000);
+            } catch {
+              // Cloud badge identity might not exist yet in Firebase Auth; ensure it now
+              try {
+                const { firebaseEnsureBadgeAccount } = await import('../../lib/firebase');
+                await withTimeout(firebaseEnsureBadgeAccount(profile.badgeId, pinNorm), 5000);
+                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 4000);
+              } catch (cloudErr) {
+                console.warn('[auth] badge cloud account sync skipped:', cloudErr);
+                fbUser = null; // Valid staff with matching PIN: fall back to local session
               }
-              fbUser = null; // offline — local PIN only
             }
           }
         } catch (authErr: unknown) {
-          // Offline / Auth disabled / timeout: still allow local PIN session
           console.warn('[auth] firebase badge optional', authErr);
-          if (online) {
-            const { classifyAuthError } = await import('../../lib/firebase');
-            setError(
-              classifyAuthError(authErr, { accountKnown: false, mode: 'badge' }) ||
-                'This account does not exist. The Staff ID was not found or was removed by an administrator.'
-            );
-            setLoading(false);
-            return;
-          }
-          const sessionPin = String(profile.pin || pinNorm || pinQuery || '');
-          try {
-            if (sessionPin && typeof window !== 'undefined') {
-              sessionStorage.setItem('medcore_session_pin', sessionPin);
-            }
-          } catch { /* ignore */ }
-          const sessionLocal: UserSession = {
-            id: profile.badgeId,
-            badgeId: profile.badgeId,
-            name: profile.name,
-            role: profile.role,
-            roleKey: profile.roleKey,
-            title: profile.title,
-            facility: profile.hospitalName || effectiveHospital.name,
-            hospitalId: profile.hospitalId || effectiveHospital.id,
-            department: profile.department,
-            avatarInitials: profile.initials,
-            clearanceLabel: profile.clearanceLabel,
-            clearanceLevel: profile.clearanceLevel,
-            permissions: profile.permissions,
-            authMethod: 'Staff PIN (local)',
-            pin: sessionPin,
-            loginTime: new Date().toLocaleTimeString('en-GB', {
-              hour: '2-digit',
-              minute: '2-digit',
-            }),
-          };
-          setSuccess(true);
-          setLoading(false);
-          setTimeout(() => triggerLogin(sessionLocal), 300);
-          return;
+          fbUser = null;
         }
       }
 

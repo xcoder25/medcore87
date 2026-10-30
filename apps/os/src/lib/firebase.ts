@@ -112,6 +112,9 @@ export function classifyAuthError(
   const secret = mode === 'email' ? 'password' : 'PIN';
 
   if (code === 'auth/user-not-found' || code === 'auth/user-disabled') {
+    if (known) {
+      return mode === 'email' ? 'Incorrect password.' : 'Incorrect PIN.';
+    }
     return mode === 'email'
       ? 'This account does not exist. Check the email or ask your administrator to enrol you.'
       : 'This account does not exist. The Staff ID was not found or was removed.';
