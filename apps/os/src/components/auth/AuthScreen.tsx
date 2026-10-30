@@ -817,75 +817,91 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
         // 2) Resolve enrolled staff by work email (cloud then local)
         let matchedStaff: PresetStaff | undefined;
+
+        // Check local staff registry / cards first across facilities to detect correct facility
         try {
-          const { firestoreGetStaffByEmail } = await import('../../lib/firebase');
-          const remote = await withTimeout(
-            firestoreGetStaffByEmail(effectiveHospital.id, email),
-            6000
-          ).catch(() => null);
-          if (remote && (remote.badgeId || remote.id)) {
-            const rk = String(remote.roleKey || remote.role || '');
+          let hit = findStaffByEmail(email, effectiveHospital.id);
+          if (!hit) {
+            const crossHit = findStaffByEmail(email);
+            if (crossHit) {
+              hit = crossHit;
+              const hitFid = String(crossHit.hospitalId || crossHit.facilityId || '');
+              const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === hitFid.toUpperCase());
+              if (hospObj) {
+                effectiveHospital = hospObj;
+                setSelectedHospital(hospObj);
+              }
+            }
+          }
+          if (hit) {
+            const bid = String(hit.badgeId || hit.id || '');
+            const rk = inferRoleKey(String(hit.roleKey || hit.role || hit.title || ''), bid);
             matchedStaff = {
-              badgeId: String(remote.badgeId || remote.id),
-              name: String(remote.name || remote.fullName || email.split('@')[0]),
-              role: String(remote.role || 'Staff'),
-              shortRole: String(remote.shortRole || 'Staff'),
-              title: String(remote.title || remote.role || 'Staff'),
-              roleKey: rk || 'staff',
-              clearanceLevel: Number(remote.clearanceLevel ?? 2),
-              clearanceLabel: String(remote.clearanceLabel || 'L2'),
-              department: String(remote.department || ''),
-              initials: String(remote.initials || 'ST'),
-              permissions: Array.isArray(remote.permissions) ? remote.permissions : ['dashboard'],
-              pin: String(remote.pin || pass),
-              hospitalId: effectiveHospital.id,
-              hospitalName: effectiveHospital.name,
+              badgeId: bid,
+              name: String(hit.name || hit.fullName || email.split('@')[0]),
+              role: String(hit.role || 'Staff'),
+              shortRole: String(hit.shortRole || hit.role || 'Staff'),
+              title: String(hit.title || hit.role || 'Staff'),
+              roleKey: rk,
+              clearanceLevel: Number(hit.clearanceLevel ?? 2),
+              clearanceLabel: String(hit.clearanceLabel || 'L2'),
+              department: String(hit.department || ''),
+              initials: String(hit.initials || 'ST'),
+              permissions: Array.isArray(hit.permissions) && hit.permissions.length > 0 ? hit.permissions : defaultPermissionsForRole(rk),
+              pin: String(hit.pin || pass),
+              hospitalId: hit.hospitalId || hit.facilityId || effectiveHospital.id,
+              hospitalName: hit.hospitalName || hit.facilityName || effectiveHospital.name,
               color: '#0052D4',
             };
           }
-        } catch { /* offline */ }
+        } catch { /* */ }
 
+        // Cloud query (Firestore)
         if (!matchedStaff) {
           try {
-            const hit = findStaffByEmail(email, effectiveHospital.id);
-            if (hit) {
+            const { firestoreGetStaffByEmail } = await import('../../lib/firebase');
+            const remote = await withTimeout(
+              firestoreGetStaffByEmail(effectiveHospital.id, email),
+              6000
+            ).catch(() => null);
+            if (remote && (remote.badgeId || remote.id)) {
+              const bid = String(remote.badgeId || remote.id);
+              const rk = inferRoleKey(String(remote.roleKey || remote.role || remote.title || ''), bid);
               matchedStaff = {
-                badgeId: String(hit.badgeId || hit.id),
-                name: String(hit.name || hit.fullName || email.split('@')[0]),
-                role: String(hit.role || 'Staff'),
-                shortRole: String(hit.shortRole || 'Staff'),
-                title: String(hit.title || hit.role || 'Staff'),
-                roleKey: String(hit.roleKey || 'staff'),
-                clearanceLevel: Number(hit.clearanceLevel ?? 2),
-                clearanceLabel: String(hit.clearanceLabel || 'L2'),
-                department: String(hit.department || ''),
-                initials: String(hit.initials || 'ST'),
-                permissions: Array.isArray(hit.permissions) ? hit.permissions : ['dashboard'],
-                pin: String(hit.pin || pass),
+                badgeId: bid,
+                name: String(remote.name || remote.fullName || email.split('@')[0]),
+                role: String(remote.role || 'Staff'),
+                shortRole: String(remote.shortRole || remote.role || 'Staff'),
+                title: String(remote.title || remote.role || 'Staff'),
+                roleKey: rk,
+                clearanceLevel: Number(remote.clearanceLevel ?? 2),
+                clearanceLabel: String(remote.clearanceLabel || 'L2'),
+                department: String(remote.department || ''),
+                initials: String(remote.initials || 'ST'),
+                permissions: Array.isArray(remote.permissions) && remote.permissions.length > 0 ? remote.permissions : defaultPermissionsForRole(rk),
+                pin: String(remote.pin || pass),
                 hospitalId: effectiveHospital.id,
                 hospitalName: effectiveHospital.name,
                 color: '#0052D4',
               };
             }
-          } catch { /* */ }
+          } catch { /* offline */ }
         }
 
-        // Enforce facility assignment and revocation on matched staff
+        // Enforce revocation on matched staff
         if (matchedStaff) {
-          if (matchedStaff.hospitalId && String(matchedStaff.hospitalId).toUpperCase() !== String(effectiveHospital.id).toUpperCase()) {
-            setError(`Access Denied: Account ${email} is registered under ${matchedStaff.hospitalName || matchedStaff.hospitalId}, not ${effectiveHospital.name}. Cross-facility login is restricted.`);
-            setLoading(false);
-            return;
-          }
-          if (isStaffRevokedLocal(matchedStaff.badgeId, effectiveHospital.id)) {
+          if (isStaffRevokedLocal(matchedStaff.badgeId, matchedStaff.hospitalId || effectiveHospital.id)) {
             setError('This staff account has been deleted or revoked by an administrator. Sign-in is disabled.');
             setLoading(false);
             return;
           }
         }
 
+        // Enrolled staff accounts must NEVER be auto-claimed as administrator
+        const isExistingStaffAnywhere = !!matchedStaff || !!findStaffByEmail(email);
+
         // 3) First admin claim — empty facility only (no bootstrap secrets)
-        if (!matchedStaff && canClaimFirstAdmin) {
+        if (!matchedStaff && canClaimFirstAdmin && !isExistingStaffAnywhere) {
           if (pass.length < 8) {
             setError('For security, the administrator password must be at least 8 characters.');
             setLoading(false);

@@ -45,6 +45,7 @@ export type AccessRecord = {
   lastLogin: string;
   permissions: string[];
   email?: string;
+  roleKey?: string;
 };
 
 export type ComplianceItem = {

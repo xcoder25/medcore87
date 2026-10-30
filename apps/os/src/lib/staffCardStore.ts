@@ -841,7 +841,51 @@ export function findStaffByEmail(email: string, facilityId?: string) {
         }
         return true;
       });
-      if (hit) return hit;
+      if (hit) {
+        const bid = String(hit.badgeId || hit.id || '');
+        const rk = hit.roleKey || inferRoleKey(hit.role || hit.title, bid);
+        return {
+          ...hit,
+          roleKey: rk,
+          permissions: (hit.permissions && hit.permissions.length > 0)
+            ? hit.permissions
+            : defaultPermissionsForRole(rk),
+        };
+      }
+    }
+
+    // Also check issued staff cards
+    const cards = listStaffCards();
+    const cardHit = cards.find((c) => {
+      const e = String((c as any).email || (c as any).workEmail || '').toLowerCase();
+      if (e !== mail) return false;
+      if (facilityId) {
+        const hid = String(c.facilityId || '').toUpperCase();
+        if (hid && hid !== facilityId.toUpperCase()) return false;
+      }
+      return true;
+    });
+    if (cardHit) {
+      const rk = cardHit.roleKey || inferRoleKey(cardHit.role || cardHit.title, cardHit.badgeId);
+      return {
+        id: cardHit.badgeId,
+        badgeId: cardHit.badgeId,
+        name: cardHit.fullName,
+        fullName: cardHit.fullName,
+        role: cardHit.role,
+        shortRole: (cardHit as any).shortRole || cardHit.role,
+        roleKey: rk,
+        title: cardHit.title || cardHit.role,
+        department: cardHit.department,
+        clearanceLevel: cardHit.clearanceLevel,
+        clearanceLabel: cardHit.clearanceLabel,
+        initials: cardHit.initials,
+        permissions: (cardHit as any).permissions || defaultPermissionsForRole(rk),
+        pin: (cardHit as any).pin,
+        hospitalId: cardHit.facilityId,
+        hospitalName: cardHit.facilityName,
+        email: (cardHit as any).email,
+      };
     }
   } catch {
     /* ignore */

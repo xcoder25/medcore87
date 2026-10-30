@@ -562,6 +562,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
         id: badgeId,
         name: nameSnap,
         role: roleMeta.role,
+        roleKey: roleMeta.roleKey,
         department: roleMeta.department,
         clearance: roleMeta.clearanceLevel,
         status: 'active',
