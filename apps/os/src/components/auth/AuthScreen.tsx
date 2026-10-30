@@ -397,7 +397,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     try {
     const u = (username || '').trim();
     const pass = (password || '').trim();
-    const effectiveHospital = selectedHospital;
+    let effectiveHospital = selectedHospital;
     const badgeNorm = u.trim().toUpperCase().replace(/\s+/g, '');
     const isPlatformAdmin = false; // bootstrap login removed
 
