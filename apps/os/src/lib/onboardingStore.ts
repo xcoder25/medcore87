@@ -246,6 +246,42 @@ export function markStaffOnboarded(badgeId: string) {
   emit();
 }
 
+export const CLAIMED_FACILITY_KEY = 'medcore_claimed_facility_id';
+export const CLAIMED_FACILITY_NAME_KEY = 'medcore_claimed_facility_name';
+
+export function getClaimedFacilityId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(CLAIMED_FACILITY_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setClaimedFacility(facilityId: string, facilityName?: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const fid = String(facilityId || '').trim();
+    if (!fid) return;
+    localStorage.setItem(CLAIMED_FACILITY_KEY, fid);
+    if (facilityName) localStorage.setItem(CLAIMED_FACILITY_NAME_KEY, facilityName);
+    markFacilityOnboarded(fid);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function isFacilityClaimed(facilityId: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const claimed = getClaimedFacilityId();
+    if (claimed && claimed.toUpperCase() === String(facilityId).toUpperCase()) return true;
+    return isFacilityOnboarded(facilityId);
+  } catch {
+    return false;
+  }
+}
+
 export function loadFacilityDraft(facilityId: string, facilityName?: string): FacilityOnboardDraft {
   if (typeof window === 'undefined') return DEFAULT_FACILITY(facilityId, facilityName);
   const base = DEFAULT_FACILITY(facilityId, facilityName);

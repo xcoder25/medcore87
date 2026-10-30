@@ -59,6 +59,41 @@ export function startSessionGuard(session: UserSession, onForceLogout: LogoutFn)
 
   let stopped = false;
   const unsubs: Array<() => void> = [];
+
+  // Local immediate revocation & force-logout listeners
+  if (typeof window !== 'undefined') {
+    const onLocalRevoked = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (normBadge(detail?.badgeId) === badgeId) {
+        force('revoked');
+      }
+    };
+    const onForceLogout = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail?.badgeId || normBadge(detail.badgeId) === badgeId) {
+        force(detail?.reason || 'revoked');
+      }
+    };
+    const onStorageSync = (e: StorageEvent) => {
+      if (e.key === 'medcore_revoked_staff_badges_v1') {
+        try {
+          const map = e.newValue ? JSON.parse(e.newValue) : {};
+          const k = `${String(hospitalId).toUpperCase()}::${badgeId}`;
+          if (map[k]) force('revoked');
+        } catch { /* ignore */ }
+      }
+    };
+
+    window.addEventListener('medcore-staff-revoked', onLocalRevoked);
+    window.addEventListener('medcore-force-logout', onForceLogout);
+    window.addEventListener('storage', onStorageSync);
+    unsubs.push(() => {
+      window.removeEventListener('medcore-staff-revoked', onLocalRevoked);
+      window.removeEventListener('medcore-force-logout', onForceLogout);
+      window.removeEventListener('storage', onStorageSync);
+    });
+  }
+
   let authReady = false;
   let sawFirebaseUser = false;
   let sawSelfInDirectory = false;

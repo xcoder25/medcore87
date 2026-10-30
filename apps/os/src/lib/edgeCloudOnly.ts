@@ -32,14 +32,38 @@ const HEAVY_PREFIXES = [
   'medcore_os_sync_outbox',
 ] as const;
 
-const DURABLE_ALLOW = new Set([
+const DURABLE_PREFIXES = [
   'medcore_os_session',
   'medcore_admin_api_secret',
   'medcore_admin_api_secret_v1',
   'medcore_remember_facility',
   'medcore_ui_theme',
   'medcore_remember_me',
-]);
+  // Admin settings, facility configs, and identity must survive reloads
+  'medcore_os_admin_settings_v1',
+  'medcore_facility_profile',
+  'medcore_os_facilities',
+  'medcore_role_permissions_v1',
+  'medcore_attendance_cameras',
+  'medcore_attendance_cam_settings',
+  'medcore_admin_onboarding_done',
+  'medcore_os_onboarding',
+  'medcore_lan_api_url',
+  // Staff directory, ID cards, access control, activity, and presence must survive reloads
+  'medcore_staff_id_cards',
+  'medcore_os_staff_cards',
+  'medcore_staff_cards',
+  'medcore_os_staff_registry',
+  'medcore_os_access_control',
+  'medcore_os_staff_presence_v1',
+  'medcore_os_revoked_staff_v1',
+  'medcore_os_hidden_staff_names_v1',
+  'medcore_staff_flush_lock_until',
+  'medcore_os_compliance_items',
+  'medcore_os_admin_activity',
+  'medcore_os_open_positions',
+  'medcore_os_transfers',
+] as const;
 
 /** In-memory facility data for this browser tab session */
 const mem = new Map<string, string>();
@@ -48,7 +72,10 @@ let installed = false;
 
 export function isHeavyStorageKey(key: string): boolean {
   if (!key) return false;
-  if (DURABLE_ALLOW.has(key)) return false;
+  // If key matches or starts with any durable prefix (handles scoped keys like medcore_os_admin_settings_v1:IGH-EKT), allow persistence
+  for (const p of DURABLE_PREFIXES) {
+    if (key === p || key.startsWith(`${p}:`)) return false;
+  }
   return HEAVY_PREFIXES.some((p) => key.startsWith(p));
 }
 

@@ -3,9 +3,11 @@
 import { authLog, emailDomainOnly } from '../../lib/authLog';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Building2, Lock, User, Eye, EyeOff, ArrowRight, CheckCircle2, AlertCircle
+  Building2, Lock, User, Eye, EyeOff, ArrowRight, CheckCircle2, AlertCircle, ShieldCheck
 } from 'lucide-react';
 import { inferRoleKey, defaultPermissionsForRole } from '../../lib/staffCardStore';
+import { isStaffRevokedLocal } from '../../lib/staffPresenceStore';
+import { getClaimedFacilityId, setClaimedFacility, isFacilityClaimed } from '../../lib/onboardingStore';
 
 // --- Types --------------------------------------------------------------------
 
@@ -134,7 +136,16 @@ export interface AuthScreenProps {
 }
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess }) => {
-  const [selectedHospital, setSelectedHospital] = useState(HOSPITALS[0]);
+  const [selectedHospital, setSelectedHospital] = useState<Hospital>(() => {
+    if (typeof window !== 'undefined') {
+      const claimed = localStorage.getItem('medcore_claimed_facility_id');
+      if (claimed) {
+        const hit = HOSPITALS.find((h) => h.id.toUpperCase() === claimed.toUpperCase());
+        if (hit) return hit;
+      }
+    }
+    return HOSPITALS[0];
+  });
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -174,9 +185,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         const enrolled = Array.isArray(parsed) ? parsed.map(mapEntry) : [];
         // Bootstrap platform admin always available (can claim empty facilities); enrolled staff appended (dedupe by badge)
         const byBadge = new Map<string, PresetStaff>();
-        // Only enrolled staff from cloud/local registry (no demo presets)
+        // Only enrolled staff from cloud/local registry (no demo presets), excluding deleted/revoked
         for (const s of enrolled) {
-          if (s.badgeId) byBadge.set(s.badgeId, s);
+          if (s.badgeId && !isStaffRevokedLocal(s.badgeId, selectedHospital.id)) {
+            byBadge.set(s.badgeId, s);
+          }
         }
         setStaffRegistry(Array.from(byBadge.values()));
       } catch (e) {
@@ -240,10 +253,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 const b = String(s.badgeId || s.id || '').toUpperCase();
                 if (b) byBadge.set(b, s);
               }
-              // Merge/update with remote
+              // Merge/update with remote, skipping deleted/revoked badges
               for (const s of data.staffRegistry as any[]) {
                 const b = String(s.badgeId || s.id || '').toUpperCase();
-                if (!b) continue;
+                if (!b || isStaffRevokedLocal(b, selectedHospital.id)) continue;
                 const prev = byBadge.get(b);
                 byBadge.set(b, prev ? { ...prev, ...s, badgeId: b } : { ...s, badgeId: b, pin: s.pin || '1234' });
               }
@@ -311,7 +324,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             }
             for (const s of mapped) {
               const b = String(s.badgeId || '').toUpperCase();
-              if (!b) continue;
+              if (!b || isStaffRevokedLocal(b, selectedHospital.id)) continue;
               const prev = byBadge.get(b);
               byBadge.set(b, {
                 ...prev,
@@ -466,24 +479,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         }
       }
 
-      // 1) Firestore staff profile (source of truth online)
+      // 1) Firestore staff profile (source of truth online for this facility only)
       if (!profile && online) {
         try {
-          let remote = await withTimeout(
+          const remote = await withTimeout(
             firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery),
             6000
           );
-          if (!remote) {
-            for (const h of HOSPITALS.slice(0, 5)) {
-              if (h.id === effectiveHospital.id) continue;
-              try {
-                remote = await withTimeout(firestoreGetStaffByBadge(h.id, badgeQuery), 2500);
-              } catch {
-                remote = null;
-              }
-              if (remote) break;
-            }
-          }
           if (remote && (remote.badgeId || remote.id)) {
             profile = mapProfile(remote);
             // Mirror cloud → local so this browser stays aligned
@@ -582,6 +584,37 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         );
         setLoading(false);
         return;
+      }
+
+      // Strict facility assignment: staff enrolled at Hospital A cannot log into Hospital B
+      if (profile.hospitalId && String(profile.hospitalId).toUpperCase() !== String(effectiveHospital.id).toUpperCase()) {
+        setError(`Access Denied: Staff ID ${profile.badgeId} is registered at ${profile.hospitalName || profile.hospitalId}, not ${effectiveHospital.name}. Cross-facility login is prohibited on this station.`);
+        setLoading(false);
+        return;
+      }
+
+      // Strict revocation check
+      if (isStaffRevokedLocal(profile.badgeId, effectiveHospital.id)) {
+        setError('This staff account has been deleted or revoked by an administrator. Sign-in is disabled.');
+        setLoading(false);
+        return;
+      }
+
+      // Strict Administrator credentials validation
+      const isAdminStaff = profile.roleKey === 'hospital_admin' || profile.roleKey === 'sysadmin';
+      if (isAdminStaff) {
+        const pinMatches = (profile.pin && String(profile.pin) === pinQuery) || normalizeStaffPin(profile.pin) === pinNorm;
+        if (!pinMatches) {
+          try {
+            if (!fbUser) {
+              fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
+            }
+          } catch (adminPinErr: unknown) {
+            setError('Incorrect administrator PIN. Access denied.');
+            setLoading(false);
+            return;
+          }
+        }
       }
 
       // Verify PIN when we have a stored pin
@@ -837,8 +870,27 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           } catch { /* */ }
         }
 
+        // Enforce facility assignment and revocation on matched staff
+        if (matchedStaff) {
+          if (matchedStaff.hospitalId && String(matchedStaff.hospitalId).toUpperCase() !== String(effectiveHospital.id).toUpperCase()) {
+            setError(`Access Denied: Account ${email} is registered under ${matchedStaff.hospitalName || matchedStaff.hospitalId}, not ${effectiveHospital.name}. Cross-facility login is restricted.`);
+            setLoading(false);
+            return;
+          }
+          if (isStaffRevokedLocal(matchedStaff.badgeId, effectiveHospital.id)) {
+            setError('This staff account has been deleted or revoked by an administrator. Sign-in is disabled.');
+            setLoading(false);
+            return;
+          }
+        }
+
         // 3) First admin claim — empty facility only (no bootstrap secrets)
         if (!matchedStaff && canClaimFirstAdmin) {
+          if (pass.length < 8) {
+            setError('For security, the administrator password must be at least 8 characters.');
+            setLoading(false);
+            return;
+          }
           const adminFullName =
             (fbUser.displayName || email.split('@')[0].replace(/[._]/g, ' ') || 'Hospital Administrator')
               .replace(/\b\w/g, (c: string) => c.toUpperCase());
@@ -855,16 +907,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             setLoading(false);
             return;
           }
-          try {
-            const { bindFacilityOnboardingToAdmin } = await import('../../lib/staffCardStore');
-            bindFacilityOnboardingToAdmin({
-              facilityId: effectiveHospital.id,
-              facilityName: effectiveHospital.name,
-              adminBadgeId: prov.badgeId,
-              primaryContact: adminFullName,
-              contactEmail: email,
-            });
-          } catch { /* */ }
+          setClaimedFacility(effectiveHospital.id, effectiveHospital.name);
           const created = resolveStaffByBadge(prov.badgeId);
           matchedStaff = {
             badgeId: prov.badgeId,
@@ -891,7 +934,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         if (!matchedStaff) {
           setError(
             hasFacilityAdmin(effectiveHospital.id) || facilityOnboarded
-              ? 'This email is not enrolled as staff at this hospital. Ask the hospital administrator to create your account, or sign in with your Staff ID + PIN.'
+              ? 'This facility is already claimed and managed by its registered Hospital Administrator. Only authorized administrator credentials for this facility are accepted.'
               : 'Could not complete facility setup. Check your connection and try again.'
           );
           setLoading(false);
@@ -1241,6 +1284,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   ))}
                 </select>
               </div>
+              {isFacilityClaimed(selectedHospital.id) && (
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  fontSize: '0.74rem',
+                  color: '#0D9488',
+                  fontWeight: 700,
+                  marginTop: 6,
+                  padding: '3px 8px',
+                  background: '#F0FDFA',
+                  borderRadius: 6,
+                  border: '1px solid #CCFBF1'
+                }}>
+                  <ShieldCheck size={13} color="#0D9488" /> Claimed Hospital Station · {selectedHospital.id}
+                </div>
+              )}
             </div>
 
             {/* Username / Email */}

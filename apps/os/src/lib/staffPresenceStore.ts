@@ -80,6 +80,17 @@ export function markStaffRevokedLocal(badgeId: string, facilityId: string): void
   const map = readRevoked();
   map[k] = true;
   writeRevoked(map);
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('medcore-staff-revoked', {
+          detail: { badgeId: String(badgeId || '').toUpperCase().replace(/\s+/g, ''), facilityId },
+        })
+      );
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function isStaffRevokedLocal(badgeId: string, facilityId: string): boolean {

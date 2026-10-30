@@ -34,6 +34,17 @@ const DEMO_DATA_ELEMENTS: Record<string, string> = {
   DELIVERY_LIVE: 'DE_DEL_LIVE',
   LAB_TESTS: 'DE_LAB',
   ADMISSIONS: 'DE_ADM',
+  BEDS_TOTAL_CAPACITY: 'DE_BEDS_TOT',
+  BEDS_AVAILABLE: 'DE_BEDS_AVAIL',
+  BEDS_OCCUPIED: 'DE_BEDS_OCC',
+  BEDS_CLEANING_TURNOVER: 'DE_BEDS_CLEAN',
+  INPATIENT_BED_DAYS: 'DE_INPATIENT_DAYS',
+  INPATIENT_ADMISSIONS: 'DE_ADM',
+  INPATIENT_DISCHARGES: 'DE_DISCH',
+  INDICATOR_BOR_PCT: 'IND_BOR_PCT',
+  INDICATOR_ALOS_DAYS: 'IND_ALOS_DAYS',
+  INDICATOR_BTI_DAYS: 'IND_BTI_DAYS',
+  INDICATOR_BTR: 'IND_BTR',
 };
 
 interface AggregatePayload {
@@ -629,6 +640,124 @@ router.post('/tracker/inpatient/discharge', (req: Request, res: Response) => {
     success: true,
     message: `Enrollment ${enrollmentId} completed. Bed ${INPATIENT_REGISTRY[idx].bedKey} entered 2-hour Turnover state (Yellow).`,
     record: INPATIENT_REGISTRY[idx],
+  });
+});
+
+/**
+ * POST /api/v1/dhis2/tracker/inpatient/clean
+ * Resets bed from Yellow turnover state back to Green available
+ */
+router.post('/tracker/inpatient/clean', (req: Request, res: Response) => {
+  const { bedKey } = req.body || {};
+  if (!bedKey) {
+    return res.status(400).json({ success: false, error: 'bedKey is required' });
+  }
+
+  const record = INPATIENT_REGISTRY.find(
+    (r) => r.bedKey === bedKey && r.status === 'COMPLETED'
+  );
+  if (record) {
+    // Set discharge date back by 24h to clear the 2h turnover window
+    record.dischargedAt = new Date(Date.now() - 24 * 3600000).toISOString();
+  }
+
+  res.json({
+    success: true,
+    message: `Bed ${bedKey} sanitized and returned to Available (Green).`,
+  });
+});
+
+/**
+ * GET /api/v1/dhis2/inpatient/indicators
+ * Macro-level Hospital Indicators: BOR, ALOS, BTI, BTR, Patient Days
+ */
+router.get('/inpatient/indicators', (req: Request, res: Response) => {
+  const facilityId = (req.query.facilityId as string) || 'IGH-EKT';
+  const periodDays = Number(req.query.periodDays) || 30;
+
+  const totalBeds = PHYSICAL_BED_INVENTORY.length;
+  const activeRecords = INPATIENT_REGISTRY.filter((r) => r.facilityId === facilityId && r.status === 'ACTIVE');
+  const completedRecords = INPATIENT_REGISTRY.filter((r) => r.facilityId === facilityId && r.status === 'COMPLETED');
+
+  const occupied = activeRecords.length;
+  const available = Math.max(0, totalBeds - occupied);
+  const dischargesCount = Math.max(1, completedRecords.length);
+
+  // Inpatient days estimation
+  let inpatientDays = occupied * Math.min(periodDays, 14);
+  for (const c of completedRecords) {
+    const admitMs = new Date(c.admissionDate).getTime();
+    const dischMs = c.dischargedAt ? new Date(c.dischargedAt).getTime() : Date.now();
+    const days = Math.max(1, Math.floor((dischMs - admitMs) / 86400000));
+    inpatientDays += days;
+  }
+
+  const bedDaysPossible = Math.max(1, totalBeds * periodDays);
+  const bor = Math.min(100, Math.round(((inpatientDays / bedDaysPossible) * 100) * 10) / 10);
+  const alos = Math.round((inpatientDays / dischargesCount) * 10) / 10;
+  const bti = Math.round((Math.max(0, bedDaysPossible - inpatientDays) / dischargesCount) * 10) / 10;
+  const btr = Math.round((dischargesCount / totalBeds) * 100) / 100;
+
+  let statusLabel = 'Optimal';
+  if (bor < 60) statusLabel = 'Underutilized';
+  else if (bor <= 85) statusLabel = 'Optimal';
+  else if (bor < 95) statusLabel = 'Near Capacity';
+  else statusLabel = 'Critical Overcapacity';
+
+  res.json({
+    success: true,
+    facilityId,
+    periodDays,
+    indicators: {
+      totalBeds,
+      availableBeds: available,
+      occupiedBeds: occupied,
+      inpatientDays,
+      admissionsCount: activeRecords.length,
+      dischargesCount,
+      bedOccupancyRate: bor,
+      avgLengthOfStay: alos,
+      bedTurnoverInterval: bti,
+      bedTurnoverRate: btr,
+      statusLabel,
+      borFormula: '(Total Patient Days / (Total Beds * Period Days)) * 100',
+      alosFormula: 'Total Patient Days / Total Discharges',
+    },
+  });
+});
+
+/**
+ * GET /api/v1/dhis2/metadata/inpatient-package
+ * DHIS2 2.40 Metadata Package JSON export
+ */
+router.get('/metadata/inpatient-package', (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    packageVersion: '2.40-compatible',
+    exportedAt: new Date().toISOString(),
+    trackedEntityTypes: [
+      { id: 'TET_PATIENT_01', name: 'Patient' },
+      { id: 'TET_BED_ASSET_02', name: 'Hospital Bed (Asset)' },
+    ],
+    programs: [
+      {
+        id: TRACKER_INPATIENT_PROGRAM,
+        name: 'Inpatient Bed & Patient Tracker',
+        programType: 'WITH_REGISTRATION',
+        trackedEntityType: { id: 'TET_PATIENT_01' },
+        programStages: [
+          { id: STAGE_ADMISSION, name: 'Stage 1: Admission & Bed Allocation', repeatable: false },
+          { id: STAGE_CLINICAL_CARE, name: 'Stage 2: Clinical Care / Daily Vitals', repeatable: true },
+          { id: 'STG_TRANSFER_03', name: 'Stage 3: Bed / Ward Transfer', repeatable: true },
+          { id: STAGE_DISCHARGE, name: 'Stage 4: Discharge & Disposition', repeatable: false },
+        ],
+      },
+    ],
+    programIndicators: [
+      { id: 'PI_BOR_INPATIENT', name: 'Bed Occupancy Rate (BOR %)', expression: '( Patient Days / ( Total Beds * Period Days ) ) * 100' },
+      { id: 'PI_ALOS_INPATIENT', name: 'Average Length of Stay (ALOS Days)', expression: 'Patient Days / Discharges' },
+      { id: 'PI_BTI_INPATIENT', name: 'Bed Turnover Interval (BTI Days)', expression: '( ( Total Beds * Period Days ) - Patient Days ) / Discharges' },
+    ],
   });
 });
 

@@ -199,7 +199,7 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
     } catch {
       /* ignore */
     }
-    // Prefer Aurora when available
+    // Prefer Aurora when available — merge with local enrolled cards so cards never disappear
     void apiListStaff(facilityId).then((res) => {
       if (!res.ok || !res.staff?.length) return;
       try {
@@ -215,8 +215,19 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           email: s.email ? String(s.email) : undefined,
         }));
         if (mapped.length) {
-          setAccessRecords(mapped);
-          setRecords(mapped);
+          const byId = new Map<string, AccessRecord>();
+          for (const r of getInitialStaffAccessRecords(facilityId)) {
+            if (r?.id) byId.set(r.id.toUpperCase(), r);
+          }
+          for (const m of mapped) {
+            if (m.id) {
+              const prev = byId.get(m.id.toUpperCase());
+              byId.set(m.id.toUpperCase(), prev ? { ...prev, ...m } : m);
+            }
+          }
+          const merged = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+          setAccessRecords(merged);
+          setRecords(merged);
         }
       } catch { /* */ }
     });
@@ -364,7 +375,6 @@ export const AccessControl: React.FC<Props> = ({ session }) => {
           applyCloudRows([]);
         }
         setIsLoading(false);
-        return; // Postgres is source of truth — no Firestore staff collection
       }
 
       unsubCol = firestoreSubscribeStaffCollection(facilityId, (staffRows) => {

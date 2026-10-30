@@ -2,14 +2,19 @@
  * DHIS2 Tracker & Simulated Bed Management Bridge
  *
  * Implements:
- * 1. Tracked Entity Type (Patient) & Inpatient Program metadata structure
- * 2. Three Program Stages: Admission, Clinical Care/Daily Vitals, Discharge
- * 3. Standardized location string convention: WARD-ROOM-BED (e.g. ICU-RM102-B1)
- * 4. Program Stage cross-referencing logic for simulated real-time bed states:
- *    - Green (Available): Bed ID has no active enrollment or recent discharge
+ * 1. Tracked Entity Types: Patient (TET_PATIENT_01) and Physical Bed Asset (TET_BED_01)
+ * 2. Inpatient Program metadata structure with 4 Program Stages:
+ *    - Stage 1: Admission & Bed Allocation
+ *    - Stage 2: Clinical Care / Daily Vitals (Repeatable)
+ *    - Stage 3: Bed / Ward Transfer (Repeatable)
+ *    - Stage 4: Discharge & Disposition
+ * 3. Core Program Indicators (BOR, ALOS, BTI, BTR) with standard DHIS2 analytics expressions
+ * 4. Standardized location string convention: WARD-ROOM-BED (e.g. ICU-RM102-B1, MMED-RM01-B1)
+ * 5. Program Stage cross-referencing logic for simulated real-time bed states:
+ *    - Green (Available): Bed ID has no active enrollment and not in cleaning window
  *    - Red (Occupied): Active enrollment with incomplete discharge
  *    - Yellow (Cleaning/Turnover): Discharge completed within last 2 hours (turnover window)
- * 5. DHIS2 Web API payload generators & exportable metadata package
+ * 6. DHIS2 Web API payload generators & exportable metadata package (/api/metadata & /api/tracker)
  */
 
 export interface Dhis2TrackedEntityInstance {
@@ -53,7 +58,7 @@ export interface StandardBedLocation {
   standardKey: string; // WARD-ROOM-BED (e.g. ICU-RM102-B1)
 }
 
-export type SimulatedBedState = 'available' | 'occupied' | 'cleaning';
+export type SimulatedBedState = 'available' | 'occupied' | 'cleaning' | 'maintenance' | 'isolation';
 
 export interface SimulatedBedStatus {
   bedKey: string;
@@ -61,7 +66,7 @@ export interface SimulatedBedStatus {
   room: string;
   bed: string;
   state: SimulatedBedState;
-  stateLabel: 'Available' | 'Occupied' | 'Cleaning / Turnover';
+  stateLabel: 'Available' | 'Occupied' | 'Cleaning / Turnover' | 'Out of Service' | 'Isolation';
   color: string;
   patient?: {
     teiId: string;
@@ -71,23 +76,28 @@ export interface SimulatedBedStatus {
     admittedAt: string;
     diagnosis?: string;
     priority?: string;
+    doctor?: string;
     eventId: string;
+    losDays?: number;
   };
   discharge?: {
     dischargedAt: string;
     outcome: string;
     minutesSinceDischarge: number;
+    losDays?: number;
   };
 }
 
 // ─── DHIS2 METADATA CONSTANTS ──────────────────────────────────────────────────
 export const DHIS2_INPATIENT_METADATA = {
   tetPatient: 'TET_PATIENT_01',
+  tetBedAsset: 'TET_BED_ASSET_02',
   programInpatient: 'PRG_INPATIENT_MGT',
   stages: {
     admission: 'STG_ADMISSION_01',
     clinicalCare: 'STG_CLINICAL_CARE_02',
-    discharge: 'STG_DISCHARGE_03',
+    transfer: 'STG_TRANSFER_03',
+    discharge: 'STG_DISCHARGE_04',
   },
   dataElements: {
     // Stage 1: Admission
@@ -98,23 +108,47 @@ export const DHIS2_INPATIENT_METADATA = {
     roomNumber: 'DE_LOC_ROOM',
     bedNumber: 'DE_LOC_BED',
     standardBedKey: 'DE_LOC_BED_KEY', // WARD-ROOM-BED
+    admittingClinician: 'DE_ADM_CLINICIAN',
+
     // Stage 2: Clinical Care / Daily Vitals (Repeatable)
     vitalBpSystolic: 'DE_VIT_BP_SYS',
     vitalBpDiastolic: 'DE_VIT_BP_DIA',
     vitalPulse: 'DE_VIT_PULSE',
     vitalTemp: 'DE_VIT_TEMP',
     vitalSpo2: 'DE_VIT_SPO2',
+    vitalRespRate: 'DE_VIT_RESP_RATE',
     progressNote: 'DE_PROG_NOTE',
     medicationGiven: 'DE_MED_ADMIN',
-    // Stage 3: Discharge
+
+    // Stage 3: Transfer
+    transferDate: 'DE_TRF_DATE',
+    transferFromBed: 'DE_TRF_FROM_BED',
+    transferToBed: 'DE_TRF_TO_BED',
+    transferReason: 'DE_TRF_REASON',
+    transferAuthorizer: 'DE_TRF_AUTHORIZER',
+
+    // Stage 4: Discharge
     dischargeDate: 'DE_DIS_DATE',
-    dischargeOutcome: 'DE_DIS_OUTCOME', // discharged, referred, deceased
+    dischargeOutcome: 'DE_DIS_OUTCOME', // discharged, referred, deceased, absconded
     finalDiagnosis: 'DE_FINAL_DIAG',
+    lengthOfStayDays: 'DE_INPATIENT_LOS_DAYS',
+    dischargingClinician: 'DE_DIS_CLINICIAN',
+  },
+  optionSets: {
+    triagePriority: 'OPTSET_TRIAGE_PRIORITY',
+    dischargeOutcome: 'OPTSET_DISCHARGE_OUTCOME',
+    bedStatus: 'OPTSET_BED_STATUS',
+  },
+  programIndicators: {
+    bedOccupancyRate: 'PI_BOR_INPATIENT',
+    avgLengthOfStay: 'PI_ALOS_INPATIENT',
+    bedTurnoverInterval: 'PI_BTI_INPATIENT',
+    bedTurnoverRate: 'PI_BTR_INPATIENT',
   },
 };
 
 const STORAGE_KEY = 'medcore_dhis2_simulated_tracker_v1';
-const EVT_NAME = 'medcore-dhis2-tracker-updated';
+export const EVT_DHIS2_TRACKER = 'medcore-dhis2-tracker-updated';
 
 /**
  * Normalizes input to strict WARD-ROOM-BED convention.
@@ -129,6 +163,7 @@ export function formatStandardBedKey(ward: string, room: string, bed: string): s
     .replace(/SURGICAL/i, 'SURG')
     .replace(/PAEDIATRICS|PEDIATRICS/i, 'PED')
     .replace(/MATERNITY/i, 'MAT')
+    .replace(/PACU/i, 'PACU')
     .replace(/[^A-Z0-9]/g, '');
 
   const cleanRoom = room.toUpperCase().startsWith('RM')
@@ -137,7 +172,7 @@ export function formatStandardBedKey(ward: string, room: string, bed: string): s
 
   const cleanBed = bed.toUpperCase().replace(/^BED\s*/i, 'B').replace(/[^A-Z0-9]/g, '');
 
-  return `${cleanWard}-${cleanRoom}-${cleanBed}`;
+  return `${cleanWard || 'GEN'}-${cleanRoom}-${cleanBed || 'B01'}`;
 }
 
 export function parseStandardBedKey(key: string): StandardBedLocation {
@@ -163,12 +198,22 @@ export interface InpatientTrackerRecord {
   bed: string;
   admittedAt: string;
   diagnosis: string;
+  doctor?: string;
   priority: 'routine' | 'urgent' | 'emergency';
   admissionEventId: string;
   status: 'ACTIVE' | 'COMPLETED';
   dischargedAt?: string;
-  dischargeOutcome?: 'discharged' | 'referred' | 'deceased';
+  dischargeOutcome?: 'discharged' | 'referred' | 'deceased' | 'absconded';
   dischargeEventId?: string;
+  lengthOfStayDays?: number;
+  transferEvents: Array<{
+    id: string;
+    at: string;
+    fromBedKey: string;
+    toBedKey: string;
+    reason?: string;
+    authorizer?: string;
+  }>;
   vitalsEvents: Array<{
     id: string;
     at: string;
@@ -176,11 +221,12 @@ export interface InpatientTrackerRecord {
     pulse?: number;
     temp?: number;
     spo2?: number;
+    respRate?: number;
     notes?: string;
   }>;
 }
 
-function readStore(): InpatientTrackerRecord[] {
+export function readTrackerStore(): InpatientTrackerRecord[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -192,10 +238,11 @@ function readStore(): InpatientTrackerRecord[] {
   }
 }
 
-function saveStore(data: InpatientTrackerRecord[]) {
+export function saveTrackerStore(data: InpatientTrackerRecord[]) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  window.dispatchEvent(new CustomEvent(EVT_NAME, { detail: data }));
+  window.dispatchEvent(new CustomEvent(EVT_DHIS2_TRACKER, { detail: data }));
+  window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: STORAGE_KEY } }));
 }
 
 /** Seed realistic hospital bed registry matching standard keys */
@@ -221,6 +268,9 @@ export const DEFAULT_HOSPITAL_BED_KEYS: StandardBedLocation[] = [
   { ward: 'Maternity', roomNumber: 'RM01', bedNumber: 'B2', standardKey: 'MAT-RM01-B2' },
 ];
 
+/** Flag to prevent circular event loops when synchronizing with bedBoardStore */
+let _isSyncingFromBedBoard = false;
+
 /**
  * Calculates current real-time simulated bed board states based on active DHIS2 Tracker enrollments:
  * - Green (Available): Bed ID is empty in current active patient list and no discharge within 2 hours.
@@ -229,19 +279,24 @@ export const DEFAULT_HOSPITAL_BED_KEYS: StandardBedLocation[] = [
  */
 export function calculateSimulatedBedBoard(
   facilityId: string,
-  turnoverWindowHours: number = 2
+  turnoverWindowHours: number = 2,
+  overrideBedLocations?: StandardBedLocation[]
 ): SimulatedBedStatus[] {
-  const records = readStore().filter((r) => r.facilityId === facilityId);
+  const records = readTrackerStore().filter((r) => r.facilityId === facilityId);
   const now = Date.now();
   const turnoverMs = turnoverWindowHours * 60 * 60 * 1000;
+  const locations = overrideBedLocations && overrideBedLocations.length > 0
+    ? overrideBedLocations
+    : DEFAULT_HOSPITAL_BED_KEYS;
 
-  return DEFAULT_HOSPITAL_BED_KEYS.map((loc) => {
+  return locations.map((loc) => {
     // 1. Check for active enrollment (Occupied)
     const active = records.find(
       (r) => r.bedKey === loc.standardKey && r.status === 'ACTIVE'
     );
 
     if (active) {
+      const los = Math.max(0, Math.floor((now - new Date(active.admittedAt).getTime()) / 86400000));
       return {
         bedKey: loc.standardKey,
         ward: loc.ward,
@@ -258,7 +313,9 @@ export function calculateSimulatedBedBoard(
           admittedAt: active.admittedAt,
           diagnosis: active.diagnosis,
           priority: active.priority,
+          doctor: active.doctor,
           eventId: active.admissionEventId,
+          losDays: los,
         },
       };
     }
@@ -284,6 +341,7 @@ export function calculateSimulatedBedBoard(
             dischargedAt: recentDischarge.dischargedAt,
             outcome: recentDischarge.dischargeOutcome || 'discharged',
             minutesSinceDischarge: mins,
+            losDays: recentDischarge.lengthOfStayDays,
           },
         };
       }
@@ -314,6 +372,7 @@ export function admitPatientTracker(input: {
   room: string;
   bed: string;
   diagnosis: string;
+  doctor?: string;
   priority?: 'routine' | 'urgent' | 'emergency';
   admittedAt?: string;
 }): InpatientTrackerRecord {
@@ -336,39 +395,76 @@ export function admitPatientTracker(input: {
     bed: input.bed,
     admittedAt: now,
     diagnosis: input.diagnosis,
+    doctor: input.doctor,
     priority: input.priority || 'routine',
     admissionEventId,
     status: 'ACTIVE',
+    transferEvents: [],
     vitalsEvents: [],
   };
 
-  const store = readStore();
+  const store = readTrackerStore();
   // Clear any existing active admission on this bed
   const filtered = store.filter((r) => !(r.bedKey === standardKey && r.status === 'ACTIVE'));
-  saveStore([record, ...filtered]);
+  saveTrackerStore([record, ...filtered]);
+
+  // Dispatch OS sync event
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('medcore-bed-sync-bridge', {
+        detail: { action: 'admit', record },
+      })
+    );
+  }
+
   return record;
 }
 
 /**
- * Update Bed/Location
- * Updates patient's bed location via event update (PUT /api/tracker/events/{eventId}).
+ * Stage 3: Bed / Ward Transfer
+ * Logs transfer stage event and updates patient's bed location in DHIS2 Tracker.
  */
 export function transferPatientBedTracker(
   enrollmentId: string,
   newWard: string,
   newRoom: string,
-  newBed: string
+  newBed: string,
+  reason?: string,
+  authorizer?: string
 ): boolean {
-  const store = readStore();
+  const store = readTrackerStore();
   const idx = store.findIndex((r) => r.enrollmentId === enrollmentId && r.status === 'ACTIVE');
   if (idx < 0) return false;
 
+  const oldBedKey = store[idx].bedKey;
   const newKey = formatStandardBedKey(newWard, newRoom, newBed);
+  const now = new Date().toISOString();
+
+  store[idx].transferEvents = store[idx].transferEvents || [];
+  store[idx].transferEvents.push({
+    id: `EVT-TRF-${Date.now().toString(36).toUpperCase()}`,
+    at: now,
+    fromBedKey: oldBedKey,
+    toBedKey: newKey,
+    reason: reason || 'Clinical bed transfer',
+    authorizer: authorizer || 'Attending Clinician',
+  });
+
   store[idx].ward = newWard;
   store[idx].room = newRoom;
   store[idx].bed = newBed;
   store[idx].bedKey = newKey;
-  saveStore(store);
+
+  saveTrackerStore(store);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('medcore-bed-sync-bridge', {
+        detail: { action: 'transfer', record: store[idx], oldBedKey, newKey },
+      })
+    );
+  }
+
   return true;
 }
 
@@ -382,66 +478,139 @@ export function recordInpatientVitalsTracker(
     pulse?: number;
     temp?: number;
     spo2?: number;
+    respRate?: number;
     notes?: string;
   }
 ): boolean {
-  const store = readStore();
+  const store = readTrackerStore();
   const idx = store.findIndex((r) => r.enrollmentId === enrollmentId && r.status === 'ACTIVE');
   if (idx < 0) return false;
 
+  store[idx].vitalsEvents = store[idx].vitalsEvents || [];
   store[idx].vitalsEvents.push({
     id: `EVT-VIT-${Date.now().toString(36).toUpperCase()}`,
     at: new Date().toISOString(),
     ...vitals,
   });
-  saveStore(store);
+  saveTrackerStore(store);
   return true;
 }
 
 /**
- * Stage 3: Discharge / Free Bed
+ * Stage 4: Discharge / Disposition (Free Bed)
  * Completes the enrollment via PUT /api/tracker/enrollments/{enrollmentId} (status: COMPLETED).
  * Immediately triggers the 2-hour Turnover / Cleaning state (Yellow).
  */
 export function dischargePatientTracker(
   enrollmentId: string,
-  outcome: 'discharged' | 'referred' | 'deceased' = 'discharged'
+  outcome: 'discharged' | 'referred' | 'deceased' | 'absconded' = 'discharged'
 ): boolean {
-  const store = readStore();
+  const store = readTrackerStore();
   const idx = store.findIndex((r) => r.enrollmentId === enrollmentId && r.status === 'ACTIVE');
   if (idx < 0) return false;
 
+  const now = new Date().toISOString();
+  const admitTime = new Date(store[idx].admittedAt).getTime();
+  const los = Math.max(0, Math.floor((new Date(now).getTime() - admitTime) / 86400000));
+
   store[idx].status = 'COMPLETED';
-  store[idx].dischargedAt = new Date().toISOString();
+  store[idx].dischargedAt = now;
   store[idx].dischargeOutcome = outcome;
+  store[idx].lengthOfStayDays = los;
   store[idx].dischargeEventId = `EVT-DIS-${Date.now().toString(36).toUpperCase()}`;
 
-  saveStore(store);
+  saveTrackerStore(store);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('medcore-bed-sync-bridge', {
+        detail: { action: 'discharge', record: store[idx] },
+      })
+    );
+  }
+
   return true;
 }
 
 /** Mark turnover completed early (turn yellow bed back to green) */
 export function clearBedTurnover(bedKey: string): boolean {
-  const store = readStore();
-  // Clear any recent discharge matching this bedKey so it returns to green immediately
+  const store = readTrackerStore();
   const updated = store.map((r) => {
     if (r.bedKey === bedKey && r.status === 'COMPLETED') {
       return { ...r, dischargedAt: new Date(Date.now() - 24 * 3600000).toISOString() };
     }
     return r;
   });
-  saveStore(updated);
+  saveTrackerStore(updated);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('medcore-bed-sync-bridge', {
+        detail: { action: 'clean', bedKey },
+      })
+    );
+  }
+
   return true;
 }
 
 export function subscribeDhis2Tracker(cb: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
-  window.addEventListener(EVT_NAME, cb);
+  window.addEventListener(EVT_DHIS2_TRACKER, cb);
   window.addEventListener('storage', cb);
+  window.addEventListener('medcore-bed-board', cb);
   return () => {
-    window.removeEventListener(EVT_NAME, cb);
+    window.removeEventListener(EVT_DHIS2_TRACKER, cb);
     window.removeEventListener('storage', cb);
+    window.removeEventListener('medcore-bed-board', cb);
   };
+}
+
+/**
+ * Synchronize clinical bed census (from bedBoardStore) into DHIS2 Tracker records.
+ * Ensures any bed admitted through Nursing, Doctor, PACU, or Maternity is tracked in DHIS2.
+ */
+export function syncTrackerFromBedRecord(bed: {
+  facilityId: string;
+  ward: string;
+  bedNo: string;
+  status: string;
+  patient?: string;
+  hospitalNumber?: string;
+  doctor?: string;
+  diagnosis?: string;
+  admitAt?: string;
+}) {
+  if (_isSyncingFromBedBoard) return;
+  _isSyncingFromBedBoard = true;
+  try {
+    const key = formatStandardBedKey(bed.ward, 'RM01', bed.bedNo);
+    const store = readTrackerStore();
+
+    if (bed.status === 'occupied' || bed.status === 'isolation') {
+      const existing = store.find((r) => r.bedKey === key && r.status === 'ACTIVE');
+      if (!existing && bed.patient) {
+        admitPatientTracker({
+          facilityId: bed.facilityId,
+          patientName: bed.patient,
+          hospitalNumber: bed.hospitalNumber || `GH-${Date.now().toString().slice(-4)}`,
+          ward: bed.ward,
+          room: 'RM01',
+          bed: bed.bedNo,
+          diagnosis: bed.diagnosis || 'Inpatient Admission',
+          doctor: bed.doctor,
+          admittedAt: bed.admitAt,
+        });
+      }
+    } else if (bed.status === 'cleaning' || bed.status === 'available') {
+      const existing = store.find((r) => r.bedKey === key && r.status === 'ACTIVE');
+      if (existing) {
+        dischargePatientTracker(existing.enrollmentId, 'discharged');
+      }
+    }
+  } finally {
+    _isSyncingFromBedBoard = false;
+  }
 }
 
 /**
@@ -452,42 +621,110 @@ export function buildDhis2MetadataPackage() {
   const M = DHIS2_INPATIENT_METADATA;
 
   return {
+    packageVersion: '2.40-compatible',
+    exportedAt: new Date().toISOString(),
+    system: 'MedCore Hospital OS - DHIS2 Interoperability Engine',
     trackedEntityTypes: [
       {
         id: M.tetPatient,
         name: 'Patient',
-        description: 'Individual registered in the health facility EMR',
+        description: 'Individual person registered in the health facility EMR (Tracked Entity)',
+      },
+      {
+        id: M.tetBedAsset,
+        name: 'Hospital Bed (Asset)',
+        description: 'Non-human physical asset tracked for bed bureau management',
+      },
+    ],
+    trackedEntityAttributes: [
+      { id: 'ATTR_NAME', name: 'Patient Full Name', valueType: 'TEXT' },
+      { id: 'ATTR_MRN', name: 'Medical Record Number / Hospital Number', valueType: 'TEXT', unique: true },
+      { id: 'ATTR_NIN', name: 'National Identification Number (NIN)', valueType: 'TEXT' },
+      { id: 'ATTR_UPI', name: 'Universal Patient Identifier (UPI)', valueType: 'TEXT' },
+      { id: 'ATTR_DOB', name: 'Date of Birth', valueType: 'DATE' },
+      { id: 'ATTR_SEX', name: 'Sex', valueType: 'TEXT' },
+    ],
+    optionSets: [
+      {
+        id: M.optionSets.triagePriority,
+        name: 'Inpatient - Triage Priority OptionSet',
+        valueType: 'TEXT',
+        options: [
+          { code: 'routine', name: 'Routine / Non-Urgent' },
+          { code: 'urgent', name: 'Urgent' },
+          { code: 'emergency', name: 'Emergency / Resuscitation' },
+        ],
+      },
+      {
+        id: M.optionSets.dischargeOutcome,
+        name: 'Inpatient - Discharge Disposition OptionSet',
+        valueType: 'TEXT',
+        options: [
+          { code: 'discharged', name: 'Discharged Home' },
+          { code: 'referred', name: 'Referred to Higher Facility' },
+          { code: 'absconded', name: 'Absconded / Discharge Against Medical Advice' },
+          { code: 'deceased', name: 'Deceased' },
+        ],
+      },
+      {
+        id: M.optionSets.bedStatus,
+        name: 'Bed Status OptionSet',
+        valueType: 'TEXT',
+        options: [
+          { code: 'available', name: 'Available / Clean (Green)' },
+          { code: 'occupied', name: 'Occupied (Red)' },
+          { code: 'cleaning', name: 'Cleaning / Turnover (Yellow)' },
+          { code: 'maintenance', name: 'Maintenance / Out of Service' },
+          { code: 'isolation', name: 'Isolation' },
+        ],
       },
     ],
     dataElements: [
+      // Admission Stage
       { id: M.dataElements.admissionDate, name: 'Inpatient - Admission Date', valueType: 'DATETIME', domainType: 'TRACKER' },
       { id: M.dataElements.admittingDiagnosis, name: 'Inpatient - Admitting Diagnosis', valueType: 'TEXT', domainType: 'TRACKER' },
-      { id: M.dataElements.triagePriority, name: 'Inpatient - Triage Priority', valueType: 'TEXT', domainType: 'TRACKER' },
+      { id: M.dataElements.triagePriority, name: 'Inpatient - Triage Priority', valueType: 'TEXT', domainType: 'TRACKER', optionSet: { id: M.optionSets.triagePriority } },
       { id: M.dataElements.ward, name: 'Inpatient - Ward', valueType: 'TEXT', domainType: 'TRACKER' },
       { id: M.dataElements.roomNumber, name: 'Inpatient - Room Number', valueType: 'TEXT', domainType: 'TRACKER' },
       { id: M.dataElements.bedNumber, name: 'Inpatient - Bed Number', valueType: 'TEXT', domainType: 'TRACKER' },
       { id: M.dataElements.standardBedKey, name: 'Inpatient - Standard Bed Key (WARD-ROOM-BED)', valueType: 'TEXT', domainType: 'TRACKER' },
-      { id: M.dataElements.vitalBpSystolic, name: 'Inpatient - BP Systolic', valueType: 'NUMBER', domainType: 'TRACKER' },
-      { id: M.dataElements.vitalBpDiastolic, name: 'Inpatient - BP Diastolic', valueType: 'NUMBER', domainType: 'TRACKER' },
-      { id: M.dataElements.vitalPulse, name: 'Inpatient - Pulse Rate', valueType: 'NUMBER', domainType: 'TRACKER' },
-      { id: M.dataElements.vitalTemp, name: 'Inpatient - Temperature C', valueType: 'NUMBER', domainType: 'TRACKER' },
-      { id: M.dataElements.vitalSpo2, name: 'Inpatient - SpO2 %', valueType: 'NUMBER', domainType: 'TRACKER' },
+      { id: M.dataElements.admittingClinician, name: 'Inpatient - Admitting Clinician', valueType: 'TEXT', domainType: 'TRACKER' },
+
+      // Clinical Care Stage
+      { id: M.dataElements.vitalBpSystolic, name: 'Inpatient - BP Systolic (mmHg)', valueType: 'NUMBER', domainType: 'TRACKER' },
+      { id: M.dataElements.vitalBpDiastolic, name: 'Inpatient - BP Diastolic (mmHg)', valueType: 'NUMBER', domainType: 'TRACKER' },
+      { id: M.dataElements.vitalPulse, name: 'Inpatient - Pulse Rate (bpm)', valueType: 'NUMBER', domainType: 'TRACKER' },
+      { id: M.dataElements.vitalTemp, name: 'Inpatient - Temperature (°C)', valueType: 'NUMBER', domainType: 'TRACKER' },
+      { id: M.dataElements.vitalSpo2, name: 'Inpatient - SpO2 (%)', valueType: 'NUMBER', domainType: 'TRACKER' },
+      { id: M.dataElements.vitalRespRate, name: 'Inpatient - Respiration Rate (/min)', valueType: 'NUMBER', domainType: 'TRACKER' },
       { id: M.dataElements.progressNote, name: 'Inpatient - Clinical Progress Note', valueType: 'LONG_TEXT', domainType: 'TRACKER' },
+      { id: M.dataElements.medicationGiven, name: 'Inpatient - Medication Administered (e-MAR)', valueType: 'LONG_TEXT', domainType: 'TRACKER' },
+
+      // Transfer Stage
+      { id: M.dataElements.transferDate, name: 'Inpatient - Transfer Date', valueType: 'DATETIME', domainType: 'TRACKER' },
+      { id: M.dataElements.transferFromBed, name: 'Inpatient - Transfer From Bed', valueType: 'TEXT', domainType: 'TRACKER' },
+      { id: M.dataElements.transferToBed, name: 'Inpatient - Transfer To Bed', valueType: 'TEXT', domainType: 'TRACKER' },
+      { id: M.dataElements.transferReason, name: 'Inpatient - Transfer Reason', valueType: 'TEXT', domainType: 'TRACKER' },
+      { id: M.dataElements.transferAuthorizer, name: 'Inpatient - Transfer Authorized By', valueType: 'TEXT', domainType: 'TRACKER' },
+
+      // Discharge Stage
       { id: M.dataElements.dischargeDate, name: 'Inpatient - Discharge Date', valueType: 'DATETIME', domainType: 'TRACKER' },
-      { id: M.dataElements.dischargeOutcome, name: 'Inpatient - Discharge Outcome', valueType: 'TEXT', domainType: 'TRACKER' },
+      { id: M.dataElements.dischargeOutcome, name: 'Inpatient - Discharge Disposition', valueType: 'TEXT', domainType: 'TRACKER', optionSet: { id: M.optionSets.dischargeOutcome } },
       { id: M.dataElements.finalDiagnosis, name: 'Inpatient - Final Diagnosis', valueType: 'TEXT', domainType: 'TRACKER' },
+      { id: M.dataElements.lengthOfStayDays, name: 'Inpatient - Length of Stay (Days)', valueType: 'INTEGER', domainType: 'TRACKER' },
+      { id: M.dataElements.dischargingClinician, name: 'Inpatient - Discharging Clinician', valueType: 'TEXT', domainType: 'TRACKER' },
     ],
     programs: [
       {
         id: M.programInpatient,
-        name: 'Inpatient Management',
+        name: 'Inpatient Bed & Patient Tracker',
         shortName: 'Inpatient Tracker',
         programType: 'WITH_REGISTRATION',
         trackedEntityType: { id: M.tetPatient },
         programStages: [
           {
             id: M.stages.admission,
-            name: 'Stage 1: Admission',
+            name: 'Stage 1: Admission & Bed Allocation',
             repeatable: false,
             programStageDataElements: [
               { dataElement: { id: M.dataElements.admissionDate }, compulsory: true },
@@ -497,6 +734,7 @@ export function buildDhis2MetadataPackage() {
               { dataElement: { id: M.dataElements.roomNumber }, compulsory: true },
               { dataElement: { id: M.dataElements.bedNumber }, compulsory: true },
               { dataElement: { id: M.dataElements.standardBedKey }, compulsory: true },
+              { dataElement: { id: M.dataElements.admittingClinician }, compulsory: false },
             ],
           },
           {
@@ -509,18 +747,183 @@ export function buildDhis2MetadataPackage() {
               { dataElement: { id: M.dataElements.vitalPulse }, compulsory: false },
               { dataElement: { id: M.dataElements.vitalTemp }, compulsory: false },
               { dataElement: { id: M.dataElements.vitalSpo2 }, compulsory: false },
+              { dataElement: { id: M.dataElements.vitalRespRate }, compulsory: false },
               { dataElement: { id: M.dataElements.progressNote }, compulsory: false },
+              { dataElement: { id: M.dataElements.medicationGiven }, compulsory: false },
+            ],
+          },
+          {
+            id: M.stages.transfer,
+            name: 'Stage 3: Bed / Ward Transfer',
+            repeatable: true,
+            programStageDataElements: [
+              { dataElement: { id: M.dataElements.transferDate }, compulsory: true },
+              { dataElement: { id: M.dataElements.transferFromBed }, compulsory: true },
+              { dataElement: { id: M.dataElements.transferToBed }, compulsory: true },
+              { dataElement: { id: M.dataElements.transferReason }, compulsory: false },
+              { dataElement: { id: M.dataElements.transferAuthorizer }, compulsory: false },
             ],
           },
           {
             id: M.stages.discharge,
-            name: 'Stage 3: Discharge',
+            name: 'Stage 4: Discharge & Disposition',
             repeatable: false,
             programStageDataElements: [
               { dataElement: { id: M.dataElements.dischargeDate }, compulsory: true },
               { dataElement: { id: M.dataElements.dischargeOutcome }, compulsory: true },
               { dataElement: { id: M.dataElements.finalDiagnosis }, compulsory: true },
+              { dataElement: { id: M.dataElements.lengthOfStayDays }, compulsory: false },
+              { dataElement: { id: M.dataElements.dischargingClinician }, compulsory: false },
             ],
+          },
+        ],
+      },
+    ],
+    programIndicators: [
+      {
+        id: M.programIndicators.bedOccupancyRate,
+        name: 'Bed Occupancy Rate (BOR %)',
+        shortName: 'BOR %',
+        program: { id: M.programInpatient },
+        aggregationType: 'AVERAGE',
+        expression: '( #{d2:daysBetween(V{enrollment_date}, V{incident_date})} / ( [Total Functional Beds] * [Days in Period] ) ) * 100',
+        filter: 'V{enrollment_status} == "ACTIVE" || V{enrollment_status} == "COMPLETED"',
+        decimals: 1,
+      },
+      {
+        id: M.programIndicators.avgLengthOfStay,
+        name: 'Average Length of Stay (ALOS Days)',
+        shortName: 'ALOS',
+        program: { id: M.programInpatient },
+        aggregationType: 'AVERAGE',
+        expression: 'd2:daysBetween(#{STG_ADMISSION_01.DE_ADM_DATE}, #{STG_DISCHARGE_04.DE_DIS_DATE})',
+        filter: 'V{program_stage_id} == "STG_DISCHARGE_04" && d2:hasValue(#{STG_DISCHARGE_04.DE_DIS_DATE})',
+        decimals: 1,
+      },
+      {
+        id: M.programIndicators.bedTurnoverInterval,
+        name: 'Bed Turnover Interval (BTI Days)',
+        shortName: 'BTI',
+        program: { id: M.programInpatient },
+        aggregationType: 'AVERAGE',
+        expression: '( ( [Total Beds] * [Days in Period] ) - [Total Inpatient Days] ) / [Total Discharges]',
+        decimals: 1,
+      },
+      {
+        id: M.programIndicators.bedTurnoverRate,
+        name: 'Bed Turnover Rate (Discharges per Bed)',
+        shortName: 'BTR',
+        program: { id: M.programInpatient },
+        aggregationType: 'SUM',
+        expression: 'V{event_count} / [Total Beds]',
+        filter: 'V{program_stage_id} == "STG_DISCHARGE_04"',
+        decimals: 2,
+      },
+    ],
+  };
+}
+
+/**
+ * Generates standard DHIS2 Tracker Web API payload for /api/tracker?async=false
+ */
+export function buildDhis2TrackerPayload(record: InpatientTrackerRecord, orgUnitUid: string = 'AKS-OU-DEMO') {
+  const M = DHIS2_INPATIENT_METADATA;
+
+  const events: Dhis2ProgramEvent[] = [
+    {
+      event: record.admissionEventId,
+      program: M.programInpatient,
+      programStage: M.stages.admission,
+      orgUnit: orgUnitUid,
+      occurredAt: record.admittedAt,
+      status: 'COMPLETED',
+      dataValues: [
+        { dataElement: M.dataElements.admissionDate, value: record.admittedAt },
+        { dataElement: M.dataElements.admittingDiagnosis, value: record.diagnosis },
+        { dataElement: M.dataElements.triagePriority, value: record.priority },
+        { dataElement: M.dataElements.ward, value: record.ward },
+        { dataElement: M.dataElements.roomNumber, value: record.room },
+        { dataElement: M.dataElements.bedNumber, value: record.bed },
+        { dataElement: M.dataElements.standardBedKey, value: record.bedKey },
+      ],
+    },
+  ];
+
+  if (record.vitalsEvents && record.vitalsEvents.length > 0) {
+    for (const v of record.vitalsEvents) {
+      events.push({
+        event: v.id,
+        program: M.programInpatient,
+        programStage: M.stages.clinicalCare,
+        orgUnit: orgUnitUid,
+        occurredAt: v.at,
+        status: 'COMPLETED',
+        dataValues: [
+          ...(v.pulse ? [{ dataElement: M.dataElements.vitalPulse, value: String(v.pulse) }] : []),
+          ...(v.temp ? [{ dataElement: M.dataElements.vitalTemp, value: String(v.temp) }] : []),
+          ...(v.spo2 ? [{ dataElement: M.dataElements.vitalSpo2, value: String(v.spo2) }] : []),
+          ...(v.respRate ? [{ dataElement: M.dataElements.vitalRespRate, value: String(v.respRate) }] : []),
+          ...(v.notes ? [{ dataElement: M.dataElements.progressNote, value: v.notes }] : []),
+        ],
+      });
+    }
+  }
+
+  if (record.transferEvents && record.transferEvents.length > 0) {
+    for (const t of record.transferEvents) {
+      events.push({
+        event: t.id,
+        program: M.programInpatient,
+        programStage: M.stages.transfer,
+        orgUnit: orgUnitUid,
+        occurredAt: t.at,
+        status: 'COMPLETED',
+        dataValues: [
+          { dataElement: M.dataElements.transferDate, value: t.at },
+          { dataElement: M.dataElements.transferFromBed, value: t.fromBedKey },
+          { dataElement: M.dataElements.transferToBed, value: t.toBedKey },
+          ...(t.reason ? [{ dataElement: M.dataElements.transferReason, value: t.reason }] : []),
+        ],
+      });
+    }
+  }
+
+  if (record.status === 'COMPLETED' && record.dischargedAt) {
+    events.push({
+      event: record.dischargeEventId || `EVT-DIS-${Date.now().toString(36).toUpperCase()}`,
+      program: M.programInpatient,
+      programStage: M.stages.discharge,
+      orgUnit: orgUnitUid,
+      occurredAt: record.dischargedAt,
+      status: 'COMPLETED',
+      dataValues: [
+        { dataElement: M.dataElements.dischargeDate, value: record.dischargedAt },
+        { dataElement: M.dataElements.dischargeOutcome, value: record.dischargeOutcome || 'discharged' },
+        { dataElement: M.dataElements.finalDiagnosis, value: record.diagnosis },
+        { dataElement: M.dataElements.lengthOfStayDays, value: String(record.lengthOfStayDays ?? 0) },
+      ],
+    });
+  }
+
+  return {
+    trackedEntities: [
+      {
+        trackedEntity: record.teiId,
+        trackedEntityType: M.tetPatient,
+        orgUnit: orgUnitUid,
+        attributes: [
+          { attribute: 'ATTR_NAME', value: record.patientName },
+          { attribute: 'ATTR_MRN', value: record.hospitalNumber },
+        ],
+        enrollments: [
+          {
+            enrollment: record.enrollmentId,
+            program: M.programInpatient,
+            orgUnit: orgUnitUid,
+            enrolledAt: record.admittedAt,
+            occurredAt: record.admittedAt,
+            status: record.status,
+            events,
           },
         ],
       },

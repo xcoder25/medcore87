@@ -30,6 +30,7 @@ import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
 import { emitLiveAction } from '../../lib/liveActions';
 import { listPatients } from '../../lib/patientRegistryStore';
 import { Dhis2TrackerBedBoardSuite } from '../interop/Dhis2TrackerBedBoardSuite';
+import { calculateInpatientIndicators } from '../../lib/dhis2Export';
 
 const BED_STATUS_META: Record<BedStatus, { label: string; color: string }> = {
   occupied: { label: 'Occupied', color: '#EA580C' },
@@ -97,6 +98,7 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
   const audit = useMemo(() => listBedAudit(facilityId).slice(0, 40), [bedsList, facilityId, showAudit]);
   const census = useMemo(() => dailyCensus(facilityId), [bedsList, facilityId]);
   const patients = useMemo(() => listPatients(facilityId), [facilityId, showAdmitModal]);
+  const hmis = useMemo(() => calculateInpatientIndicators(facilityId, 30), [bedsList, facilityId]);
 
   const filtered = bedsList.filter((b) => {
     if (filterWard !== 'All Wards' && b.ward !== filterWard) return false;
@@ -272,17 +274,19 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
       ) : (
         <>
           {/* KPIs */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
         {[
-          { l: 'Total', v: census.total, c: '#0F172A' },
+          { l: 'Total Beds', v: census.total, c: '#0F172A' },
           { l: 'Occupied', v: census.occupied, c: '#EA580C' },
           { l: 'Isolation', v: census.isolation, c: '#A855F7' },
           { l: 'Available', v: census.available, c: '#22C55E' },
           { l: 'Turnover', v: census.cleaning, c: '#64748B' },
+          { l: 'BOR (DHIS2)', v: `${hmis.bedOccupancyRate}%`, c: hmis.bedOccupancyRate > 85 ? '#DC2626' : '#0D9488' },
+          { l: 'ALOS (Days)', v: `${hmis.avgLengthOfStay}d`, c: '#2563EB' },
         ].map((k) => (
           <div key={k.l} style={card}>
             <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>{k.l}</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: k.c }}>{k.v}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: k.c }}>{k.v}</div>
           </div>
         ))}
       </div>

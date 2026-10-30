@@ -14,6 +14,8 @@ import {
   listFacilityPresence,
   subscribeStaffPresence,
   startFacilityPresenceListener,
+  isStaffRevokedLocal,
+  isStaffNameHidden,
   STAFF_PRESENCE_EVENT,
   type StaffPresence,
 } from '../../lib/staffPresenceStore';
@@ -137,21 +139,21 @@ function buildRows(facilityId: string): StaffRow[] {
 
   const rows: StaffRow[] = [];
 
-  // 1) Online presence — only if still on facility roster/cards (deleted staff excluded)
+  // 1) Online presence — show active staff (skip only if explicitly revoked or hidden)
   for (const p of online) {
     const bid = String(p.badgeId || '').toUpperCase();
+    if (isStaffRevokedLocal(bid, fid) || isStaffNameHidden(fid, p.name)) continue;
     const meta = byId.get(bid);
-    if (!meta) continue; // deleted from facility — ignore ghost presence
     rows.push({
       id: p.badgeId,
-      name: p.name || meta.name || p.badgeId,
-      role: normalizeRole(p.roleKey || meta.roleKey, p.role || meta.role),
-      specialty: meta.specialty || meta.department || p.role || p.roleKey || '—',
-      ward: meta.ward || meta.department || '—',
-      shift: meta.shift || 'Live shift',
+      name: p.name || meta?.name || p.badgeId,
+      role: normalizeRole(p.roleKey || meta?.roleKey, p.role || meta?.role),
+      specialty: meta?.specialty || meta?.department || p.role || p.roleKey || '—',
+      ward: meta?.ward || meta?.department || '—',
+      shift: meta?.shift || 'Live shift',
       status: 'on-duty',
       since: formatSince(p.lastSeen),
-      phone: meta.phone || '—',
+      phone: meta?.phone || '—',
       fromPresence: true,
     });
   }

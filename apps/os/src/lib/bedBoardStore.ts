@@ -4,6 +4,11 @@
  */
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 import { idbGet, idbSet } from './idb';
+import {
+  syncTrackerFromBedRecord,
+  clearBedTurnover,
+  formatStandardBedKey,
+} from './dhis2TrackerBedBridge';
 
 export type BedStatus = 'occupied' | 'available' | 'maintenance' | 'isolation' | 'reserved' | 'cleaning';
 
@@ -331,6 +336,19 @@ export function admitToBed(
     detail: `Admitted ${input.patient}${input.expectedDischarge ? ` · EDD ${input.expectedDischarge}` : ''}`,
     patient: input.patient,
   });
+
+  // Automatically sync to DHIS2 Tracker Inpatient Enrollment
+  syncTrackerFromBedRecord({
+    facilityId: bed.facilityId,
+    ward: bed.ward,
+    bedNo: bed.bedNo,
+    status: input.isolation ? 'isolation' : 'occupied',
+    patient: input.patient,
+    hospitalNumber: input.hospitalNumber,
+    doctor: input.doctor,
+    diagnosis: input.diagnosis,
+    admitAt: now,
+  });
 }
 
 export function setExpectedDischarge(bedId: string, date: string, actor?: string) {
@@ -390,6 +408,14 @@ export function dischargeBed(bedId: string, actor?: string) {
     detail: `Discharged ${patient || 'patient'} · bed set to cleaning`,
     patient,
   });
+
+  // Automatically complete DHIS2 Tracker enrollment & trigger 2h turnover
+  syncTrackerFromBedRecord({
+    facilityId: bed.facilityId,
+    ward: bed.ward,
+    bedNo: bed.bedNo,
+    status: 'cleaning',
+  });
 }
 
 export function setBedStatus(bedId: string, status: BedStatus, actor?: string) {
@@ -412,6 +438,10 @@ export function setBedStatus(bedId: string, status: BedStatus, actor?: string) {
     detail: `Status → ${status}`,
     patient: bed.patient,
   });
+
+  if (status === 'available') {
+    clearBedTurnover(formatStandardBedKey(bed.ward, 'RM01', bed.bedNo));
+  }
 }
 
 /** Transfer patient from one bed to another (same board IDs) */
@@ -479,6 +509,26 @@ export function transferPatient(
     detail: `Transferred ${from.patient} from ${from.bedNo} (${from.ward}) to ${to.bedNo} (${to.ward})`,
     patient: from.patient,
   });
+
+  // Sync transfer across DHIS2 Tracker
+  syncTrackerFromBedRecord({
+    facilityId: from.facilityId,
+    ward: from.ward,
+    bedNo: from.bedNo,
+    status: 'cleaning',
+  });
+  syncTrackerFromBedRecord({
+    facilityId: to.facilityId,
+    ward: to.ward,
+    bedNo: to.bedNo,
+    status: from.status === 'isolation' ? 'isolation' : 'occupied',
+    patient: from.patient,
+    hospitalNumber: from.hospitalNumber,
+    doctor: from.doctor,
+    diagnosis: from.diagnosis,
+    admitAt: from.admitAt,
+  });
+
   return { ok: true, message: `Transferred to ${to.bedNo}` };
 }
 
@@ -606,3 +656,90 @@ export function resetBedBoard() {
 
 export const BED_BOARD_KEY = KEY;
 export const BED_AUDIT_KEY = AUDIT_KEY;
+
+/**
+ * Global Bridge Listener: Synchronize actions initiated inside the DHIS2 Tracker Bed Board Suite
+ * back to MedCore's clinical bed census.
+ */
+let _bridgeListenerRegistered = false;
+if (typeof window !== 'undefined' && !_bridgeListenerRegistered) {
+  _bridgeListenerRegistered = true;
+  window.addEventListener('medcore-bed-sync-bridge', (e: any) => {
+    const detail = e.detail;
+    if (!detail) return;
+    const { action, record, bedKey } = detail;
+    const state = load();
+
+    if (action === 'admit' && record) {
+      // Find matching bed in store by ward + bed
+      const match = state.beds.find(
+        (b) =>
+          b.facilityId === record.facilityId &&
+          (b.ward.toLowerCase() === record.ward.toLowerCase() ||
+            formatStandardBedKey(b.ward, 'RM01', b.bedNo) === record.bedKey)
+      );
+      if (match && match.status !== 'occupied') {
+        state.beds = state.beds.map((b) =>
+          b.id === match.id
+            ? {
+                ...b,
+                status: 'occupied' as const,
+                patient: record.patientName,
+                hospitalNumber: record.hospitalNumber,
+                diagnosis: record.diagnosis,
+                doctor: record.doctor,
+                admitDate: new Date(record.admittedAt).toLocaleDateString('en-GB', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                }),
+                admitAt: record.admittedAt,
+                updatedAt: new Date().toISOString(),
+              }
+            : b
+        );
+        save(state);
+      }
+    } else if (action === 'discharge' && record) {
+      const match = state.beds.find(
+        (b) =>
+          b.facilityId === record.facilityId &&
+          formatStandardBedKey(b.ward, 'RM01', b.bedNo) === record.bedKey
+      );
+      if (match) {
+        state.beds = state.beds.map((b) =>
+          b.id === match.id
+            ? {
+                ...b,
+                status: 'cleaning' as const,
+                patient: undefined,
+                hospitalNumber: undefined,
+                diagnosis: undefined,
+                admitDate: undefined,
+                admitAt: undefined,
+                updatedAt: new Date().toISOString(),
+              }
+            : b
+        );
+        save(state);
+      }
+    } else if (action === 'clean' && bedKey) {
+      const match = state.beds.find(
+        (b) => formatStandardBedKey(b.ward, 'RM01', b.bedNo) === bedKey
+      );
+      if (match && match.status === 'cleaning') {
+        state.beds = state.beds.map((b) =>
+          b.id === match.id
+            ? {
+                ...b,
+                status: 'available' as const,
+                updatedAt: new Date().toISOString(),
+              }
+            : b
+        );
+        save(state);
+      }
+    }
+  });
+}
+

@@ -674,7 +674,8 @@ export function listActiveStaffCardsForFacility(facilityId: string): StaffCardRe
     const st = String(c.status || 'ACTIVE').toUpperCase();
     if (st !== 'ACTIVE') return false;
     if (!fid) return true;
-    return String(c.facilityId || '').toUpperCase() === fid;
+    const cardFid = String(c.facilityId || '').trim().toUpperCase();
+    return !cardFid || cardFid === fid;
   });
 }
 
@@ -1085,9 +1086,32 @@ export function deleteStaffMember(badgeId: string): boolean {
       /* ignore */
     }
 
+    // Terminate current local session immediately if this deleted staff is currently logged in
+    try {
+      const curRaw = localStorage.getItem('medcore_os_session');
+      if (curRaw) {
+        const sess = JSON.parse(curRaw);
+        if (String(sess.badgeId || '').toUpperCase().replace(/\s+/g, '') === id) {
+          localStorage.removeItem('medcore_os_session');
+          sessionStorage.removeItem('medcore_session_pin');
+          window.dispatchEvent(new CustomEvent('medcore-force-logout', { detail: { reason: 'revoked', badgeId: id } }));
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
     if (facilityId) {
       try {
         removeStaffPresence(id, facilityId);
+      } catch {
+        /* ignore */
+      }
+      // Call Postgres staff API deletion (best-effort)
+      try {
+        fetch(`/api/staff?facilityId=${encodeURIComponent(facilityId)}&badgeId=${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        }).catch(() => {});
       } catch {
         /* ignore */
       }

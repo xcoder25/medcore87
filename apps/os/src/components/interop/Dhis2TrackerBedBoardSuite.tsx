@@ -3,30 +3,51 @@
 /**
  * Dhis2TrackerBedBoardSuite
  *
- * Implements Part 2 of the Technical Guide:
- * - Color-coded physical ward grid:
- *     • Green (Available): Bed ID is empty in active patient list
- *     • Red (Occupied): Bed ID matches active trackedEntityInstance
- *     • Yellow (Dirty / Turnover): Bed ID matches patient discharged within the last 2 hours
- * - Standardized string convention: WARD-ROOM-BED (e.g. ICU-RM102-B1)
- * - Stage journey visualizer: Stage 1 Admission -> Stage 2 Clinical Care -> Stage 3 Discharge
- * - Instant actions: Admit via Tracker, Transfer Bed, Discharge Patient (COMPLETED), Mark Clean
- * - 1-Click DHIS2 Metadata Package JSON Export
+ * Implements full DHIS2 Inpatient Interoperability:
+ * 1. Micro-Level Tracker Data Model:
+ *     - Color-coded physical ward grid (Green: Available, Red: Occupied, Yellow: 2h Turnover)
+ *     - Standardized string convention: WARD-ROOM-BED (e.g. ICU-RM102-B1, MMED-RM01-B1)
+ *     - 4-Stage Patient Journey Visualizer:
+ *         Stage 1: Admission & Bed Allocation
+ *         Stage 2: Clinical Care / Daily Vitals (Repeatable)
+ *         Stage 3: Bed / Ward Transfer (Repeatable)
+ *         Stage 4: Discharge & Disposition
+ *     - Direct actions: Admit, Record Vitals, Transfer, Discharge (trigger 2h turnover), Mark Clean
+ * 2. Macro-Level Aggregate Data Model:
+ *     - Real-time Bed Occupancy Rate (BOR %)
+ *     - Average Length of Stay (ALOS days)
+ *     - Bed Turnover Interval (BTI) & Turnover Rate (BTR)
+ *     - Inpatient Bed Days in Period
+ * 3. 1-Click Exports & Auto-Sync:
+ *     - Full DHIS2 Inpatient Metadata Package JSON Export
+ *     - DHIS2 Aggregate DataValueSet JSON Export
+ *     - Direct Web API Auto-Submission to DHIS2 proxy (/api/dhis2/submit)
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   calculateSimulatedBedBoard,
   admitPatientTracker,
   transferPatientBedTracker,
+  recordInpatientVitalsTracker,
   dischargePatientTracker,
   clearBedTurnover,
   subscribeDhis2Tracker,
   buildDhis2MetadataPackage,
+  formatStandardBedKey,
   type SimulatedBedStatus,
+  type StandardBedLocation,
+  DEFAULT_HOSPITAL_BED_KEYS,
 } from '../../lib/dhis2TrackerBedBridge';
 import {
+  calculateInpatientIndicators,
+  downloadDhis2Aggregate,
+  autoSubmitDhis2,
+} from '../../lib/dhis2Export';
+import { listBeds } from '../../lib/bedBoardStore';
+import {
   BedDouble, CheckCircle2, AlertTriangle, Clock, RefreshCw,
-  Download, Plus, ArrowRight, UserCheck, Stethoscope, FileText, Sparkles, X, Activity, User
+  Download, Plus, ArrowRight, UserCheck, Stethoscope, FileText,
+  Sparkles, X, Activity, User, Send, BarChart3, ShieldCheck
 } from 'lucide-react';
 
 interface Props {
@@ -45,6 +66,8 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
   const [showAdmitModal, setShowAdmitModal] = useState<boolean>(false);
   const [showTransferModal, setShowTransferModal] = useState<boolean>(false);
   const [showDischargeModal, setShowDischargeModal] = useState<boolean>(false);
+  const [showVitalsModal, setShowVitalsModal] = useState<boolean>(false);
+  const [isSubmittingAggregate, setIsSubmittingAggregate] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
 
@@ -52,6 +75,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
   const [admitForm, setAdmitForm] = useState({
     patientName: '',
     hospitalNumber: '',
+    doctor: '',
     diagnosis: '',
     priority: 'routine' as 'routine' | 'urgent' | 'emergency',
   });
@@ -60,13 +84,23 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
     newWard: 'Male Medical',
     newRoom: 'RM02',
     newBed: 'B1',
+    reason: '',
   });
 
-  const [dischargeOutcome, setDischargeOutcome] = useState<'discharged' | 'referred' | 'deceased'>('discharged');
+  const [vitalsForm, setVitalsForm] = useState({
+    bp: '120/80',
+    pulse: 76,
+    temp: 36.8,
+    spo2: 98,
+    respRate: 18,
+    notes: 'Patient stable, resting comfortably.',
+  });
+
+  const [dischargeOutcome, setDischargeOutcome] = useState<'discharged' | 'referred' | 'deceased' | 'absconded'>('discharged');
 
   const flash = (msg: string) => {
     setNotice(msg);
-    setTimeout(() => setNotice(null), 3500);
+    setTimeout(() => setNotice(null), 4000);
   };
 
   const reload = () => setVersion((v) => v + 1);
@@ -80,9 +114,28 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
     };
   }, []);
 
-  const beds = useMemo(() => {
-    return calculateSimulatedBedBoard(facilityId, 2);
+  // Map facility clinical beds into standard locations
+  const bedLocations: StandardBedLocation[] = useMemo(() => {
+    const clinicalBeds = listBeds(facilityId);
+    if (clinicalBeds && clinicalBeds.length > 0) {
+      return clinicalBeds.map((b) => ({
+        ward: b.ward,
+        roomNumber: 'RM01',
+        bedNumber: b.bedNo,
+        standardKey: formatStandardBedKey(b.ward, 'RM01', b.bedNo),
+      }));
+    }
+    return DEFAULT_HOSPITAL_BED_KEYS;
   }, [facilityId, version]);
+
+  const beds = useMemo(() => {
+    return calculateSimulatedBedBoard(facilityId, 2, bedLocations);
+  }, [facilityId, version, bedLocations]);
+
+  // Macro-level DHIS2 Inpatient Indicators
+  const macroKpis = useMemo(() => {
+    return calculateInpatientIndicators(facilityId, 30);
+  }, [facilityId, version, beds]);
 
   const filteredBeds = useMemo(() => {
     if (selectedWard === 'all') return beds;
@@ -105,7 +158,28 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    flash('DHIS2 Inpatient Tracker Metadata JSON exported.');
+    flash('DHIS2 Inpatient Tracker Metadata JSON exported (Programs, Stages, Indicators).');
+  };
+
+  const handleDownloadAggregateJson = () => {
+    downloadDhis2Aggregate(facilityId);
+    flash('DHIS2 Aggregate DataValueSet JSON exported (BOR, ALOS, Bed Days).');
+  };
+
+  const handlePushAggregateToDhis2 = async () => {
+    setIsSubmittingAggregate(true);
+    try {
+      const result = await autoSubmitDhis2(facilityId);
+      if (result.ok) {
+        flash(`DHIS2 Web API Accepted: ${result.message}`);
+      } else {
+        flash(`DHIS2 Push: ${result.message}`);
+      }
+    } catch {
+      flash('Error communicating with DHIS2 bridge proxy');
+    } finally {
+      setIsSubmittingAggregate(false);
+    }
   };
 
   const handleAdmitSubmit = (e: React.FormEvent) => {
@@ -119,14 +193,15 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
       ward: selectedBed.ward,
       room: selectedBed.room,
       bed: selectedBed.bed,
+      doctor: admitForm.doctor.trim() || 'Attending Clinician',
       diagnosis: admitForm.diagnosis.trim() || 'General Inpatient Observation',
       priority: admitForm.priority,
     });
 
     setShowAdmitModal(false);
-    setAdmitForm({ patientName: '', hospitalNumber: '', diagnosis: '', priority: 'routine' });
+    setAdmitForm({ patientName: '', hospitalNumber: '', doctor: '', diagnosis: '', priority: 'routine' });
     reload();
-    flash(`Patient admitted to ${selectedBed.bedKey} via DHIS2 Tracker.`);
+    flash(`Patient enrolled & admitted to ${selectedBed.bedKey} via DHIS2 Tracker.`);
   };
 
   const handleTransferSubmit = (e: React.FormEvent) => {
@@ -137,13 +212,32 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
       selectedBed.patient.enrollmentId,
       transferForm.newWard,
       transferForm.newRoom,
-      transferForm.newBed
+      transferForm.newBed,
+      transferForm.reason
     );
 
     setShowTransferModal(false);
     setSelectedBed(null);
     reload();
     flash(`Patient transferred to ${transferForm.newWard}-${transferForm.newRoom}-${transferForm.newBed}.`);
+  };
+
+  const handleVitalsSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBed?.patient) return;
+
+    recordInpatientVitalsTracker(selectedBed.patient.enrollmentId, {
+      bp: vitalsForm.bp,
+      pulse: Number(vitalsForm.pulse),
+      temp: Number(vitalsForm.temp),
+      spo2: Number(vitalsForm.spo2),
+      respRate: Number(vitalsForm.respRate),
+      notes: vitalsForm.notes,
+    });
+
+    setShowVitalsModal(false);
+    reload();
+    flash('Stage 2: Daily Vitals & Progress Note recorded into DHIS2 Tracker.');
   };
 
   const handleDischargeSubmit = (e: React.FormEvent) => {
@@ -163,6 +257,12 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
     flash(`Bed ${bedKey} marked cleaned and sanitized. State updated to Available (Green).`);
   };
 
+  // Distinct wards in current bed list
+  const availableWards = useMemo(() => {
+    const set = new Set(beds.map((b) => b.ward));
+    return ['all', ...Array.from(set).sort()];
+  }, [beds]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Toast Notification */}
@@ -178,7 +278,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Header & Architecture Overview Bar */}
+      {/* Header & Interoperability Bar */}
       <div style={{
         background: '#FFFFFF',
         borderRadius: 16,
@@ -202,17 +302,23 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', letterSpacing: -0.3 }}>
-                DHIS2 Tracker · Simulated Bed Board
+                DHIS2 Tracker & Inpatient Bed Bureau
               </span>
               <span style={{
                 background: '#ECFDF5', color: '#065F46', border: '1px solid #A7F3D0',
                 borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 700
               }}>
-                WARD-ROOM-BED Standard Active
+                WARD-ROOM-BED Active
+              </span>
+              <span style={{
+                background: '#F0F9FF', color: '#0369A1', border: '1px solid #BAE6FD',
+                borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 700
+              }}>
+                Macro & Micro Dual-Model
               </span>
             </div>
             <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
-              Patient-level Tracker Programs cross-referenced with physical bed inventory for real-time ward logistics
+              Patient-level Tracker stages cross-referenced with real-time physical bed inventory & aggregate indicators
             </div>
           </div>
         </div>
@@ -227,7 +333,31 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
               borderRadius: 10, fontSize: 12, fontWeight: 700, color: '#0F172A', cursor: 'pointer'
             }}
           >
-            <Download size={14} color="#2563EB" /> Export DHIS2 Metadata JSON
+            <Download size={14} color="#2563EB" /> Tracker Metadata JSON
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadAggregateJson}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: '#F8FAFC', border: '1px solid #CBD5E1', padding: '8px 14px',
+              borderRadius: 10, fontSize: 12, fontWeight: 700, color: '#0F172A', cursor: 'pointer'
+            }}
+          >
+            <BarChart3 size={14} color="#0D9488" /> Aggregate DataValueSet JSON
+          </button>
+          <button
+            type="button"
+            onClick={handlePushAggregateToDhis2}
+            disabled={isSubmittingAggregate}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: '#0D9488', border: 'none', padding: '8px 14px',
+              borderRadius: 10, fontSize: 12, fontWeight: 700, color: '#FFFFFF', cursor: 'pointer',
+              opacity: isSubmittingAggregate ? 0.7 : 1,
+            }}
+          >
+            <Send size={13} /> {isSubmittingAggregate ? 'Submitting…' : 'Push to DHIS2'}
           </button>
           <button
             type="button"
@@ -238,12 +368,88 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
               borderRadius: 10, fontSize: 12, fontWeight: 700, color: '#FFFFFF', cursor: 'pointer'
             }}
           >
-            <RefreshCw size={13} /> Refresh Board
+            <RefreshCw size={13} /> Refresh
           </button>
         </div>
       </div>
 
-      {/* Real-time State Indicators / KPIs */}
+      {/* ── MACRO-LEVEL AGGREGATE INDICATORS BAR ────────────────────────────────────── */}
+      <div style={{
+        background: '#0B1220',
+        borderRadius: 16,
+        padding: '16px 22px',
+        color: '#FFFFFF',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+        gap: 16,
+        border: '1px solid rgba(255,255,255,0.08)',
+      }}>
+        {/* Bed Occupancy Rate (BOR %) */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 11, color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Bed Occupancy Rate (BOR)
+            </span>
+            <span style={{
+              fontSize: 10,
+              fontWeight: 800,
+              padding: '1px 8px',
+              borderRadius: 999,
+              background: macroKpis.bedOccupancyRate > 85 ? '#EF4444' : macroKpis.bedOccupancyRate >= 70 ? '#10B981' : '#F59E0B',
+              color: '#FFFFFF',
+            }}>
+              {macroKpis.statusLabel}
+            </span>
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: '#38BDF8', marginTop: 4 }}>
+            {macroKpis.bedOccupancyRate}%
+          </div>
+          <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+            Formula: (Patient Days / (Available Beds × 30)) × 100 (Benchmark 70–85%)
+          </div>
+        </div>
+
+        {/* Average Length of Stay (ALOS) */}
+        <div>
+          <div style={{ fontSize: 11, color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Average Length of Stay (ALOS)
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: '#FCD34D', marginTop: 4 }}>
+            {macroKpis.avgLengthOfStay} <span style={{ fontSize: 14, fontWeight: 600, color: '#CBD5E1' }}>days</span>
+          </div>
+          <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+            Formula: Patient Days / Discharges ({macroKpis.dischargesCount} discharges)
+          </div>
+        </div>
+
+        {/* Bed Turnover Interval (BTI) */}
+        <div>
+          <div style={{ fontSize: 11, color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Bed Turnover Interval (BTI)
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: '#A7F3D0', marginTop: 4 }}>
+            {macroKpis.bedTurnoverInterval} <span style={{ fontSize: 14, fontWeight: 600, color: '#CBD5E1' }}>days</span>
+          </div>
+          <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+            Average vacant days between patients
+          </div>
+        </div>
+
+        {/* Total Inpatient Bed Days */}
+        <div>
+          <div style={{ fontSize: 11, color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Total Inpatient Days (Period)
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: '#F472B6', marginTop: 4 }}>
+            {macroKpis.inpatientDays} <span style={{ fontSize: 14, fontWeight: 600, color: '#CBD5E1' }}>bed days</span>
+          </div>
+          <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+            Cumulative patient days across {macroKpis.totalBeds} total beds
+          </div>
+        </div>
+      </div>
+
+      {/* ── REAL-TIME BED OCCUPANCY STATUS CARDS ────────────────────────────────────── */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
@@ -260,7 +466,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
             <User size={20} />
           </div>
           <div>
-            <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>Occupied Beds</div>
+            <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>Occupied Beds (Red)</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#DC2626' }}>{occupiedCount}</div>
             <div style={{ fontSize: 11, color: '#DC2626', fontWeight: 600 }}>Active Inpatient Enrollment</div>
           </div>
@@ -277,7 +483,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
             <Clock size={20} />
           </div>
           <div>
-            <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>Cleaning / Turnover</div>
+            <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>Cleaning / Turnover (Yellow)</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#B45309' }}>{cleaningCount}</div>
             <div style={{ fontSize: 11, color: '#B45309', fontWeight: 600 }}>Discharged within &lt; 2 hrs</div>
           </div>
@@ -294,7 +500,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
             <CheckCircle2 size={20} />
           </div>
           <div>
-            <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>Available Beds</div>
+            <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>Available Beds (Green)</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#16A34A' }}>{availableCount}</div>
             <div style={{ fontSize: 11, color: '#16A34A', fontWeight: 600 }}>Ready for Admission</div>
           </div>
@@ -311,10 +517,10 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
             <Activity size={20} />
           </div>
           <div>
-            <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>Total Ward Capacity</div>
+            <div style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>Total Facility Census</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#0F172A' }}>{beds.length}</div>
             <div style={{ fontSize: 11, color: '#2563EB', fontWeight: 600 }}>
-              {Math.round((occupiedCount / beds.length) * 100)}% Census
+              {beds.length ? Math.round((occupiedCount / beds.length) * 100) : 0}% Real-time Utilization
             </div>
           </div>
         </div>
@@ -333,7 +539,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
         gap: 12,
       }}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {['all', 'ICU', 'Male Medical', 'Female Medical', 'Surgical', 'Paediatrics', 'Maternity'].map((w) => (
+          {availableWards.map((w) => (
             <button
               key={w}
               type="button"
@@ -366,7 +572,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#EAB308' }} />
-            <span style={{ color: '#B45309' }}>Yellow: Dirty (&lt; 2h Turnover)</span>
+            <span style={{ color: '#B45309' }}>Yellow: Turnover (&lt; 2h)</span>
           </div>
         </div>
       </div>
@@ -380,16 +586,16 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
       }}>
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: '#0F172A' }}>
-            Hospital Ward Physical Bed Map
+            Hospital Ward Bed Matrix (Standard WARD-ROOM-BED)
           </div>
           <div style={{ fontSize: 12, color: '#64748B' }}>
-            Click an available bed to admit via Tracker, or an occupied bed to view stages, transfer, or discharge
+            Click an available bed to admit via Tracker, or an occupied bed to view stages, record daily vitals, transfer, or discharge
           </div>
         </div>
 
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
           gap: 12,
         }}>
           {filteredBeds.map((bed) => {
@@ -457,8 +663,15 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
                       <div style={{ fontSize: 11, color: '#64748B' }}>
                         {bed.patient.hospitalNumber} · {bed.patient.diagnosis || 'Inpatient'}
                       </div>
-                      <div style={{ fontSize: 10, color: '#DC2626', marginTop: 4, fontWeight: 700 }}>
-                        DHIS2 TEI: {bed.patient.teiId.slice(0, 10)}...
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                        <span style={{ fontSize: 10, color: '#DC2626', fontWeight: 700 }}>
+                          TEI: {bed.patient.teiId.slice(0, 10)}…
+                        </span>
+                        {bed.patient.losDays !== undefined && (
+                          <span style={{ fontSize: 10, color: '#2563EB', fontWeight: 700 }}>
+                            LOS: {bed.patient.losDays}d
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}
@@ -475,7 +688,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
                         Discharged {bed.discharge.minutesSinceDischarge}m ago
                       </div>
                       <div style={{ fontSize: 10, color: '#64748B' }}>
-                        Outcome: {bed.discharge.outcome.toUpperCase()}
+                        Disposition: {bed.discharge.outcome.toUpperCase()}
                       </div>
                       <button
                         type="button"
@@ -526,9 +739,9 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
                   fontSize: 10,
                   color: '#64748B',
                 }}>
-                  <span>DHIS2 Code: {bed.bed}</span>
+                  <span>Code: {bed.bed}</span>
                   <span style={{ fontWeight: 700, color: bed.color }}>
-                    {isOcc ? 'View Profile →' : isClean ? 'Turnover Active' : 'Unallocated'}
+                    {isOcc ? 'View Profile / Stages →' : isClean ? 'Turnover Active' : 'Unallocated'}
                   </span>
                 </div>
               </div>
@@ -537,7 +750,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* ── MODAL: PATIENT DHIS2 TRACKER PROFILE & ACTIONS ─────────────────────────── */}
+      {/* ── MODAL: PATIENT DHIS2 TRACKER PROFILE & 4-STAGE JOURNEY ────────────────── */}
       {selectedBed && selectedBed.state === 'occupied' && selectedBed.patient && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 99999,
@@ -545,7 +758,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
         }}>
           <div style={{
-            background: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 580,
+            background: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 620,
             boxShadow: '0 24px 60px rgba(0,0,0,0.3)', overflow: 'hidden',
           }}>
             <div style={{
@@ -554,7 +767,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
             }}>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 800 }}>
-                  DHIS2 Tracker · Inpatient Profile
+                  DHIS2 Tracker · Inpatient Encounter
                 </div>
                 <div style={{ fontSize: 12, color: '#94A3B8' }}>
                   TEI: {selectedBed.patient.teiId} · Enrollment: {selectedBed.patient.enrollmentId}
@@ -585,21 +798,29 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
                   <div style={{ fontSize: 12, color: '#334155', marginTop: 2 }}>
                     Diagnosis: <strong>{selectedBed.patient.diagnosis}</strong>
                   </div>
+                  {selectedBed.patient.doctor && (
+                    <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                      Attending: {selectedBed.patient.doctor}
+                    </div>
+                  )}
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 11, color: '#64748B' }}>Assigned Location</div>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: '#2563EB' }}>
+                  <div style={{ fontSize: 11, color: '#64748B' }}>Assigned Bed</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#2563EB' }}>
                     {selectedBed.bedKey}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#0D9488', fontWeight: 700, marginTop: 2 }}>
+                    LOS: {selectedBed.patient.losDays ?? 0} days
                   </div>
                 </div>
               </div>
 
-              {/* 3-Stage Patient Journey Visualizer */}
+              {/* 4-Stage Patient Journey Visualizer */}
               <div>
                 <div style={{ fontSize: 13, fontWeight: 800, color: '#0F172A', marginBottom: 8 }}>
-                  DHIS2 Tracker Stages (Longitudinal Patient Journey)
+                  DHIS2 Tracker Stages (Longitudinal Encounter)
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                   <div style={{
                     background: '#ECFDF5', border: '1px solid #A7F3D0', padding: 10, borderRadius: 8
                   }}>
@@ -610,44 +831,184 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
                   <div style={{
                     background: '#EFF6FF', border: '1px solid #BFDBFE', padding: 10, borderRadius: 8
                   }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: '#1D4ED8' }}>Stage 2: Clinical Care</div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: '#1D4ED8' }}>Stage 2: Vitals / Meds</div>
                     <div style={{ fontSize: 10, color: '#1E40AF', marginTop: 2 }}>REPEATABLE · ACTIVE</div>
-                    <div style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>Daily Vitals & Meds</div>
+                    <div style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>Daily Census</div>
                   </div>
                   <div style={{
-                    background: '#F1F5F9', border: '1px solid #CBD5E1', padding: 10, borderRadius: 8
+                    background: '#F8FAFC', border: '1px solid #E2E8F0', padding: 10, borderRadius: 8
                   }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: '#475569' }}>Stage 3: Discharge</div>
-                    <div style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>PENDING</div>
-                    <div style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>Frees Bed on Complete</div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: '#475569' }}>Stage 3: Transfer</div>
+                    <div style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>REPEATABLE</div>
+                    <div style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>Ward/Bed Realloc</div>
+                  </div>
+                  <div style={{
+                    background: '#FEF2F2', border: '1px solid #FECACA', padding: 10, borderRadius: 8
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: '#B91C1C' }}>Stage 4: Discharge</div>
+                    <div style={{ fontSize: 10, color: '#991B1B', marginTop: 2 }}>PENDING</div>
+                    <div style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>Closes Enrollment</div>
                   </div>
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid #E2E8F0' }}>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid #E2E8F0', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowVitalsModal(true)}
+                  style={{
+                    padding: '8px 14px', borderRadius: 8, border: '1px solid #BFDBFE',
+                    background: '#EFF6FF', color: '#1D4ED8', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  <Stethoscope size={14} /> Record Daily Vitals (Stage 2)
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowTransferModal(true)}
                   style={{
-                    padding: '8px 16px', borderRadius: 8, border: '1px solid #CBD5E1',
+                    padding: '8px 14px', borderRadius: 8, border: '1px solid #CBD5E1',
                     background: '#FFF', color: '#0F172A', fontSize: 12, fontWeight: 700, cursor: 'pointer'
                   }}
                 >
-                  🔄 Transfer Bed / Ward (PUT /events)
+                  🔄 Transfer Bed (Stage 3)
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowDischargeModal(true)}
                   style={{
-                    padding: '8px 16px', borderRadius: 8, border: 'none',
+                    padding: '8px 14px', borderRadius: 8, border: 'none',
                     background: '#DC2626', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer'
                   }}
                 >
-                  🚪 Discharge & Free Bed (COMPLETED)
+                  🚪 Discharge & Free Bed (Stage 4)
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: RECORD DAILY VITALS (STAGE 2) ─────────────────────────────────── */}
+      {showVitalsModal && selectedBed?.patient && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 100000,
+          background: 'rgba(15,23,42,0.65)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        }}>
+          <div style={{
+            background: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 460,
+            boxShadow: '0 24px 60px rgba(0,0,0,0.3)', overflow: 'hidden',
+          }}>
+            <div style={{
+              background: '#0B1220', color: '#FFF', padding: '16px 20px',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>
+                  Stage 2: Record Clinical Vitals
+                </div>
+                <div style={{ fontSize: 12, color: '#94A3B8' }}>
+                  {selectedBed.patient.patientName} · {selectedBed.bedKey}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowVitalsModal(false)}
+                style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleVitalsSubmit} style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
+                    BP (mmHg)
+                  </label>
+                  <input
+                    type="text"
+                    value={vitalsForm.bp}
+                    onChange={(e) => setVitalsForm({ ...vitalsForm, bp: e.target.value })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
+                    Pulse (bpm)
+                  </label>
+                  <input
+                    type="number"
+                    value={vitalsForm.pulse}
+                    onChange={(e) => setVitalsForm({ ...vitalsForm, pulse: Number(e.target.value) })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
+                    Temp (°C)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={vitalsForm.temp}
+                    onChange={(e) => setVitalsForm({ ...vitalsForm, temp: Number(e.target.value) })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
+                    SpO2 (%)
+                  </label>
+                  <input
+                    type="number"
+                    value={vitalsForm.spo2}
+                    onChange={(e) => setVitalsForm({ ...vitalsForm, spo2: Number(e.target.value) })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
+                  Clinical Progress Note
+                </label>
+                <textarea
+                  rows={3}
+                  value={vitalsForm.notes}
+                  onChange={(e) => setVitalsForm({ ...vitalsForm, notes: e.target.value })}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowVitalsModal(false)}
+                  style={{
+                    padding: '8px 16px', borderRadius: 8, border: '1px solid #CBD5E1',
+                    background: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: '8px 18px', borderRadius: 8, border: 'none',
+                    background: '#2563EB', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                  }}
+                >
+                  Save Stage 2 Event
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -699,17 +1060,31 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
                 />
               </div>
 
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
-                  Hospital Number (MRN)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. GH-2026-0891"
-                  value={admitForm.hospitalNumber}
-                  onChange={(e) => setAdmitForm({ ...admitForm, hospitalNumber: e.target.value })}
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
+                    Hospital Number (MRN)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. GH-2026-0891"
+                    value={admitForm.hospitalNumber}
+                    onChange={(e) => setAdmitForm({ ...admitForm, hospitalNumber: e.target.value })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
+                    Attending Doctor
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Dr. Bassey"
+                    value={admitForm.doctor}
+                    onChange={(e) => setAdmitForm({ ...admitForm, doctor: e.target.value })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+                  />
+                </div>
               </div>
 
               <div>
@@ -756,11 +1131,10 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
                   type="submit"
                   style={{
                     padding: '8px 18px', borderRadius: 8, border: 'none',
-                    background: '#16A34A', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                    display: 'inline-flex', alignItems: 'center', gap: 6
+                    background: '#16A34A', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer'
                   }}
                 >
-                  <CheckCircle2 size={14} /> Enroll & Occupy Bed
+                  Enroll & Assign Bed
                 </button>
               </div>
             </form>
@@ -768,7 +1142,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
         </div>
       )}
 
-      {/* ── MODAL: TRANSFER BED (UPDATE LOCATION EVENT) ─────────────────────────────── */}
+      {/* ── MODAL: TRANSFER BED / WARD (STAGE 3) ──────────────────────────────────── */}
       {showTransferModal && selectedBed?.patient && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 100000,
@@ -783,8 +1157,13 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
               background: '#0B1220', color: '#FFF', padding: '16px 20px',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
-              <div style={{ fontSize: 15, fontWeight: 800 }}>
-                Transfer Inpatient Bed (PUT /events)
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>
+                  Transfer Patient Bed (Stage 3)
+                </div>
+                <div style={{ fontSize: 12, color: '#94A3B8' }}>
+                  Currently in {selectedBed.bedKey}
+                </div>
               </div>
               <button
                 type="button"
@@ -796,25 +1175,21 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
             </div>
 
             <form onSubmit={handleTransferSubmit} style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ fontSize: 12, color: '#64748B' }}>
-                Transferring <strong>{selectedBed.patient.patientName}</strong> from <strong>{selectedBed.bedKey}</strong>
-              </div>
-
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
-                  Target Ward *
+                  Destination Ward *
                 </label>
                 <select
                   value={transferForm.newWard}
                   onChange={(e) => setTransferForm({ ...transferForm, newWard: e.target.value })}
                   style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
                 >
-                  <option>Male Medical</option>
-                  <option>Female Medical</option>
-                  <option>Surgical</option>
-                  <option>ICU</option>
-                  <option>Paediatrics</option>
-                  <option>Maternity</option>
+                  <option value="Male Medical">Male Medical</option>
+                  <option value="Female Medical">Female Medical</option>
+                  <option value="Surgical">Surgical</option>
+                  <option value="ICU">ICU</option>
+                  <option value="Paediatrics">Paediatrics</option>
+                  <option value="Maternity">Maternity</option>
                 </select>
               </div>
 
@@ -845,6 +1220,19 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
                 </div>
               </div>
 
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
+                  Clinical Reason for Transfer
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Stepped down from ICU to Medical Ward"
+                  value={transferForm.reason}
+                  onChange={(e) => setTransferForm({ ...transferForm, reason: e.target.value })}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+                />
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 6 }}>
                 <button
                   type="button"
@@ -871,7 +1259,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
         </div>
       )}
 
-      {/* ── MODAL: DISCHARGE PATIENT & TRIGGER 2-HOUR TURNOVER ─────────────────────── */}
+      {/* ── MODAL: DISCHARGE PATIENT & TRIGGER 2-HOUR TURNOVER (STAGE 4) ──────────── */}
       {showDischargeModal && selectedBed?.patient && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 100000,
@@ -903,12 +1291,12 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
                 background: '#FEF3C7', border: '1px solid #FDE68A', padding: 10, borderRadius: 8,
                 fontSize: 12, color: '#B45309', lineHeight: 1.4
               }}>
-                Completing Stage 3: Discharge closes the DHIS2 enrollment (status: COMPLETED) and automatically transitions <strong>{selectedBed.bedKey}</strong> into a 2-hour Turnover / Cleaning state (Yellow).
+                Completing Stage 4: Discharge closes the DHIS2 enrollment (status: COMPLETED), records length of stay, and automatically transitions <strong>{selectedBed.bedKey}</strong> into a 2-hour Turnover / Cleaning state (Yellow).
               </div>
 
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
-                  Discharge Outcome *
+                  Discharge Disposition *
                 </label>
                 <select
                   value={dischargeOutcome}
@@ -916,7 +1304,8 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
                   style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
                 >
                   <option value="discharged">Discharged Home (Stable)</option>
-                  <option value="referred">Referred to Tertiary Hospital</option>
+                  <option value="referred">Referred to Higher Facility / Tertiary</option>
+                  <option value="absconded">Absconded / Discharge Against Medical Advice</option>
                   <option value="deceased">Deceased</option>
                 </select>
               </div>

@@ -9,8 +9,9 @@ import { AdminWorkspace } from './AdminWorkspace';
 import {
   LayoutDashboard, Users, Building2, Activity, BedDouble, RefreshCw, PhoneCall,
   Lock, Shield, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus, Settings, Key,
-  Brain, Sparkles, ChevronDown,
+  Brain, Sparkles, ChevronDown, Landmark, ArrowRightLeft, ClipboardList, IdCard,
 } from 'lucide-react';
+import { MyStaffIdPanel } from '../staffing/MyStaffIdPanel';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 import { UserProfileModal } from '../auth/UserProfileModal';
 import { M87AICopilotSuite } from '../ai-insights/M87AICopilotSuite';
@@ -31,6 +32,8 @@ import { AdminSettings } from '../admin/AdminSettings';
 import { ClinicalOrdersPanel } from '../clinical-core/ClinicalOrdersPanel';
 import { AdminAmbulanceDesk } from '../operations/AdminAmbulanceDesk';
 import { StaffEnrolment } from '../staffing/StaffEnrolment';
+import { NotificationCentre } from '../notifications/NotificationCentre';
+import { AkwaRemitRevenueSuite } from '../finance/AkwaRemitRevenueSuite';
 import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
 import { ModulePageLoader } from '../layout/ModulePageLoader';
@@ -59,8 +62,11 @@ type AdminModule =
   | 'enrolment'
   | 'compliance'
   | 'cashier'
+  | 'akwaremit'
   | 'settings'
   | 'clinical-orders'
+  | 'notifications'
+  | 'my-card'
   | 'm87-ai';
 
 interface NavItem {
@@ -83,15 +89,26 @@ const NAV: NavSection[] = [
       { key: 'command', label: 'Hospital Command Centre', icon: Activity },
       { key: 'beds', label: 'Clinical Bed Census', icon: BedDouble },
       { key: 'cashier', label: 'Revenue & Finance', icon: BarChart3 },
+      { key: 'akwaremit', label: 'AkwaRemit State Revenue', icon: Landmark },
+      { key: 'notifications', label: 'Admin In-Basket', icon: Bell },
     ],
   },
   {
     label: 'Workforce & Operations',
     items: [
       { key: 'rbac', label: 'Staff Access & Directory', icon: Lock },
+      { key: 'enrolment', label: 'Staff Enrolment & ID Cards', icon: UserPlus },
+      { key: 'my-card', label: 'My Administrator ID Card', icon: IdCard },
       { key: 'staffing', label: 'Staff Presence & Rosters', icon: Users },
-      { key: 'transfer', label: 'Hospital Staff Transfer', icon: Users },
+      { key: 'transfer', label: 'Hospital Staff Transfer', icon: ArrowRightLeft },
+      { key: 'patient-flow', label: 'Patient Flow Visibility', icon: RefreshCw },
       { key: 'ambulance', label: 'Ambulance & Dispatch', icon: PhoneCall },
+    ],
+  },
+  {
+    label: 'Clinical & Orders',
+    items: [
+      { key: 'clinical-orders', label: 'Clinical Orders & CPOE', icon: ClipboardList },
     ],
   },
   {
@@ -259,15 +276,21 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'role-permissions':
         return <RolePermissionsMatrix />;
       case 'enrolment':
-        return <AccessControl session={session} />;
+        return <StaffEnrolment session={session} />;
       case 'compliance':
         return <ComplianceAuditLogs />;
       case 'cashier':
         return <AdminRevenueOverview session={session} />;
+      case 'akwaremit':
+        return <AkwaRemitRevenueSuite session={session} />;
+      case 'notifications':
+        return <NotificationCentre session={session} />;
+      case 'my-card':
+        return <MyStaffIdPanel session={session} />;
       case 'settings':
         return <AdminSettings session={session} />;
       case 'clinical-orders':
-        return <AdminWorkspace session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
+        return <ClinicalOrdersPanel session={session} />;
       case 'm87-ai':
         return <M87AICopilotSuite session={session} onNavigate={(k: string) => goModule(k as AdminModule)} />;
       default:
@@ -325,7 +348,12 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
           ))}
         </nav>
 
-        <div className="admin-shell-user">
+        <div
+          className="admin-shell-user"
+          onClick={() => goModule('my-card')}
+          style={{ cursor: 'pointer' }}
+          title="View My Administrator ID Card"
+        >
           <div className="admin-shell-avatar">{initials}</div>
           {!collapsed && (
             <div className="admin-shell-user-meta">

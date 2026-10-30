@@ -52,7 +52,7 @@ import { listPatients, hydratePatientRegistry } from '../lib/patientRegistryStor
 import { hydrateBedBoard } from '../lib/bedBoardStore';
 import { normalizeStaffPin, firebaseSignInWithBadge } from '../lib/firebase';
 import { enableEdgeCloudOnlyRuntime } from '../lib/edgeCloudOnly';
-import { markStaffOffline } from '../lib/staffPresenceStore';
+import { markStaffOffline, isStaffRevokedLocal } from '../lib/staffPresenceStore';
 import { roleCanAccessModule, getModulesForRole } from '../lib/rolePermissionsStore';
 import {
   inferRoleKey,
@@ -254,6 +254,13 @@ export default function OSPage() {
       const saved = localStorage.getItem('medcore_os_session');
       if (saved) {
         const restored = JSON.parse(saved) as UserSession;
+        if (restored?.badgeId && isStaffRevokedLocal(restored.badgeId, restored.hospitalId || '')) {
+          localStorage.removeItem('medcore_os_session');
+          if (typeof window !== 'undefined') sessionStorage.removeItem('medcore_session_pin');
+          setUserSession(null);
+          setAppState('auth');
+          return;
+        }
         const roleKey = inferRoleKey(
           restored.roleKey || restored.role || restored.title,
           restored.badgeId
