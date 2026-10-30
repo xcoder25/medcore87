@@ -50,7 +50,7 @@ const FALLBACK_SERVICE_ACCOUNT: Record<string, string> = {
   universe_domain: 'googleapis.com',
 };
 
-function loadServiceAccount(): Record<string, string> | null {
+function loadServiceAccount(): Record<string, string> {
   const rawJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
   if (rawJson) {
     try {
@@ -58,10 +58,11 @@ function loadServiceAccount(): Record<string, string> | null {
       if (parsed.private_key) {
         parsed.private_key = String(parsed.private_key).replace(/\\n/g, '\n');
       }
-      return parsed;
+      if (parsed.client_email && parsed.private_key) {
+        return parsed;
+      }
     } catch (e) {
-      console.error('[firebaseAdmin] Invalid FIREBASE_SERVICE_ACCOUNT_JSON', e);
-      return null;
+      console.warn('[firebaseAdmin] Invalid FIREBASE_SERVICE_ACCOUNT_JSON, falling back to embedded', e);
     }
   }
   const b64 = (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 || '').trim();
@@ -74,12 +75,14 @@ function loadServiceAccount(): Record<string, string> | null {
       if (parsed.private_key) {
         parsed.private_key = String(parsed.private_key).replace(/\\n/g, '\n');
       }
-      return parsed;
+      if (parsed.client_email && parsed.private_key) {
+        return parsed;
+      }
     } catch (e) {
-      console.error('[firebaseAdmin] Invalid FIREBASE_SERVICE_ACCOUNT_BASE64', e);
-      return null;
+      console.warn('[firebaseAdmin] Invalid FIREBASE_SERVICE_ACCOUNT_BASE64, falling back to embedded', e);
     }
   }
+  // Hardcoded server fallback so Auth delete and facility flush work reliably across OS
   return { ...FALLBACK_SERVICE_ACCOUNT };
 }
 

@@ -780,7 +780,7 @@ export const StaffEnrolment: React.FC<Props> = ({ session }) => {
                             const fid = facility?.id || facilityId;
                             await Promise.allSettled([
                               fid ? firestoreRevokeStaff(fid, id, { name }) : Promise.resolve(),
-                              deleteStaffFirebaseAuth({ badgeId: id }),
+                              deleteStaffFirebaseAuth({ badgeId: id, email: deleteTarget.email || undefined, facilityId: fid }),
                             ]);
                           } catch {
                             /* best-effort */

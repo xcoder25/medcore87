@@ -801,6 +801,7 @@ export async function deleteStaffFirebaseAuth(opts: {
   badgeId: string;
   pin?: string;
   email?: string;
+  facilityId?: string;
 }): Promise<{ badgeDeleted: boolean; emailDeleted: boolean }> {
   const badge = String(opts.badgeId || '').toUpperCase().replace(/\s+/g, '');
   const pin = normalizeStaffPin(opts.pin || '');
@@ -836,6 +837,7 @@ export async function deleteStaffFirebaseAuth(opts: {
       body: JSON.stringify({
         badgeId: badge,
         email: opts.email || undefined,
+        facilityId: opts.facilityId || undefined,
       }),
     });
     if (res.ok) {
