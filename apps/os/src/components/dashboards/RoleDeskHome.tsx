@@ -135,52 +135,90 @@ export const RoleDeskHome: React.FC<Props> = ({ session, onNavigate, config, ext
         staffName={session.name}
         onNavigate={onNavigate}
       />
+
+      {/* QUICK ACTIONS COMES FIRST (Hero section removed) */}
       <div
-        className={`mc-hero-fluid${heroTheme ? ` ${heroTheme}` : ''}`}
         style={{
-          borderRadius: 20,
-          overflow: 'hidden',
-          color: '#fff',
-          position: 'relative',
-          minHeight: 140,
-          padding: '22px 28px',
+          background: '#fff',
+          borderRadius: 16,
+          border: `1px solid ${C.border}`,
+          padding: '16px 18px',
+          boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
         }}
       >
-        <div style={{ fontSize: 14, opacity: 0.9 }}>Welcome back, {firstName} 👋</div>
-        <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: -0.4, marginTop: 4 }}>{config.title}</div>
-        <div style={{ fontSize: 13, opacity: 0.88, maxWidth: 480, marginTop: 6, lineHeight: 1.45 }}>
-          {config.subtitle}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A' }}>Quick Actions</div>
+            <div style={{ fontSize: 12, color: C.muted }}>Immediate workstation tools · {config.title}</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                background: '#ECFDF5',
+                color: '#059669',
+                border: '1px solid #A7F3D0',
+                borderRadius: 999,
+                padding: '3px 10px',
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981' }} />
+              Live Online
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', background: '#F1F5F9', padding: '3px 10px', borderRadius: 999 }}>
+              {config.badge}
+            </span>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              background: 'rgba(255,255,255,0.18)',
-              borderRadius: 999,
-              padding: '5px 12px',
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ADE80' }} />
-            Systems online
-          </span>
-          <span
-            style={{
-              background: 'rgba(255,255,255,0.12)',
-              borderRadius: 999,
-              padding: '5px 12px',
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            {config.badge}
-          </span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
+          {config.quick.map((q) => {
+            const Icon = q.icon;
+            return (
+              <button
+                key={q.label}
+                type="button"
+                className="mc-btn-live"
+                onClick={() => {
+                  emitLiveAction(`Open ${q.label}`, { module: q.go });
+                  onNavigate(q.go);
+                }}
+                style={{
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 12,
+                  background: '#F8FAFC',
+                  padding: '12px 10px',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    background: accentColor ? `${accentColor}18` : '#EFF6FF',
+                    color: accentColor || C.blue,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 6px',
+                  }}
+                >
+                  <Icon size={18} />
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 12, color: '#0F172A' }}>{q.label}</div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
+      {/* KPIs & Metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 12 }}>
         {kpis.map((k) => {
           const Icon = k.icon;
@@ -214,91 +252,6 @@ export const RoleDeskHome: React.FC<Props> = ({ session, onNavigate, config, ext
             </div>
           );
         })}
-      </div>
-
-      <div
-        style={{
-          background: '#fff',
-          borderRadius: 16,
-          border: `1px solid ${C.border}`,
-          padding: 18,
-        }}
-      >
-        <div style={{ fontWeight: 800, fontSize: 15 }}>Quick Actions</div>
-        <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Jump to tools for this role</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
-          {config.quick.map((q) => {
-            const Icon = q.icon;
-            return (
-              <button
-                key={q.label}
-                type="button"
-                className="mc-btn-live"
-                onClick={() => {
-                  emitLiveAction(`Open ${q.label}`, { module: q.go });
-                  onNavigate(q.go);
-                }}
-                style={{
-                  border: `1px solid ${C.border}`,
-                  borderRadius: 14,
-                  background: '#F8FAFC',
-                  padding: '14px 10px',
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                }}
-              >
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 12,
-                    background: accentColor ? `${accentColor}18` : '#EFF6FF',
-                    color: accentColor || C.blue,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    margin: '0 auto 8px',
-                  }}
-                >
-                  <Icon size={18} />
-                </div>
-                <div style={{ fontSize: 12, fontWeight: 700 }}>{q.label}</div>
-                <div style={{ fontSize: 10, color: C.muted }}>{q.desc}</div>
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            className="mc-btn-live"
-            onClick={() => onNavigate('m87-ai')}
-            style={{
-              border: `1px solid ${C.border}`,
-              borderRadius: 14,
-              background: '#F5F3FF',
-              padding: '14px 10px',
-              cursor: 'pointer',
-              textAlign: 'center',
-            }}
-          >
-            <div
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 12,
-                background: '#EDE9FE',
-                color: '#7C3AED',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 8px',
-              }}
-            >
-              <Brain size={18} />
-            </div>
-            <div style={{ fontSize: 12, fontWeight: 700 }}>Celestia</div>
-            <div style={{ fontSize: 10, color: C.muted }}>Assistant</div>
-          </button>
-        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>

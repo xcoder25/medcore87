@@ -101,7 +101,7 @@ const MASTER_PILLARS: NavSection[] = [
     items: [
       { key: 'auth', icon: Shield, label: 'Staff sign-in & identity' },
       { key: 'facility', icon: Building2, label: 'Hospital Facility Setup' },
-      { key: 'rbac', icon: Lock, label: 'Role-Based Access Control' },
+      { key: 'rbac', icon: Shield, label: 'Staff Access & Enrolment' },
       { key: 'compliance', icon: FileText, label: 'Clinical Audit & Quality Logs' },
       { key: 'safety', icon: ShieldCheck, label: 'Consent & Business Continuity' },
       { key: 'sysadmin', icon: Settings, label: 'System Administration' },
@@ -205,6 +205,38 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
             { key: 'emr', icon: FileText, label: 'Operative notes & EMR' },
             { key: 'm87-ai', icon: Brain, label: 'Celestia surgical AI', badge: 'AI' },
             { key: 'appointments', icon: Calendar, label: 'Surgical schedule', badge: 'Appt' },
+            { key: 'my-card', icon: IdCard, label: 'My staff ID' },
+          ],
+        },
+      ];
+
+    case 'triage_nurse':
+    case 'emergency_nurse':
+      return [
+        {
+          label: 'Triage Navigator (ASAP / FirstNet)',
+          items: [
+            { key: 'emergency', icon: Flame, label: 'A&E Emergency Triage (ESI 1-5)', badge: 'STAT' },
+            { key: 'triage', icon: Heart, label: 'Rapid Triage Flowsheet & Vitals', badge: 'NEWS2' },
+            { key: 'patient-flow', icon: RefreshCw, label: 'A&E Inflow & Transit Board', badge: 'Live' },
+            { key: 'beds', icon: BedDouble, label: 'Resus & Observation Beds', badge: 'Beds' },
+            { key: 'notifications', icon: Bell, label: 'STAT Alerts & Escalations', badge: 'Alerts' },
+          ],
+        },
+        {
+          label: 'Clinical Workup & Fast-Track',
+          items: [
+            { key: 'patient-360', icon: Users, label: 'Patient Chart & Alerts', badge: 'Chart' },
+            { key: 'pharmacy', icon: Pill, label: 'Stat / Resus Medications', badge: 'Rx' },
+            { key: 'laboratory', icon: FlaskConical, label: 'Point-of-Care & STAT Labs', badge: 'STAT' },
+            { key: 'radiology', icon: Layers, label: 'Trauma & Acute Imaging', badge: 'FAST' },
+          ],
+        },
+        {
+          label: 'Dispatch & Intake',
+          items: [
+            { key: 'ambulance', icon: PhoneCall, label: 'Ambulance Arrival & Dispatch', badge: '999' },
+            { key: 'universal-queue', icon: Clock, label: 'A&E Waiting Bay Queue', badge: 'Queue' },
             { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
@@ -479,7 +511,7 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
             { key: 'akwaremit', icon: Landmark, label: 'AkwaRemit State Revenue', badge: 'AKS' },
             { key: 'revenue-cycle', icon: BarChart3, label: 'Revenue Cycle & Accounting' },
             { key: 'compliance', icon: FileText, label: 'MoH Compliance & Audit Logs' },
-            { key: 'rbac', icon: Lock, label: 'Staff Access Control' },
+            { key: 'rbac', icon: Shield, label: 'Staff Access & Enrolment' },
             { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },
@@ -491,8 +523,8 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
           label: 'Executive Command',
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Executive Dashboard', badge: 'Admin' },
-            { key: 'command', icon: Activity, label: 'Hospital overview' },
-            { key: 'beds', icon: BedDouble, label: 'Clinical bed census' },
+            { key: 'command', icon: Activity, label: 'Hospital Command Centre' },
+            { key: 'beds', icon: BedDouble, label: 'Hospital Bed Census' },
             { key: 'notifications', icon: Bell, label: 'Admin In Basket', badge: 'Alerts' },
           ],
         },
@@ -501,7 +533,6 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
           items: [
             { key: 'transfer', icon: Users, label: 'Hospital Staff Transfer' },
             { key: 'staffing', icon: Users, label: 'Staffing & Rosters' },
-            { key: 'facility', icon: Building2, label: 'Hospital Management' },
             { key: 'patient-flow', icon: RefreshCw, label: 'Patient Flow Visibility' },
             { key: 'ambulance', icon: PhoneCall, label: 'Ambulance & Dispatch' },
           ],
@@ -509,8 +540,8 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
         {
           label: 'Identity, Security & Finance',
           items: [
-            { key: 'rbac', icon: Lock, label: 'Staff Access Control' },
-            { key: 'enrolment', icon: Users, label: 'Staff Enrolment & ID' },
+            { key: 'rbac', icon: Shield, label: 'Staff Access & Enrolment' },
+            { key: 'facility', icon: Building2, label: 'Hospital Management' },
             { key: 'compliance', icon: FileText, label: 'Compliance & Audit' },
             { key: 'akwaremit', icon: Landmark, label: 'AkwaRemit Revenue Hub', badge: 'AKS' },
             { key: 'cashier', icon: BarChart3, label: 'Revenue & Cashier' },
@@ -533,7 +564,7 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
         {
           label: 'Security & IAM Governance',
           items: [
-            { key: 'rbac', icon: Lock, label: 'Role-Based Access Control', badge: 'Admin' },
+            { key: 'rbac', icon: Shield, label: 'Staff Access & Enrolment', badge: 'Admin' },
             { key: 'auth', icon: Shield, label: 'Staff sign-in & identity' },
             { key: 'facility', icon: Building2, label: 'Hospital Facility Setup' },
             { key: 'my-card', icon: IdCard, label: 'My staff ID' },

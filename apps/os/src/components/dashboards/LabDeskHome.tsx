@@ -718,74 +718,61 @@ export const LabDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
         </div>
       )}
 
-      {/* 1. Hero Laboratory Command Header */}
+      {/* 1. COMPACT LABORATORY TOOLBAR (Hero removed, Actions First) */}
       <div style={{
-        background: 'linear-gradient(135deg, #083344 0%, #0E7490 55%, #06B6D4 100%)',
-        borderRadius: 18,
-        padding: '22px 26px',
-        color: '#FFFFFF',
-        boxShadow: '0 10px 25px rgba(8, 145, 178, 0.25)',
+        background: '#FFFFFF',
+        borderRadius: 16,
+        padding: '16px 20px',
+        border: '1px solid #E2E8F0',
+        boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
         display: 'flex',
         flexWrap: 'wrap',
         justifyContent: 'space-between',
         alignItems: 'center',
-        gap: 16,
+        gap: 12,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{
-            width: 52, height: 52, borderRadius: 14,
-            background: 'rgba(255,255,255,0.16)',
+            width: 40, height: 40, borderRadius: 10,
+            background: '#F0FDFA', color: '#0D9488',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            border: '1px solid rgba(255,255,255,0.25)',
+            border: '1px solid #CCFBF1',
           }}>
-            <FlaskConical size={28} color="#FFFFFF" />
+            <FlaskConical size={22} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
-                Laboratory Operations & LIS Desk
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h1 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A', letterSpacing: '-0.02em' }}>
+                Laboratory Operations &amp; LIS Desk
               </h1>
               <span style={{
-                background: 'rgba(255,255,255,0.2)', padding: '3px 10px', borderRadius: 99,
-                fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em'
+                background: '#ECFDF5', color: '#059669', padding: '2px 8px', borderRadius: 99,
+                fontSize: '0.68rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 4,
+                border: '1px solid #A7F3D0',
               }}>
-                Facility: {facilityId}
-              </span>
-              <span style={{
-                background: '#10B981', color: '#FFFFFF', padding: '3px 10px', borderRadius: 99,
-                fontSize: '0.72rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 4
-              }}>
-                <Radio size={12} />
+                <Radio size={10} />
                 LIS BUS LIVE
               </span>
             </div>
-            <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#E0F2FE', maxWidth: 680 }}>
-              Live phlebotomy queue, automated accessioning, multi-analyte delta-check verification, microbiology antibiograms, and instant EHR results release.
-            </p>
+            <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: 2 }}>
+              Facility: <strong>{facilityId}</strong> · Cold Chain: <strong style={{ color: '#059669' }}>+3.8°C (Normal)</strong>
+            </div>
           </div>
         </div>
 
-        {/* Live Status Indicators & Quick Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <div style={{
-            background: 'rgba(0,0,0,0.22)', padding: '8px 14px', borderRadius: 10,
-            fontSize: '0.76rem', display: 'flex', flexDirection: 'column', gap: 2
-          }}>
-            <span style={{ color: '#BAE6FD', fontWeight: 600 }}>Cold Chain Storage</span>
-            <span style={{ color: '#67E8F9', fontWeight: 800 }}>+3.8°C (Normal)</span>
-          </div>
-
+        {/* Primary Laboratory Quick Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={() => setShowDirectOrderModal(true)}
             style={{
-              background: '#FFFFFF', color: '#0E7490', border: 'none',
+              background: 'linear-gradient(135deg, #0284C7, #0D9488)', color: '#FFFFFF', border: 'none',
               padding: '9px 16px', borderRadius: 10, fontWeight: 700, fontSize: '0.82rem',
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
             }}
           >
-            <Plus size={16} />
+            <Plus size={15} />
             + Direct Lab Order
           </button>
 
@@ -793,14 +780,28 @@ export const LabDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
             type="button"
             onClick={() => setActiveTab('accession')}
             style={{
-              background: 'rgba(255,255,255,0.18)', color: '#FFFFFF',
-              border: '1px solid rgba(255,255,255,0.3)', padding: '9px 14px',
+              background: '#F8FAFC', color: '#0F172A',
+              border: '1px solid #CBD5E1', padding: '9px 14px',
               borderRadius: 10, fontWeight: 700, fontSize: '0.82rem',
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
             }}
           >
-            <Barcode size={16} />
+            <Barcode size={15} />
             Scan / Accession
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('phlebotomy')}
+            style={{
+              background: '#F8FAFC', color: '#0F172A',
+              border: '1px solid #CBD5E1', padding: '9px 14px',
+              borderRadius: 10, fontWeight: 700, fontSize: '0.82rem',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            <Users size={15} />
+            Phlebotomy Queue
           </button>
         </div>
       </div>

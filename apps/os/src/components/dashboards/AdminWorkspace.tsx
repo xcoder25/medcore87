@@ -392,15 +392,47 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
         </div>
       )}
 
-      <section className="admin-hero">
-        <div className="admin-hero-copy">
-          <h1>
-            {greeting()}, {session.roleKey === 'hospital_admin' ? 'Administrator' : firstName}{' '}
-            <span aria-hidden>👋</span>
-          </h1>
-          <p>
-            Here&apos;s what&apos;s happening at <strong>{facility}</strong> today.
-          </p>
+      {/* QUICK ACTIONS COMES FIRST (Hero removed) */}
+      <section className="admin-quick" style={{ marginTop: 0, padding: '16px 20px', background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div>
+            <div className="admin-quick-title" style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0F172A' }}>
+              Quick Actions
+            </div>
+            <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+              Executive commands &amp; operational desks · {facility}
+            </div>
+          </div>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#0D9488', background: '#CCFBF1', padding: '3px 10px', borderRadius: 999 }}>
+            Live Sync
+          </span>
+        </div>
+        <div className="admin-quick-row">
+          <button type="button" className="admin-qa primary" onClick={() => onNavigate('transfer')}>
+            <ArrowRightLeft size={14} /> New Staff Transfer
+          </button>
+          <button type="button" className="admin-qa" onClick={() => onNavigate('enrolment')}>
+            <UserPlus size={14} /> Enrol Staff
+          </button>
+          <button type="button" className="admin-qa" onClick={() => onNavigate('rbac')}>
+            <Users size={14} /> Staff Access
+          </button>
+          <button type="button" className="admin-qa" onClick={() => notify('Open staffing to edit rosters', 'staffing')}>
+            <CalendarDays size={14} /> Create Roster
+          </button>
+          <button
+            type="button"
+            className="admin-qa"
+            onClick={() => {
+              pushActivity('Incident reported from admin dashboard');
+              notify('Incident noted — open Compliance to follow up', 'compliance');
+            }}
+          >
+            <AlertTriangle size={14} /> Report Incident
+          </button>
+          <button type="button" className="admin-qa" onClick={() => onNavigate('beds')}>
+            <BedDouble size={14} /> Bed Census &amp; Assign
+          </button>
         </div>
       </section>
 
@@ -428,34 +460,6 @@ export const AdminWorkspace: React.FC<Props> = ({ session, onNavigate }) => {
             </button>
           );
         })}
-      </section>
-
-      <section className="admin-quick">
-        <div className="admin-quick-title">Quick Actions</div>
-        <div className="admin-quick-row">
-          <button type="button" className="admin-qa primary" onClick={() => onNavigate('transfer')}>
-            <ArrowRightLeft size={14} /> New Staff Transfer
-          </button>
-          <button type="button" className="admin-qa" onClick={() => onNavigate('rbac')}>
-            <UserPlus size={14} /> Add Staff
-          </button>
-          <button type="button" className="admin-qa" onClick={() => notify('Open staffing to edit rosters', 'staffing')}>
-            <CalendarDays size={14} /> Create Roster
-          </button>
-          <button
-            type="button"
-            className="admin-qa"
-            onClick={() => {
-              pushActivity('Incident reported from admin dashboard');
-              notify('Incident noted — open Compliance to follow up', 'compliance');
-            }}
-          >
-            <AlertTriangle size={14} /> Report Incident
-          </button>
-          <button type="button" className="admin-qa" onClick={() => onNavigate('beds')}>
-            <BedDouble size={14} /> Assign Bed
-          </button>
-        </div>
       </section>
 
       <section className="admin-grid-3">

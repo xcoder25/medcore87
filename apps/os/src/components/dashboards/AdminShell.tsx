@@ -8,8 +8,8 @@ import type { UserSession } from '../auth/AuthScreen';
 import { AdminWorkspace } from './AdminWorkspace';
 import {
   LayoutDashboard, Users, Building2, Activity, BedDouble, RefreshCw, PhoneCall,
-  Lock, Shield, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, UserPlus, Settings, Key,
-  Brain, Sparkles, ChevronDown, Landmark, ArrowRightLeft, ClipboardList, IdCard,
+  Lock, Shield, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, Settings,
+  Brain, Sparkles, ChevronDown, Landmark, ArrowRightLeft, IdCard,
 } from 'lucide-react';
 import { MyStaffIdPanel } from '../staffing/MyStaffIdPanel';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
@@ -29,19 +29,15 @@ import { RolePermissionsMatrix } from '../rbac/RolePermissionsMatrix';
 import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
 import { AdminRevenueOverview } from '../admin/AdminRevenueOverview';
 import { AdminSettings } from '../admin/AdminSettings';
-import { ClinicalOrdersPanel } from '../clinical-core/ClinicalOrdersPanel';
 import { AdminAmbulanceDesk } from '../operations/AdminAmbulanceDesk';
-import { StaffEnrolment } from '../staffing/StaffEnrolment';
 import { NotificationCentre } from '../notifications/NotificationCentre';
 import { AkwaRemitRevenueSuite } from '../finance/AkwaRemitRevenueSuite';
 import NotificationBell from '../realtime/NotificationBell';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
-import { ModulePageLoader } from '../layout/ModulePageLoader';
-import { ensureCleanPilot, setActiveFacilityId, KEYS as ADMIN_KEYS } from '../../lib/adminRealtimeStore';
-import { startFacilitySyncLoop, probeHospitalApi, isHospitalApiKnown } from '../../lib/hospitalSync';
+import { ensureCleanPilot, setActiveFacilityId } from '../../lib/adminRealtimeStore';
+import { startFacilitySyncLoop, probeHospitalApi } from '../../lib/hospitalSync';
 import { firestoreSubscribeFacility, enableFirestoreOffline } from '../../lib/firebase';
-import { getOutboxPendingCount, startOutboxAutoFlush, flushOutbox } from '../../lib/durableOutbox';
-import { isBrowserOnline } from '../../services/offlineStorage';
+import { getOutboxPendingCount, startOutboxAutoFlush } from '../../lib/durableOutbox';
 import {
   applyCloudStaffDirectory,
   isStaffFlushLocked,
@@ -64,7 +60,6 @@ type AdminModule =
   | 'cashier'
   | 'akwaremit'
   | 'settings'
-  | 'clinical-orders'
   | 'notifications'
   | 'my-card'
   | 'm87-ai';
@@ -87,7 +82,7 @@ const NAV: NavSection[] = [
       { key: 'dashboard', label: 'Executive Dashboard', icon: LayoutDashboard },
       { key: 'm87-ai', label: 'Celestia Astra (Admin AI)', icon: Brain },
       { key: 'command', label: 'Hospital Command Centre', icon: Activity },
-      { key: 'beds', label: 'Clinical Bed Census', icon: BedDouble },
+      { key: 'beds', label: 'Hospital Bed Census', icon: BedDouble },
       { key: 'cashier', label: 'Revenue & Finance', icon: BarChart3 },
       { key: 'akwaremit', label: 'AkwaRemit State Revenue', icon: Landmark },
       { key: 'notifications', label: 'Admin In-Basket', icon: Bell },
@@ -96,28 +91,21 @@ const NAV: NavSection[] = [
   {
     label: 'Workforce & Operations',
     items: [
-      { key: 'rbac', label: 'Staff Access & Directory', icon: Lock },
-      { key: 'enrolment', label: 'Staff Enrolment & ID Cards', icon: UserPlus },
-      { key: 'my-card', label: 'My Administrator ID Card', icon: IdCard },
+      { key: 'rbac', label: 'Staff Access & Enrolment', icon: Shield },
       { key: 'staffing', label: 'Staff Presence & Rosters', icon: Users },
       { key: 'transfer', label: 'Hospital Staff Transfer', icon: ArrowRightLeft },
       { key: 'patient-flow', label: 'Patient Flow Visibility', icon: RefreshCw },
       { key: 'ambulance', label: 'Ambulance & Dispatch', icon: PhoneCall },
-    ],
-  },
-  {
-    label: 'Clinical & Orders',
-    items: [
-      { key: 'clinical-orders', label: 'Clinical Orders & CPOE', icon: ClipboardList },
+      { key: 'my-card', label: 'My Administrator ID Card', icon: IdCard },
     ],
   },
   {
     label: 'Identity, Security & Governance',
     items: [
-      { key: 'role-permissions', label: 'Role Visibility & Matrix', icon: Shield },
+      { key: 'role-permissions', label: 'Role Visibility & Matrix', icon: Lock },
       { key: 'compliance', label: 'Compliance & Audit Logs', icon: FileText },
-      { key: 'facility', label: 'Clinical Facility Profile', icon: Building2 },
-      { key: 'settings', label: 'Hospital Settings & Identity', icon: Settings },
+      { key: 'facility', label: 'Hospital Facility Setup', icon: Building2 },
+      { key: 'settings', label: 'Hospital Settings & Configuration', icon: Settings },
     ],
   },
 ];
@@ -147,7 +135,6 @@ function formatNow(): string {
 export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [module, setModule] = useState<AdminModule>('dashboard');
   const [moduleHistory, setModuleHistory] = useState<AdminModule[]>([]);
-  const [moduleLoading, setModuleLoading] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [clock, setClock] = useState(formatNow);
   const [search, setSearch] = useState('');
@@ -272,11 +259,11 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'ambulance':
         return <AdminAmbulanceDesk />;
       case 'rbac':
-        return <AccessControl session={session} />;
+        return <AccessControl session={session} initialTab="directory" onNavigate={(k) => goModule(k as AdminModule)} />;
       case 'role-permissions':
         return <RolePermissionsMatrix />;
       case 'enrolment':
-        return <StaffEnrolment session={session} />;
+        return <AccessControl session={session} initialTab="enrol" onNavigate={(k) => goModule(k as AdminModule)} />;
       case 'compliance':
         return <ComplianceAuditLogs />;
       case 'cashier':
@@ -289,8 +276,6 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         return <MyStaffIdPanel session={session} />;
       case 'settings':
         return <AdminSettings session={session} />;
-      case 'clinical-orders':
-        return <ClinicalOrdersPanel session={session} />;
       case 'm87-ai':
         return <M87AICopilotSuite session={session} onNavigate={(k: string) => goModule(k as AdminModule)} />;
       default:

@@ -235,12 +235,12 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   ];
 
   const quick = [
-    { label: 'Open EMR', desc: 'Records & notes', icon: FileText, go: 'emr' },
-    { label: 'Consultations', desc: 'See & treat', icon: Stethoscope, go: 'doctor-portal' },
-    { label: 'Lab orders', desc: 'Order & track', icon: FlaskConical, go: 'laboratory' },
-    { label: 'Prescribe', desc: 'e-Prescription', icon: Pill, go: 'pharmacy' },
-    { label: 'Imaging', desc: 'Radiology / PACS', icon: Layers, go: 'radiology' },
-    { label: 'AI assistant', desc: 'Celestia clinical help', icon: Brain, go: 'm87-ai' },
+    { label: 'Open EMR', desc: 'Records & notes', icon: FileText, go: 'emr', color: '#2563EB' },
+    { label: 'Consultations', desc: 'See & treat', icon: Stethoscope, go: 'doctor-portal', color: '#0D9488' },
+    { label: 'Lab orders', desc: 'Order & track', icon: FlaskConical, go: 'laboratory', color: '#7C3AED' },
+    { label: 'Prescribe', desc: 'e-Prescription', icon: Pill, go: 'pharmacy', color: '#EA580C' },
+    { label: 'Imaging', desc: 'Radiology / PACS', icon: Layers, go: 'radiology', color: '#0891B2' },
+    { label: 'AI assistant', desc: 'Celestia clinical help', icon: Brain, go: 'm87-ai', color: '#DB2777' },
   ];
 
   const callPatient = (v: ReceptionVisit) => {
@@ -601,89 +601,87 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
         )}
       </div>
 
-      {/* Hero */}
+      {/* 1. QUICK ACTIONS COMES FIRST (Hero removed) */}
       <div
-        className="mc-hero-fluid"
         style={{
-          borderRadius: 20,
-          overflow: 'hidden',
-          color: '#fff',
-          position: 'relative',
-          minHeight: 148,
-          display: 'flex',
-          alignItems: 'stretch',
+          background: '#fff',
+          borderRadius: 16,
+          border: `1px solid ${C.border}`,
+          padding: '16px 18px',
+          boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
         }}
       >
-        <div style={{ padding: '22px 28px', flex: 1, zIndex: 1, maxWidth: '70%' }}>
-          <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 4 }}>
-            Welcome back, {firstName} 👋
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Quick Actions</div>
+            <div style={{ fontSize: 12, color: C.muted }}>Instant physician workstation tools · OPD, CPOE & Wards</div>
           </div>
-          <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: -0.4, marginBottom: 6 }}>
-            Clinical Desk
-          </div>
-          <div style={{ fontSize: 13, opacity: 0.88, maxWidth: 440, lineHeight: 1.45 }}>
-            See patients, review results, order labs and prescriptions — one continuous clinical loop.
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 6,
-                background: 'rgba(255,255,255,0.18)',
-                border: '1px solid rgba(255,255,255,0.25)',
+                gap: 5,
+                background: '#ECFDF5',
+                color: '#059669',
+                border: '1px solid #A7F3D0',
                 borderRadius: 999,
-                padding: '5px 12px',
-                fontSize: 12,
-                fontWeight: 600,
+                padding: '3px 10px',
+                fontSize: 11,
+                fontWeight: 700,
               }}
             >
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: '50%',
-                  background: '#4ADE80',
-                  boxShadow: '0 0 0 3px rgba(74,222,128,0.35)',
-                }}
-              />
-              Clinical systems online
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981' }} />
+              Clinical Systems Live
             </span>
-            <span
-              style={{
-                background: 'rgba(255,255,255,0.12)',
-                borderRadius: 999,
-                padding: '5px 12px',
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              {session.department || 'Medical'} · {patients.length} registered patients
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', background: '#F1F5F9', padding: '3px 10px', borderRadius: 999 }}>
+              {session.department || 'Medical'} · {patients.length} Registered
             </span>
           </div>
         </div>
-        <div
-          style={{
-            position: 'absolute',
-            right: 28,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            textAlign: 'right',
-            zIndex: 2,
-            maxWidth: 180,
-          }}
-        >
-          <HeartPulse size={36} style={{ opacity: 0.9 }} />
-          <div style={{ fontSize: 13, fontStyle: 'italic', opacity: 0.95, marginTop: 8, lineHeight: 1.4 }}>
-            “ Better Care.
-            <br />
-            Smarter Systems.”
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 700, marginTop: 8, opacity: 0.85 }}>MedCore</div>
+        <div className="mc-stagger-desk" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
+          {quick.map((q) => {
+            const Icon = q.icon;
+            return (
+              <button
+                key={q.label}
+                type="button"
+                className="mc-btn-live"
+                onClick={() => onNavigate(q.go)}
+                style={{
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 12,
+                  background: '#F8FAFC',
+                  padding: '12px 10px',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    background: `${q.color}15`,
+                    color: q.color,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 6px',
+                  }}
+                >
+                  <Icon size={18} />
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{q.label}</div>
+                <div style={{ fontSize: 10, color: C.muted }}>{q.desc}</div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* 2. Clinical KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 12 }}>
         {kpi.map((k) => {
           const Icon = k.icon;
@@ -723,61 +721,6 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Quick actions */}
-          <div
-            style={{
-              background: '#fff',
-              borderRadius: 16,
-              border: `1px solid ${C.border}`,
-              padding: 18,
-              boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
-            }}
-          >
-            <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Quick Actions</div>
-            <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>
-              Jump to the tools you use every shift
-            </div>
-            <div className="mc-stagger-desk" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
-              {quick.map((q) => {
-                const Icon = q.icon;
-                return (
-                  <button
-                    key={q.label}
-                    type="button"
-                    className="mc-btn-live"
-                    onClick={() => onNavigate(q.go)}
-                    style={{
-                      border: `1px solid ${C.border}`,
-                      borderRadius: 14,
-                      background: '#F8FAFC',
-                      padding: '14px 10px',
-                      cursor: 'pointer',
-                      textAlign: 'center',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 12,
-                        background: '#EFF6FF',
-                        color: C.blue,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        margin: '0 auto 8px',
-                      }}
-                    >
-                      <Icon size={18} />
-                    </div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{q.label}</div>
-                    <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{q.desc}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Live clinic board */}
           <div
             style={{

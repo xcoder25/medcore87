@@ -2,7 +2,7 @@
 
 import { markPatientWithProvider } from '../../lib/receptionOpsStore';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { UserSession } from '../auth/AuthScreen';
 import { EMRManager } from '../gateway-modules/EMRManager';
 import { useRealtimeEvents } from '../../hooks/useRealtimeEvents';
@@ -29,7 +29,7 @@ import {
   Brain, TrendingUp, BarChart3, ArrowRight,
   MessageSquare, UserPlus, Siren, Clipboard,
   ChevronDown, ChevronUp, Save, X, Check,
-  AlertCircle, LogOut, Menu, Printer,
+  AlertCircle, LogOut, Menu, Printer, Trash2,
   FileCheck, ShieldCheck, HeartPulse,
   ChevronsRight, LifeBuoy, UserCheck, ExternalLink
 } from 'lucide-react';
@@ -778,20 +778,102 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
   );
 };
 
-// -- PRESCRIPTIONS -------------------------------------------------------------
+// -- PRESCRIPTIONS (MULTI-DRUG CPOE SUITE) -------------------------------------------------------------
+
+interface StagedPrescriptionItem {
+  id: string;
+  drugName: string;
+  category: string;
+  dose: string;
+  freq: string;
+  duration: string;
+  route: string;
+  instructions: string;
+  bpaAlerts: BpaAlert[];
+}
+
+const HOSPITAL_FORMULARY: { name: string; category: string; defaultDose: string; defaultFreq: string; defaultRoute: string; defaultDuration: string }[] = [
+  // Antibiotics & Anti-Infectives
+  { name: 'Amoxicillin 500mg (Cap)', category: 'Antibiotic', defaultDose: '500mg', defaultFreq: 'Three times daily (TDS)', defaultRoute: 'Oral', defaultDuration: '5 days' },
+  { name: 'Co-Amoxiclav 625mg (Augmentin)', category: 'Antibiotic', defaultDose: '625mg', defaultFreq: 'Twice daily (BD)', defaultRoute: 'Oral', defaultDuration: '7 days' },
+  { name: 'Ciprofloxacin 500mg', category: 'Antibiotic', defaultDose: '500mg', defaultFreq: 'Twice daily (BD)', defaultRoute: 'Oral', defaultDuration: '5 days' },
+  { name: 'Ceftriaxone 1g (Vial)', category: 'Antibiotic', defaultDose: '1g', defaultFreq: 'Once daily (OD)', defaultRoute: 'IV', defaultDuration: '3 days' },
+  { name: 'Metronidazole 400mg', category: 'Antibiotic', defaultDose: '400mg', defaultFreq: 'Three times daily (TDS)', defaultRoute: 'Oral', defaultDuration: '5 days' },
+  { name: 'Azithromycin 500mg', category: 'Antibiotic', defaultDose: '500mg', defaultFreq: 'Once daily (OD)', defaultRoute: 'Oral', defaultDuration: '3 days' },
+  { name: 'Doxycycline 100mg', category: 'Antibiotic', defaultDose: '100mg', defaultFreq: 'Twice daily (BD)', defaultRoute: 'Oral', defaultDuration: '7 days' },
+  { name: 'Gentamicin 80mg/2ml (Amp)', category: 'Antibiotic', defaultDose: '80mg', defaultFreq: 'Once daily (OD)', defaultRoute: 'IM', defaultDuration: '3 days' },
+  
+  // Antimalarials
+  { name: 'Artemether/Lumefantrine 80/480mg (Coartem)', category: 'Antimalarial', defaultDose: '1 tab', defaultFreq: 'Twice daily (BD)', defaultRoute: 'Oral', defaultDuration: '3 days' },
+  { name: 'Artesunate 60mg (Vial)', category: 'Antimalarial', defaultDose: '2.4mg/kg', defaultFreq: 'At 0, 12, 24h then OD', defaultRoute: 'IV', defaultDuration: '3 days' },
+  { name: 'Dihydroartemisinin/Piperaquine (P-Alaxin)', category: 'Antimalarial', defaultDose: '3 tabs', defaultFreq: 'Once daily (OD)', defaultRoute: 'Oral', defaultDuration: '3 days' },
+
+  // Analgesics & Anti-Inflammatory
+  { name: 'Paracetamol 500mg (Tabs)', category: 'Analgesic', defaultDose: '1000mg', defaultFreq: 'Three times daily (TDS)', defaultRoute: 'Oral', defaultDuration: '3 days' },
+  { name: 'Paracetamol 1g/100ml (Perfalgan IV)', category: 'Analgesic', defaultDose: '1g', defaultFreq: 'Six-hourly PRN', defaultRoute: 'IV', defaultDuration: '2 days' },
+  { name: 'Ibuprofen 400mg', category: 'Analgesic', defaultDose: '400mg', defaultFreq: 'Three times daily (TDS)', defaultRoute: 'Oral', defaultDuration: '5 days' },
+  { name: 'Diclofenac Sodium 50mg', category: 'Analgesic', defaultDose: '50mg', defaultFreq: 'Twice daily (BD)', defaultRoute: 'Oral', defaultDuration: '3 days' },
+  { name: 'Tramadol 50mg (Cap)', category: 'Analgesic', defaultDose: '50mg', defaultFreq: 'Twice daily (BD)', defaultRoute: 'Oral', defaultDuration: '3 days' },
+
+  // Antihypertensive & Cardiovascular
+  { name: 'Amlodipine 5mg', category: 'Cardiovascular', defaultDose: '5mg', defaultFreq: 'Once daily (OD - Morning)', defaultRoute: 'Oral', defaultDuration: '30 days' },
+  { name: 'Amlodipine 10mg', category: 'Cardiovascular', defaultDose: '10mg', defaultFreq: 'Once daily (OD - Morning)', defaultRoute: 'Oral', defaultDuration: '30 days' },
+  { name: 'Lisinopril 10mg', category: 'Cardiovascular', defaultDose: '10mg', defaultFreq: 'Once daily (OD - Morning)', defaultRoute: 'Oral', defaultDuration: '30 days' },
+  { name: 'Losartan Potassium 50mg', category: 'Cardiovascular', defaultDose: '50mg', defaultFreq: 'Once daily (OD)', defaultRoute: 'Oral', defaultDuration: '30 days' },
+  { name: 'Hydrochlorothiazide 25mg', category: 'Cardiovascular', defaultDose: '25mg', defaultFreq: 'Once daily (OD - Morning)', defaultRoute: 'Oral', defaultDuration: '30 days' },
+  { name: 'Furosemide 40mg (Lasix)', category: 'Cardiovascular', defaultDose: '40mg', defaultFreq: 'Once daily (OD - Morning)', defaultRoute: 'Oral', defaultDuration: '14 days' },
+  { name: 'Atenolol 50mg', category: 'Cardiovascular', defaultDose: '50mg', defaultFreq: 'Once daily (OD)', defaultRoute: 'Oral', defaultDuration: '30 days' },
+
+  // Antidiabetic & Metabolic
+  { name: 'Metformin 500mg', category: 'Endocrine', defaultDose: '500mg', defaultFreq: 'Twice daily (BD - With food)', defaultRoute: 'Oral', defaultDuration: '30 days' },
+  { name: 'Metformin 1000mg XR', category: 'Endocrine', defaultDose: '1000mg', defaultFreq: 'Once daily (OD - Night)', defaultRoute: 'Oral', defaultDuration: '30 days' },
+  { name: 'Glimepiride 2mg', category: 'Endocrine', defaultDose: '2mg', defaultFreq: 'Once daily (OD - Before breakfast)', defaultRoute: 'Oral', defaultDuration: '30 days' },
+  { name: 'Regular Insulin (Actrapid 100IU/ml)', category: 'Endocrine', defaultDose: '10 IU', defaultFreq: 'Three times daily (AC)', defaultRoute: 'SC', defaultDuration: '30 days' },
+
+  // Gastrointestinal & Antacids
+  { name: 'Omeprazole 20mg (Cap)', category: 'Gastrointestinal', defaultDose: '20mg', defaultFreq: 'Once daily (OD - 30m before breakfast)', defaultRoute: 'Oral', defaultDuration: '14 days' },
+  { name: 'Esomeprazole 40mg (Nexium)', category: 'Gastrointestinal', defaultDose: '40mg', defaultFreq: 'Once daily (OD)', defaultRoute: 'Oral', defaultDuration: '14 days' },
+  { name: 'Antacid Suspension (Magnesium/Aluminum)', category: 'Gastrointestinal', defaultDose: '15ml', defaultFreq: 'Three times daily (TDS - PC)', defaultRoute: 'Oral', defaultDuration: '7 days' },
+  { name: 'Hyoscine Butylbromide 10mg (Buscopan)', category: 'Gastrointestinal', defaultDose: '10mg', defaultFreq: 'Three times daily (TDS)', defaultRoute: 'Oral', defaultDuration: '3 days' },
+
+  // Respiratory & Antiallergic
+  { name: 'Salbutamol Inhaler 100mcg', category: 'Respiratory', defaultDose: '2 puffs', defaultFreq: 'PRN (As needed)', defaultRoute: 'Inhalation', defaultDuration: '30 days' },
+  { name: 'Loratadine 10mg', category: 'Respiratory', defaultDose: '10mg', defaultFreq: 'Once daily (OD)', defaultRoute: 'Oral', defaultDuration: '7 days' },
+  { name: 'Cetirizine 10mg', category: 'Respiratory', defaultDose: '10mg', defaultFreq: 'Once daily (OD - Night)', defaultRoute: 'Oral', defaultDuration: '7 days' },
+  { name: 'Prednisolone 5mg', category: 'Respiratory', defaultDose: '20mg', defaultFreq: 'Once daily (OD - Morning with food)', defaultRoute: 'Oral', defaultDuration: '5 days' },
+
+  // IV Fluids
+  { name: 'Normal Saline 0.9% 500ml', category: 'IV Fluids', defaultDose: '500ml', defaultFreq: 'Over 4 hours', defaultRoute: 'IV', defaultDuration: '1 day' },
+  { name: 'Dextrose 5% in 0.9% Saline 500ml', category: 'IV Fluids', defaultDose: '500ml', defaultFreq: 'Over 6 hours', defaultRoute: 'IV', defaultDuration: '1 day' },
+  { name: 'Ringers Lactate 500ml', category: 'IV Fluids', defaultDose: '500ml', defaultFreq: 'Over 4 hours', defaultRoute: 'IV', defaultDuration: '1 day' },
+
+  // Vitamins & Supplements
+  { name: 'Multivitamin Capsules', category: 'Supplements', defaultDose: '1 cap', defaultFreq: 'Once daily (OD)', defaultRoute: 'Oral', defaultDuration: '30 days' },
+  { name: 'Ferrous Sulphate 200mg', category: 'Supplements', defaultDose: '200mg', defaultFreq: 'Once daily (OD)', defaultRoute: 'Oral', defaultDuration: '30 days' },
+  { name: 'Folic Acid 5mg', category: 'Supplements', defaultDose: '5mg', defaultFreq: 'Once daily (OD)', defaultRoute: 'Oral', defaultDuration: '30 days' },
+];
 
 const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
   const facilityId = session.hospitalId || 'IGH-EKT';
   const [registry, setRegistry] = useState<FacilityPatient[]>(() => listPatients(facilityId));
   const [patientId, setPatientId] = useState('');
-  const [drugName, setDrugName] = useState('');
+  const [rxList, setRxList] = useState<ClinicalOrder[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [showSlip, setShowSlip] = useState(false);
+
+  // Search-select state
+  const [drugQuery, setDrugQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedDrug, setSelectedDrug] = useState<typeof HOSPITAL_FORMULARY[0] | null>(null);
   const [dose, setDose] = useState('');
-  const [freq, setFreq] = useState('Twice daily');
+  const [freq, setFreq] = useState('Twice daily (BD)');
   const [duration, setDuration] = useState('5 days');
   const [route, setRoute] = useState('Oral');
   const [instructions, setInstructions] = useState('');
-  const [rxList, setRxList] = useState<ClinicalOrder[]>([]);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [overrideBpa, setOverrideBpa] = useState(false);
+
+  // Multi-drug staging cart
+  const [stagedDrugs, setStagedDrugs] = useState<StagedPrescriptionItem[]>([]);
 
   const reload = () => {
     setRegistry(listPatients(facilityId));
@@ -805,11 +887,6 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
 
   const patient = registry.find((p) => p.id === patientId || p.hospitalNumber === patientId);
 
-  const DRUGS = [
-    'Amoxicillin 500mg', 'Metformin 500mg', 'Amlodipine 5mg', 'Furosemide 40mg',
-    'Artemether/Lumefantrine', 'Lisinopril 10mg', 'Omeprazole 20mg', 'Paracetamol 500mg',
-    'Metronidazole 400mg', 'Aspirin 75mg',
-  ];
   const statusColor: Record<string, string> = {
     ordered: '#F59E0B',
     accepted: '#38BDF8',
@@ -818,122 +895,166 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
     cancelled: '#EF4444',
   };
 
-  const [bpaAlerts, setBpaAlerts] = useState<BpaAlert[]>([]);
-  const [overrideBpa, setOverrideBpa] = useState(false);
+  const categories = useMemo(() => {
+    return ['All', ...Array.from(new Set(HOSPITAL_FORMULARY.map((d) => d.category)))];
+  }, []);
 
-  const runBpa = (pid: string, drug: string) => {
-    if (!pid || !drug.trim()) {
-      setBpaAlerts([]);
-      return;
-    }
-    setBpaAlerts(
-      previewOrderBpa({
-        facilityId,
-        patientId: pid,
-        type: 'rx',
-        code: drug.slice(0, 16).toUpperCase().replace(/\s+/g, '_'),
-        name: drug.trim(),
-        priority: 'routine',
-      })
-    );
-    setOverrideBpa(false);
+  const filteredFormulary = useMemo(() => {
+    return HOSPITAL_FORMULARY.filter((d) => {
+      if (selectedCategory !== 'All' && d.category !== selectedCategory) return false;
+      if (!drugQuery.trim()) return true;
+      const q = drugQuery.toLowerCase();
+      return d.name.toLowerCase().includes(q) || d.category.toLowerCase().includes(q);
+    });
+  }, [selectedCategory, drugQuery]);
+
+  const checkBpa = (drug: string): BpaAlert[] => {
+    if (!patientId || !drug.trim()) return [];
+    return previewOrderBpa({
+      facilityId,
+      patientId,
+      type: 'rx',
+      code: drug.slice(0, 16).toUpperCase().replace(/\s+/g, '_'),
+      name: drug.trim(),
+      priority: 'routine',
+    });
   };
 
-  const prescribe = () => {
-    if (!patient || !drugName.trim()) {
-      setNotice('Select a registered patient and drug');
-      setTimeout(() => setNotice(null), 2800);
+  const handleSelectDrug = (d: typeof HOSPITAL_FORMULARY[0]) => {
+    setSelectedDrug(d);
+    setDrugQuery(d.name);
+    setDose(d.defaultDose);
+    setFreq(d.defaultFreq);
+    setRoute(d.defaultRoute);
+    setDuration(d.defaultDuration);
+    setInstructions('');
+  };
+
+  const handleAddToStaged = () => {
+    if (!selectedDrug && !drugQuery.trim()) {
+      setNotice('Select or type a medication first');
+      setTimeout(() => setNotice(null), 3000);
       return;
     }
-    const alerts = previewOrderBpa({
-      facilityId,
-      patientId: patient.id,
-      type: 'rx',
-      code: drugName.slice(0, 16).toUpperCase().replace(/\s+/g, '_'),
-      name: drugName.trim(),
-      priority: 'routine',
-    });
-    setBpaAlerts(alerts);
-    const hard = alerts.filter((a) => a.level === 'hard_stop');
-    if (hard.length && !overrideBpa) {
-      setNotice('Best-practice alert: review hard stops or tick clinician override');
-      setTimeout(() => setNotice(null), 3500);
-      return;
-    }
-    const notes = [dose && `Dose: ${dose}`, freq && `Freq: ${freq}`, route && `Route: ${route}`, duration && `Duration: ${duration}`, instructions]
-      .filter(Boolean)
-      .join(' · ');
-    const o = placeOrder({
-      facilityId,
-      patientId: patient.id,
-      patientName: `${patient.firstName} ${patient.lastName}`,
-      hospitalNumber: patient.hospitalNumber,
-      type: 'rx',
-      code: drugName.slice(0, 16).toUpperCase().replace(/\s+/g, '_'),
-      name: drugName.trim(),
-      orderedBy: session.name || 'Doctor',
-      orderedByBadge: session.badgeId,
-      priority: 'routine',
-      notes,
-    });
-    emitLiveAction(`Rx sent to pharmacy · ${patient.hospitalNumber} · ${drugName}`, { module: 'pharmacy' });
-    liveAlert(`Prescription ${o.id} sent to pharmacy`, 'pharmacy', facilityId);
-    setNotice(`Sent to pharmacy · ${o.id}${hard.length ? ' · BPA override' : ''} · bill line created`);
-    setTimeout(() => setNotice(null), 3500);
-    setDrugName('');
+    const name = selectedDrug?.name || drugQuery.trim();
+    const alerts = checkBpa(name);
+    const item: StagedPrescriptionItem = {
+      id: `rx-stage-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      drugName: name,
+      category: selectedDrug?.category || 'General',
+      dose: dose.trim() || 'Standard Dose',
+      freq: freq.trim() || 'BD',
+      duration: duration.trim() || '5 days',
+      route: route.trim() || 'Oral',
+      instructions: instructions.trim(),
+      bpaAlerts: alerts,
+    };
+    setStagedDrugs((prev) => [...prev, item]);
+    // Reset selection for next drug
+    setSelectedDrug(null);
+    setDrugQuery('');
     setDose('');
     setInstructions('');
-    setBpaAlerts([]);
+    setNotice(`Added ${name} to staged prescription list`);
+    setTimeout(() => setNotice(null), 2500);
+  };
+
+  const handleRemoveStaged = (id: string) => {
+    setStagedDrugs((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  // Submit all staged drugs to the live pharmacy bus
+  const handleDispatchAll = () => {
+    if (!patient) {
+      setNotice('Please select a registered patient first');
+      setTimeout(() => setNotice(null), 3000);
+      return;
+    }
+    if (stagedDrugs.length === 0) {
+      setNotice('No medications staged. Search and add at least one drug.');
+      setTimeout(() => setNotice(null), 3000);
+      return;
+    }
+
+    // Check for any hard stop BPA alerts
+    const allHardStops = stagedDrugs.flatMap((d) => d.bpaAlerts.filter((a) => a.level === 'hard_stop'));
+    if (allHardStops.length > 0 && !overrideBpa) {
+      setNotice('Critical Alert: Medication interaction or allergy detected. Review or check clinician override.');
+      setTimeout(() => setNotice(null), 4000);
+      return;
+    }
+
+    // Submit each staged medication to the clinical order bus
+    const createdOrders: ClinicalOrder[] = [];
+    for (const item of stagedDrugs) {
+      const notes = [
+        item.dose && `Dose: ${item.dose}`,
+        item.freq && `Freq: ${item.freq}`,
+        item.route && `Route: ${item.route}`,
+        item.duration && `Duration: ${item.duration}`,
+        item.instructions && `Notes: ${item.instructions}`,
+      ].filter(Boolean).join(' · ');
+
+      const o = placeOrder({
+        facilityId,
+        patientId: patient.id,
+        patientName: `${patient.firstName} ${patient.lastName}`,
+        hospitalNumber: patient.hospitalNumber,
+        type: 'rx',
+        code: item.drugName.slice(0, 16).toUpperCase().replace(/\s+/g, '_'),
+        name: item.drugName,
+        orderedBy: session.name || 'Doctor',
+        orderedByBadge: session.badgeId,
+        priority: 'routine',
+        notes,
+      });
+      createdOrders.push(o);
+      emitLiveAction(`Rx sent to pharmacy · ${patient.hospitalNumber} · ${item.drugName}`, { module: 'pharmacy' });
+      liveAlert(`Prescription ${o.id} sent to pharmacy`, 'pharmacy', facilityId);
+    }
+
+    setNotice(`Successfully dispatched ${createdOrders.length} medication${createdOrders.length > 1 ? 's' : ''} to Pharmacy in realtime!`);
+    setTimeout(() => setNotice(null), 4000);
+    setStagedDrugs([]);
     setOverrideBpa(false);
     reload();
   };
 
+  const handlePrintSlip = () => {
+    try {
+      window.print();
+    } catch {
+      /* ignore */
+    }
+  };
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: 16 }}>
       {notice && (
         <div style={{
-          position: 'fixed', bottom: 24, right: 24, zIndex: 50,
-          background: '#0F172A', color: '#fff', padding: '12px 16px', borderRadius: 12, fontWeight: 600, fontSize: 13,
-        }}>{notice}</div>
-      )}
-      <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14, overflow: 'hidden' }}>
-        <div style={{ padding: '15px 20px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 7 }}>
-            <Pill size={15} color="#A78BFA" /> e-Prescriptions (live bus)
-          </div>
-          <div style={{ fontSize: '0.73rem', color: '#64748B' }}>{rxList.length} on bus</div>
+          position: 'fixed', bottom: 24, right: 24, zIndex: 100,
+          background: '#0F172A', color: '#fff', padding: '12px 20px', borderRadius: 12, fontWeight: 700, fontSize: 13,
+          boxShadow: '0 8px 30px rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <CheckCircle2 size={16} color="#10B981" />
+          <span>{notice}</span>
         </div>
-        {rxList.length === 0 && (
-          <div style={{ padding: 28, textAlign: 'center', color: '#64748B', fontSize: 13 }}>
-            No prescriptions yet — prescribe below; pharmacy sees them in realtime.
-          </div>
-        )}
-        {rxList.map((rx) => (
-          <div key={rx.id} style={{ padding: '13px 20px', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', gap: 13 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>{rx.name}</div>
-              <div style={{ fontSize: 11, color: '#64748B' }}>
-                {rx.patientName} · {rx.hospitalNumber} · {rx.notes || '—'}
-              </div>
-            </div>
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
-              background: `${statusColor[rx.status] || '#94A3B8'}22`,
-              color: statusColor[rx.status] || '#64748B',
-            }}>{rx.status}</span>
-          </div>
-        ))}
-      </div>
+      )}
 
-      <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ fontWeight: 800, fontSize: 14 }}>New prescription</div>
-        {patient && (
-          <PatientChartBanner patient={patient} compact />
-        )}
-        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
-          Patient (registry)
-        </label>
-        <div style={{ marginTop: 4 }}>
+      {/* Left Column: Live Pharmacy Bus & Prescription History */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Patient Selection Card */}
+        <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16, padding: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Users size={16} color="#0D9488" /> Active Patient for e-Prescription
+            </div>
+            {patient && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#059669', background: '#ECFDF5', padding: '3px 10px', borderRadius: 999 }}>
+                Active Chart Context
+              </span>
+            )}
+          </div>
           <SearchablePatientSelect
             facilityId={facilityId}
             value={patientId}
@@ -941,78 +1062,427 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
               setPatientId(p?.id || '');
               if (p) setPatientContext(p, session.name);
             }}
-            placeholder="Search patient by name or hospital number…"
+            placeholder="Search patient by name, hospital number, or phone..."
           />
+          {patient && (
+            <div style={{ marginTop: 12 }}>
+              <PatientChartBanner patient={patient} compact />
+            </div>
+          )}
         </div>
-        {registry.length === 0 && (
-          <div style={{ fontSize: 12, color: '#D97706' }}>No patients registered yet — reception must register first.</div>
-        )}
-        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
-          Drug
-          <select
-            value={drugName}
-            onChange={(e) => {
-              setDrugName(e.target.value);
-              if (patientId) runBpa(patientId, e.target.value);
-            }}
-            style={{ display: 'block', width: '100%', marginTop: 4, padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}
-          >
-            <option value="">Select drug…</option>
-            {DRUGS.map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-        {bpaAlerts.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {bpaAlerts.map((a) => (
-              <div
-                key={a.id}
+
+        {/* Staged Multi-Medication Cart */}
+        <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16, padding: 18, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Pill size={16} color="#7C3AED" /> Staged Prescription Queue ({stagedDrugs.length} item{stagedDrugs.length !== 1 ? 's' : ''})
+              </div>
+              <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+                Review all medications before transmitting to pharmacy in a single electronic batch.
+              </div>
+            </div>
+            {stagedDrugs.length > 0 && (
+              <button
+                type="button"
+                onClick={handlePrintSlip}
                 style={{
-                  padding: '8px 10px',
-                  borderRadius: 10,
-                  fontSize: 12,
-                  border: `1px solid ${a.level === 'hard_stop' ? '#FECACA' : a.level === 'warning' ? '#FDE68A' : '#E2E8F0'}`,
-                  background: a.level === 'hard_stop' ? '#FEF2F2' : a.level === 'warning' ? '#FFFBEB' : '#F8FAFC',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '6px 12px', borderRadius: 8, border: '1px solid #E2E8F0',
+                  background: '#F8FAFC', color: '#475569', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                 }}
               >
-                <div style={{ fontWeight: 800, color: a.level === 'hard_stop' ? '#B91C1C' : '#92400E' }}>
-                  {a.level === 'hard_stop' ? 'Hard stop' : a.level === 'warning' ? 'Warning' : 'Info'} · {a.title}
-                </div>
-                <div style={{ color: '#475569', marginTop: 2 }}>{a.detail}</div>
+                <Printer size={13} /> Print Rx Slip
+              </button>
+            )}
+          </div>
+
+          {stagedDrugs.length === 0 ? (
+            <div style={{ padding: '32px 20px', textAlign: 'center', background: '#F8FAFC', borderRadius: 12, border: '1px dashed #CBD5E1' }}>
+              <Pill size={32} color="#94A3B8" style={{ margin: '0 auto 8px', display: 'block' }} />
+              <div style={{ fontWeight: 700, color: '#475569', fontSize: 14 }}>Prescription queue is empty</div>
+              <div style={{ fontSize: 12, color: '#64748B', marginTop: 4, maxWidth: 380, margin: '4px auto 0' }}>
+                Use the search-select formulary on the right to select medications, set dosages, and add them to this order.
               </div>
-            ))}
-            {bpaAlerts.some((a) => a.level === 'hard_stop') && (
-              <label style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-                <input type="checkbox" checked={overrideBpa} onChange={(e) => setOverrideBpa(e.target.checked)} />
-                Clinician override (document reason in notes)
-              </label>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {stagedDrugs.map((item, idx) => (
+                <div
+                  key={item.id}
+                  style={{
+                    background: '#FAFAFA',
+                    border: '1px solid #E2E8F0',
+                    borderRadius: 12,
+                    padding: '12px 14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{
+                        width: 22, height: 22, borderRadius: 999, background: '#7C3AED', color: '#fff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800,
+                      }}>
+                        {idx + 1}
+                      </span>
+                      <div>
+                        <span style={{ fontWeight: 800, fontSize: 14, color: '#0F172A' }}>{item.drugName}</span>
+                        <span style={{ marginLeft: 8, fontSize: 11, background: '#EDE9FE', color: '#6D28D9', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
+                          {item.category}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveStaged(item.id)}
+                      title="Remove medication"
+                      style={{ border: 'none', background: 'transparent', color: '#EF4444', cursor: 'pointer', padding: 4 }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, fontSize: 12, background: '#fff', padding: '8px 10px', borderRadius: 8, border: '1px solid #F1F5F9' }}>
+                    <div>
+                      <span style={{ color: '#64748B', display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>Dose</span>
+                      <strong style={{ color: '#0F172A' }}>{item.dose}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748B', display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>Frequency</span>
+                      <strong style={{ color: '#0F172A' }}>{item.freq}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748B', display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>Route</span>
+                      <strong style={{ color: '#0F172A' }}>{item.route}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748B', display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>Duration</span>
+                      <strong style={{ color: '#0F172A' }}>{item.duration}</strong>
+                    </div>
+                  </div>
+
+                  {item.instructions && (
+                    <div style={{ fontSize: 12, color: '#475569', fontStyle: 'italic', background: '#F8FAFC', padding: '4px 8px', borderRadius: 6 }}>
+                      Instructions: {item.instructions}
+                    </div>
+                  )}
+
+                  {item.bpaAlerts.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {item.bpaAlerts.map((a) => (
+                        <div
+                          key={a.id}
+                          style={{
+                            padding: '6px 10px', borderRadius: 8, fontSize: 11,
+                            background: a.level === 'hard_stop' ? '#FEF2F2' : '#FFFBEB',
+                            border: `1px solid ${a.level === 'hard_stop' ? '#FECACA' : '#FDE68A'}`,
+                            color: a.level === 'hard_stop' ? '#B91C1C' : '#B45309',
+                            fontWeight: 700,
+                          }}
+                        >
+                          ⚠️ {a.title}: {a.detail}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 12, borderTop: '1px solid #E2E8F0' }}>
+                <div style={{ fontSize: 12, color: '#64748B' }}>
+                  Ready to transmit <strong>{stagedDrugs.length}</strong> medication{stagedDrugs.length > 1 ? 's' : ''} to Pharmacy.
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDispatchAll}
+                  style={{
+                    background: 'linear-gradient(135deg, #7C3AED, #5B21B6)',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '10px 20px',
+                    borderRadius: 10,
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    boxShadow: '0 4px 14px rgba(124, 58, 237, 0.3)',
+                  }}
+                >
+                  <Send size={15} /> Transmit All ({stagedDrugs.length}) to Pharmacy
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Live Pharmacy Bus Orders */}
+        <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontWeight: 800, color: '#0A2540', fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Clock size={16} color="#A78BFA" /> Realtime Pharmacy Bus Activity ({rxList.length})
+            </div>
+            <button
+              type="button"
+              onClick={reload}
+              style={{ border: 'none', background: 'transparent', color: '#64748B', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
+            >
+              Refresh
+            </button>
+          </div>
+          {rxList.length === 0 ? (
+            <div style={{ padding: 28, textAlign: 'center', color: '#64748B', fontSize: 13 }}>
+              No active prescriptions on the bus for this facility yet.
+            </div>
+          ) : (
+            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              {rxList.slice(0, 15).map((rx) => (
+                <div key={rx.id} style={{ padding: '11px 18px', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#0F172A' }}>{rx.name}</div>
+                    <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                      {rx.patientName} ({rx.hospitalNumber}) · {rx.notes || '—'} · Dr. {rx.orderedBy}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 999,
+                    background: `${statusColor[rx.status] || '#94A3B8'}22`,
+                    color: statusColor[rx.status] || '#64748B',
+                    textTransform: 'uppercase',
+                  }}>
+                    {rx.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right Column: Search-Select Medication Formulary & Staging Inputs */}
+      <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16, padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 7 }}>
+            <Search size={16} color="#0052D4" /> Hospital Formulary Search-Select
+          </div>
+          <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
+            Search from approved hospital stock and clinical drug catalog.
+          </div>
+        </div>
+
+        {/* Search input with live filter */}
+        <div style={{ position: 'relative' }}>
+          <Search size={16} color="#94A3B8" style={{ position: 'absolute', left: 12, top: 12 }} />
+          <input
+            type="text"
+            value={drugQuery}
+            onChange={(e) => {
+              setDrugQuery(e.target.value);
+              if (selectedDrug && selectedDrug.name !== e.target.value) {
+                setSelectedDrug(null);
+              }
+            }}
+            placeholder="Type drug name e.g. Amoxicillin, Paracetamol, Amlodipine..."
+            style={{
+              width: '100%',
+              padding: '10px 12px 10px 36px',
+              borderRadius: 10,
+              border: selectedDrug ? '2px solid #7C3AED' : '1px solid #CBD5E1',
+              fontSize: 13,
+              outline: 'none',
+              background: selectedDrug ? '#FAF5FF' : '#fff',
+            }}
+          />
+          {selectedDrug && (
+            <button
+              type="button"
+              onClick={() => { setSelectedDrug(null); setDrugQuery(''); }}
+              style={{ position: 'absolute', right: 10, top: 10, border: 'none', background: 'transparent', cursor: 'pointer', color: '#94A3B8' }}
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
+        {/* Category Pills */}
+        <div style={{ display: 'flex', gap: 5, overflowX: 'auto', paddingBottom: 4 }}>
+          {categories.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setSelectedCategory(c)}
+              style={{
+                border: 'none',
+                background: selectedCategory === c ? '#0F172A' : '#F1F5F9',
+                color: selectedCategory === c ? '#fff' : '#475569',
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '4px 10px',
+                borderRadius: 999,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+
+        {/* Formulary matching results list */}
+        {!selectedDrug && (
+          <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #E2E8F0', borderRadius: 10, background: '#FAFAFA' }}>
+            {filteredFormulary.length === 0 ? (
+              <div style={{ padding: 16, fontSize: 12, color: '#94A3B8', textAlign: 'center' }}>
+                No drugs match &quot;{drugQuery}&quot;. You can still prescribe it manually below.
+              </div>
+            ) : (
+              filteredFormulary.slice(0, 10).map((d) => (
+                <div
+                  key={d.name}
+                  onClick={() => handleSelectDrug(d)}
+                  style={{
+                    padding: '8px 12px',
+                    borderBottom: '1px solid #F1F5F9',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    background: '#fff',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#F0FDFA')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#0F172A' }}>{d.name}</div>
+                    <div style={{ fontSize: 11, color: '#64748B' }}>
+                      {d.category} · Std: {d.defaultDose} {d.defaultFreq}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#0D9488' }}>Select</span>
+                </div>
+              ))
             )}
           </div>
         )}
-        </label>
-        <input placeholder="Dose e.g. 500mg" value={dose} onChange={(e) => setDose(e.target.value)}
-          style={{ padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }} />
-        <input placeholder="Frequency" value={freq} onChange={(e) => setFreq(e.target.value)}
-          style={{ padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }} />
-        <input placeholder="Duration" value={duration} onChange={(e) => setDuration(e.target.value)}
-          style={{ padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }} />
-        <select value={route} onChange={(e) => setRoute(e.target.value)}
-          style={{ padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}>
-          {['Oral', 'IV', 'IM', 'SC', 'Topical', 'Inhalation'].map((r) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select>
-        <textarea placeholder="Instructions for pharmacy / patient" value={instructions} onChange={(e) => setInstructions(e.target.value)}
-          rows={2} style={{ padding: 10, borderRadius: 10, border: '1px solid #E2E8F0', resize: 'vertical' }} />
-        <button type="button" onClick={prescribe} className="mc-btn-live" style={{
-          background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', border: 'none', color: '#fff',
-          padding: '12px', borderRadius: 10, fontWeight: 700, fontSize: '0.86rem', cursor: 'pointer',
-        }}>
-          <Send size={14} style={{ display: 'inline', marginRight: 6 }} />
-          Send to pharmacy
-        </button>
-        <div style={{ fontSize: 11, color: '#64748B' }}>
-          Attaches to patient ID on the clinical bus. Pharmacy can look up by hospital number.
+
+        {/* Selected Drug Prescription Customization Fields */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
+                Dose & Strength
+              </label>
+              <input
+                value={dose}
+                onChange={(e) => setDose(e.target.value)}
+                placeholder="e.g. 500mg, 1 tab, 1g"
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
+                Route
+              </label>
+              <select
+                value={route}
+                onChange={(e) => setRoute(e.target.value)}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+              >
+                {['Oral', 'IV', 'IM', 'SC', 'Topical', 'Inhalation', 'Sublingual', 'Rectal'].map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 8 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
+                Frequency
+              </label>
+              <input
+                value={freq}
+                onChange={(e) => setFreq(e.target.value)}
+                placeholder="e.g. BD, TDS, QDS, PRN"
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
+                Duration
+              </label>
+              <input
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                placeholder="e.g. 5 days, 30 days"
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
+              Clinical Instructions / Administration Notes
+            </label>
+            <textarea
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="e.g. Take with food, finish full course, avoid dairy..."
+              rows={2}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 12, resize: 'vertical' }}
+            />
+          </div>
+
+          {/* Quick Frequency Presets */}
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {['Once daily (OD)', 'Twice daily (BD)', 'Thrice daily (TDS)', 'Four times daily (QDS)', 'STAT', 'PRN'].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setFreq(preset)}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  padding: '3px 7px',
+                  borderRadius: 6,
+                  border: '1px solid #E2E8F0',
+                  background: freq === preset ? '#EFF6FF' : '#F8FAFC',
+                  color: freq === preset ? '#1D4ED8' : '#64748B',
+                  cursor: 'pointer',
+                }}
+              >
+                {preset.split(' ')[0]}
+              </button>
+            ))}
+          </div>
+
+          {/* Add to Prescription Button */}
+          <button
+            type="button"
+            onClick={handleAddToStaged}
+            style={{
+              marginTop: 6,
+              background: '#0D9488',
+              color: '#fff',
+              border: 'none',
+              padding: '11px 14px',
+              borderRadius: 10,
+              fontWeight: 800,
+              fontSize: 13,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              boxShadow: '0 2px 8px rgba(13, 148, 136, 0.2)',
+            }}
+          >
+            <Plus size={16} /> Add Medication to Prescription Cart
+          </button>
         </div>
       </div>
     </div>
@@ -1925,7 +2395,15 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate,
               <button
                 key={item.key}
                 type="button"
-                onClick={() => setActiveModule(item.key)}
+                onClick={() => {
+                  setActiveModule(item.key);
+                  if (item.key === 'prescriptions') onNavigate('pharmacy');
+                  else if (item.key === 'lab-orders') onNavigate('laboratory');
+                  else if (item.key === 'radiology-orders') onNavigate('radiology');
+                  else if (item.key === 'emr') onNavigate('emr');
+                  else if (item.key === 'consultation') onNavigate('doctor-portal');
+                  else if (item.key === 'dashboard') onNavigate('dashboard');
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',

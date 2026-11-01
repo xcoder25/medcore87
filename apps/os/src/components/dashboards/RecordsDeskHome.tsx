@@ -237,58 +237,71 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Hero */}
+      {/* QUICK ACTIONS COMES FIRST (Hero removed) */}
       <div
         style={{
+          background: '#fff',
           borderRadius: 16,
-          padding: '20px 22px',
-          background: 'linear-gradient(135deg, #0F172A 0%, #1E3A5F 55%, #0D9488 140%)',
-          color: '#fff',
-          boxShadow: '0 12px 40px rgba(15,23,42,0.18)',
+          border: '1px solid #E2E8F0',
+          padding: '16px 18px',
+          boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
         }}
       >
-        <div style={{ fontSize: 13, opacity: 0.85 }}>Welcome back, {firstName}</div>
-        <h2 style={{ margin: '4px 0 6px', fontSize: 24, fontWeight: 800 }}>Health records command</h2>
-        <p style={{ margin: 0, fontSize: 13, opacity: 0.9, maxWidth: 560 }}>
-          Intelligent HIM desk — MPI quality, folder integrity, transit & bed census. No prescribing;
-          chart retrieval is view-only.
-        </p>
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              padding: '4px 10px',
-              borderRadius: 999,
-              background: 'rgba(16,185,129,0.25)',
-              border: '1px solid rgba(52,211,153,0.5)',
-            }}
-          >
-            Systems online
-          </span>
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              padding: '4px 10px',
-              borderRadius: 999,
-              background: 'rgba(255,255,255,0.12)',
-            }}
-          >
-            Records · L2 HIM
-          </span>
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              padding: '4px 10px',
-              borderRadius: 999,
-              background: 'rgba(99,102,241,0.35)',
-            }}
-          >
-            <Sparkles size={11} style={{ display: 'inline', marginRight: 4 }} />
-            Super-intelligence layer
-          </span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A' }}>Health Records Quick Actions</div>
+            <div style={{ fontSize: 12, color: '#64748B' }}>MPI, chart retrieval, transit &amp; bed census tools</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                background: '#ECFDF5',
+                color: '#059669',
+                border: '1px solid #A7F3D0',
+                borderRadius: 999,
+                padding: '3px 10px',
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981' }} />
+              HIM Live
+            </span>
+          </div>
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+            gap: 10,
+          }}
+        >
+          {actions.map((a) => {
+            const Icon = a.icon;
+            return (
+              <button
+                key={a.go}
+                type="button"
+                onClick={() => onNavigate(a.go)}
+                style={{
+                  textAlign: 'left',
+                  padding: 12,
+                  borderRadius: 12,
+                  border: a.primary ? '1.5px solid #0D9488' : '1px solid #E2E8F0',
+                  background: a.primary ? '#F0FDFA' : '#F8FAFC',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Icon size={18} color={a.primary ? '#0D9488' : '#64748B'} />
+                <div style={{ fontWeight: 800, fontSize: 12, marginTop: 6, color: '#0F172A' }}>{a.label}</div>
+                <div style={{ fontSize: 10, color: '#94A3B8' }}>{a.desc}</div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -391,43 +404,6 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
             </div>
           </button>
         ))}
-      </div>
-
-      {/* Quick actions */}
-      <div>
-        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10, color: '#0F172A' }}>
-          Quick actions · records role
-        </div>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-            gap: 10,
-          }}
-        >
-          {actions.map((a) => {
-            const Icon = a.icon;
-            return (
-              <button
-                key={a.go}
-                type="button"
-                onClick={() => onNavigate(a.go)}
-                style={{
-                  textAlign: 'left',
-                  padding: 14,
-                  borderRadius: 14,
-                  border: a.primary ? '1.5px solid #0D9488' : '1px solid #E2E8F0',
-                  background: a.primary ? '#F0FDFA' : '#fff',
-                  cursor: 'pointer',
-                }}
-              >
-                <Icon size={18} color={a.primary ? '#0D9488' : '#64748B'} />
-                <div style={{ fontWeight: 800, fontSize: 13, marginTop: 8, color: '#0F172A' }}>{a.label}</div>
-                <div style={{ fontSize: 11, color: '#94A3B8' }}>{a.desc}</div>
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       <div
