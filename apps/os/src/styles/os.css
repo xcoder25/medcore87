@@ -3160,26 +3160,28 @@ body {
 .os-cmd-palette-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(9, 13, 22, 0.65);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   z-index: 1000;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 12vh;
+  padding-top: 10vh;
   animation: fadeIn 0.15s ease-out;
 }
 
 .os-cmd-palette-modal {
   width: 100%;
-  max-width: 640px;
-  background: #FFFFFF;
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  border-radius: var(--radius-xl);
+  max-width: 660px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  border-radius: 20px;
   box-shadow:
-    0 24px 60px -12px rgba(15, 23, 42, 0.25),
-    0 0 0 1px rgba(0, 82, 212, 0.08),
+    0 30px 80px -15px rgba(15, 23, 42, 0.35),
+    0 0 0 1px rgba(99, 102, 241, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 1);
   overflow: hidden;
   animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -3188,10 +3190,10 @@ body {
 .os-cmd-search-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  border-bottom: 1px solid #E2E8F0;
-  background: #F8FAFC;
+  gap: 14px;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  background: rgba(248, 250, 252, 0.7);
 }
 
 .os-cmd-input {
@@ -3203,6 +3205,7 @@ body {
   font-weight: 500;
   color: #0F172A;
   outline: none;
+  letter-spacing: -0.01em;
 }
 
 .os-cmd-input::placeholder {
@@ -3211,28 +3214,29 @@ body {
 
 .os-cmd-kbd {
   background: #FFFFFF;
-  border: 1px solid #CBD5E1;
-  border-radius: 6px;
-  padding: 2px 7px;
-  font-size: 0.7rem;
-  font-weight: 700;
+  border: 1px solid #E2E8F0;
+  border-radius: 7px;
+  padding: 3px 8px;
+  font-size: 0.68rem;
+  font-weight: 800;
   color: #64748B;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  letter-spacing: 0.04em;
 }
 
 .os-cmd-results {
-  max-height: 380px;
+  max-height: 400px;
   overflow-y: auto;
-  padding: 8px;
+  padding: 10px;
 }
 
 .os-cmd-group-label {
   font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: #94A3B8;
-  padding: 8px 12px 4px;
+  padding: 10px 14px 4px;
 }
 
 .os-cmd-item {
@@ -3240,9 +3244,9 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: all 0.14s cubic-bezier(0.16, 1, 0.3, 1);
   font-size: 0.86rem;
   color: #1E293B;
   font-weight: 500;
@@ -3250,8 +3254,20 @@ body {
 
 .os-cmd-item:hover,
 .os-cmd-item.selected {
-  background: rgba(0, 82, 212, 0.08);
-  color: #0052D4;
+  background: #EEF2FF;
+  color: #4F46E5;
+  transform: translateX(2px);
+}
+
+.os-cmd-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: #F8FAFC;
+  border-top: 1px solid #E2E8F0;
+  font-size: 0.72rem;
+  color: #64748B;
 }
 
 /* ── Modern Segmented Controls ── */

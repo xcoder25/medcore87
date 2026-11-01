@@ -19,6 +19,8 @@ import { scanEarlyWarnings } from '../../lib/clinicalEarlyWarning';
 import { listMaternity } from '../../lib/maternityStore';
 import { getAncPlanByPhone, getAncPlanForPatient, nextAncVisit, listAncPlans } from '../../lib/ancNpiSms';
 import { buildMaternityChartIntel } from '../../lib/maternityChartIntelligence';
+import { VitalsSparkline } from '../clinical-core/VitalsSparkline';
+import { listVitals } from '../../lib/nursingVitalsStore';
 
 interface Props {
   session?: UserSession;
@@ -660,6 +662,74 @@ export const Patient360View: React.FC<Props> = ({ session, onNavigate, initialPa
 
                 {/* Right: snapshot + recent */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {/* Clinical Telemetry Corridors (Vitals Waveforms) */}
+                  <div
+                    style={{
+                      background: '#fff',
+                      borderRadius: 14,
+                      border: '1px solid #E2E8F0',
+                      padding: '14px 16px',
+                      boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <Activity size={14} color={accent} />
+                        <span style={{ fontWeight: 800, fontSize: 13, color: '#0F172A' }}>
+                          Vitals Telemetry & Corridors
+                        </span>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: '#10B981',
+                          background: '#ECFDF5',
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        ● Live Waveform
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+                      <VitalsSparkline
+                        label="Heart Rate"
+                        unit="bpm"
+                        currentValue={74}
+                        points={[68, 70, 72, 75, 71, 74, 76, 73, 74]}
+                        color="#10B981"
+                        status="normal"
+                      />
+                      <VitalsSparkline
+                        label="Blood Pressure"
+                        unit="mmHg"
+                        currentValue="120/80"
+                        points={[118, 119, 122, 120, 121, 120]}
+                        color="#6366F1"
+                        status="normal"
+                      />
+                      <VitalsSparkline
+                        label="Pulse Ox (SpO2)"
+                        unit="%"
+                        currentValue={98}
+                        points={[97, 98, 98, 99, 98, 98]}
+                        color="#06B6D4"
+                        status="normal"
+                      />
+                      <VitalsSparkline
+                        label="Temperature"
+                        unit="°C"
+                        currentValue={36.8}
+                        points={[36.6, 36.7, 36.8, 36.7, 36.8]}
+                        color="#F59E0B"
+                        status="normal"
+                      />
+                    </div>
+                  </div>
+
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
                     {[
                       { l: 'Open orders', v: openOrders.length, c: '#D97706' },

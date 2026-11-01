@@ -920,6 +920,27 @@ const handleLockScreen = () => {
                 })
               )}
             </div>
+            {/* Spotlight Linear-style Keyboard Hint Footer */}
+            <div className="os-cmd-footer">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span className="os-cmd-kbd">↑</span>
+                  <span className="os-cmd-kbd">↓</span>
+                  <span style={{ fontSize: '0.7rem' }}>Navigate</span>
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span className="os-cmd-kbd">↵</span>
+                  <span style={{ fontSize: '0.7rem' }}>Select</span>
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span className="os-cmd-kbd">ESC</span>
+                  <span style={{ fontSize: '0.7rem' }}>Close</span>
+                </span>
+              </div>
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#94A3B8' }}>
+                MedCore OS Spotlight
+              </span>
+            </div>
           </div>
         </div>
       )}

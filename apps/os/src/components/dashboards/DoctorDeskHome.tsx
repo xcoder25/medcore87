@@ -1176,31 +1176,33 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: 4,
-                              background: '#FFFFFF',
+                              gap: 5,
+                              background: '#FFF1F2',
                               padding: '2px 8px',
                               borderRadius: 8,
                               fontSize: 11,
                               fontWeight: 700,
-                              border: '1px solid #E2E8F0',
-                              color: C.text,
+                              border: '1px solid #FFE4E6',
+                              color: '#BE123C',
+                              boxShadow: '0 1px 2px rgba(225, 29, 72, 0.05)',
                             }}
                           >
-                            <Heart size={11} color="#EF4444" /> BP {nextPatient.vitalsBp}
+                            <Heart size={11} color="#E11D48" /> BP {nextPatient.vitalsBp}
                           </span>
                           {nextPatient.vitalsPulse && (
                             <span
                               style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: 4,
-                                background: '#FFFFFF',
+                                gap: 5,
+                                background: '#F0FDFA',
                                 padding: '2px 8px',
                                 borderRadius: 8,
                                 fontSize: 11,
                                 fontWeight: 700,
-                                border: '1px solid #E2E8F0',
-                                color: C.text,
+                                border: '1px solid #CCFBF1',
+                                color: '#0F766E',
+                                boxShadow: '0 1px 2px rgba(13, 148, 136, 0.05)',
                               }}
                             >
                               <Activity size={11} color="#0D9488" /> {nextPatient.vitalsPulse} bpm
@@ -1211,14 +1213,15 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                               style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: 4,
-                                background: '#FFFFFF',
+                                gap: 5,
+                                background: '#FFF7ED',
                                 padding: '2px 8px',
                                 borderRadius: 8,
                                 fontSize: 11,
                                 fontWeight: 700,
-                                border: '1px solid #E2E8F0',
-                                color: C.text,
+                                border: '1px solid #FFEDD5',
+                                color: '#C2410C',
+                                boxShadow: '0 1px 2px rgba(234, 88, 12, 0.05)',
                               }}
                             >
                               <Thermometer size={11} color="#EA580C" /> {nextPatient.vitalsTemp}°C
@@ -1229,14 +1232,15 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                               style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: 4,
-                                background: '#FFFFFF',
+                                gap: 5,
+                                background: '#EFF6FF',
                                 padding: '2px 8px',
                                 borderRadius: 8,
                                 fontSize: 11,
                                 fontWeight: 700,
-                                border: '1px solid #E2E8F0',
-                                color: C.text,
+                                border: '1px solid #DBEAFE',
+                                color: '#1D4ED8',
+                                boxShadow: '0 1px 2px rgba(37, 99, 235, 0.05)',
                               }}
                             >
                               <Wind size={11} color="#2563EB" /> SpO₂ {nextPatient.vitalsSpo2}%

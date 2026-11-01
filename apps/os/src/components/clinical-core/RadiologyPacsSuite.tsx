@@ -938,30 +938,111 @@ export const RadiologyPacsSuite: React.FC = () => {
                         height: `${Math.min(220, zoomLevel * 1.1)}px`,
                         transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
                         transition: 'transform 0.05s ease-out',
-                        borderRadius: 8,
-                        border: '2px solid #475569',
+                        borderRadius: 10,
+                        border: '1px solid rgba(148, 163, 184, 0.3)',
                         background:
                           windowPreset === 'bone'
-                            ? 'linear-gradient(135deg,#e2e8f0,#64748b)'
+                            ? 'radial-gradient(circle at 35% 35%, #f8fafc, #94a3b8 65%, #334155)'
                             : windowPreset === 'lung'
-                              ? 'linear-gradient(135deg,#0f172a,#334155)'
-                              : 'linear-gradient(135deg,#475569,#94a3b8)',
-                        boxShadow: '0 0 40px rgba(124,58,237,0.25)',
+                              ? 'radial-gradient(circle at 45% 45%, #020617, #0f172a 70%, #1e293b)'
+                              : 'radial-gradient(circle at 40% 40%, #64748b, #334155 70%, #0f172a)',
+                        boxShadow: '0 0 50px rgba(124,58,237,0.2), inset 0 0 20px rgba(0,0,0,0.5)',
                         display: 'flex',
+                        flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        color: '#CBD5E1',
+                        color: '#E2E8F0',
                         fontSize: '0.75rem',
                         fontWeight: 700,
                         userSelect: 'none',
+                        position: 'relative',
                       }}
                     >
-                      DICOM preview
+                      {/* Reticle / Crosshair */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          width: '100%',
+                          height: 1,
+                          background: 'rgba(255,255,255,0.08)',
+                          top: '50%',
+                        }}
+                      />
+                      <div
+                        style={{
+                          position: 'absolute',
+                          height: '100%',
+                          width: 1,
+                          background: 'rgba(255,255,255,0.08)',
+                          left: '50%',
+                        }}
+                      />
+                      <div style={{ letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.9 }}>
+                        {selectedStudy.modality} · {selectedStudy.bodyPart}
+                      </div>
+                      <div style={{ fontSize: '0.62rem', color: '#94A3B8', marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
+                        HU: {windowPreset === 'bone' ? '+850' : windowPreset === 'lung' ? '-600' : '+40'} · 512×512
+                      </div>
                     </div>
-                    <div style={{ position: 'absolute', bottom: 10, left: 12, fontSize: '0.7rem', color: '#64748B', display: 'flex', gap: 12 }}>
-                      <span>Window: {windowPreset} · Simulated viewer (Orthanc optional)</span>
-                      {gestureActive && (
-                        <span style={{ color: '#34D399', fontWeight: 600 }}>● Touchless Tracking Active</span>
+
+                    {/* HUD Diagnostic Overlays */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 10,
+                        left: 12,
+                        fontSize: '0.66rem',
+                        fontFamily: 'ui-monospace, monospace',
+                        color: 'rgba(255,255,255,0.65)',
+                        lineHeight: 1.4,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      <div>ID: {selectedStudy.id}</div>
+                      <div>THK: 1.25mm · FOV: 240mm</div>
+                    </div>
+
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 10,
+                        right: 12,
+                        fontSize: '0.66rem',
+                        fontFamily: 'ui-monospace, monospace',
+                        color: 'rgba(255,255,255,0.65)',
+                        textAlign: 'right',
+                        lineHeight: 1.4,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      <div>W: {windowPreset === 'bone' ? 2000 : windowPreset === 'lung' ? 1500 : 350}</div>
+                      <div>C: {windowPreset === 'bone' ? 350 : windowPreset === 'lung' ? -500 : 40}</div>
+                    </div>
+
+                    <div style={{ position: 'absolute', bottom: 10, left: 12, fontSize: '0.7rem', color: '#64748B', display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.68rem', color: '#94A3B8' }}>
+                        Preset: {windowPreset.toUpperCase()}
+                      </span>
+                      {gestureActive ? (
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            background: 'rgba(16, 185, 129, 0.15)',
+                            border: '1px solid rgba(16, 185, 129, 0.35)',
+                            color: '#6EE7B7',
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            fontSize: '0.65rem',
+                            fontWeight: 700,
+                          }}
+                        >
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
+                          STERILE AIR GESTURE ACTIVE
+                        </span>
+                      ) : (
+                        <span style={{ color: '#64748B', fontSize: '0.68rem' }}>Mouse & Trackpad mode</span>
                       )}
                     </div>
                   </div>

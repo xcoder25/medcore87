@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { inferRoleKey, defaultPermissionsForRole } from '../../lib/staffCardStore';
 import { isStaffRevokedLocal } from '../../lib/staffPresenceStore';
-import { getClaimedFacilityId, setClaimedFacility, isFacilityClaimed } from '../../lib/onboardingStore';
+import { getClaimedFacilityId } from '../../lib/onboardingStore';
 
 // --- Types --------------------------------------------------------------------
 
@@ -553,34 +553,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             return;
           }
         } catch (authMiss: unknown) {
-          badgeAuthMiss = authMiss;
-          // 5) First login to an empty facility → auto-provision facility admin
-          //    (only when using platform bootstrap credentials, so facilities stay claimable securely)
-          const {
-            hasFacilityAdmin,
-            provisionFacilityAdmin,
-          } = await import('../../lib/staffCardStore');
-
-          const canClaim = false;
-          if (canClaim) {
-            /* bootstrap removed */
-          } else {
-            const { classifyAuthError } = await import('../../lib/firebase');
-            setError(
-              badgeAuthMiss
-                ? classifyAuthError(badgeAuthMiss, { accountKnown: false, mode: 'badge' })
-                : 'This Staff ID is not enrolled at this hospital. Ask your hospital administrator to enrol you, or use work email for first-time facility setup.'
-            );
-            setLoading(false);
-            return;
-          }
+          const { classifyAuthError } = await import('../../lib/firebase');
+          setError(
+            authMiss
+              ? classifyAuthError(authMiss, { accountKnown: false, mode: 'badge' })
+              : 'Incorrect Staff ID or PIN. Account not found at this facility.'
+          );
+          setLoading(false);
+          return;
         }
       }
 
 
       if (!profile) {
         setError(
-          'This Staff ID is not enrolled at this hospital. Ask your hospital administrator to enrol you, or use work email for first-time facility setup.'
+          'Incorrect Staff ID or PIN. Account not found at this facility.'
         );
         setLoading(false);
         return;
@@ -727,49 +714,26 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           findStaffByEmail,
         } = await import('../../lib/staffCardStore');
 
-        let facilityOnboarded = false;
-        try {
-          const { isFacilityOnboarded } = await import('../../lib/onboardingStore');
-          facilityOnboarded = isFacilityOnboarded(effectiveHospital.id);
-        } catch { /* */ }
-
-        const facilityEmpty = !hasFacilityAdmin(effectiveHospital.id);
-        const canClaimFirstAdmin = facilityEmpty && !facilityOnboarded;
-
-        // 1) Firebase Auth required — sign in, or sign up only when claiming first admin
+        // 1) Firebase Auth required — sign in only (facility claim removed, use /reg for enrollment)
         let fbUser: import('firebase/auth').User | null = null;
         try {
           fbUser = await withTimeout(firebaseSignIn(email, pass), 10000);
         } catch (signInErr: unknown) {
-          const code = String((signInErr as { code?: string })?.code || '');
-          const notFound =
-            code.includes('user-not-found') ||
-            code.includes('invalid-credential') ||
-            code.includes('invalid-login-credentials');
-          if (canClaimFirstAdmin && notFound) {
-            try {
-              fbUser = await withTimeout(firebaseSignUp(email, pass), 10000);
-            } catch (signUpErr: unknown) {
-              const upCode = String((signUpErr as { code?: string })?.code || '');
-              if (upCode.includes('email-already-in-use')) {
-                setError('Incorrect password for this email, or the account already exists. Try again or reset the password in Firebase.');
-              } else {
-                setError(classifyAuthError(signUpErr, { accountKnown: false, mode: 'email' }));
-              }
-              setLoading(false);
-              return;
-            }
-          } else {
-            const _msg = classifyAuthError(signInErr, { accountKnown: true, mode: 'email' });
-            authLog('sign_in_fail', { mode: 'email', facilityId: effectiveHospital.id, emailDomain: emailDomainOnly(email), code: String((signInErr as { code?: string })?.code || ''), reason: _msg });
-            setError(_msg);
-            setLoading(false);
-            return;
-          }
+          const _msg = classifyAuthError(signInErr, { accountKnown: false, mode: 'email' });
+          authLog('sign_in_fail', {
+            mode: 'email',
+            facilityId: effectiveHospital.id,
+            emailDomain: emailDomainOnly(email),
+            code: String((signInErr as { code?: string })?.code || ''),
+            reason: _msg
+          });
+          setError(_msg || 'Incorrect email or password. Please try again.');
+          setLoading(false);
+          return;
         }
 
         if (!fbUser) {
-          setError('Sign-in failed. Check your email and password.');
+          setError('Incorrect email or password. Please try again.');
           setLoading(false);
           return;
         }
@@ -856,62 +820,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           }
         }
 
-        // Enrolled staff accounts must NEVER be auto-claimed as administrator
-        const isExistingStaffAnywhere = !!matchedStaff || !!findStaffByEmail(email);
-
-        // 3) First admin claim — empty facility only (no bootstrap secrets)
-        if (!matchedStaff && canClaimFirstAdmin && !isExistingStaffAnywhere) {
-          if (pass.length < 8) {
-            setError('For security, the administrator password must be at least 8 characters.');
-            setLoading(false);
-            return;
-          }
-          const adminFullName =
-            (fbUser.displayName || email.split('@')[0].replace(/[._]/g, ' ') || 'Hospital Administrator')
-              .replace(/\b\w/g, (c: string) => c.toUpperCase());
-          const prov = provisionFacilityAdmin(
-            { id: effectiveHospital.id, name: effectiveHospital.name },
-            {
-              pin: pass,
-              fullName: adminFullName,
-              email,
-            }
-          );
-          if (!prov.ok || !prov.badgeId) {
-            setError(prov.error || 'Could not create hospital administrator for this facility.');
-            setLoading(false);
-            return;
-          }
-          setClaimedFacility(effectiveHospital.id, effectiveHospital.name);
-          const created = resolveStaffByBadge(prov.badgeId);
-          matchedStaff = {
-            badgeId: prov.badgeId,
-            name: created?.name || adminFullName,
-            role: 'Hospital Administrator',
-            shortRole: 'Admin',
-            title: 'Hospital Administrator',
-            roleKey: 'hospital_admin',
-            clearanceLevel: 5,
-            clearanceLabel: 'Administrator',
-            department: 'Hospital Management',
-            initials: created?.initials || 'HA',
-            permissions: created?.permissions || [
-              'dashboard', 'command', 'emr', 'beds', 'patient-flow', 'staffing',
-              'enrolment', 'my-card', 'cashier', 'rbac', 'sysadmin', 'ai',
-            ],
-            pin: pass,
-            hospitalId: effectiveHospital.id,
-            hospitalName: effectiveHospital.name,
-            color: '#EA580C',
-          };
-        }
-
         if (!matchedStaff) {
-          setError(
-            hasFacilityAdmin(effectiveHospital.id) || facilityOnboarded
-              ? 'This facility is already claimed and managed by its registered Hospital Administrator. Only authorized administrator credentials for this facility are accepted.'
-              : 'Could not complete facility setup. Check your connection and try again.'
-          );
+          setError('This account does not have a staff record registered for this facility. Please contact your administrator.');
           setLoading(false);
           return;
         }
@@ -1259,23 +1169,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   ))}
                 </select>
               </div>
-              {isFacilityClaimed(selectedHospital.id) && (
-                <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  fontSize: '0.74rem',
-                  color: '#0D9488',
-                  fontWeight: 700,
-                  marginTop: 6,
-                  padding: '3px 8px',
-                  background: '#F0FDFA',
-                  borderRadius: 6,
-                  border: '1px solid #CCFBF1'
-                }}>
-                  <ShieldCheck size={13} color="#0D9488" /> Claimed Hospital Station · {selectedHospital.id}
-                </div>
-              )}
+              
             </div>
 
             {/* Username / Email */}
