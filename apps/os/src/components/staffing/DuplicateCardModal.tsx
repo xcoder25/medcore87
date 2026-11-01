@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronRight, Copy, Layers, Search, Trash2, X, XCircle } from 'lucide-react';
 import { listStaffCards } from '../../lib/staffCardStore';
 import { deleteStaffMember } from '../../lib/staffCardStore';
+import { emitLiveAction } from '../../lib/liveActions';
 import type { StaffCardRecord } from '@medcore/types';
 
 interface DuplicateGroup {
@@ -202,7 +203,26 @@ export const DuplicateCardModal: React.FC<Props> = ({ facilityId, onClose, onDel
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}><XCircle size={16} color="#DC2626" /><span style={{ fontWeight: 700, fontSize: 13, color: '#0F172A' }}>Card to be removed</span></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <code style={{ fontSize: 13, fontWeight: 800, color: '#DC2626', background: '#FEE2E2', padding: '3px 8px', borderRadius: 6 }}>{card.badgeId}</code>
-            <button type="button" onClick={() => { try { void navigator.clipboard.writeText(card.badgeId); } catch { /**/ } }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', padding: 2 }}><Copy size={12} /></button>
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  void navigator.clipboard.writeText(card.badgeId);
+                  emitLiveAction(`Copied Badge ID (${card.badgeId}) to clipboard`, { module: 'access' });
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(
+                      new CustomEvent('medcore-toast', {
+                        detail: { message: `Copied Badge ID (${card.badgeId}) to clipboard` },
+                      })
+                    );
+                  }
+                } catch { /**/ }
+              }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', padding: 2 }}
+              title="Copy Badge ID"
+            >
+              <Copy size={12} />
+            </button>
           </div>
           <div style={{ fontSize: 12, color: '#6B2238', marginTop: 6 }}><strong>{group.name}</strong> · {group.role}</div>
         </div>

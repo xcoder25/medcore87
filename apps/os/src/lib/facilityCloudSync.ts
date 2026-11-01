@@ -108,14 +108,16 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
   const canonicalKey =
     key === 'clinical_vitals' ? FACILITY_KEYS.vitals : key;
 
-  // Protect staff data from destructive overwrite
+  // Protect staff data from destructive overwrite & apply cloud staff updates across workstations
   const cKey = String(canonicalKey);
   if (
     cKey === 'medcore_os_access_control' ||
     cKey === 'medcore_os_staff_registry' ||
+    cKey === 'staffRegistry' ||
     cKey === 'medcore_staff_id_cards' ||
     cKey === 'medcore_os_staff_cards' ||
-    cKey === 'medcore_staff_cards'
+    cKey === 'medcore_staff_cards' ||
+    cKey === 'staffCards'
   ) {
     if (!Array.isArray(value) || value.length === 0) {
       if (!isStaffFlushLocked()) return;
@@ -124,12 +126,13 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
       if (
         cKey === 'medcore_staff_id_cards' ||
         cKey === 'medcore_os_staff_cards' ||
-        cKey === 'medcore_staff_cards'
+        cKey === 'medcore_staff_cards' ||
+        cKey === 'staffCards'
       ) {
         applyCloudStaffDirectory({ staffCards: value as any[] });
         return;
       }
-      if (cKey === 'medcore_os_staff_registry') {
+      if (cKey === 'medcore_os_staff_registry' || cKey === 'staffRegistry') {
         applyCloudStaffDirectory({ staffRegistry: value as any[] });
         return;
       }
@@ -214,6 +217,45 @@ export function startHospitalCloudSync(facilityId: string): () => void {
     }
   });
 
+  // Realtime staff subcollection sync across workstations
+  let stopStaffSub = () => {};
+  try {
+    const { firestoreSubscribeStaffCollection } = require('./firebase') as typeof import('./firebase');
+    stopStaffSub = firestoreSubscribeStaffCollection(facilityId, (staffRows) => {
+      if (Array.isArray(staffRows) && staffRows.length > 0) {
+        const cloudCards = staffRows.map((s) => {
+          const bId = String(s.badgeId || s.id || '').toUpperCase().replace(/\s+/g, '');
+          const fName = String(s.fullName || s.name || bId);
+          const rk = String(s.roleKey || s.role || 'staff');
+          return {
+            badgeId: bId,
+            fullName: fName,
+            role: String(s.role || 'Staff'),
+            roleKey: rk,
+            title: String(s.title || ''),
+            department: String(s.department || 'General'),
+            facilityId: String(s.facilityId || s.hospitalId || facilityId),
+            facilityName: String(s.facilityName || s.hospitalName || 'Hospital'),
+            clearanceLevel: Number(s.clearanceLevel ?? s.clearance ?? 1),
+            clearanceLabel: String(s.clearanceLabel || 'Level 1'),
+            templateKey: (s.templateKey as any) || 'TPL_CLINICAL',
+            status: String(s.status || 'ACTIVE').toUpperCase() === 'ACTIVE' ? 'ACTIVE' : 'SUSPENDED',
+            issuedAt: String(s.issuedAt || s.createdAt || new Date().toISOString()),
+            expiresAt: String(s.expiresAt || new Date(Date.now() + 2 * 365 * 864e5).toISOString()),
+            photoUrl: s.photoUrl ? String(s.photoUrl) : undefined,
+            initials: String(s.initials || fName.slice(0, 2).toUpperCase()),
+            qrPayload: typeof s.qrPayload === 'string' ? s.qrPayload : undefined,
+          };
+        });
+        applyCloudStaffDirectory({
+          staffCards: cloudCards,
+          staffRegistry: staffRows,
+          facilityId,
+        });
+      }
+    });
+  } catch { /* ignore */ }
+
   const onOnline = () => {
     void flushOutbox();
   };
@@ -223,6 +265,7 @@ export function startHospitalCloudSync(facilityId: string): () => void {
     window.removeEventListener('online', onOnline);
     stopLan();
     stopFs();
+    stopStaffSub();
     stopOutbox();
   };
 }

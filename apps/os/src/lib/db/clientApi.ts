@@ -19,6 +19,35 @@ export async function apiCreateStaff(payload: Record<string, unknown>): Promise<
   }
 }
 
+/**
+ * Server-side atomic staff creation using Firebase Admin SDK.
+ * Creates Auth user and sets Firestore + Postgres documents atomically to avoid split-state.
+ */
+export async function apiAtomicCreateStaff(payload: Record<string, unknown>): Promise<{
+  success: boolean;
+  error?: string;
+  uid?: string;
+  badgeId?: string;
+  staff?: unknown;
+}> {
+  try {
+    const res = await fetch('/api/staff/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return (await res.json()) as {
+      success: boolean;
+      error?: string;
+      uid?: string;
+      badgeId?: string;
+      staff?: unknown;
+    };
+  } catch (e) {
+    return { success: false, error: (e as Error).message || 'network' };
+  }
+}
+
 export async function apiListStaff(facilityId: string): Promise<{
   ok: boolean;
   staff?: Array<Record<string, unknown>>;

@@ -48,6 +48,10 @@ const KeyboardShortcutsHint = dynamic(
   () => import('../components/layout/KeyboardShortcutsHint').then((m) => m.KeyboardShortcutsHint),
   { ssr: false }
 );
+const PatientDropNotification = dynamic(
+  () => import('../components/reception/PatientDropNotification').then((m) => m.PatientDropNotification),
+  { ssr: false }
+);
 import { listPatients, hydratePatientRegistry } from '../lib/patientRegistryStore';
 import { hydrateBedBoard } from '../lib/bedBoardStore';
 import { normalizeStaffPin, firebaseSignInWithBadge } from '../lib/firebase';
@@ -840,6 +844,12 @@ const handleLockScreen = () => {
         >
           {globalToast}
         </div>
+      )}
+      {userSession && (
+        <PatientDropNotification
+          facilityId={userSession.hospitalId || 'LIGH'}
+          deskId="frontdesk-main"
+        />
       )}
       {/* ── Command Palette (⌘K / Ctrl+K Spotlight Modal) ── */}
       <KeyboardShortcutsHint open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />

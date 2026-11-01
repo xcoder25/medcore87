@@ -40,7 +40,7 @@ import {
   firestoreUpsertStaffMember,
   firestorePushStaffDirectory,
 } from '../../lib/firebase';
-import { apiCreateStaff, apiListStaff, apiDbHealth } from '../../lib/db/clientApi';
+import { apiCreateStaff, apiAtomicCreateStaff, apiListStaff, apiDbHealth } from '../../lib/db/clientApi';
 import { emitLiveAction } from '../../lib/liveActions';
 import { StaffIdCardView } from '../staffing/StaffIdCardView';
 import { LogoProgressBar } from '../realtime/LogoProgressBar';
@@ -352,6 +352,41 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       try {
         setAccessRecords(next);
       } catch { /* ignore */ }
+
+      // Also mirror cloud staff to ID cards and local registry so other tabs (e.g. Cards gallery) reflect immediately
+      if (staffRows.length > 0) {
+        try {
+          const cloudCards = staffRows.map((s) => {
+            const bId = String(s.badgeId || s.id || '').toUpperCase().replace(/\s+/g, '');
+            const fName = String(s.fullName || s.name || bId);
+            const rk = String(s.roleKey || s.role || 'staff');
+            return {
+              badgeId: bId,
+              fullName: fName,
+              role: String(s.role || 'Staff'),
+              roleKey: rk,
+              title: String(s.title || ''),
+              department: String(s.department || 'General'),
+              facilityId: String(s.facilityId || s.hospitalId || facilityId),
+              facilityName: String(s.facilityName || s.hospitalName || facilityName),
+              clearanceLevel: Number(s.clearanceLevel ?? s.clearance ?? 1),
+              clearanceLabel: String(s.clearanceLabel || 'Level 1'),
+              templateKey: (s.templateKey as any) || 'TPL_CLINICAL',
+              status: String(s.status || 'ACTIVE').toUpperCase() === 'ACTIVE' ? 'ACTIVE' : 'SUSPENDED',
+              issuedAt: String(s.issuedAt || s.createdAt || new Date().toISOString()),
+              expiresAt: String(s.expiresAt || new Date(Date.now() + 2 * 365 * 864e5).toISOString()),
+              photoUrl: s.photoUrl ? String(s.photoUrl) : undefined,
+              initials: String(s.initials || fName.slice(0, 2).toUpperCase()),
+              qrPayload: typeof s.qrPayload === 'string' ? s.qrPayload : undefined,
+            };
+          });
+          applyCloudStaffDirectory({
+            staffCards: cloudCards,
+            staffRegistry: staffRows,
+            facilityId,
+          });
+        } catch { /* ignore */ }
+      }
     };
 
     applyCloudRows([]);
@@ -360,22 +395,16 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     let unsubCol: (() => void) | undefined;
 
     void (async () => {
-      const pgOk = await Promise.race([
-        apiDbHealth(),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2000)),
-      ]);
-      if (!isMounted.current) return;
-      if (pgOk) {
-        try {
-          const res = await Promise.race([
-            apiListStaff(facilityId),
-            new Promise<any>((resolve) => setTimeout(() => resolve({ ok: false }), 3000)),
-          ]);
-          if (res.ok && res.staff?.length) {
-            applyCloudRows(res.staff);
-          }
-        } catch { /* ignore */ }
-      }
+      // Query server-side staff endpoint (Postgres + Firestore fallback)
+      try {
+        const res = await Promise.race([
+          apiListStaff(facilityId),
+          new Promise<any>((resolve) => setTimeout(() => resolve({ ok: false }), 3000)),
+        ]);
+        if (isMounted.current && res.ok && res.staff?.length) {
+          applyCloudRows(res.staff);
+        }
+      } catch { /* ignore */ }
 
       unsubCol = firestoreSubscribeStaffCollection(facilityId, (staffRows) => {
         if (!isMounted.current || isStaffFlushLocked()) return;
@@ -448,12 +477,29 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     }
   }, [facilityId, records]);
 
-  const copyToClipboard = (text: string, keyName: string) => {
+  const copyToClipboard = (text: string, keyName: string, customLabel?: string) => {
     try {
       void navigator.clipboard.writeText(text);
       setCopiedKey(keyName);
-      setTimeout(() => setCopiedKey(null), 2000);
-    } catch { /* ignore */ }
+      setTimeout(() => setCopiedKey(null), 2500);
+      const label =
+        customLabel ||
+        (keyName.includes('pin')
+          ? 'Staff PIN'
+          : keyName.includes('badge')
+            ? 'Staff Badge ID'
+            : 'Credentials');
+      emitLiveAction(`Copied ${label} to clipboard`, { module: 'access' });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('medcore-toast', {
+            detail: { message: `Copied ${label} to clipboard: ${text}` },
+          })
+        );
+      }
+    } catch {
+      emitLiveAction('Copied to clipboard', { module: 'access' });
+    }
   };
 
   const readPhotoFile = async (file: File | null) => {
@@ -658,6 +704,26 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
           photoUrl: finalPhoto,
           pin: pinNorm,
           authEmail: badgeAuthEmail(badgeId),
+        });
+      } catch { /* ignore */ }
+
+      try {
+        void apiAtomicCreateStaff({
+          badgeId,
+          facilityId,
+          facilityName,
+          fullName: nameSnap,
+          role: roleMeta.role,
+          roleKey: roleMeta.roleKey,
+          title: roleMeta.title,
+          department: roleMeta.department,
+          email: mail || undefined,
+          status: 'active',
+          clearanceLevel: roleMeta.clearanceLevel,
+          clearanceLabel: roleMeta.clearanceLabel,
+          templateKey: card.templateKey || 'TPL_CLINICAL',
+          photoUrl: finalPhoto,
+          pin: pinNorm,
         });
       } catch { /* ignore */ }
 
@@ -967,6 +1033,31 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                 <span style={{ fontSize: '0.8rem', color: '#64748B' }}>{confirmInfo.email}</span>
               </>
             )}
+
+            <button
+              type="button"
+              className="os-ghost-btn"
+              style={{
+                padding: '3px 10px',
+                fontSize: '0.75rem',
+                height: 26,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                background: '#F1F5F9',
+                fontWeight: 600,
+              }}
+              onClick={() =>
+                copyToClipboard(
+                  `Staff: ${confirmInfo.name} | ID: ${confirmInfo.badgeId} | PIN: ${confirmInfo.pin} | Role: ${confirmInfo.role}`,
+                  'all-confirm',
+                  'All Credentials'
+                )
+              }
+            >
+              {copiedKey === 'all-confirm' ? <Check size={12} color="#16A34A" /> : <Copy size={12} />}
+              {copiedKey === 'all-confirm' ? 'Copied All' : 'Copy All'}
+            </button>
 
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
               <button

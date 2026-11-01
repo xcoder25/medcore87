@@ -14,6 +14,9 @@ import {
   type Unsubscribe as AuthUnsubscribe,
 } from 'firebase/auth';
 import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   getFirestore as getFirestoreSdk,
   doc,
   setDoc,
@@ -80,7 +83,20 @@ export function getFirebaseAuth(): Auth {
 
 export function getFirestore(): Firestore {
   if (!db) {
-    db = getFirestoreSdk(getFirebaseApp());
+    const appInstance = getFirebaseApp();
+    if (typeof window !== 'undefined') {
+      try {
+        db = initializeFirestore(appInstance, {
+          localCache: persistentLocalCache({
+            tabManager: persistentMultipleTabManager(),
+          }),
+        });
+      } catch {
+        db = getFirestoreSdk(appInstance);
+      }
+    } else {
+      db = getFirestoreSdk(appInstance);
+    }
   }
   return db;
 }
@@ -1019,11 +1035,36 @@ export async function firestoreGetStaffByBadge(
   facilityId: string,
   badgeId: string
 ): Promise<Record<string, unknown> | null> {
+  const bid = (badgeId || '').trim().toUpperCase().replace(/[\/#?]/g, '_');
+  if (!bid) return null;
   try {
     await enableFirestoreOffline();
-    const snap = await getDoc(staffMemberRef(facilityId, badgeId));
-    if (!snap.exists()) return null;
-    return { id: snap.id, ...snap.data() };
+    // 1. Primary lookup in facility staff subcollection
+    const snap = await getDoc(staffMemberRef(facilityId, bid));
+    if (snap.exists()) return { id: snap.id, ...snap.data() };
+
+    // 2. Global lookup in root staff collection (written atomically during create)
+    try {
+      const rootSnap = await getDoc(doc(getFirestore(), 'staff', bid));
+      if (rootSnap.exists()) return { id: rootSnap.id, ...rootSnap.data() };
+    } catch { /* ignore */ }
+
+    // 3. Fallback lookup in facility root document staffCards / staffRegistry
+    try {
+      const fid = (facilityId || 'DEFAULT-HOSPITAL').replace(/[\/#?]/g, '_');
+      const facSnap = await getDoc(doc(getFirestore(), 'facilities', fid));
+      if (facSnap.exists()) {
+        const d = facSnap.data() || {};
+        const cards = Array.isArray(d.staffCards) ? d.staffCards : [];
+        const cardHit = cards.find((c: any) => String(c.badgeId || '').toUpperCase() === bid);
+        if (cardHit) return { id: bid, ...cardHit };
+        const reg = Array.isArray(d.staffRegistry) ? d.staffRegistry : [];
+        const regHit = reg.find((r: any) => String(r.badgeId || r.id || '').toUpperCase() === bid);
+        if (regHit) return { id: bid, ...regHit };
+      }
+    } catch { /* ignore */ }
+
+    return null;
   } catch (e) {
     fsWarn('get staff', e);
     return null;

@@ -4,7 +4,8 @@
  * Falls back to embedded service account when env is unset (pilot / Vercel convenience).
  */
 import { getApps, initializeApp, cert, type App } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
+import { getAuth, type Auth as AdminAuth } from 'firebase-admin/auth';
+import { getFirestore as getAdminFirestoreSdk, type Firestore as AdminFirestore } from 'firebase-admin/firestore';
 
 /** Server-only fallback when env vars are missing (Vercel). Prefer env in production. */
 const FALLBACK_SERVICE_ACCOUNT: Record<string, string> = {
@@ -247,4 +248,16 @@ export function adminApiSecretOk(headerSecret: string | null): boolean {
   ).trim();
   if (!expected) return true;
   return Boolean(headerSecret && headerSecret === expected);
+}
+
+export function getAdminAuth(): AdminAuth | null {
+  const app = getFirebaseAdminApp();
+  if (!app) return null;
+  return getAuth(app);
+}
+
+export function getAdminFirestore(): AdminFirestore | null {
+  const app = getFirebaseAdminApp();
+  if (!app) return null;
+  return getAdminFirestoreSdk(app);
 }

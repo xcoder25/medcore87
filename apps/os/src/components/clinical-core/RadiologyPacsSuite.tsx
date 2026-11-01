@@ -6,10 +6,11 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import {
   FileText, Search, ZoomIn, ZoomOut, RotateCw, Layers, CheckCircle2, ShieldAlert,
   Eye, User, Calendar, Plus, X, Edit3, Send, Sparkles, RefreshCw, ClipboardList,
-  History, AlertTriangle, Clock, Radio, LayoutDashboard, Activity,
+  History, AlertTriangle, Clock, Radio, LayoutDashboard, Activity, Hand,
 } from 'lucide-react';
 import type { RadiologyStudy } from '@medcore/types';
 import {
@@ -37,6 +38,8 @@ import {
   getLinkForOrder,
   type OrthancStudyRef,
 } from '../../lib/orthancClient';
+
+const PacsGestureLayer = dynamic(() => import('./PacsGestureLayer'), { ssr: false });
 
 type RadPage = 'worklist' | 'reading' | 'viewer' | 'history' | 'critical' | 'protocol' | 'schedule' | 'analytics';
 
@@ -312,6 +315,8 @@ export const RadiologyPacsSuite: React.FC = () => {
   const [search, setSearch] = useState('');
   const [historyPatient, setHistoryPatient] = useState('');
   const [zoomLevel, setZoomLevel] = useState(100);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [gestureActive, setGestureActive] = useState(false);
   const [windowPreset, setWindowPreset] = useState<'lung' | 'bone' | 'soft_tissue'>('soft_tissue');
   const [findingsText, setFindingsText] = useState('');
   const [showReport, setShowReport] = useState(false);
@@ -858,10 +863,35 @@ export const RadiologyPacsSuite: React.FC = () => {
                       <div style={{ fontSize: '0.78rem', color: '#94A3B8' }}>{selectedStudy.patientName} · {selectedStudy.id} · {selectedStudy.reason}</div>
                     </div>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGestureActive((v) => {
+                            const next = !v;
+                            toast(next ? 'PACS Air Gestures active (Pinch to Zoom, Palm to Pan)' : 'PACS Air Gestures off');
+                            return next;
+                          });
+                        }}
+                        style={{
+                          ...viewerBtn,
+                          background: gestureActive ? 'rgba(16, 185, 129, 0.35)' : viewerBtn.background,
+                          borderColor: gestureActive ? '#10B981' : '#334155',
+                          color: gestureActive ? '#6EE7B7' : '#E2E8F0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                        title="Toggle touchless sterile hand gestures (webcam off-screen)"
+                      >
+                        <Hand size={14} />
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700 }}>
+                          {gestureActive ? 'Gestures On' : 'Air Gestures'}
+                        </span>
+                      </button>
                       <button type="button" onClick={() => setZoomLevel((z) => Math.max(50, z - 15))} style={viewerBtn}><ZoomOut size={14} /></button>
                       <span style={{ fontSize: '0.75rem', minWidth: 36, textAlign: 'center' }}>{zoomLevel}%</span>
                       <button type="button" onClick={() => setZoomLevel((z) => Math.min(200, z + 15))} style={viewerBtn}><ZoomIn size={14} /></button>
-                      <button type="button" onClick={() => setZoomLevel(100)} style={viewerBtn}><RotateCw size={14} /></button>
+                      <button type="button" onClick={() => { setZoomLevel(100); setPanOffset({ x: 0, y: 0 }); }} style={viewerBtn} title="Reset view"><RotateCw size={14} /></button>
                       {(['lung', 'bone', 'soft_tissue'] as const).map((w) => (
                         <button
                           key={w}
@@ -886,12 +916,28 @@ export const RadiologyPacsSuite: React.FC = () => {
                       alignItems: 'center',
                       justifyContent: 'center',
                       position: 'relative',
+                      overflow: 'hidden',
                     }}
                   >
+                    {gestureActive && (
+                      <PacsGestureLayer
+                        onZoom={(factor) => {
+                          setZoomLevel((prev) => Math.min(300, Math.max(30, Math.round(prev * factor))));
+                        }}
+                        onPan={(dx, dy) => {
+                          setPanOffset((prev) => ({
+                            x: Math.min(200, Math.max(-200, prev.x + dx)),
+                            y: Math.min(200, Math.max(-200, prev.y + dy)),
+                          }));
+                        }}
+                      />
+                    )}
                     <div
                       style={{
                         width: `${Math.min(220, zoomLevel * 1.1)}px`,
                         height: `${Math.min(220, zoomLevel * 1.1)}px`,
+                        transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
+                        transition: 'transform 0.05s ease-out',
                         borderRadius: 8,
                         border: '2px solid #475569',
                         background:
@@ -907,12 +953,16 @@ export const RadiologyPacsSuite: React.FC = () => {
                         color: '#CBD5E1',
                         fontSize: '0.75rem',
                         fontWeight: 700,
+                        userSelect: 'none',
                       }}
                     >
                       DICOM preview
                     </div>
-                    <div style={{ position: 'absolute', bottom: 10, left: 12, fontSize: '0.7rem', color: '#64748B' }}>
-                      Window: {windowPreset} · Simulated viewer (Orthanc optional)
+                    <div style={{ position: 'absolute', bottom: 10, left: 12, fontSize: '0.7rem', color: '#64748B', display: 'flex', gap: 12 }}>
+                      <span>Window: {windowPreset} · Simulated viewer (Orthanc optional)</span>
+                      {gestureActive && (
+                        <span style={{ color: '#34D399', fontWeight: 600 }}>● Touchless Tracking Active</span>
+                      )}
                     </div>
                   </div>
                   <div style={{ padding: 14 }}>
