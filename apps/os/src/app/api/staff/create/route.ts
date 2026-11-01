@@ -6,6 +6,16 @@ import type { StaffCardRecord, StaffCardTemplate } from '@medcore/types';
 
 export const runtime = 'nodejs';
 
+/**
+ * Recursively removes all keys whose value is `undefined` so Firestore
+ * never receives an invalid undefined field (it would throw otherwise).
+ */
+function stripUndefined<T extends object>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as Partial<T>;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -130,7 +140,7 @@ export async function POST(request: NextRequest) {
       status: 'ACTIVE',
       issuedAt,
       expiresAt,
-      photoUrl: photoUrl || undefined,
+      photoUrl: photoUrl || null,
       initials,
       qrPayload: JSON.stringify({
         badgeId: bId,
@@ -149,24 +159,24 @@ export async function POST(request: NextRequest) {
         .collection('staff')
         .doc(bId);
 
-      await staffDocRef.set({
-        ...staffRecord,
-        uid: userRecord.uid,
-        email: authEmail,
-        createdAt: issuedAt,
-        updatedAt: issuedAt,
-        isActive: true,
-      });
+        await staffDocRef.set(stripUndefined({
+          ...staffRecord,
+          uid: userRecord.uid,
+          email: authEmail,
+          createdAt: issuedAt,
+          updatedAt: issuedAt,
+          isActive: true,
+      }));
 
       // Also index in root staff collection for direct lookups by UID and badgeId
-      const staffDocPayload = {
-        ...staffRecord,
-        uid: userRecord.uid,
-        email: authEmail,
-        createdAt: issuedAt,
-        updatedAt: issuedAt,
-        isActive: true,
-      };
+        const staffDocPayload = stripUndefined({
+          ...staffRecord,
+          uid: userRecord.uid,
+          email: authEmail,
+          createdAt: issuedAt,
+          updatedAt: issuedAt,
+          isActive: true,
+      });
       await adminDb.collection('staff').doc(userRecord.uid).set(staffDocPayload);
       await adminDb.collection('staff').doc(bId).set(staffDocPayload);
 
@@ -178,79 +188,79 @@ export async function POST(request: NextRequest) {
         const currentCards = Array.isArray(facilityData.staffCards) ? facilityData.staffCards : [];
         const currentReg = Array.isArray(facilityData.staffRegistry) ? facilityData.staffRegistry : [];
 
-        const nextCards = [staffRecord, ...currentCards.filter((c: any) => String(c.badgeId || '').toUpperCase() !== bId)];
+        const nextCards = [stripUndefined(staffRecord), ...currentCards.filter((c: any) => String(c.badgeId || '').toUpperCase() !== bId)];
         const nextReg = [
-          {
-            ...staffRecord,
-            id: bId,
-            name: name,
-            pin: String(pin || '123456'),
-            authEmail,
-          },
+            stripUndefined({
+              ...staffRecord,
+              id: bId,
+              name: name,
+              pin: String(pin || '123456'),
+          authEmail,
+    }),
           ...currentReg.filter((r: any) => String(r.badgeId || r.id || '').toUpperCase() !== bId),
         ];
 
-        await facilityRef.set(
-          {
-            staffCards: nextCards,
-            staffRegistry: nextReg,
-            staffUpdatedAt: issuedAt,
-          },
-          { merge: true }
-        );
-      } catch (dirErr) {
-        console.warn('[api/staff/create] Facility directory sync warning:', dirErr);
-      }
-    } catch (fsErr) {
-      console.error('[api/staff/create] Firestore write failed:', fsErr);
-      // Rollback newly created Auth user to prevent split-brain state
-      if (newlyCreated && userRecord?.uid) {
-        try {
-          await adminAuth.deleteUser(userRecord.uid);
-        } catch (rbErr) {
-          console.warn('[api/staff/create] Auth rollback failed:', rbErr);
-        }
-      }
-      throw fsErr;
-    }
-
-    // 3. Sync to Postgres repo if configured
-    if (isPostgresConfigured()) {
-      try {
-        await upsertStaff({
-          badgeId: bId,
-          facilityId: fId,
-          fullName: name,
-          role: String(role),
-          roleKey: String(roleKey),
-          title: String(title),
-          department: String(department),
-          email: authEmail,
-          clearanceLevel: Number(clearanceLevel) || 1,
-          clearanceLabel: String(clearanceLabel),
-          photoUrl: photoUrl || undefined,
-          authEmail,
-        });
-      } catch (pgErr) {
-        console.warn('[api/staff/create] Postgres sync warning:', pgErr);
-      }
-    }
-
-    return NextResponse.json(
+    await facilityRef.set(
       {
-        success: true,
-        uid: userRecord.uid,
-        badgeId: bId,
-        staff: staffRecord,
+        staffCards: nextCards,
+        staffRegistry: nextReg,
+        staffUpdatedAt: issuedAt,
       },
-      { status: 200 }
+      { merge: true }
     );
-  } catch (error) {
-    console.error('[api/staff/create] Staff creation failed:', error);
-    return NextResponse.json(
-      { success: false, error: (error as Error).message || 'Staff creation failed' },
-      { status: 500 }
-    );
+  } catch (dirErr) {
+    console.warn('[api/staff/create] Facility directory sync warning:', dirErr);
   }
+} catch (fsErr) {
+  console.error('[api/staff/create] Firestore write failed:', fsErr);
+  // Rollback newly created Auth user to prevent split-brain state
+  if (newlyCreated && userRecord?.uid) {
+    try {
+      await adminAuth.deleteUser(userRecord.uid);
+    } catch (rbErr) {
+      console.warn('[api/staff/create] Auth rollback failed:', rbErr);
+    }
+  }
+  throw fsErr;
+}
+
+// 3. Sync to Postgres repo if configured
+if (isPostgresConfigured()) {
+  try {
+    await upsertStaff({
+      badgeId: bId,
+      facilityId: fId,
+      fullName: name,
+      role: String(role),
+      roleKey: String(roleKey),
+      title: String(title),
+      department: String(department),
+      email: authEmail,
+      clearanceLevel: Number(clearanceLevel) || 1,
+      clearanceLabel: String(clearanceLabel),
+      photoUrl: photoUrl || null,
+      authEmail,
+    });
+  } catch (pgErr) {
+    console.warn('[api/staff/create] Postgres sync warning:', pgErr);
+  }
+}
+
+return NextResponse.json(
+  {
+    success: true,
+    uid: userRecord.uid,
+    badgeId: bId,
+    staff: staffRecord,
+  },
+  { status: 200 }
+);
+  } catch (error) {
+  console.error('[api/staff/create] Staff creation failed:', error);
+  return NextResponse.json(
+    { success: false, error: (error as Error).message || 'Staff creation failed' },
+    { status: 500 }
+  );
+}
 }
 
