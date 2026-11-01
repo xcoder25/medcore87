@@ -450,6 +450,27 @@ export const PosPaymentDesk: React.FC<Props> = ({
       const patientName = fullName(patient);
       const hospNo = patient.hospitalNumber;
       const purposeLabel = lines.map((l) => l.label).join(', ') || purpose;
+      // Instant synchronous receipt recording for AkwaRemit state registry & physical cash till
+      try {
+        printPaymentReceipt({
+          reference: pay.reference,
+          patientName,
+          hospitalNumber: hospNo,
+          amount: amt,
+          method: String(method).toUpperCase(),
+          purpose: purposeLabel,
+          facilityName,
+          facilityId,
+          patientId: patient.id,
+          cashier,
+          cashierBadge: session?.badgeId,
+          paymentId: pay.id,
+          visitId: open?.id,
+          print: false,
+        });
+      } catch (recErr) {
+        console.warn('[pos] instant receipt sync note', recErr);
+      }
       setPayCeremony({
         phase: 'success',
         pay,

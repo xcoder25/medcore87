@@ -19,6 +19,7 @@ import {
   Search,
   X,
   AlertTriangle,
+  Landmark,
 } from 'lucide-react';
 import {
   listAccountsRequests,
@@ -39,9 +40,12 @@ import { todayPayments, dayStats, subscribeReceptionOps } from '../../lib/recept
 import { PosPaymentDesk } from '../cashier/PosPaymentDesk';
 import { AccountingArDesk } from '../finance/AccountingArDesk';
 import { InsuranceHmoClaimsSuite } from '../finance/InsuranceHmoClaimsSuite';
+import { AutoAccountBalancingCard } from '../finance/AutoAccountBalancingCard';
+import { AkwaRemitRevenueSuite } from '../finance/AkwaRemitRevenueSuite';
+import { getAkwaRemitDailySummary, AKWAREMIT_EVENT } from '../../lib/akwaRemitStore';
 import { emitLiveAction } from '../../lib/liveActions';
 
-type AccView = 'home' | 'payment' | 'billing' | 'receipts' | 'ar' | 'claims';
+type AccView = 'home' | 'payment' | 'billing' | 'receipts' | 'ar' | 'claims' | 'akwaremit';
 
 interface Props {
   session: UserSession;
@@ -394,7 +398,14 @@ export const AccountingWorkspace: React.FC<Props> = ({
     const u1 = subscribeAccountsRequests(bump);
     const u2 = subscribeBills(bump);
     const u3 = subscribeReceptionOps(bump);
-    return () => { u1(); u2(); u3(); };
+    const onRemit = () => bump();
+    window.addEventListener(AKWAREMIT_EVENT, onRemit);
+    window.addEventListener('medcore-payment-receipts', onRemit);
+    return () => {
+      u1(); u2(); u3();
+      window.removeEventListener(AKWAREMIT_EVENT, onRemit);
+      window.removeEventListener('medcore-payment-receipts', onRemit);
+    };
   }, [bump]);
 
   useEffect(() => {
@@ -429,6 +440,19 @@ export const AccountingWorkspace: React.FC<Props> = ({
     return listPatientsWithOpenBills(facilityId);
   }, [facilityId, tick]);
 
+  const awaitingAmount = useMemo(() => awaiting.reduce((sum, r) => sum + (Number(r.amountNgn) || 0), 0), [awaiting]);
+  const paidTodayAmount = useMemo(() => paidToday.reduce((sum, r) => sum + (Number(r.amountNgn) || 0), 0), [paidToday]);
+  const openBillsAmount = useMemo(() => openBills.reduce((sum, ob) => sum + (Number(ob.balanceNgn) || 0), 0), [openBills]);
+
+  const akwaSummary = useMemo(() => {
+    void tick;
+    try {
+      return getAkwaRemitDailySummary(facilityId);
+    } catch {
+      return { pendingReceiptsCount: 0, pendingRemittanceNgn: 0 };
+    }
+  }, [facilityId, tick]);
+
   const nav: { id: AccView; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'home', label: 'Accounts home', icon: LayoutDashboard, badge: awaiting.length || undefined },
     { id: 'ar', label: 'AR desk', icon: Wallet, badge: awaiting.length || undefined },
@@ -436,6 +460,12 @@ export const AccountingWorkspace: React.FC<Props> = ({
     { id: 'billing', label: 'Billing office', icon: FileText },
     { id: 'claims', label: 'HMO / NHIA claims', icon: FileText },
     { id: 'receipts', label: 'Today receipts', icon: Wallet },
+    {
+      id: 'akwaremit',
+      label: 'AkwaRemit Central Hub',
+      icon: Landmark,
+      badge: akwaSummary.pendingReceiptsCount || undefined,
+    },
   ];
 
   const openInPos = (req: FrontDeskAccountsRequest) => {
@@ -556,6 +586,19 @@ export const AccountingWorkspace: React.FC<Props> = ({
 
       {view === 'home' && (
         <>
+          {/* Auto Account Balancing Intelligence & Akwa Remitta Cash Remittance Reminder */}
+          <AutoAccountBalancingCard
+            session={session}
+            onNavigateToAkwaRemit={() => setView('akwaremit')}
+            onNavigateToPayment={() => setView('payment')}
+            awaitingCount={awaiting.length}
+            awaitingAmount={awaitingAmount}
+            paidTodayCount={paidToday.length}
+            paidTodayAmount={paidTodayAmount}
+            openBillsAmount={openBillsAmount}
+            onRefresh={bump}
+          />
+
           {/* KPI row */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
             {kpi.map((k) => {
@@ -739,6 +782,12 @@ export const AccountingWorkspace: React.FC<Props> = ({
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {view === 'akwaremit' && (
+        <div style={{ background: '#fff', borderRadius: 20, border: `1px solid ${C.border}`, overflow: 'hidden', padding: 8 }}>
+          <AkwaRemitRevenueSuite session={session} />
         </div>
       )}
     </div>
