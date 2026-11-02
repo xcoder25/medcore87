@@ -25,6 +25,7 @@ import {
   type ReceptionPayment,
   type ReceptionVisit,
   type PaymentMethod,
+  markVisitsPaidForPatient,
 } from '../../lib/receptionOpsStore';
 import { CONSULT_FEES, NIGERIA_INSURANCE } from '../../lib/receptionConstants';
 import { orchestratePosDesk, suggestChargeForPatient } from '../../lib/posAiAssist';
@@ -415,6 +416,8 @@ export const PosPaymentDesk: React.FC<Props> = ({
         amountNgn: amt,
       });
       releaseOrdersForPatient(facilityId, patient.id);
+      // Auto-mark all visits for this patient as paid — no manual step needed
+      try { markVisitsPaidForPatient(facilityId, patient.id); } catch { /* ignore */ }
     } catch {
       /* ignore */
     }
@@ -1185,7 +1188,7 @@ export const PosPaymentDesk: React.FC<Props> = ({
                 <div style={{ marginTop: 8, fontSize: 14, color: '#64748B', lineHeight: 1.5 }}>
                   Ref: <strong style={{ color: '#0F172A' }}>{payCeremony.pay.reference}</strong>
                   <br />
-                  Bill marked paid · returning to desk…
+                  Bill auto-marked paid · returning to desk…
                 </div>
                 <button
                   type="button"

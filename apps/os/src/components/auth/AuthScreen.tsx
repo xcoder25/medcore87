@@ -155,7 +155,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
   const [error, setError] = useState<string | null>(null);
   const [staffRegistry, setStaffRegistry] = useState<PresetStaff[]>([]);
   /** email = work email form; badge = Staff ID No. + PIN */
-  const [authMode, setAuthMode] = useState<'email' | 'badge'>('email');
+  const [authMode, setAuthMode] = useState<'email' | 'badge'>('badge');
   const [firebaseLive, setFirebaseLive] = useState(false);
 
   // Load enrolled staff (local) + live Firebase facility directory
@@ -1027,87 +1027,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             textAlign: 'center',
             margin: '0 0 14px',
           }}>
-            {authMode === 'badge'
-              ? 'Staff sign-in — Staff ID / badge and PIN'
-              : 'Admin sign-in — work email and password'}
+            'Sign in with your Staff Badge ID and PIN'
           </p>
 
-          {/* Admin vs Staff mode — clear for every user */}
-          <div
-            role="tablist"
-            aria-label="Sign-in method"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 8,
-              marginBottom: 18,
-              padding: 4,
-              borderRadius: 12,
-              background: '#F1F5F9',
-              border: '1px solid #E2E8F0',
-            }}
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={authMode === 'email'}
-              onClick={() => {
-                setError(null);
-                setSuccess(false);
-                setUsername('');
-                setPassword('');
-                setAuthMode('email');
-              }}
-              style={{
-                border: 'none',
-                borderRadius: 10,
-                padding: '10px 8px',
-                cursor: 'pointer',
-                fontWeight: 700,
-                fontSize: '0.8rem',
-                lineHeight: 1.25,
-                background: authMode === 'email' ? '#FFFFFF' : 'transparent',
-                color: authMode === 'email' ? '#0A2540' : '#64748B',
-                boxShadow: authMode === 'email' ? '0 1px 3px rgba(15,23,42,0.08)' : 'none',
-              }}
-            >
-              Admin
-              <div style={{ fontWeight: 500, fontSize: '0.68rem', color: authMode === 'email' ? '#0052D4' : '#94A3B8', marginTop: 2 }}>
-                Email + password
-              </div>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={authMode === 'badge'}
-              onClick={() => {
-                setError(null);
-                setSuccess(false);
-                setUsername('');
-                setPassword('');
-                setAuthMode('badge');
-              }}
-              style={{
-                border: 'none',
-                borderRadius: 10,
-                padding: '10px 8px',
-                cursor: 'pointer',
-                fontWeight: 700,
-                fontSize: '0.8rem',
-                lineHeight: 1.25,
-                background: authMode === 'badge' ? '#FFFFFF' : 'transparent',
-                color: authMode === 'badge' ? '#0A2540' : '#64748B',
-                boxShadow: authMode === 'badge' ? '0 1px 3px rgba(15,23,42,0.08)' : 'none',
-              }}
-            >
-              Staff
-              <div style={{ fontWeight: 500, fontSize: '0.68rem', color: authMode === 'badge' ? '#0052D4' : '#94A3B8', marginTop: 2 }}>
-                Staff ID + PIN
-              </div>
-            </button>
-          </div>
+          {/* Badge-only sign-in — no tab switcher */}
 
-          {/* Error Message */}
+                    {/* Error Message */}
           {error && (
             <div style={{
               display: 'flex',
@@ -1186,7 +1111,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder={authMode === 'badge' ? 'Staff ID / badge number' : 'Admin work email'}
+                  placeholder="Staff ID / Badge number (e.g. AKS-2025-1234)"
                   style={{
                     width: '100%',
                     padding: '12px 14px 12px 42px',
@@ -1260,7 +1185,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={authMode === 'badge' ? 'Staff PIN' : 'Admin password'}
+                placeholder="Staff PIN (4–6 digits)"
                 style={{
                   width: '100%',
                   padding: '12px 42px 12px 42px',

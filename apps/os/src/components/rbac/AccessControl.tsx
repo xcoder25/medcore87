@@ -567,7 +567,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     const pinNorm = normalizeStaffPin(pin);
     const nameSnap = fullName.trim();
     const mail = (email || '').trim().toLowerCase();
-    const photoSnap = photoUrl || undefined;
+    // Never pass undefined to Firestore — use null or omit the field
+    const photoSnap = photoUrl || null;
 
     try {
       const prepared = prepareStaffEnrolment({
@@ -583,7 +584,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
         pin: pinNorm,
         shortRole: roleMeta.shortRole,
         permissions: defaultPermissionsForRole(roleMeta.roleKey),
-        photoUrl: photoSnap,
+        photoUrl: photoSnap || undefined,
         email: mail || undefined,
       });
 
@@ -592,7 +593,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
 
       let finalPhoto = photoSnap;
       try {
-        finalPhoto = (await resolveStaffPhotoForEnrol(facilityId, badgeId, photoSnap)) || photoSnap;
+        finalPhoto = (await resolveStaffPhotoForEnrol(facilityId, badgeId, photoSnap || undefined)) || photoSnap;
       } catch {
         finalPhoto = photoSnap;
       }
@@ -629,11 +630,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
           pin: pinNorm,
           shortRole: roleMeta.shortRole,
           permissions: accessRow.permissions,
-          photoUrl: finalPhoto,
+          photoUrl: finalPhoto || undefined,
           email: mail || undefined,
         },
         card,
-        { ...prepared.entry, pin: pinNorm, email: mail || undefined, photoUrl: finalPhoto }
+        { ...prepared.entry, pin: pinNorm, email: mail || undefined, photoUrl: finalPhoto || undefined }
       );
 
       const nextAccess = [accessRow, ...getAccessRecords().filter((r) => r.id !== accessRow.id)];
@@ -683,7 +684,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
         workEmail: mail || undefined,
         authEmail: badgeAuthEmail(badgeId),
         status: 'active',
-        photoUrl: finalPhoto,
+        photoUrl: finalPhoto || undefined,
       };
 
       try {
@@ -701,7 +702,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
           clearanceLevel: roleMeta.clearanceLevel,
           clearanceLabel: roleMeta.clearanceLabel,
           permissions: accessRow.permissions,
-          photoUrl: finalPhoto,
+          photoUrl: finalPhoto || undefined,
           pin: pinNorm,
           authEmail: badgeAuthEmail(badgeId),
         });
@@ -722,7 +723,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
           clearanceLevel: roleMeta.clearanceLevel,
           clearanceLabel: roleMeta.clearanceLabel,
           templateKey: card.templateKey || 'TPL_CLINICAL',
-          photoUrl: finalPhoto,
+          photoUrl: finalPhoto || undefined,
           pin: pinNorm,
         });
       } catch { /* ignore */ }
