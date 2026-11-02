@@ -169,6 +169,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     badgeId: string;
     name: string;
     role: string;
+    roleKey?: string;
+    clearanceLevel?: number;
     department: string;
     registeredEmail: string;
     maskedEmail: string;
@@ -225,6 +227,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           badgeId: data.badgeId || query,
           name: data.name || 'Healthcare Staff',
           role: data.role || 'Staff Member',
+          roleKey: data.roleKey || '',
+          clearanceLevel: data.clearanceLevel,
           department: data.department || '',
           registeredEmail: data.registeredEmail || '',
           maskedEmail: data.maskedEmail || '',
@@ -250,6 +254,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           badgeId: bId,
           name: hit.name || 'Healthcare Staff',
           role: hit.role || 'Staff Member',
+          roleKey: (hit as any).roleKey || '',
+          clearanceLevel: (hit as any).clearanceLevel,
           department: hit.department || '',
           registeredEmail: regMail,
           maskedEmail: masked,
@@ -275,6 +281,32 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             role: localHit.role,
             department: localHit.department,
             registeredEmail: '',
+            maskedEmail: '',
+            hasRegisteredEmail: false,
+          });
+          setForgotStep('options');
+          setForgotLoading(false);
+          return;
+        }
+      } catch { /* ignore */ }
+
+      // Also check localStorage registry as tertiary fallback
+      try {
+        const regRaw = localStorage.getItem('medcore_os_staff_registry');
+        const reg: any[] = regRaw ? JSON.parse(regRaw) : [];
+        const bUp = query.trim().toUpperCase();
+        const found = reg.find((r: any) => String(r.badgeId || r.id || '').toUpperCase() === bUp);
+        if (found) {
+          const { normalizeBadgeId } = await import('../../lib/staffCardStore');
+          const bId = normalizeBadgeId(found.badgeId || found.id || query);
+          setForgotLookupResult({
+            badgeId: bId,
+            name: found.name || found.fullName || 'Healthcare Staff',
+            role: found.role || 'Staff Member',
+            roleKey: found.roleKey || '',
+            clearanceLevel: found.clearanceLevel,
+            department: found.department || '',
+            registeredEmail: found.email || found.workEmail || '',
             maskedEmail: '',
             hasRegisteredEmail: false,
           });
@@ -366,8 +398,36 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
     try {
       // 1. Update local stores immediately
-      const { updateStaffPin } = await import('../../lib/staffCardStore');
+      const { updateStaffPin, inferRoleKey } = await import('../../lib/staffCardStore');
       updateStaffPin(badgeId, p, facilityId);
+
+      // 1b. Also patch local registry so the roleKey is preserved after reset
+      try {
+        const regRaw = localStorage.getItem('medcore_os_staff_registry');
+        const reg: any[] = regRaw ? JSON.parse(regRaw) : [];
+        const bUp = badgeId.toUpperCase();
+        const idx = reg.findIndex((r: any) => String(r.badgeId || r.id || '').toUpperCase() === bUp);
+        const storedRoleKey = forgotLookupResult!.roleKey || inferRoleKey(forgotLookupResult!.role, badgeId);
+        if (idx >= 0) {
+          reg[idx] = { ...reg[idx], pin: p, roleKey: storedRoleKey };
+        } else {
+          // Insert minimal record so login can find it
+          reg.unshift({
+            badgeId,
+            id: badgeId,
+            name: forgotLookupResult!.name,
+            role: forgotLookupResult!.role,
+            roleKey: storedRoleKey,
+            clearanceLevel: forgotLookupResult!.clearanceLevel ?? 3,
+            department: forgotLookupResult!.department,
+            facilityId,
+            hospitalId: facilityId,
+            pin: p,
+          });
+        }
+        localStorage.setItem('medcore_os_staff_registry', JSON.stringify(reg));
+        localStorage.setItem('medcore_staff_registry', JSON.stringify(reg));
+      } catch { /* non-fatal */ }
 
       // 2. Update remote API / Firebase Auth / Firestore
       try {

@@ -28,6 +28,13 @@ export const MODULE_CATALOG: { key: string; label: string; group: string }[] = [
   { key: 'radiology', label: 'Radiology / imaging', group: 'Clinical' },
   { key: 'blood-bank', label: 'Blood bank', group: 'Clinical' },
   { key: 'workflow-intelligence', label: '7-Workflow intelligence suite', group: 'Clinical' },
+  { key: 'ophthalmology', label: 'Ophthalmology & Eye Clinic Exam Grid', group: 'Clinical' },
+  { key: 'fluid-balance', label: 'Nursing Fluid Balance & 24hr I/O Flowsheet', group: 'Clinical' },
+  { key: 'consent-legal', label: 'Digital Treatment & Surgical Consent Pad', group: 'Clinical' },
+  { key: 'dialysis', label: 'Renal Dialysis & Hemodialysis Station', group: 'Clinical' },
+  { key: 'physiotherapy', label: 'Physiotherapy & Physical Rehabilitation', group: 'Clinical' },
+  { key: 'dental', label: 'Dental Clinic & Odontogram', group: 'Clinical' },
+  { key: 'nutrition', label: 'Clinical Nutrition & Dietetics', group: 'Clinical' },
 
   // Operations
   { key: 'command', label: 'Hospital command centre', group: 'Operations' },
@@ -84,6 +91,9 @@ export const MODULE_CATALOG: { key: string; label: string; group: string }[] = [
   { key: 'patient.billing', label: 'Bills, receipts, balances', group: 'Patient data' },
   { key: 'patient.insurance', label: 'HMO / NHIA eligibility', group: 'Patient data' },
   { key: 'patient.full_chart', label: 'Full clinical chart (all patient data)', group: 'Patient data' },
+  { key: 'patient.consents', label: 'Signed legal consents & NDPR releases', group: 'Patient data' },
+  { key: 'patient.eye_records', label: 'Visual acuity & fundus recordings', group: 'Patient data' },
+  { key: 'patient.fluid_charts', label: 'Hourly intake & output balances', group: 'Patient data' },
 ];
 
 export const CONFIGURABLE_ROLES: { roleKey: string; label: string }[] = [

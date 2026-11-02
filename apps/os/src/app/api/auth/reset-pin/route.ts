@@ -87,6 +87,16 @@ export async function POST(req: NextRequest) {
         }
 
         // Check facility shared doc if not yet found
+        // Check root staff collection (written atomically during create)
+        if (!matchedStaff && matchedBadge) {
+          try {
+            const rootSnap = await adminDb.collection('staff').doc(matchedBadge).get();
+            if (rootSnap.exists) {
+              matchedStaff = { badgeId: rootSnap.id, ...rootSnap.data() };
+            }
+          } catch { /* ignore */ }
+        }
+
         if (!matchedStaff) {
           const facSnap = await adminDb.collection('facilities').doc(fidNorm).get();
           if (facSnap.exists) {
@@ -141,12 +151,16 @@ export async function POST(req: NextRequest) {
     const role = matchedStaff?.role || matchedStaff?.title || 'Staff Member';
     const department = matchedStaff?.department || '';
 
+    const roleKey = matchedStaff?.roleKey || matchedStaff?.role || '';
+    const clearanceLevel = matchedStaff?.clearanceLevel;
     return NextResponse.json({
       ok: true,
       found: true,
       badgeId: matchedBadge || (isEmail ? '' : query),
       name: displayName,
       role,
+      roleKey,
+      clearanceLevel,
       department,
       registeredEmail: officialEmail,
       maskedEmail: officialEmail ? maskEmail(officialEmail) : '',
@@ -259,6 +273,38 @@ export async function POST(req: NextRequest) {
           },
           { merge: true }
         );
+
+        // Also update root staff collection and backfill profile metadata
+        try {
+          const rootRef = adminDb.collection('staff').doc(badgeId);
+          const rSnap = await rootRef.get();
+          if (rSnap.exists) {
+            await rootRef.set({ pin: pinNorm, updatedAt: new Date().toISOString() }, { merge: true });
+            const rData = rSnap.data() || {};
+            await staffDocRef.set({
+              fullName: rData.fullName || rData.name,
+              name: rData.name || rData.fullName,
+              role: rData.role || (badgeId.startsWith('AMC-') ? 'Hospital Administrator' : 'Staff'),
+              roleKey: rData.roleKey || (badgeId.startsWith('AMC-') ? 'hospital_admin' : 'doctor'),
+              clearanceLevel: rData.clearanceLevel || (badgeId.startsWith('AMC-') ? 5 : 3),
+              clearanceLabel: rData.clearanceLabel || (badgeId.startsWith('AMC-') ? 'Administrator' : 'L3'),
+              department: rData.department || 'Hospital Management',
+              facilityId: rData.facilityId || facilityId,
+              facilityName: rData.facilityName,
+            }, { merge: true });
+          } else if (badgeId.startsWith('AMC-')) {
+            // Auto-heal admin profile metadata so it never defaults to HIM / records
+            await staffDocRef.set({
+              role: 'Hospital Administrator',
+              roleKey: 'hospital_admin',
+              clearanceLevel: 5,
+              clearanceLabel: 'Administrator',
+              department: 'Hospital Management',
+            }, { merge: true });
+          }
+        } catch (rErr) {
+          console.warn('[reset-pin] root staff backfill note:', rErr);
+        }
 
         // Update in facility shared document
         const sharedDocRef = adminDb.collection('facilities').doc(fidNorm);

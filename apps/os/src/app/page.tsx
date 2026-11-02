@@ -1368,10 +1368,37 @@ const handleLockScreen = () => {
             <span style={{ opacity: 0.8, fontSize: '0.68rem', background: activeModule === 'clinical-search' ? 'rgba(255,255,255,0.2)' : 'rgba(13,148,136,0.15)', padding: '1px 5px', borderRadius: 4 }}>⌘J</span>
           </button>
 
+          {/* Module breadcrumb pill — shows active workspace name */}
+          {activeModule !== 'dashboard' && (
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 12px',
+                borderRadius: 999,
+                background: 'linear-gradient(135deg, #EFF6FF 0%, #F0FDFA 100%)',
+                border: '1px solid #BAE6FD',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                color: '#0284C7',
+                flexShrink: 0,
+                maxWidth: 180,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span style={{ opacity: 0.55, fontSize: '0.65rem' }}>▸</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {String(activeModule).replace(/-/g, ' ').replace(/w/g, (c) => c.toUpperCase())}
+              </span>
+            </div>
+          )}
+
           <div className="os-top-hud-trail">
             <TopHudClock />
 
-            
             <button
               type="button"
               className="os-top-hud-icon-btn"

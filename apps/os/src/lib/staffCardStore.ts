@@ -1267,7 +1267,7 @@ export function inferRoleKey(raw?: string, badgeId?: string): string {
     LAB: 'lab', RAD: 'radiologist', REC: 'reception', RCPT: 'reception', FRO: 'reception',
     FRD: 'reception', DES: 'reception', FDK: 'reception', OPD: 'reception',
     REO: 'records', ACC: 'accountant', CAS: 'accountant', SYS: 'sysadmin', ICT: 'sysadmin',
-    ADM: 'hospital_admin', HOS: 'hospital_admin', BIO: 'biomedical', DIR: 'medical_director',
+    ADM: 'hospital_admin', HOS: 'hospital_admin', AMC: 'hospital_admin', BIO: 'biomedical', DIR: 'medical_director',
     STF: 'records',
   };
   if (parts.length >= 1) {

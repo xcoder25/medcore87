@@ -49,11 +49,12 @@ import type { UserSession } from '../auth/AuthScreen';
 import { HOSPITALS } from '../auth/AuthScreen';
 import { getCustomRoles } from '../../lib/rolePermissionsStore';
 import {
-  Shield, Plus, Search, CheckCircle2, XCircle, Lock, UserPlus, IdCard, Trash2,
+  Shield, Plus, Search, CheckCircle2, XCircle, Lock, UserPlus, IdCard, Trash2, Sliders,
   Layers, Pencil, Save, X as XIcon, Users, Printer, Copy, Check, Sparkles,
   Filter, ChevronRight, RefreshCw, Key, ShieldCheck, AlertTriangle, Eye,
 } from 'lucide-react';
 import { DuplicateCardModal } from '../staffing/DuplicateCardModal';
+import { RoleMatrixManager } from './RoleMatrixManager';
 
 export const ROLE_OPTIONS = [
   // Clinical specialties
@@ -130,7 +131,7 @@ function getInitialStaffAccessRecords(facilityId: string): AccessRecord[] {
 
 interface Props {
   session?: UserSession;
-  initialTab?: 'directory' | 'enrol' | 'cards';
+  initialTab?: 'directory' | 'enrol' | 'cards' | 'roles';
   onNavigate?: (moduleKey: string) => void;
 }
 
@@ -138,7 +139,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
   const facilityId = session?.hospitalId || HOSPITALS[0]?.id || 'IGH-EKT';
   const facilityName = session?.facility || HOSPITALS.find((h) => h.id === facilityId)?.name || 'Hospital';
 
-  const [activeTab, setActiveTab] = useState<'directory' | 'enrol' | 'cards'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'directory' | 'enrol' | 'cards' | 'roles'>(initialTab);
   const [records, setRecords] = useState<AccessRecord[]>(() => getInitialStaffAccessRecords(facilityId));
   const [search, setSearch] = useState('');
   const [groupFilter, setGroupFilter] = useState<string>('ALL');
@@ -905,6 +906,32 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
               <span>ID Badges</span>
               <span style={{ fontSize: '0.72rem', padding: '1px 6px', borderRadius: 999, background: activeTab === 'cards' ? 'rgba(255,255,255,0.25)' : '#E2E8F0', color: activeTab === 'cards' ? '#fff' : '#64748B' }}>
                 {countActiveStaffCards(facilityId)}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('roles')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 7,
+                padding: '8px 14px',
+                borderRadius: 9,
+                fontSize: '0.84rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                border: 'none',
+                background: activeTab === 'roles' ? '#0052D4' : 'transparent',
+                color: activeTab === 'roles' ? '#FFFFFF' : '#475569',
+                boxShadow: activeTab === 'roles' ? '0 4px 12px rgba(0,82,212,0.25)' : 'none',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Sliders size={16} />
+              <span>Role Matrix & Tools</span>
+              <span style={{ fontSize: '0.72rem', padding: '1px 6px', borderRadius: 999, background: activeTab === 'roles' ? 'rgba(255,255,255,0.25)' : '#F1F5F9', color: activeTab === 'roles' ? '#fff' : '#64748B' }}>
+                Studio
               </span>
             </button>
           </div>
@@ -1907,6 +1934,20 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
             ))}
           </div>
         </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          TAB 4: ROLE MATRIX & HOSPITAL TOOLS STUDIO
+      ══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'roles' && (
+        <RoleMatrixManager
+          facilityId={facilityId}
+          facilityName={facilityName}
+          onRoleCreated={(newKey) => {
+            setRoleKey(newKey);
+            setActiveTab('enrol');
+          }}
+        />
       )}
 
       {/* ── Modals: Delete Confirmation, Delete Success, Duplicates ── */}
