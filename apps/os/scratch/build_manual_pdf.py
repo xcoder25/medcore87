@@ -292,6 +292,12 @@ def build_pdf(output_paths):
     5. Click the blue <b>Sign In to Workstation</b> button. The system validates your credentials and immediately opens your department's tailored dashboard.
     """
     story.append(Paragraph(steps_s3, body_style))
+    story.append(Spacer(1, 6))
+
+    story.append(make_callout(
+        "<b>Self-Service Credential & PIN Recovery:</b> If staff or administrators forget their security PIN, they can click <b>'Forgot password or PIN?'</b> on the login screen. Entering their Staff Badge ID verifies their identity and enables <b>Instant PIN Reset</b> (defining a new 4–6 digit PIN that updates immediately across Firebase Auth and Firestore) or dispatching an official password reset link to their verified email.",
+        bg="#F0FDF4", border="#86EFAC", text_color="#166534"
+    ))
     story.append(Spacer(1, 10))
 
     # ------------------ SECTION 4 ------------------

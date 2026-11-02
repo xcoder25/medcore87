@@ -1248,3 +1248,26 @@ export async function firebaseChangeBadgePin(
   const newNorm = normalizeStaffPin(newPin);
   return firebaseChangePassword(email, oldNorm, newNorm);
 }
+
+/**
+ * Send an official password reset link to a verified email address via Firebase Auth.
+ */
+export async function firebaseSendPasswordReset(
+  email: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { sendPasswordResetEmail, getAuth } = await import('firebase/auth');
+    const auth = getAuth(getFirebaseApp());
+    await sendPasswordResetEmail(auth, email.trim());
+    return { success: true };
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code || '';
+    if (code === 'auth/user-not-found') {
+      return { success: false, error: 'No account registered with this email address.' };
+    }
+    if (code === 'auth/invalid-email') {
+      return { success: false, error: 'Please enter a valid email address.' };
+    }
+    return { success: false, error: (err as Error)?.message || 'Failed to dispatch password reset email.' };
+  }
+}
