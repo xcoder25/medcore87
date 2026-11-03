@@ -18,6 +18,45 @@ interface UserProfileModalProps {
   onLogout?: () => void;
 }
 
+
+/* ── Human-friendly Permission & Session formatting ──────────────────────── */
+const PERMISSION_TITLES: Record<string, string> = {
+  'dashboard': 'Executive Dashboard',
+  'command': 'Command Center',
+  'emr': 'Clinical EMR',
+  'beds': 'Bed Management',
+  'patient-flow': 'Patient Flow & Triage',
+  'staffing': 'Staff Directory',
+  'enrolment': 'Staff Enrolment',
+  'my-card': 'Staff Digital ID',
+  'cashier': 'Billing & Cashier',
+  'rbac': 'Access Control & Matrix',
+  'sysadmin': 'System Administration',
+  'ai': 'Clinical Intelligence',
+  'm87-ai': 'Celestia Clinical AI',
+  'notifications': 'Hospital Alerts',
+  'theatre': 'Surgical Suite',
+  'pharmacy': 'Pharmacy Dispensing',
+  'lab': 'Diagnostic Laboratory',
+  'radiology': 'Radiology & Imaging',
+  'maternity': 'Maternity & Labour',
+  'records': 'Health Records (HIM)',
+};
+
+function formatPermTitle(perm: string): string {
+  const k = perm.toLowerCase().trim();
+  if (PERMISSION_TITLES[k]) return PERMISSION_TITLES[k];
+  return k.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatAuthMethod(m?: string): string {
+  if (!m) return 'Staff Smart Badge · PIN';
+  if (/firebase/i.test(m)) {
+    return 'Smart Badge • Staff ID';
+  }
+  return m;
+}
+
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   session,
   isOpen,
@@ -363,10 +402,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#10B981', fontSize: '0.75rem', fontWeight: 700 }}>
                     <Clock size={15} />
-                    <span>ACTIVE SESSION</span>
+                    <span>SESSION INFO</span>
                   </div>
                   <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0F172A', marginTop: 4 }}>
-                    {session.authMethod || 'Staff Badge + PIN'}
+                    {formatAuthMethod(session.authMethod)}
                   </div>
                   <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: 2 }}>
                     Verified Hospital Terminal
@@ -411,7 +450,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         }}
                       >
                         <CheckCircle2 size={11} color="#0284C7" />
-                        {perm.replace(/_/g, ' ').toLowerCase()}
+                        {formatPermTitle(perm)}
                       </span>
                     ))
                   ) : (

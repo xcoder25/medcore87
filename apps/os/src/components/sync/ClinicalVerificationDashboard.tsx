@@ -297,7 +297,7 @@ export const ClinicalVerificationDashboard: React.FC = () => {
               <span>Client State Layer</span>
               <Database className="w-4 h-4 text-emerald-400" />
             </div>
-            <div className="text-base font-bold text-emerald-300 mt-2">IndexedDB (localforage)</div>
+            <div className="text-base font-bold text-emerald-300 mt-2">Local offline cache</div>
             <div className="text-xs text-slate-400 mt-1">Non-blocking async useEffect hooks</div>
           </div>
 
@@ -551,7 +551,7 @@ export const ClinicalVerificationDashboard: React.FC = () => {
             </div>
             <p className="text-xs text-slate-300">
               {usbAction === 'export'
-                ? 'Exporting IndexedDB mutation logs and patient records via File System Access API using AES-256-GCM.'
+                ? 'Exporting offline mutation logs and patient records via File System Access API using AES-256-GCM.'
                 : 'Importing encrypted .emrpkg container from USB drive into local hospital database schema.'}
             </p>
 

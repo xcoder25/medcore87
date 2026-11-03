@@ -95,7 +95,6 @@ const NAV: NavSection[] = [
       { key: 'staffing', label: 'Staff Presence & Rosters', icon: Users },
       { key: 'transfer', label: 'Hospital Staff Transfer', icon: ArrowRightLeft },
       { key: 'patient-flow', label: 'Patient Flow Visibility', icon: RefreshCw },
-      { key: 'ambulance', label: 'Ambulance & Dispatch', icon: PhoneCall },
       { key: 'my-card', label: 'My Administrator ID Card', icon: IdCard },
     ],
   },

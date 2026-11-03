@@ -386,7 +386,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
           <Field label="Signatory full name *"><input style={inputStyle} value={draft.baaSignedBy} onChange={(e) => patch({ baaSignedBy: e.target.value })} placeholder="Name of authorised officer" /></Field>
           <Field label="Data storage region" hint="Choose residency for clinical data">
             <select style={inputStyle} value={draft.storageRegion} onChange={(e) => patch({ storageRegion: e.target.value as StorageRegion })}>
-              <option value="ng-lagos">Nigeria cloud (Firebase · recommended)</option>
+              <option value="ng-lagos">Nigeria cloud (recommended)</option>
               <option value="local_only">Onsite hub preferred (LAN + cloud when online)</option>
               <option value="af-south">Africa region (if configured)</option>
             </select>
@@ -419,7 +419,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
             ))}
           </div>
           <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: 12, fontSize: '0.8rem', color: '#334155', lineHeight: 1.45 }}>
-            <strong>Always available:</strong> Staff Access (enrol + ID cards), Command Centre, patient registry, notifications, Firebase cloud sync. Optional onsite LAN hub is set in Admin Settings when a hospital server is on UPS.
+            <strong>Always available:</strong> Staff Access (enrol + ID cards), Command Centre, patient registry, notifications, MedCore cloud sync. Optional onsite LAN hub is set in Admin Settings when a hospital server is on UPS.
           </div>
         </div>
       )}

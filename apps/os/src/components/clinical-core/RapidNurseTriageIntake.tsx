@@ -38,6 +38,7 @@ import { saveVitals, type VitalsRecord } from '../../lib/nursingVitalsStore';
 import { broadcastOpdStage } from '../../hooks/useOpdSync';
 import { pushNotification } from '../../lib/notificationEngine';
 import { listStaffCards } from '../../lib/staffCardStore';
+import { findMatchingPreAlert, matchAndImportAlert, type EpcrPreArrivalAlert } from '../../lib/epcrBridgeStore';
 
 /**
  * RapidNurseTriageIntake — 60-Second Nurse Triage Intake Interface.
@@ -62,6 +63,23 @@ export interface RapidTriageProps {
 
 // Sample Akwa Ibom verified patients with chronic tags & allergies for instant demo
 const DEMO_VERIFIED_PATIENTS = [
+  {
+    patientId: 'PAT-AKS-8812',
+    hospitalNumber: 'HOSP-2026-8812',
+    nin: 'NIN-99283716402',
+    fullName: 'John Smith',
+    age: 38,
+    dob: '1988-04-12',
+    gender: 'Male',
+    lga: 'Eket',
+    bloodGroup: 'O+',
+    genotype: 'HbAA',
+    allergies: ['PENICILLIN'],
+    chronicConditions: ['NONE DECLARED'],
+    isPregnant: false,
+    weightKg: 82,
+    heightCm: 180,
+  },
   {
     patientId: 'PAT-AKS-4401',
     hospitalNumber: 'HOSP-2026-4401',
@@ -180,6 +198,36 @@ export const RapidNurseTriageIntake: React.FC<RapidTriageProps> = ({
 
   // ── 1. PATIENT IDENTIFICATION STATE ──────────────────────────────────────
   const [selectedPatientIndex, setSelectedPatientIndex] = useState<number>(0);
+  const [matchedEpcrAlert, setMatchedEpcrAlert] = useState<EpcrPreArrivalAlert | undefined>(undefined);
+  const [epcrIngestedNotice, setEpcrIngestedNotice] = useState<string | null>(null);
+
+  // Check for pre-arrival ambulance alert for currently selected patient
+  useEffect(() => {
+    const p = DEMO_VERIFIED_PATIENTS[selectedPatientIndex];
+    if (p) {
+      const match = findMatchingPreAlert(p.fullName, p.dob);
+      setMatchedEpcrAlert(match);
+    }
+  }, [selectedPatientIndex]);
+
+  const handleImportPreAlert = (alert: EpcrPreArrivalAlert) => {
+    const parts = alert.vitals.bp.split('/');
+    if (parts[0]) setBpSystolic(parts[0]);
+    if (parts[1]) setBpDiastolic(parts[1]);
+    setPulseRate(String(alert.vitals.pulse));
+    setRespRate(String(alert.vitals.rr));
+    setSpo2(String(alert.vitals.spo2));
+    setTempC(String(alert.vitals.temp));
+    setPainScore(alert.vitals.painScale);
+    setChiefComplaint(`${alert.incidentType}: ${alert.accidentNarrative}`);
+    setTargetDestination('Emergency Resuscitation Bay 1 (A&E)');
+    setAssignedRoom('Resus Bay 1 · Trauma Team');
+
+    matchAndImportAlert(alert.id, activeNurseName);
+    setMatchedEpcrAlert(undefined);
+    setEpcrIngestedNotice(`Ambulance data ingested for ${alert.patient.fullName} via ${alert.protocol} (${alert.emsUnit}). 0 words typed.`);
+    setTimeout(() => setEpcrIngestedNotice(null), 7000);
+  };
   const [isScanningBiometric, setIsScanningBiometric] = useState<boolean>(false);
   const [scanMessage, setScanMessage] = useState<string>('');
 

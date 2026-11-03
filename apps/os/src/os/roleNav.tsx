@@ -57,7 +57,6 @@ const MASTER_PILLARS: NavSection[] = [
             { key: 'universal-queue', icon: Clock, label: 'Universal Queue' },
             { key: 'notifications', icon: Bell, label: 'Notifications' },
       { key: 'staffing', icon: Users, label: 'Doctor & Nurse Shift Rosters' },
-      { key: 'ambulance', icon: PhoneCall, label: 'Ambulance Fleet & Transfers', badge: 'GPS' },
       { key: 'inventory', icon: Package, label: 'Central Medical Store (CMS)' },
       { key: 'biomedical', icon: Wrench, label: 'Clinical device log (not CMMS) Assets' },
       { key: 'facilities', icon: Gauge, label: 'Oxygen Plant & Utilities' },
@@ -235,7 +234,6 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
         {
           label: 'Dispatch & Intake',
           items: [
-            { key: 'ambulance', icon: PhoneCall, label: 'Ambulance Arrival & Dispatch', badge: '999' },
             { key: 'universal-queue', icon: Clock, label: 'A&E Waiting Bay Queue', badge: 'Queue' },
             { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
@@ -502,7 +500,6 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
             { key: 'pharmacy', icon: Pill, label: 'Pharmacy Dispensing & Stocks' },
             { key: 'laboratory', icon: FlaskConical, label: 'Laboratory LIS & Analyzers' },
             { key: 'blood-bank', icon: Droplet, label: 'Blood Bank & Transfusions' },
-            { key: 'ambulance', icon: PhoneCall, label: 'Ambulance Fleet & Transfers' },
           ],
         },
         {
@@ -534,7 +531,6 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
             { key: 'transfer', icon: Users, label: 'Hospital Staff Transfer' },
             { key: 'staffing', icon: Users, label: 'Staffing & Rosters' },
             { key: 'patient-flow', icon: RefreshCw, label: 'Patient Flow Visibility' },
-            { key: 'ambulance', icon: PhoneCall, label: 'Ambulance & Dispatch' },
           ],
         },
         {

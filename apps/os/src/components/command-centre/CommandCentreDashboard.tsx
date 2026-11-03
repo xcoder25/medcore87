@@ -4,9 +4,9 @@
  * Hospital Command Centre — live KPIs from beds, queue, staff, ambulance.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, BedDouble, Users, PhoneCall, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Activity, BedDouble, Users, Radio, RefreshCw, AlertTriangle } from 'lucide-react';
 import { listBeds, ensureDefaultBeds, subscribeBeds } from '../../lib/bedBoardStore';
-import { listUnits, ensureDefaultFleet, subscribeAmbulance } from '../../lib/ambulanceDispatchStore';
+import { listUncommittedPreAlerts, subscribeStagingQueue } from '../../lib/epcrBridgeStore';
 import { dayStats, todayVisits, subscribeReceptionOps } from '../../lib/receptionOpsStore';
 import { getStaffRegistry, subscribeAdminSync, getActiveFacilityId } from '../../lib/adminRealtimeStore';
 import { emitLiveAction } from '../../lib/liveActions';
@@ -20,14 +20,14 @@ export const CommandCentreDashboard: React.FC = () => {
 
   const reload = () => {
     ensureDefaultBeds(facilityId);
-    ensureDefaultFleet(facilityId);
+    // Pre-hospital ePCR staging queue loaded
     setTick((t) => t + 1);
   };
 
   useEffect(() => {
     reload();
     const u1 = subscribeBeds(reload);
-    const u2 = subscribeAmbulance(reload);
+    const u2 = subscribeStagingQueue(reload);
     const u3 = subscribeReceptionOps(reload);
     const u4 = subscribeAdminSync(reload);
     return () => {
@@ -39,15 +39,15 @@ export const CommandCentreDashboard: React.FC = () => {
   }, [facilityId]);
 
   const beds = useMemo(() => listBeds(facilityId), [facilityId, tick]);
-  const units = useMemo(() => listUnits(facilityId), [facilityId, tick]);
+  const epcrAlerts = useMemo(() => listUncommittedPreAlerts(facilityId), [facilityId, tick]);
   const stats = useMemo(() => dayStats(facilityId), [facilityId, tick]);
   const visits = useMemo(() => todayVisits(facilityId), [facilityId, tick]);
   const staff = useMemo(() => getStaffRegistry(), [tick]);
 
   const occupied = beds.filter((b) => b.status === 'occupied').length;
   const available = beds.filter((b) => b.status === 'available').length;
-  const ambBusy = units.filter((u) => u.status === 'en_route' || u.status === 'at_scene').length;
-  const ambAvail = units.filter((u) => u.status === 'available').length;
+  const inboundCount = epcrAlerts.filter((a) => a.status === 'inbound').length;
+  const atBayCount = epcrAlerts.filter((a) => a.status === 'at_bay').length;
   const waiting = visits.filter((v) => v.status === 'waiting' || v.status === 'called').length;
 
   const byWard = useMemo(() => {
@@ -87,7 +87,7 @@ export const CommandCentreDashboard: React.FC = () => {
           { l: 'Beds occupied', v: occupied, s: `${available} free`, c: '#EA580C', icon: BedDouble },
           { l: 'Queue waiting', v: waiting, s: `${stats.checkIns} check-ins today`, c: '#2563EB', icon: Activity },
           { l: 'Active staff', v: staff.length, s: 'Roster', c: '#0D9488', icon: Users },
-          { l: 'Ambulances out', v: ambBusy, s: `${ambAvail} available`, c: '#7C3AED', icon: PhoneCall },
+          { l: 'Inbound EMS Pre-Alerts', v: inboundCount, s: `${atBayCount} at bay · HL7/FHIR`, c: '#7C3AED', icon: Radio },
           {
             l: 'Alerts',
             v: waiting > 8 ? 1 : 0,
@@ -209,25 +209,44 @@ export const CommandCentreDashboard: React.FC = () => {
         </div>
 
         <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E2E8F0', padding: 16 }}>
-          <div style={{ fontWeight: 800, marginBottom: 12 }}>Fleet snapshot</div>
-          {units.map((u) => (
-            <div
-              key={u.id}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                padding: '10px 0',
-                borderBottom: '1px solid #F1F5F9',
-                fontSize: 13,
-              }}
-            >
-              <span style={{ fontWeight: 700 }}>{u.callSign}</span>
-              <span style={{ color: '#64748B' }}>{u.status.replace('_', ' ')}</span>
-              <span style={{ color: '#94A3B8', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {u.location}
-              </span>
-            </div>
-          ))}
+          <div style={{ fontWeight: 800, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Inbound EMS Pre-Alerts</span>
+            <span style={{ fontSize: 11, color: '#3B82F6', fontWeight: 700 }}>HL7 / FHIR R4</span>
+          </div>
+          {epcrAlerts.length > 0 ? (
+            epcrAlerts.map((a) => (
+              <div
+                key={a.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '8px 0',
+                  borderBottom: '1px solid #F1F5F9',
+                  fontSize: 12.5,
+                }}
+              >
+                <div>
+                  <span style={{ fontWeight: 700, color: '#0F172A', display: 'block' }}>{a.patient.fullName}</span>
+                  <span style={{ fontSize: 11, color: '#64748B' }}>{a.emsUnit}</span>
+                </div>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    background: a.status === 'at_bay' ? '#FEE2E2' : '#EFF6FF',
+                    color: a.status === 'at_bay' ? '#B91C1C' : '#1D4ED8',
+                  }}
+                >
+                  {a.status === 'at_bay' ? 'AT BAY' : `ETA ${a.etaMinutes}m`}
+                </span>
+              </div>
+            ))
+          ) : (
+            <div style={{ fontSize: 12, color: '#94A3B8', padding: '10px 0' }}>No incoming ambulances en route</div>
+          )}
           <div style={{ fontWeight: 800, margin: '16px 0 8px' }}>Queue (today)</div>
           {visits.slice(0, 6).map((v) => (
             <div

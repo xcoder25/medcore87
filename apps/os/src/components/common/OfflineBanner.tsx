@@ -63,7 +63,7 @@ export function OfflineBanner() {
         }}
       >
         <CheckCircle2 size={16} />
-        <span>Connection restored ?" Synchronizing queued updates with cloud Firestore & Postgres.</span>
+        <span>Connection restored · Synchronizing queued updates with MedCore cloud.</span>
       </div>
     );
   }

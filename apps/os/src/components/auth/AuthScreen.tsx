@@ -977,7 +977,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         clearanceLabel: profile.clearanceLabel,
         clearanceLevel: profile.clearanceLevel,
         permissions: profile.permissions,
-        authMethod: fbUser ? 'Firebase · Staff ID' : 'Staff PIN',
+        authMethod: fbUser ? 'Staff Badge · Cloud Verified' : 'Staff Badge + PIN',
         pin: sessionPin,
         token: fbUser
           ? await withTimeout(fbUser.getIdToken(), 4000).catch(() => `PIN-${Date.now().toString(36)}`)
@@ -1172,7 +1172,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           clearanceLabel: matchedStaff.clearanceLabel,
           clearanceLevel: matchedStaff.clearanceLevel,
           permissions: matchedStaff.permissions,
-          authMethod: 'Firebase',
+          authMethod: 'MedCore Cloud',
           pin: sessionPin,
           token: await withTimeout(fbUser.getIdToken(), 4000).catch(() => `EMAIL-${Date.now().toString(36)}`),
           loginTime: new Date().toLocaleTimeString('en-GB', {
@@ -2319,7 +2319,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                             Send Password Reset Email
                           </div>
                           <div style={{ fontSize: '0.77rem', color: '#64748B', marginTop: 3, lineHeight: 1.4 }}>
-                            Send official Firebase reset instructions to <strong>{forgotLookupResult.maskedEmail}</strong>.
+                            Send official password reset instructions to <strong>{forgotLookupResult.maskedEmail}</strong>.
                           </div>
                         </div>
                         <ArrowRight size={16} color="#94A3B8" style={{ marginTop: 4, flexShrink: 0 }} />
