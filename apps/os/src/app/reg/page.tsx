@@ -129,32 +129,122 @@ const STYLES = `
     font-family: inherit;
     box-sizing: border-box;
   }
+  /* ── Liquid Glass Motion Button ── */
+  @keyframes liquidFlow {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  @keyframes glassShimmer {
+    0%   { transform: translateX(-120%) skewX(-15deg); opacity: 0; }
+    30%  { opacity: 0.7; }
+    100% { transform: translateX(240%) skewX(-15deg); opacity: 0; }
+  }
+  @keyframes regPulse {
+    0%, 100% {
+      box-shadow: 0 8px 32px rgba(0,82,212,0.38),
+                  0 1px 0 rgba(255,255,255,0.28) inset,
+                  0 -1px 0 rgba(0,0,0,0.10) inset;
+    }
+    50% {
+      box-shadow: 0 14px 48px rgba(0,82,212,0.52),
+                  0 0 0 6px rgba(0,82,212,0.08),
+                  0 1px 0 rgba(255,255,255,0.32) inset,
+                  0 -1px 0 rgba(0,0,0,0.12) inset;
+    }
+  }
+  @keyframes liquidRipple {
+    0%   { transform: scale(0); opacity: 0.55; }
+    100% { transform: scale(4); opacity: 0; }
+  }
+
   .reg-btn-primary {
+    position: relative;
+    overflow: hidden;
     width: 100%;
-    height: 48px;
-    border-radius: 10px;
-    border: none;
-    background: linear-gradient(90deg, #0052D4 0%, #00BFA5 100%);
-    color: #0A2540;
-    font-weight: 700;
-    font-size: 0.96rem;
+    height: 52px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.45);
+    background: linear-gradient(
+      135deg,
+      rgba(0,82,212,0.82) 0%,
+      rgba(0,140,200,0.80) 40%,
+      rgba(0,191,165,0.80) 100%
+    );
+    background-size: 200% 200%;
+    backdrop-filter: blur(14px) saturate(1.7);
+    -webkit-backdrop-filter: blur(14px) saturate(1.7);
+    color: #FFFFFF;
+    font-weight: 800;
+    font-size: 0.97rem;
+    letter-spacing: 0.035em;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.22);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    box-shadow: 0 8px 20px rgba(0,82,212,0.28);
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
     font-family: inherit;
+    animation: liquidFlow 5s ease infinite, regPulse 2.8s ease-in-out infinite;
+    transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1),
+                border-color 0.2s ease,
+                filter 0.2s ease;
+  }
+  .reg-btn-primary::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      180deg,
+      rgba(255,255,255,0.26) 0%,
+      rgba(255,255,255,0.06) 50%,
+      rgba(255,255,255,0.00) 100%
+    );
+    pointer-events: none;
+  }
+  .reg-btn-primary::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 40%;
+    border-radius: 0 0 16px 16px;
+    background: linear-gradient(0deg, rgba(0,0,0,0.10) 0%, transparent 100%);
+    pointer-events: none;
+  }
+  .reg-btn-primary:not(:disabled):hover {
+    transform: translateY(-3px) scale(1.012);
+    border-color: rgba(255,255,255,0.70);
+    filter: brightness(1.08);
+  }
+  .reg-btn-primary:not(:disabled):active {
+    transform: translateY(0) scale(0.985);
   }
   .reg-btn-primary:disabled {
+    opacity: 0.68;
     background: #CBD5E1;
+    border-color: #E2E8F0;
     box-shadow: none;
     cursor: not-allowed;
     color: #94A3B8;
+    animation: none;
+    filter: none;
   }
-  .reg-btn-primary:not(:disabled):hover { transform: translateY(-1px); }
-  .reg-btn-primary:not(:disabled):active { transform: translateY(0); }
+  .reg-lgb-shimmer {
+    position: absolute;
+    top: 0; left: 0;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(
+      105deg,
+      transparent 25%,
+      rgba(255,255,255,0.50) 50%,
+      transparent 75%
+    );
+    animation: glassShimmer 3.2s ease-in-out infinite;
+    pointer-events: none;
+    border-radius: inherit;
+  }
 `;
 
 export default function RegPage() {
@@ -763,12 +853,22 @@ export default function RegPage() {
                 className="reg-btn-primary"
                 disabled={submitting || adminExists || !isValid}
                 style={{ marginTop: 2 }}
-                onMouseEnter={(e) => { if (!submitting && !adminExists && isValid) e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+                onClick={(e) => {
+                  if (!submitting && !adminExists && isValid) {
+                    const btn = e.currentTarget;
+                    const circle = document.createElement('span');
+                    const rect = btn.getBoundingClientRect();
+                    const size = Math.max(rect.width, rect.height);
+                    circle.style.cssText = `position:absolute;width:${size}px;height:${size}px;left:${e.clientX - rect.left - size / 2}px;top:${e.clientY - rect.top - size / 2}px;border-radius:50%;background:rgba(255,255,255,0.35);animation:liquidRipple 0.7s ease-out forwards;pointer-events:none;`;
+                    btn.appendChild(circle);
+                    setTimeout(() => circle.remove(), 700);
+                  }
+                }}
               >
+                {!submitting && !adminExists && isValid && <span className="reg-lgb-shimmer" aria-hidden="true" />}
                 {submitting ? (
                   <>
-                    <div style={{ width: 18, height: 18, borderRadius: '50%', border: '2.5px solid rgba(10,37,64,0.25)', borderTopColor: '#0A2540', animation: 'regSpin 0.75s linear infinite' }} />
+                    <div style={{ width: 18, height: 18, borderRadius: '50%', border: '2.5px solid rgba(255,255,255,0.4)', borderTopColor: '#FFFFFF', animation: 'regSpin 0.75s linear infinite' }} />
                     Creating Administrator Account…
                   </>
                 ) : (

@@ -1578,38 +1578,144 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               </button>
             </div>
 
-            {/* Primary Sign In Button (Gradient matching authos.png) */}
+            <style>{`
+/* ── Liquid Glass Sign In Button ── */
+@keyframes liquidFlow {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes glassShimmer {
+  0%   { transform: translateX(-120%) skewX(-15deg); opacity: 0; }
+  30%  { opacity: 0.7; }
+  100% { transform: translateX(240%) skewX(-15deg); opacity: 0; }
+}
+@keyframes signInPulse {
+  0%, 100% {
+    box-shadow: 0 8px 32px rgba(0,82,212,0.38),
+                0 1px 0 rgba(255,255,255,0.28) inset,
+                0 -1px 0 rgba(0,0,0,0.10) inset;
+  }
+  50% {
+    box-shadow: 0 14px 48px rgba(0,82,212,0.52),
+                0 0 0 6px rgba(0,82,212,0.08),
+                0 1px 0 rgba(255,255,255,0.32) inset,
+                0 -1px 0 rgba(0,0,0,0.12) inset;
+  }
+}
+@keyframes liquidRipple {
+  0%   { transform: scale(0); opacity: 0.55; }
+  100% { transform: scale(4); opacity: 0; }
+}
+
+.auth-liquid-glass-btn {
+  position: relative;
+  overflow: hidden;
+  margin-top: 6px;
+  height: 52px;
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.45);
+  background: linear-gradient(
+    135deg,
+    rgba(0,82,212,0.82) 0%,
+    rgba(0,140,200,0.80) 40%,
+    rgba(0,191,165,0.80) 100%
+  );
+  background-size: 200% 200%;
+  backdrop-filter: blur(14px) saturate(1.7);
+  -webkit-backdrop-filter: blur(14px) saturate(1.7);
+  color: #FFFFFF;
+  font-weight: 800;
+  font-size: 0.97rem;
+  letter-spacing: 0.035em;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.22);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  animation: liquidFlow 5s ease infinite, signInPulse 2.8s ease-in-out infinite;
+  transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1),
+              border-color 0.2s ease,
+              filter 0.2s ease;
+}
+.auth-liquid-glass-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,0.26) 0%,
+    rgba(255,255,255,0.06) 50%,
+    rgba(255,255,255,0.00) 100%
+  );
+  pointer-events: none;
+}
+.auth-liquid-glass-btn::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 40%;
+  border-radius: 0 0 16px 16px;
+  background: linear-gradient(0deg, rgba(0,0,0,0.10) 0%, transparent 100%);
+  pointer-events: none;
+}
+.auth-liquid-glass-btn.is-hovered {
+  transform: translateY(-3px) scale(1.012);
+  border-color: rgba(255,255,255,0.70);
+  filter: brightness(1.08);
+}
+.auth-liquid-glass-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
+}
+.auth-liquid-glass-btn:disabled {
+  opacity: 0.68;
+  cursor: not-allowed;
+  animation: liquidFlow 5s ease infinite;
+  filter: none;
+}
+.auth-lgb-shimmer {
+  position: absolute;
+  top: 0; left: 0;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(
+    105deg,
+    transparent 25%,
+    rgba(255,255,255,0.50) 50%,
+    transparent 75%
+  );
+  animation: glassShimmer 3.2s ease-in-out infinite;
+  pointer-events: none;
+  border-radius: inherit;
+}
+`}</style>
+            {/* Primary Sign In Button — Liquid Glass */}
             <button
               type="submit"
               disabled={loading || success}
-              style={{
-                marginTop: 6,
-                height: 48,
-                borderRadius: 10,
-                border: 'none',
-                background: 'linear-gradient(90deg, #0052D4 0%, #00BFA5 100%)',
-                color: '#0A2540',
-                fontWeight: 700,
-                fontSize: '0.96rem',
-                cursor: loading || success ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                boxShadow: '0 8px 20px rgba(0, 82, 212, 0.28)',
-                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                if (!loading && !success) e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
+              className="auth-liquid-glass-btn"
+              onMouseEnter={(e) => { if (!loading && !success) e.currentTarget.classList.add('is-hovered'); }}
+              onMouseLeave={(e) => { e.currentTarget.classList.remove('is-hovered'); }}
+              onClick={(e) => {
+                if (!loading && !success) {
+                  const btn = e.currentTarget;
+                  const circle = document.createElement('span');
+                  const rect = btn.getBoundingClientRect();
+                  const size = Math.max(rect.width, rect.height);
+                  circle.style.cssText = `position:absolute;width:${size}px;height:${size}px;left:${e.clientX - rect.left - size / 2}px;top:${e.clientY - rect.top - size / 2}px;border-radius:50%;background:rgba(255,255,255,0.35);animation:liquidRipple 0.7s ease-out forwards;pointer-events:none;`;
+                  btn.appendChild(circle);
+                  setTimeout(() => circle.remove(), 700);
+                }
               }}
             >
+              {!loading && !success && <span className="auth-lgb-shimmer" aria-hidden="true" />}
               {success ? (
                 <>
                   <CheckCircle2 size={18} />
-                  <span>Authenticated � Launching...</span>
+                  <span>Authenticated 🚀 Launching...</span>
                 </>
               ) : loading ? (
                 <span>Signing in...</span>
@@ -1637,7 +1743,122 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   WebkitBackdropFilter: 'blur(6px)',
                 }}
               >
-                <style>{`@keyframes authSpin { to { transform: rotate(360deg); } }`}</style>
+                <style>{`
+@keyframes authSpin { to { transform: rotate(360deg); } }
+
+/* ── Liquid Glass Sign In Button ── */
+@keyframes liquidFlow {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes glassShimmer {
+  0%   { transform: translateX(-120%) skewX(-15deg); opacity: 0; }
+  30%  { opacity: 0.7; }
+  100% { transform: translateX(240%) skewX(-15deg); opacity: 0; }
+}
+@keyframes signInPulse {
+  0%, 100% {
+    box-shadow: 0 8px 32px rgba(0,82,212,0.38),
+                0 1px 0 rgba(255,255,255,0.28) inset,
+                0 -1px 0 rgba(0,0,0,0.10) inset;
+  }
+  50% {
+    box-shadow: 0 14px 48px rgba(0,82,212,0.52),
+                0 0 0 6px rgba(0,82,212,0.08),
+                0 1px 0 rgba(255,255,255,0.32) inset,
+                0 -1px 0 rgba(0,0,0,0.12) inset;
+  }
+}
+@keyframes liquidRipple {
+  0%   { transform: scale(0); opacity: 0.55; }
+  100% { transform: scale(4); opacity: 0; }
+}
+
+.auth-liquid-glass-btn {
+  position: relative;
+  overflow: hidden;
+  margin-top: 6px;
+  height: 52px;
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.45);
+  background: linear-gradient(
+    135deg,
+    rgba(0,82,212,0.82) 0%,
+    rgba(0,140,200,0.80) 40%,
+    rgba(0,191,165,0.80) 100%
+  );
+  background-size: 200% 200%;
+  backdrop-filter: blur(14px) saturate(1.7);
+  -webkit-backdrop-filter: blur(14px) saturate(1.7);
+  color: #FFFFFF;
+  font-weight: 800;
+  font-size: 0.97rem;
+  letter-spacing: 0.035em;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.22);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  animation: liquidFlow 5s ease infinite, signInPulse 2.8s ease-in-out infinite;
+  transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1),
+              border-color 0.2s ease,
+              filter 0.2s ease;
+}
+.auth-liquid-glass-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,0.26) 0%,
+    rgba(255,255,255,0.06) 50%,
+    rgba(255,255,255,0.00) 100%
+  );
+  pointer-events: none;
+}
+.auth-liquid-glass-btn::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 40%;
+  border-radius: 0 0 16px 16px;
+  background: linear-gradient(0deg, rgba(0,0,0,0.10) 0%, transparent 100%);
+  pointer-events: none;
+}
+.auth-liquid-glass-btn.is-hovered {
+  transform: translateY(-3px) scale(1.012);
+  border-color: rgba(255,255,255,0.70);
+  filter: brightness(1.08);
+}
+.auth-liquid-glass-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
+}
+.auth-liquid-glass-btn:disabled {
+  opacity: 0.68;
+  cursor: not-allowed;
+  animation: liquidFlow 5s ease infinite;
+  filter: none;
+}
+.auth-lgb-shimmer {
+  position: absolute;
+  top: 0; left: 0;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(
+    105deg,
+    transparent 25%,
+    rgba(255,255,255,0.50) 50%,
+    transparent 75%
+  );
+  animation: glassShimmer 3.2s ease-in-out infinite;
+  pointer-events: none;
+  border-radius: inherit;
+}
+`}</style>
                 <div
                   className="auth-round-loader"
                   style={{
