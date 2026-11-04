@@ -644,7 +644,7 @@ function InfectionBoard({ facilityId, session }: { facilityId: string; session?:
             {c.syndrome} · {c.status}
           </div>
           {c.status === 'active' && (
-            <button type="button" style={btnGhost} onClick={() => { clearInfectionCase(c.id); setCases(listInfectionCases(facilityId)); }}>
+            <button type="button" style={btnGhost} onClick={() => { if (window.confirm('Clear active infection case for ' + c.patientName + '?')) { clearInfectionCase(c.id); setCases(listInfectionCases(facilityId)); } }}>
               Clear
             </button>
           )}

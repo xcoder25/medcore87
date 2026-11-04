@@ -64,6 +64,7 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
   const [activeFolder, setActiveFolder] = useState<string>('all');
   const [filterLevel, setFilterLevel] = useState<'all' | NotifLevel>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const syncDoneRef = React.useRef(false);
 
   const reload = () => {
     setItems(listNotifications(facilityId, false, sessionOpts));
@@ -71,57 +72,75 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
   };
 
   useEffect(() => {
-    // If reception, synchronize live operational attention items into notifications
-    if (isReception) {
+    // If reception, synchronize live operational attention items once with deduplication
+    if (isReception && !syncDoneRef.current) {
+      syncDoneRef.current = true;
       try {
         const todayStr = new Date().toISOString().slice(0, 10);
-        // 1. Arriving booked appointments scheduled today
+        const currentNotifications = listNotifications(facilityId, false, sessionOpts);
+
+        // 1. Arriving booked appointments scheduled today (deduplicated by patientId)
         const appts = listAppointments(facilityId).filter(
           (a) => a.scheduledAt.startsWith(todayStr) && a.status === 'booked'
         );
         for (const a of appts.slice(0, 6)) {
-          pushNotification({
-            facilityId,
-            level: 'important',
-            title: `Arriving Appointment · ${a.patientName}`,
-            body: `Scheduled for ${a.scheduledAt.slice(11, 16)} with ${a.doctor || 'Clinician'} (${a.department || 'OPD'}) · Check-in pending`,
-            module: 'appointments',
-            patientId: a.patientId,
-            roleHint: 'reception',
-          });
+          const alreadyNotified = currentNotifications.some(
+            (n) => n.patientId === a.patientId && n.module === 'appointments'
+          );
+          if (!alreadyNotified) {
+            pushNotification({
+              facilityId,
+              level: 'important',
+              title: `Arriving Appointment · ${a.patientName}`,
+              body: `Scheduled for ${a.scheduledAt.slice(11, 16)} with ${a.doctor || 'Clinician'} (${a.department || 'OPD'}) · Check-in pending`,
+              module: 'appointments',
+              patientId: a.patientId,
+              roleHint: 'reception',
+            });
+          }
         }
 
-        // 2. Overdue waiting queue (> 20 mins)
+        // 2. Overdue waiting queue (> 20 mins) (deduplicated by patientId)
         const overdue = todayVisits(facilityId).filter((v) => {
           if (v.status !== 'waiting') return false;
           const mins = Math.max(0, Math.round((Date.now() - new Date(v.checkedInAt).getTime()) / 60000));
           return mins >= 20;
         });
         for (const v of overdue.slice(0, 6)) {
-          const mins = Math.max(0, Math.round((Date.now() - new Date(v.checkedInAt).getTime()) / 60000));
-          pushNotification({
-            facilityId,
-            level: 'important',
-            title: `Overdue Wait Alert (${mins}m) · ${v.department}`,
-            body: `${v.queueNumber} · ${v.patientName} (${v.hospitalNumber}) waiting without being called`,
-            module: 'patient-flow',
-            patientId: v.patientId,
-            roleHint: 'reception',
-          });
+          const alreadyNotified = currentNotifications.some(
+            (n) => n.patientId === v.patientId && n.title.includes('Overdue Wait Alert')
+          );
+          if (!alreadyNotified) {
+            const mins = Math.max(0, Math.round((Date.now() - new Date(v.checkedInAt).getTime()) / 60000));
+            pushNotification({
+              facilityId,
+              level: 'important',
+              title: `Overdue Wait Alert (${mins}m) · ${v.department}`,
+              body: `${v.queueNumber} · ${v.patientName} (${v.hospitalNumber}) waiting without being called`,
+              module: 'patient-flow',
+              patientId: v.patientId,
+              roleHint: 'reception',
+            });
+          }
         }
 
-        // 3. Paid accounts requests recently cleared
+        // 3. Paid accounts requests recently cleared (deduplicated by patientId)
         const paidReqs = listAccountsRequests(facilityId, { status: 'paid' }).slice(0, 4);
         for (const p of paidReqs) {
-          pushNotification({
-            facilityId,
-            level: 'info',
-            title: `Payment Cleared · ₦${p.amountNgn.toLocaleString()}`,
-            body: `${p.patientName} (${p.hospitalNumber}) · Cleared at Accounts & auto-transferred to Triage Queue`,
-            module: 'patient-flow',
-            patientId: p.patientId,
-            roleHint: 'reception',
-          });
+          const alreadyNotified = currentNotifications.some(
+            (n) => n.patientId === p.patientId && n.title.includes('Payment Cleared')
+          );
+          if (!alreadyNotified) {
+            pushNotification({
+              facilityId,
+              level: 'info',
+              title: `Payment Cleared · ₦${p.amountNgn.toLocaleString()}`,
+              body: `${p.patientName} (${p.hospitalNumber}) · Cleared at Accounts & auto-transferred to Triage Queue`,
+              module: 'patient-flow',
+              patientId: p.patientId,
+              roleHint: 'reception',
+            });
+          }
         }
       } catch {
         /* ignore */

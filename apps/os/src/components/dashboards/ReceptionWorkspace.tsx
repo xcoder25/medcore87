@@ -1541,7 +1541,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               <button
                 type="button"
                 onClick={() => {
-                  if (window.confirm(`Delete all ${patients.length} registered patients and their visit records for a fresh test?`)) {
+                  if (window.confirm('Delete all test patients for this facility? This action cannot be undone.')) {
                     clearAllPatients(facilityId);
                     reload();
                     flash('All patients deleted. Ready for a fresh test.');
@@ -2700,7 +2700,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                     >
                       Check in
                     </button>
-                    <button type="button" onClick={() => { cancelAppointment(a.id); reload(); }} style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer' }}>
+                    <button type="button" onClick={() => { if (window.confirm('Cancel scheduled appointment for ' + a.patientName + '?')) { cancelAppointment(a.id); reload(); } }} style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer' }}>
                       Cancel
                     </button>
                   </>

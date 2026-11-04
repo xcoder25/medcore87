@@ -262,7 +262,7 @@ export const SystemAdministration: React.FC = () => {
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="os-ghost-btn" style={{ padding: '4px 10px', fontSize: '0.73rem' }}>Restart</button>
-                        <button className="os-ghost-btn" style={{ padding: '4px 8px' }}><Settings size={13} /></button>
+                        <button className="os-ghost-btn" aria-label="Configure service settings" style={{ padding: '4px 8px' }}><Settings size={13} /></button>
                       </div>
                     </td>
                   </tr>

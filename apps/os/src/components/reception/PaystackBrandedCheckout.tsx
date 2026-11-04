@@ -266,7 +266,7 @@ export const PaystackBrandedCheckout: React.FC<Props> = ({ open, input, onClose,
               DIGITAL · no card data on hospital PC
             </div>
           </div>
-          <button type="button" onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer' }}>
+          <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer' }}>
             <X size={20} />
           </button>
         </div>

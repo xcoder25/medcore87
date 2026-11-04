@@ -80,7 +80,6 @@ const MASTER_PILLARS: NavSection[] = [
       { key: 'aks-state', icon: Building2, label: 'Akwa Ibom State (AKSHIA · UPI · DHIS2)', badge: 'AKS' },
       { key: 'lamis', icon: Activity, label: 'LAMIS · NDR & e-CRVS (HIV & PEPFAR)', badge: 'RADET' },
       { key: 'data-hub', icon: Database, label: 'Central Telemetry Data Hub' },
-      { key: 'device-gateway', icon: Server, label: 'Device gateway', badge: 'Hub' },
             { key: 'fhir', icon: FileCode, label: 'FHIR R4 & HL7 Message Gateway', badge: 'R4' },
       { key: 'statewide-emr', icon: ShieldCheck, label: 'Statewide EMR suite', badge: 'Full' },
       { key: 'analytics', icon: BarChart3, label: 'Clinical Performance Analytics' },

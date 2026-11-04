@@ -809,7 +809,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
       <div style={{ background: '#FFF', borderRadius: 16, width: '100%', maxWidth: 480, padding: 22, boxShadow: '0 24px 48px rgba(131, 24, 67, 0.2)', border: '1px solid #FCE7F3', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#831843', fontWeight: 800 }}>{title}</h3>
-          <button type="button" onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94A3B8' }}><X size={18} /></button>
+          <button type="button" aria-label="Close" onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94A3B8' }}><X size={18} /></button>
         </div>
         {children}
       </div>

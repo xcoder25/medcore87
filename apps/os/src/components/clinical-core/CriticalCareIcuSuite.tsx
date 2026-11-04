@@ -85,7 +85,7 @@ export const CriticalCareIcuSuite: React.FC = () => {
                   }}>
                     {station.alertStatus.toUpperCase()}
                   </span>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)' }}>SOFA: {station.sofaScore} � GCS: {station.gcsScore}/15</span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)' }}>SOFA: {station.sofaScore} • GCS: {station.gcsScore}/15</span>
                 </div>
 
                 <div style={{ fontWeight: 800, color: '#0A2540', fontSize: '0.98rem' }}>{station.patientName}</div>
@@ -93,7 +93,7 @@ export const CriticalCareIcuSuite: React.FC = () => {
                 <div style={{ fontSize: '0.74rem', color: 'var(--os-text-muted)', marginTop: 4, lineHeight: 1.3 }}>{station.diagnosis}</div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--os-text-dim)', marginTop: 8 }}>
-                  <span>FiO2: {station.fio2}% � PEEP: {station.peep}</span>
+                  <span>FiO2: {station.fio2}% • PEEP: {station.peep}</span>
                   <span>MAP: {station.arterialPressure.split('(')[1]?.replace(')', '') || station.arterialPressure}</span>
                 </div>
               </div>
@@ -160,14 +160,14 @@ export const CriticalCareIcuSuite: React.FC = () => {
                     <strong style={{ color: '#0A2540' }}>Noradrenaline (Norepinephrine)</strong>
                     <span style={{ color: '#34D399', fontWeight: 700 }}>RUNNING</span>
                   </div>
-                  <div style={{ color: 'var(--os-text-dim)', marginTop: 4 }}>Dose: 0.18 mcg/kg/min � Rate: 7.2 mL/hr</div>
+                  <div style={{ color: 'var(--os-text-dim)', marginTop: 4 }}>Dose: 0.18 mcg/kg/min • Rate: 7.2 mL/hr</div>
                 </div>
                 <div style={{ padding: 10, background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: '0.78rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <strong style={{ color: '#0A2540' }}>Propofol 1% Sedation</strong>
                     <span style={{ color: '#34D399', fontWeight: 700 }}>RUNNING</span>
                   </div>
-                  <div style={{ color: 'var(--os-text-dim)', marginTop: 4 }}>Dose: 2.5 mg/kg/hr � Target RASS: -4</div>
+                  <div style={{ color: 'var(--os-text-dim)', marginTop: 4 }}>Dose: 2.5 mg/kg/hr • Target RASS: -4</div>
                 </div>
               </div>
             </div>

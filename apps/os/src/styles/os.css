@@ -4,6 +4,23 @@
   50%       { opacity: 0.45; }
 }
 
+/* Accessible High-Contrast Keyboard Focus Ring (WCAG 2.1 AA) */
+:focus-visible {
+  outline: 2.5px solid #0284C7 !important;
+  outline-offset: 2px !important;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[role="switch"]:focus-visible,
+[tabindex="0"]:focus-visible {
+  outline: 2.5px solid #0284C7 !important;
+  outline-offset: 2px !important;
+}
+
 /* Fonts loaded asynchronously via HTML head with local system-ui fallbacks */
 :root {
   /* Akwa Ibom State Official Signature Palette */

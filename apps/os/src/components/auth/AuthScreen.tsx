@@ -1452,7 +1452,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <CheckCircle2 size={13} color="#059669" />
                     <span style={{ color: '#0A2540', fontWeight: 600 }}>
-                      {detectedStaff.name} ({detectedStaff.shortRole}) � Assigned to: <strong style={{ color: '#0052D4' }}>{detectedStaff.hospitalName}</strong>
+                      {detectedStaff.name} ({detectedStaff.shortRole}) • Assigned to: <strong style={{ color: '#0052D4' }}>{detectedStaff.hospitalName}</strong>
                     </span>
                   </div>
                   {selectedHospital.id !== detectedStaff.hospitalId && (

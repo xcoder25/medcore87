@@ -546,7 +546,7 @@ export const PharmacyDispensingSuite: React.FC = () => {
                           </div>
                           <div style={{ fontSize: '0.76rem', color: 'var(--os-text-muted)', marginTop: 2 }}>
                             <Stethoscope size={11} style={{ display: 'inline', marginRight: 4 }} />
-                            {rx.doctorName} � {rx.diagnosis}
+                            {rx.doctorName} • {rx.diagnosis}
                           </div>
                         </div>
                       </div>
@@ -557,7 +557,7 @@ export const PharmacyDispensingSuite: React.FC = () => {
                           </div>
                         )}
                         <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)' }}>
-                          {rx.drugs.length} drug(s) � {pendingDrugs.length} pending
+                          {rx.drugs.length} drug(s) • {pendingDrugs.length} pending
                         </span>
                         {isExpanded ? <ChevronUp size={16} style={{ color: 'var(--os-text-dim)' }} /> : <ChevronDown size={16} style={{ color: 'var(--os-text-dim)' }} />}
                       </div>
@@ -589,7 +589,7 @@ export const PharmacyDispensingSuite: React.FC = () => {
                                 </span>
                               </div>
                               <div style={{ fontSize: '0.76rem', color: 'var(--os-text-muted)' }}>
-                                {drug.frequency} � {drug.duration} � Qty: {drug.quantity}
+                                {drug.frequency} • {drug.duration} • Qty: {drug.quantity}
                               </div>
                               {drug.instructions && (
                                 <div style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', marginTop: 3 }}>
@@ -655,13 +655,13 @@ export const PharmacyDispensingSuite: React.FC = () => {
                       <span style={{ fontSize: '0.74rem', color: 'var(--os-text-dim)' }}>({rx.patientId})</span>
                     </div>
                     <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--ak-orange-light)', marginTop: 4 }}>
-                      {rx.medication} � {rx.dosage}
+                      {rx.medication} • {rx.dosage}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--os-text-muted)', marginTop: 2 }}>
                       Regimen: <strong>{rx.frequency}</strong> via <strong>{rx.route}</strong> for <strong>{rx.duration}</strong>
                     </div>
                     <div style={{ fontSize: '0.74rem', color: 'var(--os-text-dim)', marginTop: 4 }}>
-                      {rx.prescribingDoctor} � {rx.orderedAt}
+                      {rx.prescribingDoctor} • {rx.orderedAt}
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>

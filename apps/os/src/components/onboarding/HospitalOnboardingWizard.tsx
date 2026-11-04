@@ -58,7 +58,7 @@ function Field({ label, children, hint }: { label: string; children: React.React
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" onClick={onClick} style={{
+    <button type="button" aria-pressed={active} onClick={onClick} style={{
       border: active ? '1.5px solid #0369A1' : '1px solid #E2E8F0',
       background: active ? '#E0F2FE' : '#FFF', color: active ? '#0C4A6E' : '#475569',
       borderRadius: 999, padding: '7px 12px', fontSize: '0.78rem', fontWeight: 650, cursor: 'pointer',
@@ -68,7 +68,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 
 function Toggle({ checked, onChange, label, desc }: { checked: boolean; onChange: (v: boolean) => void; label: string; desc?: string }) {
   return (
-    <button type="button" onClick={() => onChange(!checked)} style={{
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)} style={{
       display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
       border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px',
       background: checked ? '#F0FDF4' : '#FFF', cursor: 'pointer',
@@ -217,6 +217,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
     loadFacilityDraft(session.hospitalId, session.facility)
   );
   const [error, setError] = useState<string | null>(null);
+  const [showSkipConfirm, setShowSkipConfirm] = useState(false);
 
   useEffect(() => {
     const unsub = subscribeFacilityDraft(session.hospitalId, (remote) => {
@@ -502,10 +503,49 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
         onBack={() => { setError(null); setStep((s) => Math.max(1, s - 1)); }}
         onNext={next}
         onFinish={finish}
-        onSkip={finish}
+        onSkip={() => setShowSkipConfirm(true)}
         skipLabel={step < 4 ? 'Skip remaining (configure later)' : undefined}
         finishLabel="Complete facility setup"
       />
+
+      {showSkipConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#FFF', borderRadius: 16, maxWidth: 440, width: '100%', padding: 24, boxShadow: '0 20px 48px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Shield size={20} color="#D97706" />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A' }}>Skip Remaining Onboarding?</div>
+                <div style={{ fontSize: 12, color: '#64748B' }}>MedCore Hospital OS Configuration</div>
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.5, margin: '12px 0 20px' }}>
+              Are you sure you want to skip remaining configuration steps? Recommended defaults will be applied. You can modify clinical specialties, compliance policies, and module access at any time in System Administration.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setShowSkipConfirm(false)}
+                style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #E2E8F0', background: '#FFF', color: '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >
+                Continue Setup
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSkipConfirm(false);
+                  finish();
+                }}
+                style={{ padding: '8px 16px', borderRadius: 10, background: '#0284C7', color: '#FFF', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer' }}
+              >
+                Yes, Skip for Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </WizardShell>
   );
 }

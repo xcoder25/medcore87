@@ -48,7 +48,7 @@ export const KeyboardShortcutsHint: React.FC<Props> = ({ open, onClose }) => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
           <Keyboard size={18} color="#0052D4" />
           <span style={{ fontWeight: 800, fontSize: 15 }}>Keyboard shortcuts</span>
-          <button type="button" onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer' }}>
+          <button type="button" aria-label="Close" onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer' }}>
             <X size={16} />
           </button>
         </div>

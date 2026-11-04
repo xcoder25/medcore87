@@ -1031,7 +1031,7 @@ function PremiumModal({
           }}
         >
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: T.ink, fontFamily: T.font }}>{title}</h3>
-          <button type="button" onClick={onClose} style={iconBtn}>
+          <button type="button" aria-label="Close" onClick={onClose} style={iconBtn}>
             <X size={14} />
           </button>
         </div>

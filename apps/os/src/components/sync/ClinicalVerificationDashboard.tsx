@@ -27,6 +27,7 @@ interface ClinicalConflictItem {
   patientId: string;
   patientName: string;
   mrn?: string;
+  isDemo?: boolean;
   conflicts: Array<{
     conflictId: string;
     field: string;
@@ -40,7 +41,11 @@ interface ClinicalConflictItem {
   status: string;
 }
 
-export const ClinicalVerificationDashboard: React.FC = () => {
+export interface ClinicalVerificationProps {
+  session?: any;
+}
+
+export const ClinicalVerificationDashboard: React.FC<ClinicalVerificationProps> = ({ session }) => {
   const [conflicts, setConflicts] = useState<ClinicalConflictItem[]>([]);
   const [selectedConflict, setSelectedConflict] = useState<ClinicalConflictItem | null>(null);
   const [isResolving, setIsResolving] = useState(false);
@@ -51,7 +56,8 @@ export const ClinicalVerificationDashboard: React.FC = () => {
   // Operational profile status
   const [networkProfile, setNetworkProfile] = useState<'CLOUD_ONLINE' | 'LAN_ONLY' | 'BLACKOUT'>('CLOUD_ONLINE');
   const [isUsbBusy, setIsUsbBusy] = useState(false);
-  const [passphrase, setPassphrase] = useState('medcore-offline-secret-aks');
+  const [passphrase, setPassphrase] = useState('');
+  const [showConfirmSignoff, setShowConfirmSignoff] = useState(false);
   const [showPassModal, setShowPassModal] = useState(false);
   const [usbAction, setUsbAction] = useState<'export' | 'import'>('export');
 
@@ -88,6 +94,7 @@ export const ClinicalVerificationDashboard: React.FC = () => {
       setConflicts([
         {
           conflictId: 'VERIF-DEMO-01',
+          isDemo: true as any,
           patientId: 'P-002',
           patientName: 'Mr. Tunde Yusuf',
           mrn: 'MRN-21-08834',
@@ -126,7 +133,7 @@ export const ClinicalVerificationDashboard: React.FC = () => {
           conflictId: conflict.conflictId,
           resolutionChoice,
           customValue: resolutionChoice === 'CUSTOM' ? customValueInput : undefined,
-          clinicianId: 'DOC-ACTIVE'
+          clinicianId: session?.badgeId || session?.name || 'MEDCORE-CLINICIAN'
         })
       });
 
@@ -513,15 +520,18 @@ export const ClinicalVerificationDashboard: React.FC = () => {
                     Cancel
                   </button>
                   <button
-                    onClick={() => handleResolve(selectedConflict)}
+                    type="button"
+                    onClick={() => {
+                      if (resolutionChoice === 'CUSTOM' && !customValueInput.trim()) {
+                        setStatusMessage({ text: 'Please enter a verified custom value before sign-off.', type: 'error' });
+                        return;
+                      }
+                      setShowConfirmSignoff(true);
+                    }}
                     disabled={isResolving}
-                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition disabled:opacity-50"
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-emerald-400"
                   >
-                    {isResolving ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4" />
-                    )}
+                    <CheckCircle2 className="w-4 h-4" />
                     Sign-off & Reconcile Patient Chart
                   </button>
                 </div>
@@ -539,9 +549,64 @@ export const ClinicalVerificationDashboard: React.FC = () => {
         </div>
       </div>
 
+      
+      {/* Clinical Sign-off Confirmation Modal */}
+      {showConfirmSignoff && selectedConflict && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowConfirmSignoff(false); }}
+        >
+          <div className="w-full max-w-lg p-6 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-emerald-400">
+              <ShieldCheck className="w-6 h-6" />
+              <h3 className="text-base font-bold text-white">Confirm Clinical Sign-Off</h3>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              You are about to reconcile and permanently commit the clinical record for{' '}
+              <strong className="text-white">{selectedConflict.patientName}</strong> ({selectedConflict.mrn || selectedConflict.patientId}).
+            </p>
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-1">
+              <div><span className="text-slate-500">Resolution Choice:</span> <strong className="text-emerald-400">{resolutionChoice === 'USE_LOCAL' ? 'Local Ward Record' : resolutionChoice === 'USE_CLOUD' ? 'Incoming Cloud Record' : 'Custom Attending Value'}</strong></div>
+              {resolutionChoice === 'CUSTOM' && (
+                <div><span className="text-slate-500">Custom Value:</span> <strong className="text-amber-300">{customValueInput}</strong></div>
+              )}
+              <div><span className="text-slate-500">Signing Clinician:</span> <strong className="text-slate-200">{session?.name || session?.badgeId || 'Attending Clinician'}</strong></div>
+            </div>
+            <p className="text-[11px] text-amber-400/90 flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              This action writes to the official clinical audit trail and synchronizes with hospital cloud upon connection.
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowConfirmSignoff(false)}
+                className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowConfirmSignoff(false);
+                  await handleResolve(selectedConflict);
+                }}
+                disabled={isResolving}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/20"
+              >
+                {isResolving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                Confirm & Apply Sign-off
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* USB Sneakernet Passphrase Modal */}
       {showPassModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowPassModal(false); }}
+        >
           <div className="w-full max-w-md p-6 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl space-y-4">
             <div className="flex items-center gap-3 text-amber-400">
               <FileLock className="w-6 h-6" />
@@ -556,12 +621,14 @@ export const ClinicalVerificationDashboard: React.FC = () => {
             </p>
 
             <div className="space-y-2">
-              <label className="text-xs text-slate-400">Hospital Facility Security Passphrase:</label>
+              <label htmlFor="usb-passphrase" className="text-xs text-slate-400">Hospital Facility Security Passphrase:</label>
               <input
                 type="password"
+                id="usb-passphrase"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:outline-none focus:border-amber-500"
+                placeholder="Enter facility AES-256 passphrase..."
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
               />
             </div>
 

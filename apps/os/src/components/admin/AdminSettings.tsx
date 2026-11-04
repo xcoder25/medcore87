@@ -135,7 +135,48 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
       setDraft(next);
       setDirty(false);
       setSavedAt(new Date().toLocaleTimeString('en-GB'));
-      // Apply LAN immediately for hub sync
+
+      // 1. Sync session in localStorage & dispatch session change
+      try {
+        const rawSession = localStorage.getItem('medcore_os_session');
+        if (rawSession) {
+          const s = JSON.parse(rawSession);
+          const newFacName = next.displayName
+            ? (next.lga ? `${next.displayName}, ${next.lga}` : next.displayName)
+            : s.facility;
+          const newFid = next.shortCode || s.hospitalId || facilityId;
+          const updated = {
+            ...s,
+            facility: newFacName,
+            hospitalId: newFid,
+          };
+          localStorage.setItem('medcore_os_session', JSON.stringify(updated));
+          window.dispatchEvent(new CustomEvent('medcore_session_change', { detail: updated }));
+        }
+      } catch {
+        /* ignore */
+      }
+
+      // 2. Broadcast facility update to all listeners (AdminShell, page HUD, clinical desks)
+      try {
+        const fullFacilityName = next.displayName
+          ? (next.lga ? `${next.displayName}, ${next.lga}` : next.displayName)
+          : next.displayName;
+        window.dispatchEvent(
+          new CustomEvent('medcore-facility-updated', {
+            detail: { ...next, fullFacilityName },
+          })
+        );
+        window.dispatchEvent(
+          new CustomEvent('medcore-facility-switch', {
+            detail: { facilityId, facilityName: fullFacilityName },
+          })
+        );
+      } catch {
+        /* ignore */
+      }
+
+      // 3. Apply LAN immediately for hub sync
       if (next.lanApiUrl) {
         try {
           (window as unknown as { __MEDCORE_API_URL?: string }).__MEDCORE_API_URL = next.lanApiUrl;
@@ -144,6 +185,8 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
           /* ignore */
         }
       }
+
+      // 4. Update facility catalog
       try {
         const cat = loadFacilityCatalog(facilityId, session.facility);
         saveFacilityCatalog({
@@ -479,7 +522,6 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
 
           <button
             type="button"
-            disabled={!dirty}
             onClick={save}
             style={{
               display: 'inline-flex',
@@ -488,19 +530,47 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
               padding: '10px 20px',
               borderRadius: 10,
               border: 'none',
-              background: dirty ? 'linear-gradient(135deg, #0052D4 0%, #00BFA5 100%)' : '#CBD5E1',
+              background: '#0052D4',
               color: '#FFFFFF',
               fontWeight: 800,
               fontSize: 13,
-              cursor: dirty ? 'pointer' : 'not-allowed',
-              boxShadow: dirty ? '0 4px 14px rgba(0, 82, 212, 0.3)' : 'none',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0, 82, 212, 0.25)',
               transition: 'all 0.15s ease',
             }}
           >
-            <Save size={16} /> Save Changes
+            <Save size={16} /> Save & Broadcast Changes
           </button>
         </div>
       </div>
+
+      {savedAt && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 18px',
+            borderRadius: 12,
+            background: '#F0FDF4',
+            border: '1px solid #BBF7D0',
+            color: '#15803D',
+            fontSize: 13,
+            fontWeight: 600,
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <CheckCircle2 size={18} color="#16A34A" />
+            <span>
+              Hospital configuration for <strong>{draft.displayName || facilityId}</strong> is saved and active across all clinical terminals.
+            </span>
+          </div>
+          <span style={{ fontSize: 11.5, color: '#166534', fontWeight: 700 }}>
+            Synchronized at {savedAt}
+          </span>
+        </div>
+      )}
 
       {/* ── Multi-Tab Navigation Pills ── */}
       <div
@@ -521,7 +591,7 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
         <TabButton tab="network" icon={Wifi} label="Edge Sync & LAN" />
         <TabButton tab="clinical" icon={Stethoscope} label="Clinical Rules" />
         <TabButton tab="insurance" icon={ShieldCheck} label="NHIA & AKSHIA" />
-        <TabButton tab="ai" icon={Sparkles} label="Celestia AI & Ops" />
+        <TabButton tab="ai" icon={Sparkles} label="Clinical Intelligence & AI Ops" />
         <TabButton tab="data" icon={Database} label="Security & Backups" />
       </div>
 
@@ -1147,7 +1217,7 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
               <Sparkles size={20} color="#F59E0B" />
               <div>
                 <div style={{ fontSize: 16, fontWeight: 800, color: C.navy }}>
-                  Celestia AI Copilot & Front Desk Automation
+                  Clinical Intelligence & Front Desk Automation
                 </div>
                 <div style={{ fontSize: 12, color: C.muted }}>
                   AI recommendations, wait-time reminders, and hospital broadcast banners
@@ -1156,14 +1226,14 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
             </div>
 
             <Toggle
-              label="AI Reception Orchestrator"
-              desc="Provides real-time clinical context and recommendations during patient check-in"
+              label="Clinical Pathway Assistant"
+              desc="Provides real-time clinical context and department routing suggestions during patient check-in"
               checked={draft.aiReceptionEnabled}
               onChange={(v) => patch({ aiReceptionEnabled: v })}
             />
 
             <Toggle
-              label="AI Queue Wait-Time Reminders"
+              label="Queue Wait-Time Reminders"
               desc="Automatically notifies floor attendants when patient wait times exceed clinical thresholds"
               checked={draft.aiQueueReminders}
               onChange={(v) => patch({ aiQueueReminders: v })}
@@ -1171,7 +1241,7 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
 
             <Toggle
               label="Confirm Before Check-In"
-              desc="Requires a human receptionist to review and accept AI-generated clinical pathway recommendations"
+              desc="Requires desk staff to review and confirm triage and department routing recommendations"
               checked={draft.requireConfirmBeforeCheckIn}
               onChange={(v) => patch({ requireConfirmBeforeCheckIn: v })}
             />

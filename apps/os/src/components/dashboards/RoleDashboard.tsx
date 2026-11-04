@@ -94,7 +94,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
   }
 
   const deskForRole = (key: string): RoleDeskConfig | null => {
-    const ai = { label: 'Celestia', desc: 'Assistant', icon: Brain, go: 'm87-ai' };
+    const ai = { label: 'Clinical Assistant', desc: 'CDS & Desk AI', icon: Brain, go: 'm87-ai' };
     switch (key) {
       case 'midwife':
         return {
@@ -108,7 +108,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
             { label: 'Maternity beds', desc: 'Occupancy', icon: BedDouble, go: 'beds' },
             { label: 'OB emergency', desc: 'Resus / PPH', icon: Flame, go: 'emergency' },
             { label: 'Newborn', desc: 'NICU link', icon: HeartPulse, go: 'paediatrics' },
-            { label: 'Celestia', desc: 'Assistant', icon: Brain, go: 'm87-ai' },
+            { label: 'Clinical Assistant', desc: 'Maternity CDS', icon: Brain, go: 'm87-ai' },
           ],
         };
       case 'nurse':
@@ -152,7 +152,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
           quick: [
             { label: 'RIS / PACS', desc: 'Worklist & viewer', icon: Layers, go: 'radiology' },
             { label: 'EMR', desc: 'Records', icon: FileText, go: 'emr' },
-            { label: 'Celestia', desc: 'Imaging AI', icon: Brain, go: 'm87-ai' },
+            { label: 'Imaging Assistant', desc: 'Draft reporting', icon: Brain, go: 'm87-ai' },
           ],
         };
       case 'surgeon':
@@ -179,7 +179,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
             { label: 'MPI / Card', desc: 'FHIR enrolment', icon: CreditCard, go: 'patient-card' },
             { label: 'Chart retrieval', desc: 'View only', icon: FileText, go: 'emr' },
             { label: 'Transit', desc: 'Admissions', icon: RefreshCw, go: 'patient-flow' },
-            { label: 'Celestia', desc: 'HIM AI', icon: Brain, go: 'm87-ai' },
+            { label: 'Records Assistant', desc: 'HIM search & CDS', icon: Brain, go: 'm87-ai' },
           ],
         };
       case 'accountant':
@@ -335,9 +335,9 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
               <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600, color: '#0A2540' }}>
                 <Building2 size={13} color="#0052D4" /> {session.facility || 'Ibom Specialist Hospital, Uyo'}
               </span>
-              <span>�</span>
+              <span>•</span>
               <span>{session.department || 'Clinical Governance'}</span>
-              <span>�</span>
+              <span>•</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#059669', fontWeight: 600 }}>
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} /> Active Duty
               </span>
@@ -559,7 +559,7 @@ function DoctorDashboardBody({ onNavigate, triggerAction, activeTab }: any) {
   return (
     <RoleHome
       title="Physician workspace"
-      subtitle="All doctors share this dashboard. Open EMR, wards, theatre, or Celestia from here."
+      subtitle="All doctors share this dashboard. Open EMR, wards, theatre, or Clinical Assistant from here."
       metrics={[
         { label: 'Role', value: 'Doctor', sub: 'Shared clinical desk', tone: 'green' },
         { label: 'Queue', value: 'Live', sub: 'From EMR / flow modules' },
@@ -570,7 +570,7 @@ function DoctorDashboardBody({ onNavigate, triggerAction, activeTab }: any) {
         { label: 'Patient card', nav: 'patient-card', msg: 'Patient registration / card' },
         { label: 'Bed census', nav: 'beds', msg: 'Ward bed board' },
         { label: 'Theatre list', nav: 'theatre', msg: 'Operating theatre' },
-        { label: 'Celestia', nav: 'm87-ai', msg: 'Clinical AI assistant' },
+        { label: 'Clinical Assistant', nav: 'm87-ai', msg: 'Clinical CDS & guidelines' },
         { label: 'Pharmacy / Rx', nav: 'pharmacy', msg: 'e-Prescription' },
       ]}
       triggerAction={triggerAction}
@@ -596,7 +596,7 @@ function SurgeonDashboardBody({ onNavigate, triggerAction }: any) {
         { label: 'Theatre schedule', nav: 'theatre', msg: 'Opening theatre', primary: true },
         { label: 'Open EMR', nav: 'emr', msg: 'Surgical notes / EMR' },
         { label: 'ICU', nav: 'icu', msg: 'Critical care' },
-        { label: 'Celestia', nav: 'm87-ai', msg: 'Surgical AI helper' },
+        { label: 'Surgical Assistant', nav: 'm87-ai', msg: 'Pre-op & surgical CDS' },
       ]}
       triggerAction={triggerAction}
     />
@@ -622,7 +622,7 @@ function NurseDashboardBody({ onNavigate, triggerAction }: any) {
         { label: 'Open EMR', nav: 'emr', msg: 'Clinical record' },
         { label: 'Bed board', nav: 'beds', msg: 'Bed occupancy' },
         { label: 'Patient flow', nav: 'patient-flow', msg: 'Flow board' },
-        { label: 'Celestia', nav: 'm87-ai', msg: 'Nursing AI' },
+        { label: 'Nursing Assistant', nav: 'm87-ai', msg: 'Vitals & triage support' },
       ]}
       triggerAction={triggerAction}
     />
@@ -647,7 +647,7 @@ function MidwifeDashboardBody({ onNavigate, triggerAction }: any) {
         { label: 'Maternity / wards', nav: 'nursing', msg: 'Maternity nursing', primary: true },
         { label: 'Open EMR', nav: 'emr', msg: 'Maternity EMR' },
         { label: 'Bed board', nav: 'beds', msg: 'Beds' },
-        { label: 'Celestia', nav: 'm87-ai', msg: 'AI assistant' },
+        { label: 'Clinical Assistant', nav: 'm87-ai', msg: 'Clinical assistant' },
       ]}
       triggerAction={triggerAction}
     />
@@ -672,7 +672,7 @@ function PharmacistDashboardBody({ onNavigate, triggerAction }: any) {
         { label: 'Dispense / pharmacy', nav: 'pharmacy', msg: 'Pharmacy', primary: true },
         { label: 'Open EMR', nav: 'emr', msg: 'Medication history' },
         { label: 'Inventory', nav: 'inventory', msg: 'Medical store' },
-        { label: 'Celestia', nav: 'm87-ai', msg: 'Drug safety AI' },
+        { label: 'Pharmacy CDS', nav: 'm87-ai', msg: 'Drug safety & formulary' },
       ]}
       triggerAction={triggerAction}
     />
@@ -721,7 +721,7 @@ function RadiologistDashboardBody({ onNavigate, triggerAction }: any) {
       actions={[
         { label: 'Radiology / PACS', nav: 'radiology', msg: 'Radiology', primary: true },
         { label: 'Open EMR', nav: 'emr', msg: 'Reports in EMR' },
-        { label: 'Celestia', nav: 'm87-ai', msg: 'Imaging AI' },
+        { label: 'Imaging Assistant', nav: 'm87-ai', msg: 'Draft reads & report support' },
       ]}
       triggerAction={triggerAction}
     />
@@ -804,7 +804,7 @@ function BiomedicalDashboardBody({ onNavigate, triggerAction }: any) {
         <div className="metric-box alert-green">
           <span className="metric-label"><Activity size={13} style={{ display: 'inline', marginRight: 4 }} />Central Oxygen Plant Purity</span>
           <span className="metric-val">99.2% O2 Purity</span>
-          <span className="metric-sub">Pressure 4.8 Bar � Piping to all 6 Wards OK</span>
+          <span className="metric-sub">Pressure 4.8 Bar • Piping to all 6 Wards OK</span>
         </div>
       </div>
 
@@ -827,8 +827,8 @@ function BiomedicalDashboardBody({ onNavigate, triggerAction }: any) {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
           {[
-            { asset: 'BME-084', device: 'Dr�ger Evita V300 Ventilator', loc: 'ICU Bed 03', status: 'Operational', lastCal: '04 Sept 2026', nextCal: '04 Dec 2026', ok: true },
-            { asset: 'BME-112', device: 'Mindray BeneHeart D6 Defibrillator', loc: 'A&E Resuscitation', status: 'Battery Replaced � Ready', lastCal: '12 Sept 2026', nextCal: '12 Dec 2026', ok: true },
+            { asset: 'BME-084', device: 'Dr•ger Evita V300 Ventilator', loc: 'ICU Bed 03', status: 'Operational', lastCal: '04 Sept 2026', nextCal: '04 Dec 2026', ok: true },
+            { asset: 'BME-112', device: 'Mindray BeneHeart D6 Defibrillator', loc: 'A&E Resuscitation', status: 'Battery Replaced • Ready', lastCal: '12 Sept 2026', nextCal: '12 Dec 2026', ok: true },
             { asset: 'BME-194', device: 'GE Healthcare Aisys CS2 Anaesthesia Workstation', loc: 'Theatre 2', status: 'Leak Test Passed', lastCal: '15 Sept 2026', nextCal: '15 Dec 2026', ok: true },
             { asset: 'BME-230', device: 'Natus Olympic Infant Phototherapy Unit', loc: 'NICU Nursery', status: 'Bulb Replacement Overdue', lastCal: '10 June 2026', nextCal: 'OVERDUE', ok: false },
           ].map((d, i) => (
@@ -840,7 +840,7 @@ function BiomedicalDashboardBody({ onNavigate, triggerAction }: any) {
                   <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>{d.loc}</span>
                 </div>
                 <div style={{ fontSize: '0.8rem', color: d.ok ? '#4ADE80' : '#F59E0B', marginTop: 3 }}>
-                  Status: {d.status} � Next PPM: {d.nextCal}
+                  Status: {d.status} • Next PPM: {d.nextCal}
                 </div>
               </div>
               <button
@@ -868,17 +868,17 @@ function MedicalDirectorDashboardBody({ onNavigate, triggerAction }: any) {
         <div className="metric-box">
           <span className="metric-label"><Building2 size={13} style={{ display: 'inline', marginRight: 4 }} />Hospital Bed Occupancy</span>
           <span className="metric-val">482 / 520 Beds</span>
-          <span className="metric-sub">92.6% Occupancy � 38 Available</span>
+          <span className="metric-sub">92.6% Occupancy • 38 Available</span>
         </div>
         <div className="metric-box alert-green">
           <span className="metric-label"><Users size={13} style={{ display: 'inline', marginRight: 4 }} />Clinical Staff on Duty</span>
           <span className="metric-val">186 Present</span>
-          <span className="metric-sub">34 Doctors � 112 Nurses � 40 Techs</span>
+          <span className="metric-sub">34 Doctors • 112 Nurses • 40 Techs</span>
         </div>
         <div className="metric-box alert-green">
           <span className="metric-label"><ShieldCheck size={13} style={{ display: 'inline', marginRight: 4 }} />Clinical Quality & Safety</span>
           <span className="metric-val">0 Sentinel Events</span>
-          <span className="metric-sub">Inpatient Mortality 0.8% � ALOS 3.8 Days</span>
+          <span className="metric-sub">Inpatient Mortality 0.8% • ALOS 3.8 Days</span>
         </div>
         <div className="metric-box">
           <span className="metric-label"><PhoneCall size={13} style={{ display: 'inline', marginRight: 4 }} />Inter-Hospital MoH Link</span>
@@ -909,12 +909,12 @@ function MedicalDirectorDashboardBody({ onNavigate, triggerAction }: any) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14, marginTop: 12 }}>
           {[
-            { dept: 'Accident & Emergency', beds: '28 / 32 Beds', staff: '4 MDs � 8 RNs', status: 'Surge Warning', color: '#F59E0B' },
-            { dept: 'Operating Theatres', beds: '3 / 4 Theatres', staff: '6 Surgeons � 8 Anaesth', status: 'Normal Flow', color: '#22C55E' },
-            { dept: 'Intensive Care Unit (ICU)', beds: '14 / 16 Beds', staff: '4 Intensivists � 8 RNs', status: 'High Occupancy', color: '#EF4444' },
-            { dept: 'Maternity & Labour', beds: '32 / 44 Beds', staff: '3 Obs � 7 Midwives', status: 'Normal Flow', color: '#22C55E' },
-            { dept: 'Paediatrics & NICU', beds: '41 / 56 Beds', staff: '4 Paeds � 11 RNs', status: 'Normal Flow', color: '#22C55E' },
-            { dept: 'Internal Medicine Wards', beds: '82 / 96 Beds', staff: '8 MDs � 18 RNs', status: 'High Occupancy', color: '#FB923C' },
+            { dept: 'Accident & Emergency', beds: '28 / 32 Beds', staff: '4 MDs • 8 RNs', status: 'Surge Warning', color: '#F59E0B' },
+            { dept: 'Operating Theatres', beds: '3 / 4 Theatres', staff: '6 Surgeons • 8 Anaesth', status: 'Normal Flow', color: '#22C55E' },
+            { dept: 'Intensive Care Unit (ICU)', beds: '14 / 16 Beds', staff: '4 Intensivists • 8 RNs', status: 'High Occupancy', color: '#EF4444' },
+            { dept: 'Maternity & Labour', beds: '32 / 44 Beds', staff: '3 Obs • 7 Midwives', status: 'Normal Flow', color: '#22C55E' },
+            { dept: 'Paediatrics & NICU', beds: '41 / 56 Beds', staff: '4 Paeds • 11 RNs', status: 'Normal Flow', color: '#22C55E' },
+            { dept: 'Internal Medicine Wards', beds: '82 / 96 Beds', staff: '8 MDs • 18 RNs', status: 'High Occupancy', color: '#FB923C' },
           ].map((d, i) => (
             <div key={i} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -949,7 +949,7 @@ function SysadminDashboardBody({ onNavigate, triggerAction }: any) {
       actions={[
         { label: 'System admin', nav: 'system-admin', msg: 'System administration', primary: true },
         { label: 'Data hub', nav: 'data-hub', msg: 'Data hub' },
-        { label: 'Celestia', nav: 'm87-ai', msg: 'AI' },
+        { label: 'Clinical Assistant', nav: 'm87-ai', msg: 'Clinical CDS' },
       ]}
       triggerAction={triggerAction}
     />
@@ -1000,7 +1000,7 @@ function HospitalAdminDashboardBody({ onNavigate, triggerAction, activeTab, sess
         <div className="metric-box alert-green">
           <span className="metric-label"><Building2 size={13} style={{ display: 'inline', marginRight: 4 }} />Open Positions</span>
           <span className="metric-val">12 Vacancies</span>
-          <span className="metric-sub">3 urgent � 9 planned</span>
+          <span className="metric-sub">3 urgent • 9 planned</span>
         </div>
       </div>
 
@@ -1060,7 +1060,7 @@ function HospitalAdminDashboardBody({ onNavigate, triggerAction, activeTab, sess
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.staff}</div>
                     <div style={{ fontSize: '0.7rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {t.from} <ArrowRight size={10} color="#374151" /> {t.to} � {t.date}
+                      {t.from} <ArrowRight size={10} color="#374151" /> {t.to} • {t.date}
                     </div>
                   </div>
                   <span style={{
@@ -1084,7 +1084,7 @@ function HospitalAdminDashboardBody({ onNavigate, triggerAction, activeTab, sess
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
             {[
-              { task: 'Approve Transfer TRF-0091 � Dr. Fatima Al-Hassan', priority: 'urgent', due: 'Today' },
+              { task: 'Approve Transfer TRF-0091 • Dr. Fatima Al-Hassan', priority: 'urgent', due: 'Today' },
               { task: 'Review monthly nurse attendance report', priority: 'high', due: 'Sep 25' },
               { task: 'Sign off 3 staff leave requests', priority: 'normal', due: 'Sep 26' },
               { task: 'Update hospital org chart for Q4 2026', priority: 'low', due: 'Oct 01' },
@@ -1111,8 +1111,8 @@ function HospitalAdminDashboardBody({ onNavigate, triggerAction, activeTab, sess
       {activeTab === 'alerts' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {[
-            { type: 'warning', title: 'Understaffing Alert � ICU', detail: 'ICU night shift has 2 nurses instead of minimum 4. Consider emergency redeployment.', time: '08:15' },
-            { type: 'info',    title: 'Staff Transfer Request Received', detail: 'TRF-0091 awaiting your approval � Radiology specialist to UCH.', time: '07:30' },
+            { type: 'warning', title: 'Understaffing Alert • ICU', detail: 'ICU night shift has 2 nurses instead of minimum 4. Consider emergency redeployment.', time: '08:15' },
+            { type: 'info',    title: 'Staff Transfer Request Received', detail: 'TRF-0091 awaiting your approval • Radiology specialist to UCH.', time: '07:30' },
             { type: 'success', title: 'Monthly Payroll Processed', detail: 'All 87 staff salaries confirmed disbursed via IPPIS for September 2026.', time: '06:00' },
           ].map((a, i) => (
             <div key={i} className="os-card" style={{

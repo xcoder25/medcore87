@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  BedDouble, Search, CheckCircle2, AlertCircle, UserPlus, RefreshCw,
+  BedDouble, Search, CheckCircle2, AlertCircle, AlertTriangle, UserPlus, RefreshCw,
   Printer, Download, Plus, ClipboardList,
 } from 'lucide-react';
 import {
@@ -67,6 +67,12 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
   const [admitEdd, setAdmitEdd] = useState('');
   const [admitIsolation, setAdmitIsolation] = useState(false);
   const [transferTo, setTransferTo] = useState('');
+  const [confirmModal, setConfirmModal] = useState<{
+    type: 'discharge' | 'delete';
+    bedId: string;
+    bedLabel: string;
+    patientName?: string;
+  } | null>(null);
   const [newWard, setNewWard] = useState('');
   const [newPrefix, setNewPrefix] = useState('');
   const [newCount, setNewCount] = useState('4');
@@ -348,14 +354,22 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 14 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
-          {filtered.map((b) => {
-            const meta = BED_STATUS_META[b.status];
-            const los = losDays(b);
-            return (
-              <button
-                key={b.id}
-                type="button"
-                onClick={() => setSelected(b)}
+          {filtered.length === 0 ? (
+            <div style={{ gridColumn: '1 / -1', padding: '36px 20px', textAlign: 'center', background: '#F8FAFC', borderRadius: 14, border: '1px dashed #CBD5E1', color: '#64748B' }}>
+              <BedDouble size={32} style={{ margin: '0 auto 10px', color: '#94A3B8' }} />
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#334155' }}>No beds match your filter</div>
+              <div style={{ fontSize: 11, marginTop: 4 }}>Adjust the ward or status filter above to inspect hospital beds.</div>
+            </div>
+          ) : (
+            filtered.map((b) => {
+              const meta = BED_STATUS_META[b.status];
+              const los = losDays(b);
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  aria-label={`Bed ${b.bedNo}, ${b.ward}, Status: ${meta.label}${b.patient ? ', Patient: ' + b.patient : ''}`}
+                  onClick={() => setSelected(b)}
                 style={{
                   textAlign: 'left',
                   border: selected?.id === b.id ? `2px solid ${meta.color}` : '1px solid #E2E8F0',
@@ -389,7 +403,8 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
                 )}
               </button>
             );
-          })}
+          })
+          )}
         </div>
 
         <div style={{ ...card, position: 'sticky', top: 12, alignSelf: 'start' }}>
@@ -498,9 +513,12 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
                       type="button"
                       style={{ ...btnPrimary, background: '#0F172A' }}
                       onClick={() => {
-                        dischargeBed(selected.id, actor);
-                        reload();
-                        showNotification('Discharged · bed in turnover (not ready for admit)');
+                        setConfirmModal({
+                          type: 'discharge',
+                          bedId: selected.id,
+                          bedLabel: `${selected.bedNo} (${selected.ward})`,
+                          patientName: selected.patient || 'Admitted Patient',
+                        });
                       }}
                     >
                       Discharge
@@ -539,11 +557,11 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
                     type="button"
                     style={{ ...btn, color: '#B91C1C' }}
                     onClick={() => {
-                      if (deleteBed(selected.id, actor)) {
-                        setSelected(null);
-                        reload();
-                        showNotification('Bed deleted');
-                      } else showNotification('Cannot delete occupied bed');
+                      setConfirmModal({
+                        type: 'delete',
+                        bedId: selected.id,
+                        bedLabel: `${selected.bedNo} (${selected.ward})`,
+                      });
                     }}
                   >
                     Delete bed
@@ -619,6 +637,65 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
       )}
 
       {/* Admit modal */}
+
+      {confirmModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#FFF', borderRadius: 16, maxWidth: 440, width: '100%', padding: 24, boxShadow: '0 20px 48px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: confirmModal.type === 'delete' ? '#FEF2F2' : '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <AlertTriangle size={20} color={confirmModal.type === 'delete' ? '#DC2626' : '#2563EB'} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A' }}>
+                  {confirmModal.type === 'discharge' ? 'Confirm Patient Discharge' : 'Confirm Bed Deletion'}
+                </div>
+                <div style={{ fontSize: 12, color: '#64748B' }}>Bed: {confirmModal.bedLabel}</div>
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.5, margin: '12px 0 20px' }}>
+              {confirmModal.type === 'discharge'
+                ? ('Are you sure you want to discharge ' + confirmModal.patientName + '? This bed will immediately transition to Turnover/Cleaning status.')
+                : ('Are you sure you want to permanently delete bed ' + confirmModal.bedLabel + '? This action cannot be undone.')}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                style={{ ...btn, padding: '8px 14px' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmModal.type === 'discharge') {
+                    dischargeBed(confirmModal.bedId, actor);
+                    reload();
+                    showNotification('Discharged · bed in turnover (not ready for admit)');
+                  } else {
+                    if (deleteBed(confirmModal.bedId, actor)) {
+                      setSelected(null);
+                      reload();
+                      showNotification('Bed deleted');
+                    } else {
+                      showNotification('Cannot delete occupied bed');
+                    }
+                  }
+                  setConfirmModal(null);
+                }}
+                style={{
+                  ...btnPrimary,
+                  background: confirmModal.type === 'delete' ? '#DC2626' : '#0F172A',
+                  padding: '8px 16px',
+                }}
+              >
+                {confirmModal.type === 'discharge' ? 'Confirm Discharge' : 'Delete Bed'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showAdmitModal && selected && (
         <div style={modalBg}>
           <form style={modalBox} onSubmit={handleAdmit}>

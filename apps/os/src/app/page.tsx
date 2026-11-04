@@ -28,6 +28,7 @@ import { ROLE_THEMES } from '../os/roleThemes';
 import { shouldShowRoleGuide } from '../lib/roleFirstRunGuide';
 import { subscribeOnboarding } from '../lib/onboardingStore';
 import { clearOsSessionStorage } from '../lib/sessionGuard';
+import { getAdminSettings } from '../lib/adminSettingsStore';
 import dynamic from 'next/dynamic';
 import { ModuleErrorBoundary } from '../components/common/ModuleErrorBoundary';
 import { authLog } from '../lib/authLog';
@@ -210,6 +211,15 @@ export default function OSPage() {
   const [cmdSearch, setCmdSearch] = useState('');
   const [wsConnected, setWsConnected] = useState(true);
 
+  // Live facility display name — updates when hospital settings are saved
+  const [facilityDisplayName, setFacilityDisplayName] = useState(() => {
+    try {
+      const s = getAdminSettings(userSession?.hospitalId);
+      if (s.displayName) return s.lga ? s.displayName + ', ' + s.lga : s.displayName;
+    } catch { /* ignore */ }
+    return '';
+  });
+
   const isModulePermitted = (key: ModuleKey): boolean => {
     if (!userSession) return false;
     const rk = inferRoleKey(
@@ -226,6 +236,20 @@ export default function OSPage() {
   };
 
 
+
+  // Live facility name: re-read settings whenever admin saves hospital identity
+  useEffect(() => {
+    const handler = () => {
+      try {
+        const s = getAdminSettings(userSession?.hospitalId);
+        if (s.displayName) {
+          setFacilityDisplayName(s.lga ? s.displayName + ', ' + s.lga : s.displayName);
+        }
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('medcore-facility-updated', handler);
+    return () => window.removeEventListener('medcore-facility-updated', handler);
+  }, [userSession?.hospitalId]);
 
   // If admin removes current module, send user home (must run before any early return)
   useEffect(() => {
@@ -1316,14 +1340,18 @@ const handleLockScreen = () => {
             </div>
             <div className="os-top-hud-facility-meta">
               <span className="os-top-hud-facility-name">
-                {userSession?.facility?.split(',')[0] || 'Main Branch'}
+                {facilityDisplayName
+                  ? facilityDisplayName.split(',')[0].trim()
+                  : (userSession?.facility?.split(',')[0] || 'Main Branch')}
               </span>
               <span className="os-top-hud-facility-loc">
-                {(userSession?.facility || '').includes(',')
-                  ? userSession?.facility?.split(',').slice(1).join(',').trim()
-                  : userSession?.roleKey === 'reception'
-                    ? 'Reception'
-                    : (userSession?.department || 'Clinical desk')}
+                {facilityDisplayName
+                  ? (facilityDisplayName.includes(',') ? facilityDisplayName.split(',').slice(1).join(',').trim() : (userSession?.department || 'Clinical desk'))
+                  : ((userSession?.facility || '').includes(',')
+                    ? userSession?.facility?.split(',').slice(1).join(',').trim()
+                    : userSession?.roleKey === 'reception'
+                      ? 'Reception'
+                      : (userSession?.department || 'Clinical desk'))}
               </span>
             </div>
             <ChevronDown size={14} color="#94A3B8" />

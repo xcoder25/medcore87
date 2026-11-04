@@ -28,7 +28,7 @@ export const FacilitiesUtilitiesSuite: React.FC = () => {
             <span style={{ fontSize: '2rem', fontWeight: 800, color: '#60A5FA' }}>{telemetry.oxygenManifoldPsi} PSI</span>
           </div>
           <div style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)' }}>
-            Pipeline Pressure: Normal (50�60 PSI) � Liquid O2 Tank at 92%
+            Pipeline Pressure: Normal (50–60 PSI) • Liquid O2 Tank at 92%
           </div>
         </div>
 
@@ -44,7 +44,7 @@ export const FacilitiesUtilitiesSuite: React.FC = () => {
             <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--ak-orange-light)' }}>{telemetry.backupGeneratorKw} KW</span>
           </div>
           <div style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)' }}>
-            Cummins Diesel 1.5 MVA � Fuel Tank: {telemetry.generatorFuelPercent}% (~36h Runtime)
+            Cummins Diesel 1.5 MVA • Fuel Tank: {telemetry.generatorFuelPercent}% (~36h Runtime)
           </div>
         </div>
 
@@ -94,7 +94,7 @@ export const FacilitiesUtilitiesSuite: React.FC = () => {
           <div style={{ background: 'rgba(255,255,255,0.02)', padding: 14, borderRadius: 8, border: '1px solid #E2E8F0' }}>
             <strong style={{ color: '#0A2540', fontSize: '0.9rem' }}>HVAC & Cleanroom Positive Pressure</strong>
             <p style={{ margin: '6px 0', fontSize: '0.78rem', color: 'var(--os-text-muted)' }}>
-              Operating Theatres HEPA Filter differential pressure: <strong>{telemetry.hvacHepaPressurePa} Pa</strong> (Target 30�50 Pa). Air changes per hour: 24 ACH.
+              Operating Theatres HEPA Filter differential pressure: <strong>{telemetry.hvacHepaPressurePa} Pa</strong> (Target 30–50 Pa). Air changes per hour: 24 ACH.
             </p>
             <span style={{ color: '#34D399', fontSize: '0.72rem', fontWeight: 700 }}>Compliant with ISO Class 7</span>
           </div>
@@ -102,7 +102,7 @@ export const FacilitiesUtilitiesSuite: React.FC = () => {
           <div style={{ background: 'rgba(255,255,255,0.02)', padding: 14, borderRadius: 8, border: '1px solid #E2E8F0' }}>
             <strong style={{ color: '#0A2540', fontSize: '0.9rem' }}>Medical Gas Alarm Panel</strong>
             <p style={{ margin: '6px 0', fontSize: '0.78rem', color: 'var(--os-text-muted)' }}>
-              Nitrous Oxide (N2O): 4.1 Bar � Medical Air 400: 4.0 Bar � Surgical Tool Air 700: 7.2 Bar.
+              Nitrous Oxide (N2O): 4.1 Bar • Medical Air 400: 4.0 Bar • Surgical Tool Air 700: 7.2 Bar.
             </p>
             <span style={{ color: '#34D399', fontSize: '0.72rem', fontWeight: 700 }}>Zero Leaks Detected (NFPA 99)</span>
           </div>

@@ -29,6 +29,7 @@ import { RolePermissionsMatrix } from '../rbac/RolePermissionsMatrix';
 import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
 import { AdminRevenueOverview } from '../admin/AdminRevenueOverview';
 import { AdminSettings } from '../admin/AdminSettings';
+import { getAdminSettings, subscribeAdminSettings } from '../../lib/adminSettingsStore';
 import { AdminAmbulanceDesk } from '../operations/AdminAmbulanceDesk';
 import { NotificationCentre } from '../notifications/NotificationCentre';
 import { AkwaRemitRevenueSuite } from '../finance/AkwaRemitRevenueSuite';
@@ -80,7 +81,7 @@ const NAV: NavSection[] = [
     label: 'Command & Analytics',
     items: [
       { key: 'dashboard', label: 'Executive Dashboard', icon: LayoutDashboard },
-      { key: 'm87-ai', label: 'Celestia Astra (Admin AI)', icon: Brain },
+      { key: 'm87-ai', label: 'Clinical Intelligence & CDS', icon: Brain },
       { key: 'command', label: 'Hospital Command Centre', icon: Activity },
       { key: 'beds', label: 'Hospital Bed Census', icon: BedDouble },
       { key: 'cashier', label: 'Revenue & Finance', icon: BarChart3 },
@@ -139,6 +140,28 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [search, setSearch] = useState('');
   const [online, setOnline] = useState(true);
   const [hospitalShare, setHospitalShare] = useState<'local' | 'lan' | 'cloud' | 'probing'>('probing');
+  const [facilityDisplayName, setFacilityDisplayName] = useState(() => {
+    const s = getAdminSettings(session.hospitalId);
+    return s.displayName
+      ? (s.lga ? `${s.displayName}, ${s.lga}` : s.displayName)
+      : (session.facility || 'Hospital Facility');
+  });
+
+  useEffect(() => {
+    const updateFromStore = () => {
+      const s = getAdminSettings(session.hospitalId);
+      if (s.displayName) {
+        setFacilityDisplayName(s.lga ? `${s.displayName}, ${s.lga}` : s.displayName);
+      }
+    };
+    updateFromStore();
+    const unsub = subscribeAdminSettings(updateFromStore);
+    window.addEventListener('medcore-facility-updated', updateFromStore);
+    return () => {
+      unsub();
+      window.removeEventListener('medcore-facility-updated', updateFromStore);
+    };
+  }, [session.hospitalId]);
   const [pendingSync, setPendingSync] = useState(0);
   const [showCredModal, setShowCredModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -342,7 +365,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
           {!collapsed && (
             <div className="admin-shell-user-meta">
               <div className="admin-shell-user-name">{session.name || 'Hospital Administrator'}</div>
-              <div className="admin-shell-user-fac">{facility}</div>
+              <div className="admin-shell-user-fac">{facilityDisplayName}</div>
             </div>
           )}
         </div>
@@ -366,10 +389,16 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             >
               <ChevronLeft size={18} />
             </button>
-            <div className="admin-shell-facility" title={facility}>
+            <button
+              type="button"
+              className="admin-shell-facility"
+              onClick={() => goModule('settings')}
+              title={`${facilityDisplayName} · Click to edit hospital settings`}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', font: 'inherit' }}
+            >
               <Building2 size={14} style={{ flexShrink: 0 }} />
-              <span>{facility}</span>
-            </div>
+              <span>{facilityDisplayName}</span>
+            </button>
             <HybridConnectivityDrawer />
             <div className="admin-shell-clock">{clock}</div>
           </div>
@@ -390,7 +419,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
               type="button"
               className="admin-shell-icon-btn"
               onClick={() => goModule('m87-ai')}
-              title="Open Celestia Astra Executive AI"
+              title="Open Clinical Intelligence & CDS"
               style={{ color: '#F59E0B' }}
             >
               <Sparkles size={16} />

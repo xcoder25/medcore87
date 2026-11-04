@@ -802,7 +802,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
           { id: 'p2', label: 'Revoking permissions from RBAC matrix…', status: 'pending' },
           { id: 'p3', label: 'Broadcasting live sync to hospital terminals…', status: 'pending' },
         ];
-        setTaskRun({ title: 'Celestia Astra Role Deletion', steps });
+        setTaskRun({ title: 'Role Deletion & RBAC Sync', steps });
         const mark = (id: string, status: TaskStepStatus) => {
           setTaskRun((prev) => {
             if (!prev) return prev;
@@ -848,7 +848,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
           { id: 'c4', label: 'Registering role in hospital RBAC catalog…', status: 'pending' },
           { id: 'c5', label: 'Broadcasting live updates across facility…', status: 'pending' },
         ];
-        setTaskRun({ title: 'Celestia Astra Role Automation', steps });
+        setTaskRun({ title: 'Role Provisioning & RBAC Sync', steps });
         const mark = (id: string, status: TaskStepStatus) => {
           setTaskRun((prev) => {
             if (!prev) return prev;
@@ -1266,16 +1266,16 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
         sub: 'Your finance copilot. Debtors, HMO claims, daily collections, and what needs follow-up now.',
       },
       hospital_admin: {
-        title: 'Welcome to Celestia Astra',
-        sub: 'Executive & governance intelligence. I can autonomously create custom roles, configure RBAC permissions, audit access, and oversee hospital operations in real time.',
+        title: 'Clinical Intelligence & Admin',
+        sub: 'Hospital administration assistant. I can help you configure RBAC permissions, manage staff roles, audit access logs, and monitor hospital operations.',
       },
       admin: {
-        title: 'Welcome to Celestia Astra',
-        sub: 'Executive & governance intelligence. I can autonomously create custom roles, configure RBAC permissions, audit access, and oversee hospital operations in real time.',
+        title: 'Clinical Intelligence & Admin',
+        sub: 'Hospital administration assistant. I can help you configure RBAC permissions, manage staff roles, audit access logs, and monitor hospital operations.',
       },
       sysadmin: {
-        title: 'Welcome to Celestia Astra (ICT)',
-        sub: 'System & governance intelligence. I can provision custom roles, configure FHIR/HL7 endpoints, automate staff enrolment, and inspect security logs.',
+        title: 'Clinical Intelligence & ICT',
+        sub: 'System administration assistant. I can help configure FHIR/HL7 endpoints, manage staff enrolment, review security audit logs, and check integration status.',
       },
     };
     return (
@@ -1388,7 +1388,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
           <div className="m87-header-text">
             <div className="m87-title-row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <h1 className="m87-title celestia-wordmark">
-                {isAdmin ? 'celestia astra' : 'celestia'}
+                {isAdmin ? 'Clinical Intelligence' : 'MedCore AI'}
               </h1>
               {isAdmin && (
                 <span
@@ -1403,7 +1403,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
                     textTransform: 'uppercase',
                   }}
                 >
-                  ASTRA · ADMIN AI
+                  ADMIN
                 </span>
               )}
               <span
@@ -1423,8 +1423,8 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
             </div>
             <div className="celestia-header-sub">
               {isAdmin
-                ? `Executive Administration & Governance Intelligence ${modelVer ? `· v${modelVer}` : ''}`
-                : `Hospital Intelligence ${modelVer ? `· v${modelVer}` : ''}`}
+                ? `Clinical Intelligence & Admin Operations ${modelVer ? `· v${modelVer}` : ''}`
+                : `Clinical Intelligence ${modelVer ? `· v${modelVer}` : ''}`}
             </div>
           </div>
         </div>

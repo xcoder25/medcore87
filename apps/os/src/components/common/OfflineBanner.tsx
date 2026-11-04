@@ -93,7 +93,7 @@ export function OfflineBanner() {
     >
       <WifiOff size={16} />
       <span>
-        Working Offline ?" Persistent multi-tab local cache active. Records & actions are saved locally and will auto-sync upon reconnection.
+        Working Offline — Persistent multi-tab local cache active. Records & actions are saved locally and will auto-sync upon reconnection.
       </span>
     </div>
   );

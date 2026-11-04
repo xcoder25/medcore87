@@ -209,9 +209,9 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
               <span style={{ color: '#059669', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ADE80', display: 'inline-block' }} /> Active Duty
               </span>
-              <span>�</span><span>{session.facility || 'Ibom Specialist Hospital'}</span>
-              <span>�</span><span>{session.department || 'Internal Medicine'}</span>
-              <span>�</span><span>{now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+              <span>•</span><span>{session.facility || 'Ibom Specialist Hospital'}</span>
+              <span>•</span><span>{session.department || 'Internal Medicine'}</span>
+              <span>•</span><span>{now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
             </div>
           </div>
         </div>
@@ -234,10 +234,10 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
 
       {/* KPI Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 13 }}>
-        <StatCard label="My Patients" value={PATIENTS.length} icon={Users} color="#38BDF8" sub="3 inpatient � 1 OPD � 1 ICU" onClick={() => onSubNav('patients')} />
+        <StatCard label="My Patients" value={PATIENTS.length} icon={Users} color="#38BDF8" sub="3 inpatient • 1 OPD • 1 ICU" onClick={() => onSubNav('patients')} />
         <StatCard label="Critical" value={critical.length} icon={AlertTriangle} color="#EF4444" sub="ICU monitoring active" onClick={() => onSubNav('patients')} pulse={critical.length > 0} />
-        <StatCard label="Today's Appts" value={APPOINTMENTS.length} icon={Calendar} color="#A78BFA" sub={`${APPOINTMENTS.filter(a => a.status === 'done').length} done � ${remaining.length} left`} onClick={() => onSubNav('appointments')} />
-        <StatCard label="Pending Results" value={5} icon={FlaskConical} color="#F59E0B" sub="3 Lab � 2 Radiology" onClick={() => onSubNav('lab-orders')} />
+        <StatCard label="Today's Appts" value={APPOINTMENTS.length} icon={Calendar} color="#A78BFA" sub={`${APPOINTMENTS.filter(a => a.status === 'done').length} done • ${remaining.length} left`} onClick={() => onSubNav('appointments')} />
+        <StatCard label="Pending Results" value={5} icon={FlaskConical} color="#F59E0B" sub="3 Lab • 2 Radiology" onClick={() => onSubNav('lab-orders')} />
         <StatCard label="Pending Tasks" value={pendingTasks.length} icon={ClipboardList} color="#10B981" sub={`${urgentTasks.length} urgent or high`} onClick={() => onSubNav('tasks')} pulse={urgentTasks.length > 0} />
         <StatCard label="Messages" value={3} icon={MessageSquare} color="#60A5FA" sub="2 unread clinical msgs" onClick={() => onSubNav('messages')} />
       </div>
@@ -325,7 +325,7 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <AlertTriangle size={16} color="#EF4444" />
                 <span style={{ fontWeight: 700, color: '#F87171', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Critical Patients � Immediate Attention
+                  Critical Patients • Immediate Attention
                 </span>
               </div>
               {critical.map(p => (
@@ -337,11 +337,11 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
                   <HeartPulse size={22} color="#EF4444" style={{ flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.9rem' }}>
-                      {p.name} <span style={{ fontSize: '0.73rem', color: '#94A3B8' }}>� {p.id}</span>
+                      {p.name} <span style={{ fontSize: '0.73rem', color: '#94A3B8' }}>• {p.id}</span>
                     </div>
                     <div style={{ fontSize: '0.76rem', color: '#F87171', marginTop: 2 }}>{p.diagnosis}</div>
                     <div style={{ fontSize: '0.73rem', color: '#94A3B8', marginTop: 2 }}>
-                      {p.ward} � BP {p.vitals?.bp} � HR {p.vitals?.hr} � SpO2 {p.vitals?.spo2}%
+                      {p.ward} • BP {p.vitals?.bp} • HR {p.vitals?.hr} • SpO2 {p.vitals?.spo2}%
                     </div>
                   </div>
                   <button type="button" style={{
@@ -393,7 +393,7 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
                   >
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.84rem' }}>{p.name}</div>
-                      <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{p.id} � {p.age}{p.gender}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{p.id} • {p.age}{p.gender}</div>
                     </td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontSize: '0.78rem', color: '#CBD5E1', maxWidth: 180 }}>{p.diagnosis}</div>
@@ -528,7 +528,7 @@ const PatientsView: React.FC = () => {
         <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 11, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, position: 'relative', minWidth: 200 }}>
             <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748B' }} />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patient name, MRN, diagnosis�"
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patient name, MRN, diagnosis…"
               style={{ width: '100%', padding: '8px 12px 8px 32px', boxSizing: 'border-box', background: '#FFFFFF', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 9, color: '#0A2540', fontSize: '0.82rem', outline: 'none' }} />
           </div>
           {(['all', 'inpatient', 'outpatient', 'critical'] as const).map(f => (
@@ -565,12 +565,12 @@ const PatientsView: React.FC = () => {
               </div>
               <div>
                 <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem' }}>{p.name}</div>
-                <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{p.id} � {p.age}{p.gender}</div>
+                <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{p.id} • {p.age}{p.gender}</div>
                 <div style={{ fontSize: '0.76rem', color: '#CBD5E1', marginTop: 2 }}>{p.diagnosis}</div>
               </div>
             </div>
             <div>
-              <div style={{ fontSize: '0.77rem', color: '#94A3B8' }}>{p.ward}{p.bed ? ` � Bed ${p.bed}` : ''}</div>
+              <div style={{ fontSize: '0.77rem', color: '#94A3B8' }}>{p.ward}{p.bed ? ` • Bed ${p.bed}` : ''}</div>
               <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: 2 }}>Admit: {p.admitDate}</div>
             </div>
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -603,7 +603,7 @@ const PatientsView: React.FC = () => {
             </div>
             <div>
               <div style={{ fontWeight: 800, color: '#0A2540', fontSize: '0.95rem' }}>{selected.name}</div>
-              <div style={{ fontSize: '0.73rem', color: '#94A3B8' }}>{selected.id} � {selected.age}y � {selected.gender === 'M' ? 'Male' : 'Female'}</div>
+              <div style={{ fontSize: '0.73rem', color: '#94A3B8' }}>{selected.id} • {selected.age}y • {selected.gender === 'M' ? 'Male' : 'Female'}</div>
               <div style={{ marginTop: 3 }}><StatusBadge status={selected.status} /></div>
             </div>
           </div>
@@ -621,7 +621,7 @@ const PatientsView: React.FC = () => {
               <VitalChip label="BP" value={selected.vitals?.bp} warn={parseInt(selected.vitals?.bp) > 140} />
               <VitalChip label="HR" value={selected.vitals?.hr} unit="/m" warn={selected.vitals?.hr > 100} />
               <VitalChip label="SpO2" value={selected.vitals?.spo2} unit="%" warn={selected.vitals?.spo2 < 94} />
-              <VitalChip label="Temp" value={selected.vitals?.temp} unit="�C" warn={selected.vitals?.temp > 38} />
+              <VitalChip label="Temp" value={selected.vitals?.temp} unit="°C" warn={selected.vitals?.temp > 38} />
               <VitalChip label="RR" value={selected.vitals?.rr} unit="/m" warn={selected.vitals?.rr > 22} />
             </div>
           </div>
@@ -674,7 +674,7 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem' }}>{a.patientName}</div>
-                <div style={{ fontSize: '0.73rem', color: '#64748B' }}>{a.patientId} � {a.type} � {a.time}</div>
+                <div style={{ fontSize: '0.73rem', color: '#64748B' }}>{a.patientId} • {a.type} • {a.time}</div>
               </div>
               {a.status === 'waiting' && <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#F59E0B', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.28)', padding: '2px 9px', borderRadius: 999 }}>? Waiting</span>}
               <button type="button" onClick={() => { setPatient(PATIENTS.find(p => p.id === a.patientId) || null); try { markPatientWithProvider(session?.hospitalId || 'IGH-EKT', a.patientId || patient?.id || '', session?.name); } catch {} setStep('consult'); }} style={{ background: 'linear-gradient(135deg,#0284C7,#0369A1)', border: 'none', color: '#fff', padding: '8px 17px', borderRadius: 9, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
@@ -697,7 +697,7 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
   const ta = (label: string, val: string, set: (v: string) => void, rows = 5) => (
     <div>
       <label style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>{label}</label>
-      <textarea value={val} onChange={e => set(e.target.value)} rows={rows} placeholder={`Enter ${label.toLowerCase()}�`}
+      <textarea value={val} onChange={e => set(e.target.value)} rows={rows} placeholder={`Enter ${label.toLowerCase()}…`}
         style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', background: '#FFFFFF', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 10, color: '#0A2540', fontSize: '0.83rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }} />
     </div>
   );
@@ -708,7 +708,7 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0A2540' }}>SOAP Consultation Note</h2>
-            <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: 2 }}>{patient?.name || 'Unknown'} � {patient?.id || ''} � {new Date().toLocaleDateString('en-GB')}</div>
+            <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: 2 }}>{patient?.name || 'Unknown'} • {patient?.id || ''} • {new Date().toLocaleDateString('en-GB')}</div>
           </div>
           <div style={{ display: 'flex', gap: 7 }}>
             <button type="button" onClick={() => setStep('select')} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.09)', color: '#94A3B8', padding: '7px 13px', borderRadius: 8, cursor: 'pointer', fontSize: '0.76rem' }}>? Back</button>
@@ -2088,7 +2088,7 @@ const WardRoundView: React.FC = () => {
                 <StatusBadge status={p.status} />
                 {p.flags.map(f => <span key={f} style={{ fontSize: '0.62rem', color: p.status === 'critical' ? '#F87171' : '#F59E0B', background: p.status === 'critical' ? 'rgba(239,68,68,0.09)' : 'rgba(245,158,11,0.09)', border: '1px solid currentColor', borderRadius: 4, padding: '1px 5px' }}>{f}</span>)}
               </div>
-              <div style={{ fontSize: '0.73rem', color: '#94A3B8', marginTop: 2 }}>{p.id} � {p.ward}{p.bed ? ` � Bed ${p.bed}` : ''} � {p.diagnosis}</div>
+              <div style={{ fontSize: '0.73rem', color: '#94A3B8', marginTop: 2 }}>{p.id} • {p.ward}{p.bed ? ` • Bed ${p.bed}` : ''} • {p.diagnosis}</div>
             </div>
             <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
               <VitalChip label="BP" value={p.vitals?.bp} warn={parseInt(p.vitals?.bp) > 140} />
@@ -2100,7 +2100,7 @@ const WardRoundView: React.FC = () => {
           {expanded === p.id && (
             <div style={{ padding: '0 18px 18px', borderTop: '1px solid #FFFFFF' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 13 }}>
-                {[['Clinical Status / Today\'s Findings', 'Document today\'s findings, patient condition, response to treatment�'], ['Today\'s Plan & Orders', 'Medication changes, investigation orders, nursing instructions, dietary�']].map(([lbl, ph]) => (
+                {[['Clinical Status / Today\'s Findings', 'Document today\'s findings, patient condition, response to treatment•'], ['Today\'s Plan & Orders', 'Medication changes, investigation orders, nursing instructions, dietary•']].map(([lbl, ph]) => (
                   <div key={lbl}>
                     <label style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>{lbl}</label>
                     <textarea rows={4} placeholder={ph} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', background: '#FFFFFF', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, color: '#0A2540', fontSize: '0.8rem', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }} />
@@ -2142,7 +2142,7 @@ const AppointmentsView: React.FC = () => {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.88rem' }}>{a.patientName}</div>
-                <div style={{ fontSize: '0.71rem', color: '#64748B' }}>{a.patientId} � {a.type}</div>
+                <div style={{ fontSize: '0.71rem', color: '#64748B' }}>{a.patientId} • {a.type}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontWeight: 800, color: '#A78BFA', fontSize: '0.98rem' }}>{a.time}</div>
@@ -2228,7 +2228,7 @@ const AnalyticsView: React.FC = () => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '16px 20px' }}>
         <h2 style={{ margin: '0 0 2px', fontSize: '1rem', fontWeight: 800, color: '#0A2540' }}>My Clinical Performance</h2>
-        <p style={{ margin: 0, color: '#64748B', fontSize: '0.78rem' }}>September 2026 � Month-to-date statistics</p>
+        <p style={{ margin: 0, color: '#64748B', fontSize: '0.78rem' }}>September 2026 • Month-to-date statistics</p>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(195px, 1fr))', gap: 13 }}>
         {stats.map(s => (
@@ -2267,7 +2267,7 @@ const Placeholder: React.FC<{ icon: React.ComponentType<any>; label: string; des
     <h2 style={{ margin: '0 0 7px', fontSize: '1.15rem', fontWeight: 800, color: '#0A2540' }}>{label}</h2>
     <p style={{ margin: 0, color: '#64748B', fontSize: '0.83rem', maxWidth: 400, lineHeight: 1.6 }}>{description}</p>
     <div style={{ marginTop: 14, fontSize: '0.73rem', color, background: `${color}0E`, border: `1px solid ${color}28`, padding: '5px 15px', borderRadius: 999, fontWeight: 600 }}>
-      ?? Module under clinical configuration � active next sprint
+      ?? Module under clinical configuration • active next sprint
     </div>
   </div>
 );
