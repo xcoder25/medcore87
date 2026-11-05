@@ -126,11 +126,11 @@ const VitalChip: React.FC<{ label: string; value: string | number; unit?: string
 
 const StatusBadge: React.FC<{ status: Patient['status'] }> = ({ status }) => {
   const map: Record<Patient['status'], { color: string; bg: string; label: string }> = {
-    critical:   { color: '#EF4444', bg: 'rgba(239,68,68,0.15)',    label: '? CRITICAL' },
-    inpatient:  { color: '#0052D4', bg: 'rgba(56,189,248,0.12)',   label: 'Inpatient'  },
-    outpatient: { color: '#059669', bg: 'rgba(74,222,128,0.12)',   label: 'Outpatient' },
+    critical: { color: '#EF4444', bg: 'rgba(239,68,68,0.15)', label: '? CRITICAL' },
+    inpatient: { color: '#0052D4', bg: 'rgba(56,189,248,0.12)', label: 'Inpatient' },
+    outpatient: { color: '#059669', bg: 'rgba(74,222,128,0.12)', label: 'Outpatient' },
     discharged: { color: '#64748B', bg: 'rgba(100,116,139,0.12)', label: 'Discharged' },
-    pending:    { color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',   label: 'Pending'    },
+    pending: { color: '#F59E0B', bg: 'rgba(245,158,11,0.12)', label: 'Pending' },
   };
   const m = map[status];
   return (
@@ -387,40 +387,40 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
                   </tr>
                 ) : (
                   PATIENTS.map((p, i) => (
-                  <tr key={p.id}
-                    style={{ borderBottom: i < PATIENTS.length - 1 ? '1px solid #FFFFFF' : 'none', background: p.status === 'critical' ? 'rgba(239,68,68,0.03)' : 'transparent', transition: 'background 0.15s' }}
-                    onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.025)'}
-                    onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.background = p.status === 'critical' ? 'rgba(239,68,68,0.03)' : 'transparent'}
-                  >
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.84rem' }}>{p.name}</div>
-                      <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{p.id} • {p.age}{p.gender}</div>
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ fontSize: '0.78rem', color: '#CBD5E1', maxWidth: 180 }}>{p.diagnosis}</div>
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ fontSize: '0.78rem', color: '#94A3B8' }}>{p.ward}</div>
-                      {p.bed && <div style={{ fontSize: '0.7rem', color: '#0052D4', fontWeight: 600 }}>Bed {p.bed}</div>}
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <VitalChip label="BP" value={p.vitals?.bp} warn={parseInt(p.vitals?.bp) > 140} />
-                        <VitalChip label="HR" value={p.vitals?.hr} unit="/m" warn={p.vitals?.hr > 100 || p.vitals?.hr < 50} />
-                        <VitalChip label="SpO2" value={p.vitals?.spo2} unit="%" warn={p.vitals?.spo2 < 94} />
-                      </div>
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ fontSize: '0.75rem', color: '#F59E0B', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Clock size={11} /> {p.nextAction}
-                      </div>
-                    </td>
-                    <td style={{ padding: '10px 14px' }}><StatusBadge status={p.status} /></td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <button type="button" style={{ background: 'rgba(2,132,199,0.1)', border: '1px solid rgba(2,132,199,0.22)', color: '#0052D4', fontSize: '0.7rem', fontWeight: 600, padding: '4px 9px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>View ?</button>
-                    </td>
-                  </tr>
-                )))}
+                    <tr key={p.id}
+                      style={{ borderBottom: i < PATIENTS.length - 1 ? '1px solid #FFFFFF' : 'none', background: p.status === 'critical' ? 'rgba(239,68,68,0.03)' : 'transparent', transition: 'background 0.15s' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.025)'}
+                      onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.background = p.status === 'critical' ? 'rgba(239,68,68,0.03)' : 'transparent'}
+                    >
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.84rem' }}>{p.name}</div>
+                        <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{p.id} • {p.age}{p.gender}</div>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ fontSize: '0.78rem', color: '#CBD5E1', maxWidth: 180 }}>{p.diagnosis}</div>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ fontSize: '0.78rem', color: '#94A3B8' }}>{p.ward}</div>
+                        {p.bed && <div style={{ fontSize: '0.7rem', color: '#0052D4', fontWeight: 600 }}>Bed {p.bed}</div>}
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <VitalChip label="BP" value={p.vitals?.bp} warn={parseInt(p.vitals?.bp) > 140} />
+                          <VitalChip label="HR" value={p.vitals?.hr} unit="/m" warn={p.vitals?.hr > 100 || p.vitals?.hr < 50} />
+                          <VitalChip label="SpO2" value={p.vitals?.spo2} unit="%" warn={p.vitals?.spo2 < 94} />
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ fontSize: '0.75rem', color: '#F59E0B', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Clock size={11} /> {p.nextAction}
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}><StatusBadge status={p.status} /></td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <button type="button" style={{ background: 'rgba(2,132,199,0.1)', border: '1px solid rgba(2,132,199,0.22)', color: '#0052D4', fontSize: '0.7rem', fontWeight: 600, padding: '4px 9px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>View ?</button>
+                      </td>
+                    </tr>
+                  )))}
               </tbody>
             </table>
           </div>
@@ -486,12 +486,12 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
             <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem', marginBottom: 11 }}>? Quick Actions</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
               {[
-                { icon: UserPlus,    label: 'Admit Patient', color: '#0052D4', nav: 'admission'        },
-                { icon: Pill,        label: 'Prescribe',     color: '#A78BFA', nav: 'prescriptions'    },
-                { icon: FlaskConical,label: 'Order Lab',     color: '#F59E0B', nav: 'lab-orders'       },
-                { icon: Layers,      label: 'Order Scan',    color: '#F472B6', nav: 'radiology-orders' },
-                { icon: Send,        label: 'Refer Patient', color: '#10B981', nav: 'referrals'        },
-                { icon: FileText,    label: 'Clinical Note', color: '#60A5FA', nav: 'emr'              },
+                { icon: UserPlus, label: 'Admit Patient', color: '#0052D4', nav: 'admission' },
+                { icon: Pill, label: 'Prescribe', color: '#A78BFA', nav: 'prescriptions' },
+                { icon: FlaskConical, label: 'Order Lab', color: '#F59E0B', nav: 'lab-orders' },
+                { icon: Layers, label: 'Order Scan', color: '#F472B6', nav: 'radiology-orders' },
+                { icon: Send, label: 'Refer Patient', color: '#10B981', nav: 'referrals' },
+                { icon: FileText, label: 'Clinical Note', color: '#60A5FA', nav: 'emr' },
               ].map(q => (
                 <button key={q.label} type="button" onClick={() => onSubNav(q.nav as SubModule)} style={{
                   background: `${q.color}0D`, border: `1px solid ${q.color}28`, color: q.color,
@@ -576,41 +576,41 @@ const PatientsView: React.FC = () => {
           </div>
         ) : (
           filtered.map(p => (
-          <div key={p.id} onClick={() => setSelected(p)} style={{
-            background: selected?.id === p.id ? 'rgba(2,132,199,0.07)' : 'rgba(15,23,42,0.85)',
-            border: `1px solid ${selected?.id === p.id ? 'rgba(2,132,199,0.38)' : p.status === 'critical' ? 'rgba(239,68,68,0.22)' : '#E2E8F0'}`,
-            borderRadius: 12, padding: '13px 17px', cursor: 'pointer',
-            display: 'grid', gridTemplateColumns: '1fr 1fr 190px auto', alignItems: 'center', gap: 14, transition: 'all 0.15s',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: p.status === 'critical' ? 'rgba(239,68,68,0.18)' : 'rgba(2,132,199,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: p.status === 'critical' ? '#F87171' : '#38BDF8', fontSize: '0.85rem', flexShrink: 0 }}>
-                {p.name.split(' ').map(n => n[0]).join('')}
+            <div key={p.id} onClick={() => setSelected(p)} style={{
+              background: selected?.id === p.id ? 'rgba(2,132,199,0.07)' : 'rgba(15,23,42,0.85)',
+              border: `1px solid ${selected?.id === p.id ? 'rgba(2,132,199,0.38)' : p.status === 'critical' ? 'rgba(239,68,68,0.22)' : '#E2E8F0'}`,
+              borderRadius: 12, padding: '13px 17px', cursor: 'pointer',
+              display: 'grid', gridTemplateColumns: '1fr 1fr 190px auto', alignItems: 'center', gap: 14, transition: 'all 0.15s',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: p.status === 'critical' ? 'rgba(239,68,68,0.18)' : 'rgba(2,132,199,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: p.status === 'critical' ? '#F87171' : '#38BDF8', fontSize: '0.85rem', flexShrink: 0 }}>
+                  {p.name.split(' ').map(n => n[0]).join('')}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem' }}>{p.name}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{p.id} • {p.age}{p.gender}</div>
+                  <div style={{ fontSize: '0.76rem', color: '#CBD5E1', marginTop: 2 }}>{p.diagnosis}</div>
+                </div>
               </div>
               <div>
-                <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem' }}>{p.name}</div>
-                <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{p.id} • {p.age}{p.gender}</div>
-                <div style={{ fontSize: '0.76rem', color: '#CBD5E1', marginTop: 2 }}>{p.diagnosis}</div>
+                <div style={{ fontSize: '0.77rem', color: '#94A3B8' }}>{p.ward}{p.bed ? ` • Bed ${p.bed}` : ''}</div>
+                <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: 2 }}>Admit: {p.admitDate}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <VitalChip label="BP" value={p.vitals?.bp} warn={parseInt(p.vitals?.bp) > 140} />
+                <VitalChip label="HR" value={p.vitals?.hr} unit="/m" warn={p.vitals?.hr > 100} />
+                <VitalChip label="SpO2" value={p.vitals?.spo2} unit="%" warn={p.vitals?.spo2 < 94} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
+                <StatusBadge status={p.status} />
+                <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {p.flags.slice(0, 2).map(f => (
+                    <span key={f} style={{ fontSize: '0.6rem', background: 'rgba(245,158,11,0.09)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.22)', borderRadius: 4, padding: '1px 5px' }}>{f}</span>
+                  ))}
+                </div>
               </div>
             </div>
-            <div>
-              <div style={{ fontSize: '0.77rem', color: '#94A3B8' }}>{p.ward}{p.bed ? ` • Bed ${p.bed}` : ''}</div>
-              <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: 2 }}>Admit: {p.admitDate}</div>
-            </div>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              <VitalChip label="BP" value={p.vitals?.bp} warn={parseInt(p.vitals?.bp) > 140} />
-              <VitalChip label="HR" value={p.vitals?.hr} unit="/m" warn={p.vitals?.hr > 100} />
-              <VitalChip label="SpO2" value={p.vitals?.spo2} unit="%" warn={p.vitals?.spo2 < 94} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
-              <StatusBadge status={p.status} />
-              <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                {p.flags.slice(0, 2).map(f => (
-                  <span key={f} style={{ fontSize: '0.6rem', background: 'rgba(245,158,11,0.09)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.22)', borderRadius: 4, padding: '1px 5px' }}>{f}</span>
-                ))}
-              </div>
-            </div>
-          </div>
-        )))}
+          )))}
       </div>
 
       {/* Detail Panel */}
@@ -700,7 +700,7 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
                 <div style={{ fontSize: '0.73rem', color: '#64748B' }}>{a.patientId} • {a.type} • {a.time}</div>
               </div>
               {a.status === 'waiting' && <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#F59E0B', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.28)', padding: '2px 9px', borderRadius: 999 }}>? Waiting</span>}
-              <button type="button" onClick={() => { setPatient(PATIENTS.find(p => p.id === a.patientId) || null); try { markPatientWithProvider(session?.hospitalId || 'IGH-EKT', a.patientId || patient?.id || '', session?.name); } catch {} setStep('consult'); }} style={{ background: 'linear-gradient(135deg,#0284C7,#0369A1)', border: 'none', color: '#fff', padding: '8px 17px', borderRadius: 9, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
+              <button type="button" onClick={() => { setPatient(PATIENTS.find(p => p.id === a.patientId) || null); try { markPatientWithProvider(session?.hospitalId || 'IGH-EKT', a.patientId || patient?.id || '', session?.name); } catch { } setStep('consult'); }} style={{ background: 'linear-gradient(135deg,#0284C7,#0369A1)', border: 'none', color: '#fff', padding: '8px 17px', borderRadius: 9, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
                 Begin ?
               </button>
             </div>
@@ -825,7 +825,7 @@ const HOSPITAL_FORMULARY: { name: string; category: string; defaultDose: string;
   { name: 'Azithromycin 500mg', category: 'Antibiotic', defaultDose: '500mg', defaultFreq: 'Once daily (OD)', defaultRoute: 'Oral', defaultDuration: '3 days' },
   { name: 'Doxycycline 100mg', category: 'Antibiotic', defaultDose: '100mg', defaultFreq: 'Twice daily (BD)', defaultRoute: 'Oral', defaultDuration: '7 days' },
   { name: 'Gentamicin 80mg/2ml (Amp)', category: 'Antibiotic', defaultDose: '80mg', defaultFreq: 'Once daily (OD)', defaultRoute: 'IM', defaultDuration: '3 days' },
-  
+
   // Antimalarials
   { name: 'Artemether/Lumefantrine 80/480mg (Coartem)', category: 'Antimalarial', defaultDose: '1 tab', defaultFreq: 'Twice daily (BD)', defaultRoute: 'Oral', defaultDuration: '3 days' },
   { name: 'Artesunate 60mg (Vial)', category: 'Antimalarial', defaultDose: '2.4mg/kg', defaultFreq: 'At 0, 12, 24h then OD', defaultRoute: 'IV', defaultDuration: '3 days' },
@@ -1794,26 +1794,45 @@ const LabOrdersView: React.FC<{ session: UserSession }> = ({ session }) => {
               </div>
             ))}
             {bpaAlerts.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  padding: 12,
+                  borderRadius: 12,
+                  background: bpaAlerts.some((a) => a.level === 'hard_stop') ? '#FEF2F2' : '#FFFBEB',
+                  border: `1.5px solid ${bpaAlerts.some((a) => a.level === 'hard_stop') ? '#EF4444' : '#F59E0B'}`,
+                  boxShadow: '0 4px 12px rgba(239, 68, 68, 0.12)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <AlertTriangle size={16} color={bpaAlerts.some((a) => a.level === 'hard_stop') ? '#DC2626' : '#D97706'} />
+                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: bpaAlerts.some((a) => a.level === 'hard_stop') ? '#991B1B' : '#92400E', textTransform: 'uppercase' }}>
+                    Clinical Decision Support Advisory ({bpaAlerts.length})
+                  </span>
+                </div>
                 {bpaAlerts.map((a) => (
                   <div
                     key={a.id}
                     style={{
                       padding: '8px 10px',
-                      borderRadius: 10,
+                      borderRadius: 8,
                       fontSize: 12,
+                      background: '#FFFFFF',
                       border: `1px solid ${a.level === 'hard_stop' ? '#FECACA' : '#FDE68A'}`,
-                      background: a.level === 'hard_stop' ? '#FEF2F2' : '#FFFBEB',
                     }}
                   >
-                    <strong>{a.title}</strong>
-                    <div style={{ color: '#475569' }}>{a.detail}</div>
+                    <div style={{ fontWeight: 800, color: a.level === 'hard_stop' ? '#DC2626' : '#B45309', marginBottom: 2 }}>
+                      {a.title}
+                    </div>
+                    <div style={{ color: '#475569', lineHeight: 1.4 }}>{a.detail}</div>
                   </div>
                 ))}
                 {bpaAlerts.some((a) => a.level === 'hard_stop') && (
-                  <label style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, display: 'flex', gap: 8, alignItems: 'center', color: '#991B1B', marginTop: 4 }}>
                     <input type="checkbox" checked={overrideBpa} onChange={(e) => setOverrideBpa(e.target.checked)} />
-                    Clinician override
+                    Physician clinical override justification noted in audit log
                   </label>
                 )}
               </div>
@@ -2101,44 +2120,44 @@ const WardRoundView: React.FC = () => {
       ) : (
         inpatients.map(p => (
           <div key={p.id} style={{ background: 'rgba(15,23,42,0.85)', border: `1px solid ${p.status === 'critical' ? 'rgba(239,68,68,0.28)' : '#E2E8F0'}`, borderRadius: 14, overflow: 'hidden' }}>
-          <div onClick={() => setExpanded(x => x === p.id ? null : p.id)} style={{ padding: '13px 18px', display: 'flex', alignItems: 'center', gap: 13, cursor: 'pointer', background: p.status === 'critical' ? 'rgba(239,68,68,0.03)' : 'transparent' }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, background: p.status === 'critical' ? 'rgba(239,68,68,0.18)' : 'rgba(2,132,199,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: p.status === 'critical' ? '#F87171' : '#38BDF8', fontSize: '0.85rem', flexShrink: 0 }}>
-              {p.name.split(' ').map(n => n[0]).join('')}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.88rem' }}>{p.name}</span>
-                <StatusBadge status={p.status} />
-                {p.flags.map(f => <span key={f} style={{ fontSize: '0.62rem', color: p.status === 'critical' ? '#F87171' : '#F59E0B', background: p.status === 'critical' ? 'rgba(239,68,68,0.09)' : 'rgba(245,158,11,0.09)', border: '1px solid currentColor', borderRadius: 4, padding: '1px 5px' }}>{f}</span>)}
+            <div onClick={() => setExpanded(x => x === p.id ? null : p.id)} style={{ padding: '13px 18px', display: 'flex', alignItems: 'center', gap: 13, cursor: 'pointer', background: p.status === 'critical' ? 'rgba(239,68,68,0.03)' : 'transparent' }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: p.status === 'critical' ? 'rgba(239,68,68,0.18)' : 'rgba(2,132,199,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: p.status === 'critical' ? '#F87171' : '#38BDF8', fontSize: '0.85rem', flexShrink: 0 }}>
+                {p.name.split(' ').map(n => n[0]).join('')}
               </div>
-              <div style={{ fontSize: '0.73rem', color: '#94A3B8', marginTop: 2 }}>{p.id} • {p.ward}{p.bed ? ` • Bed ${p.bed}` : ''} • {p.diagnosis}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.88rem' }}>{p.name}</span>
+                  <StatusBadge status={p.status} />
+                  {p.flags.map(f => <span key={f} style={{ fontSize: '0.62rem', color: p.status === 'critical' ? '#F87171' : '#F59E0B', background: p.status === 'critical' ? 'rgba(239,68,68,0.09)' : 'rgba(245,158,11,0.09)', border: '1px solid currentColor', borderRadius: 4, padding: '1px 5px' }}>{f}</span>)}
+                </div>
+                <div style={{ fontSize: '0.73rem', color: '#94A3B8', marginTop: 2 }}>{p.id} • {p.ward}{p.bed ? ` • Bed ${p.bed}` : ''} • {p.diagnosis}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                <VitalChip label="BP" value={p.vitals?.bp} warn={parseInt(p.vitals?.bp) > 140} />
+                <VitalChip label="HR" value={p.vitals?.hr} unit="/m" warn={p.vitals?.hr > 100} />
+                <VitalChip label="SpO2" value={p.vitals?.spo2} unit="%" warn={p.vitals?.spo2 < 94} />
+                {expanded === p.id ? <ChevronUp size={16} color="#64748B" /> : <ChevronDown size={16} color="#64748B" />}
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-              <VitalChip label="BP" value={p.vitals?.bp} warn={parseInt(p.vitals?.bp) > 140} />
-              <VitalChip label="HR" value={p.vitals?.hr} unit="/m" warn={p.vitals?.hr > 100} />
-              <VitalChip label="SpO2" value={p.vitals?.spo2} unit="%" warn={p.vitals?.spo2 < 94} />
-              {expanded === p.id ? <ChevronUp size={16} color="#64748B" /> : <ChevronDown size={16} color="#64748B" />}
-            </div>
+            {expanded === p.id && (
+              <div style={{ padding: '0 18px 18px', borderTop: '1px solid #FFFFFF' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 13 }}>
+                  {[['Clinical Status / Today\'s Findings', 'Document today\'s findings, patient condition, response to treatment•'], ['Today\'s Plan & Orders', 'Medication changes, investigation orders, nursing instructions, dietary•']].map(([lbl, ph]) => (
+                    <div key={lbl}>
+                      <label style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>{lbl}</label>
+                      <textarea rows={4} placeholder={ph} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', background: '#FFFFFF', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, color: '#0A2540', fontSize: '0.8rem', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }} />
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 7, marginTop: 11, flexWrap: 'wrap' }}>
+                  {[['? Sign Note', '#4ADE80', 'rgba(74,222,128,0.1)'], ['?? Prescribe', '#A78BFA', 'rgba(167,139,250,0.1)'], ['?? Lab Order', '#F59E0B', 'rgba(245,158,11,0.09)'], ['?? Refer', '#38BDF8', 'rgba(56,189,248,0.09)'], ['?? Discharge', '#64748B', 'rgba(100,116,139,0.07)']].map(([l, c, bg]) => (
+                    <button key={l} type="button" style={{ background: bg, border: `1px solid ${c}40`, color: c, padding: '7px 13px', borderRadius: 7, fontWeight: 600, fontSize: '0.76rem', cursor: 'pointer' }}>{l}</button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-          {expanded === p.id && (
-            <div style={{ padding: '0 18px 18px', borderTop: '1px solid #FFFFFF' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 13 }}>
-                {[['Clinical Status / Today\'s Findings', 'Document today\'s findings, patient condition, response to treatment•'], ['Today\'s Plan & Orders', 'Medication changes, investigation orders, nursing instructions, dietary•']].map(([lbl, ph]) => (
-                  <div key={lbl}>
-                    <label style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>{lbl}</label>
-                    <textarea rows={4} placeholder={ph} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', background: '#FFFFFF', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, color: '#0A2540', fontSize: '0.8rem', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }} />
-                  </div>
-                ))}
-              </div>
-              <div style={{ display: 'flex', gap: 7, marginTop: 11, flexWrap: 'wrap' }}>
-                {[['? Sign Note', '#4ADE80', 'rgba(74,222,128,0.1)'], ['?? Prescribe', '#A78BFA', 'rgba(167,139,250,0.1)'], ['?? Lab Order', '#F59E0B', 'rgba(245,158,11,0.09)'], ['?? Refer', '#38BDF8', 'rgba(56,189,248,0.09)'], ['?? Discharge', '#64748B', 'rgba(100,116,139,0.07)']].map(([l, c, bg]) => (
-                  <button key={l} type="button" style={{ background: bg, border: `1px solid ${c}40`, color: c, padding: '7px 13px', borderRadius: 7, fontWeight: 600, fontSize: '0.76rem', cursor: 'pointer' }}>{l}</button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )))}
+        )))}
     </div>
   );
 };
@@ -2298,21 +2317,21 @@ const Placeholder: React.FC<{ icon: React.ComponentType<any>; label: string; des
 // -- Sub-nav only (NO second sidebar — OS shell owns nav) ----------------------
 
 const NAV_ITEMS: { key: SubModule; icon: React.ComponentType<any>; label: string }[] = [
-  { key: 'dashboard',        icon: LayoutDashboard, label: 'Clinical desk' },
-  { key: 'patients',         icon: Users,           label: 'My patients' },
-  { key: 'consultation',     icon: Stethoscope,     label: 'Consultation' },
-  { key: 'emr',              icon: FileText,        label: 'EMR' },
-  { key: 'prescriptions',    icon: Pill,            label: 'Rx' },
-  { key: 'lab-orders',       icon: FlaskConical,    label: 'Labs' },
-  { key: 'radiology-orders', icon: Layers,          label: 'Imaging' },
-  { key: 'ward-round',       icon: BedDouble,       label: 'Ward round' },
-  { key: 'appointments',     icon: Calendar,        label: 'Schedule' },
-  { key: 'tasks',            icon: ClipboardList,   label: 'Tasks' },
-  { key: 'referrals',        icon: Send,            label: 'Referrals' },
-  { key: 'admission',        icon: UserPlus,        label: 'Admit' },
-  { key: 'messages',         icon: MessageSquare,   label: 'Messages' },
-  { key: 'analytics',        icon: BarChart3,       label: 'Analytics' },
-  { key: 'settings',         icon: Settings,        label: 'Settings' },
+  { key: 'dashboard', icon: LayoutDashboard, label: 'Clinical desk' },
+  { key: 'patients', icon: Users, label: 'My patients' },
+  { key: 'consultation', icon: Stethoscope, label: 'Consultation' },
+  { key: 'emr', icon: FileText, label: 'EMR' },
+  { key: 'prescriptions', icon: Pill, label: 'Rx' },
+  { key: 'lab-orders', icon: FlaskConical, label: 'Labs' },
+  { key: 'radiology-orders', icon: Layers, label: 'Imaging' },
+  { key: 'ward-round', icon: BedDouble, label: 'Ward round' },
+  { key: 'appointments', icon: Calendar, label: 'Schedule' },
+  { key: 'tasks', icon: ClipboardList, label: 'Tasks' },
+  { key: 'referrals', icon: Send, label: 'Referrals' },
+  { key: 'admission', icon: UserPlus, label: 'Admit' },
+  { key: 'messages', icon: MessageSquare, label: 'Messages' },
+  { key: 'analytics', icon: BarChart3, label: 'Analytics' },
+  { key: 'settings', icon: Settings, label: 'Settings' },
 ];
 
 // -- MAIN EXPORT: single workspace (no nested Doctor Portal chrome) ------------
@@ -2336,20 +2355,20 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate,
             }}
           />
         );
-      case 'patients':         return <PatientsViewLive session={session} onNavigate={onNavigate} />;
-      case 'consultation':     return <ConsultationView session={session} />;
-      case 'prescriptions':    return <PrescriptionsView session={session} />;
-      case 'lab-orders':       return <LabOrdersView session={session} />;
-      case 'ward-round':       return <WardRoundView />;
-      case 'appointments':     return <AppointmentsView />;
-      case 'tasks':            return <TasksView />;
-      case 'analytics':        return <AnalyticsView />;
-      case 'emr':              return <EMRManager onNavigate={(m) => onNavigate(m)} />;
+      case 'patients': return <PatientsViewLive session={session} onNavigate={onNavigate} />;
+      case 'consultation': return <ConsultationView session={session} />;
+      case 'prescriptions': return <PrescriptionsView session={session} />;
+      case 'lab-orders': return <LabOrdersView session={session} />;
+      case 'ward-round': return <WardRoundView />;
+      case 'appointments': return <AppointmentsView />;
+      case 'tasks': return <TasksView />;
+      case 'analytics': return <AnalyticsView />;
+      case 'emr': return <EMRManager onNavigate={(m) => onNavigate(m)} />;
       case 'radiology-orders': return <RadiologyOrdersView session={session} />;
-      case 'referrals':        return <Placeholder icon={Send} label="Referral Management" description="Internal and external referrals, specialist consultations, inter-hospital transfers with clinical summaries and acceptance tracking." color="#10B981" />;
-      case 'messages':         return <Placeholder icon={MessageSquare} label="Clinical Messaging" description="Secure clinician-to-clinician messaging, nurse escalations, department broadcasts, and ward-level notifications." color="#60A5FA" />;
-      case 'admission':        return <Placeholder icon={UserPlus} label="Admissions & Discharge Planning" description="Patient admission requests, ward/bed allocation, transfer orders, and structured discharge planning with after-care instructions." color="#38BDF8" />;
-      case 'settings':         return <Placeholder icon={Settings} label="Doctor Preferences" description="Notification settings, signature setup, prescription defaults, preferred investigation labs, portal shortcuts, and display configuration." color="#94A3B8" />;
+      case 'referrals': return <Placeholder icon={Send} label="Referral Management" description="Internal and external referrals, specialist consultations, inter-hospital transfers with clinical summaries and acceptance tracking." color="#10B981" />;
+      case 'messages': return <Placeholder icon={MessageSquare} label="Clinical Messaging" description="Secure clinician-to-clinician messaging, nurse escalations, department broadcasts, and ward-level notifications." color="#60A5FA" />;
+      case 'admission': return <Placeholder icon={UserPlus} label="Admissions & Discharge Planning" description="Patient admission requests, ward/bed allocation, transfer orders, and structured discharge planning with after-care instructions." color="#38BDF8" />;
+      case 'settings': return <Placeholder icon={Settings} label="Doctor Preferences" description="Notification settings, signature setup, prescription defaults, preferred investigation labs, portal shortcuts, and display configuration." color="#94A3B8" />;
       default:
         return (
           <DoctorDeskHome

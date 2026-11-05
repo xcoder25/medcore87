@@ -1139,8 +1139,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                   onClear={() => setSearch('')}
                   placeholder="Search staff by name, role, department or badge ID…"
                   suggestions={staffSuggestions}
-                  resultsCount={filteredStaff.length}
-                  totalCount={allStaff.length}
+                  resultsCount={filteredRecords.length}
+                  totalCount={records.length}
                   size="sm"
                   aria-label="Search staff directory"
                 />

@@ -1311,6 +1311,69 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                 </div>
               </div>
 
+              {/* Denomination Counter */}
+              <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 12px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                  Cash Denomination Tally (Physical Vault Count)
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <label style={{ fontSize: '0.72rem', color: '#64748B', display: 'block' }}>₦1,000 Notes</label>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      value={n1000}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value, 10));
+                        setN1000(val);
+                        const c1000 = val === '' ? 0 : val;
+                        const c500 = n500 === '' ? 0 : n500;
+                        const c200 = n200 === '' ? 0 : n200;
+                        setCountedCash(c1000 * 1000 + c500 * 500 + c200 * 200);
+                      }}
+                      style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #CBD5E1', fontSize: '0.85rem', fontWeight: 700 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.72rem', color: '#64748B', display: 'block' }}>₦500 Notes</label>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      value={n500}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value, 10));
+                        setN500(val);
+                        const c1000 = n1000 === '' ? 0 : n1000;
+                        const c500 = val === '' ? 0 : val;
+                        const c200 = n200 === '' ? 0 : n200;
+                        setCountedCash(c1000 * 1000 + c500 * 500 + c200 * 200);
+                      }}
+                      style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #CBD5E1', fontSize: '0.85rem', fontWeight: 700 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.72rem', color: '#64748B', display: 'block' }}>₦200 Notes</label>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      value={n200}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value, 10));
+                        setN200(val);
+                        const c1000 = n1000 === '' ? 0 : n1000;
+                        const c500 = n500 === '' ? 0 : n500;
+                        const c200 = val === '' ? 0 : val;
+                        setCountedCash(c1000 * 1000 + c500 * 500 + c200 * 200);
+                      }}
+                      style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #CBD5E1', fontSize: '0.85rem', fontWeight: 700 }}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: 4 }}>
                   Total Physical Cash Counted (₦) *

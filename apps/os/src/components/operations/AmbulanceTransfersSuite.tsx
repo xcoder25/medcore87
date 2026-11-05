@@ -31,6 +31,7 @@ export const AmbulanceTransfersSuite: React.FC = () => {
   const [selectedAlertId, setSelectedAlertId] = useState<string>('EPCR-2026-8812');
   const [showRawPayload, setShowRawPayload] = useState(false);
   const [ingestionToast, setIngestionToast] = useState<string | null>(null);
+  const [previewModalAlert, setPreviewModalAlert] = useState<EpcrPreArrivalAlert | null>(null);
 
   useEffect(() => {
     setAlerts(listStagingQueue());
@@ -260,6 +261,14 @@ export const AmbulanceTransfersSuite: React.FC = () => {
                     </span>
                   </div>
 
+                  {alert.ekgTelemetry?.stElevation && (
+                    <div style={{ marginBottom: 6 }}>
+                      <span className="animate-pulse" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 800 }}>
+                        <Flame size={12} color="#DC2626" /> CRITICAL STEMI PRE-ALERT
+                      </span>
+                    </div>
+                  )}
+
                   <div style={{ fontSize: '0.76rem', color: '#334155', fontWeight: 600, margin: '4px 0' }}>
                     {alert.incidentType}
                   </div>
@@ -325,7 +334,7 @@ export const AmbulanceTransfersSuite: React.FC = () => {
                   )}
                   <button
                     type="button"
-                    onClick={() => handle1ClickIngest(selectedAlert)}
+                    onClick={() => setPreviewModalAlert(selectedAlert)}
                     style={{
                       background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
                       color: '#FFFFFF',
@@ -342,7 +351,7 @@ export const AmbulanceTransfersSuite: React.FC = () => {
                     }}
                   >
                     <CheckCircle2 size={16} />
-                    <span>Accept &amp; Import (1-Click)</span>
+                    <span>Review &amp; Ingest (1-Click)</span>
                   </button>
                 </div>
               ) : (
@@ -517,6 +526,155 @@ export const AmbulanceTransfersSuite: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* ─── MODAL: Pre-Arrival Ingestion Diff Verification ─── */}
+      {previewModalAlert && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            background: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: 16,
+              width: '100%',
+              maxWidth: 580,
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              padding: 24,
+              boxShadow: '0 24px 48px rgba(0,0,0,0.3)',
+              border: '1px solid #CBD5E1',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ShieldAlert size={20} color="#059669" />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
+                    Confirm EMR Pre-Arrival Ingestion
+                  </h3>
+                  <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                    Direct {previewModalAlert.protocol} Bridge · Source: {previewModalAlert.emsUnit}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewModalAlert(null)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748B' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ background: '#F8FAFC', borderRadius: 12, padding: 14, border: '1px solid #E2E8F0', marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
+                  {previewModalAlert.patient.fullName}
+                </span>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#E0F2FE', color: '#0284C7' }}>
+                  {previewModalAlert.patient.gender === 'M' ? 'Male' : 'Female'} · {previewModalAlert.patient.age}y
+                </span>
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#475569' }}>
+                <strong>Chief Complaint:</strong> {previewModalAlert.incidentType}
+              </div>
+              {previewModalAlert.ekgTelemetry?.stElevation && (
+                <div style={{ marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 5, background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, padding: '2px 8px', fontSize: '0.72rem', fontWeight: 800 }}>
+                  <Flame size={13} /> CRITICAL STEMI PROTOCOL TRIGGERED
+                </div>
+              )}
+            </div>
+
+            {/* Field Telemetry Snapshot */}
+            <div style={{ marginBottom: 14 }}>
+              <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                Field Vitals to be Populated into EMR (0 Keystrokes):
+              </span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                <div style={{ background: '#F1F5F9', borderRadius: 8, padding: 8, textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.68rem', color: '#64748B', display: 'block' }}>BP</span>
+                  <strong style={{ fontSize: '0.88rem', color: '#0F172A' }}>{previewModalAlert.vitals.bp}</strong>
+                </div>
+                <div style={{ background: '#F1F5F9', borderRadius: 8, padding: 8, textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.68rem', color: '#64748B', display: 'block' }}>Pulse</span>
+                  <strong style={{ fontSize: '0.88rem', color: '#0F172A' }}>{previewModalAlert.vitals.pulse} bpm</strong>
+                </div>
+                <div style={{ background: '#F1F5F9', borderRadius: 8, padding: 8, textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.68rem', color: '#64748B', display: 'block' }}>SpO₂</span>
+                  <strong style={{ fontSize: '0.88rem', color: previewModalAlert.vitals.spo2 < 93 ? '#DC2626' : '#059669' }}>
+                    {previewModalAlert.vitals.spo2}%
+                  </strong>
+                </div>
+                <div style={{ background: '#F1F5F9', borderRadius: 8, padding: 8, textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.68rem', color: '#64748B', display: 'block' }}>GCS</span>
+                  <strong style={{ fontSize: '0.88rem', color: '#0F172A' }}>{previewModalAlert.vitals.gcs}</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Paramedic Note Preview */}
+            <div style={{ background: '#F8FAFC', borderRadius: 10, padding: 12, border: '1px solid #E2E8F0', fontSize: '0.78rem', color: '#334155', marginBottom: 16 }}>
+              <span style={{ fontWeight: 700, color: '#1E293B', display: 'block', marginBottom: 4 }}>
+                Pre-Hospital Narrative:
+              </span>
+              <p style={{ margin: 0, fontStyle: 'italic', lineHeight: 1.45 }}>
+                &ldquo;{previewModalAlert.accidentNarrative || previewModalAlert.ekgTelemetry?.notes || 'Inbound emergency transport.'}&rdquo;
+              </p>
+            </div>
+
+            {/* Confirmation Buttons */}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setPreviewModalAlert(null)}
+                className="os-ghost-btn"
+                style={{ flex: 1 }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const alertToImport = previewModalAlert;
+                  setPreviewModalAlert(null);
+                  handle1ClickIngest(alertToImport);
+                }}
+                style={{
+                  flex: 2,
+                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '12px 18px',
+                  fontWeight: 800,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  boxShadow: '0 4px 14px rgba(16,185,129,0.35)',
+                }}
+              >
+                <CheckCircle2 size={18} />
+                <span>Confirm Ingestion into EMR</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

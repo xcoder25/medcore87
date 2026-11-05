@@ -746,9 +746,29 @@ export const RapidNurseTriageIntake: React.FC<RapidTriageProps> = ({
         {/* Core Vitals Inputs Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
           {/* Blood Pressure */}
-          <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px' }}>
+          <div
+            style={{
+              background: (sysNum >= 160 || diaNum >= 100 || (sysNum > 0 && sysNum < 90)) ? '#FEF2F2' : '#F8FAFC',
+              border: `1.5px solid ${(sysNum >= 160 || diaNum >= 100 || (sysNum > 0 && sysNum < 90)) ? '#EF4444' : '#E2E8F0'}`,
+              borderRadius: 12,
+              padding: '12px 14px',
+              transition: 'all 0.2s ease',
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569' }}>Blood Pressure (mmHg)</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569' }}>Blood Pressure (mmHg)</span>
+                {sysNum >= 160 && (
+                  <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: '#DC2626', color: '#fff' }}>
+                    CRISIS
+                  </span>
+                )}
+                {sysNum > 0 && sysNum < 90 && (
+                  <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: '#EA580C', color: '#fff' }}>
+                    LOW
+                  </span>
+                )}
+              </div>
               <Heart size={16} color="#DC2626" />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -811,9 +831,29 @@ export const RapidNurseTriageIntake: React.FC<RapidTriageProps> = ({
           </div>
 
           {/* Pulse / Heart Rate */}
-          <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px' }}>
+          <div
+            style={{
+              background: (hrNum > 120 || (hrNum > 0 && hrNum < 50)) ? '#FFFBEB' : '#F8FAFC',
+              border: `1.5px solid ${(hrNum > 120 || (hrNum > 0 && hrNum < 50)) ? '#F59E0B' : '#E2E8F0'}`,
+              borderRadius: 12,
+              padding: '12px 14px',
+              transition: 'all 0.2s ease',
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569' }}>Pulse / HR (bpm)</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569' }}>Pulse / HR (bpm)</span>
+                {hrNum > 120 && (
+                  <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: '#D97706', color: '#fff' }}>
+                    TACHY
+                  </span>
+                )}
+                {hrNum > 0 && hrNum < 50 && (
+                  <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: '#475569', color: '#fff' }}>
+                    BRADY
+                  </span>
+                )}
+              </div>
               <Activity size={16} color="#0D9488" />
             </div>
             <input
@@ -854,9 +894,24 @@ export const RapidNurseTriageIntake: React.FC<RapidTriageProps> = ({
           </div>
 
           {/* Oxygen Saturation SpO2 */}
-          <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: '12px 14px' }}>
+          <div
+            style={{
+              background: (spo2Num > 0 && spo2Num < 92) ? '#FEF2F2' : '#F8FAFC',
+              border: `1.5px solid ${(spo2Num > 0 && spo2Num < 92) ? '#EF4444' : '#E2E8F0'}`,
+              borderRadius: 12,
+              padding: '12px 14px',
+              transition: 'all 0.2s ease',
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569' }}>SpO2 (%)</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569' }}>SpO2 (%)</span>
+                {spo2Num > 0 && spo2Num < 92 && (
+                  <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: '#DC2626', color: '#fff' }}>
+                    HYPOXIA
+                  </span>
+                )}
+              </div>
               <Wind size={16} color="#0284C7" />
             </div>
             <input
@@ -1072,6 +1127,14 @@ export const RapidNurseTriageIntake: React.FC<RapidTriageProps> = ({
           >
             {isListeningSpeech ? <MicOff size={16} /> : <Mic size={16} />}
             {isListeningSpeech ? 'Recording Speech…' : 'Ambient AI Voice Scribe'}
+            {isListeningSpeech && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, height: 14, marginLeft: 4 }}>
+                <span className="animate-pulse" style={{ width: 3, height: 10, background: '#DC2626', borderRadius: 2 }} />
+                <span className="animate-pulse" style={{ width: 3, height: 14, background: '#DC2626', borderRadius: 2 }} />
+                <span className="animate-pulse" style={{ width: 3, height: 8, background: '#DC2626', borderRadius: 2 }} />
+                <span className="animate-pulse" style={{ width: 3, height: 12, background: '#DC2626', borderRadius: 2 }} />
+              </span>
+            )}
           </button>
         </div>
 
