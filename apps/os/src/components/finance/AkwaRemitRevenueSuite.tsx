@@ -51,17 +51,6 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
   const [activeTab, setActiveTab] = useState<TabType>('report');
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [search, setSearch] = useState('');
-
-  const akwaSuggestions: SearchSuggestion[] = useMemo(() => {
-    return payments.slice(0, 30).map((p) => ({
-      id: p.id,
-      label: p.receiptNo + ' · ' + p.patientName,
-      sub: '₦' + p.amountNgn.toLocaleString() + ' · ' + p.method + (p.paystackRef ? ' · ' + p.paystackRef : ''),
-      category: p.remittanceStatus.toUpperCase(),
-      icon: Landmark,
-      onClick: () => setSearch(p.receiptNo),
-    }));
-  }, [payments]);
   const [methodFilter, setMethodFilter] = useState<AkwaRemitMethod | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<AkwaRemitRemittanceStatus | 'all'>('all');
 
@@ -144,6 +133,17 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
       return true;
     });
   }, [payments, selectedDate, methodFilter, statusFilter, search]);
+
+  const akwaSuggestions: SearchSuggestion[] = useMemo(() => {
+    return payments.slice(0, 30).map((p) => ({
+      id: p.id,
+      label: p.receiptNo + ' · ' + p.patientName,
+      sub: '₦' + p.amountNgn.toLocaleString() + ' · ' + p.method + (p.paystackRef ? ' · ' + p.paystackRef : ''),
+      category: p.remittanceStatus.toUpperCase(),
+      icon: Landmark,
+      onClick: () => setSearch(p.receiptNo),
+    }));
+  }, [payments]);
 
   const pendingPaymentsForRemit = useMemo(() => {
     return payments.filter((p) => p.remittanceStatus === 'pending');

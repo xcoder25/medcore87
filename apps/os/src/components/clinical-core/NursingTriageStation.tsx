@@ -470,7 +470,7 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
       id: v.id,
       label: v.patientName,
       sub: `${v.hospitalNumber} · ${v.department || 'OPD'}`,
-      category: v.priority ? String(v.priority).toUpperCase() : 'WAITING',
+      category: v.triageUrgency ? v.triageUrgency.toUpperCase() : (v.visitType === 'emergency' ? 'EMERGENCY' : 'WAITING'),
       onClick: () => {
         setSearch(v.patientName);
         setSelectedId(v.id);

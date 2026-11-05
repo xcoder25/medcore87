@@ -46,7 +46,7 @@ export const EmergencyTriageSuite: React.FC = () => {
     return patients.slice(0, 20).map((p) => ({
       id: p.id,
       label: p.patientName,
-      sub: p.id + ' · ' + p.chiefComplaint + (p.assignedBay ? ' · ' + p.assignedBay : ''),
+      sub: p.id + ' · ' + p.chiefComplaint + (p.bayAssigned ? ' · ' + p.bayAssigned : ''),
       category: 'ESI ' + p.esiLevel,
       icon: Activity,
       onClick: () => {

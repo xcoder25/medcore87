@@ -474,7 +474,7 @@ export const LabDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     return labOrders.slice(0, 30).map((o) => ({
       id: o.id,
       label: o.patientName,
-      sub: `${o.orderName} · ${o.hospitalNumber || o.patientId} · ${o.status.toUpperCase()}`,
+      sub: `${o.name} · ${o.hospitalNumber || o.patientId} · ${o.status.toUpperCase()}`,
       category: o.priority === 'stat' ? 'STAT' : o.priority === 'urgent' ? 'Urgent' : 'Routine',
       badge: o.status,
       onClick: () => setSearch(o.patientName),

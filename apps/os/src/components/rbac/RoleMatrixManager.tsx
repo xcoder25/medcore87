@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import {
   Shield, Plus, Check, X, Trash2, Search, Sliders,
   Sparkles, Layers, RotateCcw, AlertCircle, CheckCircle2,
@@ -76,8 +77,8 @@ export const RoleMatrixManager: React.FC<Props> = ({
     return MODULE_CATALOG.slice(0, 30).map((m) => ({
       id: m.key,
       label: m.label,
-      sub: m.desc,
-      category: m.category.toUpperCase(),
+      sub: m.key + ' · ' + m.group,
+      category: m.group.toUpperCase(),
       icon: Shield,
       onClick: () => setSearch(m.label),
     }));

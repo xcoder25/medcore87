@@ -21,11 +21,11 @@ export const AppointmentsManager: React.FC<AppointmentsManagerProps> = ({ onNavi
   const apptSuggestions: SearchSuggestion[] = React.useMemo(() => {
     return appointments.slice(0, 25).map((a) => ({
       id: a.id,
-      label: a.patientName,
-      sub: a.time + ' · ' + a.doctorName + ' · ' + a.type,
+      label: a.name,
+      sub: a.time + ' · ' + a.type + (a.notes ? ' · ' + a.notes : ''),
       category: a.status.toUpperCase(),
       icon: Calendar,
-      onClick: () => setSearchQuery(a.patientName),
+      onClick: () => setSearchQuery(a.name),
     }));
   }, [appointments]);
   const [showBookModal, setShowBookModal] = useState(false);

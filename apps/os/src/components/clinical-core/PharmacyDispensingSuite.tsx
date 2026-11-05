@@ -90,11 +90,11 @@ export const PharmacyDispensingSuite: React.FC = () => {
   const pharmacySuggestions: SearchSuggestion[] = React.useMemo(() => {
     const list: SearchSuggestion[] = [];
     if (activeTab === 'queue') {
-      queue.slice(0, 25).forEach((q) => {
+      prescriptions.slice(0, 25).forEach((q) => {
         list.push({
           id: q.id,
           label: q.patientName,
-          sub: q.hospitalNumber + ' · ' + q.drugName + ' (' + q.dosage + ')',
+          sub: q.patientId + ' · ' + q.medication + ' (' + q.dosage + ')',
           category: 'QUEUE',
           icon: Pill,
           onClick: () => setSearch(q.patientName),
@@ -104,16 +104,16 @@ export const PharmacyDispensingSuite: React.FC = () => {
       formulary.slice(0, 25).forEach((f) => {
         list.push({
           id: f.id,
-          label: f.brandName,
-          sub: f.genericName + ' · ' + f.strength + ' · Stock: ' + f.stock,
+          label: f.name,
+          sub: f.code + ' · ' + f.category + ' · Stock: ' + f.stockOnHand + ' ' + f.unit,
           category: 'FORMULARY',
           icon: Package,
-          onClick: () => setSearch(f.brandName),
+          onClick: () => setSearch(f.name),
         });
       });
     }
     return list;
-  }, [activeTab, queue, formulary]);
+  }, [activeTab, prescriptions, formulary]);
   const [lookupId, setLookupId] = useState('');
 
   // Patient scanner state
@@ -460,7 +460,7 @@ export const PharmacyDispensingSuite: React.FC = () => {
               onClear={() => setSearch('')}
               placeholder={activeTab === 'queue' ? 'Search patient, doctor, drug…' : 'Search medicine…'}
               suggestions={pharmacySuggestions}
-              resultsCount={filteredQueue.length}
+              resultsCount={filteredPrescriptions.length}
               size="sm"
               aria-label="Search pharmacy records"
             />

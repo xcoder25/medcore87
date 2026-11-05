@@ -98,10 +98,10 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
         id: p.id,
         label: full,
         sub: p.hospitalNumber + (p.phone ? ' · Tel: ' + p.phone : '') + (p.nin ? ' · NIN: ' + p.nin : ''),
-        category: p.insuranceScheme ? p.insuranceScheme.toUpperCase() : 'PATIENT',
+        category: p.insuranceProvider ? p.insuranceProvider.toUpperCase() : 'PATIENT',
         icon: CreditCard,
         onClick: () => {
-          setSelectedPatient(p);
+          setSelectedId(p.id);
           setSearch(full);
         },
       };

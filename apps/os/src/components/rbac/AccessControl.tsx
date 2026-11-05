@@ -145,15 +145,15 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
   const [search, setSearch] = useState('');
 
   const staffSuggestions: SearchSuggestion[] = useMemo(() => {
-    return allStaff.slice(0, 30).map((s) => ({
+    return records.slice(0, 30).map((s) => ({
       id: s.id,
       label: s.name,
-      sub: s.badgeId + ' · ' + s.role + ' · ' + s.department,
-      category: s.department.toUpperCase(),
+      sub: s.id + ' · ' + s.role + ' · ' + s.department,
+      category: s.department ? s.department.toUpperCase() : 'STAFF',
       icon: Users,
       onClick: () => setSearch(s.name),
     }));
-  }, [allStaff]);
+  }, [records]);
   const [groupFilter, setGroupFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [selectedId, setSelectedId] = useState<string | null>(null);

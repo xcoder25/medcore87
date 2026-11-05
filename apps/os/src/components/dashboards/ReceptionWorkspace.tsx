@@ -330,7 +330,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         id: p.id,
         label: full,
         sub: p.hospitalNumber + (p.phone ? ' · Tel: ' + p.phone : '') + (p.nin ? ' · NIN: ' + p.nin : ''),
-        category: p.insuranceScheme ? p.insuranceScheme.toUpperCase() : 'REGISTRY',
+        category: p.insuranceProvider ? p.insuranceProvider.toUpperCase() : 'REGISTRY',
         icon: Users,
         onClick: () => {
           openPatient(p);

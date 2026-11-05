@@ -48,12 +48,12 @@ export const AksEmlFormularyPanel: React.FC = () => {
 
   const emlMedicineSuggestions = useMemo<SearchSuggestion[]>(() => {
     return listEml(audience).slice(0, 35).map((m) => ({
-      id: m.id || m.medicine,
-      label: m.medicine,
-      sub: `${m.form} · ${m.category}`,
+      id: m.id || m.name,
+      label: m.name,
+      sub: `${m.dosageForms} · ${m.category}`,
       category: m.category,
       badge: m.awareGroup ? m.awareGroup.toUpperCase() : undefined,
-      onClick: () => setQ(m.medicine),
+      onClick: () => setQ(m.name),
     }));
   }, [audience]);
 

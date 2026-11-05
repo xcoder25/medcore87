@@ -26,6 +26,7 @@ export interface InteractiveSearchBarProps {
   style?: React.CSSProperties;
   inputStyle?: React.CSSProperties;
   size?: 'sm' | 'md' | 'lg';
+  themeColor?: string;
   kbdShortcut?: string;
   isLoading?: boolean;
   aiAssisted?: boolean;
@@ -54,6 +55,7 @@ export const InteractiveSearchBar: React.FC<InteractiveSearchBarProps> = ({
   style,
   inputStyle,
   size = 'md',
+  themeColor = '#0066FF',
   kbdShortcut,
   isLoading = false,
   aiAssisted = false,
@@ -171,13 +173,10 @@ export const InteractiveSearchBar: React.FC<InteractiveSearchBarProps> = ({
           padding: sizeStyles.padding,
           minHeight: sizeStyles.height,
           background: isFocused ? '#FFFFFF' : isHovered ? '#F8FAFC' : '#F1F5F9',
-          border: `1.5px solid ${isFocused ? '#0066FF' : isHovered ? '#CBD5E1' : '#E2E8F0'}`,
+          border: `1.5px solid ${isFocused ? themeColor : isHovered ? '#CBD5E1' : '#E2E8F0'}`,
+          boxShadow: isFocused ? `0 0 0 3.5px ${themeColor}28, 0 2px 6px ${themeColor}14` : isHovered ? '0 2px 5px rgba(0, 0, 0, 0.04)' : '0 1px 2px rgba(0, 0, 0, 0.02)',
           borderRadius: 10,
-          boxShadow: isFocused
-            ? '0 0 0 3.5px rgba(0, 102, 255, 0.15), 0 2px 6px rgba(0, 102, 255, 0.08)'
-            : isHovered
-            ? '0 2px 5px rgba(0, 0, 0, 0.04)'
-            : '0 1px 2px rgba(0, 0, 0, 0.02)',
+
           transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >
@@ -187,7 +186,7 @@ export const InteractiveSearchBar: React.FC<InteractiveSearchBarProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: isFocused ? '#0066FF' : isHovered ? '#475569' : '#94A3B8',
+            color: isFocused ? themeColor : isHovered ? '#475569' : '#94A3B8',
             transition: 'color 0.18s ease, transform 0.18s ease',
             transform: isFocused ? 'scale(1.05)' : 'scale(1)',
             flexShrink: 0,

@@ -101,19 +101,6 @@ export const FrontDeskWorkqueues: React.FC<{ session?: UserSession }> = ({ sessi
     return subscribeFrontDeskWq(reload);
   }, [reload]);
 
-  const frontDeskPatientSuggestions = useMemo<SearchSuggestion[]>(() => {
-    return patientHits.map((p) => ({
-      id: p.id,
-      label: `${p.firstName} ${p.lastName}`,
-      sub: `${p.hospitalNumber} · ${p.phone || 'No phone'} · ${p.gender || ''}`,
-      category: 'Patient',
-      onClick: () => {
-        setSelectedPatient(p);
-        setPatientQ('');
-      },
-    }));
-  }, [patientHits]);
-
   const patientHits = useMemo(() => {
     if (!patientQ.trim()) return [] as FacilityPatient[];
     try {
@@ -132,6 +119,19 @@ export const FrontDeskWorkqueues: React.FC<{ session?: UserSession }> = ({ sessi
         .slice(0, 8);
     }
   }, [patientQ, facilityId]);
+
+  const frontDeskPatientSuggestions = useMemo<SearchSuggestion[]>(() => {
+    return patientHits.map((p) => ({
+      id: p.id,
+      label: p.firstName + ' ' + p.lastName,
+      sub: p.hospitalNumber + ' · ' + (p.phone || 'No phone') + ' · ' + (p.sex || ''),
+      category: 'Patient',
+      onClick: () => {
+        setSelectedPatient(p);
+        setPatientQ('');
+      },
+    }));
+  }, [patientHits]);
 
   const ensureGrid = () => {
     ensureDayGrid({ facilityId, department: dept, doctor, day });

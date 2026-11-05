@@ -78,7 +78,7 @@ export const LamisNdrSuite: React.FC<Props> = ({ session }) => {
       id: p.id,
       label: p.fullName,
       sub: `${p.artNumber} · ${p.hospitalNumber} · ${p.currentRegimen}`,
-      category: p.artStatus.toUpperCase(),
+      category: p.currentArtStatus.toUpperCase(),
       onClick: () => setSearch(p.fullName),
     }));
   }, [cohort]);
