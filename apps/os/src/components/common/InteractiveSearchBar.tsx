@@ -85,6 +85,21 @@ export const InteractiveSearchBar: React.FC<InteractiveSearchBarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Global keyboard shortcut to focus search bar (e.g. ⌘K or Ctrl+K)
+  useEffect(() => {
+    if (!kbdShortcut) return;
+    const handleGlobalKbd = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+        setIsFocused(true);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKbd);
+    return () => window.removeEventListener('keydown', handleGlobalKbd);
+  }, [kbdShortcut]);
+
   // Reset active keyboard index when suggestions change
   useEffect(() => {
     setActiveIndex(-1);
@@ -111,18 +126,21 @@ export const InteractiveSearchBar: React.FC<InteractiveSearchBarProps> = ({
         setActiveIndex((prev) => (prev > 0 ? prev - 1 : filteredSuggestions.length - 1));
         return;
       }
-      if (e.key === 'Enter' && activeIndex >= 0 && activeIndex < filteredSuggestions.length) {
-        e.preventDefault();
-        const selected = filteredSuggestions[activeIndex];
-        if (selected.onClick) {
-          selected.onClick();
-        } else if (onSelectSuggestion) {
-          onSelectSuggestion(selected);
-        } else {
-          onChange(selected.label);
+      if (e.key === 'Enter') {
+        const targetIndex = activeIndex >= 0 ? activeIndex : 0;
+        if (targetIndex >= 0 && targetIndex < filteredSuggestions.length) {
+          e.preventDefault();
+          const selected = filteredSuggestions[targetIndex];
+          if (selected.onClick) {
+            selected.onClick();
+          } else if (onSelectSuggestion) {
+            onSelectSuggestion(selected);
+          } else {
+            onChange(selected.label);
+          }
+          setIsFocused(false);
+          return;
         }
-        setIsFocused(false);
-        return;
       }
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -350,6 +368,17 @@ export const InteractiveSearchBar: React.FC<InteractiveSearchBarProps> = ({
                 key={item.id}
                 role="option"
                 aria-selected={isSelected}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  if (item.onClick) {
+                    item.onClick();
+                  } else if (onSelectSuggestion) {
+                    onSelectSuggestion(item);
+                  } else {
+                    onChange(item.label);
+                  }
+                  setIsFocused(false);
+                }}
                 onClick={() => {
                   if (item.onClick) {
                     item.onClick();

@@ -3,7 +3,7 @@
 /**
  * Full Administrator shell — matches MedCore admin mockup (dark sidebar + premium home).
  */
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
 import { AdminWorkspace } from './AdminWorkspace';
 import {
@@ -139,14 +139,55 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [clock, setClock] = useState(formatNow);
   const [search, setSearch] = useState('');
+  const [showCredModal, setShowCredModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  const goModule = useCallback((key: AdminModule) => {
+    setModuleHistory((h) => [...h.slice(-19), module]);
+    setModule(key);
+  }, [module]);
+
+  const goBack = useCallback(() => {
+    setModuleHistory((h) => {
+      if (!h.length) {
+        setModule('dashboard');
+        return h;
+      }
+      const prev = h[h.length - 1];
+      setModule(prev);
+      return h.slice(0, -1);
+    });
+  }, []);
 
   const adminSuggestions: SearchSuggestion[] = useMemo(() => {
     const list: SearchSuggestion[] = [];
+
+    const KEYWORD_MAP: Partial<Record<AdminModule, string>> = {
+      dashboard: 'home overview analytics admissions revenue statistics kpis',
+      'm87-ai': 'celestia clinical intelligence cds decision support triage rules ai assistant',
+      command: 'command centre live ops telemetry ambulance bay queue icu emergency',
+      beds: 'bed board wards inpatient admissions bed census occupancy discharge',
+      cashier: 'revenue billing invoices receipts cashier pos claims point of sale',
+      akwaremit: 'akwaremit remita rrr paystack pos terminal shift reconciliation cash vault tally',
+      notifications: 'in-basket alerts system notifications critical lab paging doctor notices',
+      rbac: 'staff access biometric id cards smart badging user accounts employee directory',
+      staffing: 'duty roster doctors on-duty nurse shifts presence tracker active staff',
+      transfer: 'staff transfers deployment multi-hospital deployment secondment',
+      'patient-flow': 'patient flow opd waiting times triage bottlenecks patient journey',
+      'my-card': 'admin id card digital badge apple wallet nfc pass qr code',
+      'role-permissions': 'rbac matrix role visibility module access permissions clearance tiers',
+      compliance: 'audit logs compliance security logs access events patient data history',
+      facility: 'facility setup onboarding wards setup clinics pilot reset',
+      settings: 'hospital settings branding facility identity lga hotline clinical defaults',
+    };
+
     NAV.forEach((sec) => {
       sec.items.forEach((item) => {
+        const extraKeywords = KEYWORD_MAP[item.key] || '';
         list.push({
           id: item.key,
           label: item.label,
+          sub: `${sec.label || 'Navigation'} · ${extraKeywords}`,
           category: sec.label || 'Navigation',
           icon: item.icon,
           onClick: () => {
@@ -156,11 +197,12 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         });
       });
     });
+
     list.push(
       {
         id: 'settings-identity',
         label: 'Hospital Identity & Profile Settings',
-        sub: 'Branding, LGA, helpline numbers',
+        sub: 'Branding, LGA, helpline numbers, facility configuration',
         category: 'Settings',
         icon: Building2,
         onClick: () => { goModule('settings'); setSearch(''); },
@@ -168,22 +210,22 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       {
         id: 'settings-security',
         label: 'Administrator Security & Master PIN',
-        sub: 'Change admin password or fast-switch PIN',
+        sub: 'Change admin password or fast-switch PIN credentials',
         category: 'Security',
         icon: Lock,
         onClick: () => { setShowCredModal(true); setSearch(''); },
       },
       {
-        id: 'ai-cds',
-        label: 'Clinical Intelligence & AI Ops',
-        sub: 'Triage rules, reception automation, and CDS',
-        category: 'Intelligence',
-        icon: Sparkles,
-        onClick: () => { goModule('m87-ai'); setSearch(''); },
+        id: 'admin-profile',
+        label: 'Administrator User Profile',
+        sub: 'View active administrator session, permissions & roles',
+        category: 'Security',
+        icon: Users,
+        onClick: () => { setShowProfileModal(true); setSearch(''); },
       }
     );
     return list;
-  }, []);
+  }, [goModule]);
   const [online, setOnline] = useState(true);
   const [hospitalShare, setHospitalShare] = useState<'local' | 'lan' | 'cloud' | 'probing'>('probing');
   const [facilityDisplayName, setFacilityDisplayName] = useState(() => {
@@ -209,27 +251,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
     };
   }, [session.hospitalId]);
   const [pendingSync, setPendingSync] = useState(0);
-  const [showCredModal, setShowCredModal] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
   const { connected } = useRealtimeEvents({ app: 'MEDCORE_OS_ADMIN', facilityId: session.hospitalId });
-
-  const goModule = (key: AdminModule) => {
-    if (key === module) return;
-    setModuleHistory((h) => [...h.slice(-19), module]);
-    setModule(key);
-  };
-
-  const goBack = () => {
-    setModuleHistory((h) => {
-      if (!h.length) {
-        setModule('dashboard');
-        return h;
-      }
-      const prev = h[h.length - 1];
-      setModule(prev);
-      return h.slice(0, -1);
-    });
-  };
 
   useEffect(() => {
     try { ensureCleanPilot(); } catch {}
@@ -450,11 +472,15 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
           </div>
 
           <div className="admin-shell-top-right">
-            <div style={{ width: 280, maxWidth: '100%' }}>
+            <div style={{ width: 340, maxWidth: '100%', position: 'relative', zIndex: 50 }}>
               <InteractiveSearchBar
                 value={search}
                 onChange={setSearch}
                 onClear={() => setSearch('')}
+                onSelectSuggestion={(item) => {
+                  item.onClick?.();
+                  setSearch('');
+                }}
                 placeholder="Search modules, staff, settings…"
                 suggestions={adminSuggestions}
                 size="sm"
