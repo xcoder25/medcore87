@@ -42,6 +42,7 @@ import {
 } from '../../lib/receptionOpsStore';
 import { listStaffCards } from '../../lib/staffCardStore';
 import { listActiveStaff, type StaffPresence } from '../../lib/staffPresenceStore';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { pushNotification } from '../../lib/notificationEngine';
 import {
   AKWA_IBOM_LGAS,
@@ -321,6 +322,22 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [payments, setPayments] = useState<ReceptionPayment[]>([]);
   const [stats, setStats] = useState(dayStats(facilityId));
   const [query, setQuery] = useState('');
+
+  const receptionSuggestions: SearchSuggestion[] = useMemo(() => {
+    return patients.slice(0, 40).map((p) => {
+      const full = [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ');
+      return {
+        id: p.id,
+        label: full,
+        sub: p.hospitalNumber + (p.phone ? ' · Tel: ' + p.phone : '') + (p.nin ? ' · NIN: ' + p.nin : ''),
+        category: p.insuranceScheme ? p.insuranceScheme.toUpperCase() : 'REGISTRY',
+        icon: Users,
+        onClick: () => {
+          openPatient(p);
+        },
+      };
+    });
+  }, [patients]);
   const [scanCode, setScanCode] = useState('');
   const [walkStep, setWalkStep] = useState<1 | 2 | 3>(1);
   const [selected, setSelected] = useState<FacilityPatient | null>(null);
@@ -1530,13 +1547,20 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       {view === 'search' && (
         <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
           <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            <input
-              autoFocus
-              style={inputStyle}
-              placeholder="Search name, hospital no., phone, NHIA, NIN…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
+            <div style={{ flex: 1 }}>
+              <InteractiveSearchBar
+                autoFocus
+                value={query}
+                onChange={setQuery}
+                onClear={() => setQuery('')}
+                placeholder="Search name, hospital no., phone, NHIA, NIN…"
+                suggestions={receptionSuggestions}
+                resultsCount={searchHits.length}
+                totalCount={patients.length}
+                size="md"
+                aria-label="Search patient registry"
+              />
+            </div>
             {patients.length > 0 && (
               <button
                 type="button"

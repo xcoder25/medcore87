@@ -13,6 +13,7 @@ import {
 } from '../../lib/frontDeskAccountsBridge';
 import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
 import { listBillLines, subscribeBills } from '../../lib/patientBillingStore';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 
 type BillStatus = 'pending' | 'paid' | 'insurance' | 'waived' | 'outstanding';
 
@@ -48,6 +49,17 @@ const formatNaira = (n: number) => `₦${n.toLocaleString('en-NG')}`;
 export const CashierRevenue: React.FC = () => {
   const [bills, setBills] = useState<BillRecord[]>(INITIAL_BILLS);
   const [search, setSearch] = useState('');
+
+  const cashierSuggestions: SearchSuggestion[] = useMemo(() => {
+    return bills.slice(0, 30).map((b) => ({
+      id: b.id,
+      label: b.patientName,
+      sub: (b.patientId || b.id) + ' · ₦' + b.totalNaira.toLocaleString() + ' · ' + (b.services?.join(', ') || 'Consultation'),
+      category: b.status.toUpperCase(),
+      icon: CreditCard,
+      onClick: () => setSearch(b.patientName),
+    }));
+  }, [bills]);
   const [statusFilter, setStatusFilter] = useState<BillStatus | 'all'>('all');
 
   // Modal States
@@ -313,13 +325,17 @@ export const CashierRevenue: React.FC = () => {
       </div>
 
       <div className="os-toolbar">
-        <div className="os-search-wrap" style={{ flex: 1, minWidth: 220 }}>
-          <Search size={14} />
-          <input
-            className="os-search-input"
-            placeholder="Search patient, MRN or bill ID…"
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <InteractiveSearchBar
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={setSearch}
+            onClear={() => setSearch('')}
+            placeholder="Search patient, MRN or bill ID…"
+            suggestions={cashierSuggestions}
+            resultsCount={filtered.length}
+            totalCount={bills.length}
+            size="sm"
+            aria-label="Search patient bills and invoices"
           />
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

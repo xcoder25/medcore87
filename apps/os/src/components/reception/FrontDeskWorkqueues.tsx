@@ -5,6 +5,7 @@
  * Provider schedule grid · No-show/recall · Referral intake · Estimates · Print pack
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import type { UserSession } from '../auth/AuthScreen';
 import {
   Calendar, Phone, UserPlus, Printer, Wallet, AlertTriangle, CheckCircle2,
@@ -99,6 +100,19 @@ export const FrontDeskWorkqueues: React.FC<{ session?: UserSession }> = ({ sessi
     reload();
     return subscribeFrontDeskWq(reload);
   }, [reload]);
+
+  const frontDeskPatientSuggestions = useMemo<SearchSuggestion[]>(() => {
+    return patientHits.map((p) => ({
+      id: p.id,
+      label: `${p.firstName} ${p.lastName}`,
+      sub: `${p.hospitalNumber} · ${p.phone || 'No phone'} · ${p.gender || ''}`,
+      category: 'Patient',
+      onClick: () => {
+        setSelectedPatient(p);
+        setPatientQ('');
+      },
+    }));
+  }, [patientHits]);
 
   const patientHits = useMemo(() => {
     if (!patientQ.trim()) return [] as FacilityPatient[];
@@ -262,19 +276,14 @@ export const FrontDeskWorkqueues: React.FC<{ session?: UserSession }> = ({ sessi
       <div style={{ ...card, padding: 14 }}>
         <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>Patient context</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-            <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: '#94A3B8' }} />
-            <input
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <InteractiveSearchBar
               value={patientQ}
-              onChange={(e) => setPatientQ(e.target.value)}
+              onChange={setPatientQ}
               placeholder="Search name, hospital no, phone…"
-              style={{
-                width: '100%',
-                padding: '9px 12px 9px 32px',
-                borderRadius: 10,
-                border: `1px solid ${C.border}`,
-                fontSize: 13,
-              }}
+              suggestions={frontDeskPatientSuggestions}
+              size="sm"
+              themeColor="#2563EB"
             />
           </div>
           {selectedPatient && (

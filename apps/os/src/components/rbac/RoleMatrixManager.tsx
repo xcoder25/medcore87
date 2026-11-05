@@ -71,6 +71,17 @@ export const RoleMatrixManager: React.FC<Props> = ({
   const [roles, setRoles] = useState(listConfigurableRoles());
   const [permissionsMap, setPermissionsMap] = useState(getRolePermissionsMap());
   const [search, setSearch] = useState('');
+
+  const moduleSuggestions: SearchSuggestion[] = useMemo(() => {
+    return MODULE_CATALOG.slice(0, 30).map((m) => ({
+      id: m.key,
+      label: m.label,
+      sub: m.desc,
+      category: m.category.toUpperCase(),
+      icon: Shield,
+      onClick: () => setSearch(m.label),
+    }));
+  }, []);
   const [selectedGroup, setSelectedGroup] = useState<string>('All');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('all');
 
@@ -263,25 +274,17 @@ export const RoleMatrixManager: React.FC<Props> = ({
       {/* Filter Ribbon: Search + Category + Role Focus */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 260 }}>
-          <div style={{ position: 'relative', width: '100%' }}>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search clinical tools, patient scopes, or modules (e.g. ophthalmology, vitals, cashier)…"
-              style={{
-                width: '100%',
-                height: 40,
-                padding: '0 14px 0 38px',
-                borderRadius: 10,
-                border: '1.5px solid #E2E8F0',
-                fontSize: '0.85rem',
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
-            />
-            <Search size={16} color="#94A3B8" style={{ position: 'absolute', left: 12, top: 12 }} />
-          </div>
+          <InteractiveSearchBar
+            value={search}
+            onChange={setSearch}
+            onClear={() => setSearch('')}
+            placeholder="Search clinical tools, patient scopes, or modules…"
+            suggestions={moduleSuggestions}
+            resultsCount={filteredModules.length}
+            totalCount={MODULE_CATALOG.length}
+            size="md"
+            aria-label="Search workstation modules"
+          />
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

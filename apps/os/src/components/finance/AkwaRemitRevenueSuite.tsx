@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import type { UserSession } from '../auth/AuthScreen';
 import {
   listAkwaRemitPayments,
@@ -50,6 +51,17 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
   const [activeTab, setActiveTab] = useState<TabType>('report');
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [search, setSearch] = useState('');
+
+  const akwaSuggestions: SearchSuggestion[] = useMemo(() => {
+    return payments.slice(0, 30).map((p) => ({
+      id: p.id,
+      label: p.receiptNo + ' · ' + p.patientName,
+      sub: '₦' + p.amountNgn.toLocaleString() + ' · ' + p.method + (p.paystackRef ? ' · ' + p.paystackRef : ''),
+      category: p.remittanceStatus.toUpperCase(),
+      icon: Landmark,
+      onClick: () => setSearch(p.receiptNo),
+    }));
+  }, [payments]);
   const [methodFilter, setMethodFilter] = useState<AkwaRemitMethod | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<AkwaRemitRemittanceStatus | 'all'>('all');
 
@@ -638,26 +650,14 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div
-                style={{
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-              >
-                <Search size={14} style={{ position: 'absolute', left: 10, color: '#94A3B8' }} />
-                <input
-                  type="text"
-                  placeholder="Search receipt, patient, RRR, ref…"
+              <div style={{ minWidth: 260, maxWidth: 360, flex: 1 }}>
+                <InteractiveSearchBar
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  style={{
-                    padding: '7px 12px 7px 32px',
-                    borderRadius: 8,
-                    border: '1px solid #CBD5E1',
-                    fontSize: '0.82rem',
-                    width: 240,
-                  }}
+                  onChange={setSearch}
+                  placeholder="Search receipt, patient, RRR, ref…"
+                  suggestions={akwaSuggestions}
+                  size="sm"
+                  themeColor="#0052D4"
                 />
               </div>
               <button

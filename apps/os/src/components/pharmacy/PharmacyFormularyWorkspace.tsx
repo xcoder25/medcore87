@@ -5,6 +5,7 @@
  * Command bar · KPI strip · master-detail · FEFO batches · AKS EML
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import {
   Pill,
   Package,
@@ -121,6 +122,17 @@ export const PharmacyFormularyWorkspace: React.FC = () => {
   const categories = useMemo(() => {
     const s = new Set(drugs.map((d) => d.category).filter(Boolean));
     return ['all', ...Array.from(s).sort()];
+  }, [drugs]);
+
+  const formularySuggestions = useMemo<SearchSuggestion[]>(() => {
+    return drugs.slice(0, 35).map((d) => ({
+      id: d.id,
+      label: d.name,
+      sub: `${d.strength} · ${d.form} · ${d.category}`,
+      category: d.category,
+      badge: d.controlled ? 'Controlled' : undefined,
+      onClick: () => setQ(d.name),
+    }));
   }, [drugs]);
 
   const filtered = useMemo(() => {
@@ -494,23 +506,14 @@ export const PharmacyFormularyWorkspace: React.FC = () => {
                   alignItems: 'center',
                 }}
               >
-                <div style={{ flex: 1, minWidth: 180, position: 'relative' }}>
-                  <Search size={14} style={{ position: 'absolute', left: 10, top: 10, color: T.muted }} />
-                  <input
+                <div style={{ flex: 1, minWidth: 240 }}>
+                  <InteractiveSearchBar
                     value={q}
-                    onChange={(e) => setQ(e.target.value)}
+                    onChange={setQ}
                     placeholder="Search medicine, generic, ATC category…"
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px 8px 32px',
-                      borderRadius: T.radius,
-                      border: `1px solid ${T.lineStrong}`,
-                      fontSize: 13,
-                      fontFamily: T.font,
-                      background: T.surface,
-                      color: T.ink,
-                      outline: 'none',
-                    }}
+                    suggestions={formularySuggestions}
+                    size="sm"
+                    themeColor="#0D9488"
                   />
                 </div>
                 <select

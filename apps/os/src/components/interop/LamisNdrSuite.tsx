@@ -5,6 +5,7 @@
  * Built for Akwa Ibom State Ministry of Health & PEPFAR/CDC implementing partners.
  */
 import React, { useState, useEffect, useMemo } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import {
   Activity, Shield, Download, FileText, CheckCircle2, AlertTriangle, Users,
   Pill, FlaskConical, Sparkles, Brain, Baby, ArrowUpRight, Search, Clock, RefreshCw, Filter, Heart
@@ -71,6 +72,16 @@ export const LamisNdrSuite: React.FC<Props> = ({ session }) => {
       totalDeaths: deaths.length,
     };
   }, [cohort, births, deaths]);
+
+  const cohortSuggestions = useMemo<SearchSuggestion[]>(() => {
+    return cohort.slice(0, 30).map((p) => ({
+      id: p.id,
+      label: p.fullName,
+      sub: `${p.artNumber} · ${p.hospitalNumber} · ${p.currentRegimen}`,
+      category: p.artStatus.toUpperCase(),
+      onClick: () => setSearch(p.fullName),
+    }));
+  }, [cohort]);
 
   const filteredCohort = useMemo(() => {
     return cohort.filter((p) => {
@@ -204,13 +215,14 @@ export const LamisNdrSuite: React.FC<Props> = ({ session }) => {
         <div style={{ background: '#FFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 260 }}>
-              <div style={{ position: 'relative', width: '100%' }}>
-                <Search size={16} style={{ position: 'absolute', top: 11, left: 12, color: '#94A3B8' }} />
-                <input
-                  style={{ width: '100%', padding: '9px 12px 9px 36px', borderRadius: 10, border: '1px solid #CBD5E1', fontSize: '0.85rem' }}
-                  placeholder="Search by Patient Name, ART Unique ID, Hospital Number or NIN..."
+              <div style={{ width: '100%' }}>
+                <InteractiveSearchBar
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={setSearch}
+                  placeholder="Search by Patient Name, ART Unique ID, Hospital Number or NIN..."
+                  suggestions={cohortSuggestions}
+                  size="sm"
+                  themeColor="#0284C7"
                 />
               </div>
             </div>

@@ -4,6 +4,7 @@
  * Official Akwa Ibom State EML browser — Adult (3rd ed. 2026) & Children (1st ed. 2026)
  */
 import React, { useMemo, useState } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import {
   searchEml,
   listEml,
@@ -44,6 +45,17 @@ export const AksEmlFormularyPanel: React.FC = () => {
   const [q, setQ] = useState('');
   const [category, setCategory] = useState('All');
   const [selected, setSelected] = useState<EmlMedicine | null>(null);
+
+  const emlMedicineSuggestions = useMemo<SearchSuggestion[]>(() => {
+    return listEml(audience).slice(0, 35).map((m) => ({
+      id: m.id || m.medicine,
+      label: m.medicine,
+      sub: `${m.form} · ${m.category}`,
+      category: m.category,
+      badge: m.awareGroup ? m.awareGroup.toUpperCase() : undefined,
+      onClick: () => setQ(m.medicine),
+    }));
+  }, [audience]);
 
   const rows = useMemo(() => searchEml(audience, q, category), [audience, q, category]);
   const total = listEml(audience).length;
@@ -108,16 +120,14 @@ export const AksEmlFormularyPanel: React.FC = () => {
 
       {/* Search + filter */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-        <div style={{
-          flex: 1, minWidth: 200, display: 'flex', alignItems: 'center', gap: 8,
-          padding: '10px 12px', borderRadius: 12, border: `1px solid ${C.border}`, background: '#F8FAFC',
-        }}>
-          <Search size={16} color={C.muted} />
-          <input
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <InteractiveSearchBar
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={setQ}
             placeholder="Search medicine, form, category…"
-            style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 14, fontWeight: 600, color: C.navy }}
+            suggestions={emlMedicineSuggestions}
+            size="sm"
+            themeColor="#0284C7"
           />
         </div>
         <select

@@ -1,6 +1,7 @@
 ﻿'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { HospitalPatient, INITIAL_PATIENTS } from '../../data/hospitalData';
 import {
   Users, Search, Plus, Stethoscope, FileText, Pill,
@@ -30,6 +31,17 @@ export const PatientsManager: React.FC<PatientsManagerProps> = ({ onNavigate }) 
     blood: 'O+',
     allergies: '',
   });
+
+  const patientSuggestions = useMemo<SearchSuggestion[]>(() => [
+    ...patients.map(p => ({
+      id: p.id,
+      label: p.name,
+      sub: `${p.mrn} · ${p.ward} · ${p.status}`,
+      category: p.type === 'inpatient' ? 'Inpatient' : 'Outpatient',
+      badge: p.status === 'critical' ? 'Critical' : undefined,
+      onClick: () => setSearchQuery(p.name),
+    })),
+  ], [patients]);
 
   const filteredPatients = patients.filter(p => {
     const q = searchQuery.toLowerCase();
@@ -159,14 +171,14 @@ export const PatientsManager: React.FC<PatientsManagerProps> = ({ onNavigate }) 
         flexWrap: 'wrap',
         gap: 12
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 260, background: '#0A1929', padding: '8px 14px', borderRadius: 8, border: '1px solid #1E446B' }}>
-          <Search size={16} color="#94A8BE" />
-          <input
-            type="text"
-            placeholder="Search by patient name, MRN, ward, or diagnosis..."
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <InteractiveSearchBar
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            style={{ background: 'transparent', border: 'none', color: '#0A2540', outline: 'none', width: '100%', fontSize: '0.85rem' }}
+            onChange={setSearchQuery}
+            placeholder="Search by patient name, MRN, ward, or diagnosis..."
+            suggestions={patientSuggestions}
+            size="sm"
+            themeColor="#1A6EB5"
           />
         </div>
 

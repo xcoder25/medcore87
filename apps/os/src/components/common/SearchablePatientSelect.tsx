@@ -45,6 +45,7 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
   const [query, setQuery] = useState('');
   const [allPatients, setAllPatients] = useState<FacilityPatient[]>([]);
   const [highlightIndex, setHighlightIndex] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -165,6 +166,8 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
           position: 'relative',
           width: '100%',
         }}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
         <div
           style={{
@@ -204,13 +207,14 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
             width: '100%',
             padding: '10px 38px 10px 36px',
             borderRadius: 10,
-            border: isOpen ? '1.5px solid #0052D4' : '1px solid #CBD5E1',
+            border: isOpen ? '1.5px solid #0066FF' : isHovered ? '1.5px solid #94A3B8' : '1px solid #CBD5E1',
             background: disabled ? '#F1F5F9' : '#FFFFFF',
             fontSize: 13,
             fontWeight: activePatient ? 600 : 400,
             color: activePatient ? '#0F172A' : '#334155',
             outline: 'none',
-            boxShadow: isOpen ? '0 0 0 3px rgba(0, 82, 212, 0.12)' : 'none',
+            boxShadow: isOpen ? '0 0 0 3.5px rgba(0, 102, 255, 0.16), 0 2px 8px rgba(0, 102, 255, 0.08)' : isHovered ? '0 2px 5px rgba(0, 0, 0, 0.04)' : 'none',
+            caretColor: '#0066FF',
             transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
             boxSizing: 'border-box',
             cursor: disabled ? 'not-allowed' : 'text',

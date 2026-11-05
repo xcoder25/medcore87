@@ -889,7 +889,46 @@ const handleLockScreen = () => {
                 value={cmdSearch}
                 onChange={e => setCmdSearch(e.target.value)}
               />
-              <span className="os-cmd-kbd">ESC</span>
+              {cmdSearch.length > 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <span
+                    style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                      padding: '2px 7px',
+                      borderRadius: 6,
+                      background: filteredCommands.length > 0 ? '#E0F2FE' : '#FEE2E2',
+                      color: filteredCommands.length > 0 ? '#0369A1' : '#B91C1C',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {filteredCommands.length} {filteredCommands.length === 1 ? 'match' : 'matches'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCmdSearch('')}
+                    title="Clear search"
+                    aria-label="Clear search"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 22,
+                      height: 22,
+                      borderRadius: 6,
+                      border: 'none',
+                      background: '#E2E8F0',
+                      color: '#475569',
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    <X size={13} strokeWidth={2.5} />
+                  </button>
+                </div>
+              ) : (
+                <span className="os-cmd-kbd">ESC</span>
+              )}
             </div>
             <div className="os-cmd-results">
               {filteredCommands.length === 0 ? (

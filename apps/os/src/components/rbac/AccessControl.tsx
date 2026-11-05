@@ -48,6 +48,7 @@ import type { StaffCardRecord } from '@medcore/types';
 import type { UserSession } from '../auth/AuthScreen';
 import { HOSPITALS } from '../auth/AuthScreen';
 import { getCustomRoles } from '../../lib/rolePermissionsStore';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import {
   Shield, Plus, Search, CheckCircle2, XCircle, Lock, UserPlus, IdCard, Trash2, Sliders,
   Layers, Pencil, Save, X as XIcon, Users, Printer, Copy, Check, Sparkles,
@@ -142,6 +143,17 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
   const [activeTab, setActiveTab] = useState<'directory' | 'enrol' | 'cards' | 'roles'>(initialTab);
   const [records, setRecords] = useState<AccessRecord[]>(() => getInitialStaffAccessRecords(facilityId));
   const [search, setSearch] = useState('');
+
+  const staffSuggestions: SearchSuggestion[] = useMemo(() => {
+    return allStaff.slice(0, 30).map((s) => ({
+      id: s.id,
+      label: s.name,
+      sub: s.badgeId + ' · ' + s.role + ' · ' + s.department,
+      category: s.department.toUpperCase(),
+      icon: Users,
+      onClick: () => setSearch(s.name),
+    }));
+  }, [allStaff]);
   const [groupFilter, setGroupFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1120,19 +1132,18 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
           {/* Filter and Action Strip */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', background: '#FFFFFF', padding: '12px 18px', borderRadius: 14, border: '1px solid #E2E8F0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 280 }}>
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 10, padding: '8px 12px' }}>
-                <Search size={16} color="#64748B" />
-                <input
+              <div style={{ flex: 1, minWidth: 260 }}>
+                <InteractiveSearchBar
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={setSearch}
+                  onClear={() => setSearch('')}
                   placeholder="Search staff by name, role, department or badge ID…"
-                  style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: '0.86rem', color: '#0F172A' }}
+                  suggestions={staffSuggestions}
+                  resultsCount={filteredStaff.length}
+                  totalCount={allStaff.length}
+                  size="sm"
+                  aria-label="Search staff directory"
                 />
-                {search && (
-                  <button type="button" onClick={() => setSearch('')} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94A3B8' }}>
-                    <XIcon size={14} />
-                  </button>
-                )}
               </div>
 
               {/* Group Filter */}

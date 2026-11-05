@@ -1,9 +1,10 @@
 ﻿'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { HospitalTaskItem, INITIAL_TASKS } from '../../data/hospitalData';
 import {
-  ClipboardList, CheckCircle2, Clock, Plus, Search,
+  ClipboardList, CheckCircle2, Clock, Plus,
   AlertTriangle, Check, X, Filter
 } from 'lucide-react';
 
@@ -63,6 +64,17 @@ export const ClinicalTasksManager: React.FC<ClinicalTasksManagerProps> = ({ user
     setTaskPatient('');
     triggerNotice('New clinical task added.');
   };
+
+  const taskSuggestions = useMemo<SearchSuggestion[]>(() => [
+    ...tasks.map(t => ({
+      id: t.id,
+      label: t.task,
+      sub: t.patient ? `Patient: ${t.patient} · ${t.priority}` : t.priority,
+      category: t.role,
+      badge: t.done ? 'Done' : t.priority === 'urgent' ? 'Urgent' : undefined,
+      onClick: () => setSearchQuery(t.patient || t.task),
+    })),
+  ], [tasks]);
 
   const filteredTasks = tasks.filter(t => {
     const q = searchQuery.toLowerCase();
@@ -138,14 +150,14 @@ export const ClinicalTasksManager: React.FC<ClinicalTasksManagerProps> = ({ user
         background: '#132F4C', border: '1px solid #1E446B', borderRadius: 12, padding: '14px 18px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 240, background: '#0A1929', padding: '8px 14px', borderRadius: 8, border: '1px solid #1E446B' }}>
-          <Search size={16} color="#94A8BE" />
-          <input
-            type="text"
-            placeholder="Search tasks or patient..."
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <InteractiveSearchBar
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            style={{ background: 'transparent', border: 'none', color: '#0A2540', outline: 'none', width: '100%', fontSize: '0.85rem' }}
+            onChange={setSearchQuery}
+            placeholder="Search tasks or patient..."
+            suggestions={taskSuggestions}
+            size="sm"
+            themeColor="#1A6EB5"
           />
         </div>
 

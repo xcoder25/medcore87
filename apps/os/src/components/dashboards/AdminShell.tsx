@@ -14,6 +14,7 @@ import {
 import { MyStaffIdPanel } from '../staffing/MyStaffIdPanel';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 import { UserProfileModal } from '../auth/UserProfileModal';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { M87AICopilotSuite } from '../ai-insights/M87AICopilotSuite';
 import { HybridConnectivityDrawer } from '../realtime/HybridConnectivityDrawer';
 
@@ -138,6 +139,51 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [clock, setClock] = useState(formatNow);
   const [search, setSearch] = useState('');
+
+  const adminSuggestions: SearchSuggestion[] = useMemo(() => {
+    const list: SearchSuggestion[] = [];
+    NAV.forEach((sec) => {
+      sec.items.forEach((item) => {
+        list.push({
+          id: item.key,
+          label: item.label,
+          category: sec.label || 'Navigation',
+          icon: item.icon,
+          onClick: () => {
+            goModule(item.key);
+            setSearch('');
+          },
+        });
+      });
+    });
+    list.push(
+      {
+        id: 'settings-identity',
+        label: 'Hospital Identity & Profile Settings',
+        sub: 'Branding, LGA, helpline numbers',
+        category: 'Settings',
+        icon: Building2,
+        onClick: () => { goModule('settings'); setSearch(''); },
+      },
+      {
+        id: 'settings-security',
+        label: 'Administrator Security & Master PIN',
+        sub: 'Change admin password or fast-switch PIN',
+        category: 'Security',
+        icon: Lock,
+        onClick: () => { setShowCredModal(true); setSearch(''); },
+      },
+      {
+        id: 'ai-cds',
+        label: 'Clinical Intelligence & AI Ops',
+        sub: 'Triage rules, reception automation, and CDS',
+        category: 'Intelligence',
+        icon: Sparkles,
+        onClick: () => { goModule('m87-ai'); setSearch(''); },
+      }
+    );
+    return list;
+  }, []);
   const [online, setOnline] = useState(true);
   const [hospitalShare, setHospitalShare] = useState<'local' | 'lan' | 'cloud' | 'probing'>('probing');
   const [facilityDisplayName, setFacilityDisplayName] = useState(() => {
@@ -404,15 +450,17 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
           </div>
 
           <div className="admin-shell-top-right">
-            <div className="admin-shell-search">
-              <Search size={15} style={{ flexShrink: 0 }} />
-              <input
+            <div style={{ width: 280, maxWidth: '100%' }}>
+              <InteractiveSearchBar
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search anything..."
-                aria-label="Search"
+                onChange={setSearch}
+                onClear={() => setSearch('')}
+                placeholder="Search modules, staff, settings…"
+                suggestions={adminSuggestions}
+                size="sm"
+                kbdShortcut="⌘K"
+                aria-label="Search modules and settings"
               />
-              <kbd>⌘K</kbd>
             </div>
             <NotificationBell app="MEDCORE_OS_ADMIN" facilityId={session.facility} session={session} />
             <button

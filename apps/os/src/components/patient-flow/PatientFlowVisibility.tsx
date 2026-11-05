@@ -5,6 +5,7 @@
  * No demo patients. Empty until check-ins / registrations exist.
  */
 import React, { useEffect, useMemo, useState } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { Users, ArrowRight, Search, RefreshCw } from 'lucide-react';
 import { listPatients, subscribePatients, type FacilityPatient } from '../../lib/patientRegistryStore';
 import { todayVisits, subscribeReceptionOps, type ReceptionVisit } from '../../lib/receptionOpsStore';
@@ -125,6 +126,17 @@ export const PatientFlowVisibility: React.FC = () => {
     };
   }, [facilityId]);
 
+  const flowSuggestions = useMemo<SearchSuggestion[]>(() => {
+    return rows.slice(0, 30).map((r) => ({
+      id: r.id,
+      label: r.name,
+      sub: `${r.hospitalNumber} · ${r.ward || 'General'} · ${r.stage}`,
+      category: r.stage.toUpperCase(),
+      badge: r.priority === 'red' ? 'Urgent' : undefined,
+      onClick: () => setSearch(r.name),
+    }));
+  }, [rows]);
+
   const filtered = useMemo(() => {
     return rows.filter((p) => {
       const matchStage = stageFilter === 'all' || p.stage === stageFilter;
@@ -191,13 +203,14 @@ export const PatientFlowVisibility: React.FC = () => {
       </div>
 
       <div style={{ display: 'flex', gap: 12 }}>
-        <div className="os-search-wrap" style={{ flex: 1 }}>
-          <Search size={14} />
-          <input
-            className="os-search-input"
-            placeholder="Search patient name or ID..."
+        <div style={{ flex: 1 }}>
+          <InteractiveSearchBar
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={setSearch}
+            placeholder="Search patient name or ID..."
+            suggestions={flowSuggestions}
+            size="sm"
+            themeColor="#2563EB"
           />
         </div>
         <button

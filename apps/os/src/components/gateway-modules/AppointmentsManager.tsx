@@ -7,6 +7,7 @@ import {
   AlertCircle, X, ChevronRight, Stethoscope, UserCheck
 } from 'lucide-react';
 import { SearchablePatientSelect, formatPatientName } from '../common/SearchablePatientSelect';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 
 interface AppointmentsManagerProps {
   onNavigate?: (module: string, param?: any) => void;
@@ -16,6 +17,17 @@ export const AppointmentsManager: React.FC<AppointmentsManagerProps> = ({ onNavi
   const [appointments, setAppointments] = useState<HospitalAppointment[]>(INITIAL_APPOINTMENTS);
   const [activeFilter, setActiveFilter] = useState<'all' | 'waiting' | 'in-progress' | 'upcoming' | 'completed'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const apptSuggestions: SearchSuggestion[] = React.useMemo(() => {
+    return appointments.slice(0, 25).map((a) => ({
+      id: a.id,
+      label: a.patientName,
+      sub: a.time + ' · ' + a.doctorName + ' · ' + a.type,
+      category: a.status.toUpperCase(),
+      icon: Calendar,
+      onClick: () => setSearchQuery(a.patientName),
+    }));
+  }, [appointments]);
   const [showBookModal, setShowBookModal] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -133,14 +145,17 @@ export const AppointmentsManager: React.FC<AppointmentsManagerProps> = ({ onNavi
         background: '#132F4C', border: '1px solid #1E446B', borderRadius: 12, padding: '14px 18px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 260, background: '#0A1929', padding: '8px 14px', borderRadius: 8, border: '1px solid #1E446B' }}>
-          <Search size={16} color="#94A8BE" />
-          <input
-            type="text"
-            placeholder="Search appointment by patient name or type..."
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <InteractiveSearchBar
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            style={{ background: 'transparent', border: 'none', color: '#0A2540', outline: 'none', width: '100%', fontSize: '0.85rem' }}
+            onChange={setSearchQuery}
+            onClear={() => setSearchQuery('')}
+            placeholder="Search appointment by patient name or type..."
+            suggestions={apptSuggestions}
+            resultsCount={filteredAppointments.length}
+            totalCount={appointments.length}
+            size="sm"
+            aria-label="Search appointments"
           />
         </div>
 

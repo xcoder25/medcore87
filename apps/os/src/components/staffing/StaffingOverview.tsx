@@ -5,6 +5,7 @@
  * Roster (enrolment) fills identity; online/offline from staffPresenceStore.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { Users, Clock, Search, Phone, RefreshCw } from 'lucide-react';
 import { getStaffRegistry, getAccessRecords, subscribeAdminSync } from '../../lib/adminRealtimeStore';
 import { listStaffCards, syncAccessRosterFromSources } from '../../lib/staffCardStore';
@@ -257,6 +258,17 @@ export const StaffingOverview: React.FC<Props> = ({ session }) => {
     };
   }, [facilityId, reload]);
 
+  const staffingSuggestions = useMemo<SearchSuggestion[]>(() => {
+    return staff.slice(0, 30).map((s) => ({
+      id: s.id,
+      label: s.name,
+      sub: `${s.role.toUpperCase()} · Ward: ${s.ward} · Shift: ${s.shift}`,
+      category: s.status === 'on-duty' ? 'On Duty' : 'Off Duty',
+      badge: s.status === 'on-duty' ? 'Online' : undefined,
+      onClick: () => setSearch(s.name),
+    }));
+  }, [staff]);
+
   const filtered = useMemo(() => {
     return staff.filter((s) => {
       if (roleFilter !== 'all' && s.role !== roleFilter) return false;
@@ -342,24 +354,14 @@ export const StaffingOverview: React.FC<Props> = ({ session }) => {
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '8px 12px',
-            borderRadius: 10,
-            border: '1px solid #E2E8F0',
-            background: '#fff',
-            flex: '1 1 200px',
-          }}
-        >
-          <Search size={16} color="#64748B" />
-          <input
+        <div style={{ flex: '1 1 240px' }}>
+          <InteractiveSearchBar
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={setSearch}
             placeholder="Search name, ID, ward…"
-            style={{ border: 'none', outline: 'none', flex: 1, fontSize: 13 }}
+            suggestions={staffingSuggestions}
+            size="sm"
+            themeColor="#0052D4"
           />
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

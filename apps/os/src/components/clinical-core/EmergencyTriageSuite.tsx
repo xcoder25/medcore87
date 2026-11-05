@@ -7,6 +7,7 @@ import {
   Sparkles, Zap, FileText, Check, ShieldCheck
 } from 'lucide-react';
 import type { EmergencyTriagePatient } from '@medcore/types';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { liveAlert } from '../../lib/manualActions';
 import {
   listStagingQueue,
@@ -40,6 +41,20 @@ export const EmergencyTriageSuite: React.FC = () => {
   const [patients, setPatients] = useState<EmergencyPatientExtended[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
   const [search, setSearch] = useState('');
+
+  const triageSuggestions: SearchSuggestion[] = React.useMemo(() => {
+    return patients.slice(0, 20).map((p) => ({
+      id: p.id,
+      label: p.patientName,
+      sub: p.id + ' · ' + p.chiefComplaint + (p.assignedBay ? ' · ' + p.assignedBay : ''),
+      category: 'ESI ' + p.esiLevel,
+      icon: Activity,
+      onClick: () => {
+        setSearch(p.patientName);
+        setSelectedId(p.id);
+      },
+    }));
+  }, [patients]);
   const [esiFilter, setEsiFilter] = useState<number | 'ALL'>('ALL');
 
   // HL7 / FHIR Pre-Arrival Ingestion Bridge State
@@ -334,13 +349,17 @@ export const EmergencyTriageSuite: React.FC = () => {
         {/* Left: Triage Queue */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div className="os-search-wrap" style={{ flex: 1, minWidth: 200 }}>
-              <Search size={14} />
-              <input
-                className="os-search-input"
-                placeholder="Search emergency triage queue..."
+            <div style={{ flex: 1, minWidth: 260 }}>
+              <InteractiveSearchBar
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={setSearch}
+                onClear={() => setSearch('')}
+                placeholder="Search emergency triage queue..."
+                suggestions={triageSuggestions}
+                resultsCount={filteredPatients.length}
+                totalCount={patients.length}
+                size="sm"
+                aria-label="Search emergency queue"
               />
             </div>
             <button

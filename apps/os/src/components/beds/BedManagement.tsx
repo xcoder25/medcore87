@@ -31,6 +31,7 @@ import { emitLiveAction } from '../../lib/liveActions';
 import { listPatients } from '../../lib/patientRegistryStore';
 import { Dhis2TrackerBedBoardSuite } from '../interop/Dhis2TrackerBedBoardSuite';
 import { calculateInpatientIndicators } from '../../lib/dhis2Export';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 
 const BED_STATUS_META: Record<BedStatus, { label: string; color: string }> = {
   occupied: { label: 'Occupied', color: '#EA580C' },
@@ -55,6 +56,7 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
   const [filterWard, setFilterWard] = useState('All Wards');
   const [filterStatus, setFilterStatus] = useState<'all' | BedStatus>('all');
   const [search, setSearch] = useState('');
+
   const [selected, setSelected] = useState<BedRecord | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showAdmitModal, setShowAdmitModal] = useState(false);
@@ -99,6 +101,40 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
     () => ['All Wards', ...Array.from(new Set(bedsList.map((b) => b.ward))).sort()],
     [bedsList]
   );
+
+  const bedSuggestions: SearchSuggestion[] = useMemo(() => {
+    const list: SearchSuggestion[] = [];
+    bedsList.forEach((b) => {
+      if (b.patient) {
+        list.push({
+          id: 'p-' + b.id,
+          label: b.patient,
+          sub: b.bedNo + ' · ' + b.ward + ' (' + (b.hospitalNumber || 'Inpatient') + ')',
+          category: 'Patient',
+          icon: BedDouble,
+          onClick: () => setSearch(b.patient || ''),
+        });
+      }
+      list.push({
+        id: 'b-' + b.id,
+        label: b.bedNo,
+        sub: b.ward + ' · ' + b.status,
+        category: 'Bed',
+        icon: BedDouble,
+        onClick: () => setSearch(b.bedNo),
+      });
+    });
+    wards.filter((w) => w !== 'All Wards').forEach((w) => {
+      list.push({
+        id: 'w-' + w,
+        label: w,
+        sub: 'Ward Filter',
+        category: 'Ward',
+        onClick: () => { setFilterWard(w); setSearch(''); },
+      });
+    });
+    return list;
+  }, [bedsList, wards]);
 
   const alerts = useMemo(() => bedOccupancyAlerts(facilityId), [bedsList, facilityId]);
   const audit = useMemo(() => listBedAudit(facilityId).slice(0, 40), [bedsList, facilityId, showAudit]);
@@ -322,13 +358,17 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
 
       {/* Filters */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: '#94A3B8' }} />
-          <input
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <InteractiveSearchBar
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={setSearch}
+            onClear={() => setSearch('')}
             placeholder="Search bed, patient, ward…"
-            style={{ ...input, paddingLeft: 32 }}
+            suggestions={bedSuggestions}
+            resultsCount={filtered.length}
+            totalCount={bedsList.length}
+            size="sm"
+            aria-label="Search bed census"
           />
         </div>
         <select value={filterWard} onChange={(e) => setFilterWard(e.target.value)} style={input}>

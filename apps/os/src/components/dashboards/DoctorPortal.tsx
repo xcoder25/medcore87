@@ -22,6 +22,7 @@ import { DoctorDeskHome } from './DoctorDeskHome';
 import { PatientChartBanner } from '../clinical-core/PatientChartBanner';
 import { setPatientContext } from '../../lib/patientContextStore';
 import { SearchablePatientSelect } from '../common/SearchablePatientSelect';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import {
   LayoutDashboard, Users, FileText, Stethoscope, Pill, FlaskConical, Layers,
   BedDouble, Calendar, Bell, Settings, ClipboardList, Send, AlertTriangle,
@@ -515,6 +516,20 @@ const PatientsView: React.FC = () => {
   const [filter, setFilter] = useState<'all' | 'inpatient' | 'outpatient' | 'critical'>('all');
   const [selected, setSelected] = useState<Patient | null>(null);
 
+  const patientSuggestions: SearchSuggestion[] = useMemo(() => {
+    return PATIENTS.map((p) => ({
+      id: p.id,
+      label: p.name,
+      sub: p.id + ' · ' + p.diagnosis + (p.bed ? ' · Bed: ' + p.bed : ''),
+      category: p.status.toUpperCase(),
+      icon: Users,
+      onClick: () => {
+        setSearch(p.name);
+        setSelected(p);
+      },
+    }));
+  }, []);
+
   const filtered = PATIENTS.filter(p => {
     if (filter !== 'all' && p.status !== filter) return false;
     const q = search.toLowerCase();
@@ -526,10 +541,18 @@ const PatientsView: React.FC = () => {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 13 }}>
         {/* Toolbar */}
         <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 11, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, position: 'relative', minWidth: 200 }}>
-            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748B' }} />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patient name, MRN, diagnosis…"
-              style={{ width: '100%', padding: '8px 12px 8px 32px', boxSizing: 'border-box', background: '#FFFFFF', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 9, color: '#0A2540', fontSize: '0.82rem', outline: 'none' }} />
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <InteractiveSearchBar
+              value={search}
+              onChange={setSearch}
+              onClear={() => setSearch('')}
+              placeholder="Search patient name, MRN, diagnosis…"
+              suggestions={patientSuggestions}
+              resultsCount={filtered.length}
+              totalCount={PATIENTS.length}
+              size="sm"
+              aria-label="Search patient roster"
+            />
           </div>
           {(['all', 'inpatient', 'outpatient', 'critical'] as const).map(f => (
             <button key={f} type="button" onClick={() => setFilter(f)} style={{
@@ -2473,23 +2496,16 @@ const PatientsViewLive: React.FC<{ session: UserSession; onNavigate: (k: any) =>
           flexWrap: 'wrap',
         }}
       >
-        <div style={{ flex: 1, position: 'relative', minWidth: 200 }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748B' }} />
-          <input
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <InteractiveSearchBar
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={setSearch}
+            onClear={() => setSearch('')}
             placeholder="Search name, hospital number…"
-            style={{
-              width: '100%',
-              padding: '9px 12px 9px 32px',
-              boxSizing: 'border-box',
-              background: '#F8FAFC',
-              border: '1px solid #E8EEF5',
-              borderRadius: 10,
-              color: '#0F172A',
-              fontSize: '0.84rem',
-              outline: 'none',
-            }}
+            resultsCount={rows.length}
+            totalCount={registry.length}
+            size="sm"
+            aria-label="Search patient registry"
           />
         </div>
         {(['all', 'inpatient', 'outpatient', 'critical'] as const).map((f) => (

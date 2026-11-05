@@ -1,9 +1,10 @@
 ﻿'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { ReferralItem, INITIAL_REFERRALS } from '../../data/hospitalData';
 import {
-  Send, Plus, Search, Building2, AlertTriangle, CheckCircle2,
+  Send, Plus, Building2, AlertTriangle, CheckCircle2,
   Clock, X, ArrowUpRight, ArrowDownLeft, ShieldAlert
 } from 'lucide-react';
 
@@ -61,6 +62,17 @@ export const ReferralsManager: React.FC<ReferralsManagerProps> = ({ onNavigate }
     setReferrals(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
     triggerNotice(`Referral status updated to ${newStatus}.`);
   };
+
+  const referralSuggestions = useMemo<SearchSuggestion[]>(() => [
+    ...referrals.map(r => ({
+      id: r.id,
+      label: r.patientName,
+      sub: `${r.mrn} · ${r.specialty} · ${r.direction}`,
+      category: r.direction === 'inbound' ? 'Inbound' : 'Outbound',
+      badge: r.priority === 'emergency' ? 'Emergency' : r.priority === 'urgent' ? 'Urgent' : undefined,
+      onClick: () => setSearchQuery(r.patientName),
+    })),
+  ], [referrals]);
 
   const filteredReferrals = referrals.filter(r => {
     const q = searchQuery.toLowerCase();
@@ -131,14 +143,14 @@ export const ReferralsManager: React.FC<ReferralsManagerProps> = ({ onNavigate }
         background: '#132F4C', border: '1px solid #1E446B', borderRadius: 12, padding: '14px 18px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 260, background: '#0A1929', padding: '8px 14px', borderRadius: 8, border: '1px solid #1E446B' }}>
-          <Search size={16} color="#94A8BE" />
-          <input
-            type="text"
-            placeholder="Search by patient name, MRN, or specialty..."
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <InteractiveSearchBar
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            style={{ background: 'transparent', border: 'none', color: '#0A2540', outline: 'none', width: '100%', fontSize: '0.85rem' }}
+            onChange={setSearchQuery}
+            placeholder="Search by patient name, MRN, or specialty..."
+            suggestions={referralSuggestions}
+            size="sm"
+            themeColor="#00B4A6"
           />
         </div>
 

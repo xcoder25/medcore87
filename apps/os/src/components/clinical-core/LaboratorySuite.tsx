@@ -12,6 +12,7 @@ import {
   Settings, Cpu, User, Zap, Filter,
 } from 'lucide-react';
 import type { LabOrder } from '@medcore/types';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import {
   listOrders,
   postLabResult,
@@ -150,6 +151,17 @@ export const LaboratorySuite: React.FC = () => {
   const [orders, setOrders] = useState<LabOrder[]>(() => seedLab(loadLab()));
   const [bus, setBus] = useState<ClinicalOrder[]>([]);
   const [search, setSearch] = useState('');
+
+  const labSuggestions: SearchSuggestion[] = useMemo(() => {
+    return orders.slice(0, 30).map((o) => ({
+      id: o.id,
+      label: o.patientName,
+      sub: o.testName + ' · ' + o.barcode,
+      category: o.status.toUpperCase(),
+      icon: FlaskConical,
+      onClick: () => setSearch(o.patientName),
+    }));
+  }, [orders]);
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedId, setSelectedId] = useState('');
   const [resultDraft, setResultDraft] = useState('');
@@ -449,10 +461,18 @@ export const LaboratorySuite: React.FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, flex: 1 }}>Specimen worklist</h2>
-              <div style={{ position: 'relative' }}>
-                <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: '#94A3B8' }} />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Patient, barcode, test…"
-                  style={{ padding: '9px 12px 9px 32px', borderRadius: 10, border: '1px solid #E2E8F0', minWidth: 200, fontSize: '0.84rem' }} />
+              <div style={{ minWidth: 260 }}>
+                <InteractiveSearchBar
+                  value={search}
+                  onChange={setSearch}
+                  onClear={() => setSearch('')}
+                  placeholder="Patient, barcode, test…"
+                  suggestions={labSuggestions}
+                  resultsCount={filtered.length}
+                  totalCount={orders.length}
+                  size="sm"
+                  aria-label="Search laboratory worklist"
+                />
               </div>
               <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
                 style={{ padding: '9px 12px', borderRadius: 10, border: '1px solid #E2E8F0', fontSize: '0.84rem' }}>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { HospitalPatient, INITIAL_PATIENTS, INITIAL_CLINICAL_NOTES, ClinicalNoteItem } from '../../data/hospitalData';
 import { searchEml, EmlMedication } from '../../data/emlFormulary';
 import type { UserSession } from '../auth/AuthScreen';
@@ -204,6 +205,20 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
+
+  const emrPatientSuggestions = useMemo<SearchSuggestion[]>(() => {
+    return patients.map(p => ({
+      id: p.id,
+      label: p.name,
+      sub: `${p.mrn} · ${p.ward} · ${p.blood || ''}`,
+      category: p.type === 'inpatient' ? 'Inpatient' : 'Outpatient',
+      badge: p.status === 'critical' ? 'Critical' : undefined,
+      onClick: () => {
+        setSelectedPatientId(p.id);
+        setPatientSearch('');
+      },
+    }));
+  }, [patients]);
 
   // Filtered Patients List
   const filteredPatients = useMemo(() => {
@@ -839,23 +854,14 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
             </span>
           </div>
 
-          <div style={{ position: 'relative' }}>
-            <Search size={14} color="#64748B" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
-            <input
-              type="text"
-              placeholder="Search name, MRN, ward…"
-              value={patientSearch}
-              onChange={e => setPatientSearch(e.target.value)}
-              style={{
-                width: '100%', background: '#0F172A', border: '1px solid #1E293B',
-                borderRadius: 10, padding: '9px 10px 9px 32px', color: '#F8FAFC',
-                fontSize: '0.8rem', outline: 'none', boxSizing: 'border-box',
-                transition: 'border-color 0.15s',
-              }}
-              onFocus={e => { e.currentTarget.style.borderColor = '#0066FF'; }}
-              onBlur={e => { e.currentTarget.style.borderColor = '#1E293B'; }}
-            />
-          </div>
+          <InteractiveSearchBar
+            value={patientSearch}
+            onChange={setPatientSearch}
+            placeholder="Search name, MRN, ward…"
+            suggestions={emrPatientSuggestions}
+            size="sm"
+            themeColor="#0066FF"
+          />
 
           <div style={{ display: 'flex', gap: 5 }}>
             {(['all', 'inpatient', 'critical', 'outpatient'] as const).map(f => (

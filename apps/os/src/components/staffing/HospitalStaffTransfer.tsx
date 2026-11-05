@@ -1,7 +1,8 @@
 'use client';
 import { pushActivity, getAccessRecords, setAccessRecords } from '../../lib/adminRealtimeStore';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import {
   Building2, ArrowRight, Users, CheckCircle2, Clock, AlertCircle,
   Search, Filter, Send, X, RefreshCw, ChevronDown, Calendar,
@@ -431,6 +432,16 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
   );
 
   // Filtered staff
+  const transferSuggestions = useMemo<SearchSuggestion[]>(() => {
+    return staff.slice(0, 30).map((s) => ({
+      id: s.id,
+      label: s.name,
+      sub: `${s.role} · ${s.department} · ${s.hospitalName}`,
+      category: s.status,
+      onClick: () => setSearch(s.name),
+    }));
+  }, [staff]);
+
   const filteredStaff = staff.filter(s => {
     const q = search.toLowerCase();
     const name = (s.name || '').toLowerCase();
@@ -532,18 +543,14 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
         <>
           {/* Filters */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
-              <Search size={14} color="#4B5563" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} />
-              <input
+            <div style={{ flex: 1, minWidth: 260 }}>
+              <InteractiveSearchBar
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={setSearch}
                 placeholder="Search staff by name, role, department…"
-                style={{
-                  width: '100%', paddingLeft: 34, padding: '9px 12px 9px 34px',
-                  background: '#FFFFFF', border: '1px solid #E2E8F0',
-                  borderRadius: 9, color: '#0A2540', fontSize: '0.85rem', outline: 'none',
-                  boxSizing: 'border-box',
-                }}
+                suggestions={transferSuggestions}
+                size="sm"
+                themeColor="#0052D4"
               />
             </div>
             <select

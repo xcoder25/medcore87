@@ -10,6 +10,7 @@
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { RapidNurseTriageIntake } from './RapidNurseTriageIntake';
 import type { UserSession } from '../auth/AuthScreen';
 import { listVisits, subscribeReceptionOps, assignVisitTriageAndDepartment } from '../../lib/receptionOpsStore';
@@ -464,6 +465,19 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
   };
 
   // Filtered Queue
+  const triageSuggestions = useMemo<SearchSuggestion[]>(() => {
+    return queue.slice(0, 30).map((v) => ({
+      id: v.id,
+      label: v.patientName,
+      sub: `${v.hospitalNumber} · ${v.department || 'OPD'}`,
+      category: v.priority ? String(v.priority).toUpperCase() : 'WAITING',
+      onClick: () => {
+        setSearch(v.patientName);
+        setSelectedId(v.id);
+      },
+    }));
+  }, [queue]);
+
   const filteredQueue = useMemo(() => {
     const q = search.toLowerCase();
     return queue.filter((v) => {
@@ -833,35 +847,14 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
                 </div>
 
                 {/* Search Bar */}
-                <div style={{ position: 'relative' }}>
-                  <Search
-                    size={14}
-                    style={{
-                      position: 'absolute',
-                      left: 12,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: C.muted,
-                    }}
-                  />
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search patient, hospital no..."
-                    style={{
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      padding: '8px 12px 8px 34px',
-                      borderRadius: 10,
-                      border: `1px solid ${C.border}`,
-                      fontSize: 12,
-                      outline: 'none',
-                      background: '#FFFFFF',
-                      color: C.text,
-                    }}
-                  />
-                </div>
+                <InteractiveSearchBar
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search patient, hospital no..."
+                  suggestions={triageSuggestions}
+                  size="sm"
+                  themeColor="#059669"
+                />
 
                 {/* Filter Pills */}
                 <div style={{ display: 'flex', gap: 4 }}>

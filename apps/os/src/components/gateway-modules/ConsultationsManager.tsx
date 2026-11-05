@@ -1,6 +1,7 @@
 ﻿'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { HospitalPatient, INITIAL_PATIENTS, INITIAL_CLINICAL_NOTES, ClinicalNoteItem } from '../../data/hospitalData';
 import { searchEml, EmlMedication } from '../../data/emlFormulary';
 import {
@@ -88,6 +89,16 @@ export const ConsultationsManager: React.FC<ConsultationsManagerProps> = ({ init
     setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
 
+  const consultPatientSuggestions = useMemo<SearchSuggestion[]>(() => [
+    ...patients.map(p => ({
+      id: p.id,
+      label: p.name,
+      sub: `${p.mrn} · ${p.ward}`,
+      category: 'Patient',
+      onClick: () => { setSelectedPatientId(p.id); setPatientSearch(''); },
+    })),
+  ], [patients]);
+
   const filteredPatientList = patients.filter(p =>
     p.name.toLowerCase().includes(patientSearch.toLowerCase()) ||
     p.mrn.toLowerCase().includes(patientSearch.toLowerCase())
@@ -146,14 +157,14 @@ export const ConsultationsManager: React.FC<ConsultationsManagerProps> = ({ init
             <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0052D4', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
               <User size={15} /> Select Active Patient
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#0A1929', padding: '6px 10px', borderRadius: 6, border: '1px solid #1E446B', marginBottom: 10 }}>
-              <Search size={14} color="#94A8BE" />
-              <input
-                type="text"
-                placeholder="Search patient..."
+            <div style={{ marginBottom: 10 }}>
+              <InteractiveSearchBar
                 value={patientSearch}
-                onChange={e => setPatientSearch(e.target.value)}
-                style={{ background: 'transparent', border: 'none', color: '#0A2540', outline: 'none', width: '100%', fontSize: '0.8rem' }}
+                onChange={setPatientSearch}
+                placeholder="Search patient..."
+                suggestions={consultPatientSuggestions}
+                size="sm"
+                themeColor="#1A6EB5"
               />
             </div>
             <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>

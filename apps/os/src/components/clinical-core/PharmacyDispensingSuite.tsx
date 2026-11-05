@@ -7,6 +7,7 @@ import {
   Stethoscope, Building2, X,
 } from 'lucide-react';
 import type { PrescriptionOrder, FormularyItem } from '@medcore/types';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 
 // --- Types --------------------------------------------------------------------
 interface LiveDrug {
@@ -85,6 +86,34 @@ export const PharmacyDispensingSuite: React.FC = () => {
   const [prescriptions, setPrescriptions] = useState<PrescriptionOrder[]>(INITIAL_PRESCRIPTIONS);
   const [formulary] = useState<FormularyItem[]>(INITIAL_FORMULARY);
   const [search, setSearch] = useState('');
+
+  const pharmacySuggestions: SearchSuggestion[] = React.useMemo(() => {
+    const list: SearchSuggestion[] = [];
+    if (activeTab === 'queue') {
+      queue.slice(0, 25).forEach((q) => {
+        list.push({
+          id: q.id,
+          label: q.patientName,
+          sub: q.hospitalNumber + ' · ' + q.drugName + ' (' + q.dosage + ')',
+          category: 'QUEUE',
+          icon: Pill,
+          onClick: () => setSearch(q.patientName),
+        });
+      });
+    } else {
+      formulary.slice(0, 25).forEach((f) => {
+        list.push({
+          id: f.id,
+          label: f.brandName,
+          sub: f.genericName + ' · ' + f.strength + ' · Stock: ' + f.stock,
+          category: 'FORMULARY',
+          icon: Package,
+          onClick: () => setSearch(f.brandName),
+        });
+      });
+    }
+    return list;
+  }, [activeTab, queue, formulary]);
   const [lookupId, setLookupId] = useState('');
 
   // Patient scanner state
@@ -424,13 +453,16 @@ export const PharmacyDispensingSuite: React.FC = () => {
           ))}
         </div>
         {activeTab !== 'scan' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 240, margin: '6px 0', padding: '6px 10px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#F7FAFC' }}>
-            <Search size={14} color="#718096" />
-            <input
-              placeholder={activeTab === 'queue' ? 'Search patient, doctor, drug…' : 'Search medicine…'}
+          <div style={{ minWidth: 260, margin: '4px 0' }}>
+            <InteractiveSearchBar
               value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ border: 'none', background: 'transparent', outline: 'none', flex: 1, fontSize: 13, fontFamily: 'inherit' }}
+              onChange={setSearch}
+              onClear={() => setSearch('')}
+              placeholder={activeTab === 'queue' ? 'Search patient, doctor, drug…' : 'Search medicine…'}
+              suggestions={pharmacySuggestions}
+              resultsCount={filteredQueue.length}
+              size="sm"
+              aria-label="Search pharmacy records"
             />
           </div>
         )}

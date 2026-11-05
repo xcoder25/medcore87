@@ -32,6 +32,7 @@ import {
   type FacilityPatient,
 } from '../../lib/patientRegistryStore';
 import { emitLiveAction } from '../../lib/liveActions';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import {
   getOrCreateStateHealthCard,
   generateSHID,
@@ -89,6 +90,23 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
 
   const [patients, setPatients] = useState<FacilityPatient[]>([]);
   const [search, setSearch] = useState('');
+
+  const patientSuggestions: SearchSuggestion[] = useMemo(() => {
+    return patients.slice(0, 30).map((p) => {
+      const full = [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ');
+      return {
+        id: p.id,
+        label: full,
+        sub: p.hospitalNumber + (p.phone ? ' · Tel: ' + p.phone : '') + (p.nin ? ' · NIN: ' + p.nin : ''),
+        category: p.insuranceScheme ? p.insuranceScheme.toUpperCase() : 'PATIENT',
+        icon: CreditCard,
+        onClick: () => {
+          setSelectedPatient(p);
+          setSearch(full);
+        },
+      };
+    });
+  }, [patients]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('card');
 
@@ -589,28 +607,17 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
 
             {/* Search Input */}
             <div style={{ padding: '10px 14px', borderBottom: '1px solid #F1F5F9' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F1F5F9', borderRadius: 10, padding: '7px 12px' }}>
-                <Search size={15} color="#64748B" />
-                <input
-                  type="text"
-                  placeholder="Search name, SHID, hospital no, phone…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    outline: 'none',
-                    width: '100%',
-                    fontSize: 12.5,
-                    color: '#0F172A',
-                  }}
-                />
-                {search && (
-                  <button type="button" onClick={() => setSearch('')} style={{ border: 'none', background: 'none', cursor: 'pointer' }}>
-                    <X size={14} color="#64748B" />
-                  </button>
-                )}
-              </div>
+              <InteractiveSearchBar
+                value={search}
+                onChange={setSearch}
+                onClear={() => setSearch('')}
+                placeholder="Search name, SHID, hospital no, phone…"
+                suggestions={patientSuggestions}
+                resultsCount={filtered.length}
+                totalCount={patients.length}
+                size="sm"
+                aria-label="Search patient cards"
+              />
             </div>
 
             {/* Patients Scroll List */}

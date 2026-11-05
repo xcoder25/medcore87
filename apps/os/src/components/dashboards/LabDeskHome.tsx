@@ -15,6 +15,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import type { UserSession } from '../auth/AuthScreen';
 import {
   FlaskConical, Activity, AlertTriangle, CheckCircle2, Clock, Search, Filter,
@@ -469,6 +470,17 @@ export const LabDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   }, [selectedOrderForResults, resultInputValues]);
 
   // Filtered Orders for the active view
+  const labSearchSuggestions = useMemo<SearchSuggestion[]>(() => {
+    return labOrders.slice(0, 30).map((o) => ({
+      id: o.id,
+      label: o.patientName,
+      sub: `${o.orderName} · ${o.hospitalNumber || o.patientId} · ${o.status.toUpperCase()}`,
+      category: o.priority === 'stat' ? 'STAT' : o.priority === 'urgent' ? 'Urgent' : 'Routine',
+      badge: o.status,
+      onClick: () => setSearch(o.patientName),
+    }));
+  }, [labOrders]);
+
   const filteredOrders = useMemo(() => {
     return labOrders.filter((o) => {
       // Bench filter
@@ -1004,20 +1016,15 @@ export const LabDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
             justifyContent: 'space-between', alignItems: 'center'
           }}>
             {/* Search Box */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 8,
-              padding: '6px 12px', minWidth: 260, flex: 1, maxWidth: 360
-            }}>
-              <Search size={15} color="#64748B" />
-              <input
-                type="text"
-                placeholder="Search patient, hospital no, test, barcode…"
+            <div style={{ minWidth: 280, flex: 1, maxWidth: 400 }}>
+              <InteractiveSearchBar
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.82rem', width: '100%' }}
+                onChange={setSearch}
+                placeholder="Search patient, hospital no, test, barcode…"
+                suggestions={labSearchSuggestions}
+                size="sm"
+                themeColor="#0891B2"
               />
-              {search && <X size={14} color="#94A3B8" style={{ cursor: 'pointer' }} onClick={() => setSearch('')} />}
             </div>
 
             {/* Bench Filter */}
