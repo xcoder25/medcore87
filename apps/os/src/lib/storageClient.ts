@@ -1,8 +1,10 @@
 /**
  * Client-Side AWS S3 Storage Helper for MedCore OS
  *
- * Uploads patient photos, staff badge headshots, ultrasound scans,
- * and clinical documents to AWS S3 Object Storage via /api/storage/upload.
+ * Implements Pillar 1 of the EMR Architecture Directive:
+ * - Direct Client-to-S3 streaming via Pre-signed PUT URLs.
+ * - Entirely bypasses application compute memory and database storage limits.
+ * - Database stores only the immutable S3 object key or clean URL.
  */
 
 export interface S3UploadOptions {
@@ -18,6 +20,64 @@ export interface S3UploadResult {
   size?: number;
   error?: string;
   isS3: boolean;
+  method?: 'presigned_put_direct' | 'server_relay';
+}
+
+/**
+ * Stream a binary File or Blob directly to AWS S3 using a Pre-signed URL.
+ * Highest efficiency: zero byte transit through application server compute.
+ */
+export async function streamDirectToS3Presigned(
+  file: File | Blob,
+  options: S3UploadOptions = {}
+): Promise<S3UploadResult> {
+  const folder = options.folder || 'general';
+  const filename = options.filename || (file as File).name || 'upload.jpg';
+  const contentType = file.type || 'image/jpeg';
+
+  try {
+    // 1. Request a secure pre-signed PUT URL from the backend
+    const presignRes = await fetch('/api/storage/presigned-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contentType,
+        folder,
+        filename,
+      }),
+    });
+
+    const presignData = await presignRes.json().catch(() => ({}));
+    if (!presignRes.ok || !presignData?.uploadUrl) {
+      throw new Error(presignData?.message || presignData?.error || 'Failed to acquire S3 pre-signed URL');
+    }
+
+    // 2. Stream payload directly from browser to Amazon S3
+    const s3PutRes = await fetch(presignData.uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': contentType,
+      },
+      body: file,
+    });
+
+    if (!s3PutRes.ok) {
+      throw new Error(`S3 direct upload rejected with HTTP status ${s3PutRes.status}`);
+    }
+
+    return {
+      ok: true,
+      url: presignData.fileUrl,
+      key: presignData.s3Key,
+      size: file.size,
+      isS3: true,
+      method: 'presigned_put_direct',
+    };
+  } catch (err: any) {
+    console.warn('[streamDirectToS3Presigned] Direct stream failed, falling back to server relay:', err?.message);
+    // Fallback to server multipart upload if pre-signed direct PUT encounters CORS or network restriction
+    return uploadImageToS3(file, options);
+  }
 }
 
 /**
@@ -30,8 +90,12 @@ export async function uploadImageToS3(
   const folder = options.folder || 'general';
 
   try {
-    // If it's a File or Blob, upload as multipart/form-data
+    // If it's a File or Blob, prefer direct pre-signed PUT streaming
     if (typeof fileOrDataUrl !== 'string') {
+      const directResult = await streamDirectToS3Presigned(fileOrDataUrl, options);
+      if (directResult.ok) return directResult;
+
+      // Secondary fallback: Multipart Form Data via server
       const formData = new FormData();
       formData.append('file', fileOrDataUrl, options.filename || (fileOrDataUrl as File).name || 'upload.jpg');
       formData.append('folder', folder);
@@ -49,6 +113,7 @@ export async function uploadImageToS3(
           key: data.key,
           size: data.size,
           isS3: true,
+          method: 'server_relay',
         };
       }
 
@@ -84,6 +149,7 @@ export async function uploadImageToS3(
         key: data.key,
         size: data.size,
         isS3: true,
+        method: 'server_relay',
       };
     }
 
@@ -104,4 +170,3 @@ export async function uploadImageToS3(
     };
   }
 }
-
