@@ -44,6 +44,7 @@ import { listStaffCards } from '../../lib/staffCardStore';
 import { listActiveStaff, type StaffPresence } from '../../lib/staffPresenceStore';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { pushNotification } from '../../lib/notificationEngine';
+import { uploadImageToS3 } from '../../lib/storageClient';
 import {
   AKWA_IBOM_LGAS,
   NIGERIA_INSURANCE,
@@ -654,12 +655,27 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     setReg((r) => ({ ...r, photoDataUrl: url }));
     stopCam();
     flash('Photo captured');
+    void uploadImageToS3(url, { folder: 'patients' }).then((res) => {
+      if (res.ok && res.url) {
+        setReg((r) => ({ ...r, photoDataUrl: res.url }));
+        flash('Photo stored to AWS S3');
+      }
+    });
   };
 
   const onPhotoFile = (file: File | null) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setReg((r) => ({ ...r, photoDataUrl: String(reader.result || '') }));
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      setReg((r) => ({ ...r, photoDataUrl: dataUrl }));
+      void uploadImageToS3(file, { folder: 'patients' }).then((res) => {
+        if (res.ok && res.url) {
+          setReg((r) => ({ ...r, photoDataUrl: res.url }));
+          flash('Photo uploaded to AWS S3');
+        }
+      });
+    };
     reader.readAsDataURL(file);
   };
 

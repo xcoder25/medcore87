@@ -30,6 +30,7 @@ import {
   applyCloudStaffDirectory,
 } from '../../lib/staffCardStore';
 import { compressStaffPhotoFile, resolveStaffPhotoForEnrol } from '../../lib/staffPhoto';
+import { uploadImageToS3 } from '../../lib/storageClient';
 import { StaffDeleteSuccessScreen, type StaffDeleteSuccessInfo } from '../staffing/StaffDeleteSuccessScreen';
 import {
   firestoreSubscribeStaffCollection,
@@ -525,8 +526,14 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     setError('');
     try {
       const result = await compressStaffPhotoFile(file);
-      setPhotoUrl(result.dataUrl);
-      setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB`);
+      // Upload headshot directly to AWS S3 Object Storage
+      const s3Res = await uploadImageToS3(result.dataUrl, {
+        folder: 'staff',
+        filename: 'staff-headshot.jpg',
+      });
+      const finalUrl = s3Res.ok && s3Res.url ? s3Res.url : result.dataUrl;
+      setPhotoUrl(finalUrl);
+      setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB${s3Res.isS3 ? ' · AWS S3' : ''}`);
     } catch (err) {
       setPhotoUrl('');
       setPhotoMeta('');
