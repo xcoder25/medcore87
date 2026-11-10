@@ -10,7 +10,7 @@ export const runtime = 'nodejs';
 export async function POST() {
   try {
     const result = await testAkwaRemitServerGateway();
-    return NextResponse.json({ ok: true, result });
+    return NextResponse.json({ ok: result.ok, result }, { status: result.ok ? 200 : 503 });
   } catch (err: any) {
     return NextResponse.json(
       { ok: false, error: err.message || 'AkwaRemit gateway test failed' },

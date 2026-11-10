@@ -374,181 +374,12 @@ export function getCashierUserShiftSummary(
   };
 }
 
-// ─── Default Sample Data for Realistic Hospital Experience ───────────────────
 function getDefaultPayments(): AkwaRemitPaymentRecord[] {
-  const today = new Date().toISOString().slice(0, 10);
-  return [
-    {
-      id: 'AKW-PAY-001',
-      arn: 'ARN-2026-8819-2101',
-      receiptNo: 'RCP-2026-0881',
-      facilityId: 'IGH-EKT',
-      facilityName: 'Immanuel General Hospital, Eket',
-      patientId: 'P-001',
-      patientName: 'Mrs. Amaka Okafor',
-      hospitalNumber: 'MRN-20-14321',
-      amountNgn: 4500,
-      method: 'cash',
-      serviceCategory: 'consultation',
-      description: 'General OPD Medical Consultation + Routine Triage',
-      cashierName: 'Mrs. Funke Adeyemi',
-      cashierBadge: 'RCP-01208',
-      shiftId: `SHIFT-${today}-MORNING`,
-      exactAmountValidated: true,
-      status: 'paid',
-      remittanceStatus: 'remitted',
-      akwaRemitRrr: 'RRR-2401-9984-2101',
-      remittanceBatchId: 'AKW-BATCH-2026-001',
-      remittedAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-      remittedBy: 'Mr. Chinedu Okoro (Finance Officer)',
-      createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-    },
-    {
-      id: 'AKW-PAY-002',
-      arn: 'ARN-2026-8819-2102',
-      receiptNo: 'RCP-2026-0882',
-      facilityId: 'IGH-EKT',
-      facilityName: 'Immanuel General Hospital, Eket',
-      patientId: 'P-002',
-      patientName: 'Mr. Tunde Yusuf',
-      hospitalNumber: 'MRN-21-08834',
-      amountNgn: 18500,
-      method: 'akwaremit_pos',
-      serviceCategory: 'laboratory',
-      description: 'Comprehensive Blood Panel + Renal Function Test',
-      cashierName: 'Mrs. Funke Adeyemi',
-      cashierBadge: 'RCP-01208',
-      shiftId: `SHIFT-${today}-MORNING`,
-      exactAmountValidated: true,
-      status: 'paid',
-      terminalId: 'AKW-TRM-04',
-      rrn: '009182746152',
-      remittanceStatus: 'remitted',
-      akwaRemitRrr: 'RRR-2401-9984-2102',
-      remittanceBatchId: 'AKW-BATCH-2026-002',
-      remittedAt: new Date(Date.now() - 3600000).toISOString(),
-      remittedBy: 'Mr. Chinedu Okoro (Finance Officer)',
-      createdAt: new Date(Date.now() - 3600000 * 4).toISOString(),
-    },
-    {
-      id: 'AKW-PAY-003',
-      arn: 'ARN-2026-8819-2103',
-      receiptNo: 'RCP-2026-0883',
-      facilityId: 'IGH-EKT',
-      facilityName: 'Immanuel General Hospital, Eket',
-      patientId: 'P-003',
-      patientName: 'Master Kufre Bassey',
-      hospitalNumber: 'MRN-22-04912',
-      amountNgn: 12000,
-      method: 'bank_transfer',
-      serviceCategory: 'admission',
-      description: 'Pediatric Ward Observation Deposit',
-      cashierName: 'Mrs. Funke Adeyemi',
-      cashierBadge: 'RCP-01208',
-      shiftId: `SHIFT-${today}-MORNING`,
-      exactAmountValidated: true,
-      status: 'paid',
-      remittanceStatus: 'direct_akwaremit',
-      akwaRemitRrr: 'RRR-AKW-9812-7462-09',
-      createdAt: new Date(Date.now() - 3600000 * 3).toISOString(),
-    },
-    {
-      id: 'AKW-PAY-004',
-      arn: 'ARN-2026-8819-2104',
-      receiptNo: 'RCP-2026-0884',
-      facilityId: 'IGH-EKT',
-      facilityName: 'Immanuel General Hospital, Eket',
-      patientId: 'P-004',
-      patientName: 'Mrs. Blessing Udoh',
-      hospitalNumber: 'MRN-23-11048',
-      amountNgn: 8500,
-      method: 'cash',
-      serviceCategory: 'pharmacy',
-      description: 'Antihypertensive Formulary Pack (Amlodipine + Lisinopril)',
-      cashierName: 'Mrs. Funke Adeyemi',
-      cashierBadge: 'RCP-01208',
-      shiftId: `SHIFT-${today}-AFTERNOON`,
-      exactAmountValidated: true,
-      status: 'paid',
-      remittanceStatus: 'pending',
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-    {
-      id: 'AKW-PAY-005',
-      arn: 'ARN-2026-8819-2105',
-      receiptNo: 'RCP-2026-0885',
-      facilityId: 'IGH-EKT',
-      facilityName: 'Immanuel General Hospital, Eket',
-      patientId: 'P-005',
-      patientName: 'Elder Effiong Akpan',
-      hospitalNumber: 'MRN-19-00291',
-      amountNgn: 25000,
-      method: 'akwaremit_pos',
-      serviceCategory: 'radiology',
-      description: 'Abdominal & Pelvic Ultrasound + Chest X-Ray Digital',
-      cashierName: 'Mrs. Funke Adeyemi',
-      cashierBadge: 'RCP-01208',
-      shiftId: `SHIFT-${today}-AFTERNOON`,
-      exactAmountValidated: true,
-      status: 'paid',
-      terminalId: 'AKW-TRM-04',
-      rrn: '009182749912',
-      remittanceStatus: 'pending',
-      createdAt: new Date(Date.now() - 1800000).toISOString(),
-    },
-  ];
+  return [];
 }
 
 function getDefaultBatches(): AkwaRemitBatchRecord[] {
-  const today = new Date().toISOString().slice(0, 10);
-  return [
-    {
-      id: 'AKW-BATCH-2026-001',
-      batchNumber: 'AR-REM-2026-041',
-      facilityId: 'IGH-EKT',
-      facilityName: 'Immanuel General Hospital, Eket',
-      batchType: 'cash_bulk',
-      periodDate: today,
-      paymentIds: ['AKW-PAY-001'],
-      receiptNumbers: ['RCP-2026-0881'],
-      totalAmountNgn: 4500,
-      itemCount: 1,
-      akwaRemitRrr: 'RRR-2401-9984-2101',
-      bankName: 'Zenith Bank PLC (Akwa Ibom State Revenue Acct)',
-      bankTellerRef: 'TELL-AKW-8819203',
-      remittedBy: 'Mr. Chinedu Okoro',
-      remittedByBadge: 'ADM-00001',
-      witnessedBy: 'Pharm. Ibrahim Musa',
-      witnessedByBadge: 'PHR-00733',
-      status: 'remitted',
-      notes: 'Morning shift physical cash total deposited at bank branch and credited to AkwaRemit RRR.',
-      createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-      confirmedAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-    },
-    {
-      id: 'AKW-BATCH-2026-002',
-      batchNumber: 'AR-REM-2026-042',
-      facilityId: 'IGH-EKT',
-      facilityName: 'Immanuel General Hospital, Eket',
-      batchType: 'akwaremit_pos_settlement',
-      periodDate: today,
-      paymentIds: ['AKW-PAY-002'],
-      receiptNumbers: ['RCP-2026-0882'],
-      totalAmountNgn: 18500,
-      itemCount: 1,
-      akwaRemitRrr: 'RRR-2401-9984-2102',
-      bankName: 'AkwaRemit POS Settlement -> State TSA',
-      bankTellerRef: 'AKW-SETTLE-BATCH-9941',
-      remittedBy: 'Mr. Chinedu Okoro',
-      remittedByBadge: 'ADM-00001',
-      witnessedBy: 'Dr. Adewale Bello',
-      witnessedByBadge: 'DOC-00421',
-      status: 'remitted',
-      notes: 'Paystack POS settlement transferred to State AkwaRemit collection treasury account.',
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-      confirmedAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-  ];
+  return [];
 }
 
 // ─── Storage Operations ─────────────────────────────────────────────────────
@@ -558,9 +389,7 @@ function readPayments(): AkwaRemitPaymentRecord[] {
   try {
     const raw = localStorage.getItem(AKWAREMIT_PAYMENTS_KEY);
     if (!raw) {
-      const def = getDefaultPayments();
-      writePayments(def);
-      return def;
+      return [];
     }
     const arr = JSON.parse(raw);
     return Array.isArray(arr) ? arr : [];
@@ -587,9 +416,7 @@ function readBatches(): AkwaRemitBatchRecord[] {
   try {
     const raw = localStorage.getItem(AKWAREMIT_BATCHES_KEY);
     if (!raw) {
-      const def = getDefaultBatches();
-      writeBatches(def);
-      return def;
+      return [];
     }
     const arr = JSON.parse(raw);
     return Array.isArray(arr) ? arr : [];

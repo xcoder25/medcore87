@@ -2,7 +2,7 @@
 
 import React, { useState, lazy, Suspense } from 'react';
 import { UserSession } from '../auth/AuthScreen';
-import { inferRoleKey, isReceptionRole } from '../../lib/staffCardStore';
+import { inferRoleKey, isReceptionRole, listStaffCards } from '../../lib/staffCardStore';
 import { emitLiveAction } from '../../lib/liveActions';
 import {
   Stethoscope, Activity, Flame, Wind, Pill, FlaskConical, Layers, Baby, Droplet,
@@ -961,21 +961,28 @@ function SysadminDashboardBody({ onNavigate, triggerAction }: any) {
    12. HOSPITAL ADMIN DASHBOARD
 ------------------------------------------------------------- */
 function HospitalAdminDashboardBody({ onNavigate, triggerAction, activeTab, session }: any) {
-  const [recentTransfers] = React.useState([
-    { id: 'TRF-0091', staff: 'Dr. Fatima Al-Hassan', from: 'LUTH', to: 'UCH', date: '2026-10-01', status: 'pending' },
-    { id: 'TRF-0088', staff: 'Dr. Amara Okafor',     from: 'AKTH', to: 'LIGH', date: '2026-09-01', status: 'completed' },
-    { id: 'TRF-0085', staff: 'Nurse Chioma Eze',     from: 'LIGH', to: 'ISTH', date: '2026-08-15', status: 'completed' },
-  ]);
+  const [recentTransfers] = React.useState<any[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem('medcore_os_transfers');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const staffCards = typeof window !== 'undefined' ? listStaffCards() : [];
+  const totalStaff = staffCards.length;
 
   const staffByDept = [
-    { dept: 'Internal Medicine', count: 14, icon: <Stethoscope size={14} />, color: '#0284C7' },
-    { dept: 'Surgery',           count: 9,  icon: <Activity size={14} />,    color: '#DC2626' },
-    { dept: 'Nursing',           count: 34, icon: <Users size={14} />,       color: '#7C3AED' },
-    { dept: 'Pharmacy',          count: 6,  icon: <Pill size={14} />,        color: '#059669' },
-    { dept: 'Laboratory',        count: 8,  icon: <FlaskConical size={14} />,color: '#0891B2' },
-    { dept: 'Radiology',         count: 5,  icon: <Layers size={14} />,      color: '#6D28D9' },
-    { dept: 'Finance',           count: 7,  icon: <CreditCard size={14} />,  color: '#B45309' },
-    { dept: 'IT & Admin',        count: 4,  icon: <Cpu size={14} />,         color: '#374151' },
+    { dept: 'Internal Medicine', count: staffCards.filter(s => s.department === 'Internal Medicine' || s.department === 'Medicine').length, icon: <Stethoscope size={14} />, color: '#0284C7' },
+    { dept: 'Surgery',           count: staffCards.filter(s => s.department === 'Surgery').length,  icon: <Activity size={14} />,    color: '#DC2626' },
+    { dept: 'Nursing',           count: staffCards.filter(s => s.department === 'Nursing').length, icon: <Users size={14} />,       color: '#7C3AED' },
+    { dept: 'Pharmacy',          count: staffCards.filter(s => s.department === 'Pharmacy').length,  icon: <Pill size={14} />,        color: '#059669' },
+    { dept: 'Laboratory',        count: staffCards.filter(s => s.department === 'Laboratory').length, icon: <FlaskConical size={14} />,color: '#0891B2' },
+    { dept: 'Radiology',         count: staffCards.filter(s => s.department === 'Radiology').length,      icon: <Layers size={14} />,      color: '#6D28D9' },
+    { dept: 'Finance',           count: staffCards.filter(s => s.department === 'Finance' || s.department === 'Accounts').length,  icon: <CreditCard size={14} />,  color: '#B45309' },
+    { dept: 'IT & Admin',        count: staffCards.filter(s => s.department === 'IT & Admin' || s.department === 'Administration').length, icon: <Cpu size={14} />,         color: '#374151' },
   ];
 
   return (
@@ -984,23 +991,23 @@ function HospitalAdminDashboardBody({ onNavigate, triggerAction, activeTab, sess
       <div className="os-metrics-ribbon">
         <div className="metric-box alert-green">
           <span className="metric-label"><Users size={13} style={{ display: 'inline', marginRight: 4 }} />Total Staff</span>
-          <span className="metric-val">87 Officers</span>
+          <span className="metric-val">{totalStaff} Officers</span>
           <span className="metric-sub">Active at {session?.facility || 'Your Hospital'}</span>
         </div>
         <div className="metric-box alert-yellow">
           <span className="metric-label"><Send size={13} style={{ display: 'inline', marginRight: 4 }} />Pending Transfers</span>
-          <span className="metric-val">1 Active</span>
+          <span className="metric-val">{recentTransfers.filter(t => t.status === 'pending').length} Active</span>
           <span className="metric-sub">Awaiting approval</span>
         </div>
         <div className="metric-box">
-          <span className="metric-label"><UserCheck size={13} style={{ display: 'inline', marginRight: 4 }} />Today's Logins</span>
-          <span className="metric-val">64 Staff</span>
-          <span className="metric-sub">73.6% attendance rate</span>
+          <span className="metric-label"><UserCheck size={13} style={{ display: 'inline', marginRight: 4 }} />Active Roster</span>
+          <span className="metric-val">{staffCards.filter(s => String(s.status).toLowerCase() === 'active').length} Staff</span>
+          <span className="metric-sub">Verified credentials</span>
         </div>
         <div className="metric-box alert-green">
           <span className="metric-label"><Building2 size={13} style={{ display: 'inline', marginRight: 4 }} />Open Positions</span>
-          <span className="metric-val">12 Vacancies</span>
-          <span className="metric-sub">3 urgent • 9 planned</span>
+          <span className="metric-val">0 Vacancies</span>
+          <span className="metric-sub">All posts filled</span>
         </div>
       </div>
 
@@ -1049,28 +1056,32 @@ function HospitalAdminDashboardBody({ onNavigate, triggerAction, activeTab, sess
               <button className="os-ghost-btn" style={{ fontSize: '0.72rem', padding: '3px 9px' }} onClick={() => onNavigate('transfer')}>View All</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
-              {recentTransfers.map(t => (
-                <div key={t.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '10px 12px',
-                  background: '#F8FAFC',
-                  border: '1px solid #E2E8F0', borderRadius: 9,
-                }}>
-                  <Send size={13} color="#60A5FA" style={{ flexShrink: 0 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.staff}</div>
-                    <div style={{ fontSize: '0.7rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {t.from} <ArrowRight size={10} color="#374151" /> {t.to} • {t.date}
+              {recentTransfers.length === 0 ? (
+                <div style={{ padding: 16, color: '#94A3B8', fontSize: '0.82rem', textAlign: 'center' }}>No recent transfers recorded.</div>
+              ) : (
+                recentTransfers.map(t => (
+                  <div key={t.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 12px',
+                    background: '#F8FAFC',
+                    border: '1px solid #E2E8F0', borderRadius: 9,
+                  }}>
+                    <Send size={13} color="#60A5FA" style={{ flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.staff}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {t.from} <ArrowRight size={10} color="#374151" /> {t.to} • {t.date}
+                      </div>
                     </div>
+                    <span style={{
+                      fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 5,
+                      color: t.status === 'pending' ? '#60A5FA' : '#22C55E',
+                      background: t.status === 'pending' ? 'rgba(96,165,250,0.1)' : 'rgba(34,197,94,0.1)',
+                      border: `1px solid ${t.status === 'pending' ? 'rgba(96,165,250,0.25)' : 'rgba(34,197,94,0.25)'}`,
+                    }}>{t.status}</span>
                   </div>
-                  <span style={{
-                    fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: 5,
-                    color: t.status === 'pending' ? '#60A5FA' : '#22C55E',
-                    background: t.status === 'pending' ? 'rgba(96,165,250,0.1)' : 'rgba(34,197,94,0.1)',
-                    border: `1px solid ${t.status === 'pending' ? 'rgba(96,165,250,0.25)' : 'rgba(34,197,94,0.25)'}`,
-                  }}>{t.status}</span>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -1080,54 +1091,19 @@ function HospitalAdminDashboardBody({ onNavigate, triggerAction, activeTab, sess
         <div style={{ background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 14, padding: 20 }}>
           <div className="os-section-header">
             <span className="os-section-title">Administrative Task Queue</span>
-            <span style={{ fontSize: '0.75rem', color: '#F59E0B' }}>4 Pending</span>
+            <span style={{ fontSize: '0.75rem', color: '#059669' }}>0 Pending</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
-            {[
-              { task: 'Approve Transfer TRF-0091 • Dr. Fatima Al-Hassan', priority: 'urgent', due: 'Today' },
-              { task: 'Review monthly nurse attendance report', priority: 'high', due: 'Sep 25' },
-              { task: 'Sign off 3 staff leave requests', priority: 'normal', due: 'Sep 26' },
-              { task: 'Update hospital org chart for Q4 2026', priority: 'low', due: 'Oct 01' },
-            ].map((item, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '10px 14px',
-                background: '#F8FAFC',
-                border: '1px solid #E2E8F0', borderRadius: 9,
-              }}>
-                <div style={{
-                  width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                  background: item.priority === 'urgent' ? '#EF4444' : item.priority === 'high' ? '#F59E0B' : item.priority === 'normal' ? '#60A5FA' : '#4B5563',
-                }} />
-                <span style={{ flex: 1, fontSize: '0.85rem', color: '#CBD5E1' }}>{item.task}</span>
-                <span style={{ fontSize: '0.75rem', color: '#64748B', fontFamily: 'monospace', flexShrink: 0 }}>{item.due}</span>
-                <button className="os-ghost-btn" onClick={() => triggerAction('Task acknowledged')} style={{ fontSize: '0.72rem', padding: '3px 9px' }}>Action</button>
-              </div>
-            ))}
+            <div style={{ padding: 16, color: '#94A3B8', fontSize: '0.82rem', textAlign: 'center' }}>All administrative tasks completed.</div>
           </div>
         </div>
       )}
 
       {activeTab === 'alerts' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {[
-            { type: 'warning', title: 'Understaffing Alert • ICU', detail: 'ICU night shift has 2 nurses instead of minimum 4. Consider emergency redeployment.', time: '08:15' },
-            { type: 'info',    title: 'Staff Transfer Request Received', detail: 'TRF-0091 awaiting your approval • Radiology specialist to UCH.', time: '07:30' },
-            { type: 'success', title: 'Monthly Payroll Processed', detail: 'All 87 staff salaries confirmed disbursed via IPPIS for September 2026.', time: '06:00' },
-          ].map((a, i) => (
-            <div key={i} className="os-card" style={{
-              padding: '12px 16px',
-              borderLeft: `3px solid ${a.type === 'warning' ? '#F59E0B' : a.type === 'info' ? '#60A5FA' : '#22C55E'}`,
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <div style={{ fontWeight: 700, color: a.type === 'warning' ? '#F59E0B' : a.type === 'info' ? '#60A5FA' : '#22C55E', fontSize: '0.85rem', marginBottom: 3 }}>{a.title}</div>
-                  <div style={{ fontSize: '0.78rem', color: '#64748B' }}>{a.detail}</div>
-                </div>
-                <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#4B5563', flexShrink: 0, marginLeft: 12 }}>{a.time}</span>
-              </div>
-            </div>
-          ))}
+          <div style={{ padding: 20, background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 14, color: '#94A3B8', fontSize: '0.82rem', textAlign: 'center' }}>
+            No administrative alerts at this time.
+          </div>
         </div>
       )}
     </>

@@ -519,22 +519,6 @@ export const PharmacyDispensingSuite: React.FC = () => {
                 </button>
               )}
             </div>
-
-            {/* Quick patient buttons */}
-            <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', alignSelf: 'center' }}>Quick load:</span>
-              {['PAT-849201', 'PAT-620194'].map(pid => (
-                <button
-                  key={pid}
-                  type="button"
-                  className="os-ghost-btn"
-                  style={{ fontSize: '0.72rem', padding: '3px 10px' }}
-                  onClick={() => { setScanInput(pid); }}
-                >
-                  {pid}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Error */}

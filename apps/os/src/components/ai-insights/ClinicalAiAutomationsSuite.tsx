@@ -623,22 +623,26 @@ export const ClinicalAiAutomationsSuite: React.FC<Props> = ({ session }) => {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {stockReorders.map((sr) => (
-                <div key={sr.drugId} style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: 12, background: '#F8FAFC' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <strong style={{ fontSize: '0.85rem' }}>{sr.name}</strong>
-                    <span style={{ background: '#DCFCE7', color: '#15803D', padding: '2px 8px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 800 }}>
-                      {sr.status}
-                    </span>
+              {stockReorders.length === 0 ? (
+                <div style={{ padding: 20, color: '#94A3B8', fontSize: '0.82rem', textAlign: 'center' }}>All hospital pharmacy items meet safety stock thresholds.</div>
+              ) : (
+                stockReorders.map((sr) => (
+                  <div key={sr.drugId} style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: 12, background: '#F8FAFC' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ fontSize: '0.85rem' }}>{sr.name}</strong>
+                      <span style={{ background: '#DCFCE7', color: '#15803D', padding: '2px 8px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 800 }}>
+                        {sr.status}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: 4 }}>
+                      Current Stock: <strong>{sr.currentStockUnits}</strong> units · Buffer: {sr.minSafetyBuffer} · Burn: {sr.burnRatePerDay}/day
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#0369A1', marginTop: 4, fontWeight: 700 }}>
+                      Reorder: {sr.recommendedReorderUnits} units → {sr.supplierTarget}
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: 4 }}>
-                    Current Stock: <strong>{sr.currentStockUnits}</strong> units · Buffer: {sr.minSafetyBuffer} · Burn: {sr.burnRatePerDay}/day
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#0369A1', marginTop: 4, fontWeight: 700 }}>
-                    Reorder: {sr.recommendedReorderUnits} units → {sr.supplierTarget}
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -661,62 +665,66 @@ export const ClinicalAiAutomationsSuite: React.FC<Props> = ({ session }) => {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: 16 }}>
-            {followups.map((f) => (
-              <div
-                key={f.id}
-                style={{
-                  border: f.flaggedForDoctorReview ? '2px solid #EF4444' : '1px solid #E2E8F0',
-                  borderRadius: 14,
-                  padding: 16,
-                  background: f.flaggedForDoctorReview ? '#FFF5F5' : '#FFF',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <div>
-                    <strong style={{ fontSize: '0.92rem' }}>{f.patientName}</strong>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>Day {f.followupDay} Post-Discharge · Tel: {f.phone}</div>
-                  </div>
-                  <span
-                    style={{
-                      background: f.flaggedForDoctorReview ? '#DC2626' : '#16A34A',
-                      color: '#FFF',
-                      padding: '3px 8px',
-                      borderRadius: 6,
-                      fontSize: '0.7rem',
-                      fontWeight: 800,
-                    }}
-                  >
-                    {f.sentiment}
-                  </span>
-                </div>
-
-                <div style={{ background: '#F8FAFC', padding: 10, borderRadius: 8, fontSize: '0.78rem', color: '#334155', marginBottom: 8 }}>
-                  <strong>Bot Outgoing:</strong> {f.messageSent}
-                </div>
-
-                <div style={{ background: '#EFF6FF', padding: 10, borderRadius: 8, fontSize: '0.78rem', color: '#1E40AF', marginBottom: 10 }}>
-                  <strong>Patient Reply:</strong> "{f.patientReply}"
-                </div>
-
-                {f.flaggedForDoctorReview ? (
-                  <div style={{ background: '#FEE2E2', border: '1px solid #FCA5A5', padding: 8, borderRadius: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.72rem', color: '#991B1B', fontWeight: 700 }}>
-                      ⚠️ Urgent Obstetric / Pre-eclampsia Flag Triggered!
-                    </span>
-                    <button
-                      type="button"
-                      style={{ padding: '4px 10px', borderRadius: 6, background: '#DC2626', color: '#FFF', fontSize: '0.72rem', fontWeight: 800, border: 'none', cursor: 'pointer' }}
+            {followups.length === 0 ? (
+              <div style={{ padding: 20, color: '#94A3B8', fontSize: '0.82rem', textAlign: 'center', gridColumn: '1 / -1' }}>No active post-discharge patient follow-ups queued.</div>
+            ) : (
+              followups.map((f) => (
+                <div
+                  key={f.id}
+                  style={{
+                    border: f.flaggedForDoctorReview ? '2px solid #EF4444' : '1px solid #E2E8F0',
+                    borderRadius: 14,
+                    padding: 16,
+                    background: f.flaggedForDoctorReview ? '#FFF5F5' : '#FFF',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div>
+                      <strong style={{ fontSize: '0.92rem' }}>{f.patientName}</strong>
+                      <div style={{ fontSize: '0.72rem', color: '#64748B' }}>Day {f.followupDay} Post-Discharge · Tel: {f.phone}</div>
+                    </div>
+                    <span
+                      style={{
+                        background: f.flaggedForDoctorReview ? '#DC2626' : '#16A34A',
+                        color: '#FFF',
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        fontSize: '0.7rem',
+                        fontWeight: 800,
+                      }}
                     >
-                      Call Patient STAT
-                    </button>
+                      {f.sentiment}
+                    </span>
                   </div>
-                ) : (
-                  <span style={{ fontSize: '0.72rem', color: '#16A34A', fontWeight: 600 }}>
-                    ✓ Adherence confirmed · Next automated check scheduled for Day 7
-                  </span>
-                )}
-              </div>
-            ))}
+
+                  <div style={{ background: '#F8FAFC', padding: 10, borderRadius: 8, fontSize: '0.78rem', color: '#334155', marginBottom: 8 }}>
+                    <strong>Bot Outgoing:</strong> {f.messageSent}
+                  </div>
+
+                  <div style={{ background: '#EFF6FF', padding: 10, borderRadius: 8, fontSize: '0.78rem', color: '#1E40AF', marginBottom: 10 }}>
+                    <strong>Patient Reply:</strong> "{f.patientReply}"
+                  </div>
+
+                  {f.flaggedForDoctorReview ? (
+                    <div style={{ background: '#FEE2E2', border: '1px solid #FCA5A5', padding: 8, borderRadius: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.72rem', color: '#991B1B', fontWeight: 700 }}>
+                        ⚠️ Urgent Obstetric / Pre-eclampsia Flag Triggered!
+                      </span>
+                      <button
+                        type="button"
+                        style={{ padding: '4px 10px', borderRadius: 6, background: '#DC2626', color: '#FFF', fontSize: '0.72rem', fontWeight: 800, border: 'none', cursor: 'pointer' }}
+                      >
+                        Call Patient STAT
+                      </button>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: '0.72rem', color: '#16A34A', fontWeight: 600 }}>
+                      ✓ Adherence confirmed · Next automated check scheduled for Day 7
+                    </span>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -733,42 +741,46 @@ export const ClinicalAiAutomationsSuite: React.FC<Props> = ({ session }) => {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
-            {epidemicAlerts.map((ep, idx) => (
-              <div
-                key={idx}
-                style={{
-                  border: ep.alertLevel === 'EPIDEMIC_SURGE' ? '2px solid #DC2626' : '1px solid #F59E0B',
-                  borderRadius: 12,
-                  padding: 16,
-                  background: ep.alertLevel === 'EPIDEMIC_SURGE' ? '#FEF2F2' : '#FFFBEB',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <strong style={{ fontSize: '0.95rem' }}>{ep.lga} LGA Cluster</strong>
-                  <span
-                    style={{
-                      background: ep.alertLevel === 'EPIDEMIC_SURGE' ? '#DC2626' : '#D97706',
-                      color: '#FFF',
-                      padding: '3px 8px',
-                      borderRadius: 6,
-                      fontSize: '0.7rem',
-                      fontWeight: 800,
-                    }}
-                  >
-                    {ep.alertLevel} (+{ep.deviationSigma}σ)
-                  </span>
+            {epidemicAlerts.length === 0 ? (
+              <div style={{ padding: 20, color: '#94A3B8', fontSize: '0.82rem', textAlign: 'center', gridColumn: '1 / -1' }}>No active epidemic clusters detected across state surveillance nodes.</div>
+            ) : (
+              epidemicAlerts.map((ep, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    border: ep.alertLevel === 'EPIDEMIC_SURGE' ? '2px solid #DC2626' : '1px solid #F59E0B',
+                    borderRadius: 12,
+                    padding: 16,
+                    background: ep.alertLevel === 'EPIDEMIC_SURGE' ? '#FEF2F2' : '#FFFBEB',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <strong style={{ fontSize: '0.95rem' }}>{ep.lga} LGA Cluster</strong>
+                    <span
+                      style={{
+                        background: ep.alertLevel === 'EPIDEMIC_SURGE' ? '#DC2626' : '#D97706',
+                        color: '#FFF',
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        fontSize: '0.7rem',
+                        fontWeight: 800,
+                      }}
+                    >
+                      {ep.alertLevel} (+{ep.deviationSigma}σ)
+                    </span>
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0F172A', marginBottom: 4 }}>
+                    {ep.syndrome}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#475569', marginBottom: 8 }}>
+                    Cases in last 72 hours: <strong>{ep.caseCountLast72h}</strong> (Expected baseline: {ep.baselineExpected})
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#0369A1', background: '#FFF', padding: 8, borderRadius: 6, border: '1px solid #CBD5E1', fontWeight: 600 }}>
+                    🚨 Action: {ep.actionTriggered}
+                  </div>
                 </div>
-                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0F172A', marginBottom: 4 }}>
-                  {ep.syndrome}
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#475569', marginBottom: 8 }}>
-                  Cases in last 72 hours: <strong>{ep.caseCountLast72h}</strong> (Expected baseline: {ep.baselineExpected})
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#0369A1', background: '#FFF', padding: 8, borderRadius: 6, border: '1px solid #CBD5E1', fontWeight: 600 }}>
-                  🚨 Action: {ep.actionTriggered}
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       )}

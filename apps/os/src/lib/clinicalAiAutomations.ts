@@ -451,36 +451,7 @@ export function listWhatsAppFollowups(): WhatsAppCareFollowup[] {
   try {
     const raw = localStorage.getItem(WHATSAPP_STORAGE_KEY);
     if (!raw) {
-      const demo: WhatsAppCareFollowup[] = [
-        {
-          id: 'wa-1',
-          patientId: 'PAT-4401',
-          patientName: 'Aniefiok Ekpenyong',
-          phone: '08023419082',
-          followupDay: 1,
-          channel: 'WhatsApp',
-          messageSent: 'Hello Aniefiok, this is MedCore Care from Immanuel General Hospital. How are you feeling today after your discharge? Are you taking your medications on schedule?',
-          patientReply: 'Good morning nurse. I am feeling much better now, pain has reduced. I took my morning tablet with food.',
-          sentiment: 'Recovering Well',
-          flaggedForDoctorReview: false,
-          timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
-        },
-        {
-          id: 'wa-2',
-          patientId: 'PAT-5109',
-          patientName: 'Blessing Emmanuel Udoh',
-          phone: '08139481023',
-          followupDay: 3,
-          channel: 'MedCore Mobile',
-          messageSent: 'Hello Blessing, automated maternal check-in: Any headache, blurred vision, or swelling in your legs today?',
-          patientReply: 'I have severe throbbing headache since 4am and seeing flashes of light in my eyes.',
-          sentiment: 'Red Flag Emergency',
-          flaggedForDoctorReview: true,
-          timestamp: new Date().toISOString(),
-        },
-      ];
-      localStorage.setItem(WHATSAPP_STORAGE_KEY, JSON.stringify(demo));
-      return demo;
+      return [];
     }
     return JSON.parse(raw);
   } catch {
@@ -503,95 +474,10 @@ export interface ReorderRecommendation {
 }
 
 export function computeRoboticStockReorders(): ReorderRecommendation[] {
-  // Current month seasonal multiplier: Rainy season (April - October) increases malaria by 40-50%
-  const month = new Date().getMonth() + 1;
-  const isRainySeason = month >= 4 && month <= 10;
-  const malariaMultiplier = isRainySeason ? 1.5 : 1.0;
-
-  return [
-    {
-      drugId: 'med-art-inj',
-      name: 'IV Artesunate 60mg vials',
-      category: 'Antimalarial',
-      currentStockUnits: 45,
-      minSafetyBuffer: 120,
-      burnRatePerDay: 8,
-      seasonalMultiplier: malariaMultiplier,
-      recommendedReorderUnits: Math.round(120 * malariaMultiplier),
-      supplierTarget: 'Akwa Ibom State Central Medical Store (CMS) - Uyo Depot',
-      status: 'Auto-Submitted to State CMS',
-    },
-    {
-      drugId: 'med-oxy-inj',
-      name: 'Oxytocin 10 IU/mL Ampoules (Cold Chain)',
-      category: 'Maternal Emergency',
-      currentStockUnits: 60,
-      minSafetyBuffer: 150,
-      burnRatePerDay: 12,
-      seasonalMultiplier: 1.1,
-      recommendedReorderUnits: 200,
-      supplierTarget: 'Akwa Ibom State Central Medical Store (CMS) - Uyo Depot',
-      status: 'Auto-Submitted to State CMS',
-    },
-    {
-      drugId: 'med-rdt-kit',
-      name: 'Malaria Rapid Diagnostic Test (RDT) Cassettes (Box 25)',
-      category: 'Antimalarial',
-      currentStockUnits: 8,
-      minSafetyBuffer: 30,
-      burnRatePerDay: 2,
-      seasonalMultiplier: malariaMultiplier,
-      recommendedReorderUnits: Math.round(40 * malariaMultiplier),
-      supplierTarget: 'Akwa Ibom State Central Medical Store (CMS) - Uyo Depot',
-      status: 'Requisition Drafted',
-    },
-    {
-      drugId: 'med-tld-tab',
-      name: 'TLD (TDF 300mg / 3TC 300mg / DTG 50mg) 90-day bottle',
-      category: 'Antibiotic',
-      currentStockUnits: 80,
-      minSafetyBuffer: 200,
-      burnRatePerDay: 5,
-      seasonalMultiplier: 1.0,
-      recommendedReorderUnits: 300,
-      supplierTarget: 'Akwa Ibom State Central Medical Store (CMS) - Uyo Depot',
-      status: 'Auto-Submitted to State CMS',
-    },
-  ];
+  return [];
 }
 
 // ── 8. AUTONOMOUS STATE EPIDEMIC SYNDROMIC DETECTOR ────────────────────────
 export function detectStateEpidemicClusters(): EpidemicClusterAlert[] {
-  return [
-    {
-      lga: 'Eket',
-      syndrome: 'Acute Febrile Illness / Suspect Lassa',
-      caseCountLast72h: 14,
-      baselineExpected: 3,
-      deviationSigma: 3.9,
-      alertLevel: 'EPIDEMIC_SURGE',
-      actionTriggered: 'Automated bulletin sent to AKS MoH Epidemiology Desk & Local RRT Dispatched',
-      detectedAt: new Date().toISOString(),
-    },
-    {
-      lga: 'Oron',
-      syndrome: 'Acute Watery Diarrhoea / Cholera',
-      caseCountLast72h: 9,
-      baselineExpected: 2,
-      deviationSigma: 2.8,
-      alertLevel: 'OUTBREAK_WATCH',
-      actionTriggered: 'Water testing alert issued to Oron LGA Primary Healthcare Coordinator',
-      detectedAt: new Date(Date.now() - 3600000 * 8).toISOString(),
-    },
-    {
-      lga: 'Ikot Ekpene',
-      syndrome: 'Cerebral Malaria Cluster',
-      caseCountLast72h: 22,
-      baselineExpected: 9,
-      deviationSigma: 2.2,
-      alertLevel: 'OUTBREAK_WATCH',
-      actionTriggered: 'Increased IV Artesunate stock allocated from Central Store',
-      detectedAt: new Date(Date.now() - 3600000 * 18).toISOString(),
-    },
-  ];
+  return [];
 }

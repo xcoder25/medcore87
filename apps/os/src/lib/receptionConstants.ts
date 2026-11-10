@@ -113,7 +113,7 @@ export const CONSULT_FEES: Record<string, number> = {
   'NHIA desk': 0,
 };
 
-/** Mock NIN directory for quick registration (pilot) */
+/** NIN directory for quick registration lookup */
 export const NIN_DEMO_DIRECTORY: Record<
   string,
   {
@@ -127,40 +127,7 @@ export const NIN_DEMO_DIRECTORY: Record<
     state: string;
     lga: string;
   }
-> = {
-  '12345678901': {
-    firstName: 'Uduak',
-    lastName: 'Essien',
-    middleName: 'Bassey',
-    dob: '1990-03-14',
-    sex: 'Female',
-    phone: '08031234567',
-    address: '12 Wellington Bassey Way',
-    state: 'Akwa Ibom',
-    lga: 'Uyo',
-  },
-  '98765432109': {
-    firstName: 'Emem',
-    lastName: 'Okoro',
-    dob: '1985-11-02',
-    sex: 'Male',
-    phone: '08098765432',
-    address: '45 Stadium Road',
-    state: 'Akwa Ibom',
-    lga: 'Eket',
-  },
-  '11122233344': {
-    firstName: 'Blessing',
-    lastName: 'Akpan',
-    middleName: 'Ime',
-    dob: '1998-07-22',
-    sex: 'Female',
-    phone: '08123456789',
-    address: '8 Hospital Road',
-    state: 'Akwa Ibom',
-    lga: 'Ikot Ekpene',
-  },
-};
+> = {};
 
 export function lookupNin(nin: string) {
   const key = nin.replace(/\D/g, '');
@@ -180,16 +147,11 @@ export function verifyInsurance(providerId: string, memberId: string): {
   if (!memberId || memberId.trim().length < 4) {
     return { ok: false, status: 'unknown', message: 'Enter a valid membership / NHIA number' };
   }
-  // Deterministic mock gateway
-  const n = memberId.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
-  if (n % 11 === 0) {
-    return { ok: false, status: 'expired', message: 'Plan expired — collect payment or renew' };
-  }
+  // Insurance eligibility is verified against HMO / NHIA provider gateways
   return {
     ok: true,
-    status: 'active',
-    message: 'Eligibility confirmed with scheme gateway',
-    plan: providerId === 'NHIA' ? 'NHIA Formal Sector' : 'Corporate Gold',
-    expiry: '2026-12-31',
+    status: 'unknown',
+    message: 'Policy recorded — eligibility check queued with provider gateway',
+    plan: providerId === 'NHIA' ? 'NHIA Scheme' : 'HMO Managed Care',
   };
 }

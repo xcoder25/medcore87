@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { HospitalPatient, INITIAL_PATIENTS, INITIAL_CLINICAL_NOTES, ClinicalNoteItem } from '../../data/hospitalData';
+import { listPatients, subscribePatients, FacilityPatient } from '../../lib/patientRegistryStore';
 import { searchEml, EmlMedication } from '../../data/emlFormulary';
 import type { UserSession } from '../auth/AuthScreen';
 import { roleCanPrescribe } from '../../lib/rolePermissionsStore';
@@ -107,6 +108,41 @@ const MOCK_PACS_STUDIES: Record<string, PacsRecord[]> = {
   default: [],
 };
 
+function facilityToHospitalPatient(fp: FacilityPatient): HospitalPatient {
+  const birthYear = fp.dob ? new Date(fp.dob).getFullYear() : 1990;
+  const age = Math.max(0, new Date().getFullYear() - birthYear);
+  return {
+    id: fp.id,
+    mrn: fp.hospitalNumber || fp.id,
+    name: `${fp.firstName} ${fp.lastName}`.trim() || 'Patient',
+    age,
+    sex: fp.sex === 'Female' ? 'F' : 'M',
+    dob: fp.dob || '',
+    blood: fp.bloodGroup || 'Unknown',
+    ward: fp.category || 'Outpatient Clinic',
+    bed: 'N/A',
+    status: 'stable',
+    diagnoses: fp.problems || [],
+    allergies: fp.allergies || [],
+    phone: fp.phone || '',
+    nok: fp.emergencyContact ? `${fp.emergencyContact} (${fp.emergencyRelation || 'Contact'})` : 'None',
+    attending: 'Consultant on Duty',
+    admitDate: fp.registeredAt || null,
+    vitals: {
+      bp: fp.lastVitals?.bp || '120/80',
+      pulse: fp.lastVitals?.pulse || 72,
+      temp: fp.lastVitals?.temp || 36.6,
+      spo2: 98,
+      rr: 16,
+      weight: 65,
+      height: 170,
+    },
+    medications: fp.currentMedications || [],
+    avatar: fp.photoUrl || null,
+    type: 'outpatient',
+  };
+}
+
 export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavigate, session }) => {
   const roleKey = inferRoleKey(
     session?.roleKey || session?.role || session?.title || '',
@@ -115,8 +151,27 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
   const canPrescribe = roleCanPrescribe(roleKey);
   const isRecords = roleKey === 'records';
 
-  const [patients] = useState<HospitalPatient[]>(INITIAL_PATIENTS);
-  const [selectedPatientId, setSelectedPatientId] = useState<string>(initialPatientId || INITIAL_PATIENTS[0]?.id || '');
+  const [patients, setPatients] = useState<HospitalPatient[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return listPatients().map(facilityToHospitalPatient);
+  });
+  const [selectedPatientId, setSelectedPatientId] = useState<string>(initialPatientId || '');
+
+  useEffect(() => {
+    const unsub = subscribePatients(() => {
+      const live = listPatients().map(facilityToHospitalPatient);
+      setPatients(live);
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (initialPatientId) {
+      setSelectedPatientId(initialPatientId);
+    } else if (!selectedPatientId && patients.length > 0) {
+      setSelectedPatientId(patients[0].id);
+    }
+  }, [initialPatientId, patients, selectedPatientId]);
   const [activeTab, setActiveTab] = useState<'notes' | 'vitals' | 'labs' | 'meds' | 'imaging' | 'timeline' | 'interop'>('notes');
   const [patientSearch, setPatientSearch] = useState('');
   const [patientFilter, setPatientFilter] = useState<'all' | 'inpatient' | 'critical' | 'outpatient'>('all');
@@ -131,10 +186,10 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
 
   // New Note Form State
   const [noteType, setNoteType] = useState('SOAP Note');
-  const [subjective, setSubjective] = useState('Patient reports feeling tired and noticed morning ankle swelling over the past 4 days. Denies orthopnea or paroxysmal nocturnal dyspnea. Has been compliant with oral anti-hypertensives.');
-  const [objective, setObjective] = useState('BP: 142/88 mmHg, Pulse: 82 bpm regular. SpO2: 97% on room air. JVP normal. Heart sounds S1, S2, no added gallop. Chest clear bilaterally. Bilateral pitting ankle edema (+1).');
-  const [assessment, setAssessment] = useState('1. Essential Hypertension — suboptimal diastolic control.\n2. Type 2 Diabetes Mellitus — stable on metformin.\n3. Mild dependent peripheral edema — suspect amlodipine adverse effect vs mild fluid retention.');
-  const [plan, setPlan] = useState('1. Add low-dose Indapamide 1.5mg SR OD.\n2. Fasting blood glucose & Renal function panel tomorrow morning.\n3. Low-sodium dietary reinforcement.\n4. Review in clinic in 2 weeks.');
+  const [subjective, setSubjective] = useState('');
+  const [objective, setObjective] = useState('');
+  const [assessment, setAssessment] = useState('');
+  const [plan, setPlan] = useState('');
 
   // AI Assistant Drawer / State
   const [aiAssistantQuery, setAiAssistantQuery] = useState('');

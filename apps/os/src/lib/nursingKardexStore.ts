@@ -42,80 +42,7 @@ const SBAR_KEY = 'medcore_os_nursing_sbar_v1';
 const EVT_KARDEX = 'medcore-nursing-kardex';
 const EVT_SBAR = 'medcore-nursing-sbar';
 
-const SEED_CARE_ITEMS: Omit<NursingCareItem, 'id' | 'facilityId'>[] = [
-  {
-    bedNumber: 'Bed 04',
-    ward: 'Male Medical',
-    patientName: 'Emmanuel Udoh',
-    hospitalNumber: 'GH-2026-0812',
-    careActivity: 'IV Ceftriaxone 1g in 100ml NS',
-    dose: '1g IV',
-    route: 'IV Infusion',
-    frequency: 'Q12H',
-    nextScheduledTime: '12:00',
-    status: 'pending',
-    assignedNurse: 'Nurse Blessing (SN)',
-    notes: 'Severe pneumonia, check IV cannula site before push',
-  },
-  {
-    bedNumber: 'Bed 08',
-    ward: 'Male Medical',
-    patientName: 'Samuel Archibong',
-    hospitalNumber: 'GH-2026-0419',
-    careActivity: 'Tab Artemether/Lumefantrine (Coartem) 80/480mg',
-    dose: '1 tab PO',
-    route: 'Oral with food',
-    frequency: 'BID',
-    nextScheduledTime: '14:00',
-    status: 'pending',
-    assignedNurse: 'Nurse Blessing (SN)',
-    notes: 'Ensure meal is consumed before administration',
-  },
-  {
-    bedNumber: 'Bed 12',
-    ward: 'Female Medical',
-    patientName: 'Patience Okon',
-    hospitalNumber: 'GH-2026-0922',
-    careActivity: 'Regular Insulin 8 IU SubQ',
-    dose: '8 IU SubQ',
-    route: 'Subcutaneous',
-    frequency: 'TID AC',
-    nextScheduledTime: '13:00',
-    status: 'overdue',
-    assignedNurse: 'Nurse Deborah (NO II)',
-    notes: 'Check blood glucose before administration',
-  },
-  {
-    bedNumber: 'Bed 03',
-    ward: 'Surgical Ward',
-    patientName: 'Bassey Bassey',
-    hospitalNumber: 'GH-2026-0311',
-    careActivity: 'Wound Dressing & Drain Inspection',
-    dose: 'Sterile dressing',
-    route: 'Topical / Surgical Site',
-    frequency: 'Daily',
-    nextScheduledTime: '11:00',
-    status: 'pending',
-    assignedNurse: 'Nurse Deborah (NO II)',
-    notes: 'Post-laparotomy Day 2, record drain output in chart',
-  },
-  {
-    bedNumber: 'Bed 02',
-    ward: 'ICU',
-    patientName: 'Idongesit Akpan',
-    hospitalNumber: 'GH-2026-0105',
-    careActivity: 'IV Paracetamol 1g Infusion',
-    dose: '1g IV in 100ml',
-    route: 'IV Infusion',
-    frequency: 'Q6H PRN',
-    nextScheduledTime: '09:00',
-    status: 'completed',
-    assignedNurse: 'Nurse Ekaette (CNO)',
-    administeredBy: 'Nurse Ekaette (CNO)',
-    administeredAt: new Date(Date.now() - 2 * 3600000).toISOString(),
-    notes: 'Temp was 38.6°C, settled to 37.1°C post infusion',
-  },
-];
+const SEED_CARE_ITEMS: Omit<NursingCareItem, 'id' | 'facilityId'>[] = [];
 
 function readKardex(): NursingCareItem[] {
   if (typeof window === 'undefined') return [];
@@ -140,17 +67,7 @@ function saveKardex(list: NursingCareItem[]) {
 }
 
 export function listNursingCareItems(facilityId: string): NursingCareItem[] {
-  let list = readKardex().filter((item) => item.facilityId === facilityId);
-  if (list.length === 0) {
-    // Seed initial realistic tasks for this facility
-    list = SEED_CARE_ITEMS.map((item, idx) => ({
-      ...item,
-      id: `NUR-${(idx + 1).toString().padStart(4, '0')}`,
-      facilityId,
-    }));
-    saveKardex(list);
-  }
-  return list;
+  return readKardex().filter((item) => item.facilityId === facilityId);
 }
 
 export function addNursingCareItem(item: Omit<NursingCareItem, 'id'>): NursingCareItem {

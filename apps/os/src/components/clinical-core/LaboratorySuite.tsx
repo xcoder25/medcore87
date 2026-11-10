@@ -74,76 +74,10 @@ function saveLab(orders: LabOrder[]) {
 }
 
 function seedLab(existing: LabOrder[]): LabOrder[] {
-  if (existing.length) return existing;
-  const now = Date.now();
-  return [
-    {
-      id: 'LAB-2026-501',
-      patientId: 'IGH-PT-2CKAR3',
-      patientName: 'Michael James',
-      testName: 'FBC (CBC)',
-      specimenType: 'Blood',
-      barcode: 'BC-501-A1',
-      status: 'analyzing',
-      orderedAt: new Date(now - 3600e3).toISOString(),
-      referenceRange: 'WBC 4.0–11.0',
-    },
-    {
-      id: 'LAB-2026-502',
-      patientId: 'IGH-PT-40OLLG',
-      patientName: 'Chioma Etim',
-      testName: 'Malaria parasite (RDT + film)',
-      specimenType: 'Blood',
-      barcode: 'BC-502-B2',
-      status: 'collected',
-      orderedAt: new Date(now - 2 * 3600e3).toISOString(),
-    },
-    {
-      id: 'LAB-2026-503',
-      patientId: 'IGH-PT-YB13KN',
-      patientName: 'Dahlia nen Arcade',
-      testName: 'Blood glucose (random)',
-      specimenType: 'Blood',
-      barcode: 'BC-503-C3',
-      status: 'critical',
-      orderedAt: new Date(now - 45 * 60e3).toISOString(),
-      result: '28.4 mmol/L',
-      referenceRange: '3.9–7.8 mmol/L fasting',
-      isPanicValue: true,
-    },
-    {
-      id: 'LAB-2026-498',
-      patientId: 'IGH-PT-2CKAR3',
-      patientName: 'Michael James',
-      testName: 'Urea & Electrolytes',
-      specimenType: 'Blood',
-      barcode: 'BC-498-D4',
-      status: 'completed',
-      orderedAt: new Date(now - 26 * 3600e3).toISOString(),
-      result: 'Na 138 · K 4.1 · Urea 5.2 · Cr 78',
-      referenceRange: 'Within reference',
-    },
-    {
-      id: 'LAB-2026-490',
-      patientId: 'IGH-PT-40OLLG',
-      patientName: 'Chioma Etim',
-      testName: 'Urinalysis',
-      specimenType: 'Urine',
-      barcode: 'BC-490-E5',
-      status: 'completed',
-      orderedAt: new Date(now - 3 * 864e5).toISOString(),
-      result: 'Clear · SG 1.015 · No protein/glucose',
-      referenceRange: 'Normal',
-    },
-  ];
+  return existing;
 }
 
-const DEFAULT_ANALYZERS = [
-  { id: 'sysmex', name: 'Sysmex XN-1000', section: 'Hematology', status: 'ONLINE' as const, throughput: '100/hr', lastCal: 'Today 06:00' },
-  { id: 'cobas', name: 'Roche Cobas 6000', section: 'Chemistry', status: 'ONLINE' as const, throughput: '200/hr', lastCal: 'Today 05:30' },
-  { id: 'vitros', name: 'Ortho Vitros 5600', section: 'Chemistry', status: 'STANDBY' as const, throughput: '150/hr', lastCal: 'Yesterday' },
-  { id: 'bactec', name: 'BD BACTEC FX', section: 'Microbiology', status: 'ONLINE' as const, throughput: 'Continuous', lastCal: 'Weekly QC OK' },
-];
+const DEFAULT_ANALYZERS: Array<{ id: string; name: string; section: string; status: any; throughput: string; lastCal: string }> = [];
 
 export const LaboratorySuite: React.FC = () => {
   const facilityId = getActiveFacilityId?.() || (typeof window !== 'undefined' ? localStorage.getItem('medcore_active_facility_id') || 'IGH-EKT' : 'IGH-EKT');

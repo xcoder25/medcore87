@@ -66,116 +66,37 @@ const BIRTH_STORAGE_KEY = 'medcore_ecrvs_births_v1';
 const DEATH_STORAGE_KEY = 'medcore_ecrvs_deaths_v1';
 const EVENT_NAME = 'medcore-ecrvs-sync';
 
-const INITIAL_BIRTHS: EcrvsBirthRecord[] = [
-  {
-    trackingId: 'CRVS-AKS-B-2026-0041',
-    childFullName: 'Emediong Emem Okon',
-    sex: 'Female',
-    dateOfBirth: '2026-10-24',
-    timeOfBirth: '03:45',
-    birthWeightKg: 3.4,
-    gestationalWeeks: 39,
-    typeOfBirth: 'Single',
-    deliveryMode: 'Spontaneous Vaginal (SVD)',
-    motherFullName: 'Emem Anietie Okon',
-    motherNin: '66201948210',
-    motherPhone: '08129384019',
-    motherAge: 27,
-    fatherFullName: 'Anietie Asuquo Okon',
-    fatherNin: '44102948210',
-    fatherPhone: '08039201940',
-    state: 'Akwa Ibom',
-    lga: 'Eket',
-    facilityId: 'IGH-EKT',
-    facilityName: 'Immanuel General Hospital, Eket',
-    attendantRole: 'Midwife',
-    attendantName: 'Senior Midwife Nsikak Effiong',
-    registrationStatus: 'Submitted to NPC',
-    registeredAt: '2026-10-24T05:12:00Z',
-  },
-  {
-    trackingId: 'CRVS-AKS-B-2026-0042',
-    childFullName: 'Ubongabasi Michael Bassey',
-    sex: 'Male',
-    dateOfBirth: '2026-10-27',
-    timeOfBirth: '14:20',
-    birthWeightKg: 3.1,
-    gestationalWeeks: 38,
-    typeOfBirth: 'Single',
-    deliveryMode: 'Caesarean Section (C/S)',
-    motherFullName: 'Grace Michael Bassey',
-    motherNin: '88102948190',
-    motherPhone: '07039201944',
-    motherAge: 31,
-    fatherFullName: 'Michael Bassey',
-    fatherNin: '55102948123',
-    fatherPhone: '08029381920',
-    state: 'Akwa Ibom',
-    lga: 'Eket',
-    facilityId: 'IGH-EKT',
-    facilityName: 'Immanuel General Hospital, Eket',
-    attendantRole: 'Medical Doctor',
-    attendantName: 'Dr. Akanimo Udoh',
-    registrationStatus: 'Verified Certificate Issued',
-    registeredAt: '2026-10-27T16:00:00Z',
-  },
-];
+const INITIAL_BIRTHS: EcrvsBirthRecord[] = [];
 
-const INITIAL_DEATHS: EcrvsDeathRecord[] = [
-  {
-    trackingId: 'CRVS-AKS-D-2026-0012',
-    deceasedFullName: 'Elder Ekpenyong Etim Akpan',
-    deceasedHospitalNumber: 'HOSP-2104',
-    deceasedNin: '33102948102',
-    sex: 'Male',
-    ageAtDeath: 72,
-    dateOfDeath: '2026-10-21',
-    timeOfDeath: '21:15',
-    placeOfDeath: 'ICU',
-    underlyingCauseOfDeath: 'End-Stage Renal Disease with Chronic Hypertension',
-    immediateCauseOfDeath: 'Cardiopulmonary Arrest',
-    icd10Code: 'N18.6 / I10',
-    certifyingPhysicianName: 'Dr. Idongesit Archibong',
-    certifyingPhysicianMdcn: 'MDCN-AK-58291',
-    state: 'Akwa Ibom',
-    lga: 'Eket',
-    facilityId: 'IGH-EKT',
-    nextOfKinName: 'Pastor Nsikak Ekpenyong',
-    nextOfKinPhone: '08039201948',
-    registrationStatus: 'Submitted to NPC',
-    registeredAt: '2026-10-22T08:30:00Z',
-  },
-];
+const INITIAL_DEATHS: EcrvsDeathRecord[] = [];
 
 export function listEcrvsBirths(facilityId?: string): EcrvsBirthRecord[] {
-  if (typeof window === 'undefined') return INITIAL_BIRTHS;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(BIRTH_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(BIRTH_STORAGE_KEY, JSON.stringify(INITIAL_BIRTHS));
-      return INITIAL_BIRTHS;
+      return [];
     }
     const all = JSON.parse(raw) as EcrvsBirthRecord[];
     if (facilityId) return all.filter((b) => !b.facilityId || b.facilityId.toUpperCase() === facilityId.toUpperCase());
     return all;
   } catch {
-    return INITIAL_BIRTHS;
+    return [];
   }
 }
 
 export function listEcrvsDeaths(facilityId?: string): EcrvsDeathRecord[] {
-  if (typeof window === 'undefined') return INITIAL_DEATHS;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(DEATH_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(DEATH_STORAGE_KEY, JSON.stringify(INITIAL_DEATHS));
-      return INITIAL_DEATHS;
+      return [];
     }
     const all = JSON.parse(raw) as EcrvsDeathRecord[];
     if (facilityId) return all.filter((d) => !d.facilityId || d.facilityId.toUpperCase() === facilityId.toUpperCase());
     return all;
   } catch {
-    return INITIAL_DEATHS;
+    return [];
   }
 }
 

@@ -1644,7 +1644,7 @@ export function provisionFacilityAdmin(
     return { ok: false, error: 'Facility already has an administrator.' };
   }
 
-  const pin = (opts?.pin || 'AKS-0012442').trim();
+  const pin = (opts?.pin || String(Math.floor(100000 + Math.random() * 900000))).trim();
   const fullName = (opts?.fullName || 'Hospital Administrator').trim();
   // Deterministic first admin badge: {facilityId}-ADM-001
   const badgeId = `${facilityId.toUpperCase()}-ADM-001`;

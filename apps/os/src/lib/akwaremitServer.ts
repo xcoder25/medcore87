@@ -68,12 +68,12 @@ export function getAkwaRemitServerConfig(): AkwaRemitServerConfig {
     };
   }
 
-  // Fallback demo gateway key on server for sandbox/offline hospital environment
+  // When server environment variables are not set, return unconfigured status
   return {
-    merchantId: envMerch || 'AKW-MERCH-88210',
-    apiKey: 'akw_live_aks_health_tsa_88210_sec',
-    webhookSecret: 'whsec_akw_tsa_webhook_signing_88210',
-    environment: 'live',
+    merchantId: envMerch || '',
+    apiKey: '',
+    webhookSecret: '',
+    environment: envType,
     source: 'server_fallback',
   };
 }
@@ -104,7 +104,7 @@ export function getAkwaRemitClientSafeStatus(): AkwaRemitClientSafeStatus {
  */
 export function verifyWebhookSignature(signatureHeader: string | null | undefined, rawBody: string): boolean {
   const config = getAkwaRemitServerConfig();
-  if (!config.webhookSecret) return true; // In permissive demo mode
+  if (!config.webhookSecret) return false;
   if (!signatureHeader) return false;
 
   try {
@@ -135,21 +135,60 @@ export async function testAkwaRemitServerGateway(): Promise<{
   source: string;
   tsaRouting: string;
 }> {
-  const start = Date.now();
   const config = getAkwaRemitServerConfig();
 
-  // Simulated gateway ping from server to Akwa Ibom TSA host
-  await new Promise((resolve) => setTimeout(resolve, 220));
-  const latencyMs = Date.now() - start;
+  if (!config.apiKey) {
+    return {
+      ok: false,
+      gateway: 'AkwaRemit Central Revenue Engine',
+      environment: config.environment,
+      merchantId: config.merchantId || 'Unset',
+      latencyMs: 0,
+      source: 'Server Environment Unset',
+      tsaRouting: 'Wema Bank (Akwa Ibom State Internal Revenue Service - AKIRS)',
+      message: 'AKWAREMIT_API_KEY environment variable is not configured on the server.',
+    };
+  }
 
-  return {
-    ok: true,
-    gateway: 'AkwaRemit Central Revenue Engine',
-    environment: config.environment,
-    merchantId: config.merchantId,
-    latencyMs,
-    source: config.source === 'server_env' ? 'Server Environment (.env.local)' : 'Server Sandbox Mode',
-    tsaRouting: 'Wema Bank (Akwa Ibom State Internal Revenue Service - AKIRS)',
-    message: `Connected successfully to AkwaRemit State Gateway (${latencyMs}ms). TSA remittance heads active.`,
-  };
+  const start = Date.now();
+  try {
+    // Live ping against the Remita / AkwaRemit gateway host
+    const endpoint = config.environment === 'live'
+      ? 'https://remita.net/remita/exstream/api/v1/vsm/health'
+      : 'https://demo.remita.net/remita/exstream/api/v1/vsm/health';
+    
+    const res = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Merchant-Id': config.merchantId,
+      },
+      cache: 'no-store',
+    });
+    const latencyMs = Date.now() - start;
+    return {
+      ok: res.ok,
+      gateway: 'AkwaRemit Central Revenue Engine',
+      environment: config.environment,
+      merchantId: config.merchantId,
+      latencyMs,
+      source: config.source === 'server_env' ? 'Server Environment' : 'Server Runtime',
+      tsaRouting: 'Wema Bank (Akwa Ibom State Internal Revenue Service - AKIRS)',
+      message: res.ok
+        ? `Connected successfully to AkwaRemit State Gateway (${latencyMs}ms). TSA remittance heads active.`
+        : `AkwaRemit gateway returned status HTTP ${res.status}. Check API credentials.`,
+    };
+  } catch (err: any) {
+    const latencyMs = Date.now() - start;
+    return {
+      ok: false,
+      gateway: 'AkwaRemit Central Revenue Engine',
+      environment: config.environment,
+      merchantId: config.merchantId,
+      latencyMs,
+      source: config.source === 'server_env' ? 'Server Environment' : 'Server Runtime',
+      tsaRouting: 'Wema Bank (Akwa Ibom State Internal Revenue Service - AKIRS)',
+      message: `Gateway unreachable: ${err?.message || 'Network connection failed'}.`,
+    };
+  }
 }

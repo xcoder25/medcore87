@@ -135,50 +135,7 @@ const INITIAL_NODES: MeshNode[] = [
   },
 ];
 
-const INITIAL_PACKETS: DtnBundlePacket[] = [
-  {
-    bundleId: 'DTN-PKT-9921',
-    originNodeId: 'NODE-ESSIEN-UDIM-01',
-    originLga: 'Essien Udim',
-    targetNodeId: 'NODE-UYO-STATE-HQ',
-    hops: ['NODE-ESSIEN-UDIM-01', 'NODE-IKOT-EKPENE-HUB'],
-    ttlSeconds: 86400,
-    payloadType: 'TRIAGE_VITALS',
-    patientRef: 'PAT-AKS-4401 (Aniefiok Ekpenyong)',
-    checksumSha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
-    compressionRatio: '94.2% Delta',
-    status: 'IN_TRANSIT_MESH',
-    createdIso: new Date(Date.now() - 4 * 60000).toISOString(),
-  },
-  {
-    bundleId: 'DTN-PKT-9922',
-    originNodeId: 'NODE-EASTERN-OBOLO-02',
-    originLga: 'Eastern Obolo',
-    targetNodeId: 'NODE-IMMANUEL-HUB',
-    hops: ['NODE-EASTERN-OBOLO-02', 'NODE-BOAT-EMS-04'],
-    ttlSeconds: 86400,
-    payloadType: 'ANC_OBSERVATION',
-    patientRef: 'PAT-AKS-8812 (Blessing Udoh)',
-    checksumSha256: '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8',
-    compressionRatio: '91.8% Delta',
-    status: 'PENDING_PEER_HOP',
-    createdIso: new Date(Date.now() - 10 * 60000).toISOString(),
-  },
-  {
-    bundleId: 'DTN-PKT-9923',
-    originNodeId: 'NODE-EASTERN-OBOLO-02',
-    originLga: 'Eastern Obolo',
-    targetNodeId: 'NODE-UYO-STATE-HQ',
-    hops: ['NODE-EASTERN-OBOLO-02', 'NODE-IMMANUEL-HUB'],
-    ttlSeconds: 86400,
-    payloadType: 'RADET_HIV_EVENT',
-    patientRef: 'PEPFAR Cohort ART Refill (12 Patients)',
-    checksumSha256: '4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a',
-    compressionRatio: '96.5% Delta',
-    status: 'DELIVERED_TO_GATEWAY',
-    createdIso: new Date(Date.now() - 25 * 60000).toISOString(),
-  },
-];
+const INITIAL_PACKETS: DtnBundlePacket[] = [];
 
 export interface TelehealthMeshState {
   nodes: MeshNode[];

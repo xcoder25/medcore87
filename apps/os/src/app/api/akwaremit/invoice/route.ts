@@ -20,6 +20,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Valid amountNgn required' }, { status: 400 });
   }
 
+  if (!config.apiKey) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'GATEWAY_UNCONFIGURED',
+        message: 'AKWAREMIT_API_KEY is not configured on the server. Set AKWAREMIT_API_KEY in server environment variables.',
+      },
+      { status: 503 }
+    );
+  }
+
   const year = new Date().getFullYear();
   const rand1 = Math.floor(1000 + Math.random() * 9000);
   const rand2 = Math.floor(1000 + Math.random() * 9000);

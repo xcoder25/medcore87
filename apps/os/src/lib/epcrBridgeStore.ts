@@ -66,115 +66,19 @@ export interface EpcrPreArrivalAlert {
 const STORAGE_KEY = 'medcore_epcr_staging_queue_v2';
 const EVENT_KEY = 'medcore-epcr-pre-arrival-update';
 
-// Seed default clinical pre-alerts matching standard trauma & STEMI cases
-const SEED_ALERTS: EpcrPreArrivalAlert[] = [
-  {
-    id: 'EPCR-2026-8812',
-    protocol: 'FHIR_R4',
-    emsUnit: 'Akwa EMS Trauma Team #04',
-    paramedicName: 'Lead Paramedic Bassey Edet (Badge EMT-881)',
-    facilityId: 'IGH-EKT',
-    patient: {
-      fullName: 'John Smith',
-      dob: '1988-04-12',
-      age: 38,
-      gender: 'M',
-      nin: 'NIN-99283716402',
-    },
-    vitals: {
-      bp: '90/60',
-      pulse: 118,
-      rr: 28,
-      spo2: 92,
-      temp: 36.8,
-      painScale: 8,
-      gcs: '13 (E4 V4 M5)',
-      bloodGlucose: 104,
-    },
-    incidentType: 'Motor Vehicle Collision (MVC) — High Speed Rollover',
-    accidentNarrative:
-      'Driver restrained, air bag deployed. Blunt thoracic & upper abdominal trauma with steering wheel impact deformity. Left clavicle visible deformity with localized crepitus; diminished breath sounds left hemithorax. Rigid cervical collar applied and full spinal immobilization maintained on vacuum mattress.',
-    enRouteInterventions: [
-      '15 L/min 100% Oxygen via Non-Rebreather Mask (NRB)',
-      '18G Large-Bore IV cannula placed in Left Antecubital fossa',
-      '500 mL Warm 0.9% Normal Saline bolus actively infusing',
-      'Fentanyl 50 mcg IV administered at 04:42 for acute thoracic pain',
-      'Pelvic circumferential binder secured and padded',
-    ],
-    ekgTelemetry: {
-      rhythm: 'Sinus Tachycardia @ 118 bpm',
-      stElevation: false,
-      notes: 'No focal ST segment elevation or depression. Narrow QRS complex. Monitor transmit OK.',
-      ekgTraceUrl: 'https://telemetry.medcore.arise.ng/traces/ekg-8812.svg',
-    },
-    etaMinutes: 2,
-    status: 'at_bay',
-    receivedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-    arrivedAt: new Date(Date.now() - 1 * 60 * 1000).toISOString(),
-    rawPayloadPreview: '{\n  "resourceType": "Bundle",\n  "type": "transaction",\n  "entry": [\n    { "resource": { "resourceType": "Patient", "name": [{ "family": "Smith", "given": ["John"] }], "birthDate": "1988-04-12", "gender": "male" } },\n    { "resource": { "resourceType": "Observation", "code": { "coding": [{ "code": "85354-9", "display": "Blood pressure" }] }, "valueString": "90/60" } },\n    { "resource": { "resourceType": "Observation", "code": { "coding": [{ "code": "8867-4", "display": "Heart rate" }] }, "valueQuantity": { "value": 118, "unit": "/min" } } }\n  ]\n}',
-  },
-  {
-    id: 'EPCR-2026-8815',
-    protocol: 'HL7_V2',
-    emsUnit: 'General Hospital Rapid Ambulance 02',
-    paramedicName: 'EMT K. Udoh (Reg #AKS-EMT-410)',
-    facilityId: 'IGH-EKT',
-    patient: {
-      fullName: 'Arit Bassey',
-      dob: '1974-08-23',
-      age: 51,
-      gender: 'F',
-      nin: 'NIN-81726354910',
-    },
-    vitals: {
-      bp: '158/96',
-      pulse: 94,
-      rr: 20,
-      spo2: 96,
-      temp: 37.1,
-      painScale: 9,
-      gcs: '15 (E4 V5 M6)',
-      bloodGlucose: 168,
-    },
-    incidentType: 'Acute Coronary Syndrome — Suspected STEMI',
-    accidentNarrative:
-      'Sudden onset crushing retrosternal chest tightness radiating to left mandible and shoulder, accompanied by profound diaphoresis and nausea. Symptoms commenced 45 mins prior to EMS dispatch. Known history of hypertension and Type 2 diabetes.',
-    enRouteInterventions: [
-      'Aspirin 300 mg PO chewed immediately on paramedic arrival',
-      'Sublingual Glyceryl Trinitrate (GTN) 400 mcg spray x1 administered',
-      '20G IV cannula established Right forearm with saline lock',
-      'Continuous 12-lead EKG telemetry linked to hospital cath team',
-    ],
-    ekgTelemetry: {
-      rhythm: 'Acute Anterior STEMI (ST elevation in V1-V4)',
-      stElevation: true,
-      notes: 'Hyperacute T waves and >2mm ST-segment elevation in leads V2-V4. Cath Lab / Resus notification triggered.',
-      ekgTraceUrl: 'https://telemetry.medcore.arise.ng/traces/ekg-8815.svg',
-    },
-    etaMinutes: 6,
-    status: 'inbound',
-    receivedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-    rawPayloadPreview: `MSH|^~\\&|ePCR_PARAMEDIC|AKS_AMB_02|MEDCORE_HOSPITAL|TRIAGE_INGEST|202611030520||ORU^R01|MSG8815|P|2.5.1
-PID|1||PAT8815^^^AKS_UPI||Bassey^Arit||19740823|F|||Uyo, Akwa Ibom
-OBR|1|||85354-9^BLOOD_PRESSURE|||202611030515
-OBX|1|ST|85354-9^BP||158/96|mmHg|||||F
-OBX|2|NM|8867-4^HEART_RATE||94|bpm|||||F
-NTE|1||ACUTE_STEMI_V1_V4_ASPIRIN_300MG_GIVEN`,
-  },
-];
+const SEED_ALERTS: EpcrPreArrivalAlert[] = [];
 
 function loadAlerts(): EpcrPreArrivalAlert[] {
-  if (typeof window === 'undefined') return SEED_ALERTS;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_ALERTS));
-      return SEED_ALERTS;
+      return [];
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : SEED_ALERTS;
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return SEED_ALERTS;
+    return [];
   }
 }
 

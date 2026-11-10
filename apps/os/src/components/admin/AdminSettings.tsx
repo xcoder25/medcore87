@@ -35,7 +35,6 @@ import {
   Eye,
   EyeOff,
   Zap,
-  Terminal,
 } from 'lucide-react';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 import {
@@ -974,77 +973,6 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
               <ShieldCheck size={22} color="#16A34A" />
               <div style={{ fontSize: 12.5, color: '#166534', lineHeight: 1.5 }}>
                 <strong>Server-Only Security Architecture:</strong> In accordance with Akwa Ibom State Treasury Single Account (TSA) regulations, all API keys, Remita credentials, and webhook signing secrets reside strictly within the server environment (<code style={{ background: '#DCFCE7', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>process.env.AKWAREMIT_API_KEY</code>). Keys cannot be entered, viewed, or altered from the client browser.
-              </div>
-            </div>
-
-            {/* Server Environment Variables Guidance Card */}
-            <div
-              style={{
-                borderRadius: 12,
-                border: '1px solid #CBD5E1',
-                background: '#0F172A',
-                marginBottom: 16,
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '10px 16px',
-                  borderBottom: '1px solid #1E293B',
-                  background: '#1E293B',
-                }}
-              >
-                <Terminal size={14} color="#94A3B8" />
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: '#94A3B8', fontFamily: 'monospace', letterSpacing: 1 }}>
-                  .env.local — Required Server Environment Variables
-                </span>
-                <span
-                  style={{
-                    marginLeft: 'auto',
-                    fontSize: 10,
-                    padding: '2px 7px',
-                    borderRadius: 4,
-                    background: '#0F172A',
-                    color: '#64748B',
-                    fontFamily: 'monospace',
-                  }}
-                >
-                  NEVER expose in browser
-                </span>
-              </div>
-              <div style={{ padding: '14px 16px' }}>
-                {[
-                  { key: 'AKWAREMIT_API_KEY', placeholder: 'akw_live_sk_...', comment: '# AkwaRemit / Remita secret API key (server-only)' },
-                  { key: 'AKWAREMIT_WEBHOOK_SECRET', placeholder: 'whsec_...', comment: '# Webhook HMAC-SHA256 signing secret' },
-                  { key: 'AKWAREMIT_MERCHANT_ID', placeholder: 'AKW-MERCH-...', comment: '# Assigned by AKIRS / Remita onboarding' },
-                  { key: 'AKWAREMIT_ENV', placeholder: 'live', comment: '# "live" for production TSA, "test" for sandbox' },
-                ].map(({ key, placeholder, comment }) => (
-                  <div key={key} style={{ marginBottom: 6 }}>
-                    <span style={{ color: '#64748B', fontFamily: 'monospace', fontSize: 11.5 }}>{comment}</span>
-                    <br />
-                    <span style={{ color: '#94A3B8', fontFamily: 'monospace', fontSize: 12 }}>{key}</span>
-                    <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 12 }}>=</span>
-                    <span style={{ color: '#4ADE80', fontFamily: 'monospace', fontSize: 12 }}>{placeholder}</span>
-                  </div>
-                ))}
-                <div
-                  style={{
-                    marginTop: 12,
-                    paddingTop: 10,
-                    borderTop: '1px solid #1E293B',
-                    fontSize: 11,
-                    color: '#475569',
-                    fontFamily: 'monospace',
-                    lineHeight: 1.6,
-                  }}
-                >
-                  Restart the Next.js server after editing <span style={{ color: '#94A3B8' }}>.env.local</span>. These variables are
-                  read at startup by <span style={{ color: '#94A3B8' }}>akwaremitServer.ts</span> and are
-                  never transmitted to the browser.
-                </div>
               </div>
             </div>
 

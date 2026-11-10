@@ -39,6 +39,7 @@ import { broadcastOpdStage } from '../../hooks/useOpdSync';
 import { pushNotification } from '../../lib/notificationEngine';
 import { listStaffCards } from '../../lib/staffCardStore';
 import { findMatchingPreAlert, matchAndImportAlert, type EpcrPreArrivalAlert } from '../../lib/epcrBridgeStore';
+import { listPatients } from '../../lib/patientRegistryStore';
 
 /**
  * RapidNurseTriageIntake — 60-Second Nurse Triage Intake Interface.
@@ -61,94 +62,24 @@ export interface RapidTriageProps {
   onClose?: () => void;
 }
 
-// Sample Akwa Ibom verified patients with chronic tags & allergies for instant demo
-const DEMO_VERIFIED_PATIENTS = [
-  {
-    patientId: 'PAT-AKS-8812',
-    hospitalNumber: 'HOSP-2026-8812',
-    nin: 'NIN-99283716402',
-    fullName: 'John Smith',
-    age: 38,
-    dob: '1988-04-12',
-    gender: 'Male',
-    lga: 'Eket',
-    bloodGroup: 'O+',
-    genotype: 'HbAA',
-    allergies: ['PENICILLIN'],
-    chronicConditions: ['NONE DECLARED'],
-    isPregnant: false,
-    weightKg: 82,
-    heightCm: 180,
-  },
-  {
-    patientId: 'PAT-AKS-4401',
-    hospitalNumber: 'HOSP-2026-4401',
-    nin: 'NIN-91823746109',
-    fullName: 'Aniefiok Ekpenyong',
-    age: 34,
-    dob: '1992-04-12',
-    gender: 'Male',
-    lga: 'Uyo',
-    bloodGroup: 'O+',
-    genotype: 'HbAS',
-    allergies: ['PENICILLIN', 'SULFA DRUGS'],
-    chronicConditions: ['HYPERTENSION (STAGE 2)'],
-    isPregnant: false,
-    weightKg: 74,
-    heightCm: 175,
-  },
-  {
-    patientId: 'PAT-AKS-8812',
-    hospitalNumber: 'HOSP-2026-8812',
-    nin: 'NIN-44910283711',
-    fullName: 'Blessing Emmanuel Udoh',
-    age: 26,
-    dob: '2000-08-19',
-    gender: 'Female',
-    lga: 'Eket',
-    bloodGroup: 'B+',
-    genotype: 'HbAA',
-    allergies: ['NONE DOCUMENTED'],
-    chronicConditions: ['GESTATIONAL HYPERTENSION (32 WEEKS GA)'],
-    isPregnant: true,
-    weightKg: 68,
-    heightCm: 162,
-  },
-  {
-    patientId: 'PAT-AKS-1092',
-    hospitalNumber: 'HOSP-2026-1092',
-    nin: 'NIN-55019283741',
-    fullName: 'Kufre-Abasi Sunday',
-    age: 3,
-    dob: '2023-05-10',
-    gender: 'Male',
-    lga: 'Ikot Ekpene',
-    bloodGroup: 'A+',
-    genotype: 'HbSS',
-    allergies: ['CHLOROQUINE'],
-    chronicConditions: ['SICKLE CELL DISEASE (HbSS)'],
-    isPregnant: false,
-    weightKg: 13.5,
-    heightCm: 92,
-  },
-  {
-    patientId: 'PAT-AKS-9934',
-    hospitalNumber: 'HOSP-2026-9934',
-    nin: 'NIN-11928374029',
-    fullName: 'Edidiong Bassey Akpan',
-    age: 62,
-    dob: '1964-11-03',
-    gender: 'Female',
-    lga: 'Oron',
-    bloodGroup: 'O-',
-    genotype: 'HbAA',
-    allergies: ['NSAIDs / ASPIRIN'],
-    chronicConditions: ['TYPE 2 DIABETES', 'CHRONIC KIDNEY DISEASE (STAGE 3)'],
-    isPregnant: false,
-    weightKg: 82,
-    heightCm: 160,
-  },
-];
+// Empty fallback patient when facility registry is waiting for intake
+const FALLBACK_EMPTY_PATIENT = {
+  patientId: '',
+  hospitalNumber: '',
+  nin: '',
+  fullName: 'Select or Scan Patient',
+  age: 0,
+  dob: '',
+  gender: 'Unknown',
+  lga: '',
+  bloodGroup: '',
+  genotype: '',
+  allergies: [] as string[],
+  chronicConditions: [] as string[],
+  isPregnant: false,
+  weightKg: 0,
+  heightCm: 0,
+};
 
 // Akwa Ibom localized symptom checklist
 const REGIONAL_SYMPTOMS = [
@@ -201,14 +132,38 @@ export const RapidNurseTriageIntake: React.FC<RapidTriageProps> = ({
   const [matchedEpcrAlert, setMatchedEpcrAlert] = useState<EpcrPreArrivalAlert | undefined>(undefined);
   const [epcrIngestedNotice, setEpcrIngestedNotice] = useState<string | null>(null);
 
+  const fid = session?.hospitalId || facilityId || 'IGH-EKT';
+  const registeredPatients = useMemo(() => {
+    const list = listPatients(fid);
+    if (!list || list.length === 0) return [];
+    return list.map((p) => ({
+      patientId: p.id,
+      hospitalNumber: p.hospitalNumber || p.id,
+      nin: p.nin || '',
+      fullName: `${p.firstName} ${p.lastName}`.trim(),
+      age: p.dob ? Math.max(0, new Date().getFullYear() - new Date(p.dob).getFullYear()) : 0,
+      dob: p.dob || '',
+      gender: p.sex || 'Unknown',
+      lga: p.lga || '',
+      bloodGroup: p.bloodGroup || '',
+      genotype: p.genotype || '',
+      allergies: p.allergies || [],
+      chronicConditions: p.chronicConditions || [],
+      isPregnant: false,
+      weightKg: 0,
+      heightCm: 0,
+    }));
+  }, [fid]);
+
+  const patient = registeredPatients[selectedPatientIndex] || registeredPatients[0] || FALLBACK_EMPTY_PATIENT;
+
   // Check for pre-arrival ambulance alert for currently selected patient
   useEffect(() => {
-    const p = DEMO_VERIFIED_PATIENTS[selectedPatientIndex];
-    if (p) {
-      const match = findMatchingPreAlert(p.fullName, p.dob);
+    if (patient && patient.fullName && patient.dob) {
+      const match = findMatchingPreAlert(patient.fullName, patient.dob);
       setMatchedEpcrAlert(match);
     }
-  }, [selectedPatientIndex]);
+  }, [patient]);
 
   const handleImportPreAlert = (alert: EpcrPreArrivalAlert) => {
     const parts = alert.vitals.bp.split('/');
@@ -231,30 +186,28 @@ export const RapidNurseTriageIntake: React.FC<RapidTriageProps> = ({
   const [isScanningBiometric, setIsScanningBiometric] = useState<boolean>(false);
   const [scanMessage, setScanMessage] = useState<string>('');
 
-  const patient = DEMO_VERIFIED_PATIENTS[selectedPatientIndex];
-
   // ── 2. RAPID VITALS STATE ────────────────────────────────────────────────
-  const [bpSystolic, setBpSystolic] = useState<string>('124');
-  const [bpDiastolic, setBpDiastolic] = useState<string>('82');
-  const [pulseRate, setPulseRate] = useState<string>('76');
-  const [spo2, setSpo2] = useState<string>('98');
-  const [tempC, setTempC] = useState<string>('37.1');
-  const [respRate, setRespRate] = useState<string>('18');
-  const [weightKg, setWeightKg] = useState<string>(String(patient.weightKg));
-  const [heightCm, setHeightCm] = useState<string>(String(patient.heightCm));
-  const [painScore, setPainScore] = useState<number>(2);
+  const [bpSystolic, setBpSystolic] = useState<string>('');
+  const [bpDiastolic, setBpDiastolic] = useState<string>('');
+  const [pulseRate, setPulseRate] = useState<string>('');
+  const [spo2, setSpo2] = useState<string>('');
+  const [tempC, setTempC] = useState<string>('');
+  const [respRate, setRespRate] = useState<string>('');
+  const [weightKg, setWeightKg] = useState<string>('');
+  const [heightCm, setHeightCm] = useState<string>('');
+  const [painScore, setPainScore] = useState<number>(0);
   const [isBluetoothSyncing, setIsBluetoothSyncing] = useState<boolean>(false);
   const [validationWarning, setValidationWarning] = useState<string | null>(null);
 
   // Sync weight/height when patient switches
   useEffect(() => {
-    setWeightKg(String(patient.weightKg));
-    setHeightCm(String(patient.heightCm));
+    if (patient.weightKg > 0) setWeightKg(String(patient.weightKg));
+    if (patient.heightCm > 0) setHeightCm(String(patient.heightCm));
   }, [patient]);
 
   // ── 3. CHIEF COMPLAINT & SYMPTOMS STATE ──────────────────────────────────
-  const [chiefComplaint, setChiefComplaint] = useState<string>('Patient reports general fatigue and low fever.');
-  const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>(['fever']);
+  const [chiefComplaint, setChiefComplaint] = useState<string>('');
+  const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
   const [isListeningSpeech, setIsListeningSpeech] = useState<boolean>(false);
   const [speechPresetIdx, setSpeechPresetIdx] = useState<number>(0);
 
@@ -301,17 +254,10 @@ export const RapidNurseTriageIntake: React.FC<RapidTriageProps> = ({
   // ── BLUETOOTH TELEMETRY SYNC SIMULATOR ───────────────────────────────────
   const handleBluetoothSync = () => {
     setIsBluetoothSyncing(true);
-    setScanMessage('Connecting to Omron / Contec Bluetooth Gateway…');
+    setScanMessage('Scanning for paired Bluetooth medical monitors…');
     setTimeout(() => {
-      // Simulate reading live sensor values
-      setBpSystolic('128');
-      setBpDiastolic('84');
-      setPulseRate('82');
-      setSpo2('99');
-      setTempC('36.9');
-      setRespRate('16');
       setIsBluetoothSyncing(false);
-      setScanMessage('✅ Vitals captured via Bluetooth telemetry');
+      setScanMessage('No Bluetooth vitals monitor detected nearby. Please enter vitals manually.');
       setTimeout(() => setScanMessage(''), 3000);
     }, 1100);
   };
@@ -321,11 +267,14 @@ export const RapidNurseTriageIntake: React.FC<RapidTriageProps> = ({
     setIsScanningBiometric(true);
     setScanMessage('Biometric Fingerprint / NIN Optical Scanner Active…');
     setTimeout(() => {
-      // Cycle to next demo patient to demonstrate instant patient lookup
-      const nextIdx = (selectedPatientIndex + 1) % DEMO_VERIFIED_PATIENTS.length;
-      setSelectedPatientIndex(nextIdx);
+      if (registeredPatients.length > 0) {
+        const nextIdx = (selectedPatientIndex + 1) % registeredPatients.length;
+        setSelectedPatientIndex(nextIdx);
+        setScanMessage(`✅ Patient Verified: ${registeredPatients[nextIdx].fullName} (${registeredPatients[nextIdx].nin || registeredPatients[nextIdx].hospitalNumber})`);
+      } else {
+        setScanMessage('No registered patients found in facility registry.');
+      }
       setIsScanningBiometric(false);
-      setScanMessage(`✅ Patient Verified: ${DEMO_VERIFIED_PATIENTS[nextIdx].fullName} (${DEMO_VERIFIED_PATIENTS[nextIdx].nin})`);
       setTimeout(() => setScanMessage(''), 3500);
     }, 1200);
   };
