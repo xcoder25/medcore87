@@ -32,6 +32,10 @@ import {
   Check,
   PhoneCall,
   FileText,
+  Eye,
+  EyeOff,
+  Zap,
+  Terminal,
 } from 'lucide-react';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 import {
@@ -97,9 +101,66 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
     notes: '',
   });
 
+  // AkwaRemit Server Vault Gateway State (Keys strictly remain on server)
+  const [akwaremitServerStatus, setAkwaremitServerStatus] = useState<{
+    isConfigured: boolean;
+    merchantId: string;
+    environment: 'live' | 'test';
+    keyMasked: string;
+    webhookSecretMasked: string;
+    source: string;
+    status: string;
+    gatewayName: string;
+    lastChecked?: string;
+  } | null>(null);
+
+  const [testingGateway, setTestingGateway] = useState(false);
+  const [gatewayTestResult, setGatewayTestResult] = useState<{
+    ok: boolean;
+    gateway?: string;
+    environment?: 'live' | 'test';
+    merchantId?: string;
+    latencyMs?: number;
+    message?: string;
+    error?: string;
+    source?: string;
+    tsaRouting?: string;
+  } | null>(null);
+
+  const loadServerGatewayStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/akwaremit/status');
+      const data = await res.json();
+      if (data.ok && data.status) {
+        setAkwaremitServerStatus(data.status);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const handleTestGateway = async () => {
+    setTestingGateway(true);
+    setGatewayTestResult(null);
+    try {
+      const res = await fetch('/api/akwaremit/test', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok && data.result) {
+        setGatewayTestResult(data.result);
+      } else {
+        setGatewayTestResult({ ok: false, error: data.error || 'Gateway test failed' });
+      }
+    } catch (e: any) {
+      setGatewayTestResult({ ok: false, error: e?.message || 'Network error reaching AkwaRemit Gateway test endpoint' });
+    } finally {
+      setTestingGateway(false);
+    }
+  };
+
   const [online, setOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
   useEffect(() => {
+    loadServerGatewayStatus();
     const s = getAdminSettings(facilityId);
     setSettings(s);
     setDraft(s);
@@ -730,7 +791,7 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
                   AkwaRemit State Revenue Integration
                 </div>
                 <div style={{ fontSize: 12, color: C.muted }}>
-                  Ensures all hospital collections (Cash, Paystack POS, Direct) flow into official AkwaRemit state ledgers
+                  Ensures all hospital collections (Cash, AkwaRemit POS, Bank Transfer) flow into official AkwaRemit state ledgers
                 </div>
               </div>
             </div>
@@ -835,7 +896,290 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
             </div>
           </div>
 
-          {/* Paystack Physical Terminal Registry */}
+          {/* AkwaRemit Central Revenue Gateway & Server-Side Security Vault */}
+          <div
+            style={{
+              gridColumn: 'span 12',
+              background: '#FFFFFF',
+              borderRadius: 16,
+              border: `1px solid ${C.border}`,
+              padding: 24,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Landmark size={20} color="#059669" />
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: C.navy, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span>AkwaRemit Central Payment Gateway</span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 800,
+                        padding: '3px 9px',
+                        borderRadius: 20,
+                        background: akwaremitServerStatus?.isConfigured ? '#ECFDF5' : '#FEF3C7',
+                        color: akwaremitServerStatus?.isConfigured ? '#059669' : '#D97706',
+                        border: `1px solid ${akwaremitServerStatus?.isConfigured ? '#A7F3D0' : '#FDE68A'}`,
+                      }}
+                    >
+                      ● {akwaremitServerStatus?.isConfigured ? 'SERVER VAULT SECURED' : 'PENDING KEYS'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                    Official Akwa Ibom State Treasury Single Account (TSA) payment engine for cashier collections, dynamic virtual accounts, and POS terminal settlement.
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={handleTestGateway}
+                  disabled={testingGateway}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '9px 18px',
+                    borderRadius: 10,
+                    border: '1px solid #CBD5E1',
+                    background: '#059669',
+                    color: '#FFFFFF',
+                    fontWeight: 700,
+                    fontSize: 12.5,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {testingGateway ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} color="#FFFFFF" />}
+                  <span>{testingGateway ? 'Pinging Gateway…' : 'Test Server Gateway Connection'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Zero Client Exposure Security Callout */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '14px 18px',
+                borderRadius: 12,
+                background: '#F0FDF4',
+                border: '1px solid #BBF7D0',
+                marginBottom: 16,
+              }}
+            >
+              <ShieldCheck size={22} color="#16A34A" />
+              <div style={{ fontSize: 12.5, color: '#166534', lineHeight: 1.5 }}>
+                <strong>Server-Only Security Architecture:</strong> In accordance with Akwa Ibom State Treasury Single Account (TSA) regulations, all API keys, Remita credentials, and webhook signing secrets reside strictly within the server environment (<code style={{ background: '#DCFCE7', padding: '2px 6px', borderRadius: 4, fontFamily: 'monospace' }}>process.env.AKWAREMIT_API_KEY</code>). Keys cannot be entered, viewed, or altered from the client browser.
+              </div>
+            </div>
+
+            {/* Server Environment Variables Guidance Card */}
+            <div
+              style={{
+                borderRadius: 12,
+                border: '1px solid #CBD5E1',
+                background: '#0F172A',
+                marginBottom: 16,
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 16px',
+                  borderBottom: '1px solid #1E293B',
+                  background: '#1E293B',
+                }}
+              >
+                <Terminal size={14} color="#94A3B8" />
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: '#94A3B8', fontFamily: 'monospace', letterSpacing: 1 }}>
+                  .env.local — Required Server Environment Variables
+                </span>
+                <span
+                  style={{
+                    marginLeft: 'auto',
+                    fontSize: 10,
+                    padding: '2px 7px',
+                    borderRadius: 4,
+                    background: '#0F172A',
+                    color: '#64748B',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  NEVER expose in browser
+                </span>
+              </div>
+              <div style={{ padding: '14px 16px' }}>
+                {[
+                  { key: 'AKWAREMIT_API_KEY', placeholder: 'akw_live_sk_...', comment: '# AkwaRemit / Remita secret API key (server-only)' },
+                  { key: 'AKWAREMIT_WEBHOOK_SECRET', placeholder: 'whsec_...', comment: '# Webhook HMAC-SHA256 signing secret' },
+                  { key: 'AKWAREMIT_MERCHANT_ID', placeholder: 'AKW-MERCH-...', comment: '# Assigned by AKIRS / Remita onboarding' },
+                  { key: 'AKWAREMIT_ENV', placeholder: 'live', comment: '# "live" for production TSA, "test" for sandbox' },
+                ].map(({ key, placeholder, comment }) => (
+                  <div key={key} style={{ marginBottom: 6 }}>
+                    <span style={{ color: '#64748B', fontFamily: 'monospace', fontSize: 11.5 }}>{comment}</span>
+                    <br />
+                    <span style={{ color: '#94A3B8', fontFamily: 'monospace', fontSize: 12 }}>{key}</span>
+                    <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 12 }}>=</span>
+                    <span style={{ color: '#4ADE80', fontFamily: 'monospace', fontSize: 12 }}>{placeholder}</span>
+                  </div>
+                ))}
+                <div
+                  style={{
+                    marginTop: 12,
+                    paddingTop: 10,
+                    borderTop: '1px solid #1E293B',
+                    fontSize: 11,
+                    color: '#475569',
+                    fontFamily: 'monospace',
+                    lineHeight: 1.6,
+                  }}
+                >
+                  Restart the Next.js server after editing <span style={{ color: '#94A3B8' }}>.env.local</span>. These variables are
+                  read at startup by <span style={{ color: '#94A3B8' }}>akwaremitServer.ts</span> and are
+                  never transmitted to the browser.
+                </div>
+              </div>
+            </div>
+
+            {/* Test Connection Result Alert */}
+            {gatewayTestResult && (
+              <div
+                style={{
+                  padding: '14px 18px',
+                  borderRadius: 12,
+                  marginBottom: 18,
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  background: gatewayTestResult.ok ? '#ECFDF5' : '#FEF2F2',
+                  border: `1px solid ${gatewayTestResult.ok ? '#A7F3D0' : '#FECACA'}`,
+                  color: gatewayTestResult.ok ? '#065F46' : '#991B1B',
+                  fontSize: 13,
+                }}
+              >
+                {gatewayTestResult.ok ? (
+                  <CheckCircle2 size={20} color="#059669" style={{ marginTop: 2 }} />
+                ) : (
+                  <AlertTriangle size={20} color="#DC2626" style={{ marginTop: 2 }} />
+                )}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13.5 }}>
+                    {gatewayTestResult.ok ? 'AkwaRemit TSA State Gateway Verified' : 'Gateway Verification Failed'}
+                  </div>
+                  <div style={{ marginTop: 3 }}>
+                    {gatewayTestResult.message || gatewayTestResult.error}
+                  </div>
+                  {gatewayTestResult.ok && (
+                    <div style={{ marginTop: 8, display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11.5, opacity: 0.9 }}>
+                      <span><strong>Latency:</strong> {gatewayTestResult.latencyMs}ms</span>
+                      <span><strong>TSA Routing:</strong> {gatewayTestResult.tsaRouting}</span>
+                      <span><strong>Key Origin:</strong> {gatewayTestResult.source}</span>
+                      <span><strong>Environment:</strong> {gatewayTestResult.environment?.toUpperCase()}</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGatewayTestResult(null)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    fontSize: 16,
+                    cursor: 'pointer',
+                    color: gatewayTestResult.ok ? '#059669' : '#DC2626',
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Server Operational & Settlement Parameters (Read-Only) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16 }}>
+              {/* Merchant / Service Type ID */}
+              <div style={{ gridColumn: 'span 4' }}>
+                <label style={labelStyle}>Merchant / Service Type ID</label>
+                <div
+                  style={{
+                    ...inputStyle,
+                    fontFamily: 'monospace',
+                    background: '#F8FAFC',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <span style={{ fontWeight: 700, color: '#0F172A' }}>
+                    {akwaremitServerStatus?.merchantId || draft.akwaremitMerchantId || 'AKW-MERCH-88210'}
+                  </span>
+                  <span style={{ fontSize: 11, color: '#64748B' }}>AKIRS Assigned</span>
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                  Assigned by Akwa Ibom State Internal Revenue Service.
+                </div>
+              </div>
+
+              {/* Settlement Bank / TSA Destination */}
+              <div style={{ gridColumn: 'span 4' }}>
+                <label style={labelStyle}>State TSA Settlement Destination</label>
+                <div
+                  style={{
+                    ...inputStyle,
+                    background: '#F8FAFC',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <span style={{ fontWeight: 700, color: '#0F172A' }}>
+                    Wema Bank TSA
+                  </span>
+                  <span style={{ fontSize: 11, color: '#059669', fontWeight: 700 }}>Direct State Remittance</span>
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                  All verified hospital collections settle into State TSA.
+                </div>
+              </div>
+
+              {/* Gateway Environment */}
+              <div style={{ gridColumn: 'span 4' }}>
+                <label style={labelStyle}>Gateway Server Environment</label>
+                <div
+                  style={{
+                    ...inputStyle,
+                    background: '#F8FAFC',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <span style={{ fontWeight: 700, color: '#0F172A' }}>
+                    {akwaremitServerStatus?.environment === 'test' ? 'Sandbox / Test' : 'Live Production TSA'}
+                  </span>
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: akwaremitServerStatus?.environment === 'test' ? '#F59E0B' : '#10B981',
+                    }}
+                  />
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                  Configured in server runtime environment.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* AkwaRemit Physical POS Terminal Registry */}
           <div
             style={{
               gridColumn: 'span 12',
@@ -850,7 +1194,7 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
                 <CreditCard size={18} color="#0284C7" />
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>
-                    Paystack Physical POS Terminals & Till Hardware Mapping
+                    AkwaRemit Physical POS Terminals & Till Hardware Mapping
                   </div>
                   <div style={{ fontSize: 12, color: C.muted }}>
                     Assign physical POS card terminals to specific hospital cash desks and departments
@@ -1471,12 +1815,12 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
               Register Physical POS Terminal
             </div>
             <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 18 }}>
-              Map a Paystack hardware POS to a hospital cashier desk
+              Map an AkwaRemit hardware POS to a hospital cashier desk
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={labelStyle}>Terminal ID (from Paystack Terminal Box/Menu)</label>
+                <label style={labelStyle}>Terminal ID (from AkwaRemit POS Terminal / AKIRS)</label>
                 <input
                   style={inputStyle}
                   value={newPosForm.terminalId}
@@ -1511,7 +1855,7 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
               </div>
 
               <div>
-                <label style={labelStyle}>Paystack Subaccount Code (Optional for Split Payouts)</label>
+                <label style={labelStyle}>TSA Subaccount Code (Optional for Departmental Routing)</label>
                 <input
                   style={inputStyle}
                   value={newPosForm.subaccountCode}

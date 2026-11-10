@@ -73,8 +73,8 @@ export interface AdminFacilitySettings {
   requireConfirmBeforeCheckIn: boolean;
   allowWalkInWithoutNin: boolean;
   maintenanceMessage: string;
-  geminiApiKey: string;
-  paystackPublicKey: string;
+  akwaremitMerchantId: string;
+  akwaremitEnvironment: 'live' | 'test';
 
   updatedAt: string;
   updatedBy?: string;
@@ -156,8 +156,8 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   requireConfirmBeforeCheckIn: true,
   allowWalkInWithoutNin: true,
   maintenanceMessage: '',
-  geminiApiKey: '',
-  paystackPublicKey: '',
+  akwaremitMerchantId: 'AKW-MERCH-88210',
+  akwaremitEnvironment: 'live',
   updatedBy: undefined,
 };
 
@@ -165,12 +165,26 @@ function facilityKey(facilityId: string) {
   return `${ADMIN_SETTINGS_KEY}:${facilityId || 'DEFAULT'}`;
 }
 
+/**
+ * SECURITY INVARIANT:
+ * Secret API Keys & Webhook Secrets remain strictly on the server (Environment variables / Server Vault).
+ * They are stripped before writing to client localStorage, BroadcastChannel, or outbox sync.
+ */
+function sanitizeClientSettings(settings: AdminFacilitySettings): AdminFacilitySettings {
+  const safe = { ...settings };
+  delete (safe as any).akwaremitApiKey;
+  delete (safe as any).akwaremitWebhookSecret;
+  delete (safe as any).paystackSecretKey;
+  return safe;
+}
+
 function readRaw(facilityId: string): AdminFacilitySettings | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(facilityKey(facilityId));
     if (!raw) return null;
-    return JSON.parse(raw) as AdminFacilitySettings;
+    const parsed = JSON.parse(raw) as AdminFacilitySettings;
+    return sanitizeClientSettings(parsed);
   } catch {
     return null;
   }
@@ -178,27 +192,28 @@ function readRaw(facilityId: string): AdminFacilitySettings | null {
 
 function writeRaw(settings: AdminFacilitySettings) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(facilityKey(settings.facilityId), JSON.stringify(settings));
+  const safe = sanitizeClientSettings(settings);
+  localStorage.setItem(facilityKey(safe.facilityId), JSON.stringify(safe));
   // Also mirror under generic key for older readers
-  localStorage.setItem(ADMIN_SETTINGS_KEY, JSON.stringify(settings));
-  window.dispatchEvent(new CustomEvent('medcore-admin-settings', { detail: settings }));
+  localStorage.setItem(ADMIN_SETTINGS_KEY, JSON.stringify(safe));
+  window.dispatchEvent(new CustomEvent('medcore-admin-settings', { detail: safe }));
   window.dispatchEvent(
-    new CustomEvent('medcore-admin-sync', { detail: { key: ADMIN_SETTINGS_KEY, settings } })
+    new CustomEvent('medcore-admin-sync', { detail: { key: ADMIN_SETTINGS_KEY, settings: safe } })
   );
   try {
     const bc = new BroadcastChannel('medcore_admin');
-    bc.postMessage({ type: 'settings', settings });
+    bc.postMessage({ type: 'settings', settings: safe });
     bc.close();
   } catch {
     /* ignore */
   }
   // Realtime cloud + onsite hub (same path as clinical facility data)
   try {
-    publishFacilityData(settings.facilityId, ADMIN_SETTINGS_KEY, settings);
-    publishFacilityData(settings.facilityId, 'adminSettings', settings);
+    publishFacilityData(safe.facilityId, ADMIN_SETTINGS_KEY, safe);
+    publishFacilityData(safe.facilityId, 'adminSettings', safe);
   } catch {
-    void enqueueFacilitySync(settings.facilityId, ADMIN_SETTINGS_KEY, settings);
-    void enqueueFacilitySync(settings.facilityId, 'adminSettings', settings);
+    void enqueueFacilitySync(safe.facilityId, ADMIN_SETTINGS_KEY, safe);
+    void enqueueFacilitySync(safe.facilityId, 'adminSettings', safe);
   }
 }
 

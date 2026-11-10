@@ -194,16 +194,17 @@ export function issuePaymentReceipt(
 
   // AkwaRemit State Revenue Registry auto-record
   try {
-    const isPaystack =
-      input.method.toLowerCase().includes('paystack') ||
+    const isAkwaPos =
       input.method.toLowerCase().includes('pos') ||
+      input.method.toLowerCase().includes('akwaremit') ||
+      input.method.toLowerCase().includes('card') ||
       (input.channel || '').toLowerCase().includes('pos') ||
       Boolean(input.paystackRef);
 
     const akwaMethod = isDirectAkwaRemit
       ? 'direct_akwaremit'
-      : isPaystack
-      ? 'paystack_terminal'
+      : isAkwaPos
+      ? 'akwaremit_pos'
       : 'cash';
 
     // Lazy import akwaRemitStore to avoid circular dependencies
@@ -265,7 +266,7 @@ function methodDisplay(r: PaymentReceiptRecord): string {
 }
 
 function categoryLabel(r: PaymentReceiptRecord): string {
-  return r.category === 'digital' ? 'DIGITAL (Paystack)' : 'HOSPITAL DESK';
+  return r.category === 'digital' ? 'DIGITAL (AkwaRemit)' : 'HOSPITAL DESK';
 }
 
 /** Branded HTML receipt document */
@@ -298,7 +299,7 @@ export function buildReceiptHtml(r: PaymentReceiptRecord): string {
       <tr><td class="muted">Purpose</td><td style="text-align:right">${escapeHtml(r.purpose)}</td></tr>
       <tr><td class="muted">Method</td><td style="text-align:right">${escapeHtml(methodDisplay(r))}</td></tr>
       <tr><td class="muted">Reference</td><td style="text-align:right;font-family:ui-monospace,monospace;font-size:12px">${escapeHtml(r.reference)}</td></tr>
-      ${r.paystackRef ? `<tr><td class="muted">Paystack</td><td style="text-align:right;font-family:ui-monospace,monospace;font-size:12px">${escapeHtml(r.paystackRef)}</td></tr>` : ''}
+      ${r.paystackRef ? `<tr><td class="muted">Gateway Ref</td><td style="text-align:right;font-family:ui-monospace,monospace;font-size:12px">${escapeHtml(r.paystackRef)}</td></tr>` : ''}
       <tr><td class="muted">Cashier</td><td style="text-align:right">${escapeHtml(r.cashier || '—')}</td></tr>
       <tr><td class="muted">Date</td><td style="text-align:right">${escapeHtml(issued)}</td></tr>
     </table>

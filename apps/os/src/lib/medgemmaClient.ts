@@ -4,7 +4,7 @@
  * - Fallback: Gemini multimodal with medical system prompt (labelled as assist, not clinical-grade)
  * Orthanc/PACS remains source of truth for pixels; this only drafts assist text.
  */
-import { getAdminSettings } from './adminSettingsStore';
+// MedGemma integration layer (Google Health AI Developer Foundations).
 
 export type MedGemmaModality = 'XR' | 'CT' | 'MRI' | 'US' | 'WSI' | 'OTHER';
 
@@ -56,20 +56,12 @@ function envGeminiKey(): string {
   }
 }
 
-function adminGeminiKey(): string {
-  try {
-    return getAdminSettings().geminiApiKey?.trim() || '';
-  } catch {
-    return '';
-  }
-}
-
 export function hasMedGemmaEndpoint(): boolean {
   return Boolean(envMedgemmaUrl());
 }
 
 export function hasImagingAiAssist(): boolean {
-  return hasMedGemmaEndpoint() || Boolean(envGeminiKey() || adminGeminiKey());
+  return hasMedGemmaEndpoint() || Boolean(envGeminiKey());
 }
 
 function stripDataUrl(b64: string): { data: string; mime: string } {
@@ -150,7 +142,7 @@ async function callMedGemmaEndpoint(req: MedGemmaRequest): Promise<MedGemmaResul
 
 /** Gemini multimodal fallback when MedGemma URL not configured */
 async function callGeminiMedicalFallback(req: MedGemmaRequest): Promise<MedGemmaResult> {
-  const key = envGeminiKey() || adminGeminiKey();
+  const key = envGeminiKey();
   const t0 = Date.now();
   if (!key) {
     return {

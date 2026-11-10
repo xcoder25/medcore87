@@ -9,7 +9,7 @@ import { AdminWorkspace } from './AdminWorkspace';
 import {
   LayoutDashboard, Users, Building2, Activity, BedDouble, RefreshCw, PhoneCall,
   Lock, Shield, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, Settings,
-  Brain, Sparkles, ChevronDown, Landmark, ArrowRightLeft, IdCard,
+  Brain, Sparkles, ChevronDown, Landmark, ArrowRightLeft, IdCard, CreditCard,
 } from 'lucide-react';
 import { MyStaffIdPanel } from '../staffing/MyStaffIdPanel';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
@@ -168,7 +168,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       command: 'command centre live ops telemetry ambulance bay queue icu emergency',
       beds: 'bed board wards inpatient admissions bed census occupancy discharge',
       cashier: 'revenue billing invoices receipts cashier pos claims point of sale',
-      akwaremit: 'akwaremit remita rrr paystack pos terminal shift reconciliation cash vault tally',
+      akwaremit: 'akwaremit remita rrr akwa remit pos terminal shift reconciliation cash vault tally treasury tsa',
       notifications: 'in-basket alerts system notifications critical lab paging doctor notices',
       rbac: 'staff access biometric id cards smart badging user accounts employee directory',
       staffing: 'duty roster doctors on-duty nurse shifts presence tracker active staff',
@@ -178,7 +178,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       'role-permissions': 'rbac matrix role visibility module access permissions clearance tiers',
       compliance: 'audit logs compliance security logs access events patient data history',
       facility: 'facility setup onboarding wards setup clinics pilot reset',
-      settings: 'hospital settings branding facility identity lga hotline clinical defaults',
+      settings: 'hospital settings akwaremit gateway pos terminal branding facility identity lga hotline clinical defaults tariffs server env',
     };
 
     NAV.forEach((sec) => {
@@ -205,6 +205,14 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         sub: 'Branding, LGA, helpline numbers, facility configuration',
         category: 'Settings',
         icon: Building2,
+        onClick: () => { goModule('settings'); setSearch(''); },
+      },
+      {
+        id: 'settings-akwaremit',
+        label: 'AkwaRemit TSA Gateway & Credentials',
+        sub: 'Configure hospital AkwaRemit merchant ID, API keys, virtual accounts, and test gateway',
+        category: 'Settings',
+        icon: Landmark,
         onClick: () => { goModule('settings'); setSearch(''); },
       },
       {
@@ -254,7 +262,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const { connected } = useRealtimeEvents({ app: 'MEDCORE_OS_ADMIN', facilityId: session.hospitalId });
 
   useEffect(() => {
-    try { ensureCleanPilot(); } catch {}
+    try { ensureCleanPilot(); } catch { }
     const fid = session.hospitalId || session.facility || 'DEFAULT-HOSPITAL';
     setActiveFacilityId(fid);
     setOnline(typeof navigator !== 'undefined' ? navigator.onLine : true);

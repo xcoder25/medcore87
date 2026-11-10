@@ -36,32 +36,21 @@ export function getPaystackPublicKey(): string {
     (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY) ||
     (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PAYSTACK_KEY) ||
     '';
-  if (String(fromEnv || '').trim()) return String(fromEnv).trim();
-  if (typeof window === 'undefined') return '';
-  try {
-    const { getAdminSettings } = require('./adminSettingsStore') as typeof import('./adminSettingsStore');
-    const k = getAdminSettings().paystackPublicKey?.trim();
-    if (k) return k;
-  } catch {
-    /* ignore */
-  }
-  return '';
+  return String(fromEnv || '').trim();
 }
 
-/** Persist public key into Admin Settings (synced realtime with facility). */
-export function setPaystackPublicKeyLocal(key: string) {
-  if (typeof window === 'undefined') return;
-  try {
-    const { getAdminSettings, saveAdminSettings } = require('./adminSettingsStore') as typeof import('./adminSettingsStore');
-    const s = getAdminSettings();
-    saveAdminSettings({ facilityId: s.facilityId, paystackPublicKey: String(key || '').trim() });
-  } catch {
-    /* ignore */
-  }
+/** Legacy stub - Paystack eliminated in favor of AkwaRemit */
+export function setPaystackPublicKeyLocal(_key: string) {
+  /* No-op: Paystack replaced by AkwaRemit; keys remain on server only */
 }
 
 export function hasPaystackKey(): boolean {
   return Boolean(getPaystackPublicKey());
+}
+
+/** Legacy stub - keys reside only on server */
+export function getPaystackSecretKeyLocal(): string {
+  return '';
 }
 
 /**
@@ -166,9 +155,13 @@ export async function verifyPaystackPayment(reference: string): Promise<{
   error?: string;
 }> {
   try {
+    const localSk = getPaystackSecretKeyLocal();
     const res = await fetch(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`, {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        ...(localSk ? { 'x-paystack-secret-key': localSk } : {}),
+      },
     });
     const data = await res.json();
     if (!res.ok) return { verified: false, error: data?.error || 'Verify failed' };
@@ -194,9 +187,13 @@ export async function chargePaystackTerminal(opts: {
 }): Promise<{ ok: boolean; displayText?: string; error?: string; data?: unknown }> {
   const deviceId = opts.deviceId || getPaystackTerminalId();
   try {
+    const localSk = getPaystackSecretKeyLocal();
     const res = await fetch('/api/paystack/terminal', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(localSk ? { 'x-paystack-secret-key': localSk } : {}),
+      },
       body: JSON.stringify({
         amountNgn: opts.amountNgn,
         email: opts.email,

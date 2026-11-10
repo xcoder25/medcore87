@@ -4,7 +4,7 @@
 import { publishFacilityData } from './roleSyncBus';
 
 export type WalletTxnType = 'deposit' | 'deduct' | 'refund' | 'adjust';
-export type WalletChannel = 'cash' | 'pos' | 'transfer' | 'moniepoint' | 'opay' | 'paystack' | 'other';
+export type WalletChannel = 'cash' | 'pos' | 'transfer' | 'moniepoint' | 'opay' | 'paystack' | 'akwaremit_credit' | 'other';
 
 export interface WalletTxn {
   id: string;
@@ -189,4 +189,61 @@ export function tryAutoDeduct(input: {
   upsertWallet(wallet);
   writeTxns([txn, ...readTxns()]);
   return { ok: true, deducted: true, wallet, txn };
+}
+
+/**
+ * Convert a paid service that was cancelled into an internal Patient Credit Balance.
+ * Replaces manual physical cash refunds with an audited internal credit ledger.
+ */
+export function creditCancelledServiceToWallet(input: {
+  facilityId: string;
+  patientId: string;
+  hospitalNumber: string;
+  patientName: string;
+  amountNgn: number;
+  orderId?: string;
+  billLineId?: string;
+  serviceName: string;
+  arnReference?: string;
+  actorName?: string;
+  reason?: string;
+}): { ok: boolean; wallet?: PatientWallet; txn?: WalletTxn; error?: string } {
+  const amt = Math.round(Number(input.amountNgn) || 0);
+  if (amt <= 0) return { ok: false, error: 'Credit amount must be greater than 0' };
+
+  const prev = getWallet(input.facilityId, input.patientId);
+  const newBalance = (prev?.balanceNgn || 0) + amt;
+  const now = new Date().toISOString();
+
+  const wallet: PatientWallet = {
+    facilityId: input.facilityId,
+    patientId: input.patientId,
+    hospitalNumber: input.hospitalNumber,
+    patientName: input.patientName,
+    balanceNgn: newBalance,
+    updatedAt: now,
+  };
+
+  const note = `Cancelled [${input.serviceName}] · ARN: ${input.arnReference || 'N/A'}${input.reason ? ` · Reason: ${input.reason}` : ''}`;
+
+  const txn: WalletTxn = {
+    id: `WT-CRD-${Date.now().toString(36).toUpperCase()}`,
+    facilityId: input.facilityId,
+    patientId: input.patientId,
+    hospitalNumber: input.hospitalNumber,
+    patientName: input.patientName,
+    type: 'refund',
+    amountNgn: amt,
+    balanceAfter: newBalance,
+    channel: 'akwaremit_credit',
+    orderId: input.orderId,
+    billLineId: input.billLineId,
+    note,
+    actorName: input.actorName || 'Billing Desk',
+    createdAt: now,
+  };
+
+  upsertWallet(wallet);
+  writeTxns([txn, ...readTxns()]);
+  return { ok: true, wallet, txn };
 }

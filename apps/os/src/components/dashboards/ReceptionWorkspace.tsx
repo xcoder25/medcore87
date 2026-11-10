@@ -63,8 +63,6 @@ import {
 import { patientBalance } from '../../lib/patientBillingStore';
 import { printQueueTicket, printPaymentReceipt } from '../../lib/printService';
 import { opdStageHint } from '../../lib/nigerianOpdFlow';
-import { PaystackBrandedCheckout } from '../reception/PaystackBrandedCheckout';
-import { hasPaystackKey } from '../../lib/paystackClient';
 import { withViewTransition, measureRect, flipElement } from '../../lib/motion';
 import { appendAudit } from '../../lib/auditLogStore';
 import { sendPatientAlert, verifyNinLive } from '../../lib/integrations/gateways';
@@ -364,8 +362,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [ciAmount, setCiAmount] = useState('5000');
   const [ciReason, setCiReason] = useState('Consultation');
   const [posMethod, setPosMethod] = useState<PaymentMethod>('cash');
-  const [paystackOpen, setPaystackOpen] = useState(false);
-  const payMethodBoxRef = useRef<HTMLDivElement>(null);
+    const payMethodBoxRef = useRef<HTMLDivElement>(null);
   const [posAmount, setPosAmount] = useState('5000');
   const [posPurpose, setPosPurpose] = useState('OPD consultation');
   const [posPatient, setPosPatient] = useState<FacilityPatient | null>(null);
@@ -938,78 +935,6 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   };
 
 
-  const settlePaystackPayment = (result: {
-    reference: string;
-    paystackRef: string;
-    amountNgn: number;
-    channel: string;
-  }) => {
-    const p = posPatient || selected;
-    if (!p) return;
-    const method =
-      result.channel === 'card' || result.channel === 'pos'
-        ? ('card' as const)
-        : result.channel === 'bank_transfer' || result.channel === 'bank' || result.channel === 'ussd'
-          ? ('transfer' as const)
-          : posMethod === 'card'
-            ? ('card' as const)
-            : ('transfer' as const);
-    const activeVisit = visits.find(
-      (v) => v.patientId === p.id && v.status !== 'completed' && v.status !== 'cancelled'
-    );
-    const pay = recordPayment({
-      facilityId,
-      patientId: p.id,
-      hospitalNumber: p.hospitalNumber,
-      patientName: fullName(p),
-      amount: result.amountNgn,
-      method,
-      purpose: posPurpose || 'Hospital payment',
-      cashier: session.name || 'Reception',
-      reference: result.reference,
-      visitId: activeVisit?.id,
-    });
-    try {
-      markPatientOutstandingPaid(facilityId, p.id, {
-        via: 'paystack',
-        paidBy: session.name,
-        paymentRef: result.paystackRef || result.reference,
-      });
-    } catch { /* ignore */ }
-    emitLiveAction(`Paystack ${result.paystackRef} · ₦${result.amountNgn}`, { module: 'cashier' });
-    try {
-      printPaymentReceipt({
-        reference: result.reference,
-        patientName: fullName(p),
-        hospitalNumber: p.hospitalNumber,
-        amount: result.amountNgn,
-        method: 'paystack',
-        channel: result.channel,
-        purpose: posPurpose || 'Hospital payment',
-        facilityName: session.facility || session.hospitalId || 'Hospital',
-        facilityId,
-        patientId: p.id,
-        cashier: session.name,
-        cashierBadge: session.badgeId,
-        paystackRef: result.paystackRef,
-        visitId: activeVisit?.id,
-      });
-    } catch { /* ignore */ }
-    try {
-      appendAudit({
-        facilityId,
-        actor: session.name || 'Reception',
-        action: 'payment_paystack',
-        entity: 'payment',
-        detail: `${result.paystackRef} · ₦${result.amountNgn} · ${result.channel}`,
-      });
-    } catch { /* ignore */ }
-    setPayments(todayPayments(facilityId));
-    setPaystackOpen(false);
-    flash(`Paystack paid · ${result.paystackRef} · ₦${result.amountNgn.toLocaleString()}`);
-  };
-
-
   /** Front desk does not collect money — hand financial data to Accounting */
   const sendToAccountingDesk = (overridePatient?: FacilityPatient | null) => {
     const p = overridePatient || posPatient || selected;
@@ -1122,8 +1047,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const doPayment = () => {
     // Digital methods must go through Paystack verify — never manual PAID
     if (posMethod === 'card' || posMethod === 'transfer') {
-      flash('Use Paystack Terminal or Transfer flow — payment is marked PAID only after verification');
-      setPaystackOpen(true);
+      flash('Digital payments (AkwaRemit POS & Bank Transfer) are processed at Accounts / Cashier Desk');
       return;
     }
     const p = posPatient || selected;
@@ -2747,26 +2671,6 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
 
       {/* AI contextual check-in card — human must confirm */}
-            <PaystackBrandedCheckout
-        open={paystackOpen}
-        input={
-          paystackOpen && (posPatient || selected)
-            ? {
-                patientName: fullName(posPatient || selected!),
-                hospitalNumber: (posPatient || selected)!.hospitalNumber,
-                patientEmail: (posPatient || selected)!.email,
-                amountNgn: Number(posAmount) || 0,
-                purpose: posPurpose || 'Hospital payment',
-                facilityName: session.facility || session.hospitalId || 'Hospital',
-                facilityId,
-                cashierName: session.name,
-                mode: posMethod === 'card' ? 'card_terminal' : 'transfer',
-              }
-            : null
-        }
-        onClose={() => setPaystackOpen(false)}
-        onPaid={(r) => settlePaystackPayment(r)}
-      />
 
 
 

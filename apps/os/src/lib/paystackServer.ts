@@ -1,22 +1,88 @@
 /**
- * Server-only Paystack helpers. Secret key never reaches the browser.
+ * Server-only Paystack helpers. Secret key never reaches the public browser.
  */
+import type { NextRequest } from 'next/server';
+
+function cleanKey(raw: string | undefined | null): string {
+  let k = String(raw || '').trim();
+  if (
+    (k.startsWith('"') && k.endsWith('"')) ||
+    (k.startsWith("'") && k.endsWith("'"))
+  ) {
+    k = k.slice(1, -1).trim();
+  }
+  if (k.toLowerCase().startsWith('bearer ')) k = k.slice(7).trim();
+  return k;
+}
+
 /**
- * Secret key — server env only. Never NEXT_PUBLIC_*.
- * Set on Vercel: PAYSTACK_SECRET_KEY=sk_live_... or sk_test_...
+ * Secret key — checks runtime environment, explicit override, or facility settings.
+ * Key resolution order:
+ *  1) Explicit override passed into call
+ *  2) Request header `x-paystack-secret-key` (passed from authenticated admin session)
+ *  3) Server environment (PAYSTACK_SECRET_KEY, PAYSTACK_SECRET)
  */
-export function getPaystackSecretKey(): string {
-  return (
+export function getPaystackSecretKey(explicitKey?: string): string {
+  if (explicitKey && cleanKey(explicitKey)) {
+    return cleanKey(explicitKey);
+  }
+  return cleanKey(
     process.env.PAYSTACK_SECRET_KEY ||
     process.env.PAYSTACK_SECRET ||
     ''
-  ).trim();
+  );
 }
 
-export async function paystackFetch(path: string, init?: RequestInit) {
-  const secret = getPaystackSecretKey();
+/**
+ * Resolve secret key asynchronously with Firestore fallback if server env is empty.
+ */
+export async function resolvePaystackSecretKey(
+  req?: Request | NextRequest,
+  explicitKey?: string,
+  facilityId?: string
+): Promise<string> {
+  const fromExplicit = cleanKey(explicitKey);
+  if (fromExplicit) return fromExplicit;
+
+  const fromHeader = cleanKey(req?.headers?.get('x-paystack-secret-key'));
+  if (fromHeader) return fromHeader;
+
+  const fromEnv = getPaystackSecretKey();
+  if (fromEnv) return fromEnv;
+
+  const fid = cleanKey(facilityId || req?.headers?.get('x-facility-id'));
+  if (fid) {
+    try {
+      const { firestoreReadFacility } = await import('./firebase');
+      const data = await firestoreReadFacility(fid);
+      if (data) {
+        const settingsKeys = [
+          'medcore_os_admin_settings_v1',
+          `medcore_os_admin_settings_v1:${fid}`,
+          `medcore_os_admin_settings_v1:${fid.toUpperCase()}`,
+        ];
+        for (const sk of settingsKeys) {
+          const block = data[sk];
+          if (block && typeof block === 'object') {
+            const k = cleanKey((block as { paystackSecretKey?: string }).paystackSecretKey);
+            if (k) return k;
+          }
+        }
+        const flat = cleanKey(data.paystackSecretKey as string | undefined);
+        if (flat) return flat;
+      }
+    } catch {
+      /* offline / unconfigured */
+    }
+  }
+
+  return '';
+}
+
+export async function paystackFetch(path: string, init?: RequestInit, secretKeyOverride?: string) {
+  const secret = getPaystackSecretKey(secretKeyOverride);
   if (!secret) {
-    throw new Error('PAYSTACK_SECRET_KEY is not configured on the server');
+    throw new Error('PAYSTACK_SECRET_KEY is not configured on the server or facility admin settings');
   }
   const res = await fetch(`https://api.paystack.co${path}`, {
     ...init,
@@ -30,8 +96,12 @@ export async function paystackFetch(path: string, init?: RequestInit) {
   return { ok: res.ok, status: res.status, data };
 }
 
-export async function verifyPaystackReference(reference: string) {
-  const { ok, data } = await paystackFetch(`/transaction/verify/${encodeURIComponent(reference)}`);
+export async function verifyPaystackReference(reference: string, secretKeyOverride?: string) {
+  const { ok, data } = await paystackFetch(
+    `/transaction/verify/${encodeURIComponent(reference)}`,
+    undefined,
+    secretKeyOverride
+  );
   if (!ok || !data?.status) {
     return { verified: false as const, data };
   }

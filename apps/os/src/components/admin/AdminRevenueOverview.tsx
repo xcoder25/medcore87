@@ -56,7 +56,7 @@ export const AdminRevenueOverview: React.FC<Props> = ({ session }) => {
       cashier: 0,
       pharmacy: 0,
       hmo: 0,
-      paystack: 0,
+      akwaremit: 0,
     };
 
     bills.forEach((b) => {

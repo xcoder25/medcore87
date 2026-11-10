@@ -21,12 +21,27 @@
 
 import { publishFacilityData } from './roleSyncBus';
 
-export type AkwaRemitMethod = 'cash' | 'paystack_terminal' | 'direct_akwaremit' | 'other';
+export type AkwaRemitMethod =
+  | 'akwaremit_pos'
+  | 'cash'
+  | 'bank_transfer'
+  | 'direct_akwaremit'
+  | 'credit_balance'
+  | 'other';
 
-export type AkwaRemitRemittanceStatus = 'pending' | 'remitted' | 'direct_akwaremit';
+export type AkwaRemitRemittanceStatus = 'pending' | 'remitted' | 'direct_akwaremit' | 'cancelled_to_credit';
+
+export interface DynamicVirtualAccount {
+  bankName: string;
+  accountNumber: string;
+  beneficiary: string;
+  amountNgn: number;
+  expiresAt: string;
+}
 
 export interface AkwaRemitPaymentRecord {
   id: string;
+  arn: string; // Official AkwaRemit Reference Number
   receiptNo: string;
   facilityId: string;
   facilityName: string;
@@ -41,9 +56,16 @@ export interface AkwaRemitPaymentRecord {
   cashierName: string;
   cashierBadge: string;
   shiftId: string;
-  paystackRef?: string; // Required for paystack_terminal
   terminalId?: string;
   rrn?: string;
+  paystackRef?: string;
+  // Dynamic Virtual Account for Bank Transfers
+  virtualAccount?: DynamicVirtualAccount;
+  // Exact Amount Validation
+  exactAmountValidated?: boolean;
+  status: 'pending' | 'paid' | 'cancelled_to_credit';
+  paidAt?: string;
+  webhookReceivedAt?: string;
   // AkwaRemit Remittance Tracking
   remittanceStatus: AkwaRemitRemittanceStatus;
   akwaRemitRrr?: string; // RRR of direct payment OR bulk remittance
@@ -53,12 +75,42 @@ export interface AkwaRemitPaymentRecord {
   createdAt: string;
 }
 
+export interface ActiveCashierShift {
+  id: string;
+  facilityId: string;
+  cashierName: string;
+  cashierBadge: string;
+  startingFloatNgn: number;
+  openedAt: string;
+  status: 'open' | 'closed';
+  closedAt?: string;
+}
+
+export interface CashierUserShiftSummary {
+  shiftId: string;
+  cashierName: string;
+  cashierBadge: string;
+  openedAt: string;
+  closedAt?: string;
+  startingFloatNgn: number;
+  totalCashNgn: number;
+  cashTransactionsCount: number;
+  totalPosArnsNgn: number;
+  posTransactionsCount: number;
+  totalTransfersNgn: number;
+  transferTransactionsCount: number;
+  totalCreditBalanceNgn: number;
+  totalCollectionsNgn: number;
+  expectedDrawerCashNgn: number;
+  totalReceiptsCount: number;
+}
+
 export interface AkwaRemitBatchRecord {
   id: string;
   batchNumber: string;
   facilityId: string;
   facilityName: string;
-  batchType: 'cash_bulk' | 'paystack_settlement';
+  batchType: 'cash_bulk' | 'akwaremit_pos_settlement';
   periodDate: string; // YYYY-MM-DD
   paymentIds: string[];
   receiptNumbers: string[];
@@ -92,7 +144,7 @@ export interface AkwaRemitShiftCloseRecord {
   shiftEnd: string;
   // System totals
   systemCashNgn: number;
-  systemPaystackNgn: number;
+  systemAkwaRemitPosNgn: number;
   systemDirectAkwaRemitNgn: number;
   totalSystemNgn: number;
   // Physical cash verification
@@ -115,11 +167,11 @@ export interface AkwaRemitDailySummary {
   date: string;
   totalCollectionsNgn: number;
   cashTotalNgn: number;
-  paystackTerminalTotalNgn: number;
+  akwaremitPosTotalNgn: number;
   directAkwaRemitTotalNgn: number;
   // Remittance Status Breakdown
   alreadyInAkwaRemitNgn: number; // Remitted + Direct AkwaRemit
-  pendingRemittanceNgn: number; // Cash and Paystack awaiting bulk remittance
+  pendingRemittanceNgn: number; // Cash and AkwaRemit POS awaiting bulk remittance
   complianceRatePercent: number; // alreadyInAkwaRemit / totalCollections * 100
   receiptsCount: number;
   pendingReceiptsCount: number;
@@ -130,7 +182,197 @@ export interface AkwaRemitDailySummary {
 export const AKWAREMIT_PAYMENTS_KEY = 'medcore_os_akwaremit_payments_v1';
 export const AKWAREMIT_BATCHES_KEY = 'medcore_os_akwaremit_batches_v1';
 export const AKWAREMIT_SHIFTS_KEY = 'medcore_os_akwaremit_shifts_v1';
+export const AKWAREMIT_ACTIVE_SHIFTS_KEY = 'medcore_os_active_cashier_shifts_v1';
 export const AKWAREMIT_EVENT = 'medcore-akwaremit-updated';
+
+/**
+ * Generate official AkwaRemit Reference Number (ARN)
+ */
+export function generateArn(facilityCode = 'AKW'): string {
+  const year = new Date().getFullYear();
+  const part1 = Math.floor(1000 + Math.random() * 9000);
+  const part2 = Math.floor(1000 + Math.random() * 9000);
+  return `ARN-${year}-${part1}-${part2}`;
+}
+
+/**
+ * Generate dynamic virtual bank account details tied 1:1 to an ARN
+ */
+export function generateDynamicVirtualAccount(
+  arn: string,
+  amountNgn: number,
+  facilityName = 'Immanuel General Hospital'
+): DynamicVirtualAccount {
+  // Deterministic 10-digit virtual account from ARN digits
+  const rawDigits = arn.replace(/\D/g, '');
+  const suffix = (rawDigits + '00000000').slice(0, 8);
+  const accountNumber = `99${suffix}`;
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+  return {
+    bankName: 'Wema Bank (AkwaRemit TSA Collection)',
+    accountNumber,
+    beneficiary: `Akwa Ibom State Govt - ${facilityName}`,
+    amountNgn,
+    expiresAt,
+  };
+}
+
+/**
+ * Exact Amount Validation: Only accept exact invoice value matching AkwaRemit payload.
+ * Partial payments are strictly forbidden for Bank Transfers and POS.
+ */
+export function validateExactAmount(receivedNgn: number, expectedNgn: number): boolean {
+  return Math.abs(Math.round(receivedNgn) - Math.round(expectedNgn)) === 0;
+}
+
+// ─── Active Cashier Shift Storage Operations ────────────────────────────────
+
+function readActiveShifts(): ActiveCashierShift[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(AKWAREMIT_ACTIVE_SHIFTS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeActiveShifts(list: ActiveCashierShift[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(AKWAREMIT_ACTIVE_SHIFTS_KEY, JSON.stringify(list.slice(-500)));
+    window.dispatchEvent(new CustomEvent(AKWAREMIT_EVENT, { detail: { type: 'active_shifts' } }));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Open a cashier shift with starting cash float
+ */
+export function openCashierShift(params: {
+  facilityId: string;
+  cashierName: string;
+  cashierBadge: string;
+  startingFloatNgn: number;
+}): ActiveCashierShift {
+  const shifts = readActiveShifts();
+  const id = `SHIFT-${Date.now().toString(36).toUpperCase()}-${params.cashierBadge || 'CASHIER'}`;
+  const now = new Date().toISOString();
+
+  // Close any previously open shift for this cashier
+  const updated = shifts.map((s) => {
+    if (s.cashierBadge === params.cashierBadge && s.status === 'open') {
+      return { ...s, status: 'closed' as const, closedAt: now };
+    }
+    return s;
+  });
+
+  const newShift: ActiveCashierShift = {
+    id,
+    facilityId: params.facilityId,
+    cashierName: params.cashierName,
+    cashierBadge: params.cashierBadge,
+    startingFloatNgn: Math.max(0, Number(params.startingFloatNgn) || 0),
+    openedAt: now,
+    status: 'open',
+  };
+
+  updated.unshift(newShift);
+  writeActiveShifts(updated);
+  return newShift;
+}
+
+/**
+ * Get currently open shift for this cashier
+ */
+export function getActiveCashierShift(
+  facilityId: string,
+  cashierBadgeOrName: string
+): ActiveCashierShift | null {
+  const shifts = readActiveShifts();
+  return (
+    shifts.find(
+      (s) =>
+        s.facilityId === facilityId &&
+        s.status === 'open' &&
+        (s.cashierBadge === cashierBadgeOrName || s.cashierName === cashierBadgeOrName)
+    ) || null
+  );
+}
+
+/**
+ * Generate End-of-Shift report strictly handled by that specific logged-in user
+ */
+export function getCashierUserShiftSummary(
+  facilityId: string,
+  cashierBadge: string,
+  shiftId?: string
+): CashierUserShiftSummary {
+  const allShifts = readActiveShifts();
+  const shift = shiftId
+    ? allShifts.find((s) => s.id === shiftId)
+    : allShifts.find((s) => s.cashierBadge === cashierBadge && s.status === 'open') || allShifts[0];
+
+  const targetShiftId = shift?.id || 'SHIFT-OPEN';
+  const startingFloatNgn = shift?.startingFloatNgn || 0;
+  const openedAt = shift?.openedAt || new Date().toISOString();
+  const cashierName = shift?.cashierName || cashierBadge;
+
+  // Payments strictly by this cashier in this shift
+  const payments = readPayments().filter(
+    (p) =>
+      p.facilityId === facilityId &&
+      (p.cashierBadge === cashierBadge || p.cashierName === cashierName) &&
+      (p.status === 'paid' || p.remittanceStatus === 'remitted' || p.remittanceStatus === 'direct_akwaremit')
+  );
+
+  let totalCashNgn = 0;
+  let cashCount = 0;
+  let totalPosArnsNgn = 0;
+  let posCount = 0;
+  let totalTransfersNgn = 0;
+  let transferCount = 0;
+  let totalCreditBalanceNgn = 0;
+
+  for (const p of payments) {
+    if (p.method === 'cash') {
+      totalCashNgn += p.amountNgn;
+      cashCount++;
+    } else if (p.method === 'akwaremit_pos') {
+      totalPosArnsNgn += p.amountNgn;
+      posCount++;
+    } else if (p.method === 'bank_transfer' || p.method === 'direct_akwaremit') {
+      totalTransfersNgn += p.amountNgn;
+      transferCount++;
+    } else if (p.method === 'credit_balance') {
+      totalCreditBalanceNgn += p.amountNgn;
+    }
+  }
+
+  const totalCollectionsNgn = totalCashNgn + totalPosArnsNgn + totalTransfersNgn + totalCreditBalanceNgn;
+  const expectedDrawerCashNgn = startingFloatNgn + totalCashNgn;
+
+  return {
+    shiftId: targetShiftId,
+    cashierName,
+    cashierBadge,
+    openedAt,
+    closedAt: shift?.closedAt,
+    startingFloatNgn,
+    totalCashNgn,
+    cashTransactionsCount: cashCount,
+    totalPosArnsNgn,
+    posTransactionsCount: posCount,
+    totalTransfersNgn,
+    transferTransactionsCount: transferCount,
+    totalCreditBalanceNgn,
+    totalCollectionsNgn,
+    expectedDrawerCashNgn,
+    totalReceiptsCount: payments.length,
+  };
+}
 
 // ─── Default Sample Data for Realistic Hospital Experience ───────────────────
 function getDefaultPayments(): AkwaRemitPaymentRecord[] {
@@ -138,6 +380,7 @@ function getDefaultPayments(): AkwaRemitPaymentRecord[] {
   return [
     {
       id: 'AKW-PAY-001',
+      arn: 'ARN-2026-8819-2101',
       receiptNo: 'RCP-2026-0881',
       facilityId: 'IGH-EKT',
       facilityName: 'Immanuel General Hospital, Eket',
@@ -151,6 +394,8 @@ function getDefaultPayments(): AkwaRemitPaymentRecord[] {
       cashierName: 'Mrs. Funke Adeyemi',
       cashierBadge: 'RCP-01208',
       shiftId: `SHIFT-${today}-MORNING`,
+      exactAmountValidated: true,
+      status: 'paid',
       remittanceStatus: 'remitted',
       akwaRemitRrr: 'RRR-2401-9984-2101',
       remittanceBatchId: 'AKW-BATCH-2026-001',
@@ -160,6 +405,7 @@ function getDefaultPayments(): AkwaRemitPaymentRecord[] {
     },
     {
       id: 'AKW-PAY-002',
+      arn: 'ARN-2026-8819-2102',
       receiptNo: 'RCP-2026-0882',
       facilityId: 'IGH-EKT',
       facilityName: 'Immanuel General Hospital, Eket',
@@ -167,14 +413,15 @@ function getDefaultPayments(): AkwaRemitPaymentRecord[] {
       patientName: 'Mr. Tunde Yusuf',
       hospitalNumber: 'MRN-21-08834',
       amountNgn: 18500,
-      method: 'paystack_terminal',
+      method: 'akwaremit_pos',
       serviceCategory: 'laboratory',
       description: 'Comprehensive Blood Panel + Renal Function Test',
       cashierName: 'Mrs. Funke Adeyemi',
       cashierBadge: 'RCP-01208',
       shiftId: `SHIFT-${today}-MORNING`,
-      paystackRef: 'pstk_pos_99182310192',
-      terminalId: 'PSTK-TRM-04',
+      exactAmountValidated: true,
+      status: 'paid',
+      terminalId: 'AKW-TRM-04',
       rrn: '009182746152',
       remittanceStatus: 'remitted',
       akwaRemitRrr: 'RRR-2401-9984-2102',
@@ -185,6 +432,7 @@ function getDefaultPayments(): AkwaRemitPaymentRecord[] {
     },
     {
       id: 'AKW-PAY-003',
+      arn: 'ARN-2026-8819-2103',
       receiptNo: 'RCP-2026-0883',
       facilityId: 'IGH-EKT',
       facilityName: 'Immanuel General Hospital, Eket',
@@ -192,18 +440,21 @@ function getDefaultPayments(): AkwaRemitPaymentRecord[] {
       patientName: 'Master Kufre Bassey',
       hospitalNumber: 'MRN-22-04912',
       amountNgn: 12000,
-      method: 'direct_akwaremit',
+      method: 'bank_transfer',
       serviceCategory: 'admission',
       description: 'Pediatric Ward Observation Deposit',
       cashierName: 'Mrs. Funke Adeyemi',
       cashierBadge: 'RCP-01208',
       shiftId: `SHIFT-${today}-MORNING`,
+      exactAmountValidated: true,
+      status: 'paid',
       remittanceStatus: 'direct_akwaremit',
       akwaRemitRrr: 'RRR-AKW-9812-7462-09',
       createdAt: new Date(Date.now() - 3600000 * 3).toISOString(),
     },
     {
       id: 'AKW-PAY-004',
+      arn: 'ARN-2026-8819-2104',
       receiptNo: 'RCP-2026-0884',
       facilityId: 'IGH-EKT',
       facilityName: 'Immanuel General Hospital, Eket',
@@ -217,11 +468,14 @@ function getDefaultPayments(): AkwaRemitPaymentRecord[] {
       cashierName: 'Mrs. Funke Adeyemi',
       cashierBadge: 'RCP-01208',
       shiftId: `SHIFT-${today}-AFTERNOON`,
+      exactAmountValidated: true,
+      status: 'paid',
       remittanceStatus: 'pending',
       createdAt: new Date(Date.now() - 3600000).toISOString(),
     },
     {
       id: 'AKW-PAY-005',
+      arn: 'ARN-2026-8819-2105',
       receiptNo: 'RCP-2026-0885',
       facilityId: 'IGH-EKT',
       facilityName: 'Immanuel General Hospital, Eket',
@@ -229,14 +483,15 @@ function getDefaultPayments(): AkwaRemitPaymentRecord[] {
       patientName: 'Elder Effiong Akpan',
       hospitalNumber: 'MRN-19-00291',
       amountNgn: 25000,
-      method: 'paystack_terminal',
+      method: 'akwaremit_pos',
       serviceCategory: 'radiology',
       description: 'Abdominal & Pelvic Ultrasound + Chest X-Ray Digital',
       cashierName: 'Mrs. Funke Adeyemi',
       cashierBadge: 'RCP-01208',
       shiftId: `SHIFT-${today}-AFTERNOON`,
-      paystackRef: 'pstk_pos_44810928471',
-      terminalId: 'PSTK-TRM-04',
+      exactAmountValidated: true,
+      status: 'paid',
+      terminalId: 'AKW-TRM-04',
       rrn: '009182749912',
       remittanceStatus: 'pending',
       createdAt: new Date(Date.now() - 1800000).toISOString(),
@@ -275,15 +530,15 @@ function getDefaultBatches(): AkwaRemitBatchRecord[] {
       batchNumber: 'AR-REM-2026-042',
       facilityId: 'IGH-EKT',
       facilityName: 'Immanuel General Hospital, Eket',
-      batchType: 'paystack_settlement',
+      batchType: 'akwaremit_pos_settlement',
       periodDate: today,
       paymentIds: ['AKW-PAY-002'],
       receiptNumbers: ['RCP-2026-0882'],
       totalAmountNgn: 18500,
       itemCount: 1,
       akwaRemitRrr: 'RRR-2401-9984-2102',
-      bankName: 'Paystack Central Settlement -> State Revenue',
-      bankTellerRef: 'PSTK-SETTLE-BATCH-9941',
+      bankName: 'AkwaRemit POS Settlement -> State TSA',
+      bankTellerRef: 'AKW-SETTLE-BATCH-9941',
       remittedBy: 'Mr. Chinedu Okoro',
       remittedByBadge: 'ADM-00001',
       witnessedBy: 'Dr. Adewale Bello',
@@ -430,7 +685,9 @@ export function listAkwaRemitShifts(facilityId: string): AkwaRemitShiftCloseReco
  * Record a payment under AkwaRemit tracking
  */
 export function recordAkwaRemitPayment(
-  input: Omit<AkwaRemitPaymentRecord, 'id' | 'createdAt' | 'remittanceStatus'> & {
+  input: Omit<AkwaRemitPaymentRecord, 'id' | 'createdAt' | 'remittanceStatus' | 'arn' | 'status'> & {
+    arn?: string;
+    status?: 'pending' | 'paid' | 'cancelled_to_credit';
     remittanceStatus?: AkwaRemitRemittanceStatus;
   }
 ): AkwaRemitPaymentRecord {
@@ -438,17 +695,19 @@ export function recordAkwaRemitPayment(
   const id = `AKW-PAY-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
   // If method is direct_akwaremit, status is already direct_akwaremit
-  let status: AkwaRemitRemittanceStatus = 'pending';
+  let remittanceStatus: AkwaRemitRemittanceStatus = 'pending';
   if (input.method === 'direct_akwaremit') {
-    status = 'direct_akwaremit';
+    remittanceStatus = 'direct_akwaremit';
   } else if (input.remittanceStatus) {
-    status = input.remittanceStatus;
+    remittanceStatus = input.remittanceStatus;
   }
 
   const record: AkwaRemitPaymentRecord = {
     ...input,
     id,
-    remittanceStatus: status,
+    arn: input.arn || generateArn(input.facilityId),
+    status: input.status || 'paid',
+    remittanceStatus,
     createdAt: new Date().toISOString(),
   };
 
@@ -466,7 +725,7 @@ export function getAkwaRemitDailySummary(facilityId: string, dateStr?: string): 
 
   let totalCollections = 0;
   let cashTotal = 0;
-  let paystackTotal = 0;
+  let posTotal = 0;
   let directTotal = 0;
 
   let alreadyInAkwaRemit = 0;
@@ -479,7 +738,7 @@ export function getAkwaRemitDailySummary(facilityId: string, dateStr?: string): 
   for (const p of payments) {
     totalCollections += p.amountNgn;
     if (p.method === 'cash') cashTotal += p.amountNgn;
-    else if (p.method === 'paystack_terminal') paystackTotal += p.amountNgn;
+    else if (p.method === 'akwaremit_pos') posTotal += p.amountNgn;
     else if (p.method === 'direct_akwaremit') directTotal += p.amountNgn;
 
     if (p.remittanceStatus === 'remitted' || p.remittanceStatus === 'direct_akwaremit') {
@@ -499,7 +758,7 @@ export function getAkwaRemitDailySummary(facilityId: string, dateStr?: string): 
     date,
     totalCollectionsNgn: totalCollections,
     cashTotalNgn: cashTotal,
-    paystackTerminalTotalNgn: paystackTotal,
+    akwaremitPosTotalNgn: posTotal,
     directAkwaRemitTotalNgn: directTotal,
     alreadyInAkwaRemitNgn: alreadyInAkwaRemit,
     pendingRemittanceNgn: pendingRemittance,
@@ -517,7 +776,7 @@ export function getAkwaRemitDailySummary(facilityId: string, dateStr?: string): 
 export function executeAkwaRemitBatch(params: {
   facilityId: string;
   facilityName: string;
-  batchType: 'cash_bulk' | 'paystack_settlement';
+  batchType: 'cash_bulk' | 'akwaremit_pos_settlement';
   paymentIds: string[];
   akwaRemitRrr: string;
   bankName?: string;
@@ -615,16 +874,16 @@ export function closeCashierShiftDualControl(params: {
   );
 
   let systemCash = 0;
-  let systemPaystack = 0;
+  let systemPos = 0;
   let systemDirect = 0;
 
   for (const p of allPayments) {
     if (p.method === 'cash') systemCash += p.amountNgn;
-    else if (p.method === 'paystack_terminal') systemPaystack += p.amountNgn;
+    else if (p.method === 'akwaremit_pos') systemPos += p.amountNgn;
     else if (p.method === 'direct_akwaremit') systemDirect += p.amountNgn;
   }
 
-  const totalSystem = systemCash + systemPaystack + systemDirect;
+  const totalSystem = systemCash + systemPos + systemDirect;
   const variance = params.physicalCashCountedNgn - systemCash;
 
   const record: AkwaRemitShiftCloseRecord = {
@@ -638,7 +897,7 @@ export function closeCashierShiftDualControl(params: {
     shiftStart: params.shiftStart,
     shiftEnd: params.shiftEnd,
     systemCashNgn: systemCash,
-    systemPaystackNgn: systemPaystack,
+    systemAkwaRemitPosNgn: systemPos,
     systemDirectAkwaRemitNgn: systemDirect,
     totalSystemNgn: totalSystem,
     physicalCashCountedNgn: params.physicalCashCountedNgn,
@@ -653,5 +912,92 @@ export function closeCashierShiftDualControl(params: {
   shifts.unshift(record);
   writeShifts(shifts);
 
+  // Also close active shift if open
+  const activeShifts = readActiveShifts().map((s) => {
+    if (s.id === params.shiftId || (s.cashierBadge === params.cashierBadge && s.status === 'open')) {
+      return { ...s, status: 'closed' as const, closedAt: new Date().toISOString() };
+    }
+    return s;
+  });
+  writeActiveShifts(activeShifts);
+
   return record;
+}
+
+/**
+ * Cashier confirms physical cash was collected and logged as counter payment on AkwaRemit portal
+ */
+export function confirmAkwaRemitCashPayment(params: {
+  arn: string;
+  cashierName: string;
+  cashierBadge: string;
+  amountNgn: number;
+}): { ok: boolean; payment?: AkwaRemitPaymentRecord; error?: string } {
+  const all = readPayments();
+  const idx = all.findIndex((p) => p.arn === params.arn);
+  const now = new Date().toISOString();
+
+  if (idx >= 0) {
+    const existing = all[idx];
+    if (!validateExactAmount(params.amountNgn, existing.amountNgn)) {
+      return { ok: false, error: `Exact amount mismatch. Invoice requires ₦${existing.amountNgn.toLocaleString()}, received ₦${params.amountNgn.toLocaleString()}` };
+    }
+    const updated: AkwaRemitPaymentRecord = {
+      ...existing,
+      status: 'paid',
+      paidAt: now,
+      exactAmountValidated: true,
+      remittanceStatus: 'pending',
+    };
+    all[idx] = updated;
+    writePayments(all);
+    return { ok: true, payment: updated };
+  }
+
+  return { ok: false, error: `ARN ${params.arn} not found in pending payments` };
+}
+
+/**
+ * Process incoming AkwaRemit webhook (Bank Transfer received, POS approved, or Counter Cash)
+ */
+export function processAkwaRemitWebhookEvent(event: {
+  arn: string;
+  amountNgn: number;
+  channel: AkwaRemitMethod;
+  status: 'paid' | 'failed';
+  transactionRef?: string;
+  payerName?: string;
+}): { ok: boolean; payment?: AkwaRemitPaymentRecord; error?: string } {
+  const all = readPayments();
+  const idx = all.findIndex((p) => p.arn === event.arn);
+
+  if (idx < 0) {
+    return { ok: false, error: `AkwaRemit ARN ${event.arn} not found` };
+  }
+
+  const existing = all[idx];
+
+  // EXACT AMOUNT VALIDATION: Never allow partial payment entries to trigger Paid status
+  if (!validateExactAmount(event.amountNgn, existing.amountNgn)) {
+    return {
+      ok: false,
+      error: `EXACT_AMOUNT_MISMATCH: Invoice expects ₦${existing.amountNgn.toLocaleString()}, received ₦${event.amountNgn.toLocaleString()}`,
+    };
+  }
+
+  const now = new Date().toISOString();
+  const updated: AkwaRemitPaymentRecord = {
+    ...existing,
+    status: event.status === 'paid' ? 'paid' : 'pending',
+    method: event.channel || existing.method,
+    paidAt: event.status === 'paid' ? now : undefined,
+    webhookReceivedAt: now,
+    exactAmountValidated: true,
+    remittanceStatus: event.channel === 'bank_transfer' ? 'direct_akwaremit' : existing.remittanceStatus,
+    paystackRef: event.transactionRef,
+  };
+
+  all[idx] = updated;
+  writePayments(all);
+  return { ok: true, payment: updated };
 }

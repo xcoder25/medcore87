@@ -88,7 +88,7 @@ export interface FacilityOnboardDraft {
   enableLis: boolean;
   enableEprescribe: boolean;
   enableNhisBilling: boolean;
-  enablePaystack: boolean;
+  enableAkwaRemit: boolean;
   // Step 4 — RBAC seeds
   seedRoles: string[];
   requireMfa: boolean;
@@ -146,7 +146,7 @@ const DEFAULT_FACILITY = (facilityId: string, name?: string): FacilityOnboardDra
   enableLis: true,
   enableEprescribe: true,
   enableNhisBilling: true,
-  enablePaystack: true,
+  enableAkwaRemit: true,
   seedRoles: [
     'hospital_admin',
     'doctor',
@@ -301,7 +301,7 @@ export function loadFacilityDraft(facilityId: string, facilityName?: string): Fa
         operatingHoursEnd: s.workingHoursEnd || base.operatingHoursEnd,
         nhiaFacilityCode: s.nhiaProviderCode || '',
         enableNhisBilling: Boolean(s.autoVerifyInsuranceOnCheckin),
-        enablePaystack: Boolean(s.paystackPublicKey) || base.enablePaystack,
+        enableAkwaRemit: Boolean(s.akwaremitEnabled) || base.enableAkwaRemit,
       };
     }
   } catch {

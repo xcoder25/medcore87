@@ -289,7 +289,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
         workingHoursStart: final.operatingHoursStart,
         workingHoursEnd: final.operatingHoursEnd,
         nhiaProviderCode: final.nhiaFacilityCode || settings.nhiaProviderCode,
-        akwaremitEnabled: final.enablePaystack ? settings.akwaremitEnabled : settings.akwaremitEnabled,
+        akwaremitEnabled: final.enableAkwaRemit ?? settings.akwaremitEnabled,
         autoVerifyInsuranceOnCheckin: final.enableNhisBilling,
         // Clinical governance defaults used by triage / OPD in this app
         requireVitalsBeforeConsult: settings.requireVitalsBeforeConsult,
@@ -409,7 +409,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
             <Toggle checked={draft.enableLis} onChange={(v) => patch({ enableLis: v })} label="Laboratory" desc="Lab orders, results, critical value alerts." />
             <Toggle checked={draft.enablePacs} onChange={(v) => patch({ enablePacs: v })} label="Radiology / imaging" desc="Radiology desk and imaging requests." />
             <Toggle checked={draft.enableNhisBilling} onChange={(v) => patch({ enableNhisBilling: v })} label="NHIA / insurance flags" desc="Check-in and Accounts insurance workflow." />
-            <Toggle checked={draft.enablePaystack} onChange={(v) => patch({ enablePaystack: v })} label="Paystack payments" desc="Cashier card/transfer — keys in Admin Settings." />
+            <Toggle checked={draft.enableAkwaRemit} onChange={(v) => patch({ enableAkwaRemit: v })} label="AkwaRemit / Remita State Revenue" desc="Cashier POS, cash, and bank-transfer payments via Akwa Ibom TSA — keys configured on server." />
             <Toggle checked={draft.enableFhir} onChange={(v) => patch({ enableFhir: v })} label="FHIR export (optional)" desc="Only if an HIE partner requires export." />
             <Toggle checked={draft.enableHl7} onChange={(v) => patch({ enableHl7: v })} label="HL7 device gateway" desc="Only if analysers/devices will connect." />
           </div>

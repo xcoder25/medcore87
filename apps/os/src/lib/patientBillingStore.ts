@@ -3,9 +3,9 @@
  * Default: pay at main cashier; pharmacy can also take payment.
  */
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
-import { tryAutoDeduct } from './patientWalletStore';
+import { tryAutoDeduct, creditCancelledServiceToWallet } from './patientWalletStore';
 
-export type BillLineStatus = 'unpaid' | 'paid' | 'hmo' | 'waived' | 'partial';
+export type BillLineStatus = 'unpaid' | 'paid' | 'hmo' | 'waived' | 'partial' | 'cancelled_to_credit';
 export type BillLineSource = 'pharmacy' | 'lab' | 'consult' | 'other' | 'opd' | 'billing' | 'imaging';
 
 export interface PatientBillLine {
@@ -20,9 +20,11 @@ export interface PatientBillLine {
   status: BillLineStatus;
   orderId?: string; // clinical order / Rx id
   paidAt?: string;
-  paidVia?: 'cashier' | 'pharmacy' | 'hmo' | 'waiver' | 'paystack';
+  paidVia?: 'cashier' | 'pharmacy' | 'hmo' | 'waiver' | 'paystack' | 'akwaremit';
   paidBy?: string;
   paymentRef?: string;
+  cancelledAt?: string;
+  cancelReason?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -239,14 +241,59 @@ export function markOrderPaid(
   const line = getLineForOrder(orderId);
   if (!line) return undefined;
   return markLinePaid(line.id, opts);
+}
 
-  try {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(
-        new CustomEvent('medcore-order-paid', { detail: { orderId } })
-      );
-    }
-  } catch { /* ignore */ }
+/**
+ * Cancel a paid service order and re-route its full amount into an internal Patient Credit Balance.
+ * Ensures zero cash refund friction while preserving an exact audit trail tied to the ARN.
+ */
+export function cancelBillLineToCredit(params: {
+  billLineId: string;
+  facilityId: string;
+  actorName: string;
+  reason?: string;
+}): { ok: boolean; line?: PatientBillLine; creditAmountNgn?: number; error?: string } {
+  const all = read();
+  const idx = all.findIndex((l) => l.id === params.billLineId);
+  if (idx < 0) return { ok: false, error: 'Bill line not found' };
+
+  const line = all[idx];
+  if (line.status !== 'paid') {
+    return { ok: false, error: 'Only confirmed paid services can be converted to Patient Credit Balance' };
+  }
+
+  const now = new Date().toISOString();
+  const updatedLine: PatientBillLine = {
+    ...line,
+    status: 'cancelled_to_credit',
+    cancelledAt: now,
+    cancelReason: params.reason || 'Service cancelled after payment; credited to patient balance',
+    updatedAt: now,
+  };
+
+  all[idx] = updatedLine;
+  write(all);
+
+  // Credit into patient internal wallet
+  const creditRes = creditCancelledServiceToWallet({
+    facilityId: params.facilityId,
+    patientId: line.patientId,
+    hospitalNumber: line.hospitalNumber,
+    patientName: line.patientName,
+    amountNgn: line.amountNgn,
+    orderId: line.orderId,
+    billLineId: line.id,
+    serviceName: line.description,
+    arnReference: line.paymentRef,
+    actorName: params.actorName,
+    reason: params.reason,
+  });
+
+  if (!creditRes.ok) {
+    return { ok: false, error: creditRes.error || 'Failed to deposit credit to patient wallet' };
+  }
+
+  return { ok: true, line: updatedLine, creditAmountNgn: line.amountNgn };
 }
 
 export function canDispenseOrder(orderId: string): {

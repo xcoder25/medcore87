@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { paystackFetch, getPaystackSecretKey } from '../../../../lib/paystackServer';
+import { paystackFetch, resolvePaystackSecretKey } from '../../../../lib/paystackServer';
 
 export const runtime = 'nodejs';
 
@@ -7,8 +7,9 @@ export const runtime = 'nodejs';
  * Initialize Paystack transaction for Transfer / USSD only (no card on hospital PC).
  */
 export async function POST(req: NextRequest) {
-  if (!getPaystackSecretKey()) {
-    return NextResponse.json({ error: 'PAYSTACK_SECRET_KEY not configured on server' }, { status: 503 });
+  const secretKey = await resolvePaystackSecretKey(req);
+  if (!secretKey) {
+    return NextResponse.json({ error: 'PAYSTACK_SECRET_KEY not configured on server or in Hospital Admin Settings' }, { status: 503 });
   }
   const body = await req.json().catch(() => ({}));
   const amountNgn = Number(body.amountNgn);
@@ -27,21 +28,25 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { ok, data, status } = await paystackFetch('/transaction/initialize', {
-      method: 'POST',
-      body: JSON.stringify({
-        email,
-        amount: Math.round(amountNgn * 100),
-        currency: 'NGN',
-        reference,
-        channels,
-        metadata: {
-          ...metadata,
-          medcore_channel: 'paystack_transfer',
-          no_card_on_hospital_pc: true,
-        },
-      }),
-    });
+    const { ok, data, status } = await paystackFetch(
+      '/transaction/initialize',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          email,
+          amount: Math.round(amountNgn * 100),
+          currency: 'NGN',
+          reference,
+          channels,
+          metadata: {
+            ...metadata,
+            medcore_channel: 'paystack_transfer',
+            no_card_on_hospital_pc: true,
+          },
+        }),
+      },
+      secretKey
+    );
     if (!ok) {
       return NextResponse.json(
         { error: data?.message || 'Initialize failed', paystack: data },

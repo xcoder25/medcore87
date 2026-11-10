@@ -87,7 +87,7 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
   const [newMethod, setNewMethod] = useState<AkwaRemitMethod>('cash');
   const [newCategory, setNewCategory] = useState<any>('consultation');
   const [newPurpose, setNewPurpose] = useState('');
-  const [newPaystackRef, setNewPaystackRef] = useState('');
+  const [newPosRef, setNewPosRef] = useState('');
   const [newDirectRrr, setNewDirectRrr] = useState('');
   const [remitError, setRemitError] = useState<string | null>(null);
   const [shiftError, setShiftError] = useState<string | null>(null);
@@ -252,8 +252,8 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
       setPaymentError('Patient name and a valid amount are required.');
       return;
     }
-    if (newMethod === 'paystack_terminal' && !newPaystackRef.trim()) {
-      setPaymentError('Paystack Terminal Transaction Reference / RRN is required for terminal collections.');
+    if (newMethod === 'akwaremit_pos' && !newPosRef.trim()) {
+      setPaymentError('AkwaRemit POS Reference / RRN is required for terminal collections.');
       return;
     }
     if (newMethod === 'direct_akwaremit' && !newDirectRrr.trim()) {
@@ -277,7 +277,7 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
       cashierName: session.name || 'Cashier Desk',
       cashierBadge: session.badgeId || 'RCP-01208',
       shiftId: `SHIFT-${selectedDate}-ACTIVE`,
-      paystackRef: newMethod === 'paystack_terminal' ? newPaystackRef.trim() : undefined,
+      rrn: newMethod === 'akwaremit_pos' ? newPosRef.trim() : undefined,
       akwaRemitRrr: newMethod === 'direct_akwaremit' ? newDirectRrr.trim() : undefined,
     });
 
@@ -285,7 +285,7 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
     setNewPatientName('');
     setNewHospitalNo('');
     setNewAmount('');
-    setNewPaystackRef('');
+    setNewPosRef('');
     setNewDirectRrr('');
     setNewPurpose('');
     reloadData();
@@ -349,7 +349,7 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
               </span>
             </div>
             <p style={{ margin: '4px 0 0', color: '#94A3B8', fontSize: '0.85rem' }}>
-              Central treasury destination for all hospital revenue · Cash, Paystack Terminal & Direct AkwaRemit RRR
+              Central treasury destination for all hospital revenue · Cash, AkwaRemit POS, Bank Transfer & Direct AkwaRemit RRR
             </p>
           </div>
         </div>
@@ -629,7 +629,7 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
               >
                 <option value="all">All Methods</option>
                 <option value="cash">Cash Collections</option>
-                <option value="paystack_terminal">Paystack Terminal</option>
+                <option value="akwaremit_pos">AkwaRemit POS</option>
                 <option value="direct_akwaremit">Direct AkwaRemit</option>
               </select>
               <select
@@ -724,7 +724,7 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                             >
                               <Banknote size={12} /> Cash
                             </span>
-                          ) : p.method === 'paystack_terminal' ? (
+                          ) : p.method === 'akwaremit_pos' ? (
                             <span
                               style={{
                                 display: 'inline-flex',
@@ -738,7 +738,7 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                                 fontSize: '0.72rem',
                               }}
                             >
-                              <CreditCard size={12} /> Paystack Terminal
+                              <CreditCard size={12} /> AkwaRemit POS
                             </span>
                           ) : (
                             <span
@@ -759,9 +759,9 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                           )}
                         </td>
                         <td style={{ padding: '10px 12px', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                          {p.method === 'paystack_terminal' ? (
+                          {p.method === 'akwaremit_pos' ? (
                             <div>
-                              <div>Ref: {p.paystackRef || 'N/A'}</div>
+                              <div>ARN: {p.arn || 'N/A'}</div>
                               {p.rrn && <div style={{ color: '#64748B' }}>RRN: {p.rrn}</div>}
                             </div>
                           ) : p.method === 'direct_akwaremit' ? (
@@ -858,7 +858,7 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                   Select Collections for AkwaRemit Bulk Remittance
                 </h3>
                 <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#64748B' }}>
-                  Group verified Cash collections or Paystack settlements into an official state treasury remittance batch with an AkwaRemit RRR.
+                  Group verified Cash collections or AkwaRemit POS settlements into an official state treasury remittance batch with an AkwaRemit RRR.
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -960,7 +960,7 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                           <td style={{ padding: '10px 12px', fontWeight: 700 }}>{p.receiptNo}</td>
                           <td style={{ padding: '10px 12px' }}>{p.patientName}</td>
                           <td style={{ padding: '10px 12px' }}>
-                            {p.method === 'cash' ? 'Cash' : 'Paystack Terminal'}
+                            {p.method === 'cash' ? 'Cash' : p.method === 'akwaremit_pos' ? 'AkwaRemit POS' : 'Direct AkwaRemit'}
                           </td>
                           <td style={{ padding: '10px 12px', fontWeight: 800 }}>₦{p.amountNgn.toLocaleString()}</td>
                           <td style={{ padding: '10px 12px' }}>{p.cashierName}</td>
@@ -1013,7 +1013,7 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                         {b.akwaRemitRrr}
                       </td>
                       <td style={{ padding: '10px 12px' }}>
-                        {b.batchType === 'cash_bulk' ? 'Cash Total' : 'Paystack Settlement'}
+                        {b.batchType === 'cash_bulk' ? 'Cash Total' : 'AkwaRemit POS Settlement'}
                       </td>
                       <td style={{ padding: '10px 12px', fontWeight: 800, color: '#047857' }}>
                         ₦{b.totalAmountNgn.toLocaleString()}
@@ -1089,7 +1089,7 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                           )}
                         </td>
                         <td style={{ padding: '10px 12px', color: '#64748B' }}>
-                          ₦{s.systemPaystackNgn.toLocaleString()}
+                          ₦{s.systemAkwaRemitPosNgn.toLocaleString()}
                         </td>
                         <td style={{ padding: '10px 12px', color: '#64748B' }}>
                           {new Date(s.closedAt).toLocaleString()}
@@ -1306,8 +1306,8 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                   <span style={{ fontWeight: 800 }}>₦{summary.cashTotalNgn.toLocaleString()}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                  <span style={{ color: '#64748B' }}>System Recorded Paystack:</span>
-                  <span style={{ fontWeight: 800 }}>₦{summary.paystackTerminalTotalNgn.toLocaleString()}</span>
+                  <span style={{ color: '#64748B' }}>System Recorded AkwaRemit POS:</span>
+                  <span style={{ fontWeight: 800 }}>₦{summary.akwaremitPosTotalNgn.toLocaleString()}</span>
                 </div>
               </div>
 
@@ -1552,22 +1552,22 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                   style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.85rem' }}
                 >
                   <option value="cash">1. Cash (To be remitted in bulk to AkwaRemit)</option>
-                  <option value="paystack_terminal">2. Paystack Terminal (POS Card / USSD / Transfer)</option>
+                  <option value="akwaremit_pos">2. AkwaRemit POS (POS Card / Terminal)</option>
                   <option value="direct_akwaremit">3. Direct AkwaRemit (Patient paid on State Portal with RRR)</option>
                 </select>
               </div>
 
-              {newMethod === 'paystack_terminal' && (
+              {newMethod === 'akwaremit_pos' && (
                 <div>
                   <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0369A1', display: 'block', marginBottom: 4 }}>
-                    Paystack Terminal Ref / RRN *
+                    AkwaRemit POS Ref / RRN *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. pstk_pos_99182310192 or slip RRN"
-                    value={newPaystackRef}
-                    onChange={(e) => setNewPaystackRef(e.target.value)}
+                    placeholder="e.g. akw_pos_99182310192 or slip RRN"
+                    value={newPosRef}
+                    onChange={(e) => setNewPosRef(e.target.value)}
                     style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #38BDF8', fontSize: '0.85rem', fontFamily: 'monospace' }}
                   />
                 </div>

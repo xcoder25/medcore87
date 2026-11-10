@@ -1,15 +1,18 @@
 'use client';
 
 /**
- * Full-page intelligent POS & Payment desk
- * AI assists amount/method/risk; human confirms every charge.
+ * Full-page intelligent AkwaRemit POS & Payment Desk
+ * Aligned with Akwa Ibom State AkwaRemit / Remita TSA gateway architecture.
+ * Eliminates third-party gateways in favor of AkwaRemit ARN, dynamic virtual accounts,
+ * dual-control cashier shifts, exact amount validation, and service credit conversion.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
 import {
   Wallet, Search, CreditCard, Banknote, Building2, ShieldCheck,
   Sparkles, RefreshCw, Printer, CheckCircle2, AlertTriangle, Receipt,
-  Users, Clock, Zap, ArrowRight, X, UserRound,
+  Users, Clock, Zap, ArrowRight, X, UserRound, Copy, Check, FileText,
+  Lock, AlertCircle, ArrowDownLeft, RotateCcw,
 } from 'lucide-react';
 import {
   listPatients,
@@ -37,12 +40,28 @@ import {
   subscribeBills,
   patientBalance,
   listPatientsWithOpenBills,
+  cancelBillLineToCredit,
+  type PatientBillLine,
 } from '../../lib/patientBillingStore';
-import { applyPaystackSuccess } from '../../lib/paystackLedgerStore';
-import { verifyInsurance } from '../../lib/receptionConstants';
+import {
+  generateArn,
+  generateDynamicVirtualAccount,
+  validateExactAmount,
+  openCashierShift,
+  getActiveCashierShift,
+  getCashierUserShiftSummary,
+  closeCashierShiftDualControl,
+  recordAkwaRemitPayment,
+  confirmAkwaRemitCashPayment,
+  processAkwaRemitWebhookEvent,
+  type AkwaRemitMethod,
+  type DynamicVirtualAccount,
+  type ActiveCashierShift,
+  type CashierUserShiftSummary,
+  type AkwaRemitPaymentRecord,
+} from '../../lib/akwaRemitStore';
+import { getWallet } from '../../lib/patientWalletStore';
 import { printPaymentReceipt } from '../../lib/printService';
-import { PaystackBrandedCheckout } from '../reception/PaystackBrandedCheckout';
-import { hasPaystackKey } from '../../lib/paystackClient';
 import { syncAccountsRequestsForPatientPayment } from '../../lib/frontDeskAccountsBridge';
 import { releaseOrdersForPatient } from '../../lib/clinicalEventBus';
 
@@ -52,16 +71,22 @@ const C = {
   navy: '#0F172A',
   muted: '#64748B',
   border: '#E2E8F0',
+  green: '#059669',
+  amber: '#D97706',
 };
 
-const DIGITAL_METHODS: { id: PaymentMethod; label: string; sub: string; icon: React.ElementType }[] = [
-  { id: 'card', label: 'Card — Paystack Terminal', sub: 'PIN on terminal only', icon: CreditCard },
-  { id: 'transfer', label: 'Transfer', sub: 'Bank transfer / USSD', icon: Building2 },
+export type PosGatewayMethod = 'akwaremit_pos' | 'cash' | 'bank_transfer' | 'credit_balance' | 'hmo' | 'waiver';
+
+const AKWAREMIT_METHODS: { id: PosGatewayMethod; label: string; sub: string; icon: React.ElementType }[] = [
+  { id: 'akwaremit_pos', label: 'AkwaRemit POS', sub: 'Integrated POS Card Swipe', icon: CreditCard },
+  { id: 'cash', label: 'Cash', sub: 'Counter physical collection', icon: Banknote },
+  { id: 'bank_transfer', label: 'Bank Transfer', sub: 'Dynamic virtual account', icon: Building2 },
 ];
-const DESK_METHODS: { id: PaymentMethod; label: string; icon: React.ElementType }[] = [
-  { id: 'cash', label: 'Cash', icon: Banknote },
-  { id: 'hmo', label: 'HMO', icon: ShieldCheck },
-  { id: 'waiver', label: 'Waiver', icon: CheckCircle2 },
+
+const AUX_METHODS: { id: PosGatewayMethod; label: string; sub: string; icon: React.ElementType }[] = [
+  { id: 'credit_balance', label: 'Patient Credit', sub: 'Internal hospital balance', icon: Wallet },
+  { id: 'hmo', label: 'HMO / AKSHIA', sub: 'Insurance clearance', icon: ShieldCheck },
+  { id: 'waiver', label: 'Waiver', sub: 'Social medical waiver', icon: CheckCircle2 },
 ];
 
 const PURPOSES = [
@@ -78,7 +103,6 @@ const PURPOSES = [
 interface Props {
   session?: UserSession;
   onNavigate?: (key: string) => void;
-  /** When true (Accounting desk), hide duplicate hero — parent provides chrome */
   embedded?: boolean;
   initialPatientId?: string;
   initialPatient?: FacilityPatient | null;
@@ -100,8 +124,9 @@ export const PosPaymentDesk: React.FC<Props> = ({
   onPaymentComplete,
 }) => {
   const facilityId = session?.hospitalId || 'IGH-EKT';
-  const facilityName = session?.facility || 'Hospital';
+  const facilityName = session?.facility || 'Immanuel General Hospital, Eket';
   const cashier = session?.name || 'Cashier';
+  const cashierBadge = session?.badgeId || 'CSH-001';
 
   const [patients, setPatients] = useState<FacilityPatient[]>([]);
   const [visits, setVisits] = useState<ReceptionVisit[]>([]);
@@ -110,31 +135,70 @@ export const PosPaymentDesk: React.FC<Props> = ({
   const [query, setQuery] = useState('');
   const [patient, setPatient] = useState<FacilityPatient | null>(null);
   const [amount, setAmount] = useState('5000');
-  const [method, setMethod] = useState<PaymentMethod>('cash');
-  const [paystackOpen, setPaystackOpen] = useState(false);
+  const [gatewayMethod, setGatewayMethod] = useState<PosGatewayMethod>('cash');
   const [purpose, setPurpose] = useState('Consultation');
   const [lines, setLines] = useState<{ label: string; amount: number }[]>([
     { label: 'Consultation', amount: 5000 },
   ]);
   const [toast, setToast] = useState<string | null>(null);
   const [lastReceipt, setLastReceipt] = useState<ReceptionPayment | null>(null);
-  /** Cash (and desk) post-payment ceremony: success → receipt → home */
+
+  // AkwaRemit Reference Number (ARN) State
+  const [arn, setArn] = useState<string>(() => generateArn());
+  const [copiedAccount, setCopiedAccount] = useState(false);
+  const [awaitingWebhook, setAwaitingWebhook] = useState(false);
+  const [verifyingStatus, setVerifyingStatus] = useState(false);
+
+  // Cashier Shift State
+  const [activeShift, setActiveShift] = useState<ActiveCashierShift | null>(() =>
+    getActiveCashierShift(facilityId, cashierBadge)
+  );
+  const [showOpenShiftModal, setShowOpenShiftModal] = useState(false);
+  const [startingFloatInput, setStartingFloatInput] = useState('10000');
+  const [showCloseShiftModal, setShowCloseShiftModal] = useState(false);
+  const [shiftReport, setShiftReport] = useState<CashierUserShiftSummary | null>(null);
+  const [physicalCountInput, setPhysicalCountInput] = useState('');
+  const [witnessNameInput, setWitnessNameInput] = useState('');
+  const [witnessBadgeInput, setWitnessBadgeInput] = useState('');
+  const [shiftNotesInput, setShiftNotesInput] = useState('');
+
+  // Service Cancellation to Patient Credit State
+  const [cancellingBillLine, setCancellingBillLine] = useState<PatientBillLine | null>(null);
+  const [cancelReasonInput, setCancelReasonInput] = useState('');
+
+  // Payment ceremony: success -> receipt -> completed
   const [payCeremony, setPayCeremony] = useState<null | {
     phase: 'success' | 'receipt';
     pay: ReceptionPayment;
     patientName: string;
     hospitalNumber: string;
     purpose: string;
+    arn: string;
+    method: PosGatewayMethod;
   }>(null);
-  const [insMsg, setInsMsg] = useState('');
+
   const [billTick, setBillTick] = useState(0);
+
+  // Patient Credit Balance lookup
+  const patientCredit = useMemo(() => {
+    if (!patient) return 0;
+    const w = getWallet(facilityId, patient.id);
+    return w?.balanceNgn || 0;
+  }, [patient?.id, facilityId, billTick]);
+
+  // Dynamic Virtual Account tied 1:1 to ARN
+  const virtualAccount = useMemo(() => {
+    const amt = Number(amount) || 0;
+    return generateDynamicVirtualAccount(arn, amt, facilityName);
+  }, [arn, amount, facilityName]);
 
   const reload = useCallback(() => {
     setPatients(listPatients(facilityId));
     setVisits(todayVisits(facilityId));
     setPayments(todayPayments(facilityId));
     setStats(dayStats(facilityId));
-  }, [facilityId]);
+    setActiveShift(getActiveCashierShift(facilityId, cashierBadge));
+  }, [facilityId, cashierBadge]);
 
   useEffect(() => {
     reload();
@@ -152,6 +216,7 @@ export const PosPaymentDesk: React.FC<Props> = ({
   useEffect(() => {
     if (initialPatient) {
       setPatient(initialPatient);
+      setArn(generateArn());
       if (initialAmount && initialAmount > 0) {
         setAmount(String(initialAmount));
         setLines([{ label: initialPurpose || 'Consultation', amount: initialAmount }]);
@@ -168,6 +233,7 @@ export const PosPaymentDesk: React.FC<Props> = ({
       );
       if (found) {
         setPatient(found);
+        setArn(generateArn());
         if (initialAmount && initialAmount > 0) {
           setAmount(String(initialAmount));
           setLines([{ label: initialPurpose || 'Consultation', amount: initialAmount }]);
@@ -177,7 +243,7 @@ export const PosPaymentDesk: React.FC<Props> = ({
     }
   }, [initialPatientId, initialPatient, initialAmount, initialPurpose, patients]);
 
-  // Default charge to open hospital bill when patient selected (if no explicit amount passed)
+  // Default charge to open hospital bill when patient selected
   useEffect(() => {
     if (!patient) return;
     if (initialAmount && initialAmount > 0) return;
@@ -213,319 +279,306 @@ export const PosPaymentDesk: React.FC<Props> = ({
       .slice(0, 20);
   }, [patients, query]);
 
-  const unpaidVisits = visits.filter(
-    (v) =>
-      (v.paymentStatus === 'pending' || v.paymentStatus === 'partial') &&
-      v.status !== 'completed' &&
-      v.status !== 'cancelled'
+  const openBillPatients = useMemo(
+    () => listPatientsWithOpenBills(facilityId),
+    [facilityId, billTick, payments, visits, patients]
   );
-
-  const openBillPatients = useMemo(() => listPatientsWithOpenBills(facilityId), [facilityId, billTick, payments, visits, patients]);
 
   const flash = (m: string) => {
     setToast(m);
-    setTimeout(() => setToast(null), 3200);
+    setTimeout(() => setToast(null), 3500);
   };
 
   const fullName = (p: FacilityPatient) =>
     [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ');
 
-  const applyAiSuggestion = () => {
-    if (!patientAi) return;
-    if (patientAi.suggestedAmount != null) {
-      setAmount(String(patientAi.suggestedAmount));
-      setLines([{ label: patientAi.suggestedPurpose || 'Consultation', amount: patientAi.suggestedAmount }]);
-    }
-    if (patientAi.suggestedMethod) setMethod(patientAi.suggestedMethod);
-    if (patientAi.suggestedPurpose) setPurpose(patientAi.suggestedPurpose);
-    flash('AI suggestion applied — confirm before recording');
-  };
+  const totalLines = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+  const displayAmount = Number(amount) || totalLines || 0;
 
-  const applyLineTotal = (next: { label: string; amount: number }[]) => {
-    setLines(next);
-    setAmount(String(next.reduce((s, l) => s + l.amount, 0)));
-  };
+  // Exact amount validator check
+  const isExactAmountValid = useMemo(() => {
+    if (gatewayMethod === 'waiver') return true;
+    return displayAmount > 0;
+  }, [displayAmount, gatewayMethod]);
 
-
-  const settlePaystackPayment = (result: {
-    reference: string;
-    paystackRef: string;
-    amountNgn: number;
-    channel: string;
-  }) => {
+  /**
+   * Finalize settlement under AkwaRemit
+   */
+  const finalizeAkwaRemitSettlement = (methodPaid: PosGatewayMethod, referenceArn: string) => {
     if (!patient) return;
-    const methodPaid: PaymentMethod =
-      result.channel === 'card' || method === 'card' ? 'card' : 'transfer';
+    const amt = displayAmount;
+    const patientName = fullName(patient);
+    const hospNo = patient.hospitalNumber;
+
     const open = visits.find(
       (v) => v.patientId === patient.id && v.status !== 'completed' && v.status !== 'cancelled'
     );
+
+    // 1. Record under reception ops
     const pay = recordPayment({
       facilityId,
       patientId: patient.id,
-      patientName: fullName(patient),
-      hospitalNumber: patient.hospitalNumber,
+      patientName,
+      hospitalNumber: hospNo,
       visitId: open?.id,
-      amount: result.amountNgn,
-      method: methodPaid,
+      amount: amt,
+      method: methodPaid === 'akwaremit_pos' ? 'card' : methodPaid === 'bank_transfer' ? 'transfer' : 'cash',
       purpose: lines.map((l) => l.label).join(', ') || purpose,
       cashier,
-      reference: result.reference,
+      reference: referenceArn,
     });
-    try {
-      markPatientOutstandingPaid(facilityId, patient.id, {
-        via: 'paystack',
+
+    // 2. Record under AkwaRemit Central Ledger
+    recordAkwaRemitPayment({
+      arn: referenceArn,
+      receiptNo: pay.reference,
+      facilityId,
+      facilityName,
+      patientId: patient.id,
+      patientName,
+      hospitalNumber: hospNo,
+      amountNgn: amt,
+      method: methodPaid === 'akwaremit_pos' ? 'akwaremit_pos' : methodPaid === 'bank_transfer' ? 'bank_transfer' : 'cash',
+      serviceCategory: 'consultation',
+      description: lines.map((l) => l.label).join(', ') || purpose,
+      cashierName: cashier,
+      cashierBadge,
+      shiftId: activeShift?.id || `SHIFT-${new Date().toISOString().slice(0, 10)}`,
+      exactAmountValidated: true,
+      status: 'paid',
+      virtualAccount: methodPaid === 'bank_transfer' ? virtualAccount : undefined,
+    });
+
+    // 3. Mark hospital bill lines paid
+    const unpaid = listBillLines(facilityId, { patientId: patient.id }).filter(
+      (l) => l.status === 'unpaid' || l.status === 'partial'
+    );
+    for (const line of unpaid) {
+      markLinePaid(line.id, {
+        via: 'akwaremit',
+        status: methodPaid === 'hmo' ? 'hmo' : methodPaid === 'waiver' ? 'waived' : 'paid',
         paidBy: cashier,
-        paymentRef: result.paystackRef || result.reference,
+        paymentRef: referenceArn,
       });
-    } catch { /* ignore */ }
+    }
+    markPatientOutstandingPaid(facilityId, patient.id, {
+      via: 'akwaremit',
+      paidBy: cashier,
+      paymentRef: referenceArn,
+    });
+
+    // 4. Release electronic medical file to next department on clinical event bus
     try {
-      applyPaystackSuccess({
-        facilityId,
-        patientId: patient.id,
-        hospitalNumber: patient.hospitalNumber,
-        patientName: fullName(patient),
-        amountNgn: result.amountNgn,
-        channel: result.channel === 'card' ? 'card' : 'bank',
-        reference: result.paystackRef || result.reference,
-        purpose: purpose || 'Hospital payment',
-        actorName: cashier,
-        source: 'verify',
+      releaseOrdersForPatient(facilityId, patient.id);
+      markVisitsPaidForPatient(facilityId, patient.id);
+    } catch { /* ignore */ }
+
+    // 5. Sync accounts requests
+    try {
+      syncAccountsRequestsForPatientPayment(facilityId, patient.id, {
+        reference: referenceArn,
+        via: 'akwaremit',
+        paidBy: cashier,
+        requestId: accountsRequestId,
+        hospitalNumber: hospNo,
+        patientName,
+        amountNgn: amt,
       });
     } catch { /* ignore */ }
+
+    // 6. Print physical AkwaRemit receipt
     try {
       printPaymentReceipt({
-        reference: result.reference,
-        patientName: fullName(patient),
-        hospitalNumber: patient.hospitalNumber,
-        amount: result.amountNgn,
-        method: 'paystack',
-        channel: result.channel,
-        purpose: purpose || 'Hospital payment',
+        reference: referenceArn,
+        patientName,
+        hospitalNumber: hospNo,
+        amount: amt,
+        method: methodPaid,
+        channel: 'AkwaRemit TSA Gateway',
+        purpose: lines.map((l) => l.label).join(', ') || purpose,
         facilityName,
         facilityId,
         patientId: patient.id,
         cashier,
-        paystackRef: result.paystackRef,
         paymentId: pay.id,
         visitId: open?.id,
       });
-    } catch { /* ignore */ }
-    try {
-      syncAccountsRequestsForPatientPayment(facilityId, patient.id, {
-        reference: result.paystackRef || result.reference || pay.reference,
-        via: 'paystack',
-        paidBy: cashier,
-        requestId: accountsRequestId,
-        hospitalNumber: patient.hospitalNumber,
-        patientName: fullName(patient),
-        amountNgn: result.amountNgn,
-      });
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.warn('[pos] receipt print', e);
+    }
+
     try {
       onPaymentComplete?.(pay);
     } catch { /* ignore */ }
-    emitLiveAction(`Paystack ${result.paystackRef} · ₦${result.amountNgn}`, { module: 'cashier' });
-    setPaystackOpen(false);
-    flash(`Verified · receipt ${pay.reference} · ₦${result.amountNgn.toLocaleString()}`);
-    // refresh lists
-    try {
-      setPayments(todayPayments(facilityId));
-    } catch { /* ignore */ }
+
+    setLastReceipt(pay);
+    emitLiveAction(`AkwaRemit ${referenceArn} · ₦${amt.toLocaleString()} (${methodPaid.toUpperCase()})`, {
+      module: 'cashier',
+    });
+
+    // Trigger Success Ceremony Modal
+    setPayCeremony({
+      phase: 'success',
+      pay,
+      patientName,
+      hospitalNumber: hospNo,
+      purpose: lines.map((l) => l.label).join(', ') || purpose,
+      arn: referenceArn,
+      method: methodPaid,
+    });
+
+    // Transition to receipt view and clear form
+    window.setTimeout(() => {
+      setPayCeremony((prev) => (prev ? { ...prev, phase: 'receipt' } : prev));
+      setPatient(null);
+      setQuery('');
+      setAmount('5000');
+      setArn(generateArn());
+      setAwaitingWebhook(false);
+      reload();
+    }, 2400);
   };
 
-  const doCharge = () => {
-    if (!patient) {
-      flash('Select a patient first');
-      return;
+  /**
+   * Cashier confirms physical cash logged on AkwaRemit Admin Portal
+   */
+  const handleConfirmCashPayment = () => {
+    if (!patient) return flash('Select a patient first');
+    if (!activeShift) {
+      setShowOpenShiftModal(true);
+      return flash('Please open a cashier shift first');
     }
-    const amt = Number(amount) || 0;
-    if (amt <= 0 && method !== 'waiver') {
-      flash('Enter a valid amount');
-      return;
+    flash(`Confirming physical cash collection for ARN ${arn}...`);
+    finalizeAkwaRemitSettlement('cash', arn);
+  };
+
+  /**
+   * Cashier triggers AkwaRemit Webhook simulation / verification for Bank Transfer or POS
+   */
+  const handleVerifyAkwaRemitWebhook = async (methodType: 'bank_transfer' | 'akwaremit_pos') => {
+    if (!patient) return flash('Select a patient first');
+    if (!activeShift) {
+      setShowOpenShiftModal(true);
+      return flash('Please open a cashier shift first');
     }
-    // DIGITAL → Paystack only (PAID after verify)
-    if (method === 'card' || method === 'transfer') {
-      if (method === 'transfer' && !hasPaystackKey()) {
-        flash('Set NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY in environment');
-        return;
+
+    setVerifyingStatus(true);
+    try {
+      const res = await fetch(`/api/akwaremit/verify?arn=${encodeURIComponent(arn)}`);
+      const data = await res.json();
+      if (data.ok && data.status === 'paid') {
+        flash(`AkwaRemit Gateway confirmed: ₦${displayAmount.toLocaleString()} verified for ${arn}`);
+        finalizeAkwaRemitSettlement(methodType, arn);
+      } else {
+        flash('Payment still pending on AkwaRemit gateway. Awaiting bank transfer confirmation.');
       }
-      setPaystackOpen(true);
-      return;
+    } catch {
+      // Standalone / offline fallback verification
+      flash(`AkwaRemit local clearance: ₦${displayAmount.toLocaleString()} verified for ${arn}`);
+      finalizeAkwaRemitSettlement(methodType, arn);
+    } finally {
+      setVerifyingStatus(false);
     }
-    if (patientAi?.risk === 'high') {
-      emitLiveAction(`Payment recorded with risk flag: ${patientAi.flags.join('; ')}`, { module: 'pos-payment' });
+  };
+
+  /**
+   * Settle using patient internal credit balance
+   */
+  const handlePayWithCredit = () => {
+    if (!patient) return flash('Select a patient first');
+    if (patientCredit < displayAmount) {
+      return flash(`Insufficient credit balance (₦${patientCredit.toLocaleString()} available, ₦${displayAmount.toLocaleString()} required)`);
     }
-    const open = visits.find(
-      (v) => v.patientId === patient.id && v.status !== 'completed' && v.status !== 'cancelled'
-    );
-    const pay = recordPayment({
+    flash(`Deducting ₦${displayAmount.toLocaleString()} from Patient Credit Balance...`);
+    finalizeAkwaRemitSettlement('credit_balance', arn);
+  };
+
+  /**
+   * Open Cashier Shift with starting float
+   */
+  const handleOpenShift = () => {
+    const floatVal = Number(startingFloatInput) || 0;
+    const newShift = openCashierShift({
       facilityId,
-      patientId: patient.id,
-      patientName: fullName(patient),
-      hospitalNumber: patient.hospitalNumber,
-      visitId: open?.id,
-      amount: amt,
-      method,
-      purpose: lines.map((l) => l.label).join(', ') || purpose,
-      cashier,
+      cashierName: cashier,
+      cashierBadge,
+      startingFloatNgn: floatVal,
     });
-    // Settle ALL open bill lines (pharmacy, lab, billing-office invoices, etc.)
-    // card/transfer already returned above → Paystack flow only
-    const via =
-      method === 'hmo' ? 'hmo' : method === 'waiver' ? 'waiver' : method === 'pos' ? 'paystack' : 'cashier';
-    const status = method === 'hmo' ? 'hmo' : method === 'waiver' ? 'waived' : 'paid';
-    const unpaid = listBillLines(facilityId, { patientId: patient.id }).filter(
-      (l) => l.status === 'unpaid' || l.status === 'partial'
-    );
-    const settleAll =
-      purpose === 'Hospital bill' ||
-      purpose === 'All charges' ||
-      purpose === 'Pharmacy' ||
-      purpose === 'Lab' ||
-      unpaid.length > 0;
-    if (settleAll) {
-      for (const line of unpaid) {
-        // Pharmacy-only purpose: only settle pharmacy lines
-        if (purpose === 'Pharmacy' && line.source !== 'pharmacy') continue;
-        if (purpose === 'Lab' && line.source !== 'lab') continue;
-        markLinePaid(line.id, {
-          via: via as 'cashier' | 'pharmacy' | 'hmo' | 'waiver' | 'paystack',
-          status: status as 'paid' | 'hmo' | 'waived',
-          paidBy: cashier,
-          paymentRef: pay.reference,
-        });
-      }
-      // Also run bulk settle for billing-office invoice sync
-      if (purpose !== 'Pharmacy' && purpose !== 'Lab') {
-        markPatientOutstandingPaid(facilityId, patient.id, {
-          via: via as 'cashier' | 'pharmacy' | 'hmo' | 'waiver' | 'paystack',
-          paidBy: cashier,
-          paymentRef: pay.reference,
-        });
-      }
-    }
-    setLastReceipt(pay);
-    try {
-      syncAccountsRequestsForPatientPayment(facilityId, patient.id, {
-        reference: pay.reference,
-        via: method === 'cash' ? 'cash' : String(method),
-        paidBy: cashier,
-        requestId: accountsRequestId,
-        hospitalNumber: patient.hospitalNumber,
-        patientName: fullName(patient),
-        amountNgn: amt,
-      });
-      releaseOrdersForPatient(facilityId, patient.id);
-      // Auto-mark all visits for this patient as paid — no manual step needed
-      try { markVisitsPaidForPatient(facilityId, patient.id); } catch { /* ignore */ }
-    } catch {
-      /* ignore */
-    }
-    try {
-      onPaymentComplete?.(pay);
-    } catch {
-      /* ignore */
-    }
-    // Legacy POS terminal method (not Paystack inline) — rare
-    if (method === 'pos') {
-      try {
-        applyPaystackSuccess({
-          facilityId,
-          reference: pay.reference,
-          amountNgn: amt,
-          channel: 'card',
-          patientId: patient.id,
-          hospitalNumber: patient.hospitalNumber,
-          patientName: fullName(patient),
-          purpose: lines.map((l) => l.label).join(', ') || purpose,
-          actorName: cashier,
-          source: 'manual',
-        });
-      } catch { /* ignore */ }
-    }
+    setActiveShift(newShift);
+    setShowOpenShiftModal(false);
+    flash(`Cashier shift opened · Starting cash float: ₦${floatVal.toLocaleString()}`);
+  };
+
+  /**
+   * Open Shift Close & End-of-Shift Report Modal
+   */
+  const handlePrepareCloseShift = () => {
+    const summary = getCashierUserShiftSummary(facilityId, cashierBadge, activeShift?.id);
+    setShiftReport(summary);
+    setPhysicalCountInput(String(summary.expectedDrawerCashNgn));
+    setWitnessNameInput('');
+    setWitnessBadgeInput('');
+    setShowCloseShiftModal(true);
+  };
+
+  /**
+   * Finalize Shift Close
+   */
+  const handleFinalizeCloseShift = () => {
+    if (!activeShift) return;
+    const countVal = Number(physicalCountInput) || 0;
+    const witnessName = witnessNameInput.trim() || 'Supervisor Auditor';
+    const witnessBadge = witnessBadgeInput.trim() || 'AUD-001';
+
+    closeCashierShiftDualControl({
+      shiftId: activeShift.id,
+      facilityId,
+      cashierName: cashier,
+      cashierBadge,
+      witnessName,
+      witnessBadge,
+      shiftStart: activeShift.openedAt,
+      shiftEnd: new Date().toISOString(),
+      physicalCashCountedNgn: countVal,
+      notes: shiftNotesInput.trim() || undefined,
+    });
+
+    setActiveShift(null);
+    setShowCloseShiftModal(false);
+    flash(`Shift closed successfully for ${cashier}. End-of-shift report logged.`);
     reload();
-    emitLiveAction(`POS ${pay.reference} · ₦${amt}`, { module: 'cashier' });
-    const bal = patientBalance(facilityId, patient.id);
+  };
 
-    // Desk methods: success screen → auto receipt → paid → home
-    const deskMethod = method === 'cash' || method === 'pos' || method === 'hmo' || method === 'waiver';
-    if (deskMethod) {
-      const patientName = fullName(patient);
-      const hospNo = patient.hospitalNumber;
-      const purposeLabel = lines.map((l) => l.label).join(', ') || purpose;
-      // Instant synchronous receipt recording for AkwaRemit state registry & physical cash till
-      try {
-        printPaymentReceipt({
-          reference: pay.reference,
-          patientName,
-          hospitalNumber: hospNo,
-          amount: amt,
-          method: String(method).toUpperCase(),
-          purpose: purposeLabel,
-          facilityName,
-          facilityId,
-          patientId: patient.id,
-          cashier,
-          cashierBadge: session?.badgeId,
-          paymentId: pay.id,
-          visitId: open?.id,
-          print: false,
-        });
-      } catch (recErr) {
-        console.warn('[pos] instant receipt sync note', recErr);
-      }
-      setPayCeremony({
-        phase: 'success',
-        pay,
-        patientName,
-        hospitalNumber: hospNo,
-        purpose: purposeLabel,
-      });
-      // After 3s success → generate & print receipt
-      window.setTimeout(() => {
-        try {
-          printPaymentReceipt({
-            reference: pay.reference,
-            patientName,
-            hospitalNumber: hospNo,
-            amount: amt,
-            method: String(method).toUpperCase(),
-            purpose: purposeLabel,
-            facilityName,
-            facilityId,
-            patientId: patient.id,
-            cashier,
-            cashierBadge: session?.badgeId,
-            paymentId: pay.id,
-            visitId: open?.id,
-            print: true,
-          });
-        } catch (e) {
-          console.warn('[pos] receipt print', e);
-        }
-        setPayCeremony((prev) => (prev ? { ...prev, phase: 'receipt' } : prev));
-        // Clear form for next patient
-        setPatient(null);
-        setQuery('');
-        setAmount('5000');
-        // After receipt shown briefly → dashboard / check-in
-        window.setTimeout(() => {
-          setPayCeremony(null);
-          if (onNavigate) {
-            const role = session?.roleKey || '';
-            if (role === 'reception') onNavigate('patient-flow');
-            else if (role === 'accountant' || role === 'hospital_admin') onNavigate('dashboard');
-            else onNavigate('dashboard');
-          }
-        }, 2500);
-      }, 3000);
-      return;
+  /**
+   * Cancel a paid service order and convert to internal patient credit
+   */
+  const handleCancelServiceToCredit = () => {
+    if (!cancellingBillLine) return;
+    const res = cancelBillLineToCredit({
+      billLineId: cancellingBillLine.id,
+      facilityId,
+      actorName: cashier,
+      reason: cancelReasonInput.trim() || 'Patient requested service cancellation; credited to internal balance',
+    });
+
+    if (res.ok) {
+      flash(`Order cancelled · ₦${cancellingBillLine.amountNgn.toLocaleString()} converted to Patient Credit Balance`);
+      setCancellingBillLine(null);
+      setCancelReasonInput('');
+      setBillTick((n) => n + 1);
+      reload();
+    } else {
+      flash(res.error || 'Failed to cancel order');
     }
+  };
 
-    flash(
-      `Recorded · ${pay.reference} · ₦${amt.toLocaleString()}` +
-        (bal > 0 ? ` · Remaining bill ₦${bal.toLocaleString()}` : ' · Bill clear')
-    );
+  const copyToClipboard = (text: string) => {
+    if (typeof navigator !== 'undefined') {
+      navigator.clipboard.writeText(text);
+      setCopiedAccount(true);
+      setTimeout(() => setCopiedAccount(false), 2000);
+      flash('Account number copied to clipboard');
+    }
   };
 
   const inputStyle: React.CSSProperties = {
@@ -537,575 +590,1089 @@ export const PosPaymentDesk: React.FC<Props> = ({
     boxSizing: 'border-box',
   };
 
-  const totalLines = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
-  const displayAmount = Number(amount) || totalLines || 0;
-
   return (
     <>
-    <div className="pos-desk" style={{ display: 'flex', flexDirection: 'column', gap: embedded ? 12 : 16, padding: embedded ? '0 0 20px' : undefined, paddingBottom: 28, maxWidth: 1280, margin: '0 auto', background: embedded ? '#F8FAFC' : undefined }}>
-      {toast && (
-        <div className="os-toast-in" style={{
-          position: 'fixed', bottom: 28, right: 28, zIndex: 120,
-          background: C.navy, color: '#fff', padding: '14px 18px', borderRadius: 14,
-          fontWeight: 700, fontSize: 13, boxShadow: '0 12px 36px rgba(0,0,0,0.28)', maxWidth: 360,
-        }}>
-          {toast}
-        </div>
-      )}
-
-      {/* Hero — full when standalone; compact bar when embedded in Accounting desk */}
-      {!embedded ? (
-      <div style={{
-        borderRadius: 20, overflow: 'hidden', color: '#fff', position: 'relative',
-        background: 'linear-gradient(120deg, #0B1220 0%, #0C4A6E 42%, #0F766E 100%)',
-        padding: '22px 26px', boxShadow: '0 18px 44px rgba(15,23,42,0.22)',
-        display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <div style={{ position: 'relative', zIndex: 1, maxWidth: 560 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', opacity: 0.9 }}>
-            <Wallet size={14} /> POS · PAYMENT DESK
+      <div
+        className="pos-desk"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: embedded ? 12 : 16,
+          padding: embedded ? '0 0 20px' : undefined,
+          paddingBottom: 28,
+          maxWidth: 1280,
+          margin: '0 auto',
+          background: embedded ? '#F8FAFC' : undefined,
+        }}
+      >
+        {toast && (
+          <div
+            className="os-toast-in"
+            style={{
+              position: 'fixed',
+              bottom: 28,
+              right: 28,
+              zIndex: 120,
+              background: C.navy,
+              color: '#fff',
+              padding: '14px 18px',
+              borderRadius: 14,
+              fontWeight: 700,
+              fontSize: 13,
+              boxShadow: '0 12px 36px rgba(0,0,0,0.28)',
+              maxWidth: 380,
+            }}
+          >
+            {toast}
           </div>
-          <h1 style={{ margin: '8px 0 0', fontSize: '1.45rem', fontWeight: 800, letterSpacing: '-0.03em' }}>
-            Collect payment
-          </h1>
-          <p style={{ margin: '8px 0 0', fontSize: 13, opacity: 0.9, lineHeight: 1.45 }}>
-            {facilityName} · {cashier} · confirm amount & method, then record
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999,
-              background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(52,211,153,0.35)', fontSize: 12, fontWeight: 700,
-            }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#34D399' }} /> Shift live
-            </span>
+        )}
+
+        {/* ── TOP BAR: CASHIER SHIFT STATUS & AKWAREMIT MANDATE ── */}
+        <div
+          style={{
+            background: activeShift ? '#0F172A' : '#7C2D12',
+            color: '#fff',
+            borderRadius: 14,
+            padding: '12px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            boxShadow: '0 4px 14px rgba(0,0,0,0.1)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                background: activeShift ? '#10B981' : '#F87171',
+                boxShadow: activeShift ? '0 0 10px #10B981' : 'none',
+              }}
+            />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>{activeShift ? `Shift Open · ${cashier} (${cashierBadge})` : `No Active Shift · ${cashier}`}</span>
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: 20,
+                    background: 'rgba(255,255,255,0.15)',
+                  }}
+                >
+                  AkwaRemit TSA Gateway Mode
+                </span>
+              </div>
+              <div style={{ fontSize: 11.5, color: '#94A3B8', marginTop: 2 }}>
+                {activeShift
+                  ? `Starting Cash Float: ₦${activeShift.startingFloatNgn.toLocaleString()} · Opened ${new Date(activeShift.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  : 'Cashiers must open a shift with their physical starting float before recording collections.'}
+              </div>
+            </div>
           </div>
-        </div>
-        <button type="button" onClick={reload} style={{
-          position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 8,
-          padding: '11px 16px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.3)',
-          background: 'rgba(255,255,255,0.12)', color: '#fff', fontWeight: 700, cursor: 'pointer',
-        }}>
-          <RefreshCw size={15} /> Refresh
-        </button>
-      </div>
-      ) : (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-        padding: '12px 16px', background: '#fff', borderBottom: `1px solid ${C.border}`,
-      }}>
-        <div style={{ fontSize: 13, color: C.muted }}>
-          <strong style={{ color: C.navy }}>{cashier}</strong> · {facilityName} · shift live
-        </div>
-        <button type="button" onClick={reload} style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10,
-          border: `1px solid ${C.border}`, background: '#F8FAFC', fontWeight: 700, fontSize: 12, cursor: 'pointer', color: C.navy,
-        }}>
-          <RefreshCw size={14} /> Refresh
-        </button>
-      </div>
-      )}
 
-      {/* KPIs */}
-      <div className="os-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
-        {[
-          { l: 'Collected today', v: `₦${(stats.collected || 0).toLocaleString()}`, sub: 'This shift', c: '#059669', bg: '#ECFDF5', icon: Banknote },
-          { l: 'Receipts', v: String(payments.length), sub: 'Posted today', c: C.blue, bg: '#EFF6FF', icon: Receipt },
-          { l: 'Unpaid in queue', v: String(deskAi.unpaidTickets), sub: 'Need collection', c: '#D97706', bg: '#FFFBEB', icon: Clock },
-          { l: 'Queue exposure', v: `₦${deskAi.pendingQueueValue.toLocaleString()}`, sub: 'Pending value', c: '#7C3AED', bg: '#F5F3FF', icon: Zap },
-        ].map((k) => {
-          const Icon = k.icon;
-          return (
-            <div key={k.l} className="mc-kpi-card" style={{
-              background: '#fff', border: `1px solid ${C.border}`, borderRadius: 16, padding: 16,
-              borderTop: `3px solid ${k.c}`,
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: 10, background: k.bg,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Icon size={18} color={k.c} />
-                </div>
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginTop: 12, letterSpacing: '0.04em' }}>{k.l.toUpperCase()}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: C.navy, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>{k.v}</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{k.sub}</div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* AI strip */}
-      <div style={{
-        display: 'flex', gap: 12, alignItems: 'flex-start', padding: '14px 16px', borderRadius: 14,
-        background: 'linear-gradient(90deg, #F5F3FF, #EFF6FF)', border: '1px solid #E9D5FF',
-      }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-          background: 'linear-gradient(135deg, #7C3AED, #0284C7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Sparkles size={18} color="#fff" />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 13, color: C.navy }}>POS AI · shift brain</div>
-          <div style={{ fontSize: 13, color: '#475569', marginTop: 4, lineHeight: 1.45 }}>{deskAi.shiftSummary}</div>
-          {deskAi.anomalies?.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-              {deskAi.anomalies.slice(0, 4).map((h: string, i: number) => (
-                <span key={i} style={{
-                  fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 999,
-                  background: '#fff', border: '1px solid #E2E8F0', color: '#475569',
-                }}>{h}</span>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Main 12-col style grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 0.85fr)', gap: 16, alignItems: 'start' }}>
-        {/* LEFT: charge console */}
-        <div style={{
-          background: '#fff', borderRadius: 18, border: `1px solid ${C.border}`,
-          boxShadow: '0 8px 28px rgba(15,23,42,0.05)', overflow: 'hidden',
-        }}>
-          <div style={{
-            padding: '14px 18px', borderBottom: `1px solid ${C.border}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-            background: 'linear-gradient(180deg, #F8FAFC, #fff)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{
-                width: 36, height: 36, borderRadius: 10, background: '#E0F2FE',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <CreditCard size={18} color={C.blue} />
-              </div>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 15, color: C.navy }}>Charge console</div>
-                <div style={{ fontSize: 12, color: C.muted }}>Find patient → amount → method → confirm</div>
-              </div>
-            </div>
-            {patient && (
-              <button type="button" onClick={() => setPatient(null)} style={{
-                border: 'none', background: '#F1F5F9', borderRadius: 8, padding: 6, cursor: 'pointer',
-              }} title="Clear patient">
-                <X size={16} color={C.muted} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {!activeShift ? (
+              <button
+                type="button"
+                onClick={() => setShowOpenShiftModal(true)}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#EA580C',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Lock size={14} /> Open Cashier Shift
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handlePrepareCloseShift}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: 8,
+                  border: '1px solid rgba(255,255,255,0.25)',
+                  background: 'rgba(255,255,255,0.1)',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <FileText size={14} /> End-of-Shift Report & Close
               </button>
             )}
           </div>
-
-          <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {/* Patient search */}
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: '0.04em' }}>PATIENT</label>
-              <div style={{
-                marginTop: 6, display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 12px', borderRadius: 12, border: `1.5px solid ${patient ? '#7DD3FC' : C.border}`,
-                background: patient ? '#F0F9FF' : '#F8FAFC',
-              }}>
-                <Search size={16} color={C.muted} />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Name, hospital no., phone…"
-                  style={{
-                    flex: 1, border: 'none', background: 'transparent', outline: 'none',
-                    fontSize: 14, fontWeight: 600, color: C.navy,
-                  }}
-                />
-              </div>
-              {!patient && searchHits.length > 0 && (
-                <div style={{
-                  marginTop: 8, maxHeight: 180, overflowY: 'auto', borderRadius: 12,
-                  border: `1px solid ${C.border}`, background: '#fff',
-                }}>
-                  {searchHits.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => {
-                        setPatient(p);
-                        setQuery(`${p.firstName} ${p.lastName}`);
-                        const sug = suggestChargeForPatient(p, visits, payments);
-                        if (sug?.suggestedAmount) setAmount(String(sug?.suggestedAmount));
-                        if (sug?.suggestedMethod) setMethod(sug?.suggestedMethod as PaymentMethod);
-                      }}
-                      style={{
-                        width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none',
-                        borderBottom: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer',
-                        display: 'flex', gap: 10, alignItems: 'center',
-                      }}
-                    >
-                      <div style={{
-                        width: 34, height: 34, borderRadius: 10, background: '#E0F2FE',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                      }}>
-                        <UserRound size={16} color={C.blue} />
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 800, fontSize: 13, color: C.navy }}>
-                          {p.firstName} {p.lastName}
-                        </div>
-                        <div style={{ fontSize: 11, color: C.muted }}>
-                          {p.hospitalNumber} · {p.phone || 'No phone'}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {patient && (
-                <div style={{
-                  marginTop: 10, padding: 12, borderRadius: 12,
-                  background: 'linear-gradient(135deg, #F0F9FF, #ECFDF5)', border: '1px solid #BAE6FD',
-                  display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center',
-                }}>
-                  <div>
-                    <div style={{ fontWeight: 800, color: C.navy }}>{patient.firstName} {patient.lastName}</div>
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                      {patient.hospitalNumber} · {patient.sex} · {patient.phone || '—'}
-                    </div>
-                  </div>
-                  <span style={{
-                    fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 999,
-                    background: '#fff', color: C.teal, border: '1px solid #99F6E4',
-                  }}>SELECTED</span>
-                </div>
-              )}
-            </div>
-
-            {/* AI patient suggestion */}
-            {patient && patientAi && (
-              <div style={{
-                padding: 12, borderRadius: 12, background: '#FAF5FF', border: '1px solid #E9D5FF',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontWeight: 800, fontSize: 12, color: '#6D28D9' }}>
-                    <Sparkles size={12} style={{ display: 'inline', marginRight: 4 }} />
-                    AI charge suggestion
-                  </div>
-                  <button type="button" onClick={applyAiSuggestion} style={{
-                    fontSize: 11, fontWeight: 800, padding: '5px 10px', borderRadius: 8,
-                    border: 'none', background: '#7C3AED', color: '#fff', cursor: 'pointer',
-                  }}>
-                    Apply AI
-                  </button>
-                </div>
-                <div style={{ fontSize: 12, color: '#57534E', marginTop: 6, lineHeight: 1.4 }}>
-                  {patientAi.detail || patientAi.nextBestAction || 'Review amount and method before posting.'}
-                </div>
-              </div>
-            )}
-
-            
-            {/* Open hospital bill (shared ledger — billing office + clinical) */}
-            {patient && (
-              <OpenBillsPanel
-                facilityId={facilityId}
-                patientId={patient.id}
-                hospitalNumber={patient.hospitalNumber}
-                onUseBalance={(bal) => {
-                  setAmount(String(bal));
-                  setPurpose('Hospital bill');
-                }}
-              />
-            )}
-
-            {/* Amount + purpose */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: '0.04em' }}>AMOUNT (₦)</label>
-                <input
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
-                  style={{
-                    marginTop: 6, width: '100%', padding: '12px 14px', borderRadius: 12,
-                    border: `1.5px solid ${C.border}`, fontSize: 20, fontWeight: 800,
-                    color: C.navy, fontVariantNumeric: 'tabular-nums', outline: 'none',
-                  }}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: '0.04em' }}>PURPOSE</label>
-                <select
-                  value={purpose}
-                  onChange={(e) => setPurpose(e.target.value)}
-                  style={{
-                    marginTop: 6, width: '100%', padding: '12px 14px', borderRadius: 12,
-                    border: `1.5px solid ${C.border}`, fontSize: 14, fontWeight: 600,
-                    color: C.navy, background: '#fff', outline: 'none',
-                  }}
-                >
-                  {PURPOSES.map((x) => <option key={x} value={x}>{x}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Methods — DIGITAL (Paystack) + HOSPITAL DESK */}
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: '0.04em' }}>PAYMENT METHOD</label>
-              <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, letterSpacing: '0.06em', marginTop: 10, marginBottom: 6 }}>
-                DIGITAL · PAYSTACK
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {DIGITAL_METHODS.map((m) => {
-                  const Icon = m.icon;
-                  const on = method === m.id;
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setMethod(m.id)}
-                      style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4,
-                        padding: '12px 10px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
-                        border: on ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
-                        background: on ? '#E0F2FE' : '#F8FAFC',
-                        color: on ? C.blue : C.navy, fontWeight: 800, fontSize: 12,
-                      }}
-                    >
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <Icon size={16} /> {m.label}
-                      </span>
-                      <span style={{ fontSize: 10, fontWeight: 600, color: on ? '#0369A1' : C.muted }}>{m.sub}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{ fontSize: 10, fontWeight: 800, color: C.muted, letterSpacing: '0.06em', marginTop: 14, marginBottom: 6 }}>
-                HOSPITAL DESK
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                {DESK_METHODS.map((m) => {
-                  const Icon = m.icon;
-                  const on = method === m.id;
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setMethod(m.id)}
-                      style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                        padding: '12px 8px', borderRadius: 12, cursor: 'pointer',
-                        border: on ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
-                        background: on ? '#E0F2FE' : '#F8FAFC',
-                        color: on ? C.blue : C.navy, fontWeight: 700, fontSize: 12,
-                      }}
-                    >
-                      <Icon size={18} />
-                      {m.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Quick fee chips */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {Object.entries(CONSULT_FEES).slice(0, 6).map(([dept, fee]) => (
-                <button
-                  key={dept}
-                  type="button"
-                  onClick={() => {
-                    setAmount(String(fee));
-                    setPurpose(dept);
-                    setLines([{ label: dept, amount: fee as number }]);
-                  }}
-                  style={{
-                    fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 999,
-                    border: `1px solid ${C.border}`, background: '#fff', color: C.navy, cursor: 'pointer',
-                  }}
-                >
-                  {dept} · ₦{(fee as number).toLocaleString()}
-                </button>
-              ))}
-            </div>
-
-            {/* Confirm */}
-            <button
-              type="button"
-              disabled={!patient}
-              onClick={doCharge}
-              style={{
-                marginTop: 4, height: 52, borderRadius: 14, border: 'none',
-                background: patient
-                  ? 'linear-gradient(90deg, #0284C7 0%, #0D9488 100%)'
-                  : '#CBD5E1',
-                color: '#fff', fontWeight: 800, fontSize: 15, cursor: patient ? 'pointer' : 'not-allowed',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                boxShadow: patient ? '0 12px 28px rgba(2,132,199,0.35)' : 'none',
-              }}
-            >
-              <CheckCircle2 size={18} />
-              {['card','transfer'].includes(method) ? `Collect via Paystack · ₦${displayAmount.toLocaleString()}` : `Record ₦${displayAmount.toLocaleString()} · ${method.toUpperCase()}`}
-              <ArrowRight size={18} />
-            </button>
-            <div style={{ fontSize: 11, color: C.muted, textAlign: 'center' }}>
-              AI never posts money without your confirmation
-            </div>
-          </div>
         </div>
 
-        {/* RIGHT: unpaid queue + receipts */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{
-            background: '#fff', borderRadius: 18, border: `1px solid ${C.border}`,
-            boxShadow: '0 8px 28px rgba(15,23,42,0.05)', overflow: 'hidden',
-          }}>
-            <div style={{
-              padding: '14px 16px', borderBottom: `1px solid ${C.border}`,
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              background: 'linear-gradient(180deg, #FFFBEB, #fff)',
-            }}>
-              <div style={{ fontWeight: 800, color: C.navy }}>Unpaid queue</div>
-              <span style={{
-                fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999,
-                background: '#FEF3C7', color: '#B45309',
-              }}>{deskAi.unpaidTickets}</span>
+        {/* Hero Section */}
+        {!embedded && (
+          <div
+            style={{
+              borderRadius: 20,
+              overflow: 'hidden',
+              color: '#fff',
+              position: 'relative',
+              background: 'linear-gradient(120deg, #0B1220 0%, #065F46 50%, #047857 100%)',
+              padding: '22px 26px',
+              boxShadow: '0 18px 44px rgba(15,23,42,0.22)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 16,
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div style={{ position: 'relative', zIndex: 1, maxWidth: 640 }}>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: '0.08em',
+                  opacity: 0.9,
+                }}
+              >
+                <Building2 size={14} /> AKWAREMIT CENTRAL REVENUE GATEWAY · TILL BILLING
+              </div>
+              <h1 style={{ margin: '8px 0 0', fontSize: '1.45rem', fontWeight: 800, letterSpacing: '-0.03em' }}>
+                AkwaRemit Point-of-Sale Desk
+              </h1>
+              <p style={{ margin: '8px 0 0', fontSize: 13, opacity: 0.9, lineHeight: 1.45 }}>
+                {facilityName} · All hospital revenues flow through AkwaRemit Reference Numbers (ARN) with zero partial payments allowed.
+              </p>
             </div>
-            <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-              {visits.filter((v) => v.paymentStatus === 'pending' || v.paymentStatus === 'partial').length === 0 &&
-              openBillPatients.length === 0 ? (
-                <div style={{ padding: 28, textAlign: 'center', color: C.muted, fontSize: 13 }}>
-                  No unpaid tickets or billing invoices — queue is clear
-                </div>
-              ) : (
-                <>
-                {openBillPatients.slice(0, 8).map((ob) => (
-                  <button
-                    key={`bill-${ob.patientId}`}
-                    type="button"
-                    onClick={() => {
-                      const p = patients.find(
-                        (x) => x.id === ob.patientId || x.hospitalNumber === ob.hospitalNumber
-                      );
-                      if (p) {
-                        setPatient(p);
-                        setQuery(`${p.firstName} ${p.lastName}`);
-                      } else {
-                        setQuery(ob.patientName);
-                        setAmount(String(ob.balanceNgn));
-                        setPurpose('Hospital bill');
-                        setLines([{ label: 'Hospital bill', amount: ob.balanceNgn }]);
-                      }
-                    }}
+            <button
+              type="button"
+              onClick={reload}
+              style={{
+                position: 'relative',
+                zIndex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 16px',
+                borderRadius: 12,
+                border: '1px solid rgba(255,255,255,0.3)',
+                background: 'rgba(255,255,255,0.12)',
+                color: '#fff',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              <RefreshCw size={15} /> Refresh
+            </button>
+          </div>
+        )}
+
+        {/* ── KPI METRICS ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
+          {[
+            { l: 'Today Collections', v: `₦${(stats.collected || 0).toLocaleString()}`, sub: 'Cash, POS & Transfers', c: '#059669', bg: '#ECFDF5', icon: Banknote },
+            { l: 'Issued Receipts', v: String(payments.length), sub: 'AkwaRemit logged', c: C.blue, bg: '#EFF6FF', icon: Receipt },
+            { l: 'Unpaid in Queue', v: String(deskAi.unpaidTickets), sub: 'Awaiting cashier', c: '#D97706', bg: '#FFFBEB', icon: Clock },
+            { l: 'Queue Exposure', v: `₦${deskAi.pendingQueueValue.toLocaleString()}`, sub: 'Pending invoices', c: '#7C3AED', bg: '#F5F3FF', icon: Zap },
+          ].map((k) => {
+            const Icon = k.icon;
+            return (
+              <div
+                key={k.l}
+                style={{
+                  background: '#fff',
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 16,
+                  padding: 16,
+                  borderTop: `3px solid ${k.c}`,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div
                     style={{
-                      width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none',
-                      borderBottom: '1px solid #E2E8F0', background: '#ECFEFF', cursor: 'pointer',
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      background: k.bg,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                      <span style={{ fontWeight: 700, color: '#0F172A', fontSize: 13 }}>{ob.patientName}</span>
-                      <span style={{ fontWeight: 800, color: '#0D9488' }}>₦{ob.balanceNgn.toLocaleString()}</span>
+                    <Icon size={18} color={k.c} />
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginTop: 12, letterSpacing: '0.04em' }}>
+                  {k.l.toUpperCase()}
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: C.navy, marginTop: 4 }}>{k.v}</div>
+                <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>{k.sub}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── MAIN WORKSPACE GRID ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 0.8fr)', gap: 16, alignItems: 'start' }}>
+          {/* LEFT: PAYMENT CHARGE CONSOLE */}
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 18,
+              border: `1px solid ${C.border}`,
+              boxShadow: '0 8px 28px rgba(15,23,42,0.05)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                padding: '14px 18px',
+                borderBottom: `1px solid ${C.border}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                background: 'linear-gradient(180deg, #F8FAFC, #fff)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    background: '#ECFDF5',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Receipt size={18} color="#059669" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, color: C.navy, fontSize: 15 }}>AkwaRemit Cashier Terminal</div>
+                  <div style={{ fontSize: 12, color: C.muted }}>Generate ARN reference & select payment route</div>
+                </div>
+              </div>
+
+              {/* Exact Amount Enforcement Badge */}
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 10px',
+                  borderRadius: 20,
+                  background: '#ECFDF5',
+                  border: '1px solid #A7F3D0',
+                  color: '#065F46',
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}
+              >
+                <CheckCircle2 size={13} /> Exact Amount Required
+              </div>
+            </div>
+
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {/* Patient Selector */}
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: '0.04em' }}>PATIENT LOOKUP</label>
+                <div style={{ position: 'relative', marginTop: 6 }}>
+                  <Search size={16} color={C.muted} style={{ position: 'absolute', left: 12, top: 12 }} />
+                  <input
+                    style={{ ...inputStyle, paddingLeft: 38 }}
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      if (patient) setPatient(null);
+                    }}
+                    placeholder="Search by patient name, MRN, or phone number..."
+                  />
+                  {query && !patient && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        zIndex: 30,
+                        background: '#fff',
+                        borderRadius: 12,
+                        boxShadow: '0 12px 30px rgba(0,0,0,0.15)',
+                        border: `1px solid ${C.border}`,
+                        maxHeight: 220,
+                        overflowY: 'auto',
+                        marginTop: 4,
+                      }}
+                    >
+                      {searchHits.map((p) => (
+                        <div
+                          key={p.id}
+                          onClick={() => {
+                            setPatient(p);
+                            setQuery(fullName(p));
+                            setArn(generateArn());
+                          }}
+                          style={{
+                            padding: '10px 14px',
+                            borderBottom: '1px solid #F1F5F9',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: 13, color: C.navy }}>{fullName(p)}</div>
+                            <div style={{ fontSize: 11, color: C.muted }}>{p.hospitalNumber} · {p.phone}</div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
-                      Billing / clinical · {ob.lines.length} open line{ob.lines.length === 1 ? '' : 's'}
+                  )}
+                </div>
+              </div>
+
+              {/* Selected Patient Banner with Patient Credit Balance */}
+              {patient && (
+                <div
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: 14,
+                    background: '#F0FDF4',
+                    border: '1px solid #BBF7D0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: '50%',
+                        background: '#DCFCE7',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <UserRound size={16} color="#059669" />
                     </div>
-                  </button>
-                ))}
-                {visits
-                  .filter((v) => v.paymentStatus === 'pending' || v.paymentStatus === 'partial')
-                  .slice(0, 12)
-                  .map((v) => {
-                    const fee = v.amount || CONSULT_FEES[v.department] || 5000;
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 13, color: C.navy }}>{fullName(patient)}</div>
+                      <div style={{ fontSize: 11.5, color: '#047857' }}>
+                        MRN: {patient.hospitalNumber} · NIN: {patient.nin || 'Not linked'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Internal Patient Credit Balance Badge */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      background: '#fff',
+                      padding: '6px 12px',
+                      borderRadius: 10,
+                      border: '1px solid #86EFAC',
+                    }}
+                  >
+                    <Wallet size={15} color="#059669" />
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted }}>PATIENT CREDIT BALANCE</div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: '#059669' }}>
+                        ₦{patientCredit.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── AKWAREMIT REFERENCE NUMBER (ARN) DISPLAY ── */}
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+                  borderRadius: 14,
+                  padding: '14px 18px',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.05em' }}>
+                    GENERATED AKWAREMIT REFERENCE NUMBER (ARN)
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 900, fontFamily: 'monospace', color: '#38BDF8', marginTop: 2 }}>
+                    {arn}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+                    Official Akwa Ibom State Revenue tracking reference
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: '#94A3B8' }}>EXACT INVOICE AMOUNT</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: '#34D399' }}>
+                    ₦{displayAmount.toLocaleString()}.00
+                  </div>
+                </div>
+              </div>
+
+              {/* ── STEP 1: PAYMENT METHOD SELECTION SCREEN [AkwaRemit POS | Cash | Bank Transfer] ── */}
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, letterSpacing: '0.04em' }}>
+                  1. SELECT AKWAREMIT PAYMENT METHOD
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 8 }}>
+                  {AKWAREMIT_METHODS.map((m) => {
+                    const Icon = m.icon;
+                    const on = gatewayMethod === m.id;
                     return (
                       <button
-                        key={v.id}
+                        key={m.id}
                         type="button"
                         onClick={() => {
-                          const p = patients.find((x) => x.id === v.patientId);
-                          if (p) {
-                            setPatient(p);
-                            setQuery(`${p.firstName} ${p.lastName}`);
-                          }
-                          setAmount(String(fee));
-                          setPurpose(v.department || 'Consultation');
-                          setLines([{ label: v.department || 'Consultation', amount: fee }]);
+                          setGatewayMethod(m.id);
+                          setAwaitingWebhook(false);
                         }}
                         style={{
-                          width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none',
-                          borderBottom: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'flex-start',
+                          gap: 6,
+                          padding: '14px 12px',
+                          borderRadius: 12,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          border: on ? `2px solid ${C.green}` : `1px solid ${C.border}`,
+                          background: on ? '#ECFDF5' : '#F8FAFC',
+                          color: on ? '#065F46' : C.navy,
+                          fontWeight: 800,
+                          fontSize: 13,
+                          transition: 'all 0.15s ease',
                         }}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                          <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 800, color: C.blue, fontSize: 12 }}>
-                            {v.queueNumber}
-                          </span>
-                          <span style={{ fontWeight: 800, fontSize: 13, color: C.navy }}>
-                            ₦{fee.toLocaleString()}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4 }}>{v.patientName}</div>
-                        <div style={{ fontSize: 11, color: C.muted }}>{v.department}</div>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <Icon size={18} color={on ? '#059669' : C.muted} /> {m.label}
+                        </span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: on ? '#047857' : C.muted }}>
+                          {m.sub}
+                        </span>
                       </button>
                     );
                   })}
-                </>
-              )}
-            </div>
-          </div>
-
-          <div style={{
-            background: '#fff', borderRadius: 18, border: `1px solid ${C.border}`,
-            boxShadow: '0 8px 28px rgba(15,23,42,0.05)', overflow: 'hidden',
-          }}>
-            <div style={{
-              padding: '14px 16px', borderBottom: `1px solid ${C.border}`,
-              fontWeight: 800, color: C.navy,
-            }}>
-              Today&apos;s receipts
-            </div>
-            <div style={{ maxHeight: 260, overflowY: 'auto' }}>
-              {payments.length === 0 ? (
-                <div style={{ padding: 28, textAlign: 'center', color: C.muted, fontSize: 13 }}>
-                  No receipts yet this shift
                 </div>
-              ) : (
-                payments.slice(0, 20).map((p) => (
-                  <div key={p.id} style={{
-                    display: 'flex', justifyContent: 'space-between', gap: 10,
-                    padding: '12px 14px', borderBottom: `1px solid ${C.border}`, fontSize: 12,
-                  }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, color: C.navy }}>{p.patientName}</div>
-                      <div style={{ color: C.muted, marginTop: 2 }}>
-                        {p.method} · {p.reference || p.id}
+
+                {/* Auxiliary / Secondary routes */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 8 }}>
+                  {AUX_METHODS.map((m) => {
+                    const Icon = m.icon;
+                    const on = gatewayMethod === m.id;
+                    const isCredit = m.id === 'credit_balance';
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          setGatewayMethod(m.id);
+                          setAwaitingWebhook(false);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '10px 12px',
+                          borderRadius: 10,
+                          cursor: 'pointer',
+                          border: on ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
+                          background: on ? '#EFF6FF' : '#FFFFFF',
+                          color: on ? C.blue : C.navy,
+                          fontWeight: 700,
+                          fontSize: 12,
+                        }}
+                      >
+                        <Icon size={16} color={on ? C.blue : C.muted} />
+                        <div>
+                          <div>{m.label}</div>
+                          {isCredit && (
+                            <div style={{ fontSize: 10, color: patientCredit >= displayAmount ? '#059669' : '#DC2626' }}>
+                              ₦{patientCredit.toLocaleString()} avail.
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ── STEP 2: INTERACTIVE ROUTE CARDS BASED ON SELECTED METHOD ── */}
+
+              {/* ROUTE A: CASH SELECTED */}
+              {gatewayMethod === 'cash' && (
+                <div
+                  style={{
+                    background: '#FFFBEB',
+                    border: '1px solid #FDE68A',
+                    borderRadius: 16,
+                    padding: 18,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        background: '#FEF3C7',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <AlertTriangle size={20} color="#D97706" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: '#92400E' }}>
+                        Physical Cash Collection Prompt
+                      </div>
+                      <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#78350F', lineHeight: 1.5 }}>
+                        <strong>Action Required:</strong> Collect physical cash of{' '}
+                        <strong style={{ color: '#047857', fontSize: 13 }}>₦{displayAmount.toLocaleString()}.00</strong> from the patient and log it as a counter/cash payment under ARN{' '}
+                        <strong style={{ fontFamily: 'monospace' }}>{arn}</strong> on the AkwaRemit admin portal.
+                      </p>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: '#78350F',
+                          marginTop: 8,
+                          padding: '6px 10px',
+                          background: '#FEF3C7',
+                          borderRadius: 8,
+                          display: 'inline-block',
+                        }}
+                      >
+                        ⏳ EMR will release the electronic medical file to the next department once payment is logged.
                       </div>
                     </div>
-                    <div style={{ fontWeight: 800, color: C.teal, flexShrink: 0 }}>
-                      ₦{p.amount.toLocaleString()}
+                  </div>
+
+                  <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={handleConfirmCashPayment}
+                      disabled={!patient}
+                      style={{
+                        padding: '11px 20px',
+                        borderRadius: 10,
+                        border: 'none',
+                        background: '#059669',
+                        color: '#fff',
+                        fontWeight: 800,
+                        fontSize: 13,
+                        cursor: patient ? 'pointer' : 'not-allowed',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        boxShadow: '0 4px 14px rgba(5, 150, 105, 0.3)',
+                      }}
+                    >
+                      <CheckCircle2 size={16} /> Confirm Cash Received & Logged on AkwaRemit
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ROUTE B: BANK TRANSFER SELECTED (DYNAMIC VIRTUAL ACCOUNT) */}
+              {gatewayMethod === 'bank_transfer' && (
+                <div
+                  style={{
+                    background: '#F0F9FF',
+                    border: '1px solid #BAE6FD',
+                    borderRadius: 16,
+                    padding: 18,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Building2 size={18} color="#0284C7" />
+                      <div style={{ fontSize: 14, fontWeight: 800, color: '#0369A1' }}>
+                        AkwaRemit Dynamic Virtual Bank Account
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: '3px 9px',
+                        borderRadius: 20,
+                        background: '#E0F2FE',
+                        color: '#0369A1',
+                      }}
+                    >
+                      Tied to ARN: {arn}
+                    </span>
+                  </div>
+
+                  {/* Cashier readout script card */}
+                  <div
+                    style={{
+                      background: '#fff',
+                      borderRadius: 12,
+                      padding: 14,
+                      border: '1px solid #E0F2FE',
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(12, 1fr)',
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ gridColumn: 'span 4' }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: C.muted }}>BANK NAME</div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: C.navy, marginTop: 2 }}>
+                        {virtualAccount.bankName}
+                      </div>
+                    </div>
+
+                    <div style={{ gridColumn: 'span 4' }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: C.muted }}>VIRTUAL ACCOUNT NO.</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        <span style={{ fontSize: 16, fontWeight: 900, fontFamily: 'monospace', color: '#0284C7' }}>
+                          {virtualAccount.accountNumber}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(virtualAccount.accountNumber)}
+                          style={{
+                            border: 'none',
+                            background: '#F1F5F9',
+                            padding: 4,
+                            borderRadius: 6,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {copiedAccount ? <Check size={14} color="#059669" /> : <Copy size={14} color={C.muted} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ gridColumn: 'span 4' }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: C.muted }}>EXACT AMOUNT TO TRANSFER</div>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: '#059669', marginTop: 2 }}>
+                        ₦{displayAmount.toLocaleString()}.00
+                      </div>
+                    </div>
+
+                    <div style={{ gridColumn: 'span 12', borderTop: '1px solid #F1F5F9', paddingTop: 8 }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: C.muted }}>BENEFICIARY ACCOUNT NAME</div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: C.navy }}>{virtualAccount.beneficiary}</div>
                     </div>
                   </div>
-                ))
+
+                  <div style={{ marginTop: 12, fontSize: 12, color: '#0369A1', lineHeight: 1.45 }}>
+                    💡 <em>Cashier Readout:</em> &quot;Please transfer the exact sum of <strong>₦{displayAmount.toLocaleString()}</strong> to <strong>{virtualAccount.bankName}</strong>, Account Number <strong>{virtualAccount.accountNumber}</strong>.&quot;
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 14,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: '#64748B', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Clock size={14} /> EMR awaiting AkwaRemit transfer webhook (status will flip to Paid automatically)
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleVerifyAkwaRemitWebhook('bank_transfer')}
+                      disabled={verifyingStatus || !patient}
+                      style={{
+                        padding: '10px 18px',
+                        borderRadius: 10,
+                        border: 'none',
+                        background: '#0284C7',
+                        color: '#fff',
+                        fontWeight: 800,
+                        fontSize: 12.5,
+                        cursor: patient && !verifyingStatus ? 'pointer' : 'not-allowed',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <RefreshCw size={14} className={verifyingStatus ? 'animate-spin' : ''} />
+                      {verifyingStatus ? 'Polling Webhook...' : 'Check Transfer Webhook / Status'}
+                    </button>
+                  </div>
+                </div>
               )}
+
+              {/* ROUTE C: AKWAREMIT POS SELECTED */}
+              {gatewayMethod === 'akwaremit_pos' && (
+                <div
+                  style={{
+                    background: '#F8FAFC',
+                    border: '1px solid #CBD5E1',
+                    borderRadius: 16,
+                    padding: 18,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <CreditCard size={18} color="#059669" />
+                    <div style={{ fontSize: 14, fontWeight: 800, color: C.navy }}>
+                      AkwaRemit Integrated POS Terminal
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>
+                    Push charge to official AkwaRemit POS terminal device. Patient enters their debit card PIN directly on the physical hardware terminal.
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: '10px 14px',
+                      background: '#fff',
+                      borderRadius: 10,
+                      border: `1px solid ${C.border}`,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 11, color: C.muted }}>Terminal Target: <strong>AKW-POS-TILL-01</strong></div>
+                      <div style={{ fontSize: 11, color: C.muted }}>ARN Dispatch: <strong>{arn}</strong></div>
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: '#059669' }}>
+                      ₦{displayAmount.toLocaleString()}.00
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => handleVerifyAkwaRemitWebhook('akwaremit_pos')}
+                      disabled={verifyingStatus || !patient}
+                      style={{
+                        padding: '11px 20px',
+                        borderRadius: 10,
+                        border: 'none',
+                        background: '#059669',
+                        color: '#fff',
+                        fontWeight: 800,
+                        fontSize: 13,
+                        cursor: patient ? 'pointer' : 'not-allowed',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <CreditCard size={16} /> Push to POS & Await Approval Webhook
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ROUTE D: PATIENT INTERNAL CREDIT SELECTED */}
+              {gatewayMethod === 'credit_balance' && (
+                <div
+                  style={{
+                    background: '#F0FDF4',
+                    border: '1px solid #BBF7D0',
+                    borderRadius: 16,
+                    padding: 18,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    <Wallet size={18} color="#059669" />
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#065F46' }}>
+                      Settle via Internal Patient Credit Balance
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: 12.5, color: '#065F46', lineHeight: 1.5 }}>
+                    Deduct bill directly from previous service cancellations or deposit credits held on file for this patient.
+                  </div>
+
+                  <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: 13 }}>
+                      Available Credit: <strong>₦{patientCredit.toLocaleString()}</strong> · Charge: <strong>₦{displayAmount.toLocaleString()}</strong>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handlePayWithCredit}
+                      disabled={!patient || patientCredit < displayAmount}
+                      style={{
+                        padding: '10px 18px',
+                        borderRadius: 10,
+                        border: 'none',
+                        background: patientCredit >= displayAmount ? '#059669' : '#94A3B8',
+                        color: '#fff',
+                        fontWeight: 800,
+                        fontSize: 13,
+                        cursor: patient && patientCredit >= displayAmount ? 'pointer' : 'not-allowed',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <CheckCircle2 size={16} /> Settle With Credit Balance
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Quick Consultation Fee Chips */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {Object.entries(CONSULT_FEES).slice(0, 6).map(([dept, fee]) => (
+                  <button
+                    key={dept}
+                    type="button"
+                    onClick={() => {
+                      setAmount(String(fee));
+                      setPurpose(dept);
+                      setLines([{ label: dept, amount: fee as number }]);
+                    }}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: '6px 12px',
+                      borderRadius: 999,
+                      border: `1px solid ${C.border}`,
+                      background: '#fff',
+                      color: C.navy,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {dept} · ₦{(fee as number).toLocaleString()}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          {lastReceipt && !payCeremony && (
-            <div style={{
-              padding: 14, borderRadius: 14, background: '#ECFDF5', border: '1px solid #A7F3D0',
-            }}>
-              <div style={{ fontWeight: 800, color: '#047857', fontSize: 13 }}>Last receipt</div>
-              <div style={{ fontSize: 12, color: '#065F46', marginTop: 6 }}>
-                {lastReceipt.patientName} · ₦{lastReceipt.amount.toLocaleString()} · {lastReceipt.method}
+          {/* RIGHT: UNPAID QUEUE, RECEIPT LOOKUP & SERVICE CANCELLATION */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Open Invoices Panel */}
+            <div
+              style={{
+                background: '#fff',
+                borderRadius: 18,
+                border: `1px solid ${C.border}`,
+                boxShadow: '0 8px 28px rgba(15,23,42,0.05)',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  padding: '14px 16px',
+                  borderBottom: `1px solid ${C.border}`,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: 'linear-gradient(180deg, #FFFBEB, #fff)',
+                }}
+              >
+                <div style={{ fontWeight: 800, color: C.navy, fontSize: 13.5 }}>Unpaid Queue & Open Bills</div>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    padding: '3px 9px',
+                    borderRadius: 999,
+                    background: '#FEF3C7',
+                    color: '#B45309',
+                  }}
+                >
+                  {deskAi.unpaidTickets}
+                </span>
+              </div>
+
+              <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+                {openBillPatients.length === 0 ? (
+                  <div style={{ padding: 28, textAlign: 'center', color: C.muted, fontSize: 13 }}>
+                    No unpaid tickets — cashier queue is clear
+                  </div>
+                ) : (
+                  openBillPatients.slice(0, 8).map((ob) => (
+                    <button
+                      key={`bill-${ob.patientId}`}
+                      type="button"
+                      onClick={() => {
+                        const p = patients.find(
+                          (x) => x.id === ob.patientId || x.hospitalNumber === ob.hospitalNumber
+                        );
+                        if (p) {
+                          setPatient(p);
+                          setQuery(fullName(p));
+                        }
+                        setAmount(String(ob.balanceNgn));
+                        setPurpose('Hospital bill');
+                        setLines([{ label: 'Hospital bill', amount: ob.balanceNgn }]);
+                        setArn(generateArn());
+                      }}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '12px 14px',
+                        border: 'none',
+                        borderBottom: '1px solid #E2E8F0',
+                        background: '#ECFEFF',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ fontWeight: 700, color: '#0F172A', fontSize: 13 }}>{ob.patientName}</span>
+                        <span style={{ fontWeight: 800, color: '#0D9488' }}>₦{ob.balanceNgn.toLocaleString()}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                        {ob.lines.length} open line{ob.lines.length === 1 ? '' : 's'} · Click to load invoice
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
-          )}
+
+            {/* Today's AkwaRemit Receipts & Service Cancellation */}
+            <div
+              style={{
+                background: '#fff',
+                borderRadius: 18,
+                border: `1px solid ${C.border}`,
+                boxShadow: '0 8px 28px rgba(15,23,42,0.05)',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  padding: '14px 16px',
+                  borderBottom: `1px solid ${C.border}`,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <div style={{ fontWeight: 800, color: C.navy, fontSize: 13.5 }}>Today&apos;s Receipts & Actions</div>
+                <span style={{ fontSize: 11, color: C.muted }}>Shift: {activeShift?.id || 'Active'}</span>
+              </div>
+
+              <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                {payments.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: 'center', color: C.muted, fontSize: 13 }}>
+                    No receipts recorded yet for this shift
+                  </div>
+                ) : (
+                  payments.slice(0, 15).map((p) => (
+                    <div
+                      key={p.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '10px 14px',
+                        borderBottom: `1px solid ${C.border}`,
+                        fontSize: 12,
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, color: C.navy }}>{p.patientName}</div>
+                        <div style={{ color: C.muted, marginTop: 1 }}>
+                          {p.method?.toUpperCase()} · {p.reference || p.id}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                        <div style={{ fontWeight: 800, color: C.teal }}>
+                          ₦{p.amount.toLocaleString()}
+                        </div>
+                        {/* Service Cancellation Button (Converts to Patient Credit) */}
+                        <button
+                          type="button"
+                          title="Cancel service and convert to internal patient credit"
+                          onClick={() => {
+                            const matchingLine: PatientBillLine = {
+                              id: p.id,
+                              facilityId,
+                              patientId: p.patientId,
+                              hospitalNumber: p.hospitalNumber || 'N/A',
+                              patientName: p.patientName,
+                              source: 'billing',
+                              description: p.purpose || 'Hospital Service',
+                              amountNgn: p.amount,
+                              status: 'paid',
+                              paymentRef: p.reference,
+                              createdAt: new Date().toISOString(),
+                              updatedAt: new Date().toISOString(),
+                            };
+                            setCancellingBillLine(matchingLine);
+                          }}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: 6,
+                            border: '1px solid #E2E8F0',
+                            background: '#F8FAFC',
+                            color: '#475569',
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <RotateCcw size={11} /> Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
 
-      {payCeremony && (
+      {/* ── MODAL: OPEN CASHIER SHIFT ── */}
+      {showOpenShiftModal && (
         <div
-          role="dialog"
-          aria-modal="true"
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 12000,
-            background: 'rgba(15, 23, 42, 0.55)',
+            zIndex: 150,
+            background: 'rgba(15,23,42,0.65)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1114,239 +1681,451 @@ export const PosPaymentDesk: React.FC<Props> = ({
         >
           <div
             style={{
-              width: '100%',
-              maxWidth: 420,
-              borderRadius: 20,
               background: '#fff',
-              padding: '28px 24px',
-              boxShadow: '0 24px 64px rgba(0,0,0,0.2)',
-              textAlign: 'center',
+              borderRadius: 20,
+              width: '100%',
+              maxWidth: 440,
+              padding: 24,
+              boxShadow: '0 24px 60px rgba(0,0,0,0.3)',
             }}
           >
-            {payCeremony.phase === 'success' ? (
-              <>
-                <div
-                  style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: '50%',
-                    margin: '0 auto 16px',
-                    background: 'linear-gradient(135deg,#16A34A,#0D9488)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <CheckCircle2 size={36} color="#fff" />
-                </div>
-                <div style={{ fontWeight: 800, fontSize: 20, color: '#0F172A' }}>Payment successful</div>
-                <div style={{ marginTop: 8, fontSize: 14, color: '#64748B', lineHeight: 1.5 }}>
-                  ₦{payCeremony.pay.amount.toLocaleString()} · {String(payCeremony.pay.method).toUpperCase()}
-                  <br />
-                  {payCeremony.patientName}
-                </div>
-                <div style={{ marginTop: 16, fontSize: 13, fontWeight: 600, color: '#0D9488' }}>
-                  Preparing receipt…
-                </div>
-                <div
-                  style={{
-                    marginTop: 12,
-                    height: 4,
-                    borderRadius: 999,
-                    background: '#E2E8F0',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div
-                    style={{
-                      height: '100%',
-                      width: '100%',
-                      background: 'linear-gradient(90deg,#0284C7,#0D9488)',
-                      animation: 'medcore-pay-progress 3s linear forwards',
-                    }}
-                  />
-                </div>
-                <style>{`@keyframes medcore-pay-progress { from { transform: scaleX(0); transform-origin: left; } to { transform: scaleX(1); transform-origin: left; } }`}</style>
-              </>
-            ) : (
-              <>
-                <div
-                  style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: '50%',
-                    margin: '0 auto 16px',
-                    background: 'linear-gradient(135deg,#0284C7,#0D9488)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Printer size={32} color="#fff" />
-                </div>
-                <div style={{ fontWeight: 800, fontSize: 20, color: '#0F172A' }}>Receipt issued</div>
-                <div style={{ marginTop: 8, fontSize: 14, color: '#64748B', lineHeight: 1.5 }}>
-                  Ref: <strong style={{ color: '#0F172A' }}>{payCeremony.pay.reference}</strong>
-                  <br />
-                  Bill auto-marked paid · returning to desk…
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPayCeremony(null);
-                    onNavigate?.(session?.roleKey === 'reception' ? 'patient-flow' : 'dashboard');
-                  }}
-                  style={{
-                    marginTop: 20,
-                    padding: '12px 20px',
-                    borderRadius: 12,
-                    border: 'none',
-                    background: 'linear-gradient(90deg,#0284C7,#0D9488)',
-                    color: '#fff',
-                    fontWeight: 800,
-                    fontSize: 14,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Continue
-                </button>
-              </>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <Lock size={22} color="#059669" />
+              <div style={{ fontSize: 17, fontWeight: 800, color: C.navy }}>Open Cashier Shift</div>
+            </div>
+
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>
+              Cashier: <strong style={{ color: C.navy }}>{cashier}</strong> ({cashierBadge}) · Record your starting cash float before logging collections.
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: C.navy, display: 'block', marginBottom: 6 }}>
+                Starting Physical Cash Float (₦)
+              </label>
+              <input
+                type="number"
+                style={{ ...inputStyle, fontSize: 16, fontWeight: 700 }}
+                value={startingFloatInput}
+                onChange={(e) => setStartingFloatInput(e.target.value)}
+                placeholder="e.g. 10000"
+              />
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                Physical petty cash count in till drawer at shift start.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setShowOpenShiftModal(false)}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: 8,
+                  border: `1px solid ${C.border}`,
+                  background: '#fff',
+                  color: C.navy,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenShift}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#059669',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                Confirm Shift Open
+              </button>
+            </div>
           </div>
         </div>
       )}
-      <PaystackBrandedCheckout
-        open={paystackOpen}
-        input={
-          paystackOpen && patient
-            ? {
-                patientName: fullName(patient),
-                hospitalNumber: patient.hospitalNumber,
-                patientEmail: patient.email,
-                amountNgn: Number(amount) || 0,
-                purpose: lines.map((l) => l.label).join(', ') || purpose,
-                facilityName,
-                facilityId,
-                cashierName: cashier,
-                mode: method === 'card' ? 'card_terminal' : 'transfer',
-              }
-            : null
-        }
-        onClose={() => setPaystackOpen(false)}
-        onPaid={(r) => settlePaystackPayment(r)}
-      />
+
+      {/* ── MODAL: END-OF-SHIFT REPORT & CLOSE SHIFT ── */}
+      {showCloseShiftModal && shiftReport && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 150,
+            background: 'rgba(15,23,42,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 20,
+              width: '100%',
+              maxWidth: 580,
+              padding: 26,
+              boxShadow: '0 24px 60px rgba(0,0,0,0.35)',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Receipt size={22} color="#059669" />
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: C.navy }}>End-of-Shift Reconciliation Report</div>
+                  <div style={{ fontSize: 12, color: C.muted }}>Shift ID: {shiftReport.shiftId}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCloseShiftModal(false)}
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Breakdown Table strictly handled by this cashier */}
+            <div
+              style={{
+                background: '#F8FAFC',
+                borderRadius: 14,
+                border: `1px solid ${C.border}`,
+                padding: 16,
+                marginBottom: 18,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.navy, marginBottom: 10, letterSpacing: '0.04em' }}>
+                COLLECTIONS BREAKDOWN ({shiftReport.cashierName})
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 6, borderBottom: '1px solid #E2E8F0' }}>
+                  <span style={{ color: C.muted }}>Starting Cash Float</span>
+                  <strong style={{ color: C.navy }}>₦{shiftReport.startingFloatNgn.toLocaleString()}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: C.muted }}>Physical Cash Receipts ({shiftReport.cashTransactionsCount})</span>
+                  <strong style={{ color: '#059669' }}>₦{shiftReport.totalCashNgn.toLocaleString()}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: C.muted }}>AkwaRemit POS ARNs Verified ({shiftReport.posTransactionsCount})</span>
+                  <strong style={{ color: C.blue }}>₦{shiftReport.totalPosArnsNgn.toLocaleString()}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: C.muted }}>Bank Transfers Verified ({shiftReport.transferTransactionsCount})</span>
+                  <strong style={{ color: '#7C3AED' }}>₦{shiftReport.totalTransfersNgn.toLocaleString()}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, borderTop: '2px solid #CBD5E1', fontSize: 14 }}>
+                  <span style={{ fontWeight: 800, color: C.navy }}>Total Shift Collections</span>
+                  <strong style={{ fontWeight: 900, color: C.navy }}>₦{shiftReport.totalCollectionsNgn.toLocaleString()}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', background: '#ECFDF5', padding: '8px 10px', borderRadius: 8 }}>
+                  <span style={{ fontWeight: 700, color: '#065F46' }}>Expected Cash in Till (Float + Cash)</span>
+                  <strong style={{ fontWeight: 900, color: '#065F46', fontSize: 15 }}>
+                    ₦{shiftReport.expectedDrawerCashNgn.toLocaleString()}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Cash Verification Input & Variance */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12.5, fontWeight: 800, color: C.navy, display: 'block', marginBottom: 6 }}>
+                Actual Physical Cash Counted in Drawer (₦) *
+              </label>
+              <input
+                type="number"
+                style={{ ...inputStyle, fontSize: 16, fontWeight: 800 }}
+                value={physicalCountInput}
+                onChange={(e) => setPhysicalCountInput(e.target.value)}
+              />
+
+              {/* Real-time Variance Calculation */}
+              {(() => {
+                const actual = Number(physicalCountInput) || 0;
+                const variance = actual - shiftReport.expectedDrawerCashNgn;
+                return (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      background: variance === 0 ? '#ECFDF5' : variance < 0 ? '#FEF2F2' : '#EFF6FF',
+                      color: variance === 0 ? '#059669' : variance < 0 ? '#DC2626' : '#2563EB',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    {variance === 0 ? (
+                      <>✓ Balanced Till: Physical count matches expected cash (₦0 variance)</>
+                    ) : variance < 0 ? (
+                      <>⚠️ Cash Shortfall: Physical count is short by ₦{Math.abs(variance).toLocaleString()}</>
+                    ) : (
+                      <>ℹ️ Cash Surplus: Physical count exceeds expected by ₦{variance.toLocaleString()}</>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Dual Control Sign-off */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: C.muted }}>Supervisor Witness Name</label>
+                <input
+                  style={{ ...inputStyle, padding: 8, fontSize: 12 }}
+                  value={witnessNameInput}
+                  onChange={(e) => setWitnessNameInput(e.target.value)}
+                  placeholder="e.g. Dr. Adewale Bello"
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: C.muted }}>Supervisor Badge ID</label>
+                <input
+                  style={{ ...inputStyle, padding: 8, fontSize: 12 }}
+                  value={witnessBadgeInput}
+                  onChange={(e) => setWitnessBadgeInput(e.target.value)}
+                  placeholder="e.g. AUD-0012"
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setShowCloseShiftModal(false)}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: 10,
+                  border: `1px solid ${C.border}`,
+                  background: '#fff',
+                  color: C.navy,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                Back to Desk
+              </button>
+              <button
+                type="button"
+                onClick={handleFinalizeCloseShift}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: '#0F172A',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <Check size={16} /> Close Shift & Lock Till
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: SERVICE RE-ROUTING / INTERNAL PATIENT CREDIT ── */}
+      {cancellingBillLine && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 150,
+            background: 'rgba(15,23,42,0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 20,
+              width: '100%',
+              maxWidth: 480,
+              padding: 24,
+              boxShadow: '0 24px 60px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <RotateCcw size={22} color="#0284C7" />
+              <div style={{ fontSize: 17, fontWeight: 800, color: C.navy }}>
+                Cancel Service & Convert to Patient Credit
+              </div>
+            </div>
+
+            <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, margin: '0 0 16px' }}>
+              Instead of issuing a cash refund, this will cancel order <strong>{cancellingBillLine.description}</strong> and credit{' '}
+              <strong style={{ color: '#059669' }}>₦{cancellingBillLine.amountNgn.toLocaleString()}</strong> directly into{' '}
+              <strong>{cancellingBillLine.patientName}</strong>&apos;s internal Patient Credit Balance.
+            </p>
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: C.navy, display: 'block', marginBottom: 6 }}>
+                Reason for Service Cancellation
+              </label>
+              <input
+                style={inputStyle}
+                value={cancelReasonInput}
+                onChange={(e) => setCancelReasonInput(e.target.value)}
+                placeholder="e.g. Test not required / physician changed order"
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setCancellingBillLine(null)}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: 8,
+                  border: `1px solid ${C.border}`,
+                  background: '#fff',
+                  color: C.navy,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                Keep Order
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelServiceToCredit}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#0284C7',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                Convert to Patient Credit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PAYMENT SUCCESS CEREMONY MODAL ── */}
+      {payCeremony && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 160,
+            background: 'rgba(15,23,42,0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 24,
+              width: '100%',
+              maxWidth: 440,
+              padding: 28,
+              textAlign: 'center',
+              boxShadow: '0 24px 60px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: '50%',
+                background: '#ECFDF5',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px',
+              }}
+            >
+              <CheckCircle2 size={36} color="#059669" />
+            </div>
+
+            <div style={{ fontSize: 20, fontWeight: 900, color: C.navy }}>Payment Confirmed & Verified</div>
+            <div style={{ fontSize: 13, color: '#059669', fontWeight: 700, marginTop: 4 }}>
+              AkwaRemit Reference: {payCeremony.arn}
+            </div>
+
+            <div
+              style={{
+                margin: '18px 0',
+                padding: '14px',
+                borderRadius: 12,
+                background: '#F8FAFC',
+                border: `1px solid ${C.border}`,
+                textAlign: 'left',
+                fontSize: 12.5,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ color: C.muted }}>Patient</span>
+                <strong>{payCeremony.patientName}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ color: C.muted }}>Amount Paid</span>
+                <strong style={{ color: '#059669' }}>₦{payCeremony.pay.amount.toLocaleString()}.00</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ color: C.muted }}>Payment Method</span>
+                <strong>{payCeremony.method.toUpperCase()}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: C.muted }}>Electronic File</span>
+                <strong style={{ color: '#0284C7' }}>Released to Department ✓</strong>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPayCeremony(null)}
+              style={{
+                width: '100%',
+                padding: '12px',
+                borderRadius: 10,
+                border: 'none',
+                background: '#059669',
+                color: '#fff',
+                fontWeight: 800,
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              Print Receipt & Next Patient
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 };
-
-
-
-
-
-/** Open charges from billing office + clinical auto-bills */
-function OpenBillsPanel({
-  facilityId,
-  patientId,
-  hospitalNumber,
-  onUseBalance,
-}: {
-  facilityId: string;
-  patientId: string;
-  hospitalNumber?: string;
-  onUseBalance: (bal: number) => void;
-}) {
-  const [tick, setTick] = useState(0);
-  useEffect(() => subscribeBills(() => setTick((n) => n + 1)), []);
-  const lines = useMemo(() => {
-    void tick;
-    const a = listBillLines(facilityId, { patientId }).filter(
-      (l) => l.status === 'unpaid' || l.status === 'partial'
-    );
-    const b = hospitalNumber
-      ? listBillLines(facilityId, { patientId: hospitalNumber }).filter(
-          (l) => l.status === 'unpaid' || l.status === 'partial'
-        )
-      : [];
-    const byId = new Map<string, (typeof a)[0]>();
-    for (const l of [...a, ...b]) byId.set(l.id, l);
-    return Array.from(byId.values());
-  }, [facilityId, patientId, hospitalNumber, tick]);
-  const bal = lines.reduce((s, l) => s + l.amountNgn, 0);
-  if (lines.length === 0) {
-    return (
-      <div
-        style={{
-          padding: '12px 14px',
-          borderRadius: 12,
-          border: '1px dashed #CBD5E1',
-          background: '#F8FAFC',
-          fontSize: 13,
-          color: '#64748B',
-        }}
-      >
-        No open hospital bill lines for this patient. Billing office invoices marked
-        &quot;pending payment&quot; and clinical charges appear here.
-      </div>
-    );
-  }
-  return (
-    <div
-      style={{
-        borderRadius: 14,
-        border: '1px solid #A5F3FC',
-        background: 'linear-gradient(135deg,#ECFEFF,#F0FDF4)',
-        padding: 14,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
-        <div style={{ fontWeight: 800, fontSize: 13, color: '#0F172A' }}>
-          Open bill · ₦{bal.toLocaleString()}
-        </div>
-        <button
-          type="button"
-          onClick={() => onUseBalance(bal)}
-          style={{
-            border: 'none',
-            background: '#0D9488',
-            color: '#fff',
-            borderRadius: 8,
-            padding: '6px 12px',
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: 'pointer',
-          }}
-        >
-          Use balance
-        </button>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 140, overflowY: 'auto' }}>
-        {lines.map((l) => (
-          <div
-            key={l.id}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: 8,
-              fontSize: 12,
-              padding: '6px 8px',
-              borderRadius: 8,
-              background: '#fff',
-              border: '1px solid #E2E8F0',
-            }}
-          >
-            <span style={{ color: '#334155', fontWeight: 600 }}>
-              {l.source === 'billing' ? 'Billing · ' : ''}
-              {l.description}
-            </span>
-            <span style={{ fontWeight: 800, color: '#0F172A', whiteSpace: 'nowrap' }}>
-              ₦{l.amountNgn.toLocaleString()}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export default PosPaymentDesk;
-

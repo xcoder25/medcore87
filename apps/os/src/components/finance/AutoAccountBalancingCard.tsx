@@ -59,7 +59,7 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
         date: new Date().toISOString().slice(0, 10),
         totalCollectionsNgn: 0,
         cashTotalNgn: 0,
-        paystackTerminalTotalNgn: 0,
+        akwaremitPosTotalNgn: 0,
         directAkwaRemitTotalNgn: 0,
         alreadyInAkwaRemitNgn: 0,
         pendingRemittanceNgn: 0,
@@ -79,7 +79,7 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
   // Total collections
   const totalCollections = summary.totalCollectionsNgn || paidTodayAmount;
   const cashCollected = summary.cashTotalNgn;
-  const electronicCollected = summary.paystackTerminalTotalNgn;
+  const electronicCollected = summary.akwaremitPosTotalNgn;
   const directAkwaRemit = summary.directAkwaRemitTotalNgn;
 
   // Intelligent balancing computation
@@ -136,7 +136,7 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
             <div style="font-size: 11px; color: #F59E0B; margin-top: 4px;">Unremitted Cash: ₦${unremittedCash.toLocaleString()}</div>
           </div>
           <div class="card">
-            <div class="card-title">Electronic Paystack POS / Transfer</div>
+            <div class="card-title">Electronic AkwaRemit POS / Transfer</div>
             <div class="card-value">₦${electronicCollected.toLocaleString()}</div>
             <div style="font-size: 11px; color: #0284C7; margin-top: 4px;">Direct Bank Settlement</div>
           </div>
@@ -166,7 +166,7 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
             </tr>
             <tr>
               <td>Digital Collections</td>
-              <td>Paystack POS Terminal / Transfer</td>
+              <td>AkwaRemit POS Terminal / Transfer</td>
               <td>₦${electronicCollected.toLocaleString()}</td>
               <td>✓ Realtime Verified & Settled</td>
             </tr>
@@ -408,7 +408,7 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
                 </span>
               </div>
               <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
-                Real-time multi-ledger reconciliation: Invoices vs Physical Cash vs Paystack POS vs Akwa Remitta
+                Real-time multi-ledger reconciliation: Invoices vs Physical Cash vs AkwaRemit POS vs State TSA
               </div>
             </div>
           </div>
@@ -497,7 +497,7 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
           <div style={{ background: '#F0FDFA', borderRadius: 14, border: '1px solid #CCFBF1', padding: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#0D9488', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
               <CreditCard size={14} color="#0D9488" />
-              Paystack POS / Transfer
+              AkwaRemit POS / Transfer
             </div>
             <div style={{ fontSize: 20, fontWeight: 800, color: '#134E4A', marginTop: 8 }}>
               ₦{electronicCollected.toLocaleString()}
@@ -539,7 +539,7 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, color: '#475569' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <CheckCircle2 size={14} color="#10B981" />
-              Paystack Gateway: Realtime live sync active
+              AkwaRemit Gateway: Realtime live sync active
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Receipt size={14} color="#0284C7" />
