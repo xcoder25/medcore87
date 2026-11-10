@@ -18,13 +18,15 @@ export async function GET() {
     ok: true,
     configured,
     provider: 'AWS S3 (Simple Storage Service)',
+    authMethod: config.authMethod,
+    roleArnMasked: config.roleArn ? `${config.roleArn.slice(0, 15)}...${config.roleArn.slice(-6)}` : null,
     bucketMasked: maskBucket(config.bucket),
     region: config.region,
-    hasCredentials: Boolean(config.accessKeyId && config.secretAccessKey),
+    hasCredentials: config.authMethod !== 'none',
     customDomain: config.customDomain || null,
     message: configured
-      ? 'AWS S3 Object Storage is ready for medical images, patient photos, and PACS scans.'
-      : 'AWS S3 Object Storage is unconfigured. Set AWS_S3_BUCKET, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY.',
+      ? `AWS S3 Object Storage is ready (${config.authMethod === 'oidc_role' ? 'Vercel OIDC Role' : 'IAM Access Keys'}).`
+      : 'AWS S3 Object Storage is unconfigured. Set AWS_ROLE_ARN (Vercel OIDC) or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY, alongside S3_BUCKET_NAME.',
   });
 }
 
