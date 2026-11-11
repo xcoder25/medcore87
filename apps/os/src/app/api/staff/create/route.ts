@@ -1,20 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminAuth, getAdminFirestore } from '../../../../lib/firebaseAdmin';
+import { getAdminAuth } from '../../../../lib/firebaseAdmin';
 import { isPostgresConfigured } from '../../../../lib/db/postgres';
 import { upsertStaff } from '../../../../lib/db/staffRepo';
 import type { StaffCardRecord, StaffCardTemplate } from '@medcore/types';
 
 export const runtime = 'nodejs';
-
-/**
- * Recursively removes all keys whose value is `undefined` so Firestore
- * never receives an invalid undefined field (it would throw otherwise).
- */
-function stripUndefined<T extends object>(obj: T): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(obj).filter(([, v]) => v !== undefined)
-  ) as Partial<T>;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,11 +18,11 @@ export async function POST(request: NextRequest) {
       pin,
       role = 'Staff',
       roleKey = 'general_staff',
-      title = '',
-      department = 'General',
-      facilityName = 'Default Hospital',
+      title = 'Clinical Personnel',
+      department = 'General Operations',
+      facilityName = 'Hospital Facility',
       clearanceLevel = 1,
-      clearanceLabel = 'Level 1 - General',
+      clearanceLabel = 'Level 1 Personnel',
       templateKey = 'TPL_CLINICAL',
       photoUrl,
     } = body;
@@ -49,11 +39,10 @@ export async function POST(request: NextRequest) {
     }
 
     const adminAuth = getAdminAuth();
-    const adminDb = getAdminFirestore();
 
-    if (!adminAuth || !adminDb) {
+    if (!adminAuth) {
       return NextResponse.json(
-        { success: false, error: 'Firebase Admin SDK is not initialized' },
+        { success: false, error: 'Firebase Admin Auth is not initialized' },
         { status: 503 }
       );
     }
@@ -64,66 +53,49 @@ export async function POST(request: NextRequest) {
       : `${bId.toLowerCase()}@medcore.internal`;
     const authPassword = String(password || pin || '123456');
 
-    // 1. Create or update Auth User
+    // 1. Create or update Auth User in Firebase Auth
     let userRecord;
-    let newlyCreated = false;
     try {
       userRecord = await adminAuth.getUserByEmail(authEmail);
-      // Update password and display name if user already exists
-      userRecord = await adminAuth.updateUser(userRecord.uid, {
+      await adminAuth.updateUser(userRecord.uid, {
         displayName: name,
-        password: authPassword.length >= 6 ? authPassword : `${authPassword}000000`.slice(0, 6),
+        password: authPassword,
       });
-    } catch (err: unknown) {
-      const code = String((err as { code?: string })?.code || '');
-      if (code.includes('user-not-found')) {
+    } catch (e: any) {
+      if (e.code === 'auth/user-not-found') {
         userRecord = await adminAuth.createUser({
           email: authEmail,
-          password: authPassword.length >= 6 ? authPassword : `${authPassword}000000`.slice(0, 6),
+          password: authPassword,
           displayName: name,
         });
-        newlyCreated = true;
       } else {
-        throw err;
+        throw e;
       }
     }
 
-    // 1b. Ensure secondary Badge ID auth account (badge.<bId>@domain) for instant badge+PIN login
-    const cleanBadge = bId.replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    const badgeMail = `badge.${cleanBadge}@naija-bites-1s3y1.firebaseapp.com`.toLowerCase();
-    const pinSecret = String(pin || password || '123456');
-    const badgePass = pinSecret.length >= 6 ? pinSecret : `${pinSecret}000000`.slice(0, 6);
-    if (authEmail !== badgeMail) {
-      try {
-        const bRec = await adminAuth.getUserByEmail(badgeMail);
-        await adminAuth.updateUser(bRec.uid, { password: badgePass, displayName: name });
-      } catch (bErr: unknown) {
-        if (String((bErr as any)?.code || '').includes('user-not-found')) {
-          try {
-            await adminAuth.createUser({
-              email: badgeMail,
-              password: badgePass,
-              displayName: name,
-            });
-          } catch (createErr) {
-            console.warn('[api/staff/create] Badge secondary auth account note:', createErr);
-          }
-        }
-      }
+    // Multi-tenant facility isolation: Inject facility_id permanently as a Firebase Custom Claim
+    // This allows AWS AppSync, API Gateway, and Aurora RLS to securely identify the tenant
+    try {
+      await adminAuth.setCustomUserClaims(userRecord.uid, {
+        facility_id: fId,
+        role: String(roleKey),
+        badgeId: bId,
+        clearanceLevel: Number(clearanceLevel) || 1,
+      });
+    } catch (claimsErr) {
+      console.warn('[api/staff/create] Custom claims injection note:', claimsErr);
     }
-
-    const issuedAt = new Date().toISOString();
-    const expiresDate = new Date();
-    expiresDate.setFullYear(expiresDate.getFullYear() + 2);
-    const expiresAt = expiresDate.toISOString();
 
     const initials = name
       .split(' ')
-      .map((w: string) => w[0])
+      .map((n: string) => n[0])
       .filter(Boolean)
       .slice(0, 2)
       .join('')
       .toUpperCase() || 'ST';
+
+    const issuedAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
 
     const staffRecord: StaffCardRecord = {
       badgeId: bId,
@@ -150,117 +122,58 @@ export async function POST(request: NextRequest) {
       }),
     };
 
-    // 2. Persist to Firestore atomically
-    try {
-      const fidNormalized = fId.replace(/[\/#?]/g, '_');
-      const staffDocRef = adminDb
-        .collection('facilities')
-        .doc(fidNormalized)
-        .collection('staff')
-        .doc(bId);
-
-        await staffDocRef.set(stripUndefined({
-          ...staffRecord,
-          uid: userRecord.uid,
-          email: authEmail,
-          createdAt: issuedAt,
-          updatedAt: issuedAt,
-          isActive: true,
-      }));
-
-      // Also index in root staff collection for direct lookups by UID and badgeId
-        const staffDocPayload = stripUndefined({
-          ...staffRecord,
-          uid: userRecord.uid,
-          email: authEmail,
-          createdAt: issuedAt,
-          updatedAt: issuedAt,
-          isActive: true,
-      });
-      await adminDb.collection('staff').doc(userRecord.uid).set(staffDocPayload);
-      await adminDb.collection('staff').doc(bId).set(staffDocPayload);
-
-      // Update facility root document staff directory for instant onSnapshot sync to other devices
+    // 2. Persist to Aurora PostgreSQL (single source of truth with multi-tenant RLS)
+    if (isPostgresConfigured()) {
       try {
-        const facilityRef = adminDb.collection('facilities').doc(fidNormalized);
-        const facilitySnap = await facilityRef.get();
-        const facilityData = facilitySnap.exists ? facilitySnap.data() || {} : {};
-        const currentCards = Array.isArray(facilityData.staffCards) ? facilityData.staffCards : [];
-        const currentReg = Array.isArray(facilityData.staffRegistry) ? facilityData.staffRegistry : [];
-
-        const nextCards = [stripUndefined(staffRecord), ...currentCards.filter((c: any) => String(c.badgeId || '').toUpperCase() !== bId)];
-        const nextReg = [
-            stripUndefined({
-              ...staffRecord,
-              id: bId,
-              name: name,
-              pin: String(pin || '123456'),
+        await upsertStaff({
+          badgeId: bId,
+          facilityId: fId,
+          fullName: name,
+          role: String(role),
+          roleKey: String(roleKey),
+          title: String(title),
+          department: String(department),
+          email: authEmail,
+          clearanceLevel: Number(clearanceLevel) || 1,
+          clearanceLabel: String(clearanceLabel),
+          photoUrl: photoUrl || null,
           authEmail,
-    }),
-          ...currentReg.filter((r: any) => String(r.badgeId || r.id || '').toUpperCase() !== bId),
-        ];
-
-    await facilityRef.set(
-      {
-        staffCards: nextCards,
-        staffRegistry: nextReg,
-        staffUpdatedAt: issuedAt,
-      },
-      { merge: true }
-    );
-  } catch (dirErr) {
-    console.warn('[api/staff/create] Facility directory sync warning:', dirErr);
-  }
-} catch (fsErr) {
-  console.error('[api/staff/create] Firestore write failed:', fsErr);
-  // Rollback newly created Auth user to prevent split-brain state
-  if (newlyCreated && userRecord?.uid) {
-    try {
-      await adminAuth.deleteUser(userRecord.uid);
-    } catch (rbErr) {
-      console.warn('[api/staff/create] Auth rollback failed:', rbErr);
+          pin: String(pin || authPassword),
+          facilityName: String(facilityName),
+        });
+      } catch (pgErr) {
+        console.warn('[api/staff/create] Postgres persistence error:', pgErr);
+      }
     }
-  }
-  throw fsErr;
-}
 
-// 3. Sync to Postgres repo if configured
-if (isPostgresConfigured()) {
-  try {
-    await upsertStaff({
-      badgeId: bId,
-      facilityId: fId,
-      fullName: name,
-      role: String(role),
-      roleKey: String(roleKey),
-      title: String(title),
-      department: String(department),
-      email: authEmail,
-      clearanceLevel: Number(clearanceLevel) || 1,
-      clearanceLabel: String(clearanceLabel),
-      photoUrl: photoUrl || null,
-      authEmail,
-    });
-  } catch (pgErr) {
-    console.warn('[api/staff/create] Postgres sync warning:', pgErr);
-  }
-}
+    // 3. Dispatch Staff Registered domain event (Database-First, Event-Second)
+    try {
+      const { dispatchStaffRegisteredEvent } = await import('../../../../lib/aws/domainEvents');
+      await dispatchStaffRegisteredEvent(fId, {
+        badgeId: bId,
+        fullName: name,
+        role: String(role),
+        department: String(department),
+        timestamp: issuedAt,
+      });
+    } catch {
+      /* non-blocking */
+    }
 
-return NextResponse.json(
-  {
-    success: true,
-    uid: userRecord.uid,
-    badgeId: bId,
-    staff: staffRecord,
-  },
-  { status: 200 }
-);
+    return NextResponse.json(
+      {
+        success: true,
+        uid: userRecord.uid,
+        badgeId: bId,
+        staff: staffRecord,
+      },
+      { status: 200 }
+    );
   } catch (error) {
-  console.error('[api/staff/create] Staff creation failed:', error);
-  return NextResponse.json(
-    { success: false, error: (error as Error).message || 'Staff creation failed' },
-    { status: 500 }
-  );
+    console.error('[api/staff/create] Staff creation failed:', error);
+    return NextResponse.json(
+      { success: false, error: (error as Error).message || 'Staff creation failed' },
+      { status: 500 }
+    );
+  }
 }
-}
-

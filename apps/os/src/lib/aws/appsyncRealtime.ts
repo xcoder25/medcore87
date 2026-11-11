@@ -17,7 +17,7 @@ export interface AppSyncRealtimeMessage {
 
 export type RealtimeEventHandler = (msg: AppSyncRealtimeMessage) => void;
 
-class MedCoreAppSyncSyncManager {
+export class MedCoreAppSyncSyncManager {
   private static instance: MedCoreAppSyncSyncManager;
   private ws: WebSocket | null = null;
   private isConnecting = false;
@@ -101,10 +101,34 @@ class MedCoreAppSyncSyncManager {
   }
 
   /**
-   * Dispatch local DOM events for immediate sub-second UI updates across dashboard components
+   * Resolve active workstation facility ID to guarantee tenant isolation
+   */
+  private getActiveFacilityId(): string | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const stored = localStorage.getItem('medcore_session_v1');
+      if (stored) {
+        const s = JSON.parse(stored);
+        if (s.facilityId || s.facility) return s.facilityId || s.facility;
+      }
+      return localStorage.getItem('medcore_active_facility_id') || 'IGH-EKT';
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Dispatch local DOM events for immediate sub-second UI updates across dashboard components.
+   * Multi-Tenant Isolation: Discards any event originating from a different facility.
    */
   public handleIncomingMessage(msg: AppSyncRealtimeMessage) {
     if (!msg || !msg.detailType) return;
+
+    // Strict Tenant Isolation: An event at Facility A will NEVER flash on a dashboard at Facility B
+    const activeFacility = this.getActiveFacilityId();
+    if (msg.facilityId && activeFacility && msg.facilityId !== activeFacility) {
+      return;
+    }
 
     // Notify registered direct listeners
     this.subscribers.forEach((handler) => {

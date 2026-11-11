@@ -50,32 +50,6 @@ export async function resolvePaystackSecretKey(
   const fromEnv = getPaystackSecretKey();
   if (fromEnv) return fromEnv;
 
-  const fid = cleanKey(facilityId || req?.headers?.get('x-facility-id'));
-  if (fid) {
-    try {
-      const { firestoreReadFacility } = await import('./firebase');
-      const data = await firestoreReadFacility(fid);
-      if (data) {
-        const settingsKeys = [
-          'medcore_os_admin_settings_v1',
-          `medcore_os_admin_settings_v1:${fid}`,
-          `medcore_os_admin_settings_v1:${fid.toUpperCase()}`,
-        ];
-        for (const sk of settingsKeys) {
-          const block = data[sk];
-          if (block && typeof block === 'object') {
-            const k = cleanKey((block as { paystackSecretKey?: string }).paystackSecretKey);
-            if (k) return k;
-          }
-        }
-        const flat = cleanKey(data.paystackSecretKey as string | undefined);
-        if (flat) return flat;
-      }
-    } catch {
-      /* offline / unconfigured */
-    }
-  }
-
   return '';
 }
 

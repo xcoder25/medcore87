@@ -11,6 +11,7 @@ export interface S3UploadOptions {
   folder?: 'staff' | 'patients' | 'clinical' | 'radiology' | 'general';
   filename?: string;
   facilityId?: string;
+  patientId?: string;
 }
 
 export interface S3UploadResult {
@@ -44,6 +45,8 @@ export async function streamDirectToS3Presigned(
         contentType,
         folder,
         filename,
+        facilityId: options.facilityId,
+        patientId: options.patientId,
       }),
     });
 

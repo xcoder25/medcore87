@@ -83,8 +83,14 @@ export async function POST(req: NextRequest) {
       ? filename.split('.').pop() || getExtensionFromMime(contentType)
       : getExtensionFromMime(contentType);
 
-    // Generate an immutable, unique S3 key
-    const s3Key = generateS3ImageKey(folder, ext);
+    const facilityId =
+      String(body.facilityId || '').trim() ||
+      req.headers.get('x-facility-id') ||
+      'IGH-EKT';
+    const patientId = String(body.patientId || '').trim();
+
+    // Generate an immutable, unique S3 key with Multi-Tenant folder isolation (<facility>/<folder>/<patient>/<file>)
+    const s3Key = generateS3ImageKey(folder, ext, facilityId, patientId);
 
     // Expiration: 5 minutes (300 seconds) for direct streaming
     const { uploadUrl, fileUrl } = await generateS3PresignedUploadUrl(s3Key, contentType, 300);

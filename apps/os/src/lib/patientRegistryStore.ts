@@ -472,20 +472,6 @@ export function clearAllPatients(facilityId?: string) {
   publishFacilityData(fid, FACILITY_KEYS.clinical, []);
   publishFacilityData(fid, FACILITY_KEYS.beds, []);
   publishFacilityData(fid, FACILITY_KEYS.vitals, []);
-
-  // Update cloud facility document
-  void (async () => {
-    try {
-      const { firestoreWriteFacility } = await import('./firebase');
-      await firestoreWriteFacility(fid, {
-        [FACILITY_KEYS.patients]: [],
-        patientsCount: 0,
-        patientsUpdatedAt: new Date().toISOString(),
-      });
-    } catch {
-      /* ignore */
-    }
-  })();
 }
 
 if (typeof window !== 'undefined') {

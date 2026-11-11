@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured } from '../../../lib/db/postgres';
 import { deleteStaff, listStaff, upsertStaff } from '../../../lib/db/staffRepo';
-import { getAdminFirestore } from '../../../lib/firebaseAdmin';
 
 export const runtime = 'nodejs';
 
@@ -11,44 +10,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'facilityId required' }, { status: 400 });
   }
 
-  // 1. Check Postgres if configured
+  // 1. Query Aurora PostgreSQL (single source of truth with multi-tenant RLS)
   if (isPostgresConfigured()) {
     try {
       const staff = await listStaff(facilityId);
-      if (staff && staff.length > 0) {
-        return NextResponse.json({ ok: true, configured: true, staff });
-      }
+      return NextResponse.json({ ok: true, configured: true, staff: staff || [] });
     } catch (e) {
       console.warn('[api/staff GET] Postgres error:', e);
     }
-  }
-
-  // 2. Fallback to Firestore Admin
-  try {
-    const adminDb = getAdminFirestore();
-    if (adminDb) {
-      const fidNormalized = facilityId.replace(/[\/#?]/g, '_');
-      const snap = await adminDb
-        .collection('facilities')
-        .doc(fidNormalized)
-        .collection('staff')
-        .get();
-
-      if (!snap.empty) {
-        const staff = snap.docs.map((d) => ({ badgeId: d.id, ...d.data() }));
-        return NextResponse.json({ ok: true, configured: false, staff });
-      }
-
-      // Check facility root doc for staffCards
-      const facSnap = await adminDb.collection('facilities').doc(fidNormalized).get();
-      if (facSnap.exists) {
-        const d = facSnap.data() || {};
-        const staff = Array.isArray(d.staffCards) ? d.staffCards : [];
-        return NextResponse.json({ ok: true, configured: false, staff });
-      }
-    }
-  } catch (fsErr) {
-    console.warn('[api/staff GET] Firestore fallback error:', fsErr);
   }
 
   return NextResponse.json({ ok: true, configured: false, staff: [] });

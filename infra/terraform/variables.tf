@@ -64,3 +64,9 @@ variable "vercel_project_id" {
   default     = "*"
 }
 
+variable "firebase_project_id" {
+  description = "Firebase Project ID for OIDC authentication on AppSync"
+  type        = string
+  default     = "medcore-health"
+}
+

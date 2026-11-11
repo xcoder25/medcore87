@@ -129,6 +129,33 @@ export async function withClient<T>(fn: (c: PoolClient) => Promise<T>): Promise<
   }
 }
 
+/**
+ * Executes a callback within a transactional connection block with PostgreSQL Row-Level Security (RLS)
+ * scoped to the active facility.
+ * Enforces: SET LOCAL app.current_facility_id = '<facilityId>';
+ * Guaranteeing that users at Facility A can NEVER read or modify patient records from Facility B.
+ */
+export async function withTenantClient<T>(
+  facilityId: string,
+  fn: (c: PoolClient) => Promise<T>
+): Promise<T> {
+  const fid = String(facilityId || '').trim();
+  return withClient(async (c) => {
+    await c.query('BEGIN;');
+    try {
+      if (fid) {
+        await c.query('SET LOCAL app.current_facility_id = $1;', [fid]);
+      }
+      const result = await fn(c);
+      await c.query('COMMIT;');
+      return result;
+    } catch (err) {
+      await c.query('ROLLBACK;').catch(() => {});
+      throw err;
+    }
+  });
+}
+
 /** Create core tables if missing (idempotent). */
 export async function ensureSchema(): Promise<void> {
   if (!isPostgresConfigured()) return;
@@ -221,6 +248,36 @@ export async function ensureSchema(): Promise<void> {
         );
 
         CREATE INDEX IF NOT EXISTS idx_notif_facility ON notifications (facility_id, created_at DESC);
+
+        -- Multi-Tenant Security Layer: PostgreSQL Row-Level Security (RLS)
+        -- Guarantees that users at Facility A can never see patient or staff data from Facility B
+        ALTER TABLE patients ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE staff ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE clinical_orders ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'patients' AND policyname = 'facility_isolation_policy') THEN
+            CREATE POLICY facility_isolation_policy ON patients
+              USING (facility_id = NULLIF(current_setting('app.current_facility_id', true), ''));
+          END IF;
+
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'staff' AND policyname = 'facility_isolation_policy') THEN
+            CREATE POLICY facility_isolation_policy ON staff
+              USING (facility_id = NULLIF(current_setting('app.current_facility_id', true), ''));
+          END IF;
+
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'clinical_orders' AND policyname = 'facility_isolation_policy') THEN
+            CREATE POLICY facility_isolation_policy ON clinical_orders
+              USING (facility_id = NULLIF(current_setting('app.current_facility_id', true), ''));
+          END IF;
+
+          IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'notifications' AND policyname = 'facility_isolation_policy') THEN
+            CREATE POLICY facility_isolation_policy ON notifications
+              USING (facility_id = NULLIF(current_setting('app.current_facility_id', true), ''));
+          END IF;
+        END $$;
       `);
       console.info('[postgres] schema ready');
     })().catch((e) => {

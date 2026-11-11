@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getFirebaseAdminApp,
   isFirebaseAdminConfigured,
   adminVerifyIdToken,
   adminApiSecretOk,
 } from '../../../../lib/firebaseAdmin';
+import { isPostgresConfigured, query } from '../../../../lib/db/postgres';
 
 export const runtime = 'nodejs';
 
 /**
  * POST /api/staff/flush-facility
  * Body: { facilityId: string, confirm: "FLUSH_FACILITY_STAFF" }
- * Clears staffCards + staffRegistry on the facility Firestore doc (Admin SDK).
+ * Clears staff records for a facility in Aurora PostgreSQL.
  */
 export async function POST(req: NextRequest) {
   if (!isFirebaseAdminConfigured()) {
@@ -47,41 +47,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const facilityId = String(body.facilityId || 'IGH-EKT').replace(/[\/#?]/g, '_');
-  const app = getFirebaseAdminApp();
-  if (!app) {
-    return NextResponse.json({ ok: false, error: 'Admin app failed' }, { status: 503 });
-  }
+  const facilityId = String(body.facilityId || 'IGH-EKT').trim();
 
   try {
-    const { getFirestore } = await import('firebase-admin/firestore');
-    const db = getFirestore(app);
-    const ref = db.collection('facilities').doc(facilityId);
-    await ref.set(
-      {
-        staffCards: [],
-        staffRegistry: [],
-        staffUpdatedAt: new Date().toISOString(),
-        flushAt: new Date().toISOString(),
-        flushedBy: who.email || who.uid,
-      },
-      { merge: true }
-    );
-
-    // Best-effort: delete staff subcollection docs (batch)
-    try {
-      const staffCol = ref.collection('staff');
-      const snap = await staffCol.limit(500).get();
-      const batch = db.batch();
-      let n = 0;
-      snap.docs.forEach((d) => {
-        if (String(d.id).toUpperCase().includes('ADM-001')) return;
-        batch.delete(d.ref);
-        n++;
-      });
-      if (n > 0) await batch.commit();
-    } catch {
-      /* rules / missing */
+    if (isPostgresConfigured()) {
+      await query(
+        `DELETE FROM staff WHERE facility_id = $1 AND badge_id NOT LIKE 'ADM-%'`,
+        [facilityId]
+      );
     }
 
     return NextResponse.json({

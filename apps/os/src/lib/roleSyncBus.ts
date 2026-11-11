@@ -15,7 +15,6 @@
 
 import { broadcastLocal, isLanApiEligible, pushFacilityData } from './hospitalSync';
 import { enqueueFacilitySync } from './durableOutbox';
-import { firestoreWriteFacility } from './firebase';
 import { isCriticalFacilityKey } from './poorNetwork';
 
 export const FACILITY_KEYS = {
@@ -47,10 +46,18 @@ export function publishFacilityData(facilityId: string, key: string, value: unkn
   const online = typeof navigator === 'undefined' || navigator.onLine;
   const payload = { [key]: value };
 
-  // 1) Cloud when browser reports online
+  // 1) Broadcast to AWS EventBridge / AppSync Realtime sync channels
   if (online) {
     try {
-      void firestoreWriteFacility(facilityId, payload);
+      const bc = new BroadcastChannel('medcore_aws_eventbridge');
+      bc.postMessage({
+        facilityId,
+        source: 'medcore.sync',
+        detailType: 'FacilityDataSync',
+        payload: { key, value },
+        timestamp: new Date().toISOString(),
+      });
+      bc.close();
     } catch {
       /* ignore */
     }

@@ -107,3 +107,32 @@ export async function emitVitalsRecordedEvent(vitals: {
   });
 }
 
+export async function emitStaffRegisteredEvent(staff: {
+  badgeId: string;
+  fullName: string;
+  role: string;
+  department: string;
+  facilityId: string;
+  timestamp?: string;
+}) {
+  return publishMedCoreEvent({
+    source: 'medcore.emr.staff',
+    detailType: 'StaffRegistered',
+    facilityId: staff.facilityId,
+    detail: {
+      badgeId: staff.badgeId,
+      fullName: staff.fullName,
+      role: staff.role,
+      department: staff.department,
+      action: 'sync_access_roster_and_directory',
+    },
+  });
+}
+
+export async function dispatchStaffRegisteredEvent(
+  facilityId: string,
+  payload: { badgeId: string; fullName: string; role: string; department: string; timestamp?: string }
+) {
+  return emitStaffRegisteredEvent({ ...payload, facilityId });
+}
+

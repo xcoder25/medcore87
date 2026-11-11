@@ -109,7 +109,8 @@ export interface MedCoreDomainEvent<T = Record<string, any>> {
     | 'medcore.emr.billing'
     | 'medcore.emr.pharmacy'
     | 'medcore.emr.lab'
-    | 'medcore.emr.admin';
+    | 'medcore.emr.admin'
+    | 'medcore.emr.staff';
   detailType:
     | 'PatientRegistered'
     | 'VitalsRecorded'
@@ -119,7 +120,8 @@ export interface MedCoreDomainEvent<T = Record<string, any>> {
     | 'PrescriptionDispensed'
     | 'LabResultAuthorized'
     | 'PatientAdmitted'
-    | 'PatientDischarged';
+    | 'PatientDischarged'
+    | 'StaffRegistered';
   detail: T;
   facilityId?: string;
   traceId?: string;

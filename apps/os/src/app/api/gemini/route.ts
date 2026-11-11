@@ -48,47 +48,9 @@ function getEnvGeminiKey(): string {
   return '';
 }
 
-async function getFacilityGeminiKey(facilityId: string): Promise<string> {
-  const fid = String(facilityId || '').trim();
-  if (!fid) return '';
-  try {
-    // Lazy import so build does not require Firebase at module load
-    const { firestoreReadFacility } = await import('../../../lib/firebase');
-    const data = await firestoreReadFacility(fid);
-    if (!data) return '';
-    const settingsKeys = [
-      'medcore_os_admin_settings_v1',
-      `medcore_os_admin_settings_v1:${fid}`,
-      `medcore_os_admin_settings_v1:${fid.toUpperCase()}`,
-    ];
-    for (const sk of settingsKeys) {
-      const block = data[sk];
-      if (block && typeof block === 'object') {
-        const k = cleanKey((block as { geminiApiKey?: string }).geminiApiKey);
-        if (k) return k;
-      }
-    }
-    // Flat field on shared doc
-    const flat = cleanKey(data.geminiApiKey as string | undefined);
-    if (flat) return flat;
-  } catch {
-    /* offline / rules */
-  }
-  return '';
-}
-
 async function resolveGeminiKey(facilityId?: string): Promise<{ key: string; source: string }> {
   const fromEnv = getEnvGeminiKey();
   if (fromEnv) return { key: fromEnv, source: 'env' };
-  if (facilityId) {
-    const fromFs = await getFacilityGeminiKey(facilityId);
-    if (fromFs) return { key: fromFs, source: 'firestore_facility_settings' };
-  }
-  // Try common Eket id if none passed
-  for (const fid of ['IGH-EKT', 'IGH_EKT', 'DEFAULT-HOSPITAL']) {
-    const fromFs = await getFacilityGeminiKey(fid);
-    if (fromFs) return { key: fromFs, source: `firestore:${fid}` };
-  }
   return { key: '', source: 'none' };
 }
 

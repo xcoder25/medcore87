@@ -1,13 +1,10 @@
 /**
- * Same-hospital live sync — when online, all workstations share facility data via Firestore
- * without requiring a browser reload.
+ * Same-hospital live sync — workstations share facility data via AWS AppSync / EventBridge
+ * and Aurora PostgreSQL without requiring a browser reload.
  *
- * Pipeline (edge + cloud only):
- *  local write → publishFacilityData → Firestore (source of truth)
- *  Firestore onSnapshot → in-memory apply (edgeCloudOnly) → domain events → UI
- * Heavy data is NOT written to durable localStorage.
+ * Pipeline (AWS EDA & Real-Time):
+ *  Backend write (Aurora Postgres) → EventBridge event → AppSync WebSocket → UI sync
  */
-import { firestoreSubscribeFacility, enableFirestoreOffline } from './firebase';
 import { startFacilitySyncLoop, probeHospitalApi, isLanApiEligible } from './hospitalSync';
 import { startOutboxAutoFlush, flushOutbox } from './durableOutbox';
 import { FACILITY_KEYS } from './roleSyncBus';
@@ -15,10 +12,10 @@ import { applyHimRemote, HIM_STORAGE_KEY } from './himStore';
 import { mergePresenceMaps, STAFF_PRESENCE_KEY } from './staffPresenceStore';
 import {
   applyCloudStaffDirectory,
-  isStaffFlushLocked,
   syncAccessRosterFromSources,
 } from './staffCardStore';
 import { enableEdgeCloudOnlyRuntime } from './edgeCloudOnly';
+import { MedCoreAppSyncSyncManager, type AppSyncRealtimeMessage } from './aws/appsyncRealtime';
 
 /** Map storage keys → CustomEvents so existing subscribe*() hooks refresh live */
 const KEY_EVENTS: Record<string, string[]> = {
@@ -49,7 +46,6 @@ const KEY_EVENTS: Record<string, string[]> = {
   [FACILITY_KEYS.ancSmsPrefs]: ['medcore-anc-plans', 'medcore-admin-sync'],
   [FACILITY_KEYS.him]: ['medcore-him-updated', 'medcore-admin-sync'],
   [FACILITY_KEYS.theatre]: ['medcore-theatre-cases', 'medcore-admin-sync'],
-  // Nursing vitals — triage station on separate device writes here
   [FACILITY_KEYS.vitals]: ['medcore-vitals', 'medcore-admin-sync'],
   clinical_vitals: ['medcore-vitals', 'medcore-admin-sync'],
 };
@@ -72,14 +68,12 @@ function emitForKey(key: string, value: unknown) {
 
 /**
  * Apply a remote facility document field into session memory and notify UI.
- * Skips identical payloads to avoid feedback loops. Durable disk is not used
- * for heavy keys (edgeCloudOnly).
  */
 export function applyFacilityRemoteKey(key: string, value: unknown): void {
   if (typeof window === 'undefined') return;
   if (value === undefined || value === null) return;
   if (key === 'updatedAt' || key === 'resetAt') return;
-  // Hospital settings from cloud → scoped storage used by Admin Settings UI
+
   if (
     (key === 'medcore_os_admin_settings_v1' || key === 'adminSettings') &&
     value &&
@@ -99,53 +93,25 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
       /* fall through */
     }
   }
-  if (key === HIM_STORAGE_KEY || key === FACILITY_KEYS.him || key === 'medcore_os_him_v1') {
-    applyHimRemote(value);
-    emitForKey(key, value);
-    return;
-  }
-  // Redirect the 'clinical_vitals' alias to the canonical localStorage key used by nursingVitalsStore
-  const canonicalKey =
-    key === 'clinical_vitals' ? FACILITY_KEYS.vitals : key;
 
-  // Protect staff data from destructive overwrite & apply cloud staff updates across workstations
-  const cKey = String(canonicalKey);
-  if (
-    cKey === 'medcore_os_access_control' ||
-    cKey === 'medcore_os_staff_registry' ||
-    cKey === 'staffRegistry' ||
-    cKey === 'medcore_staff_id_cards' ||
-    cKey === 'medcore_os_staff_cards' ||
-    cKey === 'medcore_staff_cards' ||
-    cKey === 'staffCards'
-  ) {
-    if (!Array.isArray(value) || value.length === 0) {
-      if (!isStaffFlushLocked()) return;
-    }
-    try {
-      if (
-        cKey === 'medcore_staff_id_cards' ||
-        cKey === 'medcore_os_staff_cards' ||
-        cKey === 'medcore_staff_cards' ||
-        cKey === 'staffCards'
-      ) {
-        applyCloudStaffDirectory({ staffCards: value as any[] });
-        return;
-      }
-      if (cKey === 'medcore_os_staff_registry' || cKey === 'staffRegistry') {
-        applyCloudStaffDirectory({ staffRegistry: value as any[] });
-        return;
-      }
-      if (cKey === 'medcore_os_access_control') {
-        syncAccessRosterFromSources('');
-        return;
-      }
-    } catch {
-      /* ignore */
-    }
-  }
+  // Canonicalize legacy keys
+  let canonicalKey = key;
+  if (key === 'medcore_os_reception_ops_v1') canonicalKey = FACILITY_KEYS.reception;
+  if (key === 'medcore_staff_id_cards') canonicalKey = FACILITY_KEYS.staff;
+  if (key === 'clinical_vitals') canonicalKey = FACILITY_KEYS.vitals;
+
   try {
-    // Presence maps must MERGE (not replace) so multi-PC logins all stay visible
+    if (canonicalKey === FACILITY_KEYS.staff && value && typeof value === 'object') {
+      const dir = value as { staffCards?: unknown[]; staffRegistry?: unknown[]; facilityId?: string };
+      applyCloudStaffDirectory(dir);
+      emitForKey(canonicalKey, value);
+      return;
+    }
+    if (canonicalKey === HIM_STORAGE_KEY) {
+      applyHimRemote(value);
+      emitForKey(canonicalKey, value);
+      return;
+    }
     if (canonicalKey === STAFF_PRESENCE_KEY && value && typeof value === 'object') {
       let local: Record<string, unknown> = {};
       try {
@@ -182,79 +148,57 @@ export function startHospitalCloudSync(facilityId: string): () => void {
   if (typeof window === 'undefined' || !facilityId) return () => {};
 
   enableEdgeCloudOnlyRuntime();
-  void enableFirestoreOffline();
   const applyKey = (key: string, value: unknown) => applyFacilityRemoteKey(key, value);
 
-  // CLOUD-FIRST bootstrap: shared facility doc is the only durable store
+  // Initial fetch from Postgres-backed API
   void (async () => {
     try {
-      const { firestoreReadFacility } = await import('./firebase');
-      if (typeof navigator === 'undefined' || navigator.onLine) {
-        const data = await firestoreReadFacility(facilityId);
-        if (data) {
-          for (const [k, v] of Object.entries(data)) {
-            applyKey(k, v);
-          }
+      const res = await fetch(`/api/staff?facilityId=${encodeURIComponent(facilityId)}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.staff && Array.isArray(json.staff)) {
+          const cloudCards = json.staff.map((s: any) => ({
+            badgeId: s.badge_id || s.badgeId,
+            fullName: s.full_name || s.fullName,
+            role: s.role || 'Staff',
+            roleKey: s.role_key || s.roleKey || 'staff',
+            title: s.title || '',
+            department: s.department || 'General',
+            facilityId,
+            facilityName: s.facility_name || 'Hospital',
+            clearanceLevel: Number(s.clearance_level || 1),
+            clearanceLabel: s.clearance_label || 'Level 1',
+            status: (s.status || 'ACTIVE').toUpperCase() === 'ACTIVE' ? 'ACTIVE' : 'SUSPENDED',
+            photoUrl: s.photo_url || s.photoUrl || null,
+          }));
+          applyCloudStaffDirectory({
+            staffCards: cloudCards,
+            staffRegistry: json.staff,
+            facilityId,
+          });
         }
       }
     } catch {
-      /* offline / deny */
+      /* offline / retry */
     }
   })();
 
-  // Outbox only for brief offline catch-up; payloads stay in memory (edgeCloudOnly)
+  // Outbox only for brief offline catch-up
   const stopOutbox = startOutboxAutoFlush(20000);
   void flushOutbox();
 
-  // LAN hub — slower poll; only probe when a hub URL is configured
+  // LAN hub loop
   const stopLan = startFacilitySyncLoop(facilityId, applyKey, 15000);
   if (isLanApiEligible()) void probeHospitalApi();
 
-  // Cloud realtime — other PCs / phones on same hospital (overrides local when newer)
-  const stopFs = firestoreSubscribeFacility(facilityId, (data) => {
-    for (const [k, v] of Object.entries(data || {})) {
-      applyKey(k, v);
+  // AWS AppSync Real-Time Subscription Manager
+  const syncManager = MedCoreAppSyncSyncManager.getInstance();
+  const unsubAppSync = syncManager.subscribe((msg: AppSyncRealtimeMessage) => {
+    if (msg.facilityId && msg.facilityId !== facilityId) return;
+    if (msg.payload?.key && msg.payload?.value !== undefined) {
+      applyKey(msg.payload.key, msg.payload.value);
     }
   });
-
-  // Realtime staff subcollection sync across workstations
-  let stopStaffSub = () => {};
-  try {
-    const { firestoreSubscribeStaffCollection } = require('./firebase') as typeof import('./firebase');
-    stopStaffSub = firestoreSubscribeStaffCollection(facilityId, (staffRows) => {
-      if (Array.isArray(staffRows) && staffRows.length > 0) {
-        const cloudCards = staffRows.map((s) => {
-          const bId = String(s.badgeId || s.id || '').toUpperCase().replace(/\s+/g, '');
-          const fName = String(s.fullName || s.name || bId);
-          const rk = String(s.roleKey || s.role || 'staff');
-          return {
-            badgeId: bId,
-            fullName: fName,
-            role: String(s.role || 'Staff'),
-            roleKey: rk,
-            title: String(s.title || ''),
-            department: String(s.department || 'General'),
-            facilityId: String(s.facilityId || s.hospitalId || facilityId),
-            facilityName: String(s.facilityName || s.hospitalName || 'Hospital'),
-            clearanceLevel: Number(s.clearanceLevel ?? s.clearance ?? 1),
-            clearanceLabel: String(s.clearanceLabel || 'Level 1'),
-            templateKey: (s.templateKey as any) || 'TPL_CLINICAL',
-            status: String(s.status || 'ACTIVE').toUpperCase() === 'ACTIVE' ? 'ACTIVE' : 'SUSPENDED',
-            issuedAt: String(s.issuedAt || s.createdAt || new Date().toISOString()),
-            expiresAt: String(s.expiresAt || new Date(Date.now() + 2 * 365 * 864e5).toISOString()),
-            photoUrl: s.photoUrl ? String(s.photoUrl) : undefined,
-            initials: String(s.initials || fName.slice(0, 2).toUpperCase()),
-            qrPayload: typeof s.qrPayload === 'string' ? s.qrPayload : undefined,
-          };
-        });
-        applyCloudStaffDirectory({
-          staffCards: cloudCards,
-          staffRegistry: staffRows,
-          facilityId,
-        });
-      }
-    });
-  } catch { /* ignore */ }
 
   const onOnline = () => {
     void flushOutbox();
@@ -264,8 +208,7 @@ export function startHospitalCloudSync(facilityId: string): () => void {
   return () => {
     window.removeEventListener('online', onOnline);
     stopLan();
-    stopFs();
-    stopStaffSub();
+    unsubAppSync();
     stopOutbox();
   };
 }

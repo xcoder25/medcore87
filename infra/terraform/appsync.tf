@@ -5,6 +5,15 @@ resource "aws_appsync_graphql_api" "emr_realtime" {
   name                = "${var.project_name}-realtime-api"
   authentication_type = "API_KEY"
 
+  additional_authentication_provider {
+    authentication_type = "OPENID_CONNECT"
+
+    openid_connect_config {
+      issuer    = "https://securetoken.google.com/${var.firebase_project_id}"
+      client_id = var.firebase_project_id
+    }
+  }
+
   schema = <<-EOF
     type MedCoreEvent {
       eventId: ID!

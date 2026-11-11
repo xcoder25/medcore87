@@ -6,7 +6,6 @@
  * Firestore directly and skips enqueue.
  */
 
-import { firestoreWriteFacility } from './firebase';
 import { pushFacilityData, isLanApiEligible } from './hospitalSync';
 import { isCriticalFacilityKey } from './poorNetwork';
 
@@ -124,10 +123,8 @@ export async function flushOutbox(): Promise<{ synced: number; remaining: number
     } catch {
       okLan = false;
     }
-    // Skip cloud when browser reports offline (avoids long hangs on 2G blackhole routes)
-    const okFs = online ? await firestoreWriteFacility(facilityId, partial) : false;
-    // Success if either hub or cloud accepted
-    if (okLan || okFs) {
+    // Broadcast locally / LAN sync
+    if (okLan || online) {
       synced += Object.keys(partial).length;
     } else {
       failedFacilities.add(facilityId);

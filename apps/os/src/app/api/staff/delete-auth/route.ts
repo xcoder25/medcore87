@@ -4,15 +4,16 @@ import {
   adminVerifyIdToken,
   adminApiSecretOk,
   isFirebaseAdminConfigured,
-  getFirebaseAdminApp,
 } from '../../../../lib/firebaseAdmin';
+import { isPostgresConfigured } from '../../../../lib/db/postgres';
+import { deleteStaff } from '../../../../lib/db/staffRepo';
 
 export const runtime = 'nodejs';
 
 /**
  * POST /api/staff/delete-auth
  * Body: { badgeId: string, email?: string, facilityId?: string }
- * Deletes that staff member's Firebase Auth accounts and revokes them in Firestore via Admin SDK.
+ * Deletes that staff member's Firebase Auth accounts and removes them from Aurora Postgres.
  */
 export async function POST(req: NextRequest) {
   if (!isFirebaseAdminConfigured()) {
@@ -72,38 +73,13 @@ export async function POST(req: NextRequest) {
   try {
     const result = await adminDeleteAuthUsers(emails);
 
-    // If facilityId provided, also revoke and purge in Firestore via Admin SDK
+    // If facilityId provided, also delete from Aurora Postgres
     const fid = (body.facilityId || '').trim();
-    if (fid) {
+    if (fid && isPostgresConfigured()) {
       try {
-        const app = getFirebaseAdminApp();
-        if (app) {
-          const { getFirestore } = await import('firebase-admin/firestore');
-          const db = getFirestore(app);
-          const sanitizedFid = fid.replace(/[\/#?]/g, '_');
-          // Write to revokedStaff collection so login is permanently blocked
-          await db
-            .collection('facilities')
-            .doc(sanitizedFid)
-            .collection('revokedStaff')
-            .doc(badge)
-            .set({
-              badgeId: badge,
-              revokedAt: new Date().toISOString(),
-              reason: 'Deleted by administrator',
-            }, { merge: true });
-
-          // Remove from staff subcollection
-          await db
-            .collection('facilities')
-            .doc(sanitizedFid)
-            .collection('staff')
-            .doc(badge)
-            .delete()
-            .catch(() => {});
-        }
-      } catch (fsErr) {
-        console.warn('[delete-auth] Firestore admin cleanup notice:', fsErr);
+        await deleteStaff(fid, badge);
+      } catch (pgErr) {
+        console.warn('[delete-auth] Postgres staff deletion notice:', pgErr);
       }
     }
 

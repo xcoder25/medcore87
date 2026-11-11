@@ -191,11 +191,23 @@ export async function generateS3PresignedUploadUrl(
   return { uploadUrl, fileUrl, key };
 }
 
-export function generateS3ImageKey(folder: string = 'general', extension: string = 'jpg'): string {
-  const safeFolder = folder.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase() || 'general';
+export function generateS3ImageKey(
+  folder: string = 'general',
+  extension: string = 'jpg',
+  facilityId: string = 'general-facility',
+  patientId?: string
+): string {
+  const safeFacility = facilityId.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase() || 'general-facility';
+  const safeFolder = folder.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase() || 'general';
+  const safePatient = (patientId || '').replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase();
   const cleanExt = extension.replace(/^\./, '').toLowerCase() || 'jpg';
   const date = new Date().toISOString().slice(0, 10);
   const randomHex = crypto.randomBytes(8).toString('hex');
-  return `images/${safeFolder}/${date}/${Date.now()}-${randomHex}.${cleanExt}`;
+
+  // Multi-Tenant Folder Isolation Pattern: <facility_id>/<folder>/<patient_id>/<filename>
+  if (safePatient) {
+    return `${safeFacility}/${safeFolder}/${safePatient}/${Date.now()}-${randomHex}.${cleanExt}`;
+  }
+  return `${safeFacility}/${safeFolder}/${date}/${Date.now()}-${randomHex}.${cleanExt}`;
 }
 

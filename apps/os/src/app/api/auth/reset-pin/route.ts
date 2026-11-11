@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminAuth, getAdminFirestore } from '../../../../lib/firebaseAdmin';
+import { getAdminAuth } from '../../../../lib/firebaseAdmin';
+import { isPostgresConfigured } from '../../../../lib/db/postgres';
+import { getStaff, listStaff, upsertStaff } from '../../../../lib/db/staffRepo';
 
 export const runtime = 'nodejs';
 
@@ -47,7 +49,6 @@ export async function POST(req: NextRequest) {
   }
 
   const adminAuth = getAdminAuth();
-  const adminDb = getAdminFirestore();
 
   // -------------------------------------------------------------
   // ACTION 1: LOOKUP ACCOUNT
@@ -57,68 +58,24 @@ export async function POST(req: NextRequest) {
     let matchedBadge = isEmail ? '' : normalizeBadgeId(query);
     let matchedStaff: any = null;
 
-    if (adminDb && facilityId) {
-      const fidNorm = facilityId.replace(/[\/#?]/g, '_');
+    // Check Postgres if configured
+    if (isPostgresConfigured() && facilityId) {
       try {
         if (matchedBadge) {
-          const docSnap = await adminDb
-            .collection('facilities')
-            .doc(fidNorm)
-            .collection('staff')
-            .doc(matchedBadge)
-            .get();
-          if (docSnap.exists) {
-            matchedStaff = { badgeId: docSnap.id, ...docSnap.data() };
-          }
+          const row = await getStaff(facilityId, matchedBadge);
+          if (row) matchedStaff = row;
         } else if (isEmail) {
-          // Search by email in staff subcollection
-          const querySnap = await adminDb
-            .collection('facilities')
-            .doc(fidNorm)
-            .collection('staff')
-            .where('email', '==', query.toLowerCase())
-            .limit(1)
-            .get();
-          if (!querySnap.empty) {
-            const first = querySnap.docs[0];
-            matchedStaff = { badgeId: first.id, ...first.data() };
-            matchedBadge = first.id;
-          }
-        }
-
-        // Check facility shared doc if not yet found
-        // Check root staff collection (written atomically during create)
-        if (!matchedStaff && matchedBadge) {
-          try {
-            const rootSnap = await adminDb.collection('staff').doc(matchedBadge).get();
-            if (rootSnap.exists) {
-              matchedStaff = { badgeId: rootSnap.id, ...rootSnap.data() };
-            }
-          } catch { /* ignore */ }
-        }
-
-        if (!matchedStaff) {
-          const facSnap = await adminDb.collection('facilities').doc(fidNorm).get();
-          if (facSnap.exists) {
-            const data = facSnap.data() || {};
-            const cards = Array.isArray(data.staffCards) ? data.staffCards : [];
-            const reg = Array.isArray(data.staffRegistry) ? data.staffRegistry : [];
-            const all = [...cards, ...reg];
-            const hit = all.find((item: any) => {
-              const b = normalizeBadgeId(item.badgeId || item.id);
-              const e = String(item.email || item.workEmail || '').toLowerCase();
-              if (matchedBadge && b === matchedBadge) return true;
-              if (isEmail && e === query.toLowerCase()) return true;
-              return false;
-            });
-            if (hit) {
-              matchedStaff = hit;
-              matchedBadge = normalizeBadgeId(hit.badgeId || hit.id);
-            }
+          const all = await listStaff(facilityId);
+          const found = all.find(
+            (s) => s.email?.toLowerCase() === query.toLowerCase() || s.auth_email?.toLowerCase() === query.toLowerCase()
+          );
+          if (found) {
+            matchedStaff = found;
+            matchedBadge = found.badge_id;
           }
         }
       } catch (e) {
-        console.warn('[reset-pin lookup] Firestore error:', e);
+        console.warn('[reset-pin lookup] Postgres query error:', e);
       }
     }
 
@@ -146,13 +103,16 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const officialEmail = String(matchedStaff?.email || matchedStaff?.workEmail || (isEmail ? query : '')).trim();
-    const displayName = matchedStaff?.fullName || matchedStaff?.name || (isEmail ? query.split('@')[0] : 'Healthcare Staff');
+    const officialEmail = String(
+      matchedStaff?.email || matchedStaff?.auth_email || (isEmail ? query : '')
+    ).trim();
+    const displayName =
+      matchedStaff?.full_name || matchedStaff?.name || (isEmail ? query.split('@')[0] : 'Healthcare Staff');
     const role = matchedStaff?.role || matchedStaff?.title || 'Staff Member';
     const department = matchedStaff?.department || '';
+    const roleKey = matchedStaff?.role_key || matchedStaff?.roleKey || '';
+    const clearanceLevel = matchedStaff?.clearance_level || matchedStaff?.clearanceLevel;
 
-    const roleKey = matchedStaff?.roleKey || matchedStaff?.role || '';
-    const clearanceLevel = matchedStaff?.clearanceLevel;
     return NextResponse.json({
       ok: true,
       found: true,
@@ -183,13 +143,12 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      // Generate password reset link
       const resetLink = await adminAuth.generatePasswordResetLink(emailToSend);
       console.log(`[reset-pin] Generated password reset link for ${emailToSend}`);
       return NextResponse.json({
         ok: true,
         message: `Password reset link generated successfully.`,
-        resetLink, // returned for verification / test environments
+        resetLink,
         maskedEmail: maskEmail(emailToSend),
       });
     } catch (err: any) {
@@ -233,7 +192,6 @@ export async function POST(req: NextRequest) {
         try {
           user = await adminAuth.getUserByEmail(authEmail);
         } catch {
-          // Try custom email if provided
           if (body.email && body.email.includes('@')) {
             try {
               user = await adminAuth.getUserByEmail(body.email.trim());
@@ -247,7 +205,6 @@ export async function POST(req: NextRequest) {
           await adminAuth.updateUser(user.uid, { password: pinNorm });
           updatedInAuth = true;
         } else {
-          // If not in Firebase Auth yet, provision now with new PIN
           await adminAuth.createUser({
             email: authEmail,
             password: pinNorm,
@@ -260,92 +217,28 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Update in Firestore
-    if (adminDb && facilityId) {
-      const fidNorm = facilityId.replace(/[\/#?]/g, '_');
+    // 2. Update in Aurora PostgreSQL
+    if (isPostgresConfigured() && facilityId) {
       try {
-        // Update staff subcollection document
-        const staffDocRef = adminDb.collection('facilities').doc(fidNorm).collection('staff').doc(badgeId);
-        await staffDocRef.set(
-          {
-            pin: pinNorm,
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
-
-        // Also update root staff collection and backfill profile metadata
-        try {
-          const rootRef = adminDb.collection('staff').doc(badgeId);
-          const rSnap = await rootRef.get();
-          if (rSnap.exists) {
-            await rootRef.set({ pin: pinNorm, updatedAt: new Date().toISOString() }, { merge: true });
-            const rData = rSnap.data() || {};
-            await staffDocRef.set({
-              fullName: rData.fullName || rData.name,
-              name: rData.name || rData.fullName,
-              role: rData.role || (badgeId.startsWith('AMC-') ? 'Hospital Administrator' : 'Staff'),
-              roleKey: rData.roleKey || (badgeId.startsWith('AMC-') ? 'hospital_admin' : 'doctor'),
-              clearanceLevel: rData.clearanceLevel || (badgeId.startsWith('AMC-') ? 5 : 3),
-              clearanceLabel: rData.clearanceLabel || (badgeId.startsWith('AMC-') ? 'Administrator' : 'L3'),
-              department: rData.department || 'Hospital Management',
-              facilityId: rData.facilityId || facilityId,
-              facilityName: rData.facilityName,
-            }, { merge: true });
-          } else if (badgeId.startsWith('AMC-')) {
-            // Auto-heal admin profile metadata so it never defaults to HIM / records
-            await staffDocRef.set({
-              role: 'Hospital Administrator',
-              roleKey: 'hospital_admin',
-              clearanceLevel: 5,
-              clearanceLabel: 'Administrator',
-              department: 'Hospital Management',
-            }, { merge: true });
-          }
-        } catch (rErr) {
-          console.warn('[reset-pin] root staff backfill note:', rErr);
-        }
-
-        // Update in facility shared document
-        const sharedDocRef = adminDb.collection('facilities').doc(fidNorm);
-        const sharedDocSnap = await sharedDocRef.get();
-        if (sharedDocSnap.exists) {
-          const data = sharedDocSnap.data() || {};
-          let modified = false;
-
-          const cards = Array.isArray(data.staffCards)
-            ? data.staffCards.map((c: any) => {
-              if (normalizeBadgeId(c.badgeId || c.id) === badgeId) {
-                modified = true;
-                return { ...c, pin: pinNorm };
-              }
-              return c;
-            })
-            : [];
-
-          const registry = Array.isArray(data.staffRegistry)
-            ? data.staffRegistry.map((r: any) => {
-              if (normalizeBadgeId(r.badgeId || r.id) === badgeId) {
-                modified = true;
-                return { ...r, pin: pinNorm };
-              }
-              return r;
-            })
-            : [];
-
-          if (modified) {
-            await sharedDocRef.set(
-              {
-                staffCards: cards,
-                staffRegistry: registry,
-                updatedAt: new Date().toISOString(),
-              },
-              { merge: true }
-            );
-          }
-        }
-      } catch (fsErr) {
-        console.warn('[reset-pin] Firestore write error:', fsErr);
+        const existing = await getStaff(facilityId, badgeId);
+        await upsertStaff({
+          badgeId,
+          facilityId,
+          fullName: existing?.full_name || badgeId,
+          role: existing?.role || undefined,
+          roleKey: existing?.role_key || undefined,
+          title: existing?.title || undefined,
+          department: existing?.department || undefined,
+          email: existing?.email || undefined,
+          phone: existing?.phone || undefined,
+          status: existing?.status || 'active',
+          clearanceLevel: existing?.clearance_level || 1,
+          clearanceLabel: existing?.clearance_label || undefined,
+          pin: pinNorm,
+          authEmail: existing?.auth_email || authEmail,
+        });
+      } catch (pgErr) {
+        console.warn('[reset-pin] Postgres update error:', pgErr);
       }
     }
 
@@ -360,4 +253,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: false, error: `Unknown action "${action}"` }, { status: 400 });
 }
-
