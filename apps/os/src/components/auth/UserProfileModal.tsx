@@ -184,9 +184,14 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   letterSpacing: '0.05em',
                   position: 'relative',
                   flexShrink: 0,
+                  overflow: 'hidden',
                 }}
               >
-                {initials}
+                {session.photoUrl ? (
+                  <img src={session.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  initials
+                )}
                 <div
                   title="Active On-Duty"
                   style={{

@@ -337,6 +337,29 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
 
   const facility = session.facility || 'Immanuel General Hospital, Eket';
   const initials = session.avatarInitials || 'HA';
+  const staffPhoto = session.photoUrl || (() => {
+    try {
+      if (typeof window === 'undefined' || !session.badgeId) return undefined;
+      const b = String(session.badgeId).toUpperCase();
+      const raw = localStorage.getItem('medcore_staff_id_cards') || localStorage.getItem('medcore_os_staff_cards');
+      if (raw) {
+        const cards = JSON.parse(raw);
+        if (Array.isArray(cards)) {
+          const hit = cards.find((c: any) => String(c.badgeId || '').toUpperCase() === b);
+          if (hit?.photoUrl) return hit.photoUrl;
+        }
+      }
+      const regRaw = localStorage.getItem('medcore_os_staff_registry') || localStorage.getItem('medcore_staff_registry');
+      if (regRaw) {
+        const reg = JSON.parse(regRaw);
+        if (Array.isArray(reg)) {
+          const hit = reg.find((r: any) => String(r.badgeId || r.id || '').toUpperCase() === b);
+          if (hit?.photoUrl) return hit.photoUrl;
+        }
+      }
+    } catch { /* ignore */ }
+    return undefined;
+  })();
 
   const body = useMemo(() => {
     switch (module) {
@@ -437,7 +460,13 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
           style={{ cursor: 'pointer' }}
           title="View My Administrator ID Card"
         >
-          <div className="admin-shell-avatar">{initials}</div>
+          <div className="admin-shell-avatar" style={{ overflow: 'hidden', padding: 0 }}>
+            {staffPhoto ? (
+              <img src={staffPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              initials
+            )}
+          </div>
           {!collapsed && (
             <div className="admin-shell-user-meta">
               <div className="admin-shell-user-name">{session.name || 'Hospital Administrator'}</div>
@@ -512,7 +541,13 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
               style={{ cursor: 'pointer' }}
               title="View Administrator Profile & Security"
             >
-              <div className="admin-shell-avatar sm">{initials}</div>
+              <div className="admin-shell-avatar sm" style={{ overflow: 'hidden', padding: 0 }}>
+                {staffPhoto ? (
+                  <img src={staffPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  initials
+                )}
+              </div>
               <span>Admin</span>
               <ChevronDown size={13} style={{ color: '#64748B', marginLeft: 2 }} />
             </div>

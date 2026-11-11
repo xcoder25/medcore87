@@ -1353,8 +1353,12 @@ const handleLockScreen = () => {
         {sidebarOpen && userSession && (
           <div className="os-sidebar-footer">
             <div className="os-user-mini-card">
-              <div className="os-user-mini-avatar">
-                {userSession.avatarInitials}
+              <div className="os-user-mini-avatar" style={{ overflow: 'hidden', padding: 0 }}>
+                {userSession.photoUrl ? (
+                  <img src={userSession.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  userSession.avatarInitials
+                )}
               </div>
               <div className="os-user-mini-info">
                 <span className="os-user-mini-name">{userSession.name}</span>
@@ -1501,15 +1505,19 @@ const handleLockScreen = () => {
               style={{ cursor: 'pointer' }}
               title="View Staff Profile & Identity Card"
             >
-              <div className="os-top-hud-avatar">
-                {(userSession?.avatarInitials ||
-                  userSession?.name
-                    ?.split(' ')
-                    .map((w) => w[0])
-                    .join('')
-                    .slice(0, 2) ||
-                  'U'
-                ).toUpperCase()}
+              <div className="os-top-hud-avatar" style={{ overflow: 'hidden', padding: 0 }}>
+                {userSession?.photoUrl ? (
+                  <img src={userSession.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  (userSession?.avatarInitials ||
+                    userSession?.name
+                      ?.split(' ')
+                      .map((w) => w[0])
+                      .join('')
+                      .slice(0, 2) ||
+                    'U'
+                  ).toUpperCase()
+                )}
               </div>
               <div className="os-top-hud-user-meta">
                 <span className="os-top-hud-user-name">{userSession?.name || 'User'}</span>

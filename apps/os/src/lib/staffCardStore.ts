@@ -1605,6 +1605,7 @@ export function resolveStaffByBadge(badgeId: string): {
   pin: string;
   hospitalId: string;
   hospitalName: string;
+  photoUrl?: string;
 } | null {
   const q = normalizeBadgeId(badgeId);
   if (!q || typeof window === 'undefined') return null;
@@ -1635,6 +1636,7 @@ export function resolveStaffByBadge(badgeId: string): {
           pin: String(hit.pin || '123456'),
           hospitalId: hit.hospitalId || hit.facilityId || '',
           hospitalName: hit.hospitalName || hit.facilityName || '',
+          photoUrl: hit.photoUrl || hit.photo_url || undefined,
         };
       }
     }
@@ -1668,6 +1670,7 @@ export function resolveStaffByBadge(badgeId: string): {
         pin,
         hospitalId: card.facilityId,
         hospitalName: card.facilityName,
+        photoUrl: card.photoUrl || undefined,
       };
     }
   } catch { /* ignore */ }

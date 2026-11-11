@@ -26,6 +26,7 @@ export interface UserSession {
   clearanceLevel: number;
   permissions: string[];
   badgeId?: string;
+  photoUrl?: string;
   authMethod?: string;
   token?: string;
   loginTime?: string;
@@ -47,6 +48,7 @@ export interface PresetStaff {
   pin: string;
   hospitalId?: string;
   hospitalName?: string;
+  photoUrl?: string;
   color?: string;
 }
 
@@ -816,6 +818,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           pin: String(raw.pin || pinQuery),
           hospitalId: String(raw.hospitalId || raw.facilityId || effectiveHospital.id),
           hospitalName: String(raw.hospitalName || raw.facilityName || effectiveHospital.name),
+          photoUrl: raw.photoUrl ? String(raw.photoUrl) : (raw.photo_url ? String(raw.photo_url) : undefined),
           color: '#0052D4',
         };
       };
@@ -873,6 +876,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 hospitalName: effectiveHospital.name,
                 facilityName: effectiveHospital.name,
                 email: pgRow.email || '',
+                photoUrl: pgRow.photo_url || pgRow.photoUrl || undefined,
               };
               profile = mapProfile(remoteForMap);
               // Mirror Aurora → local registry so subsequent logins are instant
@@ -1110,6 +1114,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         hospitalId: profile.hospitalId || effectiveHospital.id,
         department: profile.department,
         avatarInitials: profile.initials,
+        photoUrl: profile.photoUrl,
         clearanceLabel: profile.clearanceLabel,
         clearanceLevel: profile.clearanceLevel,
         permissions: profile.permissions,
@@ -1251,6 +1256,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   pin: pass,
                   hospitalId: pgRow.facility_id || effectiveHospital.id,
                   hospitalName: effectiveHospital.name,
+                  photoUrl: pgRow.photo_url || pgRow.photoUrl || undefined,
                   color: '#0052D4',
                 };
               }
@@ -1308,6 +1314,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           hospitalId: matchedStaff.hospitalId || effectiveHospital.id,
           department: matchedStaff.department,
           avatarInitials: initials,
+          photoUrl: matchedStaff.photoUrl,
           clearanceLabel: matchedStaff.clearanceLabel,
           clearanceLevel: matchedStaff.clearanceLevel,
           permissions: matchedStaff.permissions,

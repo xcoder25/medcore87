@@ -104,6 +104,29 @@ export const OsAppShell: React.FC<Props> = ({
 
   const facility = session.facility || 'Hospital';
   const initials = session.avatarInitials || 'ST';
+  const staffPhoto = session.photoUrl || (() => {
+    try {
+      if (typeof window === 'undefined' || !session.badgeId) return undefined;
+      const b = String(session.badgeId).toUpperCase();
+      const raw = localStorage.getItem('medcore_staff_id_cards') || localStorage.getItem('medcore_os_staff_cards');
+      if (raw) {
+        const cards = JSON.parse(raw);
+        if (Array.isArray(cards)) {
+          const hit = cards.find((c: any) => String(c.badgeId || '').toUpperCase() === b);
+          if (hit?.photoUrl) return hit.photoUrl;
+        }
+      }
+      const regRaw = localStorage.getItem('medcore_os_staff_registry') || localStorage.getItem('medcore_staff_registry');
+      if (regRaw) {
+        const reg = JSON.parse(regRaw);
+        if (Array.isArray(reg)) {
+          const hit = reg.find((r: any) => String(r.badgeId || r.id || '').toUpperCase() === b);
+          if (hit?.photoUrl) return hit.photoUrl;
+        }
+      }
+    } catch { /* ignore */ }
+    return undefined;
+  })();
   const badge =
     roleBadge ||
     (session.roleKey === 'reception'
@@ -173,7 +196,13 @@ export const OsAppShell: React.FC<Props> = ({
         </nav>
 
         <div className="admin-shell-user">
-          <div className="admin-shell-avatar">{initials}</div>
+          <div className="admin-shell-avatar" style={{ overflow: 'hidden', padding: 0 }}>
+            {staffPhoto ? (
+              <img src={staffPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              initials
+            )}
+          </div>
           {!collapsed && (
             <div className="admin-shell-user-meta">
               <div className="admin-shell-user-name">{session.name || 'Staff'}</div>
@@ -241,7 +270,13 @@ export const OsAppShell: React.FC<Props> = ({
               style={{ cursor: 'pointer' }}
               title="View Staff Profile & Security"
             >
-              <div className="admin-shell-avatar sm">{initials}</div>
+              <div className="admin-shell-avatar sm" style={{ overflow: 'hidden', padding: 0 }}>
+                {staffPhoto ? (
+                  <img src={staffPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  initials
+                )}
+              </div>
               <span>{(session.role || 'Staff').split('/')[0]}</span>
               <ChevronDown size={13} style={{ color: '#64748B', marginLeft: 2 }} />
             </div>
