@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { authLog, emailDomainOnly } from '../../lib/authLog';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -466,23 +466,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     }
   };
 
-  // Load enrolled staff (local) + live Firebase facility directory
+  // Load enrolled staff: localStorage → Aurora PostgreSQL (source of truth) → Firebase Auth subscription
   useEffect(() => {
     const mapEntry = (p: any): PresetStaff => ({
-      badgeId: p.badgeId || p.id,
-      name: p.name || p.fullName || 'Staff',
+      badgeId: p.badgeId || p.badge_id || p.id,
+      name: p.name || p.fullName || p.full_name || 'Staff',
       role: p.role || 'Staff',
       shortRole: p.shortRole || p.role || 'Staff',
       title: p.title || p.role || 'Staff',
-      roleKey: inferRoleKey(String(p.roleKey || p.role || p.title || ''), String(p.badgeId || p.id || '')),
-      clearanceLevel: p.clearanceLevel ?? 2,
-      clearanceLabel: p.clearanceLabel || 'L2',
+      roleKey: inferRoleKey(String(p.roleKey || p.role_key || p.role || p.title || ''), String(p.badgeId || p.badge_id || p.id || '')),
+      clearanceLevel: p.clearanceLevel ?? p.clearance_level ?? 2,
+      clearanceLabel: p.clearanceLabel || p.clearance_label || 'L2',
       department: p.department || '',
-      initials: p.initials || String(p.name || 'S').slice(0, 2).toUpperCase(),
-      permissions: (p.permissions && p.permissions.length) ? p.permissions : defaultPermissionsForRole(inferRoleKey(String(p.roleKey || p.role || p.title || ''), String(p.badgeId || p.id || ''))),
+      initials: p.initials || String(p.name || p.full_name || 'S').slice(0, 2).toUpperCase(),
+      permissions: (p.permissions && p.permissions.length) ? p.permissions : defaultPermissionsForRole(inferRoleKey(String(p.roleKey || p.role_key || p.role || p.title || ''), String(p.badgeId || p.badge_id || p.id || ''))),
       pin: p.pin || '',
-      hospitalId: p.hospitalId || p.facilityId || selectedHospital.id,
-      hospitalName: p.hospitalName || p.facilityName || selectedHospital.name,
+      hospitalId: p.hospitalId || p.facilityId || p.facility_id || selectedHospital.id,
+      hospitalName: p.hospitalName || p.facilityName || p.facility_name || selectedHospital.name,
       color: p.color || '#0052D4',
     });
 
@@ -511,6 +511,59 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     window.addEventListener('medcore-staff-registry-updated', onCards);
     window.addEventListener('medcore-admin-sync', onCards);
 
+    // ── Aurora PostgreSQL hydration: fetch enrolled staff for this facility ──────
+    // Firestore is decommissioned; Aurora Postgres is the cloud source of truth.
+    // We merge rows into localStorage so local login resolution works instantly.
+    void (async () => {
+      try {
+        const { apiListStaff } = await import('../../lib/db/clientApi');
+        const res = await Promise.race([
+          apiListStaff(selectedHospital.id),
+          new Promise<{ ok: false }>((resolve) => setTimeout(() => resolve({ ok: false }), 5000)),
+        ]);
+        if ((res as any).ok && (res as any).staff?.length) {
+          const rows: any[] = (res as any).staff;
+          const regRaw = localStorage.getItem('medcore_os_staff_registry');
+          const local: any[] = regRaw ? JSON.parse(regRaw) : [];
+          const byBadge = new Map<string, any>();
+          for (const s of Array.isArray(local) ? local : []) {
+            const b = String(s.badgeId || s.id || '').toUpperCase();
+            if (b) byBadge.set(b, s);
+          }
+          for (const r of rows) {
+            const b = String(r.badge_id || r.badgeId || '').toUpperCase();
+            if (!b || isStaffRevokedLocal(b, selectedHospital.id)) continue;
+            const prev = byBadge.get(b);
+            byBadge.set(b, {
+              ...(prev || {}),
+              badgeId: b,
+              id: b,
+              name: r.full_name || r.name || prev?.name || b,
+              fullName: r.full_name || r.name || prev?.name || b,
+              role: r.role || prev?.role || 'Staff',
+              roleKey: r.role_key || prev?.roleKey || 'staff',
+              title: r.title || prev?.title || '',
+              department: r.department || prev?.department || '',
+              clearanceLevel: r.clearance_level ?? prev?.clearanceLevel ?? 2,
+              clearanceLabel: r.clearance_label || prev?.clearanceLabel || 'L2',
+              permissions: Array.isArray(r.permissions) && r.permissions.length ? r.permissions : (prev?.permissions || []),
+              facilityId: r.facility_id || selectedHospital.id,
+              hospitalId: r.facility_id || selectedHospital.id,
+              email: r.email || prev?.email || '',
+              // PIN is NOT stored in Postgres plaintext — preserve whatever is in localStorage
+              pin: prev?.pin || '',
+            });
+          }
+          const merged = Array.from(byBadge.values());
+          localStorage.setItem('medcore_os_staff_registry', JSON.stringify(merged));
+          localStorage.setItem('medcore_staff_registry', JSON.stringify(merged));
+          window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated'));
+          mergeLocal();
+        }
+      } catch (e) {
+        console.warn('[auth] Postgres staff hydration:', e);
+      }
+    })();
     let unsubDir = () => {};
     let unsubCol = () => {};
     let unsubAuth = () => {};
@@ -787,35 +840,56 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         }
       }
 
-      // 1) Firestore staff profile (source of truth online for this facility only)
+      // 1) Aurora PostgreSQL staff profile (cloud source of truth — Firestore is decommissioned)
       if (!profile && online) {
         try {
-          const remote = await withTimeout(
-            firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery),
-            6000
-          );
-          if (remote && (remote.badgeId || remote.id)) {
-            profile = mapProfile(remote);
-            // Mirror cloud → local so this browser stays aligned
-            try {
-              const { defaultPermissionsForRole: dpr } = await import('../../lib/staffCardStore');
-              const entry = {
-                ...remote,
-                badgeId: profile.badgeId,
-                roleKey: profile.roleKey,
-                permissions: profile.permissions?.length ? profile.permissions : dpr(profile.roleKey),
+          const { apiLookupStaff } = await import('../../lib/db/clientApi');
+          const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, badgeQuery), 6000);
+          if (pgRes.ok && pgRes.staff) {
+            const pgRow = pgRes.staff as any;
+            if (pgRow) {
+              const remoteForMap: Record<string, unknown> = {
+                badgeId: badgeQuery,
+                id: badgeQuery,
+                name: pgRow.full_name || pgRow.name || badgeQuery,
+                fullName: pgRow.full_name || pgRow.name || badgeQuery,
+                role: pgRow.role || 'Staff',
+                roleKey: pgRow.role_key || 'staff',
+                title: pgRow.title || '',
+                department: pgRow.department || '',
+                clearanceLevel: pgRow.clearance_level ?? 2,
+                clearanceLabel: pgRow.clearance_label || 'L2',
+                permissions: Array.isArray(pgRow.permissions) ? pgRow.permissions : [],
+                hospitalId: pgRow.facility_id || effectiveHospital.id,
+                facilityId: pgRow.facility_id || effectiveHospital.id,
+                hospitalName: effectiveHospital.name,
+                facilityName: effectiveHospital.name,
+                email: pgRow.email || '',
               };
-              const regRaw = localStorage.getItem('medcore_os_staff_registry');
-              const reg = regRaw ? JSON.parse(regRaw) : [];
-              const next = Array.isArray(reg)
-                ? [entry, ...reg.filter((r: any) => String(r.badgeId || r.id).toUpperCase() !== profile!.badgeId)]
-                : [entry];
-              localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
-              localStorage.setItem('medcore_staff_registry', JSON.stringify(next));
-            } catch { /* ignore */ }
+              profile = mapProfile(remoteForMap);
+              // Mirror Aurora → local registry so subsequent logins are instant
+              try {
+                const { defaultPermissionsForRole: dpr } = await import('../../lib/staffCardStore');
+                const entry = {
+                  ...remoteForMap,
+                  badgeId: profile.badgeId,
+                  roleKey: profile.roleKey,
+                  permissions: profile.permissions?.length ? profile.permissions : dpr(profile.roleKey),
+                  // Preserve local PIN if already in registry
+                  pin: (() => { try { const reg = JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'); const hit = reg.find((r: any) => String(r.badgeId || r.id || '').toUpperCase() === badgeQuery); return hit?.pin || ''; } catch { return ''; } })(),
+                };
+                const regRaw = localStorage.getItem('medcore_os_staff_registry');
+                const reg = regRaw ? JSON.parse(regRaw) : [];
+                const next = Array.isArray(reg)
+                  ? [entry, ...reg.filter((r: any) => String(r.badgeId || r.id).toUpperCase() !== profile!.badgeId)]
+                  : [entry];
+                localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
+                localStorage.setItem('medcore_staff_registry', JSON.stringify(next));
+              } catch { /* ignore */ }
+            }
           }
         } catch (e) {
-          console.warn('[auth] firestore badge (cloud-first)', e);
+          console.warn('[auth] Postgres badge lookup (cloud-first)', e);
         }
       }
 
@@ -1087,34 +1161,37 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           }
         } catch { /* */ }
 
-        // Cloud query (Firestore)
+        // Cloud query: Aurora PostgreSQL (Firestore is decommissioned)
         if (!matchedStaff) {
           try {
-            const { firestoreGetStaffByEmail } = await import('../../lib/firebase');
-            const remote = await withTimeout(
-              firestoreGetStaffByEmail(effectiveHospital.id, email),
-              6000
-            ).catch(() => null);
-            if (remote && (remote.badgeId || remote.id)) {
-              const bid = String(remote.badgeId || remote.id);
-              const rk = inferRoleKey(String(remote.roleKey || remote.role || remote.title || ''), bid);
-              matchedStaff = {
-                badgeId: bid,
-                name: String(remote.name || remote.fullName || email.split('@')[0]),
-                role: String(remote.role || 'Staff'),
-                shortRole: String(remote.shortRole || remote.role || 'Staff'),
-                title: String(remote.title || remote.role || 'Staff'),
-                roleKey: rk,
-                clearanceLevel: Number(remote.clearanceLevel ?? 2),
-                clearanceLabel: String(remote.clearanceLabel || 'L2'),
-                department: String(remote.department || ''),
-                initials: String(remote.initials || 'ST'),
-                permissions: Array.isArray(remote.permissions) && remote.permissions.length > 0 ? remote.permissions : defaultPermissionsForRole(rk),
-                pin: String(remote.pin || pass),
-                hospitalId: effectiveHospital.id,
-                hospitalName: effectiveHospital.name,
-                color: '#0052D4',
-              };
+            const { apiListStaff } = await import('../../lib/db/clientApi');
+            const pgRes = await withTimeout(apiListStaff(effectiveHospital.id), 6000);
+            if (pgRes.ok && pgRes.staff?.length) {
+              const pgRow = (pgRes.staff as any[]).find(
+                (r: any) =>
+                  String(r.email || r.auth_email || '').toLowerCase() === email.toLowerCase()
+              );
+              if (pgRow) {
+                const bid = String(pgRow.badge_id || pgRow.badgeId || '');
+                const rk = inferRoleKey(String(pgRow.role_key || pgRow.roleKey || pgRow.role || ''), bid);
+                matchedStaff = {
+                  badgeId: bid,
+                  name: String(pgRow.full_name || pgRow.name || email.split('@')[0]),
+                  role: String(pgRow.role || 'Staff'),
+                  shortRole: String(pgRow.role || 'Staff'),
+                  title: String(pgRow.title || pgRow.role || 'Staff'),
+                  roleKey: rk,
+                  clearanceLevel: Number(pgRow.clearance_level ?? 2),
+                  clearanceLabel: String(pgRow.clearance_label || 'L2'),
+                  department: String(pgRow.department || ''),
+                  initials: String(bid ? bid.slice(0, 2) : 'ST'),
+                  permissions: Array.isArray(pgRow.permissions) && pgRow.permissions.length > 0 ? pgRow.permissions : defaultPermissionsForRole(rk),
+                  pin: pass,
+                  hospitalId: pgRow.facility_id || effectiveHospital.id,
+                  hospitalName: effectiveHospital.name,
+                  color: '#0052D4',
+                };
+              }
             }
           } catch { /* offline */ }
         }

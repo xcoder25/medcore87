@@ -87,7 +87,7 @@ resource "aws_iam_role_policy" "vercel_app_policy" {
           "secretsmanager:GetSecretValue"
         ]
         Resource = [
-          aws_secretsmanager_secret.db_credentials.arn
+          aws_rds_cluster.aurora.master_user_secret[0].secret_arn
         ]
       }
     ]

@@ -8,6 +8,11 @@ output "aurora_reader_endpoint" {
   value       = aws_rds_cluster.aurora.reader_endpoint
 }
 
+output "aurora_master_user_secret_arn" {
+  description = "Secrets Manager ARN for Aurora managed master credentials"
+  value       = aws_rds_cluster.aurora.master_user_secret[0].secret_arn
+}
+
 output "s3_media_bucket_name" {
   description = "Bucket name for unstructured clinical media, photos, and DICOM imaging"
   value       = aws_s3_bucket.clinical_media.id

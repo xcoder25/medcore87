@@ -1,5 +1,7 @@
 /**
- * Browser helpers to talk to Postgres-backed API routes.
+ * Browser helpers to talk to Aurora PostgreSQL-backed API routes.
+ * Aurora PostgreSQL Serverless v2 is the single source of truth for all structured data.
+ * Firebase is used strictly for authentication (JWTs, custom claims) — no Firestore reads/writes.
  */
 
 export async function apiCreateStaff(payload: Record<string, unknown>): Promise<{
@@ -20,8 +22,9 @@ export async function apiCreateStaff(payload: Record<string, unknown>): Promise<
 }
 
 /**
- * Server-side atomic staff creation using Firebase Admin SDK.
- * Creates Auth user and sets Firestore + Postgres documents atomically to avoid split-state.
+ * Server-side atomic staff creation.
+ * Creates Firebase Auth user, sets custom claims (facility_id, role, badgeId),
+ * and writes to Aurora PostgreSQL atomically. No Firestore writes.
  */
 export async function apiAtomicCreateStaff(payload: Record<string, unknown>): Promise<{
   success: boolean;
@@ -62,6 +65,23 @@ export async function apiListStaff(facilityId: string): Promise<{
       error?: string;
       configured?: boolean;
     };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/**
+ * Look up a single staff member by badgeId from Aurora PostgreSQL.
+ * Used by the login flow — avoids fetching the full roster just to authenticate one badge.
+ */
+export async function apiLookupStaff(
+  facilityId: string,
+  badgeId: string
+): Promise<{ ok: boolean; staff?: Record<string, unknown> | null; error?: string }> {
+  try {
+    const qs = new URLSearchParams({ facilityId, badgeId: badgeId.toUpperCase() });
+    const res = await fetch(`/api/staff/lookup?${qs}`);
+    return (await res.json()) as { ok: boolean; staff?: Record<string, unknown> | null; error?: string };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

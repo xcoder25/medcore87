@@ -37,35 +37,6 @@ resource "aws_security_group" "aurora" {
 }
 
 # Master Database Password generated securely in AWS Secrets Manager
-resource "aws_secretsmanager_secret" "db_credentials" {
-  name                    = "${var.project_name}-db-master-credentials"
-  description             = "Master PostgreSQL credentials for MedCore Aurora Serverless v2"
-  kms_key_id              = aws_kms_key.emr_cmk.arn
-  recovery_window_in_days = 0
-
-  tags = {
-    Name = "${var.project_name}-db-credentials"
-  }
-}
-
-resource "random_password" "db_master_password" {
-  length           = 32
-  special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
-}
-
-resource "aws_secretsmanager_secret_version" "db_credentials" {
-  secret_id = aws_secretsmanager_secret.db_credentials.id
-  secret_string = jsonencode({
-    engine   = "postgres"
-    host     = aws_rds_cluster.aurora.endpoint
-    port     = 5432
-    username = var.database_master_username
-    password = random_password.db_master_password.result
-    database = var.database_name
-  })
-}
-
 # Amazon Aurora Serverless v2 PostgreSQL Cluster
 resource "aws_rds_cluster" "aurora" {
   cluster_identifier = "${var.project_name}-aurora-cluster"
@@ -74,7 +45,8 @@ resource "aws_rds_cluster" "aurora" {
   engine_version     = "16.1"
   database_name      = var.database_name
   master_username    = var.database_master_username
-  master_password    = random_password.db_master_password.result
+  manage_master_user_password   = true
+  master_user_secret_kms_key_id = aws_kms_key.emr_cmk.arn
 
   db_subnet_group_name   = aws_db_subnet_group.aurora.name
   vpc_security_group_ids = [aws_security_group.aurora.id]
@@ -106,7 +78,7 @@ resource "aws_rds_cluster" "aurora" {
 # Primary Writer Instance
 resource "aws_rds_cluster_instance" "aurora_writer" {
   cluster_identifier   = aws_rds_cluster.aurora.id
-  instance_identifier  = "${var.project_name}-aurora-instance-1"
+  identifier           = "${var.project_name}-aurora-instance-1"
   instance_class       = "db.serverless"
   engine               = aws_rds_cluster.aurora.engine
   engine_version       = aws_rds_cluster.aurora.engine_version
@@ -125,7 +97,7 @@ resource "aws_rds_cluster_instance" "aurora_writer" {
 # Multi-AZ Reader Replica for High Availability
 resource "aws_rds_cluster_instance" "aurora_reader" {
   cluster_identifier   = aws_rds_cluster.aurora.id
-  instance_identifier  = "${var.project_name}-aurora-instance-2"
+  identifier           = "${var.project_name}-aurora-instance-2"
   instance_class       = "db.serverless"
   engine               = aws_rds_cluster.aurora.engine
   engine_version       = aws_rds_cluster.aurora.engine_version
