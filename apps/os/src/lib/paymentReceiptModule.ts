@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Payment receipt generation module — MedCore Hospital OS
  *
  * - Issues official receipt numbers
@@ -8,6 +8,7 @@
  */
 import { publishFacilityData } from './roleSyncBus';
 import { getReceptionSettings } from './receptionSettingsStore';
+import { getAdminSettings } from './adminSettingsStore';
 
 export const PAYMENT_RECEIPTS_KEY = 'medcore_os_payment_receipts_v1';
 export const PAYMENT_RECEIPTS_EVENT = 'medcore-payment-receipts';
@@ -56,6 +57,7 @@ export type PaymentReceiptRecord = {
   header?: string;
   footer?: string;
   taxId?: string;
+  logoUrl?: string;
 };
 
 function readAll(): PaymentReceiptRecord[] {
@@ -276,6 +278,7 @@ export function buildReceiptHtml(r: PaymentReceiptRecord): string {
   const issued = r.issuedAt ? new Date(r.issuedAt).toLocaleString() : '';
   return `
   <div style="text-align:center;margin-bottom:14px">
+    ${r.logoUrl ? `<img src="${r.logoUrl}" alt="${escapeHtml(r.facilityName)}" style="max-height:56px;max-width:180px;object-fit:contain;margin:0 auto 8px;display:block" onerror="this.style.display=\'none\'" />` : ''}
     <img src="/medcore-logo.png" alt="MedCore" style="height:40px;vertical-align:middle;margin-right:12px" onerror="this.style.display='none'" />
     <img src="/arise-logo.png" alt="Arise" style="height:36px;vertical-align:middle" onerror="this.style.display='none'" />
   </div>

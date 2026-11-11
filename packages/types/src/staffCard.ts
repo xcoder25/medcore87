@@ -30,6 +30,8 @@ export interface StaffCardRecord {
   expiresAt: string;
   photoUrl?: string;
   initials: string;
+  /** Legacy badge ID if staff was transferred from another hospital */
+  legacyBadgeId?: string;
   /** QR payload string (JSON) — verified by auth later */
   qrPayload: string;
 }

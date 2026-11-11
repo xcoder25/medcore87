@@ -25,6 +25,7 @@ export interface AdminFacilitySettings {
   facilityId: string;
   displayName: string;
   shortCode: string;
+  logoUrl?: string;
   state: string;
   lga: string;
   address: string;
@@ -83,6 +84,7 @@ export interface AdminFacilitySettings {
 const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   displayName: '',
   shortCode: '',
+  logoUrl: '',
   state: 'Akwa Ibom',
   lga: 'Eket',
   address: '',

@@ -47,6 +47,9 @@ import {
   type PosTerminalConfig,
 } from '../../lib/adminSettingsStore';
 import { AKWA_IBOM_LGAS } from '../../lib/receptionConstants';
+import { compressStaffPhotoFile } from '../../lib/staffPhoto';
+import { uploadImageToS3 } from '../../lib/storageClient';
+import { Image as ImageIcon, Upload } from 'lucide-react';
 import { getOutboxPendingCount, flushOutbox } from '../../lib/durableOutbox';
 import { probeHospitalApi } from '../../lib/hospitalSync';
 import { pushActivity } from '../../lib/adminRealtimeStore';
@@ -99,6 +102,9 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
     subaccountCode: '',
     notes: '',
   });
+
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoError, setLogoError] = useState('');
 
   // AkwaRemit Server Vault Gateway State (Keys strictly remain on server)
   const [akwaremitServerStatus, setAkwaremitServerStatus] = useState<{
@@ -277,6 +283,33 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
       setDirty(true);
     },
     [persistSettings]
+  );
+
+  const handleLogoUpload = useCallback(
+    async (file: File | null) => {
+      if (!file) return;
+      setLogoBusy(true);
+      setLogoError('');
+      try {
+        const compressed = await compressStaffPhotoFile(file);
+        const res = await uploadImageToS3(compressed.dataUrl, {
+          folder: 'general',
+          filename: `${facilityId.toLowerCase()}-logo.jpg`,
+        });
+        const url = res.ok && res.url ? res.url : compressed.dataUrl;
+        patch({ logoUrl: url });
+        try {
+          pushActivity(`Facility crest/logo updated · ${session.name || 'Admin'}`);
+        } catch {
+          /* ignore */
+        }
+      } catch (err: any) {
+        setLogoError(err?.message || 'Failed to upload hospital logo');
+      } finally {
+        setLogoBusy(false);
+      }
+    },
+    [facilityId, patch, session.name]
   );
 
   const save = () => {
@@ -676,6 +709,109 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16 }}>
+              {/* Official Facility Logo Upload */}
+              <div style={{
+                gridColumn: 'span 12',
+                padding: '16px 20px',
+                background: '#F8FAFC',
+                border: '1px dashed #CBD5E1',
+                borderRadius: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 16,
+                marginBottom: 4,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{
+                    width: 68,
+                    height: 68,
+                    borderRadius: 10,
+                    border: '1px solid #E2E8F0',
+                    background: '#FFFFFF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
+                  }}>
+                    {draft.logoUrl ? (
+                      <img
+                        src={draft.logoUrl}
+                        alt="Facility Logo"
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                      />
+                    ) : (
+                      <ImageIcon size={26} color="#94A3B8" />
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>
+                      Hospital Crest & Official Logo
+                    </div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                      Customizes printed payment receipts, invoices, clinical summaries, and patient ID cards.
+                    </div>
+                    {logoError && (
+                      <div style={{ fontSize: 12, color: '#EF4444', marginTop: 4, fontWeight: 600 }}>
+                        {logoError}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <label style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 16px',
+                    borderRadius: 8,
+                    background: '#0052D4',
+                    color: '#FFF',
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    cursor: logoBusy ? 'wait' : 'pointer',
+                    opacity: logoBusy ? 0.7 : 1,
+                  }}>
+                    <Upload size={14} />
+                    <span>{logoBusy ? 'Uploading...' : draft.logoUrl ? 'Change Logo' : 'Upload Logo'}</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      disabled={logoBusy}
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void handleLogoUpload(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+
+                  {draft.logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => patch({ logoUrl: '' })}
+                      style={{
+                        padding: '8px 14px',
+                        borderRadius: 8,
+                        border: '1px solid #E2E8F0',
+                        background: '#FFF',
+                        color: '#EF4444',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div style={{ gridColumn: 'span 8' }}>
                 <label style={labelStyle}>Official Hospital Display Name</label>
                 <input

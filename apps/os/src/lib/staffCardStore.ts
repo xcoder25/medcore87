@@ -689,10 +689,85 @@ export function getStaffCard(badgeId: string): StaffCardRecord | undefined {
   return readCards().find((c) => c.badgeId === norm || (c as any).legacyBadgeId === norm);
 }
 
-/** Printed badge format matching official Arise MedCore card: AMC-YYYY-#### */
-export function nextPrintedBadgeId(facilityId?: string): string {
+/** Extract a standard 3-letter uppercase hospital abbreviation code from facilityId, shortCode, or hospital name */
+export function getHospitalAbbreviation(facilityId?: string, facilityName?: string): string {
+  const fid = String(facilityId || '').trim().toUpperCase();
+  if (!fid && !facilityName) return 'AMC';
+
+  // 1. Check known Akwa Ibom secondary care facility codes (e.g. 'IGH-EKT' -> 'IGH', 'GH-IKE' -> 'IKE', 'MGH-ITM' -> 'ITM')
+  const KNOWN_CODES: Record<string, string> = {
+    'IGH-EKT': 'IGH', // Immanuel General Hospital
+    'GH-IKE': 'IKE',  // Ikot Ekpene
+    'GH-IQU': 'IQU',  // Iquita Oron
+    'MGH-ITM': 'ITM', // Ituk Mbang
+    'GH-ETN': 'ETN',  // Etinan
+    'GH-UAB': 'UAB',  // Ukpom Abak
+    'GH-AWA': 'AWA',  // Awa
+    'GH-IKO': 'IKO',  // Ikot Okoro
+    'GH-IKN': 'IKN',  // Ikono
+    'GH-AMM': 'AMM',  // Amammong
+    'MCH-AKU': 'AKU', // Akpa Utong
+    'GH-URO': 'URO',  // Urue-Offong
+    'GH-IPA': 'IPA',  // Ikpe Annang
+    'GH-INI': 'INI',  // Ini
+    'GH-IAB': 'IAB',  // Ikot Abasi
+    'GH-MB2': 'MB2',  // Mbioto 2
+    'MSG-ITU': 'ITU',  // Mary Slessor Itu
+    'GH-UAI': 'UAI',  // Uruk Ata
+    'QIC-EPO': 'EPO',  // Ekpene Obom
+    'IDH-IKE': 'IDH',  // Infectious Disease Ikot Ekpene
+    'PSY-EKT': 'PSY',  // Psychiatric Eket
+    'CH-UKA': 'UKA',  // Ukana
+    'CH-IBN': 'IBN',  // Ibeno
+    'CH-IAB': 'IAB',  // Ikot Abia
+    'CH-IEP': 'IEP',  // Ikot Ekpaw
+    'CH-ASO': 'ASO',  // Asong
+    'CH-EPO': 'EPO',  // Ekpene Obo
+    'CH-IEI': 'IEI',  // Ikot Eko Ibon
+    'CH-EOB': 'EOB',  // Eastern Obolo
+    'CH-IEU': 'IEU',  // Ikot Ekpene Udo
+    'RCH-IBS': 'IBS',  // Ibesit
+    'CH-AKU': 'AKU',  // Akai Ubium
+    'CH-IKA': 'IKA',  // Ika
+    'CHC-NTE': 'NTE',  // Nto Edino
+    'CHC-MBU': 'MBU',  // Mbiaya Uruan
+  };
+
+  if (KNOWN_CODES[fid]) return KNOWN_CODES[fid];
+
+  // 2. If format is XXX-YYY (e.g. ABC-123), check if first or second part is a clean 3-char code
+  const parts = fid.split(/[^A-Z0-9]/).filter(Boolean);
+  if (parts.length > 0) {
+    // If the first part is 3 chars and not a generic 'GH' or 'CH', use it
+    const p0 = parts[0];
+    if (p0.length === 3 && p0 !== 'GEN') return p0;
+    // If parts[1] is 3 chars, prefer it if parts[0] is GH/CH
+    if (parts.length > 1 && parts[1].length === 3) return parts[1];
+    // Otherwise if parts[0] is >= 3 chars, slice first 3
+    if (p0.length >= 3) return p0.slice(0, 3);
+  }
+
+  // 3. Fallback to extracting initials from hospital name
+  if (facilityName) {
+    const cleanName = facilityName.replace(/[^A-Za-z0-9\s]/g, '').trim();
+    const words = cleanName.split(/\s+/).filter((w) => !/^(hospital|general|cottage|specialist|centre|center|state)$/i.test(w));
+    if (words.length >= 3) {
+      return (words[0][0] + words[1][0] + words[2][0]).toUpperCase();
+    }
+    const combined = words.join('').toUpperCase();
+    if (combined.length >= 3) return combined.slice(0, 3);
+  }
+
+  // 4. Default 3-letter code
+  const cleanFid = fid.replace(/[^A-Z0-9]/g, '');
+  if (cleanFid.length >= 3) return cleanFid.slice(0, 3);
+  return (cleanFid + 'AMC').slice(0, 3);
+}
+
+/** Printed badge format matching official facility abbreviation: [ABBR]-YYYY-#### (e.g., IGH-2026-1001) */
+export function nextPrintedBadgeId(facilityId?: string, facilityName?: string): string {
   const year = new Date().getFullYear();
-  const brand = 'AMC';
+  const brand = getHospitalAbbreviation(facilityId, facilityName);
   const prefix = `${brand}-${year}-`;
   try {
     const raw = typeof window !== 'undefined' ? localStorage.getItem(STAFF_CARD_STORAGE_KEY) : null;
@@ -746,7 +821,7 @@ export function prepareStaffEnrolment(
   input: StaffEnrolmentInput,
   badgeId?: string
 ): { card: StaffCardRecord; badgeId: string; entry: StaffRegistryEntry } {
-  const id = (badgeId || nextPrintedBadgeId(input.facilityId)).trim().toUpperCase();
+  const id = (badgeId || nextPrintedBadgeId(input.facilityId, input.facilityName)).trim().toUpperCase();
   const card = issueStaffCardFromEnrolment(input, id);
   const entry: StaffRegistryEntry = {
     id,
@@ -796,12 +871,117 @@ export function commitStaffEnrolment(
     window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } }));
     window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: next }));
     window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: cards }));
-    void firestorePushStaffDirectory(input.facilityId, {
-      staffCards: cards,
-      staffRegistry: next,
-    });
   } catch {
     /* ignore */
+  }
+}
+
+/**
+ * Reassign / transfer an enrolled staff member to a new hospital facility.
+ * Automatically computes a new Staff ID using the destination facility's 3-letter abbreviation.
+ * Updates the card, registry entry, and access permissions across local storage,
+ * and records the legacyBadgeId so historical audits remain traceable.
+ */
+export function transferStaffMember(
+  staffBadgeOrId: string,
+  toFacilityId: string,
+  toFacilityName: string
+): { success: boolean; newBadgeId?: string; oldBadgeId?: string; staff?: any } {
+  if (typeof window === 'undefined') return { success: false };
+  const targetId = String(staffBadgeOrId || '').trim().toUpperCase();
+  if (!targetId || !toFacilityId) return { success: false };
+
+  try {
+    const cards = readCards();
+    const cardIdx = cards.findIndex(
+      (c) => c.badgeId?.toUpperCase() === targetId || (c as any).id?.toUpperCase() === targetId
+    );
+
+    const regRaw = localStorage.getItem('medcore_os_staff_registry') || localStorage.getItem(STAFF_REGISTRY_STORAGE_KEY);
+    const reg: any[] = regRaw ? JSON.parse(regRaw) : [];
+    const regIdx = reg.findIndex(
+      (r) => String(r.badgeId || r.id || '').toUpperCase() === targetId
+    );
+
+    if (cardIdx < 0 && regIdx < 0) {
+      return { success: false };
+    }
+
+    // Generate new badge ID using the destination facility's 3-letter abbreviation
+    const newBadgeId = nextPrintedBadgeId(toFacilityId, toFacilityName);
+
+    // 1. Update Staff Card
+    if (cardIdx >= 0) {
+      const prevCard = cards[cardIdx];
+      cards[cardIdx] = {
+        ...prevCard,
+        badgeId: newBadgeId,
+        facilityId: toFacilityId,
+        facilityName: toFacilityName,
+        legacyBadgeId: prevCard.badgeId || targetId,
+      };
+      try {
+        cards[cardIdx].qrPayload = buildStaffQrPayload(cards[cardIdx]);
+      } catch {
+        /* ignore */
+      }
+      writeCards(cards);
+    }
+
+    // 2. Update Staff Registry
+    let updatedStaffProfile: any = null;
+    if (regIdx >= 0) {
+      const prevReg = reg[regIdx];
+      reg[regIdx] = {
+        ...prevReg,
+        id: newBadgeId,
+        badgeId: newBadgeId,
+        hospitalId: toFacilityId,
+        facilityId: toFacilityId,
+        hospitalName: toFacilityName,
+        facilityName: toFacilityName,
+        legacyBadgeId: prevReg.badgeId || prevReg.id || targetId,
+      };
+      updatedStaffProfile = reg[regIdx];
+      localStorage.setItem('medcore_os_staff_registry', JSON.stringify(reg));
+      localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(reg));
+    }
+
+    // 3. Update Access Control
+    const accessRaw = localStorage.getItem('medcore_os_access_control');
+    if (accessRaw) {
+      try {
+        const access = JSON.parse(accessRaw);
+        if (Array.isArray(access)) {
+          const accIdx = access.findIndex((a: any) => String(a?.id || '').toUpperCase() === targetId);
+          if (accIdx >= 0) {
+            access[accIdx] = {
+              ...access[accIdx],
+              id: newBadgeId,
+              legacyBadgeId: targetId,
+            };
+            localStorage.setItem('medcore_os_access_control', JSON.stringify(access));
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // 4. Fire events so UI rerenders instantly
+    window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: reg }));
+    window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: cards }));
+    window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'transfers' } }));
+
+    return {
+      success: true,
+      newBadgeId,
+      oldBadgeId: targetId,
+      staff: updatedStaffProfile,
+    };
+  } catch (err) {
+    console.warn('[staffCardStore] transferStaffMember error:', err);
+    return { success: false };
   }
 }
 

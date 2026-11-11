@@ -1,5 +1,6 @@
 'use client';
 import { pushActivity, getAccessRecords, setAccessRecords } from '../../lib/adminRealtimeStore';
+import { transferStaffMember } from '../../lib/staffCardStore';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
@@ -328,21 +329,25 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
     const targetTransfer = transfers.find(t => t.id === transferId);
     if (!targetTransfer) return;
 
+    // Automatically reassign and compute new badge ID using destination 3-letter abbreviation
+    const res = transferStaffMember(targetTransfer.staffId, targetTransfer.toHospitalId, targetTransfer.toHospitalName);
+    const newBadgeId = res.newBadgeId || targetTransfer.staffId;
+
     const updatedTransfers = transfers.map(t =>
-      t.id === transferId ? { ...t, status: 'completed' as const } : t
+      t.id === transferId ? { ...t, status: 'completed' as const, staffId: newBadgeId } : t
     );
 
     const updatedStaff = staff.map(s =>
       s.id === targetTransfer.staffId
-        ? { ...s, hospitalId: targetTransfer.toHospitalId, hospitalName: targetTransfer.toHospitalName, status: 'active' as const }
+        ? { ...s, id: newBadgeId, hospitalId: targetTransfer.toHospitalId, hospitalName: targetTransfer.toHospitalName, status: 'active' as const }
         : s
     );
 
     setTransfers(updatedTransfers);
     setStaff(updatedStaff);
     persistData(updatedStaff, updatedTransfers);
-    pushActivity(`Transfer approved: ${targetTransfer.staffName}`);
-    showToast(`Transfer ${transferId} approved — ${targetTransfer.staffName} is now assigned to ${targetTransfer.toHospitalName}. Staff can now sign in.`);
+    pushActivity(`Transfer approved: ${targetTransfer.staffName} -> ${newBadgeId}`);
+    showToast(`Transfer ${transferId} approved — ${targetTransfer.staffName} reassigned to ${targetTransfer.toHospitalName} with new Staff ID: ${newBadgeId}.`);
   };
 
   const rejectTransfer = (transferId: string) => {
@@ -366,13 +371,19 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
   const grantIncomingAccess = (transferId: string) => {
     const tr = transfers.find((t) => t.id === transferId);
     if (!tr) return;
+
+    // Automatically reassign and compute new badge ID using destination 3-letter abbreviation
+    const res = transferStaffMember(tr.staffId, tr.toHospitalId, tr.toHospitalName);
+    const newBadgeId = res.newBadgeId || tr.staffId;
+
     const updatedTransfers = transfers.map((t) =>
-      t.id === transferId ? { ...t, status: 'completed' as const } : t
+      t.id === transferId ? { ...t, status: 'completed' as const, staffId: newBadgeId } : t
     );
     const updatedStaff = staff.map((s) =>
       s.id === tr.staffId || s.name === tr.staffName
         ? {
             ...s,
+            id: newBadgeId,
             hospitalId: tr.toHospitalId,
             hospitalName: tr.toHospitalName,
             status: 'active' as const,
@@ -380,12 +391,12 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
         : s
     );
     // Ensure staff appears at destination registry
-    const exists = updatedStaff.some((s) => s.id === tr.staffId);
+    const exists = updatedStaff.some((s) => s.id === newBadgeId || s.id === tr.staffId);
     const withStaff = exists
       ? updatedStaff
       : [
           {
-            id: tr.staffId,
+            id: newBadgeId,
             name: tr.staffName,
             role: tr.role,
             roleKey: (tr as any).roleKey || 'doctor',
@@ -404,10 +415,10 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
     setStaff(withStaff);
     persistData(withStaff, updatedTransfers);
 
-    // Access row so they can log in here
+    // Access row so they can log in here with their new badge ID
     try {
       const row = {
-        id: tr.staffId,
+        id: newBadgeId,
         name: tr.staffName,
         role: tr.role,
         department: 'Transferred in',
@@ -416,10 +427,10 @@ export const HospitalStaffTransfer: React.FC<Props> = ({ session }) => {
         lastLogin: 'Never',
         permissions: ['dashboard'],
       };
-      setAccessRecords([row, ...getAccessRecords().filter((r: any) => r.id !== tr.staffId)]);
+      setAccessRecords([row, ...getAccessRecords().filter((r: any) => r.id !== newBadgeId && r.id !== tr.staffId)]);
     } catch { /* ignore */ }
 
-    showToast(`Login access granted for ${tr.staffName} at this hospital`);
+    showToast(`Login access granted for ${tr.staffName} with new Staff ID: ${newBadgeId}`);
   };
 
   // Incoming transfers for this admin's hospital

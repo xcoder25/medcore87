@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -8,6 +8,7 @@ import {
   Building2, User, Calendar, Receipt
 } from 'lucide-react';
 import type { BillingInvoice } from '@medcore/types';
+import { getAdminSettings } from '../../lib/adminSettingsStore';
 import {
   postInvoiceForPayment,
   voidInvoiceBillLine,
@@ -1006,11 +1007,22 @@ export const BillingInvoicingSuite: React.FC = () => {
             <div style={{ padding: 28, background: '#FFF' }}>
               {/* Slip Header */}
               <div style={{ textAlign: 'center', borderBottom: '2px solid #0A2540', paddingBottom: 16, marginBottom: 16 }}>
+                {(() => {
+                  const s = getAdminSettings();
+                  return s?.logoUrl ? (
+                    <img
+                      src={s.logoUrl}
+                      alt="Hospital Crest"
+                      style={{ maxHeight: 52, maxWidth: 160, objectFit: 'contain', margin: '0 auto 8px', display: 'block' }}
+                      onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                    />
+                  ) : null;
+                })()}
                 <div style={{ fontSize: '0.72rem', letterSpacing: '0.08em', color: '#0D4F8B', fontWeight: 800 }}>
                   GOVERNMENT OF AKWA IBOM STATE OF NIGERIA
                 </div>
                 <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0A2540', fontFamily: 'Outfit, sans-serif', margin: '4px 0' }}>
-                  IBOM SPECIALIST HOSPITAL, UYO
+                  {getAdminSettings()?.displayName || 'STATE GENERAL HOSPITAL'}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: '#64748B' }}>
                   Official Inpatient Billing Statement & Discharge Clearance Slip
