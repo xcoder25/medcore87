@@ -43,6 +43,9 @@ export function migrateStaffIdsToNewFormat(): { migratedCount: number; mapping: 
         const n = parseInt(bid.slice(`AMC-${year}-`.length), 10);
         if (!isNaN(n) && n >= nextSeq) nextSeq = n + 1;
       }
+      if (bid.startsWith(`AMC-ADM-${year}-`)) {
+        // admin slots don't consume regular seq, but track them too
+      }
     }
 
     let changed = false;
@@ -50,7 +53,9 @@ export function migrateStaffIdsToNewFormat(): { migratedCount: number; mapping: 
     const getNewIdFor = (oldId: string, roleKey?: string, name?: string) => {
       const normOld = String(oldId || '').trim().toUpperCase();
       if (!normOld) return '';
-      if (/^AMC-\d{4}-\d{4}$/i.test(normOld)) return normOld;
+      // Already in correct format? Skip (admin or regular)
+      if (/^[A-Z]+-ADM-\d{4}-\d{4}$/i.test(normOld)) return normOld;
+      if (/^[A-Z]+-\d{4}-\d{4}$/i.test(normOld) && !normOld.includes('-ADM-')) return normOld;
       if (mapping[normOld]) return mapping[normOld];
 
       const n = String(name || '').toLowerCase();
@@ -59,8 +64,8 @@ export function migrateStaffIdsToNewFormat(): { migratedCount: number; mapping: 
       const isKelly = n.includes('kelly');
 
       let newId = '';
-      if (isAdm && !Object.values(mapping).includes(`AMC-${year}-1001`)) {
-        newId = `AMC-${year}-1001`;
+      if (isAdm && !Object.values(mapping).includes(`AMC-ADM-${year}-1001`)) {
+        newId = `AMC-ADM-${year}-1001`;
       } else if (isKelly && !Object.values(mapping).includes(`AMC-${year}-1002`)) {
         newId = `AMC-${year}-1002`;
       } else {
@@ -764,35 +769,100 @@ export function getHospitalAbbreviation(facilityId?: string, facilityName?: stri
   return (cleanFid + 'AMC').slice(0, 3);
 }
 
-/** Printed badge format matching official facility abbreviation: [ABBR]-YYYY-#### (e.g., IGH-2026-1001) */
-export function nextPrintedBadgeId(facilityId?: string, facilityName?: string): string {
+/**
+ * Printed badge format matching official facility abbreviation:
+ * - Admin badge: [ABBR]-ADM-YYYY-1001 (e.g., IGH-ADM-2026-1001)
+ * - Regular Staff: [ABBR]-YYYY-#### starting from 1002 (e.g., IGH-2026-1002)
+ *
+ * Staff sequence counts from 1002 (1001 is reserved exclusively for the Hospital Administrator).
+ */
+export function nextPrintedBadgeId(
+  facilityId?: string,
+  facilityName?: string,
+  options?: { isAdmin?: boolean } | boolean
+): string {
+  const isAdmin = typeof options === 'boolean' ? options : Boolean(options?.isAdmin);
   const year = new Date().getFullYear();
   const brand = getHospitalAbbreviation(facilityId, facilityName);
-  const prefix = `${brand}-${year}-`;
-  try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(STAFF_CARD_STORAGE_KEY) : null;
-    const cards: StaffCardRecord[] = raw ? JSON.parse(raw) : [];
-    // Only ACTIVE issued cards consume sequence — failed/rolled-back creates must not advance the count
-    const seqs = (Array.isArray(cards) ? cards : [])
-      .filter((c) => {
-        const st = String((c as { status?: string })?.status || 'ACTIVE').toUpperCase();
-        return st === 'ACTIVE';
-      })
-      .map((c) => {
-        const b = String(c?.badgeId || '').toUpperCase();
-        if (b.startsWith(prefix)) {
-          const n = parseInt(b.slice(prefix.length), 10);
-          return isNaN(n) ? 0 : n;
+
+  // Helper to collect all known badge IDs from all local storage buckets
+  const collectKnownBadges = (): string[] => {
+    if (typeof window === 'undefined') return [];
+    const badges: string[] = [];
+    try {
+      const rawCards = localStorage.getItem(STAFF_CARD_STORAGE_KEY);
+      if (rawCards) {
+        const parsed = JSON.parse(rawCards);
+        if (Array.isArray(parsed)) {
+          for (const c of parsed) {
+            const b = String(c?.badgeId || '').toUpperCase().trim();
+            if (b) badges.push(b);
+          }
         }
-        return 0;
+      }
+    } catch { /* ignore */ }
+
+    try {
+      for (const key of [STAFF_REGISTRY_STORAGE_KEY, 'medcore_os_staff_registry', 'medcore_staff_registry']) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            for (const r of parsed) {
+              const b = String(r?.badgeId || r?.id || '').toUpperCase().trim();
+              if (b) badges.push(b);
+            }
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
+    try {
+      const raw = localStorage.getItem('medcore_os_access_control');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          for (const a of parsed) {
+            const b = String(a?.id || a?.badgeId || '').toUpperCase().trim();
+            if (b) badges.push(b);
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
+    return badges;
+  };
+
+  const knownBadges = collectKnownBadges();
+
+  if (isAdmin) {
+    // Only admin badge has the addition prefix/infix -ADM- e.g. IGH-ADM-2026-1001
+    const adminPrefix = `${brand}-ADM-${year}-`;
+    const seqs = knownBadges
+      .filter((b) => b.startsWith(adminPrefix))
+      .map((b) => {
+        const n = parseInt(b.slice(adminPrefix.length), 10);
+        return isNaN(n) ? 0 : n;
       })
       .filter((n) => n > 0);
 
     const nextSeq = seqs.length > 0 ? Math.max(...seqs) + 1 : 1001;
-    return `${prefix}${String(nextSeq).padStart(4, '0')}`;
-  } catch {
-    return `${prefix}1001`;
+    return `${adminPrefix}${String(nextSeq).padStart(4, '0')}`;
   }
+
+  // Any other staff in that facility uses the normal [ABBR]-YYYY-#### (counts from 1002, 1001 is for admin)
+  const staffPrefix = `${brand}-${year}-`;
+  const seqs = knownBadges
+    .filter((b) => b.startsWith(staffPrefix) && !b.includes('-ADM-'))
+    .map((b) => {
+      const n = parseInt(b.slice(staffPrefix.length), 10);
+      return isNaN(n) ? 0 : n;
+    })
+    .filter((n) => n > 0);
+
+  // Regular staff counts from 1002 (1001 is reserved for admin)
+  const nextSeq = seqs.length > 0 ? Math.max(1001, ...seqs) + 1 : 1002;
+  return `${staffPrefix}${String(nextSeq).padStart(4, '0')}`;
 }
 
 export type StaffRegistryEntry = {
@@ -821,7 +891,8 @@ export function prepareStaffEnrolment(
   input: StaffEnrolmentInput,
   badgeId?: string
 ): { card: StaffCardRecord; badgeId: string; entry: StaffRegistryEntry } {
-  const id = (badgeId || nextPrintedBadgeId(input.facilityId, input.facilityName)).trim().toUpperCase();
+  const isAdmin = input.roleKey === 'hospital_admin' || input.roleKey === 'admin';
+  const id = (badgeId || nextPrintedBadgeId(input.facilityId, input.facilityName, { isAdmin })).trim().toUpperCase();
   const card = issueStaffCardFromEnrolment(input, id);
   const entry: StaffRegistryEntry = {
     id,
@@ -908,7 +979,9 @@ export function transferStaffMember(
     }
 
     // Generate new badge ID using the destination facility's 3-letter abbreviation
-    const newBadgeId = nextPrintedBadgeId(toFacilityId, toFacilityName);
+    const isAdm = (cardIdx >= 0 && cards[cardIdx]?.roleKey === 'hospital_admin') ||
+                  (regIdx >= 0 && reg[regIdx]?.roleKey === 'hospital_admin');
+    const newBadgeId = nextPrintedBadgeId(toFacilityId, toFacilityName, { isAdmin: isAdm });
 
     // 1. Update Staff Card
     if (cardIdx >= 0) {

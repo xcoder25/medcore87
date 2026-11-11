@@ -234,14 +234,17 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
   const livePreviewCard: StaffCardRecord = useMemo(() => {
     const short = roleMeta?.shortRole || 'Staff';
     const cl = roleMeta?.clearanceLevel || 4;
+    const isAdmin = roleMeta?.roleKey === 'hospital_admin' || roleMeta?.roleKey === 'admin';
     const parts = (fullName.trim() || 'Staff Full Name').split(/\s+/);
     const initials = parts.map((p) => p[0]).join('').slice(0, 2).toUpperCase() || 'ST';
     const tpl = (cl >= 5 ? 'TPL_EXEC' : cl >= 4 ? 'TPL_CLINICAL' : cl === 3 ? 'TPL_SUPPORT' : 'TPL_VISITOR') as any;
     const exp = new Date();
     exp.setFullYear(exp.getFullYear() + 2);
     const expiresAt = exp.toISOString().slice(0, 10);
+    // Admin preview: show -ADM- infix; others: show standard preview
+    const previewBadge = isAdmin ? 'IGH-ADM-YYYY-PREVIEW' : 'IGH-YYYY-PREVIEW';
     return {
-      badgeId: 'AKS-PREVIEW',
+      badgeId: previewBadge,
       fullName: fullName.trim() || 'Staff Full Name',
       role: roleMeta?.role || 'Medical Officer',
       roleKey: roleMeta?.roleKey || 'doctor',
@@ -257,7 +260,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       expiresAt,
       photoUrl: photoUrl || undefined,
       initials,
-      qrPayload: JSON.stringify({ v: 1, iss: 'medcore', badgeId: 'AKS-PREVIEW', facilityId, clr: cl }),
+      qrPayload: JSON.stringify({ v: 1, iss: 'medcore', badgeId: previewBadge, facilityId, clr: cl }),
     };
   }, [fullName, roleMeta, facilityId, facilityName, photoUrl]);
 
@@ -789,8 +792,9 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
 
   const handleDelete = (badgeId: string, name: string) => {
     const id = String(badgeId || '').toUpperCase();
-    if (id === 'AKS-ADM-001' || id.includes('ADM-001')) {
-      setError('This main administrator account cannot be removed.');
+    // Guard: cannot remove facility admin (any badge with -ADM- infix and sequence 1001)
+    if (id === 'AKS-ADM-001' || id.includes('ADM-001') || /^[A-Z]+-ADM-\d{4}-1001$/.test(id)) {
+      setError('The facility administrator account cannot be removed.');
       return;
     }
     setDeleteSuccess(null);

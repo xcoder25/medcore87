@@ -261,7 +261,7 @@ export default function RegPage() {
   useEffect(() => {
     if (facilityId) {
       const match = FACILITIES.find((f) => f.id === facilityId);
-      setBadgeId(nextPrintedBadgeId(facilityId, match?.name));
+      setBadgeId(nextPrintedBadgeId(facilityId, match?.name, { isAdmin: true }));
     } else {
       setBadgeId('');
     }
@@ -330,7 +330,7 @@ export default function RegPage() {
 
     setSubmitting(true);
     try {
-      const effectiveBadgeId = badgeId || nextPrintedBadgeId(facilityId, selectedFacility?.name);
+      const effectiveBadgeId = badgeId || nextPrintedBadgeId(facilityId, selectedFacility?.name, { isAdmin: true });
       const body = {
         badgeId: effectiveBadgeId,
         facilityId,
