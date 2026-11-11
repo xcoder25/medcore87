@@ -703,13 +703,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
         email: mail || undefined,
       });
 
-      setFullName('');
-      setEmail('');
-      setPhotoUrl('');
-      setPhotoMeta('');
-      setBusy(false);
-
-      // Background cloud sync
+      // Cloud sync with fallback
       const profilePayload: Record<string, unknown> = {
         badgeId,
         name: nameSnap,
@@ -733,7 +727,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       };
 
       try {
-        void apiCreateStaff({
+        const cloudRes = await apiAtomicCreateStaff({
           badgeId,
           facilityId,
           facilityName,
@@ -743,45 +737,45 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
           title: roleMeta.title,
           department: roleMeta.department,
           email: mail || undefined,
-          status: 'active',
-          clearanceLevel: roleMeta.clearanceLevel,
-          clearanceLabel: roleMeta.clearanceLabel,
-          permissions: accessRow.permissions,
-          photoUrl: finalPhoto || undefined,
+          password: pinNorm,
           pin: pinNorm,
-          authEmail: badgeAuthEmail(badgeId),
-        });
-      } catch { /* ignore */ }
-
-      try {
-        void apiAtomicCreateStaff({
-          badgeId,
-          facilityId,
-          facilityName,
-          fullName: nameSnap,
-          role: roleMeta.role,
-          roleKey: roleMeta.roleKey,
-          title: roleMeta.title,
-          department: roleMeta.department,
-          email: mail || undefined,
           status: 'active',
           clearanceLevel: roleMeta.clearanceLevel,
           clearanceLabel: roleMeta.clearanceLabel,
           templateKey: card.templateKey || 'TPL_CLINICAL',
           photoUrl: finalPhoto || undefined,
-          pin: pinNorm,
         });
-      } catch { /* ignore */ }
 
-      try {
-        void ensureStaffCloudIdentity({
-          facilityId,
-          badgeId,
-          pin: pinNorm,
-          email: mail || undefined,
-          profile: profilePayload,
-        });
-      } catch { /* ignore */ }
+        if (!cloudRes || !cloudRes.success) {
+          console.warn('[access] apiAtomicCreateStaff returned non-success, attempting client ensure fallback:', cloudRes?.error);
+          await ensureStaffCloudIdentity({
+            facilityId,
+            badgeId,
+            pin: pinNorm,
+            email: mail || undefined,
+            displayName: nameSnap,
+            profile: profilePayload,
+          });
+        }
+      } catch (cloudErr) {
+        console.warn('[access] apiAtomicCreateStaff error, running client ensure fallback:', cloudErr);
+        try {
+          await ensureStaffCloudIdentity({
+            facilityId,
+            badgeId,
+            pin: pinNorm,
+            email: mail || undefined,
+            displayName: nameSnap,
+            profile: profilePayload,
+          });
+        } catch { /* ignore */ }
+      }
+
+      setFullName('');
+      setEmail('');
+      setPhotoUrl('');
+      setPhotoMeta('');
+      setBusy(false);
     } catch (err: unknown) {
       console.error('[access] create failed', err);
       setError((err as Error)?.message || 'Account creation failed.');

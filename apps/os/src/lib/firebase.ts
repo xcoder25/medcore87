@@ -141,7 +141,8 @@ export function normalizeStaffPin(pin: string): string {
  */
 export async function firebaseEnsureBadgeAccount(
   badgeId: string,
-  pin: string
+  pin: string,
+  displayName?: string
 ): Promise<{ email: string; uid?: string; created: boolean }> {
   const email = badgeAuthEmail(badgeId);
   const password = normalizeStaffPin(pin);
@@ -166,11 +167,19 @@ export async function firebaseEnsureBadgeAccount(
     const {
       getAuth: getAuthSecondary,
       createUserWithEmailAndPassword: createSecondary,
+      updateProfile: updateProfileSecondary,
       signOut: signOutSecondary,
     } = await import('firebase/auth');
     const secAuth = getAuthSecondary(secondary);
     try {
       const cred = await createSecondary(secAuth, email, password);
+      if (displayName) {
+        try {
+          await updateProfileSecondary(cred.user, { displayName });
+        } catch {
+          /* ignore */
+        }
+      }
       await signOutSecondary(secAuth);
       return { email, uid: cred.user.uid, created: true };
     } catch (err: unknown) {
@@ -194,7 +203,8 @@ export async function firebaseEnsureBadgeAccount(
 /** Create email/password user without replacing current admin session */
 export async function firebaseEnsureEmailAccount(
   email: string,
-  password: string
+  password: string,
+  displayName?: string
 ): Promise<{ email: string; uid?: string; created: boolean }> {
   const passwordNorm = normalizeStaffPin(password);
   const secondaryName = `EmailEnrol_${Date.now()}`;
@@ -219,11 +229,19 @@ export async function firebaseEnsureEmailAccount(
       getAuth: getAuthSecondary,
       createUserWithEmailAndPassword: createSecondary,
       signInWithEmailAndPassword: signInSecondary,
+      updateProfile: updateProfileSecondary,
       signOut: signOutSecondary,
     } = await import('firebase/auth');
     const secAuth = getAuthSecondary(secondary);
     try {
       const cred = await createSecondary(secAuth, email.trim(), passwordNorm);
+      if (displayName) {
+        try {
+          await updateProfileSecondary(cred.user, { displayName });
+        } catch {
+          /* ignore */
+        }
+      }
       await signOutSecondary(secAuth);
       return { email: email.trim(), uid: cred.user.uid, created: true };
     } catch (err: unknown) {
@@ -377,20 +395,21 @@ export async function ensureStaffCloudIdentity(opts: {
   badgeId: string;
   pin: string;
   email?: string;
+  displayName?: string;
   profile?: Record<string, unknown>;
 }): Promise<{ badgeAuth: boolean; emailAuth: boolean; firestore: boolean }> {
   const pin = normalizeStaffPin(opts.pin);
   let badgeAuth = false;
   let emailAuth = false;
   try {
-    const res = await firebaseEnsureBadgeAccount(opts.badgeId, pin);
+    const res = await firebaseEnsureBadgeAccount(opts.badgeId, pin, opts.displayName);
     if (res?.email) badgeAuth = true;
   } catch {
     /* ignore */
   }
   if (opts.email && isEmailCredential(opts.email)) {
     try {
-      const res = await firebaseEnsureEmailAccount(opts.email, pin);
+      const res = await firebaseEnsureEmailAccount(opts.email, pin, opts.displayName);
       if (res?.email) emailAuth = true;
     } catch {
       /* ignore */
