@@ -6,6 +6,21 @@ import type { StaffCardRecord, StaffCardTemplate } from '@medcore/types';
 
 export const runtime = 'nodejs';
 
+function badgeAuthEmail(badgeId: string): string {
+  const id = (badgeId || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `badge.${id}@naija-bites-1s3y1.firebaseapp.com`;
+}
+
+function normalizeStaffPin(pin: string): string {
+  const p = (pin || '').trim();
+  if (p.length >= 6) return p;
+  return (p + '000000').slice(0, 6);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -47,44 +62,80 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Determine primary auth email and password
-    const authEmail = (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      ? email.trim().toLowerCase()
-      : `${bId.toLowerCase()}@medcore.internal`;
-    const authPassword = String(password || pin || '123456');
-
-    // 1. Create or update Auth User in Firebase Auth
-    let userRecord;
+    // 1. Create or update Badge Auth User in Firebase Auth (for Staff ID + PIN sign in)
+    const badgeEmail = badgeAuthEmail(bId);
+    const badgePin = normalizeStaffPin(String(pin || password || '123456'));
+    let badgeUserRecord;
     try {
-      userRecord = await adminAuth.getUserByEmail(authEmail);
-      await adminAuth.updateUser(userRecord.uid, {
+      badgeUserRecord = await adminAuth.getUserByEmail(badgeEmail);
+      await adminAuth.updateUser(badgeUserRecord.uid, {
         displayName: name,
-        password: authPassword,
+        password: badgePin,
       });
     } catch (e: any) {
       if (e.code === 'auth/user-not-found') {
-        userRecord = await adminAuth.createUser({
-          email: authEmail,
-          password: authPassword,
+        badgeUserRecord = await adminAuth.createUser({
+          email: badgeEmail,
+          password: badgePin,
           displayName: name,
         });
       } else {
-        throw e;
+        console.warn('[api/staff/create] Badge account create warning:', e);
       }
     }
 
-    // Multi-tenant facility isolation: Inject facility_id permanently as a Firebase Custom Claim
-    // This allows AWS AppSync, API Gateway, and Aurora RLS to securely identify the tenant
-    try {
-      await adminAuth.setCustomUserClaims(userRecord.uid, {
-        facility_id: fId,
-        role: String(roleKey),
-        badgeId: bId,
-        clearanceLevel: Number(clearanceLevel) || 1,
-      });
-    } catch (claimsErr) {
-      console.warn('[api/staff/create] Custom claims injection note:', claimsErr);
+    if (badgeUserRecord) {
+      try {
+        await adminAuth.setCustomUserClaims(badgeUserRecord.uid, {
+          facility_id: fId,
+          role: String(roleKey),
+          badgeId: bId,
+          clearanceLevel: Number(clearanceLevel) || 1,
+        });
+      } catch (claimsErr) {
+        console.warn('[api/staff/create] Badge custom claims error:', claimsErr);
+      }
     }
+
+    // 2. If valid email provided, create/update Email Auth User in Firebase Auth (for Email + Password sign in)
+    let emailUserRecord;
+    const hasWorkEmail = Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+    if (hasWorkEmail) {
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanPassword = String(password || pin || '123456');
+      try {
+        emailUserRecord = await adminAuth.getUserByEmail(cleanEmail);
+        await adminAuth.updateUser(emailUserRecord.uid, {
+          displayName: name,
+          password: cleanPassword,
+        });
+      } catch (e: any) {
+        if (e.code === 'auth/user-not-found') {
+          emailUserRecord = await adminAuth.createUser({
+            email: cleanEmail,
+            password: cleanPassword,
+            displayName: name,
+          });
+        } else {
+          console.warn('[api/staff/create] Email account create warning:', e);
+        }
+      }
+
+      if (emailUserRecord) {
+        try {
+          await adminAuth.setCustomUserClaims(emailUserRecord.uid, {
+            facility_id: fId,
+            role: String(roleKey),
+            badgeId: bId,
+            clearanceLevel: Number(clearanceLevel) || 1,
+          });
+        } catch (claimsErr) {
+          console.warn('[api/staff/create] Email custom claims error:', claimsErr);
+        }
+      }
+    }
+
+    const primaryUid = badgeUserRecord?.uid || emailUserRecord?.uid || bId;
 
     const initials = name
       .split(' ')
@@ -116,7 +167,7 @@ export async function POST(request: NextRequest) {
       initials,
       qrPayload: JSON.stringify({
         badgeId: bId,
-        uid: userRecord.uid,
+        uid: primaryUid,
         facilityId: fId,
         issuedAt,
       }),
@@ -133,12 +184,12 @@ export async function POST(request: NextRequest) {
           roleKey: String(roleKey),
           title: String(title),
           department: String(department),
-          email: authEmail,
+          email: hasWorkEmail ? email.trim().toLowerCase() : undefined,
           clearanceLevel: Number(clearanceLevel) || 1,
           clearanceLabel: String(clearanceLabel),
           photoUrl: photoUrl || null,
-          authEmail,
-          pin: String(pin || authPassword),
+          authEmail: badgeEmail,
+          pin: String(pin || password || '1234'),
           facilityName: String(facilityName),
         });
       } catch (pgErr) {
@@ -163,7 +214,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        uid: userRecord.uid,
+        uid: primaryUid,
         badgeId: bId,
         staff: staffRecord,
       },

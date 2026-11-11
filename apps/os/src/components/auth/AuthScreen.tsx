@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { authLog, emailDomainOnly } from '../../lib/authLog';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -848,6 +848,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           if (pgRes.ok && pgRes.staff) {
             const pgRow = pgRes.staff as any;
             if (pgRow) {
+              const rowFid = String(pgRow.facility_id || '');
+              if (rowFid && rowFid.toUpperCase() !== effectiveHospital.id.toUpperCase()) {
+                const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === rowFid.toUpperCase());
+                if (hospObj) {
+                  effectiveHospital = hospObj;
+                  setSelectedHospital(hospObj);
+                }
+              }
               const remoteForMap: Record<string, unknown> = {
                 badgeId: badgeQuery,
                 id: badgeQuery,
@@ -897,6 +905,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       if (!profile) {
         const local = resolveStaffByBadge(badgeQuery);
         if (local) {
+          const localFid = String((local as any).hospitalId || (local as any).facilityId || '');
+          if (localFid && localFid.toUpperCase() !== effectiveHospital.id.toUpperCase()) {
+            const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === localFid.toUpperCase());
+            if (hospObj) {
+              effectiveHospital = hospObj;
+              setSelectedHospital(hospObj);
+            }
+          }
           profile = mapProfile(local as unknown as Record<string, unknown>);
         }
       }
@@ -917,16 +933,60 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       if (!profile) {
         try {
           fbUser = await withTimeout(firebaseSignInWithBadge(badgeQuery, pinNorm), 6000);
-          // Auth ok but no staff profile yet — re-fetch Firestore (eventual consistency)
+          // Auth ok but no staff profile yet — try Firestore or reconstruct from Firebase custom claims
           try {
             const retry = await withTimeout(
               firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery),
-              5000
+              3000
             );
             if (retry && (retry.badgeId || retry.id)) {
               profile = mapProfile(retry);
             }
           } catch { /* ignore */ }
+
+          if (!profile && fbUser) {
+            try {
+              const tokenResult = await fbUser.getIdTokenResult();
+              const claims = (tokenResult?.claims as Record<string, unknown>) || {};
+              const claimsFid = String(claims.facility_id || effectiveHospital.id);
+              const claimsRole = String(claims.role || 'hospital_admin');
+              const claimsBadge = String(claims.badgeId || badgeQuery);
+              const claimsLvl = Number(claims.clearanceLevel) || (claimsRole === 'hospital_admin' ? 5 : 2);
+              const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === claimsFid.toUpperCase()) || effectiveHospital;
+              effectiveHospital = hospObj;
+              setSelectedHospital(hospObj);
+
+              const { defaultPermissionsForRole: getDefPerms } = await import('../../lib/staffCardStore');
+              profile = {
+                badgeId: claimsBadge,
+                name: fbUser.displayName || claimsBadge,
+                role: claimsRole === 'hospital_admin' ? 'Hospital Administrator' : 'Staff',
+                shortRole: claimsRole === 'hospital_admin' ? 'Admin' : 'Staff',
+                title: claimsRole === 'hospital_admin' ? 'Hospital Administrator' : 'Staff',
+                roleKey: claimsRole,
+                clearanceLevel: claimsLvl,
+                clearanceLabel: claimsRole === 'hospital_admin' ? 'Administrator' : 'L2',
+                department: claimsRole === 'hospital_admin' ? 'Hospital Management' : 'Clinical Operations',
+                initials: (fbUser.displayName ? fbUser.displayName.slice(0, 2) : 'ST').toUpperCase(),
+                permissions: claimsRole === 'hospital_admin' ? ['*'] : getDefPerms(claimsRole),
+                pin: pinQuery,
+                hospitalId: claimsFid,
+                hospitalName: hospObj.name,
+                color: '#0052D4',
+              };
+
+              try {
+                const regRaw = localStorage.getItem('medcore_os_staff_registry') || '[]';
+                const reg = JSON.parse(regRaw);
+                const nextReg = [profile, ...reg.filter((r: any) => String(r.badgeId || r.id).toUpperCase() !== profile!.badgeId.toUpperCase())];
+                localStorage.setItem('medcore_os_staff_registry', JSON.stringify(nextReg));
+                localStorage.setItem('medcore_staff_registry', JSON.stringify(nextReg));
+              } catch { /* ignore */ }
+            } catch (claimErr) {
+              console.warn('[auth] Failed to synthesize profile from Firebase claims:', claimErr);
+            }
+          }
+
           if (!profile) {
             setError(
               'This Staff ID has a sign-in account but no hospital profile in the cloud yet. Ask admin to open Staff Access Control and create/save the account again so role and desk sync.'
@@ -955,11 +1015,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         return;
       }
 
-      // Strict facility assignment: staff enrolled at Hospital A cannot log into Hospital B
+      // Automatic alignment to staff member's registered hospital
       if (profile.hospitalId && String(profile.hospitalId).toUpperCase() !== String(effectiveHospital.id).toUpperCase()) {
-        setError(`Access Denied: Staff ID ${profile.badgeId} is registered at ${profile.hospitalName || profile.hospitalId}, not ${effectiveHospital.name}. Cross-facility login is prohibited on this station.`);
-        setLoading(false);
-        return;
+        const foundHosp = HOSPITALS.find((h) => h.id.toUpperCase() === String(profile.hospitalId).toUpperCase());
+        if (foundHosp) {
+          effectiveHospital = foundHosp;
+          setSelectedHospital(foundHosp);
+        }
       }
 
       // Strict revocation check

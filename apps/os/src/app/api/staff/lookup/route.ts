@@ -1,22 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured } from '../../../../lib/db/postgres';
-import { getStaff } from '../../../../lib/db/staffRepo';
+import { getStaff, findStaffAnyFacility } from '../../../../lib/db/staffRepo';
 
 export const runtime = 'nodejs';
 
 /**
  * GET /api/staff/lookup?facilityId=IGH-EKT&badgeId=AKS-ADM-001
  * Efficient single-badge Aurora PostgreSQL lookup for the login flow.
+ * Checks facilityId first, then falls back to global search across facilities.
  * Returns the staff row (without pin_hash) or null if not found.
- * Multi-tenant RLS is enforced via withTenantClient inside getStaff().
  */
 export async function GET(req: NextRequest) {
   const facilityId = (req.nextUrl.searchParams.get('facilityId') || '').trim();
   const badgeId = (req.nextUrl.searchParams.get('badgeId') || '').trim().toUpperCase();
+  const queryParam = (req.nextUrl.searchParams.get('query') || '').trim();
+  const target = badgeId || queryParam;
 
-  if (!facilityId || !badgeId) {
+  if (!target) {
     return NextResponse.json(
-      { ok: false, error: 'facilityId and badgeId are required' },
+      { ok: false, error: 'badgeId or query is required' },
       { status: 400 }
     );
   }
@@ -26,7 +28,13 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const row = await getStaff(facilityId, badgeId);
+    let row = null;
+    if (facilityId) {
+      row = await getStaff(facilityId, target);
+    }
+    if (!row) {
+      row = await findStaffAnyFacility(target);
+    }
     if (!row) {
       return NextResponse.json({ ok: true, staff: null });
     }

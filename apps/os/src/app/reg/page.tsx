@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { nextPrintedBadgeId } from '../../lib/staffCardStore';
 import {
   Building2,
   User,
@@ -30,49 +31,42 @@ interface Facility {
 }
 
 const FACILITIES: Facility[] = [
-  { id: 'IGH-EKT',  name: 'Immanuel General Hospital, Eket',               location: 'Eket, Akwa Ibom',             type: 'General Hospital'    },
-  { id: 'GH-IKE',  name: 'General Hospital, Ikot Ekpene',                  location: 'Ikot Ekpene, Akwa Ibom',      type: 'General Hospital'    },
-  { id: 'GH-IQU',  name: 'General Hospital, Iquita Oron',                  location: 'Oron, Akwa Ibom',             type: 'General Hospital'    },
-  { id: 'MGH-ITM', name: 'Methodist General Hospital, Ituk Mbang',         location: 'Ituk Mbang, Akwa Ibom',       type: 'Mission Hospital'    },
-  { id: 'GH-ETN',  name: 'General Hospital, Etinan',                       location: 'Etinan, Akwa Ibom',           type: 'General Hospital'    },
-  { id: 'GH-UAB',  name: 'General Hospital, Ukpom Abak',                   location: 'Abak, Akwa Ibom',             type: 'General Hospital'    },
-  { id: 'GH-AWA',  name: 'General Hospital, Awa',                          location: 'Awa, Akwa Ibom',              type: 'General Hospital'    },
-  { id: 'GH-IKO',  name: 'General Hospital, Ikot Okoro',                   location: 'Ikot Okoro, Akwa Ibom',       type: 'General Hospital'    },
-  { id: 'GH-IKN',  name: 'General Hospital, Ikono',                        location: 'Ikono, Akwa Ibom',            type: 'General Hospital'    },
-  { id: 'GH-AMM',  name: 'General Hospital, Amammong Okobo',               location: 'Okobo, Akwa Ibom',            type: 'General Hospital'    },
-  { id: 'MCH-AKU', name: 'Mount Carmel Hospital, Akpa Utong',              location: 'Akpa Utong, Akwa Ibom',       type: 'Mission Hospital'    },
-  { id: 'GH-URO',  name: 'General Hospital, Urue-Offong/Oruko',            location: 'Urue-Offong, Akwa Ibom',      type: 'General Hospital'    },
-  { id: 'GH-IPA',  name: 'General Hospital, Ikpe Annang',                  location: 'Ikpe Annang, Akwa Ibom',      type: 'General Hospital'    },
-  { id: 'GH-INI',  name: 'General Hospital, Ini',                          location: 'Ini, Akwa Ibom',              type: 'General Hospital'    },
-  { id: 'GH-IAB',  name: 'General Hospital, Ikot Abasi',                   location: 'Ikot Abasi, Akwa Ibom',       type: 'General Hospital'    },
-  { id: 'GH-MB2',  name: 'General Hospital, Mbioto 2',                     location: 'Mbioto, Akwa Ibom',           type: 'General Hospital'    },
-  { id: 'MSG-ITU', name: 'Mary Slessor General Hospital, Itu',             location: 'Itu, Akwa Ibom',              type: 'Mission Hospital'    },
-  { id: 'GH-UAI',  name: 'General Hospital, Uruk Ata Ikot Ekpor',         location: 'Ikot Ekpor, Akwa Ibom',       type: 'General Hospital'    },
-  { id: 'QIC-EPO', name: 'QIC Leprosy Hospital, Ekpene Obom',              location: 'Ekpene Obom, Akwa Ibom',      type: 'Specialist Hospital' },
-  { id: 'IDH-IKE', name: 'Infectious Disease Hospital, Ikot Ekpene',       location: 'Ikot Ekpene, Akwa Ibom',      type: 'Specialist Hospital' },
-  { id: 'PSY-EKT', name: 'Psychiatric Hospital, Eket',                     location: 'Eket, Akwa Ibom',             type: 'Specialist Hospital' },
-  { id: 'CH-UKA',  name: 'Cottage Hospital, Ukana',                        location: 'Ukana, Akwa Ibom',            type: 'Cottage Hospital'    },
-  { id: 'CH-IBN',  name: 'Cottage Hospital, Ibeno',                        location: 'Ibeno, Akwa Ibom',            type: 'Cottage Hospital'    },
-  { id: 'CH-IAB',  name: 'Cottage Hospital, Ikot Abia',                    location: 'Ikot Abia, Akwa Ibom',        type: 'Cottage Hospital'    },
-  { id: 'CH-IEP',  name: 'Cottage Hospital, Ikot Ekpaw',                   location: 'Ikot Ekpaw, Akwa Ibom',       type: 'Cottage Hospital'    },
-  { id: 'CH-ASO',  name: 'Cottage Hospital, Asong',                        location: 'Asong, Akwa Ibom',            type: 'Cottage Hospital'    },
-  { id: 'CH-EPO',  name: 'Cottage Hospital, Ekpene Obo',                   location: 'Ekpene Obo, Akwa Ibom',       type: 'Cottage Hospital'    },
-  { id: 'CH-IEI',  name: 'Cottage Hospital, Ikot Eko Ibon',                location: 'Ikot Eko Ibon, Akwa Ibom',    type: 'Cottage Hospital'    },
-  { id: 'CH-EOB',  name: 'Cottage Hospital, Eastern Obolo',                location: 'Eastern Obolo, Akwa Ibom',    type: 'Cottage Hospital'    },
-  { id: 'CH-IEU',  name: 'Cottage Hospital, Ikot Ekpene Udo',              location: 'Ikot Ekpene Udo, Akwa Ibom',  type: 'Cottage Hospital'    },
-  { id: 'RCH-IBS', name: 'Redeemer Cottage Hospital, Ibesit',              location: 'Ibesit, Akwa Ibom',           type: 'Cottage Hospital'    },
-  { id: 'CH-AKU',  name: 'Cottage Hospital, Akai Ubium',                   location: 'Akai Ubium, Akwa Ibom',       type: 'Cottage Hospital'    },
-  { id: 'CH-IKA',  name: 'Cottage Hospital, Ika',                          location: 'Ika, Akwa Ibom',              type: 'Cottage Hospital'    },
-  { id: 'CHC-NTE', name: 'Comprehensive Health Care Centre, Nto Edino',    location: 'Nto Edino, Akwa Ibom',        type: 'Health Care Centre'  },
-  { id: 'CHC-MBU', name: 'Comprehensive Health Care Centre, Mbiaya Uruan', location: 'Mbiaya Uruan, Akwa Ibom',     type: 'Health Care Centre'  },
+  { id: 'IGH-EKT', name: 'Immanuel General Hospital, Eket', location: 'Eket, Akwa Ibom', type: 'General Hospital' },
+  { id: 'GH-IKE', name: 'General Hospital, Ikot Ekpene', location: 'Ikot Ekpene, Akwa Ibom', type: 'General Hospital' },
+  { id: 'GH-IQU', name: 'General Hospital, Iquita Oron', location: 'Oron, Akwa Ibom', type: 'General Hospital' },
+  { id: 'MGH-ITM', name: 'Methodist General Hospital, Ituk Mbang', location: 'Ituk Mbang, Akwa Ibom', type: 'Mission Hospital' },
+  { id: 'GH-ETN', name: 'General Hospital, Etinan', location: 'Etinan, Akwa Ibom', type: 'General Hospital' },
+  { id: 'GH-UAB', name: 'General Hospital, Ukpom Abak', location: 'Abak, Akwa Ibom', type: 'General Hospital' },
+  { id: 'GH-AWA', name: 'General Hospital, Awa', location: 'Awa, Akwa Ibom', type: 'General Hospital' },
+  { id: 'GH-IKO', name: 'General Hospital, Ikot Okoro', location: 'Ikot Okoro, Akwa Ibom', type: 'General Hospital' },
+  { id: 'GH-IKN', name: 'General Hospital, Ikono', location: 'Ikono, Akwa Ibom', type: 'General Hospital' },
+  { id: 'GH-AMM', name: 'General Hospital, Amammong Okobo', location: 'Okobo, Akwa Ibom', type: 'General Hospital' },
+  { id: 'MCH-AKU', name: 'Mount Carmel Hospital, Akpa Utong', location: 'Akpa Utong, Akwa Ibom', type: 'Mission Hospital' },
+  { id: 'GH-URO', name: 'General Hospital, Urue-Offong/Oruko', location: 'Urue-Offong, Akwa Ibom', type: 'General Hospital' },
+  { id: 'GH-IPA', name: 'General Hospital, Ikpe Annang', location: 'Ikpe Annang, Akwa Ibom', type: 'General Hospital' },
+  { id: 'GH-INI', name: 'General Hospital, Ini', location: 'Ini, Akwa Ibom', type: 'General Hospital' },
+  { id: 'GH-IAB', name: 'General Hospital, Ikot Abasi', location: 'Ikot Abasi, Akwa Ibom', type: 'General Hospital' },
+  { id: 'GH-MB2', name: 'General Hospital, Mbioto 2', location: 'Mbioto, Akwa Ibom', type: 'General Hospital' },
+  { id: 'MSG-ITU', name: 'Mary Slessor General Hospital, Itu', location: 'Itu, Akwa Ibom', type: 'Mission Hospital' },
+  { id: 'GH-UAI', name: 'General Hospital, Uruk Ata Ikot Ekpor', location: 'Ikot Ekpor, Akwa Ibom', type: 'General Hospital' },
+  { id: 'QIC-EPO', name: 'QIC Leprosy Hospital, Ekpene Obom', location: 'Ekpene Obom, Akwa Ibom', type: 'Specialist Hospital' },
+  { id: 'IDH-IKE', name: 'Infectious Disease Hospital, Ikot Ekpene', location: 'Ikot Ekpene, Akwa Ibom', type: 'Specialist Hospital' },
+  { id: 'PSY-EKT', name: 'Psychiatric Hospital, Eket', location: 'Eket, Akwa Ibom', type: 'Specialist Hospital' },
+  { id: 'CH-UKA', name: 'Cottage Hospital, Ukana', location: 'Ukana, Akwa Ibom', type: 'Cottage Hospital' },
+  { id: 'CH-IBN', name: 'Cottage Hospital, Ibeno', location: 'Ibeno, Akwa Ibom', type: 'Cottage Hospital' },
+  { id: 'CH-IAB', name: 'Cottage Hospital, Ikot Abia', location: 'Ikot Abia, Akwa Ibom', type: 'Cottage Hospital' },
+  { id: 'CH-IEP', name: 'Cottage Hospital, Ikot Ekpaw', location: 'Ikot Ekpaw, Akwa Ibom', type: 'Cottage Hospital' },
+  { id: 'CH-ASO', name: 'Cottage Hospital, Asong', location: 'Asong, Akwa Ibom', type: 'Cottage Hospital' },
+  { id: 'CH-EPO', name: 'Cottage Hospital, Ekpene Obo', location: 'Ekpene Obo, Akwa Ibom', type: 'Cottage Hospital' },
+  { id: 'CH-IEI', name: 'Cottage Hospital, Ikot Eko Ibon', location: 'Ikot Eko Ibon, Akwa Ibom', type: 'Cottage Hospital' },
+  { id: 'CH-EOB', name: 'Cottage Hospital, Eastern Obolo', location: 'Eastern Obolo, Akwa Ibom', type: 'Cottage Hospital' },
+  { id: 'CH-IEU', name: 'Cottage Hospital, Ikot Ekpene Udo', location: 'Ikot Ekpene Udo, Akwa Ibom', type: 'Cottage Hospital' },
+  { id: 'RCH-IBS', name: 'Redeemer Cottage Hospital, Ibesit', location: 'Ibesit, Akwa Ibom', type: 'Cottage Hospital' },
+  { id: 'CH-AKU', name: 'Cottage Hospital, Akai Ubium', location: 'Akai Ubium, Akwa Ibom', type: 'Cottage Hospital' },
+  { id: 'CH-IKA', name: 'Cottage Hospital, Ika', location: 'Ika, Akwa Ibom', type: 'Cottage Hospital' },
+  { id: 'CHC-NTE', name: 'Comprehensive Health Care Centre, Nto Edino', location: 'Nto Edino, Akwa Ibom', type: 'Health Care Centre' },
+  { id: 'CHC-MBU', name: 'Comprehensive Health Care Centre, Mbiaya Uruan', location: 'Mbiaya Uruan, Akwa Ibom', type: 'Health Care Centre' },
 ];
-
-/* ── Badge ID generator ───────────────────────────────────────────────────── */
-function generateBadgeId(): string {
-  const year = new Date().getFullYear();
-  const seq = String(Math.floor(1000 + Math.random() * 9000));
-  return `AMC-${year}-${seq}`;
-}
 
 /* ── Shared input focus handlers (match AuthScreen exactly) ─────────────── */
 function onFocus(e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) {
@@ -248,20 +242,30 @@ const STYLES = `
 `;
 
 export default function RegPage() {
-  const [facilityId, setFacilityId]               = useState('');
-  const [fullName, setFullName]                   = useState('');
-  const [email, setEmail]                         = useState('');
-  const [password, setPassword]                   = useState('');
-  const [pin, setPin]                             = useState('');
-  const [showPass, setShowPass]                   = useState(false);
-  const [badgeId]                                 = useState(generateBadgeId);
+  const [facilityId, setFacilityId] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [badgeId, setBadgeId] = useState('');
 
-  const [submitting, setSubmitting]               = useState(false);
-  const [serverError, setServerError]             = useState('');
-  const [adminExists, setAdminExists]             = useState(false);
-  const [checkingAdmin, setCheckingAdmin]         = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState('');
+  const [adminExists, setAdminExists] = useState(false);
+  const [checkingAdmin, setCheckingAdmin] = useState(false);
   const [existingAdminName, setExistingAdminName] = useState('');
-  const [done, setDone]                           = useState<{ badgeId: string; facilityName: string; fullName: string } | null>(null);
+  const [done, setDone] = useState<{ badgeId: string; facilityName: string; fullName: string; email?: string } | null>(null);
+
+  /* ── Auto-generate Badge ID matching hospital abbreviation ── */
+  useEffect(() => {
+    if (facilityId) {
+      const match = FACILITIES.find((f) => f.id === facilityId);
+      setBadgeId(nextPrintedBadgeId(facilityId, match?.name));
+    } else {
+      setBadgeId('');
+    }
+  }, [facilityId]);
 
   /* ── Real-time admin-exists check ─────────────────────────────────────── */
   const checkAdminExists = useCallback(async (fid: string) => {
@@ -319,15 +323,16 @@ export default function RegPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setServerError('');
-    if (!facilityId)            { setServerError('Please select your hospital / facility.'); return; }
+    if (!facilityId) { setServerError('Please select your hospital / facility.'); return; }
     if (fullName.trim().length < 3) { setServerError('Full name must be at least 3 characters.'); return; }
-    if (password.length < 6)    { setServerError('Password must be at least 6 characters.'); return; }
+    if (password.length < 6) { setServerError('Password must be at least 6 characters.'); return; }
     if (!/^\d{4,6}$/.test(pin)) { setServerError('PIN must be 4–6 digits.'); return; }
 
     setSubmitting(true);
     try {
+      const effectiveBadgeId = badgeId || nextPrintedBadgeId(facilityId, selectedFacility?.name);
       const body = {
-        badgeId,
+        badgeId: effectiveBadgeId,
         facilityId,
         facilityName: selectedFacility?.name ?? facilityId,
         fullName: fullName.trim(),
@@ -342,17 +347,68 @@ export default function RegPage() {
         clearanceLabel: 'Administrator',
         templateKey: 'TPL_CLINICAL',
       };
-      const res  = await fetch('/api/staff/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch('/api/staff/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok || !data.success) { setServerError(data.error ?? 'Enrollment failed. Please try again.'); return; }
 
-      /* Pre-save claimed facility to localStorage so login remembers it */
+      const finalBadgeId = data.badgeId || effectiveBadgeId;
+
+      /* Pre-save claimed facility & admin profile to localStorage so login recognizes it immediately */
       try {
-        localStorage.setItem('medcore_claimed_facility_id',   facilityId);
+        localStorage.setItem('medcore_claimed_facility_id', facilityId);
         localStorage.setItem('medcore_claimed_facility_name', selectedFacility?.name ?? facilityId);
+
+        const adminEntry = {
+          id: finalBadgeId,
+          badgeId: finalBadgeId,
+          name: fullName.trim(),
+          fullName: fullName.trim(),
+          role: 'Hospital Administrator',
+          roleKey: 'hospital_admin',
+          title: 'Hospital Administrator',
+          department: 'Hospital Management',
+          clearanceLevel: 5,
+          clearanceLabel: 'Administrator',
+          hospitalId: facilityId,
+          facilityId,
+          hospitalName: selectedFacility?.name ?? facilityId,
+          facilityName: selectedFacility?.name ?? facilityId,
+          email: email.trim() || undefined,
+          pin,
+          permissions: ['*'],
+          status: 'ACTIVE',
+        };
+
+        const regRaw = localStorage.getItem('medcore_os_staff_registry') || '[]';
+        const reg = JSON.parse(regRaw);
+        const nextReg = [adminEntry, ...reg.filter((r: any) => String(r.badgeId || r.id).toUpperCase() !== finalBadgeId.toUpperCase())];
+        localStorage.setItem('medcore_os_staff_registry', JSON.stringify(nextReg));
+        localStorage.setItem('medcore_staff_registry', JSON.stringify(nextReg));
+
+        const accessRaw = localStorage.getItem('medcore_os_access_control') || '[]';
+        const access = JSON.parse(accessRaw);
+        const accessRow = {
+          id: finalBadgeId,
+          name: fullName.trim(),
+          role: 'Hospital Administrator',
+          department: 'Hospital Management',
+          status: 'Active',
+          lastLogin: 'Never',
+          permissions: ['*'],
+        };
+        const nextAccess = [accessRow, ...access.filter((a: any) => String(a.id).toUpperCase() !== finalBadgeId.toUpperCase())];
+        localStorage.setItem('medcore_os_access_control', JSON.stringify(nextAccess));
+
+        window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: nextReg }));
+        window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'staff' } }));
       } catch { /* ignore */ }
 
-      setDone({ badgeId: data.badgeId, facilityName: selectedFacility?.name ?? facilityId, fullName: fullName.trim() });
+      setDone({
+        badgeId: finalBadgeId,
+        facilityName: selectedFacility?.name ?? facilityId,
+        fullName: fullName.trim(),
+        email: email.trim() || undefined,
+      });
     } catch (err) {
       setServerError('Network error. Check connection and try again.');
       console.error('[/reg] submit error', err);
@@ -575,6 +631,12 @@ export default function RegPage() {
                 Your administrator account is now active across all hospital terminals and ready for immediate login.
               </p>
 
+              {done.email && (
+                <div style={{ padding: '10px 14px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', fontSize: '0.78rem', color: '#1E40AF', textAlign: 'center' }}>
+                  Sign in with <strong>Staff ID</strong> <code style={{ fontFamily: 'monospace', background: '#DBEAFE', padding: '1px 6px', borderRadius: 4 }}>{done.badgeId}</code> + PIN, or your work email <strong>{done.email}</strong> + password.
+                </div>
+              )}
+
               <a
                 href="/"
                 style={{
@@ -598,304 +660,304 @@ export default function RegPage() {
               </div>
             </div>
           ) : (
-          /* ════════════════════════════════════════════════════════════
-              ENROLLMENT FORM
-          ════════════════════════════════════════════════════════════ */
-          <>
-            {/* Heading */}
-            <h1 style={{
-              fontSize: '1.55rem', fontWeight: 800, color: '#0A2540',
-              textAlign: 'center', margin: '0 0 4px',
-              fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.02em',
-            }}>
-              Facility Admin Enrollment
-            </h1>
-            <p style={{ fontSize: '0.85rem', color: '#64748B', textAlign: 'center', margin: '0 0 20px' }}>
-              Register administrator credentials for your health institution
-            </p>
-
-            {/* Server-side error */}
-            {serverError && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '10px 14px', borderRadius: 8,
-                background: '#FEF2F2', border: '1px solid #FCA5A5',
-                color: '#B91C1C', fontSize: '0.82rem', marginBottom: 16,
+            /* ════════════════════════════════════════════════════════════
+                ENROLLMENT FORM
+            ════════════════════════════════════════════════════════════ */
+            <>
+              {/* Heading */}
+              <h1 style={{
+                fontSize: '1.55rem', fontWeight: 800, color: '#0A2540',
+                textAlign: 'center', margin: '0 0 4px',
+                fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.02em',
               }}>
-                <AlertCircle size={15} />
-                <span>{serverError}</span>
-              </div>
-            )}
+                Facility Admin Enrollment
+              </h1>
+              <p style={{ fontSize: '0.85rem', color: '#64748B', textAlign: 'center', margin: '0 0 20px' }}>
+                Register administrator credentials for your health institution
+              </p>
 
-            <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-              {/* ── Hospital Facility ─────────────────────────────────── */}
-              <div>
-                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <Hospital size={13} color="#0052D4" />
-                    Hospital / Facility
-                  </span>
-                  {checkingAdmin && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: '#0052D4', fontWeight: 600 }}>
-                      <Loader2 size={11} style={{ animation: 'regSpin 0.8s linear infinite' }} />
-                      Verifying…
-                    </span>
-                  )}
-                </label>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-                    <Building2 size={18} color="#00A3BF" />
-                  </div>
-                  <select
-                    className="reg-select"
-                    value={facilityId}
-                    onChange={(e) => setFacilityId(e.target.value)}
-                    onFocus={onFocus}
-                    onBlur={onBlur}
-                  >
-                    <option value="">Select your hospital / facility…</option>
-                    {['General Hospital','Mission Hospital','Specialist Hospital','Cottage Hospital','Health Care Centre'].map((grp) => (
-                      <optgroup key={grp} label={grp}>
-                        {FACILITIES.filter((f) => f.type === grp).map((f) => (
-                          <option key={f.id} value={f.id}>{f.name} — {f.location}</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                  <div style={{ position: 'absolute', right: 12, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-                    <ChevronDown size={15} color="#94A3B8" />
-                  </div>
+              {/* Server-side error */}
+              {serverError && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '10px 14px', borderRadius: 8,
+                  background: '#FEF2F2', border: '1px solid #FCA5A5',
+                  color: '#B91C1C', fontSize: '0.82rem', marginBottom: 16,
+                }}>
+                  <AlertCircle size={15} />
+                  <span>{serverError}</span>
                 </div>
+              )}
 
-                {/* Admin-exists warning */}
-                {adminExists && !checkingAdmin && (
-                  <div style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 8,
-                    marginTop: 8, padding: '9px 12px', borderRadius: 8,
-                    background: '#FFFBEB', border: '1px solid #FCD34D',
-                    fontSize: '0.78rem', color: '#92400E',
-                  }}>
-                    <AlertCircle size={14} color="#D97706" style={{ flexShrink: 0, marginTop: 1 }} />
-                    <div>
-                      <strong>Administrator already registered</strong> — {existingAdminName} is active for this facility.{' '}
-                      <a href="/" style={{ color: '#B45309', fontWeight: 700, textDecoration: 'underline' }}>Sign in →</a>
+              <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+                {/* ── Hospital Facility ─────────────────────────────────── */}
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <Hospital size={13} color="#0052D4" />
+                      Hospital / Facility
+                    </span>
+                    {checkingAdmin && (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: '#0052D4', fontWeight: 600 }}>
+                        <Loader2 size={11} style={{ animation: 'regSpin 0.8s linear infinite' }} />
+                        Verifying…
+                      </span>
+                    )}
+                  </label>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                      <Building2 size={18} color="#00A3BF" />
+                    </div>
+                    <select
+                      className="reg-select"
+                      value={facilityId}
+                      onChange={(e) => setFacilityId(e.target.value)}
+                      onFocus={onFocus}
+                      onBlur={onBlur}
+                    >
+                      <option value="">Select your hospital / facility…</option>
+                      {['General Hospital', 'Mission Hospital', 'Specialist Hospital', 'Cottage Hospital', 'Health Care Centre'].map((grp) => (
+                        <optgroup key={grp} label={grp}>
+                          {FACILITIES.filter((f) => f.type === grp).map((f) => (
+                            <option key={f.id} value={f.id}>{f.name} — {f.location}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <div style={{ position: 'absolute', right: 12, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                      <ChevronDown size={15} color="#94A3B8" />
                     </div>
                   </div>
-                )}
 
-                {/* Available pill */}
-                {facilityId && !adminExists && !checkingAdmin && (
-                  <div style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    marginTop: 7, padding: '4px 10px', borderRadius: 6,
-                    background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.30)',
-                    fontSize: '0.72rem', fontWeight: 700, color: '#047857',
-                  }}>
-                    <Check size={12} color="#10B981" />
-                    Available for enrollment · {selectedFacility?.type}
-                  </div>
-                )}
-              </div>
+                  {/* Admin-exists warning */}
+                  {adminExists && !checkingAdmin && (
+                    <div style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 8,
+                      marginTop: 8, padding: '9px 12px', borderRadius: 8,
+                      background: '#FFFBEB', border: '1px solid #FCD34D',
+                      fontSize: '0.78rem', color: '#92400E',
+                    }}>
+                      <AlertCircle size={14} color="#D97706" style={{ flexShrink: 0, marginTop: 1 }} />
+                      <div>
+                        <strong>Administrator already registered</strong> — {existingAdminName} is active for this facility.{' '}
+                        <a href="/" style={{ color: '#B45309', fontWeight: 700, textDecoration: 'underline' }}>Sign in →</a>
+                      </div>
+                    </div>
+                  )}
 
-              {/* ── Full Name ─────────────────────────────────────────── */}
-              <div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                  <User size={13} color="#64748B" />
-                  Full Name &amp; Title
-                </label>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-                    <User size={18} color="#94A3B8" />
-                  </div>
-                  <input
-                    type="text"
-                    className="reg-input"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="e.g. Dr. Ini Akpan"
-                    autoComplete="name"
-                    onFocus={onFocus as React.FocusEventHandler<HTMLInputElement>}
-                    onBlur={onBlur as React.FocusEventHandler<HTMLInputElement>}
-                  />
-                </div>
-              </div>
-
-              {/* ── Official Email (optional) ─────────────────────────── */}
-              <div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                  <Mail size={13} color="#64748B" />
-                  Official Email <span style={{ fontWeight: 400, color: '#94A3B8' }}>&nbsp;(optional)</span>
-                </label>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-                    <Mail size={18} color="#94A3B8" />
-                  </div>
-                  <input
-                    type="email"
-                    className="reg-input"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin@hospital.medcore.ng"
-                    autoComplete="email"
-                    onFocus={onFocus as React.FocusEventHandler<HTMLInputElement>}
-                    onBlur={onBlur as React.FocusEventHandler<HTMLInputElement>}
-                  />
-                </div>
-                <p style={{ fontSize: '0.72rem', color: '#94A3B8', margin: '5px 0 0 2px' }}>
-                  If omitted, system auto-binds to your Badge ID account.
-                </p>
-              </div>
-
-              {/* ── Password ─────────────────────────────────────────── */}
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>
-                    <Lock size={13} color="#64748B" />
-                    Sign-in Password
-                  </label>
-                  {password && (
-                    <span style={{ fontSize: '0.70rem', fontWeight: 700, color: strengthColor[passwordStrength] }}>
-                      {strengthLabel[passwordStrength]}
-                    </span>
+                  {/* Available pill */}
+                  {facilityId && !adminExists && !checkingAdmin && (
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      marginTop: 7, padding: '4px 10px', borderRadius: 6,
+                      background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.30)',
+                      fontSize: '0.72rem', fontWeight: 700, color: '#047857',
+                    }}>
+                      <Check size={12} color="#10B981" />
+                      Available for enrollment · {selectedFacility?.type}
+                    </div>
                   )}
                 </div>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-                    <Lock size={18} color="#94A3B8" />
-                  </div>
-                  <input
-                    type={showPass ? 'text' : 'password'}
-                    className="reg-input"
-                    style={{ paddingRight: 42 }}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Min. 6 characters"
-                    autoComplete="new-password"
-                    onFocus={onFocus as React.FocusEventHandler<HTMLInputElement>}
-                    onBlur={onBlur as React.FocusEventHandler<HTMLInputElement>}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPass((v) => !v)}
-                    style={{ position: 'absolute', right: 12, background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: 4, display: 'flex', alignItems: 'center' }}
-                  >
-                    {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-                {/* Strength bar */}
-                {password && (
-                  <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-                    {[1,2,3,4].map((i) => (
-                      <div key={i} style={{
-                        flex: 1, height: 3, borderRadius: 99,
-                        background: i <= passwordStrength ? strengthColor[passwordStrength] : '#E2E8F0',
-                        transition: 'background 0.2s',
-                      }} />
-                    ))}
-                  </div>
-                )}
-              </div>
 
-              {/* ── Badge Terminal PIN ────────────────────────────────── */}
-              <div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                  <KeyRound size={13} color="#64748B" />
-                  Badge Terminal PIN <span style={{ fontWeight: 400, color: '#94A3B8' }}>&nbsp;(4–6 digits)</span>
-                </label>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-                    <KeyRound size={18} color="#94A3B8" />
+                {/* ── Full Name ─────────────────────────────────────────── */}
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                    <User size={13} color="#64748B" />
+                    Full Name &amp; Title
+                  </label>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                      <User size={18} color="#94A3B8" />
+                    </div>
+                    <input
+                      type="text"
+                      className="reg-input"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="e.g. Dr. Ini Akpan"
+                      autoComplete="name"
+                      onFocus={onFocus as React.FocusEventHandler<HTMLInputElement>}
+                      onBlur={onBlur as React.FocusEventHandler<HTMLInputElement>}
+                    />
                   </div>
-                  <input
-                    type="password"
-                    inputMode="numeric"
-                    maxLength={6}
-                    className="reg-input"
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="e.g. 1234"
-                    autoComplete="off"
-                    onFocus={onFocus as React.FocusEventHandler<HTMLInputElement>}
-                    onBlur={onBlur as React.FocusEventHandler<HTMLInputElement>}
-                  />
                 </div>
-                <p style={{ fontSize: '0.72rem', color: '#94A3B8', margin: '5px 0 0 2px' }}>
-                  Enables fast tap-in authentication at physical hospital wards and desks.
-                </p>
-              </div>
 
-              {/* ── Assigned Badge ID preview ─────────────────────────── */}
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '10px 14px', borderRadius: 10,
-                background: 'rgba(0,82,212,0.04)', border: '1px solid rgba(0,82,212,0.14)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <BadgeCheck size={20} color="#0052D4" />
-                  <div>
-                    <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#475569', margin: '0 0 2px' }}>Assigned Badge ID</p>
-                    <p style={{ fontFamily: 'monospace', fontSize: '0.9rem', fontWeight: 800, color: '#0052D4', margin: 0 }}>{badgeId}</p>
+                {/* ── Official Email (optional) ─────────────────────────── */}
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                    <Mail size={13} color="#64748B" />
+                    Official Email <span style={{ fontWeight: 400, color: '#94A3B8' }}>&nbsp;(optional)</span>
+                  </label>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                      <Mail size={18} color="#94A3B8" />
+                    </div>
+                    <input
+                      type="email"
+                      className="reg-input"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="admin@hospital.medcore.ng"
+                      autoComplete="email"
+                      onFocus={onFocus as React.FocusEventHandler<HTMLInputElement>}
+                      onBlur={onBlur as React.FocusEventHandler<HTMLInputElement>}
+                    />
                   </div>
+                  <p style={{ fontSize: '0.72rem', color: '#94A3B8', margin: '5px 0 0 2px' }}>
+                    If omitted, system auto-binds to your Badge ID account.
+                  </p>
                 </div>
-                <span style={{
-                  fontSize: '0.66rem', fontWeight: 800, padding: '3px 8px',
-                  borderRadius: 5, background: 'rgba(13,148,136,0.10)',
-                  color: '#0D9488', letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+
+                {/* ── Password ─────────────────────────────────────────── */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>
+                      <Lock size={13} color="#64748B" />
+                      Sign-in Password
+                    </label>
+                    {password && (
+                      <span style={{ fontSize: '0.70rem', fontWeight: 700, color: strengthColor[passwordStrength] }}>
+                        {strengthLabel[passwordStrength]}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                      <Lock size={18} color="#94A3B8" />
+                    </div>
+                    <input
+                      type={showPass ? 'text' : 'password'}
+                      className="reg-input"
+                      style={{ paddingRight: 42 }}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Min. 6 characters"
+                      autoComplete="new-password"
+                      onFocus={onFocus as React.FocusEventHandler<HTMLInputElement>}
+                      onBlur={onBlur as React.FocusEventHandler<HTMLInputElement>}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPass((v) => !v)}
+                      style={{ position: 'absolute', right: 12, background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: 4, display: 'flex', alignItems: 'center' }}
+                    >
+                      {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                  {/* Strength bar */}
+                  {password && (
+                    <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                      {[1, 2, 3, 4].map((i) => (
+                        <div key={i} style={{
+                          flex: 1, height: 3, borderRadius: 99,
+                          background: i <= passwordStrength ? strengthColor[passwordStrength] : '#E2E8F0',
+                          transition: 'background 0.2s',
+                        }} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Badge Terminal PIN ────────────────────────────────── */}
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                    <KeyRound size={13} color="#64748B" />
+                    Badge Terminal PIN <span style={{ fontWeight: 400, color: '#94A3B8' }}>&nbsp;(4–6 digits)</span>
+                  </label>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                      <KeyRound size={18} color="#94A3B8" />
+                    </div>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={6}
+                      className="reg-input"
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="e.g. 1234"
+                      autoComplete="off"
+                      onFocus={onFocus as React.FocusEventHandler<HTMLInputElement>}
+                      onBlur={onBlur as React.FocusEventHandler<HTMLInputElement>}
+                    />
+                  </div>
+                  <p style={{ fontSize: '0.72rem', color: '#94A3B8', margin: '5px 0 0 2px' }}>
+                    Enables fast tap-in authentication at physical hospital wards and desks.
+                  </p>
+                </div>
+
+                {/* ── Assigned Badge ID preview ─────────────────────────── */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 14px', borderRadius: 10,
+                  background: 'rgba(0,82,212,0.04)', border: '1px solid rgba(0,82,212,0.14)',
                 }}>
-                  L5 Admin
-                </span>
-              </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <BadgeCheck size={20} color="#0052D4" />
+                    <div>
+                      <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#475569', margin: '0 0 2px' }}>Assigned Badge ID</p>
+                      <p style={{ fontFamily: 'monospace', fontSize: '0.9rem', fontWeight: 800, color: '#0052D4', margin: 0 }}>{badgeId}</p>
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: '0.66rem', fontWeight: 800, padding: '3px 8px',
+                    borderRadius: 5, background: 'rgba(13,148,136,0.10)',
+                    color: '#0D9488', letterSpacing: '0.06em', textTransform: 'uppercase' as const,
+                  }}>
+                    L5 Admin
+                  </span>
+                </div>
 
-              {/* ── Submit button ─────────────────────────────────────── */}
-              <button
-                type="submit"
-                className="reg-btn-primary"
-                disabled={submitting || adminExists || !isValid}
-                style={{ marginTop: 2 }}
-                onClick={(e) => {
-                  if (!submitting && !adminExists && isValid) {
-                    const btn = e.currentTarget;
-                    const circle = document.createElement('span');
-                    const rect = btn.getBoundingClientRect();
-                    const size = Math.max(rect.width, rect.height);
-                    circle.style.cssText = `position:absolute;width:${size}px;height:${size}px;left:${e.clientX - rect.left - size / 2}px;top:${e.clientY - rect.top - size / 2}px;border-radius:50%;background:rgba(255,255,255,0.35);animation:liquidRipple 0.7s ease-out forwards;pointer-events:none;`;
-                    btn.appendChild(circle);
-                    setTimeout(() => circle.remove(), 700);
-                  }
-                }}
-              >
-                {!submitting && !adminExists && isValid && <span className="reg-lgb-shimmer" aria-hidden="true" />}
-                {submitting ? (
-                  <>
-                    <div style={{ width: 18, height: 18, borderRadius: '50%', border: '2.5px solid rgba(255,255,255,0.4)', borderTopColor: '#FFFFFF', animation: 'regSpin 0.75s linear infinite' }} />
-                    Creating Administrator Account…
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck size={18} />
-                    Enroll Facility Administrator
-                  </>
-                )}
-              </button>
-
-              {/* Already enrolled? */}
-              <div style={{ textAlign: 'center', fontSize: '0.82rem', color: '#64748B', marginTop: 2 }}>
-                Already have credentials?{' '}
-                <a href="/" style={{ color: '#0284C7', fontWeight: 600, textDecoration: 'none' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
-                  onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                {/* ── Submit button ─────────────────────────────────────── */}
+                <button
+                  type="submit"
+                  className="reg-btn-primary"
+                  disabled={submitting || adminExists || !isValid}
+                  style={{ marginTop: 2 }}
+                  onClick={(e) => {
+                    if (!submitting && !adminExists && isValid) {
+                      const btn = e.currentTarget;
+                      const circle = document.createElement('span');
+                      const rect = btn.getBoundingClientRect();
+                      const size = Math.max(rect.width, rect.height);
+                      circle.style.cssText = `position:absolute;width:${size}px;height:${size}px;left:${e.clientX - rect.left - size / 2}px;top:${e.clientY - rect.top - size / 2}px;border-radius:50%;background:rgba(255,255,255,0.35);animation:liquidRipple 0.7s ease-out forwards;pointer-events:none;`;
+                      btn.appendChild(circle);
+                      setTimeout(() => circle.remove(), 700);
+                    }
+                  }}
                 >
-                  Sign in to MedCore OS →
-                </a>
-              </div>
-            </form>
+                  {!submitting && !adminExists && isValid && <span className="reg-lgb-shimmer" aria-hidden="true" />}
+                  {submitting ? (
+                    <>
+                      <div style={{ width: 18, height: 18, borderRadius: '50%', border: '2.5px solid rgba(255,255,255,0.4)', borderTopColor: '#FFFFFF', animation: 'regSpin 0.75s linear infinite' }} />
+                      Creating Administrator Account…
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck size={18} />
+                      Enroll Facility Administrator
+                    </>
+                  )}
+                </button>
 
-            {/* Card footer */}
-            <div style={{ marginTop: 20, textAlign: 'center', fontSize: '0.74rem', color: '#94A3B8' }}>
-              Powered by <strong style={{ color: '#0A2540' }}>ARISE</strong> | <strong style={{ color: '#0A2540' }}>Akwa Ibom Ministry of Health</strong>
-            </div>
-          </>
+                {/* Already enrolled? */}
+                <div style={{ textAlign: 'center', fontSize: '0.82rem', color: '#64748B', marginTop: 2 }}>
+                  Already have credentials?{' '}
+                  <a href="/" style={{ color: '#0284C7', fontWeight: 600, textDecoration: 'none' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+                    onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                  >
+                    Sign in to MedCore OS →
+                  </a>
+                </div>
+              </form>
+
+              {/* Card footer */}
+              <div style={{ marginTop: 20, textAlign: 'center', fontSize: '0.74rem', color: '#94A3B8' }}>
+                Powered by <strong style={{ color: '#0A2540' }}>ARISE</strong> | <strong style={{ color: '#0A2540' }}>Akwa Ibom Ministry of Health</strong>
+              </div>
+            </>
           )}
         </div>
       </div>

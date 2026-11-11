@@ -132,6 +132,22 @@ export async function getStaff(facilityId: string, badgeId: string): Promise<Sta
   });
 }
 
+/** Global staff lookup across all facilities by Badge ID or Email */
+export async function findStaffAnyFacility(queryText: string): Promise<StaffRow | null> {
+  await ensureSchema();
+  const q = String(queryText || '').trim();
+  if (!q) return null;
+  const res = await query<StaffRow>(
+    `SELECT * FROM staff 
+     WHERE UPPER(badge_id) = UPPER($1) 
+        OR LOWER(email) = LOWER($1) 
+        OR LOWER(auth_email) = LOWER($1) 
+     LIMIT 1`,
+    [q]
+  );
+  return res.rows[0] || null;
+}
+
 export async function deleteStaff(facilityId: string, badgeId: string): Promise<boolean> {
   await ensureSchema();
   return withTenantClient(facilityId, async (client) => {
