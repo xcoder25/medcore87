@@ -73,12 +73,30 @@ export async function POST(request: NextRequest) {
         password: badgePin,
       });
     } catch (e: any) {
-      if (e.code === 'auth/user-not-found') {
-        badgeUserRecord = await adminAuth.createUser({
-          email: badgeEmail,
-          password: badgePin,
-          displayName: name,
-        });
+      const code = String(e?.code || '');
+      if (code.includes('user-not-found') || !badgeUserRecord) {
+        try {
+          badgeUserRecord = await adminAuth.createUser({
+            email: badgeEmail,
+            password: badgePin,
+            displayName: name,
+          });
+        } catch (createErr: any) {
+          const cCode = String(createErr?.code || '');
+          if (cCode.includes('email-already-exists')) {
+            try {
+              badgeUserRecord = await adminAuth.getUserByEmail(badgeEmail);
+              await adminAuth.updateUser(badgeUserRecord.uid, {
+                displayName: name,
+                password: badgePin,
+              });
+            } catch (upErr) {
+              console.warn('[api/staff/create] Could not update existing badge user:', upErr);
+            }
+          } else {
+            console.warn('[api/staff/create] Badge account create error:', createErr);
+          }
+        }
       } else {
         console.warn('[api/staff/create] Badge account create warning:', e);
       }
@@ -110,12 +128,30 @@ export async function POST(request: NextRequest) {
           password: cleanPassword,
         });
       } catch (e: any) {
-        if (e.code === 'auth/user-not-found') {
-          emailUserRecord = await adminAuth.createUser({
-            email: cleanEmail,
-            password: cleanPassword,
-            displayName: name,
-          });
+        const code = String(e?.code || '');
+        if (code.includes('user-not-found') || !emailUserRecord) {
+          try {
+            emailUserRecord = await adminAuth.createUser({
+              email: cleanEmail,
+              password: cleanPassword,
+              displayName: name,
+            });
+          } catch (createErr: any) {
+            const cCode = String(createErr?.code || '');
+            if (cCode.includes('email-already-exists')) {
+              try {
+                emailUserRecord = await adminAuth.getUserByEmail(cleanEmail);
+                await adminAuth.updateUser(emailUserRecord.uid, {
+                  displayName: name,
+                  password: cleanPassword,
+                });
+              } catch (upErr) {
+                console.warn('[api/staff/create] Could not update existing email user:', upErr);
+              }
+            } else {
+              console.warn('[api/staff/create] Email account create error:', createErr);
+            }
+          }
         } else {
           console.warn('[api/staff/create] Email account create warning:', e);
         }

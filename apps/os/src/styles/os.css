@@ -5514,15 +5514,27 @@ body {
   border-color: #CBD5E1;
 }
 
+@media (max-width: 1380px) {
+  .admin-shell:not(.is-nav-collapsed) .admin-shell-clock {
+    display: none;
+  }
+  .admin-shell:not(.is-nav-collapsed) .admin-shell-facility {
+    max-width: 160px;
+  }
+}
+
 @media (max-width: 1200px) {
   .admin-shell-clock {
     display: none;
+  }
+  .admin-shell-facility {
+    max-width: 160px;
   }
 }
 
 @media (max-width: 1050px) {
   .admin-shell-facility {
-    max-width: 150px;
+    max-width: 130px;
   }
 
   .admin-shell-search {

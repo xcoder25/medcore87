@@ -26,11 +26,26 @@ export interface HospitalNotification {
 const KEY = 'medcore_os_notifications_v1';
 const EVT = 'medcore-notifications';
 
+const MOCK_NAMES = ['chief okon', 'sarah bassey', 'emmanuel victor', 'mercy effiong'];
+
+function isLegacyMock(n: HospitalNotification): boolean {
+  const text = `${n.title || ''} ${n.body || ''}`.toLowerCase();
+  return MOCK_NAMES.some((m) => text.includes(m));
+}
+
 function read(): HospitalNotification[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const list: HospitalNotification[] = JSON.parse(raw);
+    if (!Array.isArray(list)) return [];
+    // Filter out legacy mock data permanently
+    const valid = list.filter((n) => !isLegacyMock(n));
+    if (valid.length !== list.length) {
+      localStorage.setItem(KEY, JSON.stringify(valid));
+    }
+    return valid;
   } catch {
     return [];
   }

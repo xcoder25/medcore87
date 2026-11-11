@@ -509,7 +509,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
           </div>
 
           <div className="admin-shell-top-right">
-            <div style={{ width: 340, maxWidth: '100%', position: 'relative', zIndex: 50 }}>
+            <div style={{ flex: '1 1 auto', width: 'clamp(140px, 20vw, 300px)', maxWidth: 300, minWidth: 120, position: 'relative', zIndex: 50 }}>
               <InteractiveSearchBar
                 value={search}
                 onChange={setSearch}

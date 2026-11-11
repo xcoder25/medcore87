@@ -296,7 +296,7 @@ export default function OSPage() {
         const fixed = { ...restored, roleKey };
         setUserSession(fixed);
         setActiveModule('dashboard');
-        void hydratePatientRegistry();
+        void hydratePatientRegistry(fixed.hospitalId);
         void hydrateBedBoard();
         if (typeof window !== 'undefined' && sessionStorage.getItem('medcore_splash_done') === '1') {
           setAppState('app');
@@ -447,7 +447,7 @@ export default function OSPage() {
     setUserSession(normalized);
     setActiveModule('dashboard');
     setAppState('app');
-    void hydratePatientRegistry();
+    void hydratePatientRegistry(normalized.hospitalId);
     void hydrateBedBoard();
 
     // Signal the service worker to prefetch all Next.js chunks in the background.

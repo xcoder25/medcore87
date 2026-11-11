@@ -12,8 +12,6 @@ import {
   type HospitalNotification,
   type NotifLevel,
 } from '../../lib/notificationEngine';
-import { scanEarlyWarnings } from '../../lib/clinicalEarlyWarning';
-import { buildOpsIntelligence } from '../../lib/opsIntelligence';
 import {
   getRoleInBasketFolders,
   classifyNotificationForRole,
@@ -147,77 +145,26 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
       }
     }
 
-    // Seed role-specific intelligence notifications if store is empty
-    const existing = listNotifications(facilityId, false, sessionOpts);
-    if (existing.length === 0) {
-      if (isReception) {
-        pushNotification({
-          facilityId,
-          level: 'important',
-          title: 'Appointment Arriving · Chief Okon',
-          body: 'Booked 10:00 AM consultation with Dr. Udoh (Cardiology) — patient due at Front Desk',
-          module: 'appointments',
-          roleHint: 'reception',
-        });
-        pushNotification({
-          facilityId,
-          level: 'important',
-          title: 'Queue Overdue Alert (>20m)',
-          body: 'Patient Sarah Bassey (IGH-2026-0042) waiting 24 minutes in General OPD queue without call',
-          module: 'patient-flow',
-          roleHint: 'reception',
-        });
-        pushNotification({
-          facilityId,
-          level: 'info',
-          title: 'Payment Cleared · Accounts Desk',
-          body: '₦5,000 consult fee for Emmanuel Victor confirmed paid — auto-promoted to Triage Queue',
-          module: 'patient-flow',
-          roleHint: 'reception',
-        });
-        pushNotification({
-          facilityId,
-          level: 'info',
-          title: 'State Digital Health Card Issued',
-          body: 'Akwa Ibom State Health ID AKSHIA-8419 issued for new registration Mercy Effiong',
-          module: 'patient-card',
-          roleHint: 'reception',
-        });
-        pushNotification({
-          facilityId,
-          level: 'info',
-          title: 'Front Desk Daily Handover',
-          body: 'Morning shift reconciliation complete · 42 check-ins registered, 8 booked clinics active',
-          module: 'patient-flow',
-          roleHint: 'reception',
-        });
-      } else {
-        // Clinical roles seed clinical alerts
-        for (const w of scanEarlyWarnings(facilityId).slice(0, 5)) {
-          pushNotification({
-            facilityId,
-            level: w.level === 'high' ? 'critical' : w.level === 'medium' ? 'important' : 'info',
-            title: 'Early Warning — NEWS2',
-            body: `${w.patientName}: ${w.message}`,
-            module: w.module,
-            patientId: w.patientId,
-            roleHint: roleKey,
+    // Purge any legacy hardcoded mock notifications from storage
+    try {
+      const raw = localStorage.getItem('medcore_os_notifications_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const MOCK_NAMES = ['chief okon', 'sarah bassey', 'emmanuel victor', 'mercy effiong'];
+          const cleaned = parsed.filter((n: any) => {
+            const text = `${n.title || ''} ${n.body || ''}`.toLowerCase();
+            return !MOCK_NAMES.some((m) => text.includes(m));
           });
-        }
-        for (const r of buildOpsIntelligence(facilityId)
-          .filter((x) => x.level === 'critical' || x.level === 'warn')
-          .slice(0, 3)) {
-          pushNotification({
-            facilityId,
-            level: r.level === 'critical' ? 'critical' : 'important',
-            title: r.title,
-            body: r.detail,
-            module: r.module,
-            roleHint: roleKey,
-          });
+          if (cleaned.length !== parsed.length) {
+            localStorage.setItem('medcore_os_notifications_v1', JSON.stringify(cleaned));
+          }
         }
       }
+    } catch {
+      /* ignore */
     }
+
     reload();
     return subscribeNotifications(reload);
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -20,6 +20,8 @@ import {
   FolderOpen,
   Activity,
   Sparkles,
+  Edit,
+  UserCheck,
 } from 'lucide-react';
 import type { UserSession } from '../auth/AuthScreen';
 import { listPatients, subscribePatients, type FacilityPatient } from '../../lib/patientRegistryStore';
@@ -32,6 +34,7 @@ import {
 } from '../../lib/notificationEngine';
 import { InBasketPanel } from '../clinical-core/InBasketPanel';
 import { himSummary, subscribeHim } from '../../lib/himStore';
+import { EditPatientModal } from '../records/EditPatientModal';
 
 interface Props {
   session: UserSession;
@@ -64,6 +67,8 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   const firstName = (session.name || 'Records').split(' ')[0];
   const [tick, setTick] = useState(0);
   const reload = useCallback(() => setTick((t) => t + 1), []);
+  const [editingPatient, setEditingPatient] = useState<FacilityPatient | null>(null);
+  const [mpiSearch, setMpiSearch] = useState('');
 
   useEffect(() => {
     try {
@@ -109,6 +114,22 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   );
   const occupiedBeds = beds.filter((b) => b.status === 'occupied' || b.patientId);
   const freeBeds = beds.filter((b) => b.status === 'available' || (!b.patientId && b.status !== 'occupied'));
+
+  const searchedPatients = useMemo(() => {
+    const q = mpiSearch.trim().toLowerCase();
+    if (!q) return [];
+    return patients
+      .filter(
+        (p) =>
+          p.firstName.toLowerCase().includes(q) ||
+          p.lastName.toLowerCase().includes(q) ||
+          (p.middleName || '').toLowerCase().includes(q) ||
+          p.hospitalNumber.toLowerCase().includes(q) ||
+          (p.phone || '').includes(q) ||
+          (p.nin || '').includes(q)
+      )
+      .slice(0, 10);
+  }, [patients, mpiSearch]);
 
   const intelligence = useMemo(() => {
     const tips: { level: 'critical' | 'warn' | 'info'; title: string; detail: string; go?: string }[] = [];
@@ -406,6 +427,99 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
         ))}
       </div>
 
+      {/* HIM Master Patient Index Quick Demographics Search */}
+      <div
+        style={{
+          background: '#fff',
+          border: '1px solid #E2E8F0',
+          borderRadius: 14,
+          padding: '14px 16px',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Search size={15} color="#0D9488" />
+            HIM Demographics Search &amp; Update
+          </div>
+          <span style={{ fontSize: 11, color: '#64748B' }}>
+            HIM officers can edit demographics, address, NIN, NHIA &amp; emergency contacts
+          </span>
+        </div>
+        <div style={{ position: 'relative' }}>
+          <input
+            type="text"
+            value={mpiSearch}
+            onChange={(e) => setMpiSearch(e.target.value)}
+            placeholder="Search patient by name, folder number, phone, or NIN to edit demographics..."
+            style={{
+              width: '100%',
+              padding: '9px 14px',
+              borderRadius: 10,
+              border: '1px solid #CBD5E1',
+              fontSize: 13,
+              outline: 'none',
+              background: '#F8FAFC',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
+
+        {mpiSearch.trim() && (
+          <div style={{ marginTop: 10, border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
+            {searchedPatients.length === 0 ? (
+              <div style={{ padding: '12px 16px', fontSize: 12, color: '#94A3B8' }}>
+                No patient matching "{mpiSearch}"
+              </div>
+            ) : (
+              searchedPatients.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    borderBottom: '1px solid #F1F5F9',
+                    background: '#fff',
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <strong style={{ fontSize: 13, color: '#0F172A' }}>
+                      {p.firstName} {p.middleName ? p.middleName + ' ' : ''}{p.lastName}
+                    </strong>
+                    <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                      Folder: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{p.hospitalNumber}</span> · {p.sex || '—'} · DOB: {p.dob || '—'} · Tel: {p.phone || '—'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingPatient(p)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      background: '#F0FDF4',
+                      color: '#047857',
+                      border: '1px solid #A7F3D0',
+                      borderRadius: 8,
+                      padding: '6px 12px',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Edit size={13} />
+                    Edit Demographics
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
       <div
         style={{
           display: 'grid',
@@ -454,27 +568,48 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
             </div>
           ) : (
             incomplete.slice(0, 8).map((p) => (
-              <button
+              <div
                 key={p.id}
-                type="button"
-                onClick={() => onNavigate('patient-card')}
                 style={{
-                  width: '100%',
-                  textAlign: 'left',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
                   padding: '10px 14px',
-                  border: 'none',
                   borderBottom: '1px solid #F1F5F9',
                   background: '#fff',
-                  cursor: 'pointer',
+                  gap: 10,
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: 13 }}>
-                  {p.firstName} {p.lastName}
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>
+                    {p.firstName} {p.lastName}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#D97706' }}>
+                    {p.hospitalNumber || 'No folder #'} · missing core fields
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: '#64748B' }}>
-                  {p.hospitalNumber || 'No folder #'} · missing core fields
-                </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingPatient(p)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    background: '#FFFBEB',
+                    color: '#B45309',
+                    border: '1px solid #FDE68A',
+                    borderRadius: 7,
+                    padding: '4px 10px',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Edit size={12} />
+                  Edit
+                </button>
+              </div>
             ))
           )}
         </div>
@@ -507,15 +642,42 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
               <div
                 key={p.id}
                 style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
                   padding: '10px 14px',
                   borderBottom: '1px solid #F1F5F9',
                   fontSize: 13,
+                  gap: 10,
                 }}
               >
-                <strong>
-                  {p.firstName} {p.lastName}
-                </strong>
-                <div style={{ fontSize: 11, color: '#64748B' }}>{p.hospitalNumber}</div>
+                <div>
+                  <strong>
+                    {p.firstName} {p.lastName}
+                  </strong>
+                  <div style={{ fontSize: 11, color: '#64748B' }}>{p.hospitalNumber}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingPatient(p)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    background: '#F0FDFA',
+                    color: '#0D9488',
+                    border: '1px solid #99F6E4',
+                    borderRadius: 7,
+                    padding: '4px 10px',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Edit size={12} />
+                  Edit
+                </button>
               </div>
             ))
           )}
@@ -560,6 +722,14 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
           Open Celestia
         </button>
       </div>
+
+      {/* Edit Patient Demographics Modal */}
+      <EditPatientModal
+        patient={editingPatient}
+        isOpen={Boolean(editingPatient)}
+        onClose={() => setEditingPatient(null)}
+        onSaved={() => reload()}
+      />
     </div>
   );
 };

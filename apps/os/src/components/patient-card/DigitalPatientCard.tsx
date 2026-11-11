@@ -22,7 +22,8 @@ import {
   Search, UserPlus, CheckCircle2, Copy, Printer, QrCode, Building2,
   Phone, Calendar, CreditCard, X, RefreshCw, Shield, AlertTriangle,
   Lock, Key, Wifi, WifiOff, FileCode, Download, Eye, Smartphone,
-  Activity, Sparkles, Send, Check, Terminal, ExternalLink, ShieldCheck
+  Activity, Sparkles, Send, Check, Terminal, ExternalLink, ShieldCheck,
+  Edit,
 } from 'lucide-react';
 import {
   listPatients,
@@ -45,6 +46,7 @@ import {
   type ScanRoleMode,
 } from '../../lib/stateHealthCardService';
 import { StatewideHealthCardRenderer } from './StatewideHealthCardRenderer';
+import { EditPatientModal } from '../records/EditPatientModal';
 
 interface Props {
   session?: {
@@ -109,6 +111,7 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
   }, [patients]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('card');
+  const [isEditingDemographics, setIsEditingDemographics] = useState(false);
 
   // Form state
   const [form, setForm] = useState(emptyForm);
@@ -737,7 +740,29 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
                   </p>
                 </div>
 
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {selectedPatient && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingDemographics(true)}
+                      className="os-ghost-btn"
+                      style={{
+                        fontSize: 12,
+                        padding: '7px 12px',
+                        borderRadius: 9,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        color: '#047857',
+                        border: '1px solid #047857',
+                        background: '#ECFDF5',
+                        fontWeight: 700,
+                      }}
+                      title="Edit patient demographic and contact information"
+                    >
+                      <Edit size={14} /> Edit Demographics
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={handleDownloadWalletPass}
@@ -1444,6 +1469,17 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
           </form>
         </div>
       )}
+
+      {/* HIM Demographics Editor Modal */}
+      <EditPatientModal
+        patient={selectedPatient}
+        isOpen={isEditingDemographics}
+        onClose={() => setIsEditingDemographics(false)}
+        onSaved={(updated) => {
+          reload();
+          flash(`Updated demographics for ${updated.firstName} ${updated.lastName}`);
+        }}
+      />
     </div>
   );
 };
