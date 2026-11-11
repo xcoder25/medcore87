@@ -525,21 +525,43 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     setPhotoBusy(true);
     setError('');
     try {
+      // Step 1: Compress client-side (canvas). Show preview immediately — never block UI on network.
       const result = await compressStaffPhotoFile(file);
-      // Upload headshot directly to AWS S3 Object Storage
-      const s3Res = await uploadImageToS3(result.dataUrl, {
-        folder: 'staff',
-        filename: 'staff-headshot.jpg',
-      });
-      const finalUrl = s3Res.ok && s3Res.url ? s3Res.url : result.dataUrl;
-      setPhotoUrl(finalUrl);
-      setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB${s3Res.isS3 ? ' · AWS S3' : ''}`);
+
+      // Show the compressed dataUrl straight away so the form is never "frozen"
+      setPhotoUrl(result.dataUrl);
+      setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · uploading…`);
+      setPhotoBusy(false); // unlock the form; upload continues in background
+
+      // Step 2: Try S3 upload in the background with a hard 10-second timeout.
+      // Build a Blob directly from the compressed dataUrl to avoid sending a huge JSON body.
+      let uploadBlob: Blob | null = null;
+      try {
+        const { dataUrlToBlob } = await import('../../lib/staffPhoto');
+        uploadBlob = dataUrlToBlob(result.dataUrl);
+      } catch { /* ignore — fall back to dataUrl path */ }
+
+      const uploadPromise = uploadBlob
+        ? uploadImageToS3(uploadBlob, { folder: 'staff', filename: 'staff-headshot.jpg' })
+        : uploadImageToS3(result.dataUrl, { folder: 'staff', filename: 'staff-headshot.jpg' });
+
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000));
+
+      const s3Res = await Promise.race([uploadPromise, timeoutPromise]);
+
+      if (s3Res && s3Res.ok && s3Res.url && s3Res.isS3) {
+        // Promote from local dataUrl to permanent S3 URL
+        setPhotoUrl(s3Res.url);
+        setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · AWS S3`);
+      } else {
+        // S3 unavailable / timed out — keep the compressed dataUrl (fully functional)
+        setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · local`);
+      }
     } catch (err) {
       setPhotoUrl('');
       setPhotoMeta('');
-      setError((err as Error)?.message || 'Could not process photo.');
-    } finally {
       setPhotoBusy(false);
+      setError((err as Error)?.message || 'Could not process photo.');
     }
   };
 
