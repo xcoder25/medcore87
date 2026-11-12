@@ -48,6 +48,13 @@ const DURABLE_PREFIXES = [
   'medcore_attendance_cam_settings',
   'medcore_admin_onboarding_done',
   'medcore_os_onboarding',
+  'medcore_os_staff_onboard_',
+  'medcore_staff_onboard',
+  'medcore_claimed_facility_id',
+  'medcore_claimed_facility_name',
+  'medcore_facility_onboard',
+  'medcore_role_guide_seen',
+  'medcore_role_guide_seen_v1',
   'medcore_lan_api_url',
   // Staff directory, ID cards, access control, activity, and presence must survive reloads
   'medcore_staff_id_cards',
@@ -72,9 +79,9 @@ let installed = false;
 
 export function isHeavyStorageKey(key: string): boolean {
   if (!key) return false;
-  // If key matches or starts with any durable prefix (handles scoped keys like medcore_os_admin_settings_v1:IGH-EKT), allow persistence
+  // If key matches or starts with any durable prefix (handles scoped keys and prefix keys), allow persistence
   for (const p of DURABLE_PREFIXES) {
-    if (key === p || key.startsWith(`${p}:`)) return false;
+    if (key === p || key.startsWith(p) || key.startsWith(`${p}:`)) return false;
   }
   return HEAVY_PREFIXES.some((p) => key.startsWith(p));
 }

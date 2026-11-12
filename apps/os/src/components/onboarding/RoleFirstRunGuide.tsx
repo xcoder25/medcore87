@@ -39,13 +39,18 @@ export const RoleFirstRunGuide: React.FC<Props> = ({ session, onComplete }) => {
   const isLast = step >= total - 1;
   const firstName = (session.name || 'Colleague').split(' ')[0];
 
+  // Collect all identity handles so guide-seen persists regardless of login method
+  const extraIds = [session.id, session.email].filter(
+    (k): k is string => !!k && typeof k === 'string' && k.trim().length > 0
+  );
+
   const finish = (openModule?: string) => {
-    markRoleGuideSeen(session.badgeId || session.id || '', roleKey);
+    markRoleGuideSeen(session.badgeId || session.id || '', roleKey, extraIds);
     onComplete({ openModule: openModule || current?.module });
   };
 
   const skipAll = () => {
-    markRoleGuideSeen(session.badgeId || session.id || '', roleKey);
+    markRoleGuideSeen(session.badgeId || session.id || '', roleKey, extraIds);
     onComplete({});
   };
 

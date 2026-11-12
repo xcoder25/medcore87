@@ -26,19 +26,62 @@ export function roleGuideStorageKey(badgeId: string, roleKey: string): string {
   return `${STORAGE_PREFIX}${(badgeId || 'anon').toUpperCase()}:${(roleKey || 'staff').toLowerCase()}`;
 }
 
-export function hasSeenRoleGuide(badgeId: string, roleKey: string): boolean {
+export function hasSeenRoleGuide(
+  badgeId: string,
+  roleKey: string,
+  extraIds?: (string | undefined | null)[]
+): boolean {
   if (typeof window === 'undefined') return true;
+  const rk = (roleKey || 'staff').toLowerCase();
+  if (rk === 'hospital_admin' || rk === 'admin' || rk === 'sysadmin') return true;
+
+  const candidates = [badgeId, ...(extraIds || [])].filter(
+    (k): k is string => !!k && typeof k === 'string' && k.trim().length > 0
+  );
   try {
-    return localStorage.getItem(roleGuideStorageKey(badgeId, roleKey)) === '1';
+    // Check specific IDs
+    for (const id of candidates) {
+      const key = roleGuideStorageKey(id, rk);
+      if (localStorage.getItem(key) === '1' || sessionStorage.getItem(key) === '1') return true;
+    }
+    // Check generic role seen key
+    const roleOnlyKey = `${STORAGE_PREFIX}ROLE:${rk}`;
+    if (localStorage.getItem(roleOnlyKey) === '1' || sessionStorage.getItem(roleOnlyKey) === '1') return true;
+    // Check anon fallback if no id provided
+    if (candidates.length === 0) {
+      const anonKey = roleGuideStorageKey('anon', rk);
+      if (localStorage.getItem(anonKey) === '1' || sessionStorage.getItem(anonKey) === '1') return true;
+    }
+    return false;
   } catch {
     return true;
   }
 }
 
-export function markRoleGuideSeen(badgeId: string, roleKey: string): void {
+export function markRoleGuideSeen(
+  badgeId: string,
+  roleKey: string,
+  extraIds?: (string | undefined | null)[]
+): void {
   if (typeof window === 'undefined') return;
+  const rk = (roleKey || 'staff').toLowerCase();
+  const candidates = [badgeId, ...(extraIds || [])].filter(
+    (k): k is string => !!k && typeof k === 'string' && k.trim().length > 0
+  );
   try {
-    localStorage.setItem(roleGuideStorageKey(badgeId, roleKey), '1');
+    for (const id of candidates) {
+      const key = roleGuideStorageKey(id, rk);
+      localStorage.setItem(key, '1');
+      try { sessionStorage.setItem(key, '1'); } catch {}
+    }
+    // Also mark general role seen and anon so user is never prompted repeatedly
+    const roleOnlyKey = `${STORAGE_PREFIX}ROLE:${rk}`;
+    localStorage.setItem(roleOnlyKey, '1');
+    try { sessionStorage.setItem(roleOnlyKey, '1'); } catch {}
+
+    const anonKey = roleGuideStorageKey('anon', rk);
+    localStorage.setItem(anonKey, '1');
+    try { sessionStorage.setItem(anonKey, '1'); } catch {}
   } catch {
     /* ignore */
   }
@@ -48,6 +91,7 @@ export function resetRoleGuideSeen(badgeId: string, roleKey: string): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.removeItem(roleGuideStorageKey(badgeId, roleKey));
+    sessionStorage.removeItem(roleGuideStorageKey(badgeId, roleKey));
   } catch {
     /* ignore */
   }
@@ -434,6 +478,13 @@ export function getRoleGuide(roleKey: string): RoleGuide {
   return GUIDES[key] || FALLBACK;
 }
 
-export function shouldShowRoleGuide(badgeId: string, roleKey: string): boolean {
-  return !hasSeenRoleGuide(badgeId, roleKey);
+export function shouldShowRoleGuide(
+  badgeId: string,
+  roleKey: string,
+  extraIds?: (string | undefined | null)[]
+): boolean {
+  const rk = (roleKey || '').toLowerCase();
+  // Admin roles never get the clinical staff guide
+  if (rk === 'hospital_admin' || rk === 'admin' || rk === 'sysadmin') return false;
+  return !hasSeenRoleGuide(badgeId, rk, extraIds);
 }

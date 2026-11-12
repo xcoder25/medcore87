@@ -227,19 +227,38 @@ export function clearFacilityOnboarded(facilityId: string) {
   emit();
 }
 
-export function isStaffOnboarded(badgeId: string): boolean {
-  if (typeof window === 'undefined' || !badgeId) return true;
+export function isStaffOnboarded(badgeId: string, extraIds?: (string | undefined | null)[]): boolean {
+  if (typeof window === 'undefined') return true;
+  const candidates = [badgeId, ...(extraIds || [])].filter((k): k is string => !!k && typeof k === 'string' && k.trim().length > 0);
+  if (candidates.length === 0) return true;
   try {
-    return localStorage.getItem(STAFF_ONBOARD_PREFIX + badgeId) === '1';
+    for (const id of candidates) {
+      const clean = id.trim();
+      if (
+        localStorage.getItem(STAFF_ONBOARD_PREFIX + clean) === '1' ||
+        localStorage.getItem(STAFF_ONBOARD_PREFIX + clean.toUpperCase()) === '1' ||
+        sessionStorage.getItem(STAFF_ONBOARD_PREFIX + clean) === '1'
+      ) {
+        return true;
+      }
+    }
+    return false;
   } catch {
     return false;
   }
 }
 
-export function markStaffOnboarded(badgeId: string) {
-  if (typeof window === 'undefined' || !badgeId) return;
+export function markStaffOnboarded(badgeId: string, extraIds?: (string | undefined | null)[]) {
+  if (typeof window === 'undefined') return;
+  const candidates = [badgeId, ...(extraIds || [])].filter((k): k is string => !!k && typeof k === 'string' && k.trim().length > 0);
+  if (candidates.length === 0) return;
   try {
-    localStorage.setItem(STAFF_ONBOARD_PREFIX + badgeId, '1');
+    for (const id of candidates) {
+      const clean = id.trim();
+      localStorage.setItem(STAFF_ONBOARD_PREFIX + clean, '1');
+      localStorage.setItem(STAFF_ONBOARD_PREFIX + clean.toUpperCase(), '1');
+      try { sessionStorage.setItem(STAFF_ONBOARD_PREFIX + clean, '1'); } catch {}
+    }
   } catch {
     /* ignore */
   }

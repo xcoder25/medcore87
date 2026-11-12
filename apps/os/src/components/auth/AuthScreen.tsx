@@ -31,6 +31,7 @@ export interface UserSession {
   token?: string;
   loginTime?: string;
   pin?: string;
+  email?: string;
 }
 
 export interface PresetStaff {
@@ -1120,6 +1121,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         permissions: profile.permissions,
         authMethod: fbUser ? 'Staff Badge · Cloud Verified' : 'Staff Badge + PIN',
         pin: sessionPin,
+        email: (profile as { email?: string }).email || fbUser?.email || undefined,
         token: fbUser
           ? await withTimeout(fbUser.getIdToken(), 4000).catch(() => `PIN-${Date.now().toString(36)}`)
           : `PIN-${Date.now().toString(36)}`,
@@ -1377,6 +1379,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           permissions: matchedStaff.permissions,
           authMethod: 'MedCore Cloud',
           pin: sessionPin,
+          email: fbUser?.email || email || undefined,
           token: sessionToken,
           loginTime: new Date().toLocaleTimeString('en-GB', {
             hour: '2-digit',

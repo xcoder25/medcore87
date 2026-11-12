@@ -579,7 +579,11 @@ function StaffWizard({ session, onComplete }: { session: UserSession; onComplete
       completedAt: new Date().toISOString(),
     };
     saveStaffDraft(final);
-    markStaffOnboarded(session.badgeId || session.id);
+    // Mark all identity handles so the wizard never re-triggers after re-login
+    const extraIds = [session.id, session.email].filter(
+      (k): k is string => !!k && typeof k === 'string' && k.trim().length > 0
+    );
+    markStaffOnboarded(session.badgeId || session.id, extraIds);
     onComplete();
   };
 

@@ -773,7 +773,12 @@ const handleLockScreen = () => {
       userSession.roleKey || userSession.role || userSession.title,
       userSession.badgeId
     );
-    if (shouldShowRoleGuide(userSession.badgeId || '', guideRole)) {
+    // Skip guide for admin roles — they have AdminShell onboarding
+    const isAdminRole = guideRole === 'hospital_admin' || guideRole === 'admin' || guideRole === 'sysadmin'
+      || userSession.roleKey === 'hospital_admin';
+    // Pass all available identity handles so dismissal sticks across badge/email logins
+    const guideExtraIds = [userSession.id, userSession.email].filter(Boolean) as string[];
+    if (!isAdminRole && shouldShowRoleGuide(userSession.badgeId || '', guideRole, guideExtraIds)) {
       return (
         <RoleFirstRunGuide
           session={userSession}
