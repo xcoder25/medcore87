@@ -221,6 +221,123 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
             { label: 'Data hub', desc: 'Integration', icon: Database, go: 'data-hub' },
           ],
         };
+      // ── Specialty roles ────────────────────────────────────────────────────
+      case 'dentist':
+        return {
+          title: 'Dental Clinic Desk',
+          subtitle: 'Dental examination, odontogram, and oral procedures.',
+          badge: 'Dental · Oral Health',
+          boardTitle: "Today's dental queue",
+          boardEmpty: 'No dental appointments yet.',
+          quick: [
+            { label: 'Dental Suite', desc: 'Odontogram', icon: Sparkles, go: 'dental' },
+            { label: 'EMR', desc: 'Patient records', icon: FileText, go: 'emr' },
+            { label: 'Cashier', desc: 'Payments', icon: CreditCard, go: 'cashier' },
+            { label: 'Dental AI', desc: 'Clinical assist', icon: Brain, go: 'm87-ai' },
+          ],
+        };
+      case 'ophthalmologist':
+        return {
+          title: 'Eye Clinic Desk',
+          subtitle: 'Visual acuity, slit-lamp, and ophthalmology workups.',
+          badge: 'Ophthalmology · Eye Care',
+          boardTitle: "Today's eye clinic queue",
+          boardEmpty: 'No eye clinic appointments yet.',
+          quick: [
+            { label: 'Eye Clinic', desc: 'Optometry suite', icon: Eye, go: 'ophthalmology' },
+            { label: 'EMR', desc: 'Patient records', icon: FileText, go: 'emr' },
+            { label: 'Clinical AI', desc: 'Ophthalmic CDS', icon: Brain, go: 'm87-ai' },
+          ],
+        };
+      case 'physiotherapist':
+        return {
+          title: 'Physiotherapy Desk',
+          subtitle: 'Rehabilitation plans, session notes, and progress tracking.',
+          badge: 'Physiotherapy · Rehab',
+          boardTitle: "Today's rehab sessions",
+          boardEmpty: 'No sessions scheduled yet.',
+          quick: [
+            { label: 'Physio Suite', desc: 'Rehab plans', icon: Activity, go: 'physiotherapy' },
+            { label: 'EMR', desc: 'Patient records', icon: FileText, go: 'emr' },
+            { label: 'Clinical AI', desc: 'Rehab CDS', icon: Brain, go: 'm87-ai' },
+          ],
+        };
+      case 'nutritionist':
+        return {
+          title: 'Nutrition & Dietetics Desk',
+          subtitle: 'Dietary assessments, meal plans, and nutritional counselling.',
+          badge: 'Nutrition · Dietetics',
+          boardTitle: "Today's nutrition consults",
+          boardEmpty: 'No nutrition consults yet.',
+          quick: [
+            { label: 'Nutrition Suite', desc: 'Diet plans', icon: Sparkles, go: 'nutrition' },
+            { label: 'EMR', desc: 'Patient records', icon: FileText, go: 'emr' },
+            { label: 'Nutrition AI', desc: 'Dietary CDS', icon: Brain, go: 'm87-ai' },
+          ],
+        };
+      case 'psychiatrist':
+        return {
+          title: 'Psychiatry Desk',
+          subtitle: 'Mental health assessments, therapy notes, and care plans.',
+          badge: 'Psychiatry · Mental Health',
+          boardTitle: "Today's psychiatric queue",
+          boardEmpty: 'No psychiatric appointments yet.',
+          quick: [
+            { label: 'Psychiatry Suite', desc: 'Mental health EMR', icon: Brain, go: 'psychiatry' },
+            { label: 'EMR', desc: 'Patient records', icon: FileText, go: 'emr' },
+            { label: 'Clinical AI', desc: 'Psych CDS', icon: Brain, go: 'm87-ai' },
+          ],
+        };
+      case 'oncologist':
+        return {
+          title: 'Oncology Desk',
+          subtitle: 'Cancer staging, chemotherapy plans, and treatment tracking.',
+          badge: 'Oncology · Cancer Care',
+          boardTitle: "Today's oncology cases",
+          boardEmpty: 'No oncology cases today.',
+          quick: [
+            { label: 'Oncology Suite', desc: 'Chemo plans', icon: FlaskConical, go: 'oncology' },
+            { label: 'EMR', desc: 'Patient records', icon: FileText, go: 'emr' },
+            { label: 'Clinical AI', desc: 'Oncology CDS', icon: Brain, go: 'm87-ai' },
+          ],
+        };
+      case 'dialysis_nurse':
+        return {
+          title: 'Dialysis Unit Desk',
+          subtitle: 'Renal replacement therapy sessions and machine monitoring.',
+          badge: 'Dialysis · Renal Care',
+          boardTitle: "Today's dialysis sessions",
+          boardEmpty: 'No dialysis sessions scheduled.',
+          quick: [
+            { label: 'Dialysis Suite', desc: 'Session monitor', icon: Droplet, go: 'dialysis' },
+            { label: 'EMR', desc: 'Patient records', icon: FileText, go: 'emr' },
+            { label: 'Clinical AI', desc: 'Renal CDS', icon: Brain, go: 'm87-ai' },
+          ],
+        };
+      case 'mortuary_attendant':
+        return {
+          title: 'Mortuary Desk',
+          subtitle: 'Deceased record management, release, and documentation.',
+          badge: 'Mortuary · Pathology',
+          boardTitle: 'Active mortuary cases',
+          boardEmpty: 'No active mortuary cases.',
+          quick: [
+            { label: 'Mortuary Suite', desc: 'Deceased records', icon: FileCheck, go: 'mortuary' },
+            { label: 'EMR', desc: 'Patient records', icon: FileText, go: 'emr' },
+          ],
+        };
+      case 'cssd_technician':
+        return {
+          title: 'CSSD Desk',
+          subtitle: 'Instrument sterilisation cycles, tracking, and readiness.',
+          badge: 'CSSD · Sterilisation',
+          boardTitle: 'Sterilisation queue',
+          boardEmpty: 'No sterilisation cycles pending.',
+          quick: [
+            { label: 'CSSD Suite', desc: 'Sterilisation log', icon: Package, go: 'cssd' },
+            { label: 'Theatre', desc: 'OT link', icon: Activity, go: 'theatre' },
+          ],
+        };
       default:
         return null;
     }
@@ -235,6 +352,31 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
         config={sharedDesk}
         heroTheme={roleKey === 'midwife' ? 'theme-maternity' : undefined}
         accentColor={roleKey === 'midwife' ? '#DB2777' : undefined}
+      />
+    );
+  }
+
+  // ── Custom / unknown role — build a generic desk from stored custom role data ──
+  if (roleKey && roleKey !== 'records' && roleKey !== 'reception') {
+    const roleName = session.role || session.title || roleKey;
+    const displayTitle = roleName.charAt(0).toUpperCase() + roleName.slice(1);
+    const genericDesk: RoleDeskConfig = {
+      title: `${displayTitle} Desk`,
+      subtitle: `${displayTitle} workspace — clinical tools and patient records.`,
+      badge: displayTitle,
+      boardTitle: "Today's patient activity",
+      boardEmpty: 'No active visits yet.',
+      quick: [
+        { label: 'EMR', desc: 'Patient records', icon: FileText, go: 'emr' },
+        { label: 'Patient flow', desc: 'Queue', icon: Activity, go: 'patient-flow' },
+        { label: 'Clinical AI', desc: 'Celestia assist', icon: Brain, go: 'm87-ai' },
+      ],
+    };
+    return (
+      <RoleDeskHome
+        session={session}
+        onNavigate={(k) => onNavigate(k)}
+        config={genericDesk}
       />
     );
   }

@@ -1506,22 +1506,40 @@ export function ensureCardForSession(session: {
 /** Map role labels / badge middle segment → canonical roleKey */
 export function inferRoleKey(raw?: string, badgeId?: string): string {
   const s = String(raw || '').toLowerCase().trim();
+  // Fast-path: exact canonical roleKey match (includes all specialty + custom)
   if (
     s === 'doctor' || s === 'surgeon' || s === 'nurse' || s === 'midwife' ||
     s === 'pharmacist' || s === 'lab' || s === 'radiologist' || s === 'reception' ||
     s === 'records' || s === 'accountant' || s === 'sysadmin' || s === 'hospital_admin' ||
-    s === 'biomedical' || s === 'medical_director'
+    s === 'biomedical' || s === 'medical_director' ||
+    s === 'dentist' || s === 'ophthalmologist' || s === 'physiotherapist' ||
+    s === 'nutritionist' || s === 'psychiatrist' || s === 'oncologist' ||
+    s === 'dialysis_nurse' || s === 'mortuary_attendant' || s === 'cssd_technician'
   ) return s;
 
-  // Badge segment is authoritative — stops reception badges becoming "doctor"
+  // Check if 's' exactly matches any registered custom role key
+  try {
+    const customRaw = typeof window !== 'undefined' ? localStorage.getItem('medcore_os_custom_roles_v1') : null;
+    if (customRaw) {
+      const customRoles = JSON.parse(customRaw) as Array<{ roleKey?: string }>;
+      if (Array.isArray(customRoles) && customRoles.some((r) => r.roleKey === s)) {
+        return s; // Trust stored custom roleKey — avoids keyword mis-routing
+      }
+    }
+  } catch { /* ignore */ }
+
+
+  // Badge segment is authoritative only when the badge explicitly encodes a known role abbreviation
   const parts = String(badgeId || '').toUpperCase().split(/[-_/]/).filter(Boolean);
   const badgeMap: Record<string, string> = {
     DOC: 'doctor', SUR: 'surgeon', NUR: 'nurse', MID: 'midwife', PHA: 'pharmacist',
     LAB: 'lab', RAD: 'radiologist', REC: 'reception', RCPT: 'reception', FRO: 'reception',
-    FRD: 'reception', DES: 'reception', FDK: 'reception', OPD: 'reception',
+    FRD: 'reception', FDK: 'reception',
     REO: 'records', ACC: 'accountant', CAS: 'accountant', SYS: 'sysadmin', ICT: 'sysadmin',
     ADM: 'hospital_admin', HOS: 'hospital_admin', AMC: 'hospital_admin', BIO: 'biomedical', DIR: 'medical_director',
-    STF: 'records',
+    DEN: 'dentist', OPH: 'ophthalmologist', PHY: 'physiotherapist', NUT: 'nutritionist',
+    PSY: 'psychiatrist', ONC: 'oncologist', DIA: 'dialysis_nurse', MOR: 'mortuary_attendant',
+    CSS: 'cssd_technician',
   };
   if (parts.length >= 1) {
     for (let i = parts.length - 2; i >= 0; i--) {
@@ -1532,38 +1550,55 @@ export function inferRoleKey(raw?: string, badgeId?: string): string {
     }
   }
 
-  // Reception BEFORE clinical keywords
-  if (
-    s.includes('reception') || s.includes('receptionist') || s.includes('front desk') ||
-    s.includes('front-desk') || s.includes('frontdesk') || s.includes('front office') ||
-    s.includes('desk officer') || s.includes('desk clerk') || s.includes('patient service') ||
-    s.includes('patient liaison') || s.includes('appointment clerk') || s.includes('opd clerk') ||
-    s.includes('outpatient clerk') || s.includes('registration') || s.includes('cashier desk')
-  ) return 'reception';
-
-  if (s.includes('surgeon')) return 'surgeon';
+  // Clinical roles have highest priority when string raw is present
+  if (s.includes('surgeon') || s.includes('surgery') || s.includes('theatre') || s.includes('operative')) return 'surgeon';
+  if (s.includes('doctor') || s.includes('medical officer') || s.includes('physician') || s.includes('clinician') || s.includes('consultant')) return 'doctor';
+  if (s.includes('dent') || s.includes('oral')) return 'dentist';
+  if (s.includes('ophthal') || s.includes('optom') || s.includes('eye')) return 'ophthalmologist';
+  if (s.includes('physio') || s.includes('rehabilitation') || s.includes('rehab')) return 'physiotherapist';
+  if (s.includes('nutri') || s.includes('diet')) return 'nutritionist';
+  if (s.includes('psychi') || s.includes('mental health')) return 'psychiatrist';
+  if (s.includes('oncol') || s.includes('cancer') || s.includes('chemoth')) return 'oncologist';
+  if (s.includes('dialysis') || s.includes('renal')) return 'dialysis_nurse';
   if (s.includes('nurse')) return 'nurse';
   if (s.includes('midwife')) return 'midwife';
   if (s.includes('pharm')) return 'pharmacist';
   if (s.includes('lab') || s.includes('patholog') || s.includes('scientist')) return 'lab';
   if (s.includes('radio')) return 'radiologist';
-  if (s.includes('record') || s.includes('health information')) return 'records';
-  if (s.includes('account') || s.includes('finance') || s.includes('cashier') || s.includes('billing')) return 'accountant';
-  if (s.includes('biomed')) return 'biomedical';
+
+  // Support / Admin
   if (s.includes('director') || s.includes('superintendent')) return 'medical_director';
   if (s.includes('hospital_admin') || (s.includes('administrator') && !s.includes('system'))) return 'hospital_admin';
   if (s.includes('sysadmin') || s.includes('ict') || s.includes('system admin')) return 'sysadmin';
-  if (s.includes('doctor') || s.includes('medical officer') || s.includes('physician') || s.includes('clinician') || s.includes('consultant')) return 'doctor';
-  // NEVER default to doctor (opened clinical desk for reception)
+  if (s.includes('account') || s.includes('finance') || s.includes('cashier') || s.includes('billing')) return 'accountant';
+  if (s.includes('biomed')) return 'biomedical';
+  if (s.includes('mortuary') || s.includes('morgue')) return 'mortuary_attendant';
+  if (s.includes('cssd') || s.includes('steriliz') || s.includes('sterilis') || s.includes('central supply')) return 'cssd_technician';
+
+  // Front Desk / Reception
+  if (
+    s.includes('reception') || s.includes('receptionist') || s.includes('front desk') ||
+    s.includes('front-desk') || s.includes('frontdesk') || s.includes('front office') ||
+    s.includes('desk officer') || s.includes('desk clerk') || s.includes('patient service') ||
+    s.includes('patient liaison') || s.includes('appointment clerk') || s.includes('registration')
+  ) return 'reception';
+
+  if (s.includes('record') || s.includes('health information')) return 'records';
+
+  // Fallback for unclassified staff
   return 'records';
 }
 
 /** True when this role should land on reception front-desk workspace */
 export function isReceptionRole(roleKey?: string, role?: string, title?: string, badgeId?: string): boolean {
-  return inferRoleKey(roleKey || role || title || '', badgeId) === 'reception';
+  const explicit = (roleKey || '').toLowerCase().trim();
+  if (explicit) {
+    return explicit === 'reception';
+  }
+  return inferRoleKey(role || title || '', badgeId) === 'reception';
 }
 
-/** True when this role is a clinical care provider (doctor, nurse, surgeon, midwife, pharmacy, lab, radiology) */
+/** True when this role is a clinical care provider */
 export function isClinicalRole(roleKey?: string, role?: string, title?: string, badgeId?: string): boolean {
   const k = inferRoleKey(roleKey || role || title || '', badgeId);
   return (
@@ -1573,7 +1608,14 @@ export function isClinicalRole(roleKey?: string, role?: string, title?: string, 
     k === 'midwife' ||
     k === 'pharmacist' ||
     k === 'lab' ||
-    k === 'radiologist'
+    k === 'radiologist' ||
+    k === 'dentist' ||
+    k === 'ophthalmologist' ||
+    k === 'physiotherapist' ||
+    k === 'nutritionist' ||
+    k === 'psychiatrist' ||
+    k === 'oncologist' ||
+    k === 'dialysis_nurse'
   );
 }
 
