@@ -16,7 +16,7 @@ import {
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck, Landmark,
   Search, X, LayoutDashboard, MapPin, Ticket, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
-  Command, CornerDownLeft, IdCard, Key, Radio,
+  Command, CornerDownLeft, IdCard, Key, Radio, Award, Eye, Utensils, Droplets, FileCheck,
 } from 'lucide-react';
 
 // Master 7-Pillar Hospital Blueprint Directory
@@ -44,6 +44,15 @@ const MASTER_PILLARS: NavSection[] = [
       { key: 'paediatrics', icon: Baby, label: 'Paediatrics & NICU Incubators' },
       { key: 'blood-bank', icon: Droplet, label: 'Blood Bank & Transfusions' },
       { key: 'nursing', icon: FileText, label: 'Inpatient Nursing & e-MAR' },
+      { key: 'fluid-balance', icon: Droplets, label: 'Fluid Balance & 24hr I/O', badge: 'Chart' },
+      { key: 'cds-sepsis', icon: Zap, label: 'Sepsis CDS & Early Warning', badge: 'Alert' },
+      { key: 'consent-legal', icon: FileCheck, label: 'Digital Informed Consent & DAMA', badge: 'Legal' },
+      { key: 'certificates', icon: Award, label: 'Birth & Medical Certificate Gen', badge: 'AI' },
+      { key: 'ophthalmology', icon: Eye, label: 'Ophthalmology & Eye Clinic' },
+      { key: 'dental', icon: Sparkles, label: 'Dental Clinic & Odontogram' },
+      { key: 'physiotherapy', icon: Activity, label: 'Physiotherapy & Rehabilitation' },
+      { key: 'nutrition', icon: Utensils, label: 'Clinical Nutrition & Diet Orders' },
+      { key: 'mortuary', icon: Shield, label: 'Mortuary & Pathology Registry' },
       { key: 'triage', icon: Heart, label: 'OPD Triage & Vitals Station' },
       { key: 'patient-card', icon: FileText, label: 'Digital Health Card (FHIR)', badge: 'FHIR' },
     ],
@@ -58,6 +67,7 @@ const MASTER_PILLARS: NavSection[] = [
             { key: 'notifications', icon: Bell, label: 'Notifications' },
       { key: 'staffing', icon: Users, label: 'Doctor & Nurse Shift Rosters' },
       { key: 'inventory', icon: Package, label: 'Central Medical Store (CMS)' },
+      { key: 'cssd', icon: Package, label: 'CSSD Sterile Supply & Tray Barcodes', badge: 'CSSD' },
       { key: 'biomedical', icon: Wrench, label: 'Clinical device log (not CMMS) Assets' },
       { key: 'facilities', icon: Gauge, label: 'Oxygen Plant & Utilities' },
       { key: 'environmental', icon: Trash2, label: 'Environmental Health & Safety' },

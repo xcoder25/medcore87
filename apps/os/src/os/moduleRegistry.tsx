@@ -88,6 +88,18 @@ export const RapidNurseTriageIntake = dynamic(() => import('../components/clinic
 export const ClinicalGoogleSearchSuite = dynamic(() => import('../components/ai-insights/ClinicalGoogleSearchSuite').then(m => m.ClinicalGoogleSearchSuite), { loading: () => <ModulePageLoader label="Opening Clinical Google Search…" /> });
 export const TelehealthMeshSuite = dynamic(() => import('../components/interop/TelehealthMeshSuite').then(m => m.TelehealthMeshSuite), { loading: () => <ModulePageLoader label="Opening Satellite & Telehealth Mesh…" /> });
 
+// Specialized Hospital EMR Suites
+export const CertificateGeneratorSuite = dynamic(() => import('../components/clinical-core/CertificateGeneratorSuite').then(m => m.CertificateGeneratorSuite), { loading: () => <ModulePageLoader label="Opening Certificate Generator…" /> });
+export const DentalOdontogramSuite = dynamic(() => import('../components/clinical-core/DentalOdontogramSuite').then(m => m.DentalOdontogramSuite), { loading: () => <ModulePageLoader label="Opening Dental Clinic Odontogram…" /> });
+export const PhysiotherapyRehabSuite = dynamic(() => import('../components/clinical-core/PhysiotherapyRehabSuite').then(m => m.PhysiotherapyRehabSuite), { loading: () => <ModulePageLoader label="Opening Physiotherapy & Rehab…" /> });
+export const MortuaryRegistrySuite = dynamic(() => import('../components/clinical-core/MortuaryRegistrySuite').then(m => m.MortuaryRegistrySuite), { loading: () => <ModulePageLoader label="Opening Mortuary Registry…" /> });
+export const CssdSterileSupplySuite = dynamic(() => import('../components/clinical-core/CssdSterileSupplySuite').then(m => m.CssdSterileSupplySuite), { loading: () => <ModulePageLoader label="Opening CSSD Sterile Supply…" /> });
+export const ClinicalNutritionDietarySuite = dynamic(() => import('../components/clinical-core/ClinicalNutritionDietarySuite').then(m => m.ClinicalNutritionDietarySuite), { loading: () => <ModulePageLoader label="Opening Inpatient Dietary…" /> });
+export const ClinicalDecisionSupportSuite = dynamic(() => import('../components/clinical-core/ClinicalDecisionSupportSuite').then(m => m.ClinicalDecisionSupportSuite), { loading: () => <ModulePageLoader label="Opening Sepsis CDS Engine…" /> });
+export const DigitalConsentSuite = dynamic(() => import('../components/clinical-core/DigitalConsentSuite').then(m => m.DigitalConsentSuite), { loading: () => <ModulePageLoader label="Opening Digital Consent Pad…" /> });
+export const FluidBalanceSuite = dynamic(() => import('../components/clinical-core/FluidBalanceSuite').then(m => m.FluidBalanceSuite), { loading: () => <ModulePageLoader label="Opening Fluid Balance Chart…" /> });
+export const OphthalmologySuite = dynamic(() => import('../components/clinical-core/OphthalmologySuite').then(m => m.OphthalmologySuite), { loading: () => <ModulePageLoader label="Opening Eye Clinic Exam…" /> });
+
 
 export type ModuleKey =
   | 'dashboard'
@@ -98,6 +110,7 @@ export type ModuleKey =
   // Pillar 2: Core
   | 'emr' | 'emergency' | 'theatre' | 'icu' | 'pharmacy' | 'laboratory' | 'radiology' | 'him' | 'him-deficiency' | 'him-coding' | 'him-roi' | 'him-chart' | 'him-merge' | 'him-docs'
   | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'triage' | 'rapid-triage' | 'workflow-intelligence' | 'intel-hub' | 'patient-card' | 'patient-360' | 'clinical-ux' | 'device-gateway'
+  | 'certificates' | 'dental' | 'physiotherapy' | 'mortuary' | 'cssd' | 'nutrition' | 'cds-sepsis' | 'consent-legal' | 'fluid-balance' | 'ophthalmology'
   // Pillar 3: Operations
   | 'command' | 'beds' | 'patient-flow' | 'universal-queue' | 'appointments' | 'staffing' | 'ambulance' | 'notifications'
   | 'inventory' | 'biomedical' | 'facilities' | 'environmental'
@@ -220,6 +233,17 @@ export const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
   transfer: HospitalStaffTransfer as any,
   enrolment: StaffEnrolment as any,
   'my-card': MyStaffIdPanel,
+  // Hospital Core Specialty Suites
+  certificates: CertificateGeneratorSuite as any,
+  dental: DentalOdontogramSuite as any,
+  physiotherapy: PhysiotherapyRehabSuite as any,
+  mortuary: MortuaryRegistrySuite as any,
+  cssd: CssdSterileSupplySuite as any,
+  nutrition: ClinicalNutritionDietarySuite as any,
+  'cds-sepsis': ClinicalDecisionSupportSuite as any,
+  'consent-legal': DigitalConsentSuite as any,
+  'fluid-balance': FluidBalanceSuite as any,
+  ophthalmology: OphthalmologySuite as any,
 };
 
 export const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDesc: string }> = {
@@ -302,6 +326,16 @@ export const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string;
   'my-card': { level: 2, label: 'All staff', roleDesc: 'Staff identity card' },
   'desk-settings': { level: 2, label: 'Front desk', roleDesc: 'Reception & front desk operations settings' },
   'front-desk-wq': { level: 1, label: 'L2 Front Desk', roleDesc: 'Epic/Cerner workqueues — grid, recall, referrals' },
+  certificates: { level: 2, label: 'L2 HIM & Clinical', roleDesc: 'Birth, Fitness, Sick Leave & Death Certificate Generation' },
+  dental: { level: 3, label: 'L3 Clinical', roleDesc: 'Dental Surgeons & Odontologists' },
+  physiotherapy: { level: 3, label: 'L3 Clinical', roleDesc: 'Physiotherapists & Physical Rehabilitation' },
+  mortuary: { level: 2, label: 'L2 Pathology & HIM', roleDesc: 'Mortuary Attendants & Pathology Officers' },
+  cssd: { level: 2, label: 'L2 Support & Theatre', roleDesc: 'Sterilization & CSSD Technicians' },
+  nutrition: { level: 2, label: 'L2 Support & Nursing', roleDesc: 'Clinical Dietitians & Kitchen Staff' },
+  'cds-sepsis': { level: 3, label: 'L3 Clinical', roleDesc: 'Physicians & Critical Care Nurses' },
+  'consent-legal': { level: 2, label: 'L2 Clinical & Legal', roleDesc: 'Digital Surgical & Medical Consent' },
+  'fluid-balance': { level: 2, label: 'L2 Nursing', roleDesc: 'Inpatient Fluid Intake & Output Tracking' },
+  ophthalmology: { level: 3, label: 'L3 Clinical', roleDesc: 'Ophthalmologists & Optometrists' },
 };
 
 

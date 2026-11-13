@@ -31,10 +31,14 @@ export const MODULE_CATALOG: { key: string; label: string; group: string }[] = [
   { key: 'ophthalmology', label: 'Ophthalmology & Eye Clinic Exam Grid', group: 'Clinical' },
   { key: 'fluid-balance', label: 'Nursing Fluid Balance & 24hr I/O Flowsheet', group: 'Clinical' },
   { key: 'consent-legal', label: 'Digital Treatment & Surgical Consent Pad', group: 'Clinical' },
+  { key: 'certificates', label: 'Birth, Fitness, Sick Leave & Death Certificate Generation', group: 'Clinical' },
+  { key: 'cds-sepsis', label: 'Automated Sepsis CDS & Deterioration Early Warning', group: 'Clinical' },
   { key: 'dialysis', label: 'Renal Dialysis & Hemodialysis Station', group: 'Clinical' },
   { key: 'physiotherapy', label: 'Physiotherapy & Physical Rehabilitation', group: 'Clinical' },
   { key: 'dental', label: 'Dental Clinic & Odontogram', group: 'Clinical' },
   { key: 'nutrition', label: 'Clinical Nutrition & Dietetics', group: 'Clinical' },
+  { key: 'mortuary', label: 'Mortuary, Pathology & Deceased Body Storage', group: 'Clinical' },
+  { key: 'cssd', label: 'CSSD Sterile Supply & Surgical Tray Barcodes', group: 'Operations' },
 
   // Operations
   { key: 'command', label: 'Hospital command centre', group: 'Operations' },
@@ -225,6 +229,7 @@ const DEFAULTS: Record<string, string[]> = {
     'workflow-intelligence', 'patient-360', 'notifications',
     'emr', 'pharmacy', 'laboratory', 'lab', 'radiology',
     'emergency', 'beds', 'icu', 'theatre',
+    'certificates', 'cds-sepsis', 'consent-legal', 'fluid-balance', 'ophthalmology', 'dental', 'physiotherapy', 'nutrition',
     'm87-ai', 'ai', 'patient-card', 'my-card',
     ...CLINICAL_PATIENT, 'patient.full_chart',
   ],
@@ -233,6 +238,7 @@ const DEFAULTS: Record<string, string[]> = {
     'dashboard', 'theatre', 'doctor-portal', 'universal-queue', 'patient-flow', 'appointments',
     'workflow-intelligence', 'notifications',
     'icu', 'beds', 'blood-bank', 'emergency',
+    'certificates', 'consent-legal', 'cds-sepsis', 'cssd',
     'laboratory', 'lab', 'radiology', 'emr',
     'm87-ai', 'ai', 'patient-card', 'my-card',
     ...CLINICAL_PATIENT, 'patient.procedures',
@@ -241,6 +247,7 @@ const DEFAULTS: Record<string, string[]> = {
     'dashboard', 'nursing', 'triage', 'workflow-intelligence', 'beds', 'notifications',
     'patient-flow', 'emergency', 'pharmacy', 'blood-bank',
     'maternity', 'paediatrics', 'icu',
+    'fluid-balance', 'nutrition', 'cds-sepsis', 'consent-legal',
     'm87-ai', 'ai', 'patient-card', 'my-card', 'emr',
     'patient.identity', 'patient.contact', 'patient.vitals', 'patient.allergies',
     'patient.problems', 'patient.notes', 'patient.meds', 'patient.labs',
@@ -248,6 +255,7 @@ const DEFAULTS: Record<string, string[]> = {
   midwife: [
     'dashboard', 'maternity', 'paediatrics', 'notifications',
     'beds', 'emergency', 'my-card', 'patient-360',
+    'certificates', 'fluid-balance', 'cds-sepsis',
     'm87-ai', 'ai',
     'patient.identity', 'patient.contact', 'patient.demographics', 'patient.vitals',
     'patient.allergies', 'patient.problems', 'patient.notes', 'patient.meds',
@@ -264,14 +272,14 @@ const DEFAULTS: Record<string, string[]> = {
   lab: [
     'dashboard', 'laboratory', 'lab', 'lis', 'notifications',
     'blood-bank', 'iot-devices', 'my-card',
-    'm87-ai', 'ai', 'him', 'him-deficiency', 'him-coding', 'him-roi', 'him-chart', 'him-merge', 'him-docs',
+    'certificates', 'mortuary', 'm87-ai', 'ai', 'him', 'him-deficiency', 'him-coding', 'him-roi', 'him-chart', 'him-merge', 'him-docs',
     'patient.identity', 'patient.labs', 'patient.vitals',
   ],
   // Radiologists — imaging only (not full OPD / prescribing)
   radiologist: [
     'dashboard', 'radiology', 'notifications',
     'emr', 'patient-card', 'my-card',
-    'm87-ai', 'ai', 'him', 'him-deficiency', 'him-coding', 'him-roi', 'him-chart', 'him-merge', 'him-docs',
+    'certificates', 'mortuary', 'm87-ai', 'ai', 'him', 'him-deficiency', 'him-coding', 'him-roi', 'him-chart', 'him-merge', 'him-docs',
     'patient.identity', 'patient.imaging', 'patient.problems',
   ],
   reception: [
@@ -281,7 +289,7 @@ const DEFAULTS: Record<string, string[]> = {
   ],
   records: [
     'dashboard', 'patient-card', 'patient-flow', 'beds', 'emr', 'my-card', 'notifications', 'claims',
-    'm87-ai', 'ai', 'him', 'him-deficiency', 'him-coding', 'him-roi', 'him-chart', 'him-merge', 'him-docs',
+    'certificates', 'mortuary', 'm87-ai', 'ai', 'him', 'him-deficiency', 'him-coding', 'him-roi', 'him-chart', 'him-merge', 'him-docs',
     'patient.identity', 'patient.contact', 'patient.demographics',
   ],
   accountant: [
@@ -297,7 +305,9 @@ const DEFAULTS: Record<string, string[]> = {
     'dashboard', 'command', 'doctor-portal', 'm87-ai', 'ai', 'analytics',
     'emergency', 'theatre', 'icu', 'pharmacy', 'laboratory', 'lab', 'radiology',
     'blood-bank', 'beds', 'nursing', 'ambulance', 'notifications',
-    'compliance', 'akwaremit', 'my-card', 'patient.full_chart', ...CLINICAL_PATIENT,
+    'compliance', 'akwaremit', 'my-card',
+    'certificates', 'mortuary', 'cssd', 'cds-sepsis', 'consent-legal', 'fluid-balance', 'ophthalmology', 'dental', 'physiotherapy', 'nutrition',
+    'patient.full_chart', ...CLINICAL_PATIENT,
   ],
   sysadmin: [
     'dashboard', 'staffing', 'analytics', 'ai', 'm87-ai', 'sysadmin', 'rbac', 'enrolment',
