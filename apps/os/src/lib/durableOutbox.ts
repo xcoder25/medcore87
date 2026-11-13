@@ -151,8 +151,10 @@ export function startOutboxAutoFlush(intervalMs = 20000): () => void {
   // Flush soon after load (covers “power restored, browser reopened”)
   void flushOutbox();
   const id = setInterval(() => {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    if (readOutbox().length === 0) return;
     void flushOutbox();
-  }, intervalMs);
+  }, Math.max(intervalMs, 30000));
 
   // Best-effort flush before tab close
   const onUnload = () => {

@@ -308,10 +308,13 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key } }));
       } catch { /* ignore */ }
     };
-    const stopSync = startFacilitySyncLoop(fid, applyKey, 4000);
+    const stopSync = startFacilitySyncLoop(fid, applyKey, 15000);
     void enableFirestoreOffline();
-    const stopOutbox = startOutboxAutoFlush(12000);
-    const pendingIv = setInterval(() => setPendingSync(getOutboxPendingCount()), 3000);
+    const stopOutbox = startOutboxAutoFlush(20000);
+    const pendingIv = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setPendingSync(getOutboxPendingCount());
+    }, 15000);
     setPendingSync(getOutboxPendingCount());
     const stopFs = firestoreSubscribeFacility(fid, (data) => {
       setHospitalShare('cloud');

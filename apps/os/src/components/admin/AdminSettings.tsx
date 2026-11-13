@@ -179,7 +179,10 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
     const onOff = () => setOnline(false);
     window.addEventListener('online', onOn);
     window.addEventListener('offline', onOff);
-    const iv = setInterval(() => setPending(getOutboxPendingCount()), 2000);
+    const iv = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setPending(getOutboxPendingCount());
+    }, 15000);
     setPending(getOutboxPendingCount());
     return () => {
       unsub();

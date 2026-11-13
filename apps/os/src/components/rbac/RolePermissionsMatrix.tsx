@@ -261,8 +261,8 @@ export const RolePermissionsMatrix: React.FC = () => {
           margin: 0 -4px;
           padding: 14px 16px;
           border-radius: 16px;
-          background: rgba(255,255,255,0.92);
-          backdrop-filter: blur(12px);
+          background: rgba(255,255,255,0.97);
+          backdrop-filter: blur(4px);
           border: 1px solid #E2E8F0;
           box-shadow: 0 -8px 32px rgba(15,23,42,0.08);
           display: flex;

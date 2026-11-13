@@ -34,24 +34,8 @@ export interface UserSession {
   email?: string;
 }
 
-export interface PresetStaff {
-  badgeId: string;
-  name: string;
-  role: string;
-  shortRole: string;
-  title: string;
-  roleKey: string;
-  clearanceLevel: number;
-  clearanceLabel: string;
-  department: string;
-  initials: string;
-  permissions: string[];
-  pin: string;
-  hospitalId?: string;
-  hospitalName?: string;
-  photoUrl?: string;
-  color?: string;
-}
+import { PRESET_STAFF, type PresetStaff } from '../../lib/authPresets';
+export { PRESET_STAFF, type PresetStaff };
 
 export interface Hospital {
   id: string;
@@ -130,9 +114,7 @@ export function getPlatformAdmin(): typeof PLATFORM_ADMIN {
   return PLATFORM_ADMIN;
 }
 
-export const PRESET_STAFF: PresetStaff[] = [
-  // Demo/hardcoded staff removed — logins require enrolled staff + Firebase Auth.
-];
+
 
 export interface AuthScreenProps {
   onLogin?: (session: UserSession) => void;
@@ -1829,8 +1811,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     rgba(0,191,165,0.80) 100%
   );
   background-size: 200% 200%;
-  backdrop-filter: blur(14px) saturate(1.7);
-  -webkit-backdrop-filter: blur(14px) saturate(1.7);
+  backdrop-filter: blur(6px) saturate(1.2);
+  -webkit-backdrop-filter: blur(6px) saturate(1.2);
   color: #FFFFFF;
   font-weight: 800;
   font-size: 0.97rem;
@@ -1996,8 +1978,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     rgba(0,191,165,0.80) 100%
   );
   background-size: 200% 200%;
-  backdrop-filter: blur(14px) saturate(1.7);
-  -webkit-backdrop-filter: blur(14px) saturate(1.7);
+  backdrop-filter: blur(6px) saturate(1.2);
+  -webkit-backdrop-filter: blur(6px) saturate(1.2);
   color: #FFFFFF;
   font-weight: 800;
   font-size: 0.97rem;

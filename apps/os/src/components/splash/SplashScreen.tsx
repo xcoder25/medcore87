@@ -83,7 +83,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         clearInterval(timer);
         finish();
       }
-    }, 32);
+    }, 80);
 
     const hardCap = setTimeout(finish, isLowNet ? 1200 : 3500);
 

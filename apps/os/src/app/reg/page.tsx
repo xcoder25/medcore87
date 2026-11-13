@@ -166,8 +166,8 @@ const STYLES = `
       rgba(0,191,165,0.80) 100%
     );
     background-size: 200% 200%;
-    backdrop-filter: blur(14px) saturate(1.7);
-    -webkit-backdrop-filter: blur(14px) saturate(1.7);
+    backdrop-filter: blur(6px) saturate(1.2);
+    -webkit-backdrop-filter: blur(6px) saturate(1.2);
     color: #FFFFFF;
     font-weight: 800;
     font-size: 0.97rem;

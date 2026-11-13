@@ -461,7 +461,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       bc = new BroadcastChannel('medcore_reception');
       bc.onmessage = () => reload();
     } catch { /* ignore */ }
-    const poll = window.setInterval(reload, 8000); // 8s poll for snappy live feel
+    const poll = window.setInterval(() => { if (!document.hidden) reload(); }, 20000); // 20s poll, paused when tab hidden
     return () => {
       u1();
       u2();

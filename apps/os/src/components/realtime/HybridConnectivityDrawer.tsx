@@ -44,7 +44,10 @@ export const HybridConnectivityDrawer: React.FC = () => {
     window.addEventListener('online', reloadData);
     window.addEventListener('offline', reloadData);
 
-    const iv = setInterval(reloadData, 3000);
+    const iv = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      reloadData();
+    }, 20000);
 
     return () => {
       window.removeEventListener(CONNECTIVITY_EVENT, onConn);

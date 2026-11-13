@@ -76,9 +76,15 @@ enableEdgeCloudOnlyRuntime();
 
 import { ModulePageLoader } from '../components/layout/ModulePageLoader';
 
-// Splash & Auth — small, needed synchronously for first paint
+// Splash & Auth — lightweight splash with code-split AuthScreen
 import { SplashScreen } from '../components/splash/SplashScreen';
-import { AuthScreen, UserSession, PRESET_STAFF } from '../components/auth/AuthScreen';
+import type { UserSession } from '../components/auth/AuthScreen';
+import { PRESET_STAFF } from '../lib/authPresets';
+
+const AuthScreen = dynamic(
+  () => import('../components/auth/AuthScreen').then((m) => m.AuthScreen),
+  { loading: () => <ModulePageLoader label="Opening Staff Sign-in…" />, ssr: false }
+);
 
 // Core & Specialty Modules — ALL lazy loaded via next/dynamic.
 // The service worker pre-caches their chunks after first login so they open
@@ -99,6 +105,7 @@ const TopHudClock = React.memo(function TopHudClock() {
   const [time, setTime] = useState('');
   useEffect(() => {
     const update = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       const now = new Date();
       setTime(now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     };
@@ -261,9 +268,15 @@ export default function OSPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permTick, activeModule, userSession?.roleKey, userSession?.clearanceLevel]);
 
-  // Live sidebar when admin ticks modules in role visibility matrix
+  // Live sidebar when admin ticks modules in role visibility matrix (debounced to save main thread)
   useEffect(() => {
-    const bump = () => setPermTick((n) => n + 1);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const bump = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        setPermTick((n) => n + 1);
+      }, 500);
+    };
     window.addEventListener('medcore-role-permissions', bump);
     window.addEventListener('medcore-admin-sync', bump);
     const onStorage = (e: StorageEvent) => {
@@ -271,6 +284,7 @@ export default function OSPage() {
     };
     window.addEventListener('storage', onStorage);
     return () => {
+      if (timer) clearTimeout(timer);
       window.removeEventListener('medcore-role-permissions', bump);
       window.removeEventListener('medcore-admin-sync', bump);
       window.removeEventListener('storage', onStorage);

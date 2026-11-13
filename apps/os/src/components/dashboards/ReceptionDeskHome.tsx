@@ -206,7 +206,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     window.addEventListener('medcore-facility-cloud', bump);
     window.addEventListener('medcore-staff-cards-updated', bump);
     window.addEventListener('medcore-staff-registry-updated', bump);
-    const tick = window.setInterval(bump, 4000);
+    const tick = window.setInterval(() => { if (!document.hidden) bump(); }, 15000);
     return () => {
       unsub();
       stopCloud();

@@ -222,6 +222,7 @@ export function startFacilitySyncLoop(
 
   const tick = async () => {
     if (stopped) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
     if (!isLanApiEligible()) return;
     const ok = await probeHospitalApi();
     if (!ok) return;
