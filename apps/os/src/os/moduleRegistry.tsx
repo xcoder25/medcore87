@@ -99,6 +99,14 @@ export const ClinicalDecisionSupportSuite = dynamic(() => import('../components/
 export const DigitalConsentSuite = dynamic(() => import('../components/clinical-core/DigitalConsentSuite').then(m => m.DigitalConsentSuite), { loading: () => <ModulePageLoader label="Opening Digital Consent Pad…" /> });
 export const FluidBalanceSuite = dynamic(() => import('../components/clinical-core/FluidBalanceSuite').then(m => m.FluidBalanceSuite), { loading: () => <ModulePageLoader label="Opening Fluid Balance Chart…" /> });
 export const OphthalmologySuite = dynamic(() => import('../components/clinical-core/OphthalmologySuite').then(m => m.OphthalmologySuite), { loading: () => <ModulePageLoader label="Opening Eye Clinic Exam…" /> });
+export const DialysisHemodialysisSuite = dynamic(() => import('../components/clinical-core/DialysisHemodialysisSuite').then(m => m.DialysisHemodialysisSuite), { loading: () => <ModulePageLoader label="Opening Hemodialysis Suite…" /> });
+export const OncologyChemotherapySuite = dynamic(() => import('../components/clinical-core/OncologyChemotherapySuite').then(m => m.OncologyChemotherapySuite), { loading: () => <ModulePageLoader label="Opening Oncology & Chemo Suite…" /> });
+export const ImmunizationColdChainSuite = dynamic(() => import('../components/clinical-core/ImmunizationColdChainSuite').then(m => m.ImmunizationColdChainSuite), { loading: () => <ModulePageLoader label="Opening Immunization & Cold Chain…" /> });
+export const PsychiatryMentalHealthSuite = dynamic(() => import('../components/clinical-core/PsychiatryMentalHealthSuite').then(m => m.PsychiatryMentalHealthSuite), { loading: () => <ModulePageLoader label="Opening Psychiatry & Mental Health…" /> });
+export const BloodGlucoseInsulinSuite = dynamic(() => import('../components/clinical-core/BloodGlucoseInsulinSuite').then(m => m.BloodGlucoseInsulinSuite), { loading: () => <ModulePageLoader label="Opening CBG & Insulin Flowsheet…" /> });
+export const DischargeSummaryCompilerSuite = dynamic(() => import('../components/clinical-core/DischargeSummaryCompilerSuite').then(m => m.DischargeSummaryCompilerSuite), { loading: () => <ModulePageLoader label="Opening Discharge Summary Compiler…" /> });
+export const PharmacovigilanceAdrSuite = dynamic(() => import('../components/clinical-core/PharmacovigilanceAdrSuite').then(m => m.PharmacovigilanceAdrSuite), { loading: () => <ModulePageLoader label="Opening Pharmacovigilance & ADR…" /> });
+export const ClinicalIncidentSafetySuite = dynamic(() => import('../components/clinical-core/ClinicalIncidentSafetySuite').then(m => m.ClinicalIncidentSafetySuite), { loading: () => <ModulePageLoader label="Opening Clinical Incident & Safety…" /> });
 
 
 export type ModuleKey =
@@ -111,6 +119,7 @@ export type ModuleKey =
   | 'emr' | 'emergency' | 'theatre' | 'icu' | 'pharmacy' | 'laboratory' | 'radiology' | 'him' | 'him-deficiency' | 'him-coding' | 'him-roi' | 'him-chart' | 'him-merge' | 'him-docs'
   | 'maternity' | 'paediatrics' | 'blood-bank' | 'nursing' | 'triage' | 'rapid-triage' | 'workflow-intelligence' | 'intel-hub' | 'patient-card' | 'patient-360' | 'clinical-ux' | 'device-gateway'
   | 'certificates' | 'dental' | 'physiotherapy' | 'mortuary' | 'cssd' | 'nutrition' | 'cds-sepsis' | 'consent-legal' | 'fluid-balance' | 'ophthalmology'
+  | 'dialysis' | 'oncology' | 'immunization' | 'psychiatry' | 'glucometer-insulin' | 'discharge-summary' | 'pharmacovigilance' | 'incident-safety'
   // Pillar 3: Operations
   | 'command' | 'beds' | 'patient-flow' | 'universal-queue' | 'appointments' | 'staffing' | 'ambulance' | 'notifications'
   | 'inventory' | 'biomedical' | 'facilities' | 'environmental'
@@ -244,6 +253,14 @@ export const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
   'consent-legal': DigitalConsentSuite as any,
   'fluid-balance': FluidBalanceSuite as any,
   ophthalmology: OphthalmologySuite as any,
+  dialysis: DialysisHemodialysisSuite as any,
+  oncology: OncologyChemotherapySuite as any,
+  immunization: ImmunizationColdChainSuite as any,
+  psychiatry: PsychiatryMentalHealthSuite as any,
+  'glucometer-insulin': BloodGlucoseInsulinSuite as any,
+  'discharge-summary': DischargeSummaryCompilerSuite as any,
+  pharmacovigilance: PharmacovigilanceAdrSuite as any,
+  'incident-safety': ClinicalIncidentSafetySuite as any,
 };
 
 export const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string; roleDesc: string }> = {
@@ -336,6 +353,14 @@ export const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string;
   'consent-legal': { level: 2, label: 'L2 Clinical & Legal', roleDesc: 'Digital Surgical & Medical Consent' },
   'fluid-balance': { level: 2, label: 'L2 Nursing', roleDesc: 'Inpatient Fluid Intake & Output Tracking' },
   ophthalmology: { level: 3, label: 'L3 Clinical', roleDesc: 'Ophthalmologists & Optometrists' },
+  dialysis: { level: 3, label: 'L3 Clinical / Nephrology', roleDesc: 'Nephrologists & Dialysis Nurses' },
+  oncology: { level: 3, label: 'L3 Clinical / Oncology', roleDesc: 'Clinical Oncologists & Chemo Nurses' },
+  immunization: { level: 2, label: 'L2 Nursing & Public Health', roleDesc: 'Vaccinators & Public Health Officers' },
+  psychiatry: { level: 3, label: 'L3 Clinical / Psychiatry', roleDesc: 'Psychiatrists & Mental Health Nurses' },
+  'glucometer-insulin': { level: 2, label: 'L2 Nursing & Inpatient', roleDesc: 'Ward Nurses & Endocrine Team' },
+  'discharge-summary': { level: 2, label: 'L2 Clinical & Records', roleDesc: 'Medical Officers, Registrars & HIM' },
+  pharmacovigilance: { level: 2, label: 'L2 Pharmacy & Clinical', roleDesc: 'Pharmacists & Adverse Reaction Monitors' },
+  'incident-safety': { level: 2, label: 'L2 All Staff & CQI', roleDesc: 'Clinical Quality & Patient Safety Officers' },
 };
 
 

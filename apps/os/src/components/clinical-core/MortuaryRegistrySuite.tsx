@@ -441,3 +441,4 @@ export const MortuaryRegistrySuite: React.FC<Props> = ({ session, onNavigate }) 
 };
 
 export default MortuaryRegistrySuite;
+

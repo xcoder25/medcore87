@@ -283,3 +283,4 @@ export const PhysiotherapyRehabSuite: React.FC<Props> = ({ session, onNavigate }
 };
 
 export default PhysiotherapyRehabSuite;
+

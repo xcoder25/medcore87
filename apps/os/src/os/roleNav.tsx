@@ -17,6 +17,7 @@ import {
   Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck, Landmark,
   Search, X, LayoutDashboard, MapPin, Ticket, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
   Command, CornerDownLeft, IdCard, Key, Radio, Award, Eye, Utensils, Droplets, FileCheck,
+  Syringe, AlertOctagon, ShieldAlert,
 } from 'lucide-react';
 
 // Master 7-Pillar Hospital Blueprint Directory
@@ -52,6 +53,13 @@ const MASTER_PILLARS: NavSection[] = [
       { key: 'dental', icon: Sparkles, label: 'Dental Clinic & Odontogram' },
       { key: 'physiotherapy', icon: Activity, label: 'Physiotherapy & Rehabilitation' },
       { key: 'nutrition', icon: Utensils, label: 'Clinical Nutrition & Diet Orders' },
+      { key: 'dialysis', icon: Activity, label: 'Renal Dialysis & Hemodialysis', badge: 'Renal' },
+      { key: 'oncology', icon: HeartPulse, label: 'Medical Oncology & Chemo', badge: 'Onc' },
+      { key: 'immunization', icon: Syringe, label: 'Immunization & Cold Chain EPI', badge: 'EPI' },
+      { key: 'psychiatry', icon: Brain, label: 'Psychiatry & Behavioral Health', badge: 'MSE' },
+      { key: 'glucometer-insulin', icon: Droplet, label: 'Blood Glucose & Insulin Scale', badge: 'CBG' },
+      { key: 'discharge-summary', icon: FileCheck, label: 'Inpatient Discharge Compiler', badge: 'TTO' },
+      { key: 'pharmacovigilance', icon: AlertOctagon, label: 'Pharmacovigilance & Yellow Form ADR', badge: 'NAFDAC' },
       { key: 'mortuary', icon: Shield, label: 'Mortuary & Pathology Registry' },
       { key: 'triage', icon: Heart, label: 'OPD Triage & Vitals Station' },
       { key: 'patient-card', icon: FileText, label: 'Digital Health Card (FHIR)', badge: 'FHIR' },
@@ -111,6 +119,7 @@ const MASTER_PILLARS: NavSection[] = [
       { key: 'facility', icon: Building2, label: 'Hospital Facility Setup' },
       { key: 'rbac', icon: Shield, label: 'Staff Access & Enrolment' },
       { key: 'compliance', icon: FileText, label: 'Clinical Audit & Quality Logs' },
+      { key: 'incident-safety', icon: ShieldAlert, label: 'Clinical Incident & Safety Governance', badge: 'CQI' },
       { key: 'safety', icon: ShieldCheck, label: 'Consent & Business Continuity' },
       { key: 'sysadmin', icon: Settings, label: 'System Administration' },
     ],
