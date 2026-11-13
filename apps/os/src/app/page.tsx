@@ -1464,7 +1464,7 @@ const handleLockScreen = () => {
           >
             <Sparkles size={14} />
             <span>Ask Patient File</span>
-            <span style={{ opacity: 0.8, fontSize: '0.68rem', background: activeModule === 'clinical-search' ? 'rgba(255,255,255,0.2)' : 'rgba(13,148,136,0.15)', padding: '1px 5px', borderRadius: 4 }}>⌘J</span>
+            <span className="os-top-hud-ask-patient-kbd" style={{ opacity: 0.8, fontSize: '0.68rem', background: activeModule === 'clinical-search' ? 'rgba(255,255,255,0.2)' : 'rgba(13,148,136,0.15)', padding: '1px 5px', borderRadius: 4 }}>⌘J</span>
           </button>
 
           {/* Module breadcrumb pill — shows active workspace name */}

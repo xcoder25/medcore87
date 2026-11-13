@@ -473,11 +473,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
     const mergeLocal = () => {
       try {
-        const saved = localStorage.getItem('medcore_os_staff_registry');
+        const saved = localStorage.getItem('medcore_os_staff_registry') || localStorage.getItem('medcore_staff_registry');
         const parsed: any[] = saved ? JSON.parse(saved) : [];
         const enrolled = Array.isArray(parsed) ? parsed.map(mapEntry) : [];
         // Bootstrap platform admin always available (can claim empty facilities); enrolled staff appended (dedupe by badge)
         const byBadge = new Map<string, PresetStaff>();
+        try {
+          const cardsRaw = localStorage.getItem('medcore_staff_id_cards');
+          const cards: any[] = cardsRaw ? JSON.parse(cardsRaw) : [];
+          if (Array.isArray(cards)) {
+            for (const c of cards) {
+              const b = String(c.badgeId || '').toUpperCase();
+              if (b && !isStaffRevokedLocal(b, selectedHospital.id)) {
+                byBadge.set(b, mapEntry(c));
+              }
+            }
+          }
+        } catch { /* ignore */ }
         // Only enrolled staff from cloud/local registry (no demo presets), excluding deleted/revoked
         for (const s of enrolled) {
           if (s.badgeId && !isStaffRevokedLocal(s.badgeId, selectedHospital.id)) {

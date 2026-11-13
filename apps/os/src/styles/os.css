@@ -7641,6 +7641,77 @@ img,
   }
 }
 
+/* ── Sidebar-expanded header compaction ──────────────────────
+   When the sidebar is NOT collapsed (full 260-275 px wide),
+   the main column is narrower — compact header items so they
+   never overflow or squeeze each other.
+   ─────────────────────────────────────────────────────────── */
+
+/* Tighten overall gap */
+.os-sidebar:not(.is-collapsed) + .os-main-column .os-top-hud {
+  gap: 8px !important;
+}
+
+/* Facility pill: cap width, let name ellipsize */
+.os-sidebar:not(.is-collapsed) + .os-main-column .os-top-hud-facility {
+  max-width: 190px !important;
+}
+
+.os-sidebar:not(.is-collapsed) + .os-main-column .os-top-hud-facility-name {
+  max-width: 110px !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Search bar: allow it to shrink down to icon-only */
+.os-sidebar:not(.is-collapsed) + .os-main-column .os-top-hud-search {
+  min-width: 42px !important;
+  max-width: 220px !important;
+  flex: 1 1 80px !important;
+  padding: 8px 10px !important;
+}
+
+/* Hide verbose placeholder text when cramped — icon alone is enough */
+.os-sidebar:not(.is-collapsed) + .os-main-column .os-top-hud-search-placeholder {
+  display: none !important;
+}
+
+/* Ask Patient File — hide keyboard shortcut badge to save space */
+.os-sidebar:not(.is-collapsed) + .os-main-column .os-top-hud-ask-patient-kbd {
+  display: none !important;
+}
+
+/* Trail: tighten gap between icons */
+.os-sidebar:not(.is-collapsed) + .os-main-column .os-top-hud-trail {
+  gap: 5px !important;
+}
+
+/* Clock: hide date row, keep time only */
+.os-sidebar:not(.is-collapsed) + .os-main-column .os-top-hud-date {
+  display: none !important;
+}
+
+/* Live badge: shrink to dot-only */
+.os-sidebar:not(.is-collapsed) + .os-main-column .os-top-hud-live {
+  padding: 6px 8px !important;
+  gap: 4px !important;
+  font-size: 0 !important;          /* hide "Live" text */
+  line-height: 0;
+}
+.os-sidebar:not(.is-collapsed) + .os-main-column .os-top-hud-live-dot {
+  font-size: initial;               /* dot itself is a div, not text */
+}
+
+/* User chip: hide name/role text, keep avatar */
+.os-sidebar:not(.is-collapsed) + .os-main-column .os-top-hud-user-meta {
+  display: none !important;
+}
+.os-sidebar:not(.is-collapsed) + .os-main-column .os-top-hud-user {
+  padding: 4px !important;
+  max-width: none !important;
+}
+
 /* ═══════════════════════════════════════════════════════════
    Unified shell — apply Admin/Reception chrome to ALL roles
    ═══════════════════════════════════════════════════════════ */

@@ -158,7 +158,7 @@ export function startHospitalCloudSync(facilityId: string): () => void {
       const res = await fetch(`/api/staff?facilityId=${encodeURIComponent(facilityId)}`);
       if (res.ok) {
         const json = await res.json();
-        if (json.staff && Array.isArray(json.staff)) {
+        if (json.configured !== false && json.staff && Array.isArray(json.staff) && json.staff.length > 0) {
           const cloudCards = json.staff.map((s: any) => ({
             badgeId: s.badge_id || s.badgeId,
             fullName: s.full_name || s.fullName,

@@ -200,7 +200,10 @@ function readCards(): StaffCardRecord[] {
 function writeCards(cards: StaffCardRecord[]) {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(STAFF_CARD_STORAGE_KEY, JSON.stringify(cards));
+    const raw = JSON.stringify(cards);
+    localStorage.setItem(STAFF_CARD_STORAGE_KEY, raw);
+    localStorage.setItem('medcore_os_staff_cards', raw);
+    localStorage.setItem('medcore_staff_cards', raw);
   } catch {
     return;
   }
@@ -939,6 +942,7 @@ export function commitStaffEnrolment(
       : [entry];
     localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(next));
     localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
+    localStorage.setItem('medcore_staff_registry', JSON.stringify(next));
     window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } }));
     window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: next }));
     window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: cards }));
@@ -1346,6 +1350,7 @@ export function deleteStaffMember(badgeId: string): boolean {
       : [];
     localStorage.setItem(STAFF_REGISTRY_STORAGE_KEY, JSON.stringify(next));
     localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
+    localStorage.setItem('medcore_staff_registry', JSON.stringify(next));
 
     window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } }));
     window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: next }));

@@ -137,6 +137,32 @@ function getInitialStaffAccessRecords(facilityId: string): AccessRecord[] {
     }
   } catch { /* ignore */ }
 
+  try {
+    const regRaw = localStorage.getItem('medcore_os_staff_registry') || localStorage.getItem('medcore_staff_registry');
+    const reg = regRaw ? JSON.parse(regRaw) : [];
+    if (Array.isArray(reg)) {
+      for (const s of reg) {
+        const sid = String(s.badgeId || s.id || '').toUpperCase();
+        if (!sid) continue;
+        const sFid = String(s.hospitalId || s.facilityId || '').toUpperCase();
+        if (sFid && fid && sFid !== fid) continue;
+        if (!byId.has(sid)) {
+          byId.set(sid, {
+            id: sid,
+            name: s.name || s.fullName || sid,
+            role: s.role || s.shortRole || 'Staff',
+            department: s.department || 'Clinical Operations',
+            clearance: s.clearanceLevel || 2,
+            status: s.status === 'suspended' ? 'suspended' : 'active',
+            lastLogin: s.lastLogin || 'Never',
+            permissions: s.permissions || defaultPermissionsForRole(s.roleKey || 'staff'),
+            email: s.email,
+          });
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
   return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -350,6 +376,32 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
               permissions: (c as { permissions?: string[] }).permissions || defaultPermissionsForRole(c.roleKey || 'staff'),
               email: (c as { email?: string }).email,
             });
+          }
+        }
+      } catch { /* ignore */ }
+
+      try {
+        const regRaw = localStorage.getItem('medcore_os_staff_registry') || localStorage.getItem('medcore_staff_registry');
+        const reg = regRaw ? JSON.parse(regRaw) : [];
+        if (Array.isArray(reg)) {
+          for (const s of reg) {
+            const sid = String(s.badgeId || s.id || '').toUpperCase();
+            if (!sid) continue;
+            const sFid = String(s.hospitalId || s.facilityId || '').toUpperCase();
+            if (sFid && facilityId && sFid !== facilityId.toUpperCase()) continue;
+            if (!byId.has(sid)) {
+              byId.set(sid, {
+                id: sid,
+                name: s.name || s.fullName || sid,
+                role: s.role || s.shortRole || 'Staff',
+                department: s.department || 'Clinical Operations',
+                clearance: s.clearanceLevel || 2,
+                status: s.status === 'suspended' ? 'suspended' : 'active',
+                lastLogin: s.lastLogin || 'Never',
+                permissions: s.permissions || defaultPermissionsForRole(s.roleKey || 'staff'),
+                email: s.email,
+              });
+            }
           }
         }
       } catch { /* ignore */ }
