@@ -828,19 +828,16 @@ const handleLockScreen = () => {
     ? inferRoleKey(userSession.roleKey || userSession.role || userSession.title, userSession.badgeId)
     : 'doctor';
 
-  const currentRoleTheme = useMemo(() => {
-    if (ROLE_THEMES[activeRoleKey]) return ROLE_THEMES[activeRoleKey];
-    const roleName = userSession?.role || userSession?.title || 'Custom Workspace';
-    return {
-      label: roleName,
-      badge: `${roleName.toUpperCase()} DESK`,
-      accent: '#0052D4',
-      gradient: 'linear-gradient(135deg, #0052D4 0%, #00BFA5 100%)',
-      activeBg: 'linear-gradient(90deg, rgba(0, 82, 212, 0.28) 0%, rgba(0, 191, 165, 0.12) 100%)',
-      icon: Stethoscope,
-      workspaceTitle: `${roleName} Workspace`,
-    };
-  }, [activeRoleKey, userSession]);
+  const roleName = userSession?.role || userSession?.title || 'Custom Workspace';
+  const currentRoleTheme = ROLE_THEMES[activeRoleKey] || {
+    label: roleName,
+    badge: `${roleName.toUpperCase()} DESK`,
+    accent: '#0052D4',
+    gradient: 'linear-gradient(135deg, #0052D4 0%, #00BFA5 100%)',
+    activeBg: 'linear-gradient(90deg, rgba(0, 82, 212, 0.28) 0%, rgba(0, 191, 165, 0.12) 100%)',
+    icon: Stethoscope,
+    workspaceTitle: `${roleName} Workspace`,
+  };
   const RoleIcon = currentRoleTheme.icon;
 
   const isLabStaff = activeRoleKey === 'lab' || userSession?.roleKey === 'lab';
