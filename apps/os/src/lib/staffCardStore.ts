@@ -634,10 +634,8 @@ export function wipeFacilityStaffExceptAdmin(facilityId: string): number {
             /* no token */
           }
         }
-        const secret =
-          (typeof window !== 'undefined' && window.localStorage.getItem('medcore_admin_api_secret')) ||
-          '';
-        if (secret) headers['x-admin-secret'] = secret;
+        // x-admin-secret is NOT sent from the client — the server checks ADMIN_API_SECRET from env.
+        // Sending it from browser localStorage was a security anti-pattern (readable by any JS/XSS).
         await Promise.race([
           fetch('/api/staff/flush-facility', {
             method: 'POST',

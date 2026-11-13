@@ -43,15 +43,12 @@ export const SystemAdministration: React.FC = () => {
         return;
       }
       const idToken = await user.getIdToken(true);
-      const secret =
-        (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_ADMIN_API_SECRET) ||
-        window.localStorage.getItem('medcore_admin_api_secret') ||
-        '';
+      // Authorization via Firebase ID token only — no client-side secret needed.
+      // Server checks ADMIN_API_SECRET from env (not from client).
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${idToken}`,
       };
-      if (secret) headers['x-admin-secret'] = secret;
 
       const res = await fetch('/api/staff/delete-all-auth', {
         method: 'POST',

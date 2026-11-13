@@ -9,8 +9,8 @@ import { bankingCore } from './bankingCore';
 import { auditLedger } from '../security/auditLedger';
 import { syncEventBus } from '../sync/eventBus';
 
-const AKWAREMIT_SECRET_KEY = process.env.AKWAREMIT_SECRET_KEY || 'akwaremit_sec_live_9942018492014892';
-const AKWAREMIT_PUBLIC_KEY = process.env.AKWAREMIT_PUBLIC_KEY || 'akwaremit_pub_live_109284019284';
+const AKWAREMIT_SECRET_KEY = process.env.AKWAREMIT_SECRET_KEY || '';
+const AKWAREMIT_PUBLIC_KEY = process.env.AKWAREMIT_PUBLIC_KEY || '';
 
 export class PaymentGatewayService {
   private akwaSessions: Map<string, AkwaRemitCheckoutSession> = new Map();

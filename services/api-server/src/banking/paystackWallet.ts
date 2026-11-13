@@ -4,8 +4,8 @@ import { bankingCore } from './bankingCore';
 import { auditLedger } from '../security/auditLedger';
 import { syncEventBus } from '../sync/eventBus';
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || 'sk_test_medcore_paystack_sec_99482019482';
-const PAYSTACK_PUBLIC_KEY = process.env.PAYSTACK_PUBLIC_KEY || 'pk_test_medcore_paystack_pub_11928401928';
+const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
+const PAYSTACK_PUBLIC_KEY = process.env.PAYSTACK_PUBLIC_KEY || '';
 
 export class PaystackWalletService {
   /**

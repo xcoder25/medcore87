@@ -17,7 +17,7 @@ import {
 } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyAOLWLpM0vzIljUeXOnSQbppzuaHhfmXyI',
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '',
   authDomain:
     process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'naija-bites-1s3y1.firebaseapp.com',
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'naija-bites-1s3y1',
@@ -149,21 +149,7 @@ export async function firebaseEnsureBadgeAccount(
   const secondaryName = `StaffEnrol_${Date.now()}`;
   let secondary: FirebaseApp | undefined;
   try {
-    secondary = initializeApp(
-      {
-        apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyAOLWLpM0vzIljUeXOnSQbppzuaHhfmXyI',
-        authDomain:
-          process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'naija-bites-1s3y1.firebaseapp.com',
-        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'naija-bites-1s3y1',
-        storageBucket:
-          process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'naija-bites-1s3y1.firebasestorage.app',
-        messagingSenderId:
-          process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '667802678337',
-        appId:
-          process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:667802678337:web:2018efd10f6ca9dbe742c0',
-      },
-      secondaryName
-    );
+    secondary = initializeApp(firebaseConfig, secondaryName);
     const {
       getAuth: getAuthSecondary,
       createUserWithEmailAndPassword: createSecondary,
@@ -210,21 +196,7 @@ export async function firebaseEnsureEmailAccount(
   const secondaryName = `EmailEnrol_${Date.now()}`;
   let secondary: FirebaseApp | undefined;
   try {
-    secondary = initializeApp(
-      {
-        apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyAOLWLpM0vzIljUeXOnSQbppzuaHhfmXyI',
-        authDomain:
-          process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'naija-bites-1s3y1.firebaseapp.com',
-        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'naija-bites-1s3y1',
-        storageBucket:
-          process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'naija-bites-1s3y1.firebasestorage.app',
-        messagingSenderId:
-          process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '667802678337',
-        appId:
-          process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:667802678337:web:2018efd10f6ca9dbe742c0',
-      },
-      secondaryName
-    );
+    secondary = initializeApp(firebaseConfig, secondaryName);
     const {
       getAuth: getAuthSecondary,
       createUserWithEmailAndPassword: createSecondary,

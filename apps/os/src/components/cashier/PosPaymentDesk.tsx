@@ -1163,7 +1163,7 @@ export const PosPaymentDesk: React.FC<Props> = ({
                       </div>
                       <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#78350F', lineHeight: 1.5 }}>
                         <strong>Action Required:</strong> Collect physical cash of{' '}
-                        <strong style={{ color: '#047857', fontSize: 13 }}>₦{displayAmount.toLocaleString()}.00</strong> from the patient and log it as a counter/cash payment under ARN{' '}
+                        <strong style={{ color: '#047857', fontSize: 13 }}>₦{displayAmount.toLocaleString()}.00</strong> from the patient and log it as a counter/cash payment under{' '}
                         <strong style={{ fontFamily: 'monospace' }}>{arn}</strong> on the AkwaRemit admin portal.
                       </p>
                       <div
