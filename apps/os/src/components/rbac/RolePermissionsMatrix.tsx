@@ -24,11 +24,11 @@ import {
   Plus, Trash2, X, Briefcase, Lock, Sparkles
 } from 'lucide-react';
 
-export const RolePermissionsMatrix: React.FC = () => {
+export const RolePermissionsMatrix: React.FC<{ facilityId?: string }> = ({ facilityId }) => {
   const [savedMap, setSavedMap] = useState<RolePermissionsMap>({});
   const [draftMap, setDraftMap] = useState<RolePermissionsMap>({});
-  const [roles, setRoles] = useState(listConfigurableRoles);
-  const [activeRole, setActiveRole] = useState(listConfigurableRoles()[0]?.roleKey || 'doctor');
+  const [roles, setRoles] = useState(() => listConfigurableRoles(facilityId));
+  const [activeRole, setActiveRole] = useState(() => listConfigurableRoles(facilityId)[0]?.roleKey || 'doctor');
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
 
@@ -44,7 +44,7 @@ export const RolePermissionsMatrix: React.FC = () => {
   const reload = (resetDraft = false) => {
     const m = getRolePermissionsMap();
     setSavedMap(m);
-    setRoles(listConfigurableRoles());
+    setRoles(listConfigurableRoles(facilityId));
     if (resetDraft) {
       setDraftMap(JSON.parse(JSON.stringify(m)));
     } else {
@@ -131,7 +131,7 @@ export const RolePermissionsMatrix: React.FC = () => {
     if (!anyDirty || saving) return;
     setSaving(true);
     await new Promise((r) => setTimeout(r, 480));
-    setRolePermissionsMap(draftMap);
+    setRolePermissionsMap(draftMap, facilityId);
     setSavedMap(JSON.parse(JSON.stringify(draftMap)));
     emitLiveAction(`Role visibility saved · ${activeRole}`, { module: 'role-permissions' });
     pushActivity(`Role visibility saved for ${activeRole} (${(draftMap[activeRole] || []).length} modules)`);
@@ -163,8 +163,10 @@ export const RolePermissionsMatrix: React.FC = () => {
         clearanceLabel: `Level ${newRoleClearance} Access`,
         department: newRoleDept,
         group: 'Custom',
+        facilityId,
       },
-      ['dashboard', 'my-card', 'patient-360', 'notifications', 'emr']
+      ['dashboard', 'my-card', 'patient-360', 'notifications', 'emr'],
+      facilityId
     );
 
     if (!ok) {
@@ -181,7 +183,7 @@ export const RolePermissionsMatrix: React.FC = () => {
       ...prev,
       [key]: m[key] || ['dashboard', 'my-card', 'patient-360', 'notifications', 'emr'],
     }));
-    setRoles(listConfigurableRoles());
+    setRoles(listConfigurableRoles(facilityId));
     setActiveRole(key);
     setShowAddRoleModal(false);
     setNewRoleLabel('');
@@ -189,12 +191,12 @@ export const RolePermissionsMatrix: React.FC = () => {
   };
 
   const handleDeleteRole = (roleKey: string) => {
-    deleteCustomRole(roleKey);
+    deleteCustomRole(roleKey, facilityId);
     emitLiveAction(`Deleted custom role: ${roleKey}`, { module: 'role-permissions' });
     pushActivity(`Administrator deleted role ${roleKey}`);
     reload(true);
     setRolePendingDelete(null);
-    setActiveRole(listConfigurableRoles()[0]?.roleKey || 'doctor');
+    setActiveRole(listConfigurableRoles(facilityId)[0]?.roleKey || 'doctor');
   };
 
   const groups = Array.from(new Set(MODULE_CATALOG.map((m) => m.group)));

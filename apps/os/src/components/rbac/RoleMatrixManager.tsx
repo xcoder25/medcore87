@@ -99,7 +99,7 @@ export const RoleMatrixManager: React.FC<Props> = ({
 
   // Sync state on external update
   const reload = () => {
-    setRoles(listConfigurableRoles());
+    setRoles(listConfigurableRoles(facilityId));
     setPermissionsMap(getRolePermissionsMap());
   };
 
@@ -167,9 +167,10 @@ export const RoleMatrixManager: React.FC<Props> = ({
       department: newDepartment,
       group: 'Custom',
       isCustom: true,
+      facilityId,
     };
 
-    const ok = createCustomRole(newRoleDef, selectedModules);
+    const ok = createCustomRole(newRoleDef, selectedModules, facilityId);
     if (!ok) {
       setCreateError(`A role with identifier "${key}" already exists. Please choose another name.`);
       return;
@@ -191,7 +192,7 @@ export const RoleMatrixManager: React.FC<Props> = ({
     if (!window.confirm(`Are you sure you want to delete custom role "${roleLabel}"? Any enrolled staff with this role will revert to baseline permissions.`)) {
       return;
     }
-    deleteCustomRole(roleKey);
+    deleteCustomRole(roleKey, facilityId);
     reload();
   };
 

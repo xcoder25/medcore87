@@ -1614,6 +1614,39 @@ export function defaultPermissionsForRole(roleKey: string): string[] {
     radiologist: [
       'dashboard', 'radiology', 'notifications', 'emr', 'patient-card', 'my-card', 'm87-ai', 'ai',
     ],
+    dentist: [
+      'dashboard', 'dental', 'doctor-portal', 'universal-queue', 'patient-flow', 'appointments',
+      'certificates', 'consent-legal', 'pharmacy', 'radiology', 'emr', 'm87-ai', 'ai', 'my-card', 'notifications',
+    ],
+    ophthalmologist: [
+      'dashboard', 'ophthalmology', 'doctor-portal', 'universal-queue', 'patient-flow', 'appointments',
+      'certificates', 'consent-legal', 'pharmacy', 'radiology', 'emr', 'm87-ai', 'ai', 'my-card', 'notifications',
+    ],
+    physiotherapist: [
+      'dashboard', 'physiotherapy', 'patient-flow', 'universal-queue', 'appointments',
+      'certificates', 'consent-legal', 'emr', 'm87-ai', 'ai', 'my-card', 'notifications',
+    ],
+    nutritionist: [
+      'dashboard', 'nutrition', 'patient-flow', 'universal-queue', 'appointments',
+      'emr', 'm87-ai', 'ai', 'my-card', 'notifications',
+    ],
+    psychiatrist: [
+      'dashboard', 'psychiatry', 'doctor-portal', 'universal-queue', 'patient-flow', 'appointments',
+      'certificates', 'consent-legal', 'pharmacy', 'emr', 'm87-ai', 'ai', 'my-card', 'notifications',
+    ],
+    oncologist: [
+      'dashboard', 'oncology', 'doctor-portal', 'universal-queue', 'patient-flow', 'appointments',
+      'certificates', 'consent-legal', 'pharmacy', 'laboratory', 'radiology', 'emr', 'm87-ai', 'ai', 'my-card', 'notifications',
+    ],
+    dialysis_nurse: [
+      'dashboard', 'dialysis', 'fluid-balance', 'glucometer-insulin', 'nursing', 'beds', 'emr', 'patient-flow', 'universal-queue', 'm87-ai', 'ai', 'my-card', 'notifications',
+    ],
+    mortuary_attendant: [
+      'dashboard', 'mortuary', 'certificates', 'incident-safety', 'my-card', 'notifications',
+    ],
+    cssd_technician: [
+      'dashboard', 'cssd', 'theatre', 'incident-safety', 'my-card', 'notifications',
+    ],
     records: ['dashboard', 'patient-card', 'patient-flow', 'beds', 'emr', 'my-card', 'notifications', 'claims', 'm87-ai', 'ai', 'him', 'him-deficiency', 'him-coding', 'him-roi', 'him-chart', 'him-merge', 'him-docs'],
     accountant: [
       'dashboard', 'cashier', 'billing', 'claims', 'revenue-cycle', 'procurement', 'patient-card',

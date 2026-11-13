@@ -2,7 +2,7 @@
  * Celestia role guard — assistant must not exceed the signed-in desk's authority.
  * Refuses out-of-scope actions and names who can handle them.
  */
-import { getModulesForRole } from './rolePermissionsStore';
+import { getModulesForRole, getCustomRoles } from './rolePermissionsStore';
 
 export type CelestiaSessionLike = {
   roleKey?: string;
@@ -23,6 +23,13 @@ const ROLE_LABEL: Record<string, string> = {
   pharmacist: 'Pharmacist',
   lab: 'Laboratory',
   radiologist: 'Radiologist',
+  dentist: 'Dentist / Dental Clinic',
+  ophthalmologist: 'Ophthalmologist / Eye Clinic',
+  physiotherapist: 'Physiotherapist / Physical Rehab',
+  nutritionist: 'Clinical Nutritionist / Dietitian',
+  psychiatrist: 'Psychiatrist / Mental Health',
+  oncologist: 'Medical Oncologist / Chemotherapy',
+  dialysis_nurse: 'Renal Dialysis Nurse',
   cashier: 'Cashier / Accounts',
   accountant: 'Accountant / Finance',
   hospital_admin: 'Hospital Administrator',
@@ -30,6 +37,8 @@ const ROLE_LABEL: Record<string, string> = {
   medical_director: 'Medical Director',
   sysadmin: 'ICT / System Admin',
   biomedical: 'Biomedical Engineering',
+  mortuary_attendant: 'Mortuary & Pathology Officer',
+  cssd_technician: 'CSSD Sterile Supply Specialist',
 };
 
 /** Human-readable scope for system prompt */
@@ -45,12 +54,22 @@ export const ROLE_SCOPE_BLURB: Record<string, string> = {
   pharmacist: 'Pharmacy: pending Rx, dispense, stock. Do NOT full clinical diagnosis or front-desk registration.',
   lab: 'Laboratory: orders, results, TAT, critical values. Do NOT prescribe drugs or collect cash.',
   radiologist: 'Radiology: imaging studies and reports. Do NOT OPD registration or pharmacy dispense.',
+  dentist: 'Dental clinic desk: odontogram examination, dental charting, dental procedures, tooth extractions, prescriptions and dental certificates.',
+  ophthalmologist: 'Ophthalmology & eye clinic desk: visual acuity, refraction, slit-lamp, fundus examinations, cataract / glaucoma management, eye prescriptions.',
+  physiotherapist: 'Physiotherapy & rehabilitation desk: musculoskeletal rehab, range-of-motion assessments, mobility plans, exercise regimens.',
+  nutritionist: 'Clinical nutrition & dietetics desk: nutritional assessments, BMI/MUAC tracking, therapeutic diet orders, enteral/parenteral nutrition plans.',
+  psychiatrist: 'Psychiatry & mental health desk: Mental Status Examination (MSE), Columbia suicide risk (C-SSRS), DSM/ICD psychiatric diagnostics, psychotropic prescriptions.',
+  oncologist: 'Medical oncology & chemotherapy desk: cancer staging, chemo regimens, infusion cycles, BSA dosage calculations, oncology lab/radiology.',
+  dialysis_nurse: 'Renal dialysis workstation: hemodialysis run parameters, dialyzer clearance, vascular access checks, ultrafiltration rates, 24hr fluid balance.',
+  mortuary_attendant: 'Mortuary & pathology registry desk: deceased intake, refrigerated cold-bay allocation, autopsy notes, cause of death and death certificates.',
+  cssd_technician: 'CSSD sterile supply desk: autoclave sterilization cycles, biological indicator validation, surgical instrument tray barcodes.',
   cashier: 'Accounts collection: take payment on queued invoices, receipts. Do NOT clinical charting or staff RBAC.',
   accountant: 'AR / finance desk: debtors, HMO claims, collections analytics. Do NOT clinical orders.',
   hospital_admin: 'Hospital administrator: staff, access, occupancy, revenue overview. Full operational assist allowed.',
   admin: 'Administrator: staff, access, system settings. Full operational assist allowed.',
   medical_director: 'Medical director: clinical governance and oversight. Prefer clinical and quality topics.',
   sysadmin: 'ICT: systems, access technical. Prefer technical support over clinical decisions.',
+  biomedical: 'Biomedical engineering desk: medical equipment maintenance, calibration, device alerts, and asset inventory.',
 };
 
 /** Map intent keywords → roles that own the work */
@@ -115,7 +134,17 @@ export function normalizeRoleKey(session?: CelestiaSessionLike | null): string {
 }
 
 export function roleDisplayName(roleKey: string): string {
-  return ROLE_LABEL[roleKey] || roleKey || 'this desk';
+  if (ROLE_LABEL[roleKey]) return ROLE_LABEL[roleKey];
+  try {
+    const custom = getCustomRoles().find((r) => r.roleKey === roleKey);
+    if (custom) return custom.label;
+  } catch {
+    /* ignore */
+  }
+  return roleKey
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ') || 'this desk';
 }
 
 export function isPrivilegedAdmin(roleKey: string): boolean {
@@ -144,9 +173,43 @@ export function allowedModulesBlurb(roleKey: string): string {
 export function refuseIfOutOfRole(query: string, roleKey: string): string | null {
   if (isPrivilegedAdmin(roleKey)) return null;
 
+  let permittedModules: string[] = [];
+  try {
+    permittedModules = getModulesForRole(roleKey);
+  } catch {
+    /* ignore */
+  }
+
   for (const row of INTENT_OWNERS) {
     if (!row.test.test(query)) continue;
     if (row.owners.includes(roleKey)) continue;
+
+    // Intelligent module permissions check: if this role is granted the corresponding module, DO NOT refuse!
+    if (row.label.includes('prescribing') && (permittedModules.includes('pharmacy') || permittedModules.includes('doctor-portal') || permittedModules.includes('emr') || permittedModules.includes('dental') || permittedModules.includes('ophthalmology') || permittedModules.includes('psychiatry') || permittedModules.includes('oncology'))) {
+      continue;
+    }
+    if (row.label.includes('laboratory') && (permittedModules.includes('laboratory') || permittedModules.includes('lab') || permittedModules.includes('emr') || permittedModules.includes('oncology') || permittedModules.includes('doctor-portal'))) {
+      continue;
+    }
+    if (row.label.includes('imaging') && (permittedModules.includes('radiology') || permittedModules.includes('doctor-portal') || permittedModules.includes('emr') || permittedModules.includes('dental') || permittedModules.includes('ophthalmology') || permittedModules.includes('oncology'))) {
+      continue;
+    }
+    if (row.label.includes('theatre') && (permittedModules.includes('theatre') || permittedModules.includes('cssd'))) {
+      continue;
+    }
+    if (row.label.includes('front desk') && (permittedModules.includes('patient-flow') || permittedModules.includes('appointments') || permittedModules.includes('patient-card') || permittedModules.includes('reception'))) {
+      continue;
+    }
+    if (row.label.includes('payments') && (permittedModules.includes('cashier') || permittedModules.includes('billing') || permittedModules.includes('revenue-cycle'))) {
+      continue;
+    }
+    if (row.label.includes('claims') && (permittedModules.includes('claims') || permittedModules.includes('billing') || permittedModules.includes('akwaremit'))) {
+      continue;
+    }
+    if (row.label.includes('admissions') && (permittedModules.includes('beds') || permittedModules.includes('patient-flow') || permittedModules.includes('emergency') || permittedModules.includes('nursing'))) {
+      continue;
+    }
+
     // Special: lab can talk about lab orders status; doctor owns ordering
     if (row.label.includes('laboratory') && roleKey === 'lab' && !/\border\s+(a\s+)?(lab|blood)/i.test(query)) {
       continue;
@@ -183,18 +246,39 @@ export function buildCelestiaSystemPrompt(session?: CelestiaSessionLike | null):
   const rk = normalizeRoleKey(session);
   const isAdmin = isPrivilegedAdmin(rk);
   const aiName = isAdmin ? 'Celestia Astra' : 'Celestia';
-  const scope = ROLE_SCOPE_BLURB[rk] || 'Stay within this user hospital desk responsibilities.';
+
+  let customDef: any = null;
+  try {
+    customDef = getCustomRoles().find((r) => r.roleKey === rk);
+  } catch {
+    /* ignore */
+  }
+
+  const displayName = customDef?.label || roleDisplayName(rk);
+  const department = customDef?.department || session?.role || 'Clinical Operations';
+  const clearance = customDef?.clearanceLevel || (isAdmin ? 6 : 3);
+
+  let scope = ROLE_SCOPE_BLURB[rk];
+  if (!scope && customDef) {
+    scope = `Custom Facility Role: ${customDef.label} in ${department} (Clearance Level ${clearance}). Authorized specifically for: ${allowedModulesBlurb(rk)}. Proactively assist with workflows and queries inside these assigned modules.`;
+  } else if (!scope) {
+    scope = `Stay within this desk responsibilities. Authorized modules: ${allowedModulesBlurb(rk)}.`;
+  }
+
   const name = session?.name || 'staff';
   const first = String(name).split(/\s+/)[0] || 'there';
   return [
     isAdmin
       ? `You are Celestia Astra, the executive administrator AI inside MedCore Hospital OS (Nigerian public hospitals).`
       : `You are Celestia, the in-app assistant inside MedCore Hospital OS (Nigerian public hospitals).`,
-    `User: ${name} (use first name ${first} only when natural). Role: ${roleDisplayName(rk)} (${rk || 'unknown'}).`,
+    `User: ${name} (use first name ${first} only when natural). Role: ${displayName} (${rk || 'unknown'}) · Department: ${department}.`,
     isAdmin
       ? `Desk scope: Executive hospital administration, governance, staff onboarding, and RBAC automation. You have elevated clearance to create new roles, configure permissions, and manage hospital operations.`
       : `Desk scope: ${scope}`,
     `Modules they can use: ${allowedModulesBlurb(rk)}.`,
+    customDef
+      ? `CUSTOM ROLE ADAPTATION: You are assisting a staff member in a custom facility-defined role ("${customDef.label}"). You have full dynamic awareness of their scope and assigned workstation permissions (${allowedModulesBlurb(rk)}). Understand their role intent, use clinical/operational terminology suited to their department (${department}), and assist with any tasks, documentation, or queries belonging to their assigned modules.`
+      : ``,
     isAdmin ? `Special Admin Power: You can autonomously create new hospital roles (e.g. "Create role Dialysis Nurse with access to nursing, beds, icu, emr, clearance 3 in Inpatient Wards"), list custom roles, and configure module permissions.` : ``,
     ``,
     `CONVERSATION STYLE:`,

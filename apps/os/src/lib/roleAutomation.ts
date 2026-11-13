@@ -297,7 +297,8 @@ export function parseRoleAutomationIntent(
 /** Execute role creation autonomously */
 export function executeCreateRoleAutomation(
   parsed: RoleAutomationParseResult,
-  actorName: string
+  actorName: string,
+  facilityId?: string
 ): { success: boolean; message: string } {
   if (!parsed.roleName || !parsed.roleKey) {
     return { success: false, message: 'Invalid role definition.' };
@@ -313,9 +314,10 @@ export function executeCreateRoleAutomation(
     department: parsed.department || 'Clinical Operations',
     group: parsed.group || 'Custom',
     isCustom: true,
+    facilityId,
   };
 
-  const ok = createCustomRole(def, parsed.modules);
+  const ok = createCustomRole(def, parsed.modules, facilityId);
   if (!ok) {
     return {
       success: false,
@@ -327,7 +329,7 @@ export function executeCreateRoleAutomation(
   if (parsed.modules && parsed.modules.length > 0) {
     const map = getRolePermissionsMap();
     map[parsed.roleKey] = parsed.modules;
-    setRolePermissionsMap(map);
+    setRolePermissionsMap(map, facilityId);
   }
 
   // Log activity and broadcast
@@ -368,17 +370,17 @@ export function executeCreateRoleAutomation(
 }
 
 /** Execute listing of custom roles */
-export function executeListRolesAutomation(): string {
-  const custom = getCustomRoles();
-  const all = listConfigurableRoles();
+export function executeListRolesAutomation(facilityId?: string): string {
+  const custom = getCustomRoles(facilityId);
+  const all = listConfigurableRoles(facilityId);
 
   if (!custom.length) {
     return [
       `🏛️ **Hospital Role Catalog (Celestia Astra)**`,
       ``,
-      `There are currently **${all.length}** preset hospital roles configured (Doctor, Surgeon, Nurse, Midwife, Pharmacist, Lab, Radiologist, Reception, Records, Accountant, Biomedical, Medical Director, SysAdmin).`,
+      `There are currently **${all.length}** preset hospital roles configured.`,
       ``,
-      `No custom roles have been created yet. You can create one anytime by saying:`,
+      `No custom roles have been created yet for this facility. You can create one anytime by saying:`,
       `*"Create role Dialysis Nurse with access to nursing, beds, icu, emr and clearance level 3 in Inpatient Wards"*`,
     ].join('\n');
   }
@@ -399,8 +401,8 @@ export function executeListRolesAutomation(): string {
 }
 
 /** Execute deletion of a custom role */
-export function executeDeleteRoleAutomation(roleKey: string): { success: boolean; message: string } {
-  const roles = getCustomRoles();
+export function executeDeleteRoleAutomation(roleKey: string, facilityId?: string): { success: boolean; message: string } {
+  const roles = getCustomRoles(facilityId);
   const hit = roles.find((r) => r.roleKey === roleKey || r.label.toLowerCase() === roleKey.toLowerCase());
 
   if (!hit) {
@@ -410,7 +412,7 @@ export function executeDeleteRoleAutomation(roleKey: string): { success: boolean
     };
   }
 
-  const ok = deleteCustomRole(hit.roleKey);
+  const ok = deleteCustomRole(hit.roleKey, facilityId);
   if (!ok) {
     return { success: false, message: `Could not delete role ${hit.label}.` };
   }

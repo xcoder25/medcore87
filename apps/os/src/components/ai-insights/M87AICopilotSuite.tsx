@@ -781,7 +781,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
       }
 
       if (roleIntent.action === 'list') {
-        const reply = executeListRolesAutomation();
+        const reply = executeListRolesAutomation(facilityId);
         setMessages((prev) => [
           ...prev,
           {
@@ -817,7 +817,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
         await sleep(350);
         mark('p1', 'done');
         mark('p2', 'active');
-        const res = executeDeleteRoleAutomation(roleIntent.roleKey || roleIntent.roleName || '');
+        const res = executeDeleteRoleAutomation(roleIntent.roleKey || roleIntent.roleName || '', facilityId);
         await sleep(300);
         mark('p2', 'done');
         mark('p3', 'active');
@@ -866,7 +866,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
         await sleep(350);
         mark('c2', 'done');
         mark('c3', 'active');
-        const res = executeCreateRoleAutomation(roleIntent, session?.name || 'Administrator');
+        const res = executeCreateRoleAutomation(roleIntent, session?.name || 'Administrator', facilityId);
         await sleep(350);
         mark('c3', 'done');
         mark('c4', 'active');

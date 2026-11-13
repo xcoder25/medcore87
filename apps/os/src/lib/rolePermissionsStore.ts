@@ -2,6 +2,9 @@
  * Per-role module + patient-data visibility — admin configures what each role can see.
  * Accounts share a dashboard by roleKey; this matrix gates modules and patient fields.
  */
+import { getActiveFacilityId } from './facilityContext';
+import { publishFacilityData } from './roleSyncBus';
+
 export const ROLE_PERMISSIONS_KEY = 'medcore_os_role_permissions_v4';
 
 /** Modules + patient data scopes an admin can toggle */
@@ -115,10 +118,20 @@ export const CONFIGURABLE_ROLES: { roleKey: string; label: string }[] = [
   { roleKey: 'pharmacist', label: 'Pharmacist' },
   { roleKey: 'lab', label: 'Lab scientist' },
   { roleKey: 'radiologist', label: 'Radiologist' },
+  { roleKey: 'dentist', label: 'Dentist / Dental Clinic' },
+  { roleKey: 'ophthalmologist', label: 'Ophthalmologist / Eye Clinic' },
+  { roleKey: 'physiotherapist', label: 'Physiotherapist / Physical Rehab' },
+  { roleKey: 'nutritionist', label: 'Clinical Nutritionist / Dietitian' },
+  { roleKey: 'psychiatrist', label: 'Psychiatrist / Mental Health' },
+  { roleKey: 'oncologist', label: 'Medical Oncologist / Chemo' },
+  { roleKey: 'dialysis_nurse', label: 'Renal Dialysis / Nephrology Nurse' },
   { roleKey: 'reception', label: 'Reception' },
   { roleKey: 'records', label: 'Records' },
   { roleKey: 'accountant', label: 'Finance / accounts' },
   { roleKey: 'biomedical', label: 'Biomedical / engineering' },
+  { roleKey: 'mortuary_attendant', label: 'Mortuary & Pathology Officer' },
+  { roleKey: 'cssd_technician', label: 'CSSD / Sterile Supply Tech' },
+  { roleKey: 'hospital_admin', label: 'Hospital Administrator' },
   { roleKey: 'medical_director', label: 'Medical director' },
   { roleKey: 'sysadmin', label: 'ICT / SysAdmin' },
 ];
@@ -133,32 +146,72 @@ export interface CustomRoleDefinition {
   department?: string;
   group?: 'Clinical' | 'Nursing' | 'Front desk' | 'Support' | 'Admin' | 'Custom';
   isCustom?: boolean;
+  facilityId?: string;
+  createdAt?: string;
+  createdBy?: string;
 }
 
 export const CUSTOM_ROLES_KEY = 'medcore_os_custom_roles_v1';
 export const CUSTOM_ROLES_EVT = 'medcore-custom-roles-updated';
 
-export function getCustomRoles(): CustomRoleDefinition[] {
+export function getCustomRoles(facilityId?: string): CustomRoleDefinition[] {
   if (typeof window === 'undefined') return [];
+  const fid = (facilityId || getActiveFacilityId() || '').trim().toUpperCase();
   try {
     const raw = localStorage.getItem(CUSTOM_ROLES_KEY);
     if (!raw) return [];
     const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
+    if (!Array.isArray(arr)) return [];
+    if (fid) {
+      return arr.filter((r: CustomRoleDefinition) => !r.facilityId || String(r.facilityId).trim().toUpperCase() === fid);
+    }
+    return arr;
   } catch {
     return [];
   }
 }
 
-export function saveCustomRoles(roles: CustomRoleDefinition[]) {
+export function saveCustomRoles(roles: CustomRoleDefinition[], facilityId?: string) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(CUSTOM_ROLES_KEY, JSON.stringify(roles));
-  window.dispatchEvent(new CustomEvent(CUSTOM_ROLES_EVT, { detail: roles }));
-  window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: CUSTOM_ROLES_KEY } }));
+  const fid = (facilityId || getActiveFacilityId() || '').trim().toUpperCase();
+  try {
+    const raw = localStorage.getItem(CUSTOM_ROLES_KEY);
+    let allRoles: CustomRoleDefinition[] = [];
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) allRoles = parsed;
+      } catch { /* ignore */ }
+    }
+    if (fid) {
+      const otherRoles = allRoles.filter((r) => r.facilityId && String(r.facilityId).trim().toUpperCase() !== fid);
+      allRoles = [...otherRoles, ...roles];
+    } else {
+      allRoles = roles;
+    }
+
+    localStorage.setItem(CUSTOM_ROLES_KEY, JSON.stringify(allRoles));
+    window.dispatchEvent(new CustomEvent(CUSTOM_ROLES_EVT, { detail: roles }));
+    window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: CUSTOM_ROLES_KEY } }));
+
+    try {
+      const bc = new BroadcastChannel('medcore_roles_sync');
+      bc.postMessage({ type: 'custom_roles', facilityId: fid, roles });
+      bc.close();
+    } catch { /* ignore */ }
+
+    if (fid) {
+      try {
+        publishFacilityData(fid, CUSTOM_ROLES_KEY, allRoles);
+      } catch { /* ignore */ }
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
-export function listConfigurableRoles(): { roleKey: string; label: string; clearanceLevel?: number; department?: string; isCustom?: boolean }[] {
-  const custom = getCustomRoles().map((r) => ({
+export function listConfigurableRoles(facilityId?: string): { roleKey: string; label: string; clearanceLevel?: number; department?: string; isCustom?: boolean }[] {
+  const custom = getCustomRoles(facilityId).map((r) => ({
     roleKey: r.roleKey,
     label: r.label,
     clearanceLevel: r.clearanceLevel,
@@ -168,12 +221,17 @@ export function listConfigurableRoles(): { roleKey: string; label: string; clear
   return [...CONFIGURABLE_ROLES, ...custom];
 }
 
-export function createCustomRole(role: CustomRoleDefinition, defaultModules?: string[]): boolean {
-  const roles = getCustomRoles();
+export function createCustomRole(
+  role: CustomRoleDefinition,
+  defaultModules?: string[],
+  facilityId?: string
+): boolean {
+  const fid = (facilityId || role.facilityId || getActiveFacilityId() || '').trim().toUpperCase();
+  const roles = getCustomRoles(fid);
   const slug = role.roleKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
   if (!slug) return false;
 
-  // Check exists in presets or custom
+  // Check exists in presets or custom for this facility
   if (CONFIGURABLE_ROLES.some((r) => r.roleKey === slug) || roles.some((r) => r.roleKey === slug)) {
     return false;
   }
@@ -187,30 +245,33 @@ export function createCustomRole(role: CustomRoleDefinition, defaultModules?: st
     department: role.department || 'Clinical Operations',
     group: role.group || 'Custom',
     isCustom: true,
+    facilityId: fid || undefined,
+    createdAt: role.createdAt || new Date().toISOString(),
   };
 
   roles.push(newRole);
-  saveCustomRoles(roles);
+  saveCustomRoles(roles, fid);
 
   // Set default modules for this role
   const map = getRolePermissionsMap();
   map[slug] = defaultModules && defaultModules.length
     ? defaultModules
     : ['dashboard', 'my-card', 'patient-360', 'emr', 'notifications'];
-  setRolePermissionsMap(map);
+  setRolePermissionsMap(map, fid);
 
   return true;
 }
 
-export function deleteCustomRole(roleKey: string): boolean {
-  const roles = getCustomRoles();
+export function deleteCustomRole(roleKey: string, facilityId?: string): boolean {
+  const fid = (facilityId || getActiveFacilityId() || '').trim().toUpperCase();
+  const roles = getCustomRoles(fid);
   const next = roles.filter((r) => r.roleKey !== roleKey);
   if (next.length === roles.length) return false;
-  saveCustomRoles(next);
+  saveCustomRoles(next, fid);
 
   const map = getRolePermissionsMap();
   delete map[roleKey];
-  setRolePermissionsMap(map);
+  setRolePermissionsMap(map, fid);
   return true;
 }
 
@@ -305,6 +366,47 @@ const DEFAULTS: Record<string, string[]> = {
     'patient-card', 'analytics', 'my-card', 'notifications',
     'patient.identity', 'patient.billing', 'patient.insurance', 'patient.demographics',
   ],
+  dentist: [
+    'dashboard', 'dental', 'doctor-portal', 'universal-queue', 'patient-flow', 'appointments',
+    'certificates', 'consent-legal', 'pharmacy', 'radiology', 'emr', 'm87-ai', 'ai', 'my-card', 'notifications',
+    'patient.identity', 'patient.contact', 'patient.vitals', 'patient.allergies', 'patient.problems', 'patient.notes', 'patient.meds', 'patient.imaging',
+  ],
+  ophthalmologist: [
+    'dashboard', 'ophthalmology', 'doctor-portal', 'universal-queue', 'patient-flow', 'appointments',
+    'certificates', 'consent-legal', 'pharmacy', 'radiology', 'emr', 'm87-ai', 'ai', 'my-card', 'notifications',
+    'patient.identity', 'patient.contact', 'patient.vitals', 'patient.allergies', 'patient.problems', 'patient.notes', 'patient.meds', 'patient.eye_records',
+  ],
+  physiotherapist: [
+    'dashboard', 'physiotherapy', 'patient-flow', 'universal-queue', 'appointments',
+    'certificates', 'consent-legal', 'emr', 'm87-ai', 'ai', 'my-card', 'notifications',
+    'patient.identity', 'patient.contact', 'patient.vitals', 'patient.notes', 'patient.problems',
+  ],
+  nutritionist: [
+    'dashboard', 'nutrition', 'patient-flow', 'universal-queue', 'appointments',
+    'emr', 'm87-ai', 'ai', 'my-card', 'notifications',
+    'patient.identity', 'patient.contact', 'patient.vitals', 'patient.notes',
+  ],
+  psychiatrist: [
+    'dashboard', 'psychiatry', 'doctor-portal', 'universal-queue', 'patient-flow', 'appointments',
+    'certificates', 'consent-legal', 'pharmacy', 'emr', 'm87-ai', 'ai', 'my-card', 'notifications',
+    'patient.identity', 'patient.contact', 'patient.vitals', 'patient.allergies', 'patient.problems', 'patient.notes', 'patient.meds',
+  ],
+  oncologist: [
+    'dashboard', 'oncology', 'doctor-portal', 'universal-queue', 'patient-flow', 'appointments',
+    'certificates', 'consent-legal', 'pharmacy', 'laboratory', 'radiology', 'emr', 'm87-ai', 'ai', 'my-card', 'notifications',
+    'patient.identity', 'patient.contact', 'patient.vitals', 'patient.allergies', 'patient.problems', 'patient.notes', 'patient.meds', 'patient.labs', 'patient.imaging',
+  ],
+  dialysis_nurse: [
+    'dashboard', 'dialysis', 'fluid-balance', 'glucometer-insulin', 'nursing', 'beds', 'emr', 'patient-flow', 'universal-queue', 'm87-ai', 'ai', 'my-card', 'notifications',
+    'patient.identity', 'patient.contact', 'patient.vitals', 'patient.fluid_charts', 'patient.notes', 'patient.allergies',
+  ],
+  mortuary_attendant: [
+    'dashboard', 'mortuary', 'certificates', 'incident-safety', 'my-card', 'notifications',
+    'patient.identity', 'patient.contact', 'patient.demographics',
+  ],
+  cssd_technician: [
+    'dashboard', 'cssd', 'theatre', 'incident-safety', 'my-card', 'notifications',
+  ],
   biomedical: [
     'dashboard', 'biomedical', 'iot-devices', 'facilities', 'environmental', 'inventory',
     'my-card', 'notifications',
@@ -344,11 +446,28 @@ export function getRolePermissionsMap(): RolePermissionsMap {
   }
 }
 
-export function setRolePermissionsMap(map: RolePermissionsMap) {
+export function setRolePermissionsMap(map: RolePermissionsMap, facilityId?: string) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(ROLE_PERMISSIONS_KEY, JSON.stringify(map));
-  window.dispatchEvent(new CustomEvent('medcore-role-permissions', { detail: map }));
-  window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: ROLE_PERMISSIONS_KEY } }));
+  const fid = (facilityId || getActiveFacilityId() || '').trim().toUpperCase();
+  try {
+    localStorage.setItem(ROLE_PERMISSIONS_KEY, JSON.stringify(map));
+    window.dispatchEvent(new CustomEvent('medcore-role-permissions', { detail: map }));
+    window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: ROLE_PERMISSIONS_KEY } }));
+
+    try {
+      const bc = new BroadcastChannel('medcore_roles_sync');
+      bc.postMessage({ type: 'permissions_map', facilityId: fid, map });
+      bc.close();
+    } catch { /* ignore */ }
+
+    if (fid) {
+      try {
+        publishFacilityData(fid, ROLE_PERMISSIONS_KEY, map);
+      } catch { /* ignore */ }
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function getModulesForRole(roleKey: string): string[] {

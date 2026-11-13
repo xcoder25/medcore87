@@ -65,16 +65,25 @@ export const ROLE_OPTIONS = [
   { roleKey: 'radiologist', role: 'Radiologist', title: 'Consultant Radiologist', shortRole: 'Radiology', clearanceLevel: 5, clearanceLabel: 'L5 Radiology', department: 'Radiology', group: 'Clinical' },
   { roleKey: 'lab', role: 'Lab Scientist', title: 'Lab Scientist / Pathologist', shortRole: 'Lab', clearanceLevel: 3, clearanceLabel: 'L3 Lab', department: 'Pathology', group: 'Clinical' },
   { roleKey: 'pharmacist', role: 'Pharmacist', title: 'Pharmacist', shortRole: 'Pharmacist', clearanceLevel: 3, clearanceLabel: 'L3 Pharmacy', department: 'Pharmacy', group: 'Clinical' },
+  { roleKey: 'dentist', role: 'Dental Surgeon', title: 'Dentist / Dental Surgeon', shortRole: 'Dentist', clearanceLevel: 4, clearanceLabel: 'L4 Dental', department: 'Dental Clinic', group: 'Clinical' },
+  { roleKey: 'ophthalmologist', role: 'Ophthalmologist', title: 'Consultant Ophthalmologist / Optometrist', shortRole: 'Eye Specialist', clearanceLevel: 4, clearanceLabel: 'L4 Eye', department: 'Ophthalmology', group: 'Clinical' },
+  { roleKey: 'physiotherapist', role: 'Physiotherapist', title: 'Physiotherapist / Physical Rehabilitation', shortRole: 'Physio', clearanceLevel: 3, clearanceLabel: 'L3 Rehab', department: 'Physiotherapy & Rehab', group: 'Clinical' },
+  { roleKey: 'nutritionist', role: 'Clinical Nutritionist', title: 'Clinical Nutritionist / Dietitian', shortRole: 'Dietitian', clearanceLevel: 3, clearanceLabel: 'L3 Nutrition', department: 'Dietetics & Nutrition', group: 'Clinical' },
+  { roleKey: 'psychiatrist', role: 'Psychiatrist', title: 'Consultant Psychiatrist', shortRole: 'Psychiatrist', clearanceLevel: 5, clearanceLabel: 'L5 Psych', department: 'Psychiatry & Behavioral', group: 'Clinical' },
+  { roleKey: 'oncologist', role: 'Medical Oncologist', title: 'Medical Oncologist', shortRole: 'Oncologist', clearanceLevel: 5, clearanceLabel: 'L5 Oncology', department: 'Medical Oncology', group: 'Clinical' },
   { roleKey: 'medical_director', role: 'Medical Director', title: 'Medical Director', shortRole: 'Director', clearanceLevel: 5, clearanceLabel: 'L5 Director', department: 'Clinical Directorate', group: 'Clinical' },
   // Nursing
   { roleKey: 'nurse', role: 'Nursing Officer', title: 'Nursing Officer', shortRole: 'Nurse', clearanceLevel: 3, clearanceLabel: 'L3 Nursing', department: 'Inpatient Wards', group: 'Nursing' },
   { roleKey: 'midwife', role: 'Midwife', title: 'Midwife / Labour Ward', shortRole: 'Midwife', clearanceLevel: 3, clearanceLabel: 'L3 Midwifery', department: 'Maternity', group: 'Nursing' },
+  { roleKey: 'dialysis_nurse', role: 'Renal Dialysis Nurse', title: 'Renal Dialysis & Nephrology Nurse', shortRole: 'Dialysis', clearanceLevel: 3, clearanceLabel: 'L3 Renal', department: 'Renal & Hemodialysis', group: 'Nursing' },
   // Front Desk & Records
   { roleKey: 'reception', role: 'Reception / Front Desk', title: 'Reception Officer', shortRole: 'Reception', clearanceLevel: 2, clearanceLabel: 'L2 Front Desk', department: 'Patient Reception', group: 'Front desk' },
   { roleKey: 'records', role: 'Records Officer', title: 'Health Records Officer', shortRole: 'Records', clearanceLevel: 2, clearanceLabel: 'L2 Records', department: 'Medical Records', group: 'Front desk' },
-  // Support
+  // Support & Facilities
   { roleKey: 'accountant', role: 'Finance Officer', title: 'Finance / Accounts Officer', shortRole: 'Accounts', clearanceLevel: 3, clearanceLabel: 'L3 Finance', department: 'Billing & Finance', group: 'Support' },
   { roleKey: 'biomedical', role: 'Biomedical Engineer', title: 'Biomedical Engineer', shortRole: 'Biomed', clearanceLevel: 3, clearanceLabel: 'L3 Biomed', department: 'Clinical Engineering', group: 'Support' },
+  { roleKey: 'mortuary_attendant', role: 'Mortuary Officer', title: 'Pathology & Mortuary Officer', shortRole: 'Mortuary', clearanceLevel: 2, clearanceLabel: 'L2 Mortuary', department: 'Mortuary & Pathology', group: 'Support' },
+  { roleKey: 'cssd_technician', role: 'CSSD Technician', title: 'Sterile Supply & CSSD Specialist', shortRole: 'CSSD', clearanceLevel: 2, clearanceLabel: 'L2 CSSD', department: 'Sterile Processing (CSSD)', group: 'Support' },
   // Admin
   { roleKey: 'hospital_admin', role: 'Hospital Administrator', title: 'Hospital Administrator', shortRole: 'Admin', clearanceLevel: 5, clearanceLabel: 'L5 Executive', department: 'Administration', group: 'Admin' },
   { roleKey: 'sysadmin', role: 'ICT / System Admin', title: 'System Administrator', shortRole: 'SysAdmin', clearanceLevel: 6, clearanceLabel: 'L6 SysAdmin', department: 'ICT', group: 'Admin' },
@@ -209,7 +218,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
 
   const availableRoles = useMemo(() => {
     try {
-      const custom = getCustomRoles().map((c) => ({
+      const custom = getCustomRoles(facilityId).map((c) => ({
         roleKey: c.roleKey,
         role: c.label,
         title: c.title || c.label,
@@ -223,7 +232,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     } catch {
       return ROLE_OPTIONS;
     }
-  }, []);
+  }, [facilityId]);
 
   const roleMeta = useMemo(
     () => availableRoles.find((r) => r.roleKey === roleKey) || ROLE_OPTIONS[0],

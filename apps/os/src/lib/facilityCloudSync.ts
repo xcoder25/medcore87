@@ -48,6 +48,8 @@ const KEY_EVENTS: Record<string, string[]> = {
   [FACILITY_KEYS.theatre]: ['medcore-theatre-cases', 'medcore-admin-sync'],
   [FACILITY_KEYS.vitals]: ['medcore-vitals', 'medcore-admin-sync'],
   clinical_vitals: ['medcore-vitals', 'medcore-admin-sync'],
+  [FACILITY_KEYS.customRoles]: ['medcore-custom-roles-updated', 'medcore-admin-sync'],
+  [FACILITY_KEYS.rolePermissions]: ['medcore-role-permissions', 'medcore-admin-sync'],
 };
 
 function emitForKey(key: string, value: unknown) {

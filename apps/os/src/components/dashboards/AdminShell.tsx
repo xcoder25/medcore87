@@ -385,7 +385,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'rbac':
         return <AccessControl session={session} initialTab="directory" onNavigate={(k) => goModule(k as AdminModule)} />;
       case 'role-permissions':
-        return <RolePermissionsMatrix />;
+        return <RolePermissionsMatrix facilityId={session.hospitalId} />;
       case 'enrolment':
         return <AccessControl session={session} initialTab="enrol" onNavigate={(k) => goModule(k as AdminModule)} />;
       case 'compliance':

@@ -34,6 +34,8 @@ export const FACILITY_KEYS = {
   him: 'medcore_os_him_v1',
   theatre: 'medcore_os_theatre_cases_v1',
   vitals: 'medcore_os_nursing_vitals_v1',
+  customRoles: 'medcore_os_custom_roles_v1',
+  rolePermissions: 'medcore_os_role_permissions_v4',
 } as const;
 
 /**
