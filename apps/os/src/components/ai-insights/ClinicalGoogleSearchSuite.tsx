@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import {
   CLINICAL_DOSSIERS,
+  listAllClinicalDossiers,
   askPatientFile,
   type ClinicalSearchAnswer,
   type PatientCitation,
@@ -54,13 +55,14 @@ export const ClinicalGoogleSearchSuite: React.FC<Props> = ({
   onNavigate,
   onClose,
 }) => {
+  const allDossiers = useMemo(() => listAllClinicalDossiers(session?.hospitalId), [session?.hospitalId]);
   const [selectedPatientId, setSelectedPatientId] = useState<string>(
-    initialPatientId || CLINICAL_DOSSIERS[0].patientId
+    initialPatientId || allDossiers[0]?.patientId || CLINICAL_DOSSIERS[0].patientId
   );
 
   const activePatient: PatientDossier = useMemo(() => {
-    return CLINICAL_DOSSIERS.find(p => p.patientId === selectedPatientId) || CLINICAL_DOSSIERS[0];
-  }, [selectedPatientId]);
+    return allDossiers.find(p => p.patientId === selectedPatientId) || allDossiers[0] || CLINICAL_DOSSIERS[0];
+  }, [selectedPatientId, allDossiers]);
 
   const [queryInput, setQueryInput] = useState<string>(
     "Summarize this patient's history of hypertension medications and show me their highest creatinine level."
@@ -68,7 +70,7 @@ export const ClinicalGoogleSearchSuite: React.FC<Props> = ({
 
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [searchAnswer, setSearchAnswer] = useState<ClinicalSearchAnswer | null>(() =>
-    askPatientFile(selectedPatientId, queryInput)
+    askPatientFile(selectedPatientId, queryInput, session?.hospitalId)
   );
   const [selectedCitation, setSelectedCitation] = useState<PatientCitation | null>(null);
   const [copiedActionId, setCopiedActionId] = useState<string | null>(null);
@@ -79,7 +81,7 @@ export const ClinicalGoogleSearchSuite: React.FC<Props> = ({
     setIsSearching(true);
     // Simulate high-speed 0.3s generative synthesis
     window.setTimeout(() => {
-      const result = askPatientFile(selectedPatientId, q);
+      const result = askPatientFile(selectedPatientId, q, session?.hospitalId);
       setSearchAnswer(result);
       setIsSearching(false);
     }, 320);
@@ -94,7 +96,7 @@ export const ClinicalGoogleSearchSuite: React.FC<Props> = ({
       defaultQ = "Show all past surgeries, blood transfusions, and post-op notes.";
     }
     setQueryInput(defaultQ);
-    const result = askPatientFile(pId, defaultQ);
+    const result = askPatientFile(pId, defaultQ, session?.hospitalId);
     setSearchAnswer(result);
   };
 
@@ -159,7 +161,7 @@ export const ClinicalGoogleSearchSuite: React.FC<Props> = ({
                 cursor: 'pointer',
               }}
             >
-              {CLINICAL_DOSSIERS.map(p => (
+              {allDossiers.map(p => (
                 <option key={p.patientId} value={p.patientId}>
                   {p.fullName} ({p.hospitalNumber}) · {p.age}y
                 </option>

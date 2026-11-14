@@ -5,6 +5,10 @@
  * Provides 2-second synthesized summaries with exact inline citations and 1-click clinical actions.
  */
 
+import { listPatients } from './patientRegistryStore';
+import { todayVisits } from './receptionOpsStore';
+import { listOrders } from './clinicalEventBus';
+
 export interface PatientCitation {
   id: string;
   sourceType: 'LAB_REPORT' | 'CLINICAL_NOTE' | 'DISCHARGE_SUMMARY' | 'PRESCRIPTION' | 'SURGICAL_NOTE' | 'IMAGING';
@@ -232,9 +236,102 @@ export const CLINICAL_DOSSIERS: PatientDossier[] = [
   },
 ];
 
+// ── Live + Reference Dossier Aggregator ──────────────────────────────────────
+export function listAllClinicalDossiers(facilityId?: string): PatientDossier[] {
+  const dynamicDossiers: PatientDossier[] = [];
+  if (typeof window !== 'undefined') {
+    try {
+      const patients = listPatients(facilityId);
+      const visits = todayVisits(facilityId || 'IGH-EKT');
+      const orders = listOrders(facilityId || 'IGH-EKT');
+
+      for (const p of patients) {
+        if (CLINICAL_DOSSIERS.some((d) => d.patientId === p.id || d.hospitalNumber === p.hospitalNumber)) {
+          continue;
+        }
+        const birthYear = p.dob ? new Date(p.dob).getFullYear() : 1988;
+        const age = Math.max(0, new Date().getFullYear() - birthYear);
+        const fullName = [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ') || 'Patient';
+
+        const records: PatientDossier['records'] = [];
+
+        // Pull triage/visit records
+        const pVisits = visits.filter((v) => v.patientId === p.id || v.hospitalNumber === p.hospitalNumber);
+        for (const v of pVisits) {
+          records.push({
+            date: v.checkedInAt ? v.checkedInAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+            category: 'NOTE',
+            title: `${v.department} Encounter (${(v.encounterStatus || v.status).toString().replace(/_/g, ' ')})`,
+            facility: v.facilityId || facilityId || 'Hospital',
+            clinician: v.triagedBy || v.doctor || 'Triage & OPD Team',
+            details: [
+              v.presentingComplaints && `Chief Complaint: ${v.presentingComplaints}`,
+              v.vitalsBp && `BP: ${v.vitalsBp} mmHg`,
+              v.vitalsPulse && `Pulse: ${v.vitalsPulse} bpm`,
+              v.vitalsTemp && `Temp: ${v.vitalsTemp}°C`,
+              v.vitalsSpo2 && `SpO2: ${v.vitalsSpo2}%`,
+              v.initialNursingAssessment && `Nursing Assessment: ${v.initialNursingAssessment}`,
+            ]
+              .filter(Boolean)
+              .join(' · ') || `Visit reason: ${v.reason || 'Outpatient consultation'}`,
+          });
+        }
+
+        // Pull lab/Rx/imaging orders
+        const pOrders = orders.filter((o) => o.patientId === p.id || o.hospitalNumber === p.hospitalNumber);
+        for (const o of pOrders) {
+          records.push({
+            date: o.createdAt ? o.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+            category: o.type === 'rx' ? 'RX' : o.type === 'lab' ? 'LAB' : 'RAD',
+            title: `${o.type.toUpperCase()}: ${o.name}`,
+            facility: o.facilityId || facilityId || 'Hospital',
+            clinician: o.orderedBy || 'Clinician',
+            details: `Order ${o.id} (${o.status.toUpperCase()}) · ${o.notes || ''}${o.resultSummary ? ` · Result: ${o.resultSummary}` : ''}`,
+          });
+        }
+
+        if (records.length === 0) {
+          records.push({
+            date: (p.registeredAt || new Date().toISOString()).slice(0, 10),
+            category: 'NOTE',
+            title: 'Patient Registration & Baseline Chart',
+            facility: p.facilityId || facilityId || 'Hospital',
+            clinician: 'Health Records (HIM)',
+            details: `Registered patient ${fullName} (${p.hospitalNumber}). Blood Group: ${p.bloodGroup || 'Pending'}. Genotype: ${p.genotype || 'Pending'}. Allergies: ${(p.allergies || []).join(', ') || 'NKDA'}.`,
+          });
+        }
+
+        dynamicDossiers.push({
+          patientId: p.id,
+          hospitalNumber: p.hospitalNumber || p.id,
+          fullName,
+          age,
+          gender: p.sex || 'Unspecified',
+          bloodGroup: p.bloodGroup || 'O+',
+          allergies: p.allergies && p.allergies.length > 0 ? p.allergies : ['NKDA'],
+          chronicDiagnoses:
+            p.chronicConditions && p.chronicConditions.length > 0
+              ? p.chronicConditions
+              : p.problems && p.problems.length > 0
+                ? p.problems
+                : ['ACTIVE OUTPATIENT CHART'],
+          records,
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return [...dynamicDossiers, ...CLINICAL_DOSSIERS];
+}
+
 // ── Search & Synthesizer Logic ────────────────────────────────────────────────
-export function askPatientFile(patientId: string, naturalQuery: string): ClinicalSearchAnswer {
-  const dossier = CLINICAL_DOSSIERS.find(d => d.patientId === patientId) || CLINICAL_DOSSIERS[0];
+export function askPatientFile(patientId: string, naturalQuery: string, facilityId?: string): ClinicalSearchAnswer {
+  const allDossiers = listAllClinicalDossiers(facilityId);
+  const dossier =
+    allDossiers.find((d) => d.patientId === patientId || d.hospitalNumber === patientId) ||
+    allDossiers[0] ||
+    CLINICAL_DOSSIERS[0];
   const q = naturalQuery.toLowerCase().trim();
 
   // 1. Query: Hypertension medications & Highest Creatinine

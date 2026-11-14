@@ -17,6 +17,10 @@ import {
   ClipboardList,
 } from 'lucide-react';
 import { listPatients, type FacilityPatient } from '@/lib/patientRegistryStore';
+import { useFormDraft } from '../../lib/formDraftStore';
+import { FormDraftBanner } from '../common/FormDraftBanner';
+import { appendAudit } from '../../lib/auditLogStore';
+import type { UserSession } from '../auth/AuthScreen';
 
 interface DischargeRecord {
   patientId: string;
@@ -48,7 +52,8 @@ interface DischargeRecord {
   compiledAt: string;
 }
 
-export function DischargeSummaryCompilerSuite() {
+export function DischargeSummaryCompilerSuite({ session }: { session?: UserSession } = {}) {
+  const facilityId = session?.hospitalId || 'IGH-EKT';
   const [patients] = useState<FacilityPatient[]>(() => {
     try {
       return listPatients();
@@ -117,6 +122,17 @@ export function DischargeSummaryCompilerSuite() {
     compiledAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
   });
 
+  // Power-Outage Auto-Save for Inpatient Discharge Summary Compiler
+  const dischargeDraft = useFormDraft({
+    facilityId,
+    formType: 'inpatient_discharge_summary',
+    draftId: selectedPatientId || 'discharge-active',
+    staffBadge: session?.badgeId || 'DOC-001',
+    data: formData,
+    isDirty: (d) => Boolean(d.hospitalCourse?.trim() || d.dischargeDiagnosis?.trim()),
+    onRestore: (d) => setFormData(d),
+  });
+
   const handlePatientSelect = (patientId: string) => {
     setSelectedPatientId(patientId);
     const pt = patients.find((p: FacilityPatient) => p.id === patientId);
@@ -145,11 +161,31 @@ export function DischargeSummaryCompilerSuite() {
   };
 
   const handlePrint = () => {
+    appendAudit({
+      facilityId,
+      actor: session?.name || formData.dischargingDoctor,
+      actorBadge: session?.badgeId,
+      category: 'clinical',
+      severity: 'notable',
+      action: 'INPATIENT_DISCHARGE_SUMMARY_SIGNED',
+      entity: 'discharge_summary',
+      entityId: formData.patientId,
+      detail: `Compiled & signed discharge summary for ${formData.patientName} (${formData.hospitalNumber}) · Condition: ${formData.dischargeCondition}`,
+    });
+    dischargeDraft.clearDraft();
     window.print();
   };
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto text-slate-800 dark:text-slate-100">
+      <FormDraftBanner
+        hasRecoverableDraft={dischargeDraft.hasRecoverableDraft}
+        lastSavedAt={dischargeDraft.lastSavedAt}
+        isSaving={dischargeDraft.isSaving}
+        onRestore={dischargeDraft.restoreDraft}
+        onDiscard={dischargeDraft.discardDraft}
+        formLabel="Inpatient Discharge Summary"
+      />
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
         <div>

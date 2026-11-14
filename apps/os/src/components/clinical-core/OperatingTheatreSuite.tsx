@@ -9,6 +9,10 @@ import {
   Plus, X, Check, Droplet, ArrowRight
 } from 'lucide-react';
 import type { SurgicalCase } from '@medcore/types';
+import { useFormDraft } from '../../lib/formDraftStore';
+import { FormDraftBanner } from '../common/FormDraftBanner';
+import { appendAudit } from '../../lib/auditLogStore';
+import type { UserSession } from '../auth/AuthScreen';
 
 interface ExtendedSurgicalCase extends SurgicalCase {
   signInDone?: boolean;
@@ -18,7 +22,8 @@ interface ExtendedSurgicalCase extends SurgicalCase {
 
 const INITIAL_CASES: ExtendedSurgicalCase[] = [];
 
-export const OperatingTheatreSuite: React.FC = () => {
+export const OperatingTheatreSuite: React.FC<{ session?: UserSession }> = ({ session }) => {
+  const facilityId = session?.hospitalId || 'IGH-EKT';
   const [cases, setCases] = useState<ExtendedSurgicalCase[]>(INITIAL_CASES);
   const [selectedId, setSelectedId] = useState<string>('');
   const [notice, setNotice] = useState<string | null>(null);
@@ -32,6 +37,34 @@ export const OperatingTheatreSuite: React.FC = () => {
   const [newAnesthetist, setNewAnesthetist] = useState('Dr. Patricia Umo (Consultant Anesthesiologist)');
   const [newTime, setNewTime] = useState('14:00 - 16:30');
   const [newBloodUnits, setNewBloodUnits] = useState('2');
+
+  // Power-Outage Auto-Save for Operating Theatre Case Booking & Pre-Op Notes
+  const otDraft = useFormDraft({
+    facilityId,
+    formType: 'operating_theatre_case',
+    draftId: 'new-surgical-case',
+    staffBadge: session?.badgeId || 'SUR-001',
+    data: {
+      newPatient,
+      newProcedure,
+      newTheatre,
+      newSurgeon,
+      newAnesthetist,
+      newTime,
+      newBloodUnits,
+    },
+    isDirty: (d) => Boolean(d.newPatient.trim() || d.newProcedure.trim()),
+    onRestore: (d) => {
+      setNewPatient(d.newPatient || '');
+      setNewProcedure(d.newProcedure || '');
+      if (d.newTheatre) setNewTheatre(d.newTheatre);
+      if (d.newSurgeon) setNewSurgeon(d.newSurgeon);
+      if (d.newAnesthetist) setNewAnesthetist(d.newAnesthetist);
+      if (d.newTime) setNewTime(d.newTime);
+      if (d.newBloodUnits) setNewBloodUnits(d.newBloodUnits);
+      setShowModal(true);
+    },
+  });
 
   const showNotification = (msg: string) => {
     setNotice(msg);
@@ -86,11 +119,31 @@ export const OperatingTheatreSuite: React.FC = () => {
     setShowModal(false);
     setNewPatient('');
     setNewProcedure('');
+    otDraft.clearDraft();
+    appendAudit({
+      facilityId,
+      actor: session?.name || newSurgeon,
+      actorBadge: session?.badgeId,
+      category: 'clinical',
+      severity: 'notable',
+      action: 'SURGICAL_CASE_SCHEDULED',
+      entity: 'operating_theatre',
+      entityId: nextId,
+      detail: `${newCase.procedure} for ${newCase.patientName} in ${newTheatre}`,
+    });
     showNotification(`Surgery ${nextId} scheduled in ${newTheatre}!`);
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <FormDraftBanner
+        hasRecoverableDraft={otDraft.hasRecoverableDraft}
+        lastSavedAt={otDraft.lastSavedAt}
+        isSaving={otDraft.isSaving}
+        onRestore={otDraft.restoreDraft}
+        onDiscard={otDraft.discardDraft}
+        formLabel="Operating Theatre Surgical Case"
+      />
       <SharedBedStrip
         facilityId="IGH-EKT"
         wardFilter={['PACU', 'Surgical', 'ICU']}

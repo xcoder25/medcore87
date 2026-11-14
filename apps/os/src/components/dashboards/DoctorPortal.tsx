@@ -2,6 +2,8 @@
 
 import { markPatientWithProvider } from '../../lib/receptionOpsStore';
 import { useFormDraft } from '../../lib/formDraftStore';
+import { FormDraftBanner } from '../common/FormDraftBanner';
+import { appendAudit } from '../../lib/auditLogStore';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { UserSession } from '../auth/AuthScreen';
@@ -971,6 +973,35 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
   // Multi-drug staging cart
   const [stagedDrugs, setStagedDrugs] = useState<StagedPrescriptionItem[]>([]);
 
+  // Power-Outage Auto-Save for CPOE Multi-Drug Prescription Builder
+  const rxDraft = useFormDraft({
+    facilityId,
+    formType: 'doctor_cpoe_rx',
+    draftId: patientId || 'unstaged-rx',
+    staffBadge: session.badgeId || 'DOC-001',
+    data: {
+      patientId,
+      stagedDrugs,
+      drugQuery,
+      dose,
+      freq,
+      duration,
+      route,
+      instructions,
+    },
+    isDirty: (d) => d.stagedDrugs.length > 0 || Boolean(d.drugQuery.trim() || d.dose.trim()),
+    onRestore: (d) => {
+      if (d.patientId) setPatientId(d.patientId);
+      if (Array.isArray(d.stagedDrugs)) setStagedDrugs(d.stagedDrugs);
+      if (d.drugQuery) setDrugQuery(d.drugQuery);
+      if (d.dose) setDose(d.dose);
+      if (d.freq) setFreq(d.freq);
+      if (d.duration) setDuration(d.duration);
+      if (d.route) setRoute(d.route);
+      if (d.instructions) setInstructions(d.instructions);
+    },
+  });
+
   const reload = () => {
     setRegistry(listPatients(facilityId));
     setRxList(listOrders(facilityId, { status: undefined }).filter((o) => o.type === 'rx'));
@@ -1107,12 +1138,24 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
       createdOrders.push(o);
       emitLiveAction(`Rx sent to pharmacy · ${patient.hospitalNumber} · ${item.drugName}`, { module: 'pharmacy' });
       liveAlert(`Prescription ${o.id} sent to pharmacy`, 'pharmacy', facilityId);
+      appendAudit({
+        facilityId,
+        actor: session.name || 'Doctor',
+        actorBadge: session.badgeId,
+        category: 'pharmacy',
+        severity: overrideBpa ? 'critical' : 'normal',
+        action: overrideBpa ? 'CPOE_RX_SIGNED_WITH_BPA_OVERRIDE' : 'CPOE_RX_SIGNED',
+        entity: 'prescription',
+        entityId: o.id,
+        detail: `${item.drugName} (${notes}) for ${patient.firstName} ${patient.lastName} (${patient.hospitalNumber})`,
+      });
     }
 
     setNotice(`Successfully dispatched ${createdOrders.length} medication${createdOrders.length > 1 ? 's' : ''} to Pharmacy in realtime!`);
     setTimeout(() => setNotice(null), 4000);
     setStagedDrugs([]);
     setOverrideBpa(false);
+    rxDraft.clearDraft();
     reload();
   };
 
@@ -1125,7 +1168,16 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <FormDraftBanner
+        hasRecoverableDraft={rxDraft.hasRecoverableDraft}
+        lastSavedAt={rxDraft.lastSavedAt}
+        isSaving={rxDraft.isSaving}
+        onRestore={rxDraft.restoreDraft}
+        onDiscard={rxDraft.discardDraft}
+        formLabel="CPOE Prescription Queue"
+      />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: 16 }}>
       {notice && (
         <div style={{
           position: 'fixed', bottom: 24, right: 24, zIndex: 100,
@@ -1580,6 +1632,7 @@ const PrescriptionsView: React.FC<{ session: UserSession }> = ({ session }) => {
             <Plus size={16} /> Add Medication to Prescription Cart
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

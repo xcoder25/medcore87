@@ -56,6 +56,12 @@ const PatientDropNotification = dynamic(
 import { listPatients, hydratePatientRegistry } from '../lib/patientRegistryStore';
 import { hydrateBedBoard } from '../lib/bedBoardStore';
 import { normalizeStaffPin, firebaseSignInWithBadge } from '../lib/firebase';
+import {
+  buildFederatedSearchIndex,
+  scoreSearchCandidate,
+  type SearchEntityCategory,
+} from '../lib/universalSearchEngine';
+import { appendAudit } from '../lib/auditLogStore';
 import { enableEdgeCloudOnlyRuntime } from '../lib/edgeCloudOnly';
 import { markStaffOffline, isStaffRevokedLocal } from '../lib/staffPresenceStore';
 import { roleCanAccessModule, getModulesForRole } from '../lib/rolePermissionsStore';
@@ -464,6 +470,35 @@ export default function OSPage() {
     void hydratePatientRegistry(normalized.hospitalId);
     void hydrateBedBoard();
 
+    // Issue cryptographically signed HttpOnly server session cookie + audit log
+    try {
+      void fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          badgeId: normalized.badgeId || normalized.id,
+          name: normalized.name,
+          roleKey: normalized.roleKey,
+          role: normalized.role,
+          facilityId: normalized.hospitalId,
+          clearanceLevel: normalized.clearanceLevel,
+        }),
+      }).catch(() => {});
+      appendAudit({
+        facilityId: normalized.hospitalId || 'IGH-EKT',
+        actor: normalized.name,
+        actorBadge: normalized.badgeId,
+        category: 'access',
+        severity: 'normal',
+        action: 'STAFF_SESSION_AUTHENTICATED',
+        entity: 'workstation_session',
+        entityId: normalized.badgeId || normalized.id,
+        detail: `${normalized.name} (${normalized.role}) signed in at ${normalized.facility}`,
+      });
+    } catch {
+      /* ignore */
+    }
+
     // Signal the service worker to prefetch all Next.js chunks in the background.
     // This ensures every module the user clicks opens instantly (served from cache)
     // even on 2G after the first login — no per-click network wait.
@@ -476,7 +511,19 @@ export default function OSPage() {
     try {
       if (userSession?.badgeId && userSession?.hospitalId) {
         markStaffOffline(userSession.badgeId, userSession.hospitalId);
+        appendAudit({
+          facilityId: userSession.hospitalId,
+          actor: userSession.name,
+          actorBadge: userSession.badgeId,
+          category: 'access',
+          severity: 'normal',
+          action: 'STAFF_SESSION_SIGNED_OUT',
+          entity: 'workstation_session',
+          entityId: userSession.badgeId,
+          detail: `${userSession.name} signed out of terminal`,
+        });
       }
+      void fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
     } catch {
       // ignore
     }
@@ -653,103 +700,251 @@ const handleLockScreen = () => {
     setShowRoleModal(false);
     try {
       localStorage.setItem('medcore_os_session', JSON.stringify(newSession));
+      void fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          badgeId: newSession.badgeId || newSession.id,
+          name: newSession.name,
+          roleKey: newSession.roleKey,
+          role: newSession.role,
+          facilityId: newSession.hospitalId,
+          clearanceLevel: newSession.clearanceLevel,
+        }),
+      }).catch(() => {});
     } catch {}
   };
 
-  // ── Command Palette data (must be before early returns — Rules of Hooks) ──
+  const [cmdCategory, setCmdCategory] = useState<SearchEntityCategory>('all');
+  const [cmdActiveIndex, setCmdActiveIndex] = useState<number>(0);
+
+  // ── Supercharged Role-Intelligent Command Palette & Federated Search Index ──
   const allPaletteCommands = useMemo(() => {
-    const list: { id: string; label: string; group: string; icon: any; action: () => void; badge?: string }[] = [];
-    
-    // Quick Actions
+    const list: {
+      id: string;
+      category: Exclude<SearchEntityCategory, 'all'>;
+      label: string;
+      sublabel?: string;
+      group: string;
+      icon: any;
+      action: () => void;
+      badge?: string;
+      badgeTone?: 'blue' | 'teal' | 'amber' | 'red' | 'purple' | 'green' | 'slate';
+      keywords: string;
+      baseScore: number;
+    }[] = [];
+
+    const fid = userSession?.hospitalId || 'IGH-EKT';
+    const rk = userSession
+      ? inferRoleKey(userSession.roleKey || userSession.role || userSession.title, userSession.badgeId)
+      : 'doctor';
+
+    const iconMap: Record<string, any> = {
+      user: Users,
+      activity: Activity,
+      pill: Pill,
+      flask: FlaskConical,
+      bed: BedDouble,
+      wallet: CreditCard,
+      shield: ShieldCheck,
+      sparkles: Sparkles,
+      stethoscope: Stethoscope,
+      layers: Layers,
+      alert: AlertTriangle,
+      lock: Lock,
+    };
+
+    // 1) Federated live hospital entities (Patients, Triage/Queue, Orders, EML Formulary, Beds, Open Bills, Staff)
+    const federatedHits = buildFederatedSearchIndex({
+      facilityId: fid,
+      roleKey: rk,
+      isModulePermitted: (mod) => isModulePermitted(mod as ModuleKey),
+    });
+
+    for (const hit of federatedHits) {
+      list.push({
+        id: hit.id,
+        category: hit.category,
+        label: hit.label,
+        sublabel: hit.sublabel,
+        group: hit.group,
+        icon: iconMap[hit.iconName] || FileText,
+        badge: hit.badge,
+        badgeTone: hit.badgeTone,
+        keywords: hit.keywords,
+        baseScore: hit.score,
+        action: () => {
+          if (hit.customAction) {
+            hit.customAction();
+          } else {
+            try {
+              if (hit.patientId) {
+                sessionStorage.setItem('medcore_focus_patient', hit.patientId);
+                sessionStorage.setItem('medcore_open_patient_id', hit.patientId);
+              }
+              if (hit.hospitalNumber) {
+                sessionStorage.setItem('medcore_open_patient_hn', hit.hospitalNumber);
+              }
+            } catch {
+              /* ignore */
+            }
+            if (hit.targetModule) {
+              handleModuleChange(hit.targetModule as ModuleKey);
+            }
+          }
+          setCmdPaletteOpen(false);
+        },
+      });
+    }
+
+    // 2) Role-permitted Navigation Modules
+    const allSections = getRoleNavSections(null, true);
+    allSections.forEach((sec) => {
+      sec.items.forEach((item) => {
+        if (userSession && !isModulePermitted(item.key as ModuleKey)) return;
+        list.push({
+          id: `mod-${item.key}`,
+          category: 'modules',
+          label: item.label,
+          sublabel: `${sec.label} · ${MODULE_CLEARANCE[item.key as ModuleKey]?.roleDesc || 'Clinical Suite'}`,
+          group: sec.label,
+          icon: item.icon,
+          badge: item.badge || 'Suite',
+          badgeTone: 'blue',
+          keywords: `${item.label} ${item.key} ${sec.label} ${item.badge || ''} suite module workspace`,
+          baseScore: 20,
+          action: () => {
+            handleModuleChange(item.key as ModuleKey);
+            setCmdPaletteOpen(false);
+          },
+        });
+      });
+    });
+
+    // 3) Quick Actions
+    if (isModulePermitted('clinical-search')) {
+      list.push({
+        id: 'act-clinical-google',
+        category: 'actions',
+        label: 'Ask the Patient File (Clinical Google AI Synthesis)',
+        sublabel: 'Natural language search across multi-year labs, notes & prescriptions (⌘J)',
+        group: 'Quick Actions',
+        icon: Sparkles,
+        action: () => {
+          handleModuleChange('clinical-search');
+          setCmdPaletteOpen(false);
+        },
+        badge: '⌘J · AI',
+        badgeTone: 'teal',
+        keywords: 'ask patient file clinical google search synthesis history creatinine',
+        baseScore: 35,
+      });
+    }
+
     list.push(
       {
-        id: 'act-switch-role',
-        label: 'View as another staff (admin only)',
-        group: 'Quick Actions',
-        icon: ShieldCheck,
-        action: () => { setShowRoleModal(true); setCmdPaletteOpen(false); },
-        badge: 'Admin'
-      },
-      {
         id: 'act-copilot',
-        label: 'Open clinical assistant',
+        category: 'actions',
+        label: 'Open Celestia Clinical AI Assistant Drawer',
+        sublabel: 'Real-time clinical decision support, differential diagnosis & drug safety',
         group: 'Quick Actions',
         icon: Brain,
-        action: () => { setAiDrawerOpen(true); setCmdPaletteOpen(false); },
-        badge: 'AI'
+        action: () => {
+          setAiDrawerOpen(true);
+          setCmdPaletteOpen(false);
+        },
+        badge: 'AI Copilot',
+        badgeTone: 'purple',
+        keywords: 'celestia ai assistant copilot differential drug interaction',
+        baseScore: 30,
+      },
+      {
+        id: 'act-switch-role',
+        category: 'actions',
+        label: 'View as another staff role (RBAC Tester)',
+        sublabel: 'Switch active clinical or operational cadre to test role-specific views',
+        group: 'Quick Actions',
+        icon: ShieldCheck,
+        action: () => {
+          setShowRoleModal(true);
+          setCmdPaletteOpen(false);
+        },
+        badge: 'Admin',
+        badgeTone: 'slate',
+        keywords: 'switch role staff admin rbac test cadre',
+        baseScore: 15,
       },
       {
         id: 'act-alert',
-        label: 'Send hospital alert',
+        category: 'actions',
+        label: 'Broadcast Hospital Emergency Code Alert',
+        sublabel: 'Dispatch Code Red / Trauma resuscitation broadcast to all active workstations',
         group: 'Quick Actions',
         icon: AlertTriangle,
         action: () => {
           setActiveEmergencyCode('CODE RED — RESUSCITATION / TRAUMA ALERT');
           setCmdPaletteOpen(false);
         },
-        badge: 'Emergency'
+        badge: 'Emergency',
+        badgeTone: 'red',
+        keywords: 'emergency code red blue alert trauma broadcast resuscitation',
+        baseScore: 15,
       },
       {
         id: 'act-lock',
+        category: 'actions',
         label: 'Lock Workstation Terminal Screen',
+        sublabel: 'Securely lock clinical terminal with PIN verification',
         group: 'Quick Actions',
         icon: Lock,
-        action: () => { handleLockScreen(); setCmdPaletteOpen(false); },
-        badge: 'Security'
+        action: () => {
+          handleLockScreen();
+          setCmdPaletteOpen(false);
+        },
+        badge: 'Security',
+        badgeTone: 'slate',
+        keywords: 'lock screen terminal security pin',
+        baseScore: 15,
       }
     );
-
-    // Get all navigation sections from master directory
-    const allSections = getRoleNavSections(null, true);
-    allSections.forEach(sec => {
-      sec.items.forEach(item => {
-        // Specialty lock: hide modules this role cannot open (search cannot bypass sidebar)
-        if (userSession && !isModulePermitted(item.key as ModuleKey)) return;
-        list.push({
-          id: `mod-${item.key}`,
-          label: item.label,
-          group: sec.label,
-          icon: item.icon,
-          badge: item.badge,
-          action: () => {
-            handleModuleChange(item.key as ModuleKey);
-            setCmdPaletteOpen(false);
-          }
-        });
-      });
-    });
-
-    
-    try {
-      const fid = userSession?.hospitalId || 'IGH-EKT';
-      for (const p of listPatients(fid).slice(0, 40)) {
-        list.push({
-          id: `pt-${p.id}`,
-          label: `${p.firstName} ${p.lastName} · ${p.hospitalNumber}`,
-          group: 'Patients',
-          icon: Users,
-          badge: 'Chart',
-          action: () => {
-            try { sessionStorage.setItem('medcore_focus_patient', p.id); } catch {}
-            handleModuleChange('patient-360' as ModuleKey);
-            setCmdPaletteOpen(false);
-          },
-        });
-      }
-    } catch {}
 
     return list;
-  }, [userSession?.hospitalId]);
+  }, [userSession?.hospitalId, userSession?.roleKey, userSession?.badgeId, cmdPaletteOpen, permTick]);
 
   const filteredCommands = useMemo(() => {
-    if (!cmdSearch.trim()) return allPaletteCommands;
-    const q = cmdSearch.toLowerCase();
-    return allPaletteCommands.filter(c => 
-      c.label.toLowerCase().includes(q) || 
-      c.group.toLowerCase().includes(q) ||
-      (c.badge && c.badge.toLowerCase().includes(q))
-    );
-  }, [cmdSearch, allPaletteCommands]);
+    const byCat =
+      cmdCategory === 'all'
+        ? allPaletteCommands
+        : allPaletteCommands.filter((c) => c.category === cmdCategory);
+
+    const q = cmdSearch.trim();
+    if (!q) {
+      return [...byCat].sort((a, b) => b.baseScore - a.baseScore).slice(0, 60);
+    }
+
+    const scored = byCat
+      .map((cmd) => {
+        const matchScore = scoreSearchCandidate(
+          q,
+          cmd.label,
+          cmd.sublabel || '',
+          `${cmd.group} ${cmd.keywords}`,
+          cmd.badge
+        );
+        return {
+          cmd,
+          totalScore: matchScore > 0 ? matchScore + cmd.baseScore : 0,
+        };
+      })
+      .filter((x) => x.totalScore > 0)
+      .sort((a, b) => b.totalScore - a.totalScore);
+
+    return scored.slice(0, 60).map((x) => x.cmd);
+  }, [cmdSearch, cmdCategory, allPaletteCommands]);
+
+  useEffect(() => {
+    setCmdActiveIndex(0);
+  }, [cmdSearch, cmdCategory]);
 
   if (appState === 'splash') {
     return (
@@ -907,15 +1102,37 @@ const handleLockScreen = () => {
       <KeyboardShortcutsHint open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       {cmdPaletteOpen && (
         <div className="os-cmd-palette-backdrop" onClick={() => setCmdPaletteOpen(false)}>
-          <div className="os-cmd-palette-modal" onClick={e => e.stopPropagation()}>
+          <div
+            className="os-cmd-palette-modal"
+            style={{ maxWidth: 680 }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="os-cmd-search-header">
-              <Search size={18} style={{ color: '#0052D4', flexShrink: 0 }} />
+              <Sparkles size={18} style={{ color: '#0284C7', flexShrink: 0 }} />
               <input
                 autoFocus
                 className="os-cmd-input"
-                placeholder="Search modules, clinical pathways, patients, or actions..."
+                placeholder={`Search patients, queue, orders, EML drugs, beds, bills, or suites (${currentRoleTheme.label})...`}
                 value={cmdSearch}
-                onChange={e => setCmdSearch(e.target.value)}
+                onChange={(e) => setCmdSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setCmdActiveIndex((prev) =>
+                      filteredCommands.length > 0 ? (prev + 1) % filteredCommands.length : 0
+                    );
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setCmdActiveIndex((prev) =>
+                      filteredCommands.length > 0
+                        ? (prev - 1 + filteredCommands.length) % filteredCommands.length
+                        : 0
+                    );
+                  } else if (e.key === 'Enter' && filteredCommands[cmdActiveIndex]) {
+                    e.preventDefault();
+                    filteredCommands[cmdActiveIndex].action();
+                  }
+                }}
               />
               {cmdSearch.length > 0 ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
@@ -958,53 +1175,146 @@ const handleLockScreen = () => {
                 <span className="os-cmd-kbd">ESC</span>
               )}
             </div>
-            <div className="os-cmd-results">
+
+            {/* Role-Intelligent Federated Category Filter Bar */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 14px',
+                borderBottom: '1px solid #E2E8F0',
+                background: '#F8FAFC',
+                overflowX: 'auto',
+              }}
+            >
+              {(
+                [
+                  { id: 'all', label: 'All Federated' },
+                  { id: 'patients', label: 'Patients' },
+                  { id: 'queue', label: 'Live Queue' },
+                  { id: 'orders', label: 'Orders & Rx' },
+                  { id: 'formulary', label: 'EML Drugs' },
+                  { id: 'beds', label: 'Beds' },
+                  { id: 'billing', label: 'Billing' },
+                  { id: 'modules', label: 'Suites' },
+                  { id: 'actions', label: 'Actions' },
+                ] as { id: SearchEntityCategory; label: string }[]
+              ).map((tab) => {
+                const isAct = cmdCategory === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setCmdCategory(tab.id)}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: 999,
+                      border: `1px solid ${isAct ? '#0284C7' : '#E2E8F0'}`,
+                      background: isAct ? '#0284C7' : '#FFFFFF',
+                      color: isAct ? '#FFFFFF' : '#475569',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      transition: 'all 0.12s ease',
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="os-cmd-results" style={{ maxHeight: 420 }}>
               {filteredCommands.length === 0 ? (
-                <div style={{ padding: '28px 16px', textAlign: 'center', color: '#94A3B8', fontSize: '0.85rem' }}>
-                  No matching modules or actions found for "{cmdSearch}"
+                <div style={{ padding: '28px 16px', textAlign: 'center', color: '#64748B', fontSize: '0.85rem' }}>
+                  No matching patients, orders, formulary drugs, or modules found for &ldquo;{cmdSearch}&rdquo;
                 </div>
               ) : (
-                filteredCommands.map((cmd) => {
+                filteredCommands.map((cmd, idx) => {
                   const Icon = cmd.icon;
+                  const isHighlighted = idx === cmdActiveIndex;
+                  const toneMap: Record<string, { bg: string; fg: string }> = {
+                    red: { bg: '#FEE2E2', fg: '#B91C1C' },
+                    amber: { bg: '#FEF3C7', fg: '#B45309' },
+                    green: { bg: '#DCFCE7', fg: '#047857' },
+                    teal: { bg: '#CCFBF1', fg: '#0F766E' },
+                    purple: { bg: '#EDE9FE', fg: '#6D28D9' },
+                    blue: { bg: '#E0F2FE', fg: '#0369A1' },
+                    slate: { bg: '#F1F5F9', fg: '#475569' },
+                  };
+                  const tone = toneMap[cmd.badgeTone || 'slate'] || toneMap.slate;
+
                   return (
                     <div
                       key={cmd.id}
                       className="os-cmd-item"
                       onClick={cmd.action}
+                      onMouseEnter={() => setCmdActiveIndex(idx)}
+                      style={{
+                        background: isHighlighted ? '#F0F9FF' : undefined,
+                        borderLeft: isHighlighted ? '3px solid #0284C7' : '3px solid transparent',
+                      }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                        <div style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: 8,
-                          background: 'rgba(0, 82, 212, 0.08)',
-                          color: '#0052D4',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0
-                        }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 8,
+                            background: isHighlighted ? '#0284C7' : 'rgba(2, 132, 199, 0.08)',
+                            color: isHighlighted ? '#FFFFFF' : '#0284C7',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
                           <Icon size={16} />
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                          <span style={{ fontWeight: 600, color: '#0F172A', fontSize: '0.86rem' }}>{cmd.label}</span>
-                          <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{cmd.group}</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                          <span
+                            style={{
+                              fontWeight: 700,
+                              color: '#0F172A',
+                              fontSize: '0.85rem',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {cmd.label}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              color: '#475569',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {cmd.sublabel || cmd.group}
+                          </span>
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                         {cmd.badge && (
-                          <span style={{
-                            fontSize: '0.65rem',
-                            fontWeight: 700,
-                            padding: '2px 7px',
-                            borderRadius: 4,
-                            background: '#F1F5F9',
-                            color: '#475569'
-                          }}>
+                          <span
+                            style={{
+                              fontSize: '0.65rem',
+                              fontWeight: 800,
+                              padding: '2px 7px',
+                              borderRadius: 6,
+                              background: tone.bg,
+                              color: tone.fg,
+                            }}
+                          >
                             {cmd.badge}
                           </span>
                         )}
-                        <CornerDownLeft size={13} style={{ color: '#94A3B8' }} />
+                        <CornerDownLeft size={13} style={{ color: isHighlighted ? '#0284C7' : '#94A3B8' }} />
                       </div>
                     </div>
                   );

@@ -8,6 +8,9 @@ import { searchEml, EmlMedication } from '../../data/emlFormulary';
 import type { UserSession } from '../auth/AuthScreen';
 import { roleCanPrescribe } from '../../lib/rolePermissionsStore';
 import { inferRoleKey } from '../../lib/staffCardStore';
+import { useFormDraft } from '../../lib/formDraftStore';
+import { FormDraftBanner } from '../common/FormDraftBanner';
+import { appendAudit } from '../../lib/auditLogStore';
 import {
   FileText, User, HeartPulse, Pill, FlaskConical, Layers,
   AlertTriangle, Stethoscope, Calendar, ShieldCheck, Printer,
@@ -190,6 +193,37 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
   const [objective, setObjective] = useState('');
   const [assessment, setAssessment] = useState('');
   const [plan, setPlan] = useState('');
+
+  // Power-Outage Auto-Save for Full EMR Clinical Encounter Editor
+  const emrDraft = useFormDraft({
+    facilityId: session?.hospitalId || 'IGH-EKT',
+    formType: 'emr_encounter_note',
+    draftId: selectedPatientId || 'emr-active',
+    staffBadge: session?.badgeId || 'DOC-001',
+    data: {
+      selectedPatientId,
+      noteType,
+      subjective,
+      objective,
+      assessment,
+      plan,
+    },
+    isDirty: (d) =>
+      Boolean(
+        d.subjective.trim() ||
+          d.objective.trim() ||
+          d.assessment.trim() ||
+          d.plan.trim()
+      ),
+    onRestore: (d) => {
+      if (d.selectedPatientId) setSelectedPatientId(d.selectedPatientId);
+      if (d.noteType) setNoteType(d.noteType);
+      setSubjective(d.subjective || '');
+      setObjective(d.objective || '');
+      setAssessment(d.assessment || '');
+      setPlan(d.plan || '');
+    },
+  });
 
   // AI Assistant Drawer / State
   const [aiAssistantQuery, setAiAssistantQuery] = useState('');
@@ -1193,7 +1227,14 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
           {/* TAB 1: Encounters & SOAP Notes */}
           {activeTab === 'notes' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              
+              <FormDraftBanner
+                hasRecoverableDraft={emrDraft.hasRecoverableDraft}
+                lastSavedAt={emrDraft.lastSavedAt}
+                isSaving={emrDraft.isSaving}
+                onRestore={emrDraft.restoreDraft}
+                onDiscard={emrDraft.discardDraft}
+                formLabel="EMR Clinical Encounter"
+              />
               {/* SOAP Documentation Engine */}
               <div style={{
                 background: '#0F172A', border: '1px solid #1E293B',
@@ -1232,7 +1273,21 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
 
                     <button
                       type="button"
-                      onClick={() => showToast('💾 Clinical Encounter signed & cryptographically logged to FHIR R4')}
+                      onClick={() => {
+                        appendAudit({
+                          facilityId: session?.hospitalId || 'IGH-EKT',
+                          actor: session?.name || selectedPatient.attending,
+                          actorBadge: session?.badgeId,
+                          category: 'clinical',
+                          severity: 'normal',
+                          action: 'EMR_ENCOUNTER_SIGNED',
+                          entity: 'patient_chart',
+                          entityId: selectedPatient.id,
+                          detail: `Signed ${noteType} for ${selectedPatient.name} (${selectedPatient.mrn})`,
+                        });
+                        emrDraft.clearDraft();
+                        showToast('💾 Clinical Encounter signed & cryptographically logged to FHIR R4');
+                      }}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 6,
                         background: '#10B981', color: '#090F1D', border: 'none',

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { Search, X, ChevronRight, Sparkles } from 'lucide-react';
+import { scoreSearchCandidate } from '../../lib/universalSearchEngine';
 
 export interface SearchSuggestion {
   id: string;
@@ -473,20 +474,21 @@ export const InteractiveSearchBar: React.FC<InteractiveSearchBarProps> = ({
   );
 };
 
-// Helper to filter suggestions
+// Helper to filter suggestions with fuzzy & multi-token scoring
 function useMemoSuggestions(suggestions: SearchSuggestion[], query: string): SearchSuggestion[] {
   return React.useMemo(() => {
     if (!suggestions || suggestions.length === 0) return [];
     const q = query.trim().toLowerCase();
-    if (!q) return suggestions.slice(0, 8);
+    if (!q) return suggestions.slice(0, 10);
     return suggestions
-      .filter(
-        (s) =>
-          s.label.toLowerCase().includes(q) ||
-          (s.sub && s.sub.toLowerCase().includes(q)) ||
-          (s.category && s.category.toLowerCase().includes(q))
-      )
-      .slice(0, 8);
+      .map((s) => ({
+        s,
+        score: scoreSearchCandidate(q, s.label, s.sub || '', s.category || '', s.badge),
+      }))
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+      .map((x) => x.s);
   }, [suggestions, query]);
 }
 

@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isPostgresConfigured, ensureSchema, query } from '../../../../lib/db/postgres';
+import {
+  isPostgresConfigured,
+  ensureSchema,
+  withTenantClient,
+  projectKeyToRelationalTables,
+} from '../../../../lib/db/postgres';
+import { publishFacilitySseEvent } from '../../../../lib/sseBroker';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -65,33 +71,35 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // 2) Overlay from Aurora PostgreSQL if configured
+  // 2) Overlay from Aurora PostgreSQL if configured (with RLS tenant context)
   if (isPostgresConfigured()) {
     try {
       await ensureSchema();
-      if (singleKey) {
-        const res = await query<{ key: string; value: unknown; updated_at: Date }>(
-          `SELECT key, value, updated_at FROM facility_kv WHERE facility_id = $1 AND key = $2`,
-          [facilityId, singleKey]
-        );
-        for (const row of res.rows) {
-          data[row.key] = row.value;
-          const iso = row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString();
-          latestUpdatedAt = iso;
-        }
-      } else {
-        const res = await query<{ key: string; value: unknown; updated_at: Date }>(
-          `SELECT key, value, updated_at FROM facility_kv WHERE facility_id = $1`,
-          [facilityId]
-        );
-        for (const row of res.rows) {
-          data[row.key] = row.value;
-          const iso = row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString();
-          if (!latestUpdatedAt || iso > latestUpdatedAt) {
+      await withTenantClient(facilityId, async (c) => {
+        if (singleKey) {
+          const res = await c.query<{ key: string; value: unknown; updated_at: Date }>(
+            `SELECT key, value, updated_at FROM facility_kv WHERE facility_id = $1 AND key = $2`,
+            [facilityId, singleKey]
+          );
+          for (const row of res.rows) {
+            data[row.key] = row.value;
+            const iso = row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString();
             latestUpdatedAt = iso;
           }
+        } else {
+          const res = await c.query<{ key: string; value: unknown; updated_at: Date }>(
+            `SELECT key, value, updated_at FROM facility_kv WHERE facility_id = $1`,
+            [facilityId]
+          );
+          for (const row of res.rows) {
+            data[row.key] = row.value;
+            const iso = row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString();
+            if (!latestUpdatedAt || iso > latestUpdatedAt) {
+              latestUpdatedAt = iso;
+            }
+          }
         }
-      }
+      });
     } catch (e) {
       console.warn('[api/facility/sync GET] Postgres fallback to server vault:', (e as Error).message);
     }
@@ -140,23 +148,41 @@ export async function PUT(req: NextRequest) {
   }
   flushServerStore(store);
 
-  // 2) Persist in Aurora PostgreSQL if configured
+  // 2) Persist in Aurora PostgreSQL (facility_kv + relational tables with RLS) if configured
   if (isPostgresConfigured()) {
     try {
       await ensureSchema();
-      for (const [k, v] of Object.entries(entries)) {
-        if (v === undefined) continue;
-        await query(
-          `INSERT INTO facility_kv (facility_id, key, value, updated_at)
-           VALUES ($1, $2, $3::jsonb, NOW())
-           ON CONFLICT (facility_id, key)
-           DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-          [facilityId, k, JSON.stringify(v)]
-        );
-      }
+      await withTenantClient(facilityId, async (c) => {
+        for (const [k, v] of Object.entries(entries)) {
+          if (v === undefined) continue;
+          await c.query(
+            `INSERT INTO facility_kv (facility_id, key, value, updated_at)
+             VALUES ($1, $2, $3::jsonb, NOW())
+             ON CONFLICT (facility_id, key)
+             DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+            [facilityId, k, JSON.stringify(v)]
+          );
+          try {
+            await projectKeyToRelationalTables(c, facilityId, k, v);
+          } catch (projErr) {
+            console.warn('[api/facility/sync] relational projection warning:', (projErr as Error).message);
+          }
+        }
+      });
     } catch (e) {
       console.warn('[api/facility/sync PUT] Postgres write warning:', (e as Error).message);
     }
+  }
+
+  // 3) Broadcast real-time SSE push to all connected facility workstations
+  for (const [k, v] of Object.entries(entries)) {
+    if (v === undefined) continue;
+    publishFacilitySseEvent({
+      facilityId,
+      key: k,
+      value: v,
+      updatedAt: nowIso,
+    });
   }
 
   return NextResponse.json({
@@ -187,7 +213,9 @@ export async function DELETE(req: NextRequest) {
   if (isPostgresConfigured()) {
     try {
       await ensureSchema();
-      await query(`DELETE FROM facility_kv WHERE facility_id = $1 AND key = $2`, [facilityId, key]);
+      await withTenantClient(facilityId, async (c) => {
+        await c.query(`DELETE FROM facility_kv WHERE facility_id = $1 AND key = $2`, [facilityId, key]);
+      });
     } catch {
       /* ignore */
     }

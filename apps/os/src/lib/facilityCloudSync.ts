@@ -209,12 +209,61 @@ export function startHospitalCloudSync(facilityId: string): () => void {
     }
   });
 
+  // Real-Time Server-Sent Events (SSE) Push Stream (<100ms cross-workstation sync)
+  let sse: EventSource | null = null;
+  let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let sseStopped = false;
+
+  const connectSse = () => {
+    if (sseStopped || typeof EventSource === 'undefined') return;
+    try {
+      const url = `/api/facility/stream?facilityId=${encodeURIComponent(facilityId)}`;
+      sse = new EventSource(url);
+      sse.addEventListener('facility-update', (ev: MessageEvent) => {
+        try {
+          const payload = JSON.parse(ev.data) as {
+            facilityId?: string;
+            key?: string;
+            value?: unknown;
+          };
+          if (payload?.key && payload.value !== undefined) {
+            applyKey(payload.key, payload.value);
+          }
+        } catch {
+          /* ignore malformed SSE frame */
+        }
+      });
+      sse.onerror = () => {
+        try {
+          sse?.close();
+        } catch {
+          /* ignore */
+        }
+        sse = null;
+        if (!sseStopped) {
+          sseReconnectTimer = setTimeout(connectSse, 8000);
+        }
+      };
+    } catch {
+      /* ignore SSE unsupported */
+    }
+  };
+  connectSse();
+
   const onOnline = () => {
     void flushOutbox();
+    if (!sse && !sseStopped) connectSse();
   };
   window.addEventListener('online', onOnline);
 
   return () => {
+    sseStopped = true;
+    if (sseReconnectTimer) clearTimeout(sseReconnectTimer);
+    try {
+      sse?.close();
+    } catch {
+      /* ignore */
+    }
     window.removeEventListener('online', onOnline);
     stopLan();
     unsubAppSync();

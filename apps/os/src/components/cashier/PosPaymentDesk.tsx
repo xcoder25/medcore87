@@ -64,6 +64,9 @@ import { getWallet } from '../../lib/patientWalletStore';
 import { printPaymentReceipt } from '../../lib/printService';
 import { syncAccountsRequestsForPatientPayment } from '../../lib/frontDeskAccountsBridge';
 import { releaseOrdersForPatient } from '../../lib/clinicalEventBus';
+import { useFormDraft } from '../../lib/formDraftStore';
+import { FormDraftBanner } from '../common/FormDraftBanner';
+import { appendAudit } from '../../lib/auditLogStore';
 
 const C = {
   blue: '#0284C7',
@@ -148,6 +151,34 @@ export const PosPaymentDesk: React.FC<Props> = ({
   const [copiedAccount, setCopiedAccount] = useState(false);
   const [awaitingWebhook, setAwaitingWebhook] = useState(false);
   const [verifyingStatus, setVerifyingStatus] = useState(false);
+
+  // Power-Outage Auto-Save for Cashier / AkwaRemit POS Payment Desk
+  const posDraft = useFormDraft({
+    facilityId,
+    formType: 'cashier_pos_checkout',
+    draftId: patient?.id || 'pos-counter',
+    staffBadge: cashierBadge,
+    data: {
+      patientId: patient?.id || '',
+      amount,
+      gatewayMethod,
+      purpose,
+      lines,
+      arn,
+    },
+    isDirty: (d) => Boolean(d.patientId || d.lines.length > 1 || (d.amount && d.amount !== '5000')),
+    onRestore: (d) => {
+      if (d.patientId) {
+        const hit = listPatients(facilityId).find((p) => p.id === d.patientId);
+        if (hit) setPatient(hit);
+      }
+      if (d.amount) setAmount(d.amount);
+      if (d.gatewayMethod) setGatewayMethod(d.gatewayMethod);
+      if (d.purpose) setPurpose(d.purpose);
+      if (Array.isArray(d.lines) && d.lines.length > 0) setLines(d.lines);
+      if (d.arn) setArn(d.arn);
+    },
+  });
 
   // Cashier Shift State
   const [activeShift, setActiveShift] = useState<ActiveCashierShift | null>(() =>
@@ -412,6 +443,18 @@ export const PosPaymentDesk: React.FC<Props> = ({
     } catch { /* ignore */ }
 
     setLastReceipt(pay);
+    posDraft.clearDraft();
+    appendAudit({
+      facilityId,
+      actor: cashier,
+      actorBadge: cashierBadge,
+      category: 'financial',
+      severity: methodPaid === 'waiver' ? 'notable' : 'normal',
+      action: `AKWAREMIT_POS_SETTLED_${methodPaid.toUpperCase()}`,
+      entity: 'payment_receipt',
+      entityId: referenceArn,
+      detail: `₦${amt.toLocaleString()} settled for ${patientName} (${hospNo}) via ${methodPaid} · Purpose: ${lines.map((l) => l.label).join(', ') || purpose}`,
+    });
     emitLiveAction(`AkwaRemit ${referenceArn} · ₦${amt.toLocaleString()} (${methodPaid.toUpperCase()})`, {
       module: 'cashier',
     });
@@ -628,6 +671,14 @@ export const PosPaymentDesk: React.FC<Props> = ({
         )}
 
         {/* ── TOP BAR: CASHIER SHIFT STATUS & AKWAREMIT MANDATE ── */}
+        <FormDraftBanner
+          hasRecoverableDraft={posDraft.hasRecoverableDraft}
+          lastSavedAt={posDraft.lastSavedAt}
+          isSaving={posDraft.isSaving}
+          onRestore={posDraft.restoreDraft}
+          onDiscard={posDraft.discardDraft}
+          formLabel="Cashier POS Checkout"
+        />
         <div
           style={{
             background: activeShift ? '#0F172A' : '#7C2D12',

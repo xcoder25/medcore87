@@ -8,6 +8,7 @@ import {
   type FacilityPatient,
 } from '../../lib/patientRegistryStore';
 import { Search, ChevronDown, User, X, Check, IdCard } from 'lucide-react';
+import { scoreSearchCandidate } from '../../lib/universalSearchEngine';
 
 export interface SearchablePatientSelectProps {
   facilityId: string;
@@ -74,28 +75,25 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
     }
   }, [activePatient, isOpen]);
 
-  // Filtered patients based on user typing
+  // Filtered patients based on user typing with fuzzy & multi-token scoring
   const filteredPatients = useMemo(() => {
     if (!isOpen) return [];
     const q = query.trim().toLowerCase();
     if (!q) {
       return allPatients.slice(0, 50);
     }
-    // Filter by name, hospitalNumber, phone, etc.
-    return allPatients.filter((p) => {
-      const name = `${p.firstName} ${p.middleName || ''} ${p.lastName}`.toLowerCase();
-      const hn = (p.hospitalNumber || '').toLowerCase();
-      const phone = (p.phone || '').toLowerCase();
-      const nhia = (p.nhiaNumber || '').toLowerCase();
-      const nin = (p.nin || '').toLowerCase();
-      return (
-        name.includes(q) ||
-        hn.includes(q) ||
-        phone.includes(q) ||
-        nhia.includes(q) ||
-        nin.includes(q)
-      );
-    }).slice(0, 50);
+    return allPatients
+      .map((p) => {
+        const name = `${p.firstName} ${p.middleName || ''} ${p.lastName}`.trim();
+        const hn = p.hospitalNumber || '';
+        const extra = `${p.phone || ''} ${p.nhiaNumber || ''} ${p.nin || ''} ${p.bloodGroup || ''} ${(p.allergies || []).join(' ')} ${(p.chronicConditions || []).join(' ')}`;
+        const score = scoreSearchCandidate(q, name, hn, extra, p.category);
+        return { p, score };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 50)
+      .map((x) => x.p);
   }, [allPatients, query, isOpen]);
 
   // Close dropdown when clicking outside
