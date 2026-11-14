@@ -479,7 +479,7 @@ function useMemoSuggestions(suggestions: SearchSuggestion[], query: string): Sea
   return React.useMemo(() => {
     if (!suggestions || suggestions.length === 0) return [];
     const q = query.trim().toLowerCase();
-    if (!q) return suggestions.slice(0, 10);
+    if (!q) return [];
     return suggestions
       .map((s) => ({
         s,

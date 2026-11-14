@@ -76,11 +76,12 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
   }, [activePatient, isOpen]);
 
   // Filtered patients based on user typing with fuzzy & multi-token scoring
+  // Privacy & UX rule: do NOT list patients when the search field is empty
   const filteredPatients = useMemo(() => {
     if (!isOpen) return [];
     const q = query.trim().toLowerCase();
     if (!q) {
-      return allPatients.slice(0, 50);
+      return [];
     }
     return allPatients
       .map((p) => {
@@ -282,8 +283,8 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
         </div>
       </div>
 
-      {/* Dropdown Results Box */}
-      {isOpen && !disabled && (
+      {/* Dropdown Results Box — only shown once the user types into the search field */}
+      {isOpen && !disabled && query.trim().length > 0 && (
         <div
           style={{
             position: 'absolute',

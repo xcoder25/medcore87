@@ -594,26 +594,24 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     setCiAmount(String(getDeptFee(ciDept)));
   }, [ciDept, getDeptFee]);
 
-  // Existing Patient Search Effect
+  // Existing Patient Search Effect — privacy & UX rule: do NOT show patients until a query is typed
   useEffect(() => {
     const q = exSearchQuery.trim().toLowerCase();
     if (!q) {
-      setExFoundPatients(patients.slice(0, 5));
-      if (!exSelectedPatient && patients.length > 0) {
-        setExSelectedPatient(patients[0]);
-      }
+      setExFoundPatients([]);
+      setExSelectedPatient(null);
       return;
     }
+    const tokens = q.split(/\s+/).filter(Boolean);
     const hits = patients.filter((p) => {
-      const name = `${p.firstName} ${p.middleName || ''} ${p.lastName}`.toLowerCase();
-      const num = (p.hospitalNumber || '').toLowerCase();
-      const phone = (p.phone || '').toLowerCase();
-      const nin = (p.nin || '').toLowerCase();
-      return name.includes(q) || num.includes(q) || phone.includes(q) || nin.includes(q);
+      const hay = `${p.firstName} ${p.middleName || ''} ${p.lastName} ${p.hospitalNumber || ''} ${p.phone || ''} ${p.nin || ''} ${p.nhiaNumber || ''}`.toLowerCase();
+      return tokens.every((t) => hay.includes(t));
     });
     setExFoundPatients(hits);
     if (hits.length > 0 && (!exSelectedPatient || !hits.some((h) => h.id === exSelectedPatient.id))) {
       setExSelectedPatient(hits[0]);
+    } else if (hits.length === 0) {
+      setExSelectedPatient(null);
     }
   }, [exSearchQuery, patients]);
 
@@ -715,17 +713,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
   const searchHits = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return patients.slice(0, 12);
+    if (!q) return [];
+    const tokens = q.split(/\s+/).filter(Boolean);
     return patients
-      .filter(
-        (p) =>
-          p.firstName.toLowerCase().includes(q) ||
-          p.lastName.toLowerCase().includes(q) ||
-          p.hospitalNumber.toLowerCase().includes(q) ||
-          p.phone.includes(q) ||
-          (p.nhiaNumber || '').toLowerCase().includes(q) ||
-          (p.nin || '').includes(q)
-      )
+      .filter((p) => {
+        const hay = `${p.firstName} ${p.middleName || ''} ${p.lastName} ${p.hospitalNumber || ''} ${p.phone || ''} ${p.nhiaNumber || ''} ${p.nin || ''}`.toLowerCase();
+        return tokens.every((t) => hay.includes(t));
+      })
       .slice(0, 24);
   }, [patients, query]);
 
@@ -1953,81 +1947,331 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       )}
 
       {view === 'search' && (
-        <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            <div style={{ flex: 1 }}>
-              <InteractiveSearchBar
-                autoFocus
-                value={query}
-                onChange={setQuery}
-                onClear={() => setQuery('')}
-                placeholder="Search name, hospital no., phone, NHIA, NIN…"
-                suggestions={receptionSuggestions}
-                resultsCount={searchHits.length}
-                totalCount={patients.length}
-                size="md"
-                aria-label="Search patient registry"
-              />
-            </div>
-            {patients.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.confirm('Delete all test patients for this facility? This action cannot be undone.')) {
-                    clearAllPatients(facilityId);
-                    reload();
-                    flash('All patients deleted. Ready for a fresh test.');
-                  }
-                }}
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: 18,
+            border: `1px solid ${C.border}`,
+            overflow: 'hidden',
+            boxShadow: '0 4px 20px rgba(15, 23, 42, 0.04)',
+          }}
+        >
+          {/* Header Banner */}
+          <div
+            style={{
+              padding: '20px 24px',
+              borderBottom: `1px solid ${C.border}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 14,
+              background: 'linear-gradient(135deg, #F8FAFC 0%, #FFFFFF 60%, #F0F9FF 100%)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div
                 style={{
-                  ...inputStyle,
-                  width: 'auto',
-                  cursor: 'pointer',
-                  background: '#FEF2F2',
-                  color: '#DC2626',
-                  borderColor: '#FCA5A5',
-                  fontWeight: 700,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                Delete All Patients
-              </button>
-            )}
-            <button type="button" onClick={() => goView('home')} style={{ ...inputStyle, width: 'auto', cursor: 'pointer' }}>
-              Close
-            </button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
-            {searchHits.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => openPatient(p)}
-                style={{
-                  textAlign: 'left',
-                  padding: 14,
+                  width: 44,
+                  height: 44,
                   borderRadius: 12,
-                  border: `1px solid ${C.border}`,
-                  background: '#F8FAFC',
-                  cursor: 'pointer',
+                  background: 'linear-gradient(135deg, #0284C7 0%, #0D9488 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)',
                 }}
               >
-                <div style={{ fontWeight: 800, color: C.navy }}>{fullName(p)}</div>
-                <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
-                  {p.hospitalNumber} · {p.phone} · {p.sex}
-                </div>
-                {p.lga && (
-                  <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-                    {p.lga}, {p.state}
-                  </div>
-                )}
+                <Search size={20} />
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.02em' }}>
+                  Master Patient Index (MPI) Lookup
+                </h2>
+                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: '#64748B' }}>
+                  Search enrolled patients by full name, Hospital Number, phone number, 11-digit NIN, or NHIA / AKSHIA ID.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => goView('scan')}
+                style={{
+                  padding: '9px 14px',
+                  borderRadius: 10,
+                  border: '1px solid #BAE6FD',
+                  background: '#F0F9FF',
+                  color: '#0284C7',
+                  fontWeight: 700,
+                  fontSize: 12.5,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <QrCode size={15} /> Scan Card / QR
               </button>
-            ))}
-            {searchHits.length === 0 && (
-              <div style={{ color: C.muted, padding: 20 }}>
-                No matches.{' '}
-                <button type="button" onClick={() => goView('register')} style={{ color: C.blue, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer' }}>
-                  Register new patient
+              <button
+                type="button"
+                onClick={() => goView('register')}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: '#0284C7',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: 12.5,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
+                }}
+              >
+                <UserPlus size={15} /> Register New Patient
+              </button>
+            </div>
+          </div>
+
+          {/* Search Input Strip */}
+          <div style={{ padding: '18px 24px', background: '#F8FAFC', borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <InteractiveSearchBar
+                  autoFocus
+                  value={query}
+                  onChange={setQuery}
+                  onClear={() => setQuery('')}
+                  placeholder="Type patient name, hospital no. (e.g. IGH-PT-...), phone, NHIA, or 11-digit NIN…"
+                  suggestions={[]}
+                  resultsCount={query.trim() ? searchHits.length : undefined}
+                  totalCount={query.trim() ? patients.length : undefined}
+                  size="lg"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && searchHits.length > 0) {
+                      openPatient(searchHits[0]);
+                    }
+                  }}
+                  aria-label="Search patient registry"
+                />
+              </div>
+              {query.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  style={{
+                    height: 46,
+                    padding: '0 16px',
+                    borderRadius: 10,
+                    border: `1px solid ${C.border}`,
+                    background: '#fff',
+                    color: '#475569',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Results or Empty-Query Prompt */}
+          <div style={{ padding: 24 }}>
+            {!query.trim() ? (
+              <div
+                style={{
+                  padding: '38px 24px',
+                  borderRadius: 16,
+                  border: '1.5px dashed #CBD5E1',
+                  background: '#F8FAFC',
+                  textAlign: 'center',
+                  maxWidth: 640,
+                  margin: '0 auto',
+                }}
+              >
+                <div
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: '50%',
+                    background: '#E0F2FE',
+                    color: '#0284C7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 14px',
+                  }}
+                >
+                  <Search size={24} />
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#0F172A' }}>
+                  Start typing above to look up a patient
+                </div>
+                <p style={{ fontSize: 13, color: '#64748B', margin: '6px auto 18px', maxWidth: 460, lineHeight: 1.55 }}>
+                  For patient privacy and clinical speed, records are hidden until you enter a search term in the field above.
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  {[
+                    'Patient Full Name',
+                    'Hospital No. (IGH-PT-...)',
+                    'Phone (080 / 090...)',
+                    '11-Digit NIN',
+                    'NHIA / AKSHIA ID',
+                  ].map((tag) => (
+                    <span
+                      key={tag}
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        color: '#334155',
+                        background: '#fff',
+                        border: '1px solid #E2E8F0',
+                        padding: '5px 11px',
+                        borderRadius: 999,
+                      }}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : searchHits.length > 0 ? (
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 14,
+                  }}
+                >
+                  <span style={{ fontSize: 12.5, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Matching Patient Records ({searchHits.length})
+                  </span>
+                  <span style={{ fontSize: 12, color: '#64748B' }}>
+                    Click any patient card or press <strong>Enter</strong> to open folder
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+                  {searchHits.map((p) => {
+                    const gate = getPaymentGate(facilityId, p.id, p.hospitalNumber);
+                    const initials = `${(p.firstName || '?')[0]}${(p.lastName || '')[0] || ''}`.toUpperCase();
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => openPatient(p)}
+                        style={{
+                          textAlign: 'left',
+                          padding: 16,
+                          borderRadius: 14,
+                          border: `1.5px solid ${C.border}`,
+                          background: '#FFFFFF',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 10,
+                          boxShadow: '0 2px 8px rgba(15, 23, 42, 0.03)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
+                            <div
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 11,
+                                background: '#E0F2FE',
+                                color: '#0369A1',
+                                fontWeight: 800,
+                                fontSize: 14,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {initials}
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 800, fontSize: 14.5, color: C.navy, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {fullName(p)}
+                              </div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: '#0284C7', fontFamily: 'monospace', marginTop: 1 }}>
+                                {p.hospitalNumber}
+                              </div>
+                            </div>
+                          </div>
+                          <span
+                            style={{
+                              fontSize: 10.5,
+                              fontWeight: 800,
+                              padding: '3px 8px',
+                              borderRadius: 999,
+                              background: gate.cleared ? '#ECFDF5' : '#FEF2F2',
+                              color: gate.cleared ? '#047857' : '#B91C1C',
+                              border: `1px solid ${gate.cleared ? '#A7F3D0' : '#FECACA'}`,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {gate.cleared ? '✓ Fee Cleared' : `⏳ Unpaid ₦${gate.balanceNgn.toLocaleString()}`}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, color: C.muted, borderTop: '1px solid #F1F5F9', paddingTop: 8 }}>
+                          <span>
+                            {p.sex} · {p.phone || 'No phone'} {p.lga ? `· ${p.lga}` : ''}
+                          </span>
+                          <span style={{ color: C.blue, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            Open <ArrowRight size={12} />
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  padding: '32px 20px',
+                  borderRadius: 14,
+                  background: '#F8FAFC',
+                  border: `1px solid ${C.border}`,
+                  textAlign: 'center',
+                }}
+              >
+                <div style={{ fontSize: 15, fontWeight: 800, color: C.navy, marginBottom: 4 }}>
+                  No patient found matching &ldquo;{query.trim()}&rdquo;
+                </div>
+                <div style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>
+                  Check the spelling or Hospital Number, or enroll them as a new patient.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => goView('register')}
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: 10,
+                    border: 'none',
+                    background: C.blue,
+                    color: '#fff',
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <UserPlus size={15} /> Register New Patient
                 </button>
               </div>
             )}
@@ -3544,9 +3788,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       );
                     })}
                   </div>
+                ) : !exSearchQuery.trim() ? (
+                  <div style={{ textAlign: 'center', padding: 24, color: '#64748B', fontSize: 13 }}>
+                    Start typing a Patient ID, phone number, NIN, or name above to search the registry.
+                  </div>
                 ) : (
                   <div style={{ textAlign: 'center', padding: 24, color: '#64748B', fontSize: 13 }}>
-                    No patient records found matching "{exSearchQuery}". You can register a new patient using the button above.
+                    No patient records found matching &ldquo;{exSearchQuery}&rdquo;. You can register a new patient using the button above.
                   </div>
                 )}
               </div>
