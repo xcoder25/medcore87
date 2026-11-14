@@ -10,6 +10,7 @@ import {
   QrCode, Clock, Building2, CheckCircle2, ArrowRight, Printer, X,
   Phone, MapPin, Wallet, Sparkles, Camera, ShieldCheck, Banknote,
   IdCard, Stethoscope, Bell, ChevronRight, RefreshCw, ScanLine,
+  Check, Edit2, Info, UserCheck,
 } from 'lucide-react';
 import {
   listPatients,
@@ -343,6 +344,9 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [panelOpen, setPanelOpen] = useState(false);
   const [regStep, setRegStep] = useState<RegStep>(1);
   const [reg, setReg] = useState(emptyReg);
+  const [regErrors, setRegErrors] = useState<Record<string, string>>({});
+  const [regTouched, setRegTouched] = useState<Record<string, boolean>>({});
+  const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
   /** 'idle' | 'checking' | 'prefilled' | 'conflict' | 'invalid' */
   const [ninStatus, setNinStatus] = useState<'idle' | 'checking' | 'prefilled' | 'conflict' | 'invalid'>('idle');
   const [ninConflictPatient, setNinConflictPatient] = useState<FacilityPatient | null>(null);
@@ -756,11 +760,232 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     }
   }, [panelOpen, selected, facilityId, autoSendToAccounts]);
 
-  const saveRegistration = () => {
-    if (!reg.firstName.trim() || !reg.lastName.trim() || !reg.phone.trim()) {
-      flash('First name, last name and phone are required');
+  const getCalculatedAge = useCallback((dobString: string): string => {
+    if (!dobString) return '';
+    const b = new Date(dobString);
+    if (isNaN(b.getTime())) return '';
+    const now = new Date();
+    let years = now.getFullYear() - b.getFullYear();
+    const m = now.getMonth() - b.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < b.getDate())) {
+      years--;
+    }
+    if (years < 0) return '';
+    if (years === 0) {
+      const months = (now.getFullYear() - b.getFullYear()) * 12 + (now.getMonth() - b.getMonth());
+      if (months <= 0) {
+        const days = Math.floor((now.getTime() - b.getTime()) / (1000 * 60 * 60 * 24));
+        return `${Math.max(0, days)} day${days === 1 ? '' : 's'}`;
+      }
+      return `${months} mo`;
+    }
+    return `${years} yrs`;
+  }, []);
+
+  const validateField = useCallback((field: string, val: any, currentReg = reg): string => {
+    const value = val !== undefined && val !== null ? String(val).trim() : '';
+    switch (field) {
+      case 'firstName':
+        if (!value) return 'First name is required';
+        if (value.length < 2) return 'First name must be at least 2 characters';
+        return '';
+      case 'lastName':
+        if (!value) return 'Last name is required';
+        if (value.length < 2) return 'Last name must be at least 2 characters';
+        return '';
+      case 'dob':
+        if (!value) return 'Date of birth is required';
+        if (new Date(value) > new Date()) return 'Date of birth cannot be in the future';
+        return '';
+      case 'sex':
+        if (!value) return 'Biological sex is required';
+        return '';
+      case 'nin':
+        if (value) {
+          const digits = value.replace(/\D/g, '');
+          if (digits.length !== 11) return 'NIN must be exactly 11 digits';
+        }
+        if (ninStatus === 'conflict') return 'Duplicate NIN: already assigned to another patient';
+        return '';
+      case 'phone': {
+        const digits = value.replace(/\D/g, '');
+        if (!digits) return 'Phone number is required';
+        if (digits.length < 10 || digits.length > 14) return 'Valid 11-digit phone number is required (e.g. 08012345678)';
+        return '';
+      }
+      case 'email':
+        if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+          return 'Enter a valid email address';
+        }
+        return '';
+      case 'address':
+        if (!value) return 'Residential address is required for official medical folder';
+        if (value.length < 3) return 'Please enter complete street or residential address';
+        return '';
+      case 'state':
+        if (!value) return 'State of residence is required';
+        return '';
+      case 'lga':
+        if (!value) return 'Local Government Area (LGA) is required';
+        return '';
+      case 'emergencyContact':
+        if (!value) return 'Next of kin / emergency contact name & phone is required';
+        if (value.length < 3) return 'Please provide full name & contact phone for next of kin';
+        return '';
+      case 'emergencyRelation':
+        if (!value) return 'Relationship to patient is required (e.g. Spouse, Parent, Sibling)';
+        return '';
+      case 'category':
+        if (!value) return 'Patient billing category is required';
+        return '';
+      case 'insuranceProvider':
+        if (currentReg.category !== 'General' && (!value || value === 'NONE')) {
+          return 'Please select an insurance / HMO provider';
+        }
+        return '';
+      case 'insuranceId':
+        if (currentReg.category !== 'General' && !value && !String(currentReg.nhiaNumber || '').trim()) {
+          return 'Policy / Enrollee number is required for insured patients';
+        }
+        return '';
+      default:
+        return '';
+    }
+  }, [reg, ninStatus]);
+
+  const validateStep = useCallback((step: RegStep, currentReg = reg): boolean => {
+    const errors: Record<string, string> = {};
+    if (step === 1) {
+      const e1 = validateField('firstName', currentReg.firstName, currentReg);
+      if (e1) errors.firstName = e1;
+      const e2 = validateField('lastName', currentReg.lastName, currentReg);
+      if (e2) errors.lastName = e2;
+      const e3 = validateField('dob', currentReg.dob, currentReg);
+      if (e3) errors.dob = e3;
+      const e4 = validateField('sex', currentReg.sex, currentReg);
+      if (e4) errors.sex = e4;
+      const e5 = validateField('nin', currentReg.nin, currentReg);
+      if (e5) errors.nin = e5;
+    } else if (step === 2) {
+      const e1 = validateField('phone', currentReg.phone, currentReg);
+      if (e1) errors.phone = e1;
+      const e2 = validateField('email', currentReg.email, currentReg);
+      if (e2) errors.email = e2;
+      const e3 = validateField('address', currentReg.address, currentReg);
+      if (e3) errors.address = e3;
+      const e4 = validateField('state', currentReg.state, currentReg);
+      if (e4) errors.state = e4;
+      const e5 = validateField('lga', currentReg.lga, currentReg);
+      if (e5) errors.lga = e5;
+      const e6 = validateField('emergencyContact', currentReg.emergencyContact, currentReg);
+      if (e6) errors.emergencyContact = e6;
+      const e7 = validateField('emergencyRelation', currentReg.emergencyRelation, currentReg);
+      if (e7) errors.emergencyRelation = e7;
+    } else if (step === 3) {
+      const e1 = validateField('category', currentReg.category, currentReg);
+      if (e1) errors.category = e1;
+      if (currentReg.category !== 'General') {
+        const e2 = validateField('insuranceProvider', currentReg.insuranceProvider, currentReg);
+        if (e2) errors.insuranceProvider = e2;
+        const e3 = validateField('insuranceId', currentReg.insuranceId || currentReg.nhiaNumber, currentReg);
+        if (e3) errors.insuranceId = e3;
+      }
+    }
+
+    setRegErrors((prev) => {
+      const stepFields =
+        step === 1 ? ['firstName', 'lastName', 'dob', 'sex', 'nin']
+        : step === 2 ? ['phone', 'email', 'address', 'state', 'lga', 'emergencyContact', 'emergencyRelation']
+        : ['category', 'insuranceProvider', 'insuranceId'];
+      const next = { ...prev };
+      stepFields.forEach((f) => delete next[f]);
+      return { ...next, ...errors };
+    });
+
+    setRegTouched((prev) => {
+      const next = { ...prev };
+      if (step === 1) ['firstName', 'lastName', 'dob', 'sex', 'nin'].forEach((f) => { next[f] = true; });
+      if (step === 2) ['phone', 'email', 'address', 'state', 'lga', 'emergencyContact', 'emergencyRelation'].forEach((f) => { next[f] = true; });
+      if (step === 3) ['category', 'insuranceProvider', 'insuranceId'].forEach((f) => { next[f] = true; });
+      return next;
+    });
+
+    const valid = Object.keys(errors).length === 0;
+    if (!valid) {
+      const firstKey = Object.keys(errors)[0];
+      flash(`⚠️ Required field missing: ${errors[firstKey]}`);
+    }
+    return valid;
+  }, [reg, validateField]);
+
+  const updateRegField = (field: string, val: any) => {
+    setReg((prev) => {
+      const next = { ...prev, [field]: val };
+      if (regTouched[field]) {
+        const err = validateField(field, val, next);
+        setRegErrors((prevErr) => {
+          const nextErr = { ...prevErr };
+          if (!err) delete nextErr[field];
+          else nextErr[field] = err;
+          return nextErr;
+        });
+      }
+      return next;
+    });
+  };
+
+  const touchRegField = (field: string) => {
+    setRegTouched((prev) => ({ ...prev, [field]: true }));
+    const err = validateField(field, (reg as any)[field], reg);
+    setRegErrors((prev) => {
+      const next = { ...prev };
+      if (!err) delete next[field];
+      else next[field] = err;
+      return next;
+    });
+  };
+
+  const handleNextStep = () => {
+    if (!validateStep(regStep)) {
       return;
     }
+    setCompletedSteps((prev) => ({ ...prev, [regStep]: true }));
+    setRegStep((s) => (s < 4 ? ((s + 1) as RegStep) : s));
+  };
+
+  const handleStepJump = (target: RegStep) => {
+    if (target === regStep) return;
+    if (target < regStep) {
+      setRegStep(target);
+      return;
+    }
+    for (let s = 1; s < target; s++) {
+      if (!validateStep(s as RegStep)) {
+        setRegStep(s as RegStep);
+        return;
+      }
+    }
+    setRegStep(target);
+  };
+
+  const resetRegistrationForm = () => {
+    setReg(emptyReg);
+    setRegErrors({});
+    setRegTouched({});
+    setCompletedSteps({});
+    setRegStep(1);
+    setNinStatus('idle');
+    setNinConflictPatient(null);
+    setCrossFacilityPatient(null);
+    setInsVerify(null);
+    stopCam();
+  };
+
+  const saveRegistration = () => {
+    // Enforce UX Rule: Form CANNOT proceed if required fields are missing
+    if (!validateStep(1)) { setRegStep(1); return; }
+    if (!validateStep(2)) { setRegStep(2); return; }
+    if (!validateStep(3)) { setRegStep(3); return; }
 
     // ── #1 NIN Conflict Guard — hard block on duplicate NIN ─────────────────
     if (reg.nin) {
@@ -832,13 +1057,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     setSelected(patient);
     setPanelOpen(true);
     goView('home');
-    setReg(emptyReg);
-    setRegStep(1);
-    setNinStatus('idle');
-    setNinConflictPatient(null);
-    setCrossFacilityPatient(null);
-    setInsVerify(null);
-    stopCam();
+    resetRegistrationForm();
     emitLiveAction(`Patient registered · ${patient.hospitalNumber}${patient.nin ? ' · NIN bound' : ''}`, { module: 'reception' });
 
     // Digital handoff → Accounts: registration / folder fee auto-sent immediately
@@ -1569,391 +1788,1220 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
       {/* REGISTER */}
       {view === 'register' && (
-        <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
-          <div style={{ background: 'linear-gradient(90deg,#0284C7,#0D9488)', color: '#fff', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
+          {/* Header Banner */}
+          <div
+            style={{
+              background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 50%, #0F766E 100%)',
+              color: '#fff',
+              padding: '16px 22px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 12,
+            }}
+          >
             <div>
-              <div style={{ fontWeight: 800, fontSize: 16 }}>Patient registration</div>
-              <div style={{ fontSize: 12, opacity: 0.9 }}>Step {regStep} of 4</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <UserPlus size={18} color="#fff" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: '-0.01em' }}>
+                    Patient Intake & Electronic Folder Registration
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.9, marginTop: 1 }}>
+                    Official Akwa Ibom State EMR Registration · Step {regStep} of 4: {
+                      regStep === 1 ? 'Patient Identity & Bio'
+                      : regStep === 2 ? 'Contact, Residence & Next of Kin'
+                      : regStep === 3 ? 'Billing Scheme & Clinical Baseline'
+                      : 'Biometric Photo & Dossier Review'
+                    }
+                  </div>
+                </div>
+              </div>
             </div>
-            <button type="button" onClick={() => goView('home')} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
-              Cancel
-            </button>
-          </div>
-          <div style={{ display: 'flex', gap: 4, padding: '12px 18px', background: '#F8FAFC', borderBottom: `1px solid ${C.border}` }}>
-            {['Identity', 'Contact', 'Insurance', 'Photo & review'].map((s, i) => (
-              <div
-                key={s}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm('Reset all entered registration details?')) {
+                    resetRegistrationForm();
+                    flash('Registration form cleared.');
+                  }
+                }}
                 style={{
-                  flex: 1,
-                  textAlign: 'center',
-                  padding: 8,
+                  background: 'rgba(255,255,255,0.15)',
+                  border: '1px solid rgba(255,255,255,0.25)',
+                  color: '#fff',
                   borderRadius: 8,
+                  padding: '6px 12px',
+                  cursor: 'pointer',
                   fontSize: 12,
-                  fontWeight: 700,
-                  background: regStep === i + 1 ? '#E0F2FE' : 'transparent',
-                  color: regStep === i + 1 ? C.blue : C.muted,
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
                 }}
               >
-                {i + 1}. {s}
-              </div>
-            ))}
+                <RefreshCw size={13} /> Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (reg.firstName || reg.lastName || reg.phone) {
+                    if (!window.confirm('Discard registration in progress?')) return;
+                  }
+                  resetRegistrationForm();
+                  goView('home');
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.2)',
+                  border: 'none',
+                  color: '#fff',
+                  borderRadius: 8,
+                  padding: '6px 14px',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  fontSize: 12,
+                }}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
-          <div style={{ padding: 18 }}>
-            {regStep === 1 && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={labelStyle}>
-                    National Identity Number (NIN)
-                    <span style={{ fontSize: 11, fontWeight: 500, color: C.muted, marginLeft: 6 }}>(optional)</span>
-                    {ninStatus === 'checking' && (
-                      <span style={{ fontSize: 11, color: C.blue, marginLeft: 8 }}>⟳ Checking…</span>
-                    )}
-                    {ninStatus === 'prefilled' && (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#059669', marginLeft: 8 }}>✓ Prefilled from NIMC</span>
-                    )}
-                  </label>
-                  <input
+
+          {/* Wizard Step Navigation Tabs */}
+          <div style={{ background: '#F8FAFC', borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, padding: '10px 16px' }}>
+              {[
+                { step: 1 as RegStep, label: 'Identity & Bio', sub: 'Name, Sex, DOB' },
+                { step: 2 as RegStep, label: 'Contact & Residence', sub: 'Phone, Address, Next of Kin' },
+                { step: 3 as RegStep, label: 'Scheme & Insurance', sub: 'Billing category, HMO' },
+                { step: 4 as RegStep, label: 'Photo & Review', sub: 'Summary & File issue' },
+              ].map(({ step, label, sub }) => {
+                const isActive = regStep === step;
+                const isPassed = regStep > step || completedSteps[step];
+                return (
+                  <button
+                    key={step}
+                    type="button"
+                    onClick={() => handleStepJump(step)}
                     style={{
-                      ...inputStyle,
-                      borderColor: ninStatus === 'conflict' ? '#EF4444'
-                                 : ninStatus === 'prefilled' ? '#10B981'
-                                 : ninStatus === 'checking' ? C.blue
-                                 : C.border,
-                      transition: 'border-color 0.2s',
-                    }}
-                    placeholder="11-digit NIN (e.g. 12345678901)"
-                    value={reg.nin}
-                    onChange={(e) => {
-                      setNinStatus('idle');
-                      setNinConflictPatient(null);
-                      setReg({ ...reg, nin: e.target.value.replace(/\D/g, '').slice(0, 11) });
-                    }}
-                    maxLength={11}
-                  />
-                  {/* #1 Conflict banner */}
-                  {ninStatus === 'conflict' && ninConflictPatient && (
-                    <div style={{ marginTop: 6, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
-                      <span style={{ color: '#B91C1C', fontWeight: 700 }}>⚠ Duplicate NIN detected — </span>
-                      <span style={{ color: '#7F1D1D' }}>
-                        already registered to <strong>{ninConflictPatient.firstName} {ninConflictPatient.lastName}</strong> ({ninConflictPatient.hospitalNumber}).
-                        Open their record or clear the NIN to continue.
-                      </span>
-                    </div>
-                  )}
-                  {/* #3 Cross-Facility Recognized Link */}
-                  {crossFacilityPatient && ninStatus !== 'conflict' && (
-                    <div style={{ marginTop: 6, background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-                        <span style={{ color: '#1E40AF', fontWeight: 600 }}>
-                          🌐 <strong>State Registry Match:</strong> Recognized from {crossFacilityPatient.facilityName || 'network facility'} ({crossFacilityPatient.hospitalNumber}).
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setReg((prev) => ({
-                              ...prev,
-                              firstName: crossFacilityPatient.firstName || prev.firstName,
-                              middleName: crossFacilityPatient.middleName || prev.middleName,
-                              lastName: crossFacilityPatient.lastName || prev.lastName,
-                              dob: crossFacilityPatient.dob || prev.dob,
-                              sex: crossFacilityPatient.sex || prev.sex,
-                              phone: crossFacilityPatient.phone || prev.phone,
-                              email: crossFacilityPatient.email || prev.email,
-                              address: crossFacilityPatient.address || prev.address,
-                              state: crossFacilityPatient.state || prev.state,
-                              lga: crossFacilityPatient.lga || prev.lga,
-                              bloodGroup: crossFacilityPatient.bloodGroup || prev.bloodGroup,
-                              genotype: crossFacilityPatient.genotype || prev.genotype,
-                              emergencyContact: crossFacilityPatient.emergencyContact || prev.emergencyContact,
-                              emergencyRelation: crossFacilityPatient.emergencyRelation || prev.emergencyRelation,
-                              occupation: crossFacilityPatient.occupation || prev.occupation,
-                            }));
-                            flash(`✓ Demographics loaded from ${crossFacilityPatient.facilityName || 'State Registry'}`);
-                          }}
-                          style={{
-                            padding: '4px 8px',
-                            borderRadius: 6,
-                            border: 'none',
-                            background: '#2563EB',
-                            color: '#fff',
-                            fontSize: 11,
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Re-import Demographics
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {/* #4 Suspicious pattern warning */}
-                  {ninValidationWarning && ninStatus !== 'conflict' && (
-                    <div style={{ marginTop: 6, background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '6px 10px', fontSize: 11, color: '#92400E' }}>
-                      ⚠ {ninValidationWarning}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label style={labelStyle}>First name *</label>
-                  <input style={inputStyle} value={reg.firstName} onChange={(e) => setReg({ ...reg, firstName: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Last name *</label>
-                  <input style={inputStyle} value={reg.lastName} onChange={(e) => setReg({ ...reg, lastName: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Middle name</label>
-                  <input style={inputStyle} value={reg.middleName} onChange={(e) => setReg({ ...reg, middleName: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Date of birth</label>
-                  <input type="date" style={inputStyle} value={reg.dob} onChange={(e) => setReg({ ...reg, dob: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Sex</label>
-                  <select style={inputStyle} value={reg.sex} onChange={(e) => setReg({ ...reg, sex: e.target.value as FacilityPatient['sex'] })}>
-                    <option>Female</option>
-                    <option>Male</option>
-                    <option>Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Occupation</label>
-                  <input style={inputStyle} value={reg.occupation} onChange={(e) => setReg({ ...reg, occupation: e.target.value })} />
-                </div>
-              </div>
-            )}
-
-            {regStep === 2 && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <div>
-                  <label style={labelStyle}>Phone *</label>
-                  <input style={inputStyle} value={reg.phone} onChange={(e) => setReg({ ...reg, phone: e.target.value })} placeholder="080…" />
-                </div>
-                <div>
-                  <label style={labelStyle}>Email</label>
-                  <input style={inputStyle} value={reg.email} onChange={(e) => setReg({ ...reg, email: e.target.value })} />
-                </div>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={labelStyle}>Address</label>
-                  <input style={inputStyle} value={reg.address} onChange={(e) => setReg({ ...reg, address: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>State</label>
-                  <input style={inputStyle} value={reg.state} onChange={(e) => setReg({ ...reg, state: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>LGA *</label>
-                  <select style={inputStyle} value={reg.lga} onChange={(e) => setReg({ ...reg, lga: e.target.value })}>
-                    {AKWA_IBOM_LGAS.map((l) => (
-                      <option key={l} value={l}>
-                        {l}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Emergency contact</label>
-                  <input style={inputStyle} value={reg.emergencyContact} onChange={(e) => setReg({ ...reg, emergencyContact: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Relation</label>
-                  <input style={inputStyle} value={reg.emergencyRelation} onChange={(e) => setReg({ ...reg, emergencyRelation: e.target.value })} placeholder="Spouse, parent…" />
-                </div>
-              </div>
-            )}
-
-            {regStep === 3 && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={labelStyle}>Insurance / HMO</label>
-                  <select
-                    style={inputStyle}
-                    value={reg.insuranceProvider}
-                    onChange={(e) => {
-                      setReg({ ...reg, insuranceProvider: e.target.value });
-                      setInsVerify(null);
+                      border: 'none',
+                      background: isActive ? '#0284C7' : isPassed ? '#ECFDF5' : 'transparent',
+                      color: isActive ? '#FFFFFF' : isPassed ? '#047857' : C.muted,
+                      borderRadius: 10,
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      transition: 'all 0.15s ease',
+                      boxShadow: isActive ? '0 2px 8px rgba(2, 132, 199, 0.25)' : 'none',
                     }}
                   >
-                    {NIGERIA_INSURANCE.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.name}
-                      </option>
-                    ))}
-                  </select>
+                    <div
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: '50%',
+                        background: isActive ? 'rgba(255,255,255,0.25)' : isPassed ? '#10B981' : '#E2E8F0',
+                        color: isActive ? '#fff' : isPassed ? '#fff' : '#475569',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 12,
+                        fontWeight: 800,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {isPassed && !isActive ? <Check size={14} /> : step}
+                    </div>
+                    <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                      <div style={{ fontSize: 12.5, fontWeight: isActive ? 800 : 700, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                        {label}
+                      </div>
+                      <div style={{ fontSize: 10.5, opacity: isActive ? 0.9 : 0.75, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                        {sub}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Visual Animated Progress Ribbon */}
+            <div style={{ width: '100%', height: 3, background: '#E2E8F0', position: 'relative' }}>
+              <div
+                style={{
+                  height: '100%',
+                  background: 'linear-gradient(90deg, #0284C7, #10B981)',
+                  width: `${(regStep / 4) * 100}%`,
+                  transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Form Content Body */}
+          <div style={{ padding: 22 }}>
+            {/* ── STEP 1: PATIENT IDENTITY ── */}
+            {regStep === 1 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Info size={16} color="#0284C7" />
+                    <span style={{ fontSize: 12.5, color: '#0369A1', fontWeight: 600 }}>
+                      Verify official government identity and biological demographics. Fields marked with <strong style={{ color: '#DC2626' }}>* REQUIRED</strong> cannot be skipped.
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 11, background: '#E0F2FE', color: '#0284C7', padding: '3px 8px', borderRadius: 6, fontWeight: 700 }}>
+                    Step 1 of 4
+                  </span>
                 </div>
-                <div>
-                  <label style={labelStyle}>Member / NHIA number</label>
-                  <input
-                    style={inputStyle}
-                    value={reg.insuranceId || reg.nhiaNumber}
-                    onChange={(e) => setReg({ ...reg, insuranceId: e.target.value, nhiaNumber: e.target.value })}
-                  />
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16 }}>
+                  {/* National Identity Number (NIN) */}
+                  <div style={{ gridColumn: 'span 12' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                      <label style={labelStyle}>
+                        National Identity Number (NIN)
+                        <span style={{ fontSize: 11, fontWeight: 500, color: C.muted, marginLeft: 6 }}>(optional)</span>
+                      </label>
+                      {ninStatus === 'checking' && (
+                        <span style={{ fontSize: 11, color: C.blue, fontWeight: 700 }}>⟳ Checking state registry…</span>
+                      )}
+                      {ninStatus === 'prefilled' && (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#059669' }}>✓ Verified / Prefilled from Registry</span>
+                      )}
+                    </div>
+                    <input
+                      style={{
+                        ...inputStyle,
+                        borderColor: regTouched.nin && regErrors.nin ? '#EF4444'
+                                   : ninStatus === 'conflict' ? '#EF4444'
+                                   : ninStatus === 'prefilled' ? '#10B981'
+                                   : C.border,
+                        background: regTouched.nin && regErrors.nin ? '#FEF2F2' : '#fff',
+                        transition: 'border-color 0.2s',
+                        fontFamily: 'monospace',
+                        letterSpacing: '0.04em',
+                      }}
+                      placeholder="11-digit National Identity Number (optional)"
+                      value={reg.nin}
+                      onChange={(e) => {
+                        setNinStatus('idle');
+                        setNinConflictPatient(null);
+                        updateRegField('nin', e.target.value.replace(/\D/g, '').slice(0, 11));
+                      }}
+                      onBlur={() => touchRegField('nin')}
+                      maxLength={11}
+                    />
+                    {regTouched.nin && regErrors.nin && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                        <AlertTriangle size={12} /> {regErrors.nin}
+                      </div>
+                    )}
+                    {/* Conflict banner */}
+                    {ninStatus === 'conflict' && ninConflictPatient && (
+                      <div style={{ marginTop: 6, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+                        <span style={{ color: '#B91C1C', fontWeight: 700 }}>⚠ Duplicate NIN detected — </span>
+                        <span style={{ color: '#7F1D1D' }}>
+                          Already registered to <strong>{ninConflictPatient.firstName} {ninConflictPatient.lastName}</strong> ({ninConflictPatient.hospitalNumber}).
+                          Open their existing record or remove the NIN to continue.
+                        </span>
+                      </div>
+                    )}
+                    {/* Cross-Facility Recognized Link */}
+                    {crossFacilityPatient && ninStatus !== 'conflict' && (
+                      <div style={{ marginTop: 6, background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                          <span style={{ color: '#1E40AF', fontWeight: 600 }}>
+                            🌐 <strong>State Registry Match:</strong> Recognized from {crossFacilityPatient.facilityName || 'network facility'} ({crossFacilityPatient.hospitalNumber}).
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReg((prev) => ({
+                                ...prev,
+                                firstName: crossFacilityPatient.firstName || prev.firstName,
+                                middleName: crossFacilityPatient.middleName || prev.middleName,
+                                lastName: crossFacilityPatient.lastName || prev.lastName,
+                                dob: crossFacilityPatient.dob || prev.dob,
+                                sex: crossFacilityPatient.sex || prev.sex,
+                                phone: crossFacilityPatient.phone || prev.phone,
+                                email: crossFacilityPatient.email || prev.email,
+                                address: crossFacilityPatient.address || prev.address,
+                                state: crossFacilityPatient.state || prev.state,
+                                lga: crossFacilityPatient.lga || prev.lga,
+                                bloodGroup: crossFacilityPatient.bloodGroup || prev.bloodGroup,
+                                genotype: crossFacilityPatient.genotype || prev.genotype,
+                                emergencyContact: crossFacilityPatient.emergencyContact || prev.emergencyContact,
+                                emergencyRelation: crossFacilityPatient.emergencyRelation || prev.emergencyRelation,
+                                occupation: crossFacilityPatient.occupation || prev.occupation,
+                              }));
+                              flash(`✓ Demographics loaded from ${crossFacilityPatient.facilityName || 'State Registry'}`);
+                            }}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: 6,
+                              border: 'none',
+                              background: '#2563EB',
+                              color: '#fff',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Re-import Demographics
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {ninValidationWarning && ninStatus !== 'conflict' && (
+                      <div style={{ marginTop: 6, background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '6px 10px', fontSize: 11, color: '#92400E' }}>
+                        ⚠ {ninValidationWarning}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* First Name */}
+                  <div style={{ gridColumn: 'span 4' }}>
+                    <label style={labelStyle}>
+                      First Name <span style={{ color: '#EF4444' }}>*</span>
+                      <span style={{ fontSize: 9.5, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '1px 5px', borderRadius: 4, marginLeft: 6 }}>
+                        REQUIRED
+                      </span>
+                    </label>
+                    <input
+                      style={{
+                        ...inputStyle,
+                        borderColor: regTouched.firstName && regErrors.firstName ? '#EF4444' : regTouched.firstName && reg.firstName.trim() ? '#10B981' : C.border,
+                        background: regTouched.firstName && regErrors.firstName ? '#FEF2F2' : '#fff',
+                      }}
+                      placeholder="e.g. Samuel"
+                      value={reg.firstName}
+                      onChange={(e) => updateRegField('firstName', e.target.value)}
+                      onBlur={() => touchRegField('firstName')}
+                    />
+                    {regTouched.firstName && regErrors.firstName && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                        <AlertTriangle size={12} /> {regErrors.firstName}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Middle Name */}
+                  <div style={{ gridColumn: 'span 4' }}>
+                    <label style={labelStyle}>
+                      Middle Name
+                      <span style={{ fontSize: 11, fontWeight: 500, color: C.muted, marginLeft: 6 }}>(optional)</span>
+                    </label>
+                    <input
+                      style={inputStyle}
+                      placeholder="e.g. Edidiong"
+                      value={reg.middleName}
+                      onChange={(e) => updateRegField('middleName', e.target.value)}
+                    />
+                  </div>
+
+                  {/* Last Name */}
+                  <div style={{ gridColumn: 'span 4' }}>
+                    <label style={labelStyle}>
+                      Last Name / Surname <span style={{ color: '#EF4444' }}>*</span>
+                      <span style={{ fontSize: 9.5, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '1px 5px', borderRadius: 4, marginLeft: 6 }}>
+                        REQUIRED
+                      </span>
+                    </label>
+                    <input
+                      style={{
+                        ...inputStyle,
+                        borderColor: regTouched.lastName && regErrors.lastName ? '#EF4444' : regTouched.lastName && reg.lastName.trim() ? '#10B981' : C.border,
+                        background: regTouched.lastName && regErrors.lastName ? '#FEF2F2' : '#fff',
+                      }}
+                      placeholder="e.g. Akpan"
+                      value={reg.lastName}
+                      onChange={(e) => updateRegField('lastName', e.target.value)}
+                      onBlur={() => touchRegField('lastName')}
+                    />
+                    {regTouched.lastName && regErrors.lastName && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                        <AlertTriangle size={12} /> {regErrors.lastName}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Biological Sex */}
+                  <div style={{ gridColumn: 'span 4' }}>
+                    <label style={labelStyle}>
+                      Biological Sex <span style={{ color: '#EF4444' }}>*</span>
+                      <span style={{ fontSize: 9.5, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '1px 5px', borderRadius: 4, marginLeft: 6 }}>
+                        REQUIRED
+                      </span>
+                    </label>
+                    <select
+                      style={{
+                        ...inputStyle,
+                        borderColor: regTouched.sex && regErrors.sex ? '#EF4444' : C.border,
+                        background: regTouched.sex && regErrors.sex ? '#FEF2F2' : '#fff',
+                      }}
+                      value={reg.sex}
+                      onChange={(e) => updateRegField('sex', e.target.value as FacilityPatient['sex'])}
+                      onBlur={() => touchRegField('sex')}
+                    >
+                      <option value="Female">Female</option>
+                      <option value="Male">Male</option>
+                      <option value="Other">Other</option>
+                    </select>
+                    {regTouched.sex && regErrors.sex && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                        <AlertTriangle size={12} /> {regErrors.sex}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Date of Birth */}
+                  <div style={{ gridColumn: 'span 4' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <label style={{ ...labelStyle, marginBottom: 0 }}>
+                        Date of Birth <span style={{ color: '#EF4444' }}>*</span>
+                        <span style={{ fontSize: 9.5, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '1px 5px', borderRadius: 4, marginLeft: 6 }}>
+                          REQUIRED
+                        </span>
+                      </label>
+                      {reg.dob && getCalculatedAge(reg.dob) && (
+                        <span style={{ fontSize: 11, fontWeight: 800, color: '#0369A1', background: '#E0F2FE', padding: '2px 7px', borderRadius: 6 }}>
+                          {getCalculatedAge(reg.dob)}
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="date"
+                      max={new Date().toISOString().split('T')[0]}
+                      style={{
+                        ...inputStyle,
+                        borderColor: regTouched.dob && regErrors.dob ? '#EF4444' : regTouched.dob && reg.dob ? '#10B981' : C.border,
+                        background: regTouched.dob && regErrors.dob ? '#FEF2F2' : '#fff',
+                      }}
+                      value={reg.dob}
+                      onChange={(e) => updateRegField('dob', e.target.value)}
+                      onBlur={() => touchRegField('dob')}
+                    />
+                    {regTouched.dob && regErrors.dob && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                        <AlertTriangle size={12} /> {regErrors.dob}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Occupation */}
+                  <div style={{ gridColumn: 'span 4' }}>
+                    <label style={labelStyle}>
+                      Occupation
+                      <span style={{ fontSize: 11, fontWeight: 500, color: C.muted, marginLeft: 6 }}>(optional)</span>
+                    </label>
+                    <input
+                      style={inputStyle}
+                      placeholder="e.g. Civil Servant, Trader, Student"
+                      value={reg.occupation}
+                      onChange={(e) => updateRegField('occupation', e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+              </div>
+            )}
+
+            {/* ── STEP 2: CONTACT, RESIDENCE & NEXT OF KIN ── */}
+            {regStep === 2 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Phone size={16} color="#059669" />
+                    <span style={{ fontSize: 12.5, color: '#065F46', fontWeight: 600 }}>
+                      Patient contact telephone, verified home residence, and Emergency Next-of-Kin guarantor are mandatory under Akwa Ibom State hospital protocols.
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 11, background: '#DCFCE7', color: '#047857', padding: '3px 8px', borderRadius: 6, fontWeight: 700 }}>
+                    Step 2 of 4
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16 }}>
+                  {/* Phone */}
+                  <div style={{ gridColumn: 'span 6' }}>
+                    <label style={labelStyle}>
+                      Patient Phone Number <span style={{ color: '#EF4444' }}>*</span>
+                      <span style={{ fontSize: 9.5, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '1px 5px', borderRadius: 4, marginLeft: 6 }}>
+                        REQUIRED
+                      </span>
+                    </label>
+                    <input
+                      style={{
+                        ...inputStyle,
+                        borderColor: regTouched.phone && regErrors.phone ? '#EF4444' : regTouched.phone && reg.phone.trim() ? '#10B981' : C.border,
+                        background: regTouched.phone && regErrors.phone ? '#FEF2F2' : '#fff',
+                      }}
+                      value={reg.phone}
+                      onChange={(e) => updateRegField('phone', e.target.value)}
+                      onBlur={() => touchRegField('phone')}
+                      placeholder="e.g. 08012345678 or 090..."
+                    />
+                    {regTouched.phone && regErrors.phone && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                        <AlertTriangle size={12} /> {regErrors.phone}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Email */}
+                  <div style={{ gridColumn: 'span 6' }}>
+                    <label style={labelStyle}>
+                      Email Address
+                      <span style={{ fontSize: 11, fontWeight: 500, color: C.muted, marginLeft: 6 }}>(optional)</span>
+                    </label>
+                    <input
+                      type="email"
+                      style={{
+                        ...inputStyle,
+                        borderColor: regTouched.email && regErrors.email ? '#EF4444' : C.border,
+                        background: regTouched.email && regErrors.email ? '#FEF2F2' : '#fff',
+                      }}
+                      value={reg.email}
+                      onChange={(e) => updateRegField('email', e.target.value)}
+                      onBlur={() => touchRegField('email')}
+                      placeholder="patient@example.com"
+                    />
+                    {regTouched.email && regErrors.email && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                        <AlertTriangle size={12} /> {regErrors.email}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Residential Street Address */}
+                  <div style={{ gridColumn: 'span 12' }}>
+                    <label style={labelStyle}>
+                      Residential Street Address <span style={{ color: '#EF4444' }}>*</span>
+                      <span style={{ fontSize: 9.5, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '1px 5px', borderRadius: 4, marginLeft: 6 }}>
+                        REQUIRED
+                      </span>
+                    </label>
+                    <input
+                      style={{
+                        ...inputStyle,
+                        borderColor: regTouched.address && regErrors.address ? '#EF4444' : regTouched.address && reg.address.trim() ? '#10B981' : C.border,
+                        background: regTouched.address && regErrors.address ? '#FEF2F2' : '#fff',
+                      }}
+                      value={reg.address}
+                      onChange={(e) => updateRegField('address', e.target.value)}
+                      onBlur={() => touchRegField('address')}
+                      placeholder="House / Flat number, Street name, Community / Landmark..."
+                    />
+                    {regTouched.address && regErrors.address && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                        <AlertTriangle size={12} /> {regErrors.address}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* State */}
+                  <div style={{ gridColumn: 'span 6' }}>
+                    <label style={labelStyle}>
+                      State of Residence <span style={{ color: '#EF4444' }}>*</span>
+                      <span style={{ fontSize: 9.5, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '1px 5px', borderRadius: 4, marginLeft: 6 }}>
+                        REQUIRED
+                      </span>
+                    </label>
+                    <input
+                      style={{
+                        ...inputStyle,
+                        borderColor: regTouched.state && regErrors.state ? '#EF4444' : C.border,
+                        background: regTouched.state && regErrors.state ? '#FEF2F2' : '#fff',
+                      }}
+                      value={reg.state}
+                      onChange={(e) => updateRegField('state', e.target.value)}
+                      onBlur={() => touchRegField('state')}
+                    />
+                    {regTouched.state && regErrors.state && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                        <AlertTriangle size={12} /> {regErrors.state}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* LGA */}
+                  <div style={{ gridColumn: 'span 6' }}>
+                    <label style={labelStyle}>
+                      Local Government Area (LGA) <span style={{ color: '#EF4444' }}>*</span>
+                      <span style={{ fontSize: 9.5, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '1px 5px', borderRadius: 4, marginLeft: 6 }}>
+                        REQUIRED
+                      </span>
+                    </label>
+                    <select
+                      style={{
+                        ...inputStyle,
+                        borderColor: regTouched.lga && regErrors.lga ? '#EF4444' : C.border,
+                        background: regTouched.lga && regErrors.lga ? '#FEF2F2' : '#fff',
+                      }}
+                      value={reg.lga}
+                      onChange={(e) => updateRegField('lga', e.target.value)}
+                      onBlur={() => touchRegField('lga')}
+                    >
+                      {AKWA_IBOM_LGAS.map((l) => (
+                        <option key={l} value={l}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
+                    {regTouched.lga && regErrors.lga && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                        <AlertTriangle size={12} /> {regErrors.lga}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Emergency Contact & Next of Kin Box */}
+                  <div
+                    style={{
+                      gridColumn: 'span 12',
+                      background: '#F8FAFC',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: 14,
+                      padding: 16,
+                      marginTop: 4,
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 800, color: C.navy, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Users size={16} color={C.blue} /> NEXT OF KIN / EMERGENCY GUARANTOR (REQUIRED BY HOSPITAL PROTOCOL)
+                    </div>
+                    <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>
+                      Primary point of contact for emergency clinical decisions, blood donation, and patient accompaniment.
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      <div>
+                        <label style={labelStyle}>
+                          Next of Kin Full Name & Phone <span style={{ color: '#EF4444' }}>*</span>
+                          <span style={{ fontSize: 9.5, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '1px 5px', borderRadius: 4, marginLeft: 6 }}>
+                            REQUIRED
+                          </span>
+                        </label>
+                        <input
+                          style={{
+                            ...inputStyle,
+                            borderColor: regTouched.emergencyContact && regErrors.emergencyContact ? '#EF4444' : regTouched.emergencyContact && reg.emergencyContact.trim() ? '#10B981' : C.border,
+                            background: regTouched.emergencyContact && regErrors.emergencyContact ? '#FEF2F2' : '#fff',
+                          }}
+                          value={reg.emergencyContact}
+                          onChange={(e) => updateRegField('emergencyContact', e.target.value)}
+                          onBlur={() => touchRegField('emergencyContact')}
+                          placeholder="e.g. Utibe Akpan (08039876543)"
+                        />
+                        {regTouched.emergencyContact && regErrors.emergencyContact && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                            <AlertTriangle size={12} /> {regErrors.emergencyContact}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>
+                          Relationship to Patient <span style={{ color: '#EF4444' }}>*</span>
+                          <span style={{ fontSize: 9.5, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '1px 5px', borderRadius: 4, marginLeft: 6 }}>
+                            REQUIRED
+                          </span>
+                        </label>
+                        <input
+                          style={{
+                            ...inputStyle,
+                            borderColor: regTouched.emergencyRelation && regErrors.emergencyRelation ? '#EF4444' : regTouched.emergencyRelation && reg.emergencyRelation.trim() ? '#10B981' : C.border,
+                            background: regTouched.emergencyRelation && regErrors.emergencyRelation ? '#FEF2F2' : '#fff',
+                          }}
+                          value={reg.emergencyRelation}
+                          onChange={(e) => updateRegField('emergencyRelation', e.target.value)}
+                          onBlur={() => touchRegField('emergencyRelation')}
+                          placeholder="e.g. Spouse, Mother, Father, Brother, Sister, Guardian"
+                        />
+                        {regTouched.emergencyRelation && regErrors.emergencyRelation && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                            <AlertTriangle size={12} /> {regErrors.emergencyRelation}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── STEP 3: SCHEME, INSURANCE & CLINICAL BASELINE ── */}
+            {regStep === 3 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <ShieldCheck size={16} color="#D97706" />
+                    <span style={{ fontSize: 12.5, color: '#92400E', fontWeight: 600 }}>
+                      Select patient payment scheme. For insured patients (NHIA, AKSHIA, HMO), enter the policy number to verify coverage.
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 11, background: '#FEF3C7', color: '#92400E', padding: '3px 8px', borderRadius: 6, fontWeight: 700 }}>
+                    Step 3 of 4
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16 }}>
+                  {/* Category / Scheme */}
+                  <div style={{ gridColumn: 'span 12' }}>
+                    <label style={labelStyle}>
+                      Patient Billing Scheme / Category <span style={{ color: '#EF4444' }}>*</span>
+                      <span style={{ fontSize: 9.5, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '1px 5px', borderRadius: 4, marginLeft: 6 }}>
+                        REQUIRED
+                      </span>
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginTop: 4 }}>
+                      {[
+                        { id: 'General', title: 'Self-Pay (General)', sub: 'Standard Folder Fee: ₦2,000' },
+                        { id: 'NHIA', title: 'NHIA (National Health)', sub: 'Subsidized Folder Fee: ₦1,000' },
+                        { id: 'AKSHIA', title: 'AKSHIA (State Scheme)', sub: 'Akwa Ibom Health Agency' },
+                        { id: 'Private HMO', title: 'Private HMO / Corporate', sub: 'Retainership / Managed care' },
+                        { id: 'Waiver', title: 'Indigent / Waiver', sub: 'Social welfare clearance' },
+                      ].map((item) => {
+                        const sel = reg.category === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              updateRegField('category', item.id);
+                              if (item.id === 'General' || item.id === 'Waiver') {
+                                updateRegField('insuranceProvider', 'NONE');
+                                updateRegField('insuranceId', '');
+                              } else if (item.id === 'NHIA' && reg.insuranceProvider === 'NONE') {
+                                updateRegField('insuranceProvider', 'NHIA');
+                              }
+                            }}
+                            style={{
+                              padding: '12px 14px',
+                              borderRadius: 10,
+                              textAlign: 'left',
+                              border: sel ? `2px solid ${C.blue}` : `1px solid ${C.border}`,
+                              background: sel ? '#EFF6FF' : '#FFFFFF',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <div style={{ fontWeight: 800, fontSize: 13, color: sel ? C.blue : C.navy }}>{item.title}</div>
+                            <div style={{ fontSize: 11, color: sel ? '#0369A1' : C.muted, marginTop: 2 }}>{item.sub}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* If Insured: Provider & Enrollee ID */}
+                  {reg.category !== 'General' && reg.category !== 'Waiver' && (
+                    <div
+                      style={{
+                        gridColumn: 'span 12',
+                        background: '#F0F9FF',
+                        border: '1px solid #BAE6FD',
+                        borderRadius: 14,
+                        padding: 16,
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 800, color: '#0369A1', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <ShieldCheck size={16} color="#0284C7" /> HEALTH INSURANCE COVERAGE & POLICY DETAILS
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                        <div>
+                          <label style={labelStyle}>
+                            Insurance / HMO Provider <span style={{ color: '#EF4444' }}>*</span>
+                            <span style={{ fontSize: 9.5, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '1px 5px', borderRadius: 4, marginLeft: 6 }}>
+                              REQUIRED
+                            </span>
+                          </label>
+                          <select
+                            style={{
+                              ...inputStyle,
+                              borderColor: regTouched.insuranceProvider && regErrors.insuranceProvider ? '#EF4444' : C.border,
+                              background: regTouched.insuranceProvider && regErrors.insuranceProvider ? '#FEF2F2' : '#fff',
+                            }}
+                            value={reg.insuranceProvider}
+                            onChange={(e) => {
+                              updateRegField('insuranceProvider', e.target.value);
+                              setInsVerify(null);
+                            }}
+                            onBlur={() => touchRegField('insuranceProvider')}
+                          >
+                            <option value="NONE">Select Provider…</option>
+                            {NIGERIA_INSURANCE.filter(i => i.id !== 'NONE').map((i) => (
+                              <option key={i.id} value={i.id}>
+                                {i.name}
+                              </option>
+                            ))}
+                          </select>
+                          {regTouched.insuranceProvider && regErrors.insuranceProvider && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                              <AlertTriangle size={12} /> {regErrors.insuranceProvider}
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label style={labelStyle}>
+                            Policy / Member / Enrollee ID <span style={{ color: '#EF4444' }}>*</span>
+                            <span style={{ fontSize: 9.5, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '1px 5px', borderRadius: 4, marginLeft: 6 }}>
+                              REQUIRED
+                            </span>
+                          </label>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <input
+                              style={{
+                                ...inputStyle,
+                                borderColor: regTouched.insuranceId && regErrors.insuranceId ? '#EF4444' : C.border,
+                                background: regTouched.insuranceId && regErrors.insuranceId ? '#FEF2F2' : '#fff',
+                              }}
+                              placeholder="e.g. NHIA/2026/9871"
+                              value={reg.insuranceId || reg.nhiaNumber}
+                              onChange={(e) => {
+                                updateRegField('insuranceId', e.target.value);
+                                updateRegField('nhiaNumber', e.target.value);
+                              }}
+                              onBlur={() => touchRegField('insuranceId')}
+                            />
+                            <button
+                              type="button"
+                              onClick={runInsVerify}
+                              style={{
+                                padding: '10px 14px',
+                                borderRadius: 10,
+                                border: 'none',
+                                background: C.navy,
+                                color: '#fff',
+                                fontWeight: 700,
+                                fontSize: 12,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6,
+                              }}
+                            >
+                              <ShieldCheck size={14} /> Verify
+                            </button>
+                          </div>
+                          {regTouched.insuranceId && regErrors.insuranceId && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC2626', fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>
+                              <AlertTriangle size={12} /> {regErrors.insuranceId}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {insVerify && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            padding: 12,
+                            borderRadius: 10,
+                            background: insVerify.ok ? '#F0FDF4' : '#FEF2F2',
+                            border: `1px solid ${insVerify.ok ? '#BBF7D0' : '#FECACA'}`,
+                            color: insVerify.ok ? '#166534' : '#991B1B',
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {insVerify.message}
+                          {insVerify.plan ? ` · Plan: ${insVerify.plan}` : ''}
+                          {insVerify.expiry ? ` · Valid until: ${insVerify.expiry}` : ''}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Baseline Clinical Demographics */}
+                  <div
+                    style={{
+                      gridColumn: 'span 12',
+                      background: '#F8FAFC',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: 14,
+                      padding: 16,
+                      marginTop: 4,
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 800, color: C.navy, marginBottom: 4 }}>
+                      🩸 CLINICAL BASELINE BIOMARKERS (OPTIONAL)
+                    </div>
+                    <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>
+                      Can be updated later during Doctor Consultation or Medical Laboratory investigations.
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      <div>
+                        <label style={labelStyle}>
+                          Blood Group
+                          <span style={{ fontSize: 11, fontWeight: 500, color: C.muted, marginLeft: 6 }}>(optional)</span>
+                        </label>
+                        <select style={inputStyle} value={reg.bloodGroup} onChange={(e) => updateRegField('bloodGroup', e.target.value)}>
+                          <option value="">Unknown / Not Tested</option>
+                          {'O+ O- A+ A- B+ B- AB+ AB-'.split(' ').map((b) => (
+                            <option key={b} value={b}>{b}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>
+                          Genotype
+                          <span style={{ fontSize: 11, fontWeight: 500, color: C.muted, marginLeft: 6 }}>(optional)</span>
+                        </label>
+                        <select style={inputStyle} value={reg.genotype} onChange={(e) => updateRegField('genotype', e.target.value)}>
+                          <option value="">Unknown / Not Tested</option>
+                          {'AA AS SS AC SC'.split(' ').map((g) => (
+                            <option key={g} value={g}>{g}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── STEP 4: BIOMETRIC PHOTO & DOSSIER REVIEW ── */}
+            {regStep === 4 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <CheckCircle2 size={16} color="#059669" />
+                    <span style={{ fontSize: 12.5, color: '#065F46', fontWeight: 600 }}>
+                      All required fields validated. Review patient dossier, attach optional photo, and complete registration to generate hospital folder.
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 11, background: '#D1FAE5', color: '#047857', padding: '3px 8px', borderRadius: 6, fontWeight: 700 }}>
+                    Step 4 of 4
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20, alignItems: 'flex-start' }}>
+                  {/* Photo Column */}
+                  <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 14, padding: 16 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: C.navy, marginBottom: 4 }}>
+                      Patient Photo
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 12 }}>
+                      Printed on State Health Card & EMR chart.
+                    </div>
+
+                    <div
+                      style={{
+                        width: '100%',
+                        height: 200,
+                        borderRadius: 12,
+                        background: '#F1F5F9',
+                        border: `1.5px dashed ${C.border}`,
+                        overflow: 'hidden',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        position: 'relative',
+                      }}
+                    >
+                      {reg.photoDataUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={reg.photoDataUrl} alt="Patient" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : camOn ? (
+                        <video ref={videoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline />
+                      ) : (
+                        <div style={{ textAlign: 'center', color: C.muted, padding: 12 }}>
+                          <Camera size={36} color="#94A3B8" style={{ margin: '0 auto 6px' }} />
+                          <div style={{ fontSize: 12, fontWeight: 600 }}>No Photo Attached</div>
+                          <div style={{ fontSize: 10.5, color: '#94A3B8', marginTop: 2 }}>Webcam or file upload (optional)</div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+                      {!camOn ? (
+                        <button
+                          type="button"
+                          onClick={startCam}
+                          style={{
+                            flex: 1,
+                            padding: '8px 10px',
+                            borderRadius: 8,
+                            border: `1px solid ${C.border}`,
+                            background: '#fff',
+                            cursor: 'pointer',
+                            fontWeight: 700,
+                            fontSize: 12,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                          }}
+                        >
+                          <Camera size={14} /> Webcam
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={capturePhoto}
+                            style={{
+                              flex: 1,
+                              padding: '8px 10px',
+                              borderRadius: 8,
+                              border: 'none',
+                              background: C.blue,
+                              color: '#fff',
+                              cursor: 'pointer',
+                              fontWeight: 700,
+                              fontSize: 12,
+                            }}
+                          >
+                            Capture
+                          </button>
+                          <button
+                            type="button"
+                            onClick={stopCam}
+                            style={{
+                              padding: '8px 10px',
+                              borderRadius: 8,
+                              border: `1px solid ${C.border}`,
+                              background: '#fff',
+                              cursor: 'pointer',
+                              fontWeight: 600,
+                              fontSize: 12,
+                            }}
+                          >
+                            Stop
+                          </button>
+                        </>
+                      )}
+                      <label
+                        style={{
+                          flex: 1,
+                          padding: '8px 10px',
+                          borderRadius: 8,
+                          border: `1px solid ${C.border}`,
+                          background: '#fff',
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                          fontSize: 12,
+                          textAlign: 'center',
+                        }}
+                      >
+                        Upload
+                        <input type="file" accept="image/*" hidden onChange={(e) => onPhotoFile(e.target.files?.[0] || null)} />
+                      </label>
+                      {reg.photoDataUrl && (
+                        <button
+                          type="button"
+                          onClick={() => updateRegField('photoDataUrl', '')}
+                          style={{
+                            width: '100%',
+                            marginTop: 4,
+                            padding: '5px 8px',
+                            borderRadius: 6,
+                            border: 'none',
+                            background: '#FEE2E2',
+                            color: '#DC2626',
+                            cursor: 'pointer',
+                            fontSize: 11,
+                            fontWeight: 700,
+                          }}
+                        >
+                          Remove Photo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Dossier Review Card */}
+                  <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 14, padding: 18 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #E2E8F0', paddingBottom: 12, marginBottom: 14 }}>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: C.blue, letterSpacing: '0.04em' }}>
+                          AKWA IBOM STATE HEALTHCARE DOSSIER
+                        </div>
+                        <div style={{ fontSize: 18, fontWeight: 900, color: C.navy, marginTop: 2 }}>
+                          {reg.firstName} {reg.middleName} {reg.lastName}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 20, background: '#DCFCE7', color: '#047857' }}>
+                        ● Ready to Register
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+                      {/* Section 1: Identity */}
+                      <div style={{ background: '#fff', borderRadius: 10, padding: 12, border: '1px solid #E2E8F0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ fontSize: 11, fontWeight: 800, color: C.muted }}>1. IDENTITY & BIO</span>
+                          <button
+                            type="button"
+                            onClick={() => setRegStep(1)}
+                            style={{ background: 'none', border: 'none', color: C.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3 }}
+                          >
+                            <Edit2 size={11} /> Edit
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 12.5, lineHeight: 1.6, color: C.navy }}>
+                          <div><strong>Sex:</strong> {reg.sex}</div>
+                          <div><strong>DOB:</strong> {reg.dob} ({getCalculatedAge(reg.dob)})</div>
+                          <div><strong>NIN:</strong> {reg.nin || 'Not provided'}</div>
+                          {reg.occupation && <div><strong>Occupation:</strong> {reg.occupation}</div>}
+                        </div>
+                      </div>
+
+                      {/* Section 2: Contact & Next of Kin */}
+                      <div style={{ background: '#fff', borderRadius: 10, padding: 12, border: '1px solid #E2E8F0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ fontSize: 11, fontWeight: 800, color: C.muted }}>2. CONTACT & NEXT OF KIN</span>
+                          <button
+                            type="button"
+                            onClick={() => setRegStep(2)}
+                            style={{ background: 'none', border: 'none', color: C.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3 }}
+                          >
+                            <Edit2 size={11} /> Edit
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 12.5, lineHeight: 1.6, color: C.navy }}>
+                          <div><strong>Phone:</strong> {reg.phone}</div>
+                          <div><strong>LGA:</strong> {reg.lga}, {reg.state}</div>
+                          <div><strong>Address:</strong> {reg.address}</div>
+                          <div><strong>Next of Kin:</strong> {reg.emergencyContact} ({reg.emergencyRelation})</div>
+                        </div>
+                      </div>
+
+                      {/* Section 3: Billing & Clinical */}
+                      <div style={{ background: '#fff', borderRadius: 10, padding: 12, border: '1px solid #E2E8F0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ fontSize: 11, fontWeight: 800, color: C.muted }}>3. SCHEME & OPENING FEE</span>
+                          <button
+                            type="button"
+                            onClick={() => setRegStep(3)}
+                            style={{ background: 'none', border: 'none', color: C.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3 }}
+                          >
+                            <Edit2 size={11} /> Edit
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 12.5, lineHeight: 1.6, color: C.navy }}>
+                          <div><strong>Category:</strong> {reg.category}</div>
+                          {reg.category !== 'General' && reg.category !== 'Waiver' && (
+                            <>
+                              <div><strong>HMO:</strong> {reg.insuranceProvider}</div>
+                              <div><strong>Policy ID:</strong> {reg.insuranceId || reg.nhiaNumber}</div>
+                            </>
+                          )}
+                          <div><strong>Blood / Genotype:</strong> {reg.bloodGroup || 'Unknown'} · {reg.genotype || 'Unknown'}</div>
+                          <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #F1F5F9', color: '#047857', fontWeight: 800 }}>
+                            Folder Fee: ₦{(reg.category === 'NHIA' || reg.insuranceProvider !== 'NONE' ? Math.round(DEFAULT_REGISTRATION_FEE_NGN * 0.5) : DEFAULT_REGISTRATION_FEE_NGN).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Instant Account Handoff notice */}
+                    <div style={{ marginTop: 14, background: '#ECFDF5', border: '1px solid #BBF7D0', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <CheckCircle2 size={18} color="#059669" />
+                      <div style={{ fontSize: 12, color: '#065F46', lineHeight: 1.45 }}>
+                        <strong>Automatic Accounts Handoff:</strong> When you complete registration, MedCore OS immediately generates an official State Hospital Number (MRN), auto-drafts the patient&apos;s Statewide Digital Health Card, and routes the folder fee invoice to the Cashier / Accounts desk.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Wizard Navigation Footer */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginTop: 24,
+                paddingTop: 16,
+                borderTop: `1px solid ${C.border}`,
+                flexWrap: 'wrap',
+                gap: 12,
+              }}
+            >
+              <div>
+                <button
+                  type="button"
+                  disabled={regStep === 1}
+                  onClick={() => setRegStep((s) => (s > 1 ? ((s - 1) as RegStep) : s))}
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: 10,
+                    border: `1px solid ${C.border}`,
+                    background: regStep === 1 ? '#F1F5F9' : '#fff',
+                    color: regStep === 1 ? '#94A3B8' : C.navy,
+                    fontWeight: 700,
+                    cursor: regStep === 1 ? 'not-allowed' : 'pointer',
+                    fontSize: 13,
+                  }}
+                >
+                  ← Back to Step {Math.max(1, regStep - 1)}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>
+                  Step {regStep} of 4
+                </span>
+
+                {regStep < 4 ? (
                   <button
                     type="button"
-                    onClick={runInsVerify}
+                    onClick={handleNextStep}
                     style={{
-                      width: '100%',
-                      padding: 11,
+                      padding: '11px 24px',
                       borderRadius: 10,
                       border: 'none',
-                      background: C.navy,
+                      background: '#0284C7',
                       color: '#fff',
-                      fontWeight: 700,
+                      fontWeight: 800,
+                      fontSize: 13.5,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
+                      gap: 8,
+                      boxShadow: '0 2px 10px rgba(2, 132, 199, 0.3)',
+                      transition: 'all 0.15s ease',
                     }}
                   >
-                    <ShieldCheck size={16} /> Verify eligibility
+                    Continue to Step {regStep + 1} <ArrowRight size={16} />
                   </button>
-                </div>
-                {insVerify && (
-                  <div
+                ) : (
+                  <button
+                    type="button"
+                    onClick={saveRegistration}
                     style={{
-                      gridColumn: '1 / -1',
-                      padding: 12,
+                      padding: '11px 26px',
                       borderRadius: 10,
-                      background: insVerify.ok ? '#F0FDF4' : '#FEF2F2',
-                      border: `1px solid ${insVerify.ok ? '#BBF7D0' : '#FECACA'}`,
-                      color: insVerify.ok ? '#166534' : '#991B1B',
-                      fontSize: 13,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {insVerify.message}
-                    {insVerify.plan ? ` · ${insVerify.plan}` : ''}
-                    {insVerify.expiry ? ` · exp ${insVerify.expiry}` : ''}
-                  </div>
-                )}
-                <div>
-                  <label style={labelStyle}>Blood group</label>
-                  <select style={inputStyle} value={reg.bloodGroup} onChange={(e) => setReg({ ...reg, bloodGroup: e.target.value })}>
-                    <option value="">Unknown</option>
-                    {'O+ O- A+ A- B+ B- AB+ AB-'.split(' ').map((b) => (
-                      <option key={b}>{b}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Genotype</label>
-                  <select style={inputStyle} value={reg.genotype} onChange={(e) => setReg({ ...reg, genotype: e.target.value })}>
-                    <option value="">Unknown</option>
-                    {'AA AS SS AC SC'.split(' ').map((g) => (
-                      <option key={g}>{g}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {regStep === 4 && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div>
-                  <div style={{ fontWeight: 800, marginBottom: 10 }}>Patient photo</div>
-                  <div
-                    style={{
-                      width: 160,
-                      height: 160,
-                      borderRadius: 16,
-                      background: '#F1F5F9',
-                      border: `1px dashed ${C.border}`,
-                      overflow: 'hidden',
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #059669 0%, #0D9488 100%)',
+                      color: '#fff',
+                      fontWeight: 800,
+                      fontSize: 13.5,
+                      cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
+                      gap: 8,
+                      boxShadow: '0 4px 14px rgba(5, 150, 105, 0.35)',
                     }}
                   >
-                    {reg.photoDataUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={reg.photoDataUrl} alt="Patient" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : camOn ? (
-                      <video ref={videoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline />
-                    ) : (
-                      <Camera size={32} color={C.muted} />
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                    {!camOn ? (
-                      <button type="button" onClick={startCam} style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
-                        Webcam
-                      </button>
-                    ) : (
-                      <>
-                        <button type="button" onClick={capturePhoto} style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: C.blue, color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
-                          Capture
-                        </button>
-                        <button type="button" onClick={stopCam} style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
-                          Stop
-                        </button>
-                      </>
-                    )}
-                    <label style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
-                      Upload
-                      <input type="file" accept="image/*" hidden onChange={(e) => onPhotoFile(e.target.files?.[0] || null)} />
-                    </label>
-                  </div>
-                </div>
-                <div style={{ background: '#F8FAFC', borderRadius: 12, padding: 14 }}>
-                  <div style={{ fontWeight: 800, marginBottom: 8 }}>Review</div>
-                  <div style={{ fontSize: 13, lineHeight: 1.7, color: C.navy }}>
-                    <div>
-                      <strong>{reg.firstName} {reg.middleName} {reg.lastName}</strong>
-                    </div>
-                    <div>
-                      {reg.sex} · DOB {reg.dob || '—'}
-                    </div>
-                    <div>{reg.phone}</div>
-                    <div>
-                      {reg.lga}, {reg.state}
-                    </div>
-                    <div>
-                      Insurance:{' '}
-                      {NIGERIA_INSURANCE.find((i) => i.id === reg.insuranceProvider)?.name || reg.insuranceProvider}
-                    </div>
-                    {reg.nin ? (
-                      <div style={{ color: '#047857', fontWeight: 700 }}>
-                        NIN (Bound to Card): {reg.nin}
-                      </div>
-                    ) : (
-                      <div style={{ color: C.muted }}>NIN: Not provided</div>
-                    )}
-                  </div>
-                </div>
+                    <CheckCircle2 size={17} /> Complete Registration & Open File
+                  </button>
+                )}
               </div>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20 }}>
-              <button
-                type="button"
-                disabled={regStep === 1}
-                onClick={() => setRegStep((s) => (s > 1 ? ((s - 1) as RegStep) : s))}
-                style={{ padding: '10px 16px', borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', fontWeight: 700, cursor: 'pointer' }}
-              >
-                Back
-              </button>
-              {regStep < 4 ? (
-                <button
-                  type="button"
-                  onClick={() => setRegStep((s) => (s < 4 ? ((s + 1) as RegStep) : s))}
-                  style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: C.blue, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
-                >
-                  Continue
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={saveRegistration}
-                  style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
-                >
-                  Complete registration
-                </button>
-              )}
             </div>
           </div>
         </div>
