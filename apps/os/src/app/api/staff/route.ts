@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured } from '../../../lib/db/postgres';
 import { deleteStaff, listStaff, upsertStaff } from '../../../lib/db/staffRepo';
+import { getAdminAuth } from '../../../lib/firebaseAdmin';
 
 export const runtime = 'nodejs';
 
@@ -14,13 +15,86 @@ export async function GET(req: NextRequest) {
   if (isPostgresConfigured()) {
     try {
       const staff = await listStaff(facilityId);
-      return NextResponse.json({ ok: true, configured: true, staff: staff || [] });
+      if (staff && staff.length > 0) {
+        return NextResponse.json({ ok: true, configured: true, staff: staff || [] });
+      }
     } catch (e) {
       console.warn('[api/staff GET] Postgres error:', e);
     }
   }
 
-  return NextResponse.json({ ok: true, configured: false, staff: [] });
+  // 2. Fallback to Firebase Admin Auth so staff enrolled in Firebase Auth never disappear
+  try {
+    const adminAuth = getAdminAuth();
+    if (adminAuth) {
+      const listUsersRes = await adminAuth.listUsers(1000);
+      const authStaff: any[] = [];
+      const seenBadges = new Set<string>();
+
+      for (const u of listUsersRes.users) {
+        const claims = (u.customClaims || {}) as Record<string, unknown>;
+        const uFacility = String(claims.facility_id || '').trim().toUpperCase();
+        const fNorm = facilityId.toUpperCase();
+
+        // If facilityId specified and user belongs to a different facility, skip
+        if (uFacility && fNorm && uFacility !== fNorm) {
+          continue;
+        }
+
+        // Determine badgeId from claims, email, or uid
+        let badgeId = String(claims.badgeId || '').trim().toUpperCase();
+        if (!badgeId && u.email?.startsWith('badge.')) {
+          badgeId = u.email.replace(/^badge\./, '').replace(/@.*$/, '').toUpperCase();
+        }
+        if (!badgeId) {
+          // If not a badge user, only include if explicitly tagged with staff claims
+          if (!claims.role && !claims.facility_id) continue;
+          badgeId = u.uid.slice(0, 12).toUpperCase();
+        }
+        if (!badgeId || seenBadges.has(badgeId)) continue;
+        seenBadges.add(badgeId);
+
+        const displayName = u.displayName || badgeId;
+        const role = String(claims.role || 'Staff');
+        const clearanceLevel = Number(claims.clearanceLevel) || 2;
+
+        authStaff.push({
+          badgeId,
+          badge_id: badgeId,
+          id: badgeId,
+          fullName: displayName,
+          full_name: displayName,
+          name: displayName,
+          role,
+          roleKey: role.toLowerCase().replace(/\s+/g, '_'),
+          title: role,
+          department: 'Clinical Operations',
+          clearanceLevel,
+          clearance_level: clearanceLevel,
+          clearanceLabel: `Level ${clearanceLevel} Clearance`,
+          status: u.disabled ? 'suspended' : 'active',
+          facilityId: uFacility || facilityId,
+          hospitalId: uFacility || facilityId,
+          email: u.email && !u.email.includes('firebaseapp.com') ? u.email : undefined,
+          lastLogin: u.metadata?.lastSignInTime || '—',
+          createdAt: u.metadata?.creationTime,
+        });
+      }
+
+      if (authStaff.length > 0) {
+        return NextResponse.json({
+          ok: true,
+          configured: isPostgresConfigured(),
+          source: 'firebase_auth',
+          staff: authStaff,
+        });
+      }
+    }
+  } catch (authErr) {
+    console.warn('[api/staff GET] Firebase Auth fallback error:', authErr);
+  }
+
+  return NextResponse.json({ ok: true, configured: isPostgresConfigured(), staff: [] });
 }
 
 export async function POST(req: NextRequest) {

@@ -53,9 +53,10 @@ export function migrateStaffIdsToNewFormat(): { migratedCount: number; mapping: 
     const getNewIdFor = (oldId: string, roleKey?: string, name?: string) => {
       const normOld = String(oldId || '').trim().toUpperCase();
       if (!normOld) return '';
-      // Already in correct format? Skip (admin or regular)
-      if (/^[A-Z]+-ADM-\d{4}-\d{4}$/i.test(normOld)) return normOld;
-      if (/^[A-Z]+-\d{4}-\d{4}$/i.test(normOld) && !normOld.includes('-ADM-')) return normOld;
+      // Already in valid modern format? Keep completely intact (e.g. IGH-2026-1001, GH-IKE-2026-1001, AMC-ADM-2026-1001)
+      if (/^[A-Z0-9]+(?:-[A-Z0-9]+)*-\d{4}-\d{4}$/i.test(normOld)) return normOld;
+      if (/^[A-Z0-9]+(?:-[A-Z0-9]+)*-ADM-\d{4}-\d{4}$/i.test(normOld)) return normOld;
+      if (/^[A-Z]{2,6}-\d{3,6}$/i.test(normOld)) return normOld;
       if (mapping[normOld]) return mapping[normOld];
 
       const n = String(name || '').toLowerCase();
@@ -81,8 +82,9 @@ export function migrateStaffIdsToNewFormat(): { migratedCount: number; mapping: 
 
     const updatedCards = cards.map((c: any) => {
       const oldId = String(c?.badgeId || '').trim().toUpperCase();
-      if (!oldId || /^AMC-\d{4}-\d{4}$/i.test(oldId)) return c;
+      if (!oldId) return c;
       const newId = getNewIdFor(oldId, c.roleKey, c.fullName || c.name);
+      if (newId === oldId) return c;
       changed = true;
       const updated = {
         ...c,
@@ -99,9 +101,11 @@ export function migrateStaffIdsToNewFormat(): { migratedCount: number; mapping: 
 
     if (changed) {
       localStorage.setItem(STAFF_CARD_STORAGE_KEY, JSON.stringify(updatedCards));
+      localStorage.setItem('medcore_os_staff_cards', JSON.stringify(updatedCards));
+      localStorage.setItem('medcore_staff_cards', JSON.stringify(updatedCards));
     }
 
-    for (const regKey of [STAFF_REGISTRY_STORAGE_KEY, 'medcore_os_staff_registry']) {
+    for (const regKey of [STAFF_REGISTRY_STORAGE_KEY, 'medcore_os_staff_registry', 'medcore_staff_registry']) {
       const regRaw = localStorage.getItem(regKey);
       if (!regRaw) continue;
       const reg = JSON.parse(regRaw);
@@ -109,8 +113,9 @@ export function migrateStaffIdsToNewFormat(): { migratedCount: number; mapping: 
       let regChanged = false;
       const updatedReg = reg.map((r: any) => {
         const oldBadge = String(r?.badgeId || r?.id || '').trim().toUpperCase();
-        if (!oldBadge || /^AMC-\d{4}-\d{4}$/i.test(oldBadge)) return r;
+        if (!oldBadge) return r;
         const newId = getNewIdFor(oldBadge, r.roleKey, r.name || r.fullName);
+        if (newId === oldBadge) return r;
         regChanged = true;
         return {
           ...r,
@@ -188,7 +193,10 @@ function readCards(): StaffCardRecord[] {
       _migrationRan = true;
       migrateStaffIdsToNewFormat();
     }
-    const raw = localStorage.getItem(STAFF_CARD_STORAGE_KEY);
+    const raw =
+      localStorage.getItem(STAFF_CARD_STORAGE_KEY) ||
+      localStorage.getItem('medcore_os_staff_cards') ||
+      localStorage.getItem('medcore_staff_cards');
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];

@@ -61,7 +61,13 @@ const DURABLE_PREFIXES = [
   'medcore_os_staff_cards',
   'medcore_staff_cards',
   'medcore_os_staff_registry',
+  'medcore_staff_registry',
   'medcore_os_access_control',
+  'medcore_access_control',
+  'medcore_access_records',
+  'medcore_os_access_records',
+  'medcore_os_staff_presence',
+  'medcore_staff_presence',
   'medcore_os_staff_presence_v1',
   'medcore_os_revoked_staff_v1',
   'medcore_os_hidden_staff_names_v1',
@@ -70,6 +76,7 @@ const DURABLE_PREFIXES = [
   'medcore_os_admin_activity',
   'medcore_os_open_positions',
   'medcore_os_transfers',
+  'medcore_pilot_version',
 ] as const;
 
 /** In-memory facility data for this browser tab session */

@@ -120,7 +120,11 @@ function getInitialStaffAccessRecords(facilityId: string): AccessRecord[] {
     for (const c of listStaffCards()) {
       const cid = String(c.badgeId || '').toUpperCase();
       if (!cid) continue;
-      if (c.facilityId && fid && String(c.facilityId).toUpperCase() !== fid) continue;
+      const cFid = String(c.facilityId || '').trim().toUpperCase();
+      if (cFid && fid && cFid !== fid && !fid.includes(cFid) && !cFid.includes(fid)) {
+        // If different facility but we have no records yet, keep it so newly enrolled staff are never hidden
+        if (byId.size > 0 && Array.from(byId.values()).some((v: any) => v.facilityId === fid)) continue;
+      }
       if (!byId.has(cid)) {
         byId.set(cid, {
           id: cid,
@@ -137,31 +141,35 @@ function getInitialStaffAccessRecords(facilityId: string): AccessRecord[] {
     }
   } catch { /* ignore */ }
 
-  try {
-    const regRaw = localStorage.getItem('medcore_os_staff_registry') || localStorage.getItem('medcore_staff_registry');
-    const reg = regRaw ? JSON.parse(regRaw) : [];
-    if (Array.isArray(reg)) {
-      for (const s of reg) {
-        const sid = String(s.badgeId || s.id || '').toUpperCase();
-        if (!sid) continue;
-        const sFid = String(s.hospitalId || s.facilityId || '').toUpperCase();
-        if (sFid && fid && sFid !== fid) continue;
-        if (!byId.has(sid)) {
-          byId.set(sid, {
-            id: sid,
-            name: s.name || s.fullName || sid,
-            role: s.role || s.shortRole || 'Staff',
-            department: s.department || 'Clinical Operations',
-            clearance: s.clearanceLevel || 2,
-            status: s.status === 'suspended' ? 'suspended' : 'active',
-            lastLogin: s.lastLogin || 'Never',
-            permissions: s.permissions || defaultPermissionsForRole(s.roleKey || 'staff'),
-            email: s.email,
-          });
+  for (const regKey of ['medcore_os_staff_registry', 'medcore_staff_registry']) {
+    try {
+      const regRaw = localStorage.getItem(regKey);
+      const reg = regRaw ? JSON.parse(regRaw) : [];
+      if (Array.isArray(reg)) {
+        for (const s of reg) {
+          const sid = String(s.badgeId || s.id || '').toUpperCase();
+          if (!sid) continue;
+          const sFid = String(s.hospitalId || s.facilityId || '').toUpperCase();
+          if (sFid && fid && sFid !== fid && !fid.includes(sFid) && !sFid.includes(fid)) {
+            if (byId.size > 0 && Array.from(byId.values()).some((v: any) => v.facilityId === fid)) continue;
+          }
+          if (!byId.has(sid)) {
+            byId.set(sid, {
+              id: sid,
+              name: s.name || s.fullName || sid,
+              role: s.role || s.shortRole || 'Staff',
+              department: s.department || 'Clinical Operations',
+              clearance: s.clearanceLevel || 2,
+              status: s.status === 'suspended' ? 'suspended' : 'active',
+              lastLogin: s.lastLogin || 'Never',
+              permissions: s.permissions || defaultPermissionsForRole(s.roleKey || 'staff'),
+              email: s.email,
+            });
+          }
         }
       }
-    }
-  } catch { /* ignore */ }
+    } catch { /* ignore */ }
+  }
 
   return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -360,10 +368,14 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       } catch { /* ignore */ }
 
       try {
+        const fNorm = (facilityId || '').trim().toUpperCase();
         for (const c of listStaffCards()) {
           const cid = String(c.badgeId || '').toUpperCase();
           if (!cid) continue;
-          if (c.facilityId && facilityId && c.facilityId.toUpperCase() !== facilityId.toUpperCase()) continue;
+          const cFid = String(c.facilityId || '').trim().toUpperCase();
+          if (cFid && fNorm && cFid !== fNorm && !fNorm.includes(cFid) && !cFid.includes(fNorm)) {
+            if (byId.size > 0 && Array.from(byId.values()).some((v: any) => v.facilityId === fNorm)) continue;
+          }
           if (!byId.has(cid)) {
             byId.set(cid, {
               id: cid,
@@ -380,31 +392,36 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
         }
       } catch { /* ignore */ }
 
-      try {
-        const regRaw = localStorage.getItem('medcore_os_staff_registry') || localStorage.getItem('medcore_staff_registry');
-        const reg = regRaw ? JSON.parse(regRaw) : [];
-        if (Array.isArray(reg)) {
-          for (const s of reg) {
-            const sid = String(s.badgeId || s.id || '').toUpperCase();
-            if (!sid) continue;
-            const sFid = String(s.hospitalId || s.facilityId || '').toUpperCase();
-            if (sFid && facilityId && sFid !== facilityId.toUpperCase()) continue;
-            if (!byId.has(sid)) {
-              byId.set(sid, {
-                id: sid,
-                name: s.name || s.fullName || sid,
-                role: s.role || s.shortRole || 'Staff',
-                department: s.department || 'Clinical Operations',
-                clearance: s.clearanceLevel || 2,
-                status: s.status === 'suspended' ? 'suspended' : 'active',
-                lastLogin: s.lastLogin || 'Never',
-                permissions: s.permissions || defaultPermissionsForRole(s.roleKey || 'staff'),
-                email: s.email,
-              });
+      for (const regKey of ['medcore_os_staff_registry', 'medcore_staff_registry']) {
+        try {
+          const regRaw = localStorage.getItem(regKey);
+          const reg = regRaw ? JSON.parse(regRaw) : [];
+          if (Array.isArray(reg)) {
+            const fNorm = (facilityId || '').trim().toUpperCase();
+            for (const s of reg) {
+              const sid = String(s.badgeId || s.id || '').toUpperCase();
+              if (!sid) continue;
+              const sFid = String(s.hospitalId || s.facilityId || '').toUpperCase();
+              if (sFid && fNorm && sFid !== fNorm && !fNorm.includes(sFid) && !sFid.includes(fNorm)) {
+                if (byId.size > 0 && Array.from(byId.values()).some((v: any) => v.facilityId === fNorm)) continue;
+              }
+              if (!byId.has(sid)) {
+                byId.set(sid, {
+                  id: sid,
+                  name: s.name || s.fullName || sid,
+                  role: s.role || s.shortRole || 'Staff',
+                  department: s.department || 'Clinical Operations',
+                  clearance: s.clearanceLevel || 2,
+                  status: s.status === 'suspended' ? 'suspended' : 'active',
+                  lastLogin: s.lastLogin || 'Never',
+                  permissions: s.permissions || defaultPermissionsForRole(s.roleKey || 'staff'),
+                  email: s.email,
+                });
+              }
             }
           }
-        }
-      } catch { /* ignore */ }
+        } catch { /* ignore */ }
+      }
 
       for (const s of staffRows) {
         const badgeId = String(s.badgeId || s.id || '').toUpperCase().replace(/\s+/g, '');
@@ -426,10 +443,12 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       }
 
       const next = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
-      setRecords(next);
-      try {
-        setAccessRecords(next);
-      } catch { /* ignore */ }
+      if (next.length > 0 || staffRows.length > 0) {
+        setRecords(next);
+        try {
+          setAccessRecords(next);
+        } catch { /* ignore */ }
+      }
 
       // Also mirror cloud staff to ID cards and local registry so other tabs (e.g. Cards gallery) reflect immediately
       if (staffRows.length > 0) {
