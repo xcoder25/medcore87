@@ -24,7 +24,7 @@ import {
 import {
   Search, UserPlus, CreditCard, Calendar, QrCode, Users, Clock,
   Activity, CheckCircle2, RefreshCw, ChevronRight,
-  TrendingUp, TrendingDown, Heart, Ticket, Inbox,
+  TrendingUp, TrendingDown, Heart, Ticket, Inbox, UserCheck,
 } from 'lucide-react';
 import { useOpdSync, broadcastOpdStage } from '../../hooks/useOpdSync';
 import { listPageSize } from '../../lib/poorNetwork';
@@ -33,6 +33,7 @@ export type DeskNav =
   | 'home'
   | 'queue'
   | 'register'
+  | 'existing'
   | 'appointments'
   | 'payment'
   | 'cashier'
@@ -350,13 +351,13 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   ];
 
   const quick = [
-    { label: 'In Basket', desc: 'Tasks & desk attention', icon: Inbox, go: 'inbasket' as DeskNav },
+    { label: 'Register New', desc: 'New patient & hospital ID', icon: UserPlus, go: 'register' as DeskNav },
+    { label: 'Existing Patient', desc: 'Verify record & create visit', icon: UserCheck, go: 'existing' as DeskNav },
     { label: 'Find Patient', desc: 'Search by name/ID', icon: Search, go: 'search' as DeskNav },
     { label: 'Scan ID / QR', desc: 'Card scan · badge lookup', icon: QrCode, go: 'scan' as DeskNav },
-    { label: 'Register', desc: 'New patient registration', icon: UserPlus, go: 'register' as DeskNav },
-    { label: 'Walk-in', desc: 'No appointment', icon: Users, go: 'walkin' as DeskNav },
-    { label: 'Appointments', desc: 'Book · Confirm · Arrive', icon: Calendar, go: 'appointments' as DeskNav },
     { label: 'Live Queue', desc: 'Call · Skip · Manage OPD', icon: Ticket, go: 'queue' as DeskNav },
+    { label: 'Appointments', desc: 'Book · Confirm · Arrive', icon: Calendar, go: 'appointments' as DeskNav },
+    { label: 'In Basket', desc: 'Tasks & desk attention', icon: Inbox, go: 'inbasket' as DeskNav },
   ];
 
   return (

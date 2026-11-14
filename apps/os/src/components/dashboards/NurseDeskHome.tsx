@@ -179,9 +179,15 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   const allVitals = useMemo(() => listVitals(facilityId), [facilityId, tick, dataVersion]);
   const sbars = useMemo(() => listSbarHandoffs(facilityId), [facilityId, tick, dataVersion]);
 
-  // Derived Metrics
+  // Derived Metrics: Triage queue holds patients awaiting nurse assessment
   const waitingVisits = useMemo(() => {
-    return visits.filter((v) => v.status === 'waiting' || v.status === 'called');
+    return visits.filter(
+      (v) =>
+        (v.status === 'waiting' || v.status === 'called') &&
+        (v.encounterStatus === 'WAITING_FOR_TRIAGE' ||
+          v.encounterStatus === 'TRIAGE_IN_PROGRESS' ||
+          !v.encounterStatus)
+    );
   }, [visits]);
 
   const occBeds = useMemo(() => {
@@ -263,6 +269,8 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
 
   const handleOpenTriage = (visit: ReceptionVisit) => {
     setTriageModalPatient(visit);
+    updateVisitStatus(visit.id, 'called', 'TRIAGE_IN_PROGRESS');
+    reload();
     // Pre-populate if recent vitals exist
     const past = allVitals.find((v) => v.patientId === visit.patientId);
     if (past) {
@@ -332,7 +340,7 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
       },
     });
 
-    updateVisitStatus(triageModalPatient.id, 'waiting');
+    updateVisitStatus(triageModalPatient.id, 'waiting', 'WAITING_FOR_DOCTOR');
     reload();
 
     emitLiveAction(

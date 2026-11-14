@@ -8,18 +8,40 @@ import type { FacilityPatient } from './patientRegistryStore';
 export const RECEPTION_OPS_KEY = 'medcore_os_reception_ops_v2';
 
 export type VisitType = 'appointment' | 'walkin' | 'emergency' | 'referral';
+
+export type EncounterStatus =
+  | 'REGISTERED'
+  | 'WAITING_FOR_TRIAGE'
+  | 'TRIAGE_IN_PROGRESS'
+  | 'TRIAGE_COMPLETED'
+  | 'WAITING_FOR_DOCTOR'
+  | 'IN_CONSULTATION'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'NO_SHOW';
+
 export type QueueStatus =
   | 'waiting'
   | 'called'
   | 'with_provider'
   | 'completed'
   | 'no_show'
-  | 'cancelled';
+  | 'cancelled'
+  | EncounterStatus
+  | 'registered'
+  | 'waiting_for_triage'
+  | 'triage_in_progress'
+  | 'triage_completed'
+  | 'waiting_for_doctor'
+  | 'in_consultation';
+
 export type PaymentStatus = 'pending' | 'paid' | 'hmo' | 'waived' | 'partial';
 export type PaymentMethod = 'cash' | 'card' | 'transfer' | 'pos' | 'hmo' | 'waiver';
 
 export interface ReceptionVisit {
   id: string;
+  encounterId?: string;
+  encounterStatus?: EncounterStatus;
   patientId: string;
   hospitalNumber: string;
   patientName: string;
@@ -27,6 +49,8 @@ export interface ReceptionVisit {
   department: string;
   doctor: string;
   visitType: VisitType;
+  category?: string;
+  priority?: 'normal' | 'urgent' | 'emergency';
   reason?: string;
   paymentStatus: PaymentStatus;
   amount?: number;
@@ -46,6 +70,8 @@ export interface ReceptionVisit {
   vitalsWeight?: number;
   triagedAt?: string;
   triagedBy?: string;
+  presentingComplaints?: string;
+  initialNursingAssessment?: string;
 }
 
 export interface ReceptionAppointment {
@@ -172,40 +198,55 @@ function nextQueue(department: string): string {
   return `${letter}-${String(n).padStart(3, '0')}`;
 }
 
-export function checkInPatient(input: {
+export function createPatientEncounter(input: {
   patient: FacilityPatient;
   facilityId: string;
-  department: string;
-  doctor: string;
-  visitType: VisitType;
+  department?: string;
+  doctor?: string;
+  visitType?: VisitType;
+  category?: string;
+  priority?: 'normal' | 'urgent' | 'emergency';
   reason?: string;
-  paymentStatus: ReceptionVisit['paymentStatus'];
+  paymentStatus?: ReceptionVisit['paymentStatus'];
   amount?: number;
   appointmentTime?: string;
   appointmentId?: string;
 }): ReceptionVisit {
   const state = load();
-  const queueNumber = nextQueue(input.department);
+  const dept = input.department || 'General OPD';
+  const queueNumber = nextQueue(dept);
+  const now = new Date();
+  const year = now.getFullYear();
+  const seq = Math.floor(10000 + Math.random() * 90000);
+  const encounterId = `ENC-${year}-${seq}`;
+  const isEmergency = input.priority === 'emergency' || input.visitType === 'emergency';
+
   const visit: ReceptionVisit = {
     id: `V-${Date.now().toString(36).toUpperCase()}`,
+    encounterId,
+    encounterStatus: 'WAITING_FOR_TRIAGE',
     patientId: input.patient.id,
     hospitalNumber: input.patient.hospitalNumber,
     patientName: [input.patient.firstName, input.patient.lastName].filter(Boolean).join(' '),
     facilityId: input.facilityId,
-    department: input.department,
-    doctor: input.doctor,
-    visitType: input.visitType,
-    reason: input.reason,
-    paymentStatus: input.paymentStatus,
-    amount: input.amount,
+    department: dept,
+    doctor: input.doctor || 'Any available',
+    visitType: input.visitType || (isEmergency ? 'emergency' : 'walkin'),
+    category: input.category || (isEmergency ? 'Emergency (A&E)' : 'Outpatient (OPD)'),
+    priority: input.priority || (isEmergency ? 'emergency' : 'normal'),
+    reason: input.reason || (isEmergency ? 'Emergency Presentation' : 'General Consultation'),
+    paymentStatus: input.paymentStatus || (isEmergency ? 'waived' : 'pending'),
+    amount: input.amount ?? (isEmergency ? 10000 : 5000),
     queueNumber,
     status: 'waiting',
-    checkedInAt: new Date().toISOString(),
-    estimatedWaitMin: 8 + Math.floor(Math.random() * 20),
+    checkedInAt: now.toISOString(),
+    estimatedWaitMin: isEmergency ? 0 : input.priority === 'urgent' ? 5 : 12,
     appointmentTime: input.appointmentTime,
     appointmentId: input.appointmentId,
     aiReminderSent: false,
+    triageUrgency: isEmergency ? 'critical' : input.priority === 'urgent' ? 'urgent' : 'routine',
   };
+
   state.visits = [visit, ...state.visits];
   if (input.appointmentId) {
     state.appointments = state.appointments.map((a) =>
@@ -214,6 +255,23 @@ export function checkInPatient(input: {
   }
   save(state);
   return visit;
+}
+
+export function checkInPatient(input: {
+  patient: FacilityPatient;
+  facilityId: string;
+  department: string;
+  doctor: string;
+  visitType: VisitType;
+  category?: string;
+  priority?: 'normal' | 'urgent' | 'emergency';
+  reason?: string;
+  paymentStatus: ReceptionVisit['paymentStatus'];
+  amount?: number;
+  appointmentTime?: string;
+  appointmentId?: string;
+}): ReceptionVisit {
+  return createPatientEncounter(input);
 }
 
 export function updateVisitStatus(visitId: string, status: QueueStatus) {
@@ -428,10 +486,10 @@ export function recordPayment(input: Omit<ReceptionPayment, 'id' | 'createdAt' |
     state.visits = state.visits.map((v) =>
       v.id === input.visitId
         ? {
-            ...v,
-            paymentStatus: input.method === 'hmo' ? 'hmo' : input.method === 'waiver' ? 'waived' : 'paid',
-            amount: input.amount,
-          }
+          ...v,
+          paymentStatus: input.method === 'hmo' ? 'hmo' : input.method === 'waiver' ? 'waived' : 'paid',
+          amount: input.amount,
+        }
         : v
     );
   }
@@ -471,7 +529,7 @@ export function todayPayments(facilityId: string): ReceptionPayment[] {
 }
 
 export function subscribeReceptionOps(cb: () => void): () => void {
-  if (typeof window === 'undefined') return () => {};
+  if (typeof window === 'undefined') return () => { };
   const fn = () => cb();
   window.addEventListener('medcore-reception-ops', fn);
   window.addEventListener('storage', fn);

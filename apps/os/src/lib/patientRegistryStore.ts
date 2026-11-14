@@ -34,7 +34,13 @@ export interface FacilityPatient {
   genotype?: string;
   emergencyContact?: string;
   emergencyRelation?: string;
+  emergencyPhone?: string;
+  emergencyAddress?: string;
   occupation?: string;
+  maritalStatus?: string;
+  nationality?: string;
+  stateOfOrigin?: string;
+  preferredLanguage?: string;
   photoUrl?: string;
   facilityId: string;
   facilityName: string;

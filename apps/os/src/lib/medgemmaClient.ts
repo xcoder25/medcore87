@@ -48,20 +48,13 @@ function envMedgemmaUrl(): string {
   }
 }
 
-function envGeminiKey(): string {
-  try {
-    return (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_GEMINI_API_KEY?.trim()) || '';
-  } catch {
-    return '';
-  }
-}
-
 export function hasMedGemmaEndpoint(): boolean {
   return Boolean(envMedgemmaUrl());
 }
 
 export function hasImagingAiAssist(): boolean {
-  return hasMedGemmaEndpoint() || Boolean(envGeminiKey());
+  // Gemini fallback always available via server-side /api/gemini proxy
+  return hasMedGemmaEndpoint() || true;
 }
 
 function stripDataUrl(b64: string): { data: string; mime: string } {
@@ -140,78 +133,72 @@ async function callMedGemmaEndpoint(req: MedGemmaRequest): Promise<MedGemmaResul
   };
 }
 
-/** Gemini multimodal fallback when MedGemma URL not configured */
+/** Gemini multimodal fallback — routed through /api/gemini server proxy (key never reaches browser) */
 async function callGeminiMedicalFallback(req: MedGemmaRequest): Promise<MedGemmaResult> {
-  const key = envGeminiKey();
   const t0 = Date.now();
-  if (!key) {
-    return {
-      ok: false,
-      provider: 'none',
-      text: '',
-      disclaimer: DISCLAIMER,
-    };
-  }
-
-  const parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }> = [
-    {
-      text:
-        'You are a medical imaging assist model (MedGemma-compatible role). ' +
-        DISCLAIMER +
-        '\n\n' +
-        buildPrompt(req),
-    },
-  ];
-
-  if (req.image?.imageBase64) {
-    const { data, mime } = stripDataUrl(req.image.imageBase64);
-    parts.push({
-      inline_data: {
-        mime_type: req.image.mimeType || mime,
-        data,
+  try {
+    const parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }> = [
+      {
+        text:
+          'You are a medical imaging assist model (MedGemma-compatible role). ' +
+          DISCLAIMER +
+          '\n\n' +
+          buildPrompt(req),
       },
-    });
-  }
+    ];
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`,
-    {
+    if (req.image?.imageBase64) {
+      const { data, mime } = stripDataUrl(req.image.imageBase64);
+      parts.push({ inline_data: { mime_type: req.image.mimeType || mime, data } });
+    }
+
+    // POST to the server-side Gemini proxy — secret key stays on server
+    const res = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        prompt: buildPrompt(req),
         contents: [{ role: 'user', parts }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
+        facilityId: req.facilityId,
       }),
-    }
-  );
+    });
 
-  if (!res.ok) {
-    const err = await res.text();
+    if (!res.ok) {
+      const err = await res.text();
+      return {
+        ok: false,
+        provider: 'gemini-fallback',
+        text: `Gemini medical fallback error (${res.status}): ${err.slice(0, 200)}`,
+        disclaimer: DISCLAIMER,
+        latencyMs: Date.now() - t0,
+      };
+    }
+
+    const json = await res.json();
+    const text =
+      json?.text ||
+      json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text).join('') ||
+      json?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      '';
+
+    return {
+      ok: Boolean(String(text).trim()),
+      provider: 'gemini-fallback',
+      model: json?.model || 'gemini',
+      text: String(text).trim() || 'Empty Gemini response',
+      disclaimer: DISCLAIMER,
+      latencyMs: Date.now() - t0,
+    };
+  } catch (e: any) {
     return {
       ok: false,
       provider: 'gemini-fallback',
-      text: `Gemini medical fallback error (${res.status}): ${err.slice(0, 200)}`,
+      text: `Gemini proxy error: ${e?.message || 'Network error'}`,
       disclaimer: DISCLAIMER,
       latencyMs: Date.now() - t0,
     };
   }
-
-  const json = await res.json();
-  const text =
-    json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text).join('') ||
-    json?.candidates?.[0]?.content?.parts?.[0]?.text ||
-    '';
-
-  return {
-    ok: Boolean(String(text).trim()),
-    provider: 'gemini-fallback',
-    model: 'gemini-2.0-flash',
-    text: String(text).trim(),
-    disclaimer: DISCLAIMER,
-    latencyMs: Date.now() - t0,
-  };
 }
-
 export async function medgemmaGenerate(req: MedGemmaRequest): Promise<MedGemmaResult> {
   if (hasMedGemmaEndpoint()) {
     try {
