@@ -241,7 +241,7 @@ function getPatientJourney(
 }
 
 
-/** Front desk: patient may enter clinical queue only after Accounts payment (or no open fee) */
+/** Front desk: patient may enter clinical queue or book appointments ONLY after Accounts folder/registration payment */
 function getPaymentGate(
   facilityId: string,
   patientId: string,
@@ -271,7 +271,7 @@ function getPaymentGate(
     const amt = openReq.reduce((s, r) => s + r.amountNgn, 0) || bal;
     return {
       cleared: false,
-      label: `PENDING · ₦${amt.toLocaleString()} at Accounts — patient pays, then returns here`,
+      label: `FOLDER / REG FEE UNPAID · ₦${amt.toLocaleString()} at Accounts — patient must pay before appointment booking or check-in`,
       tone: 'wait',
       awaiting: openReq,
       balanceNgn: amt,
@@ -280,13 +280,52 @@ function getPaymentGate(
   const paid = listAccountsRequests(facilityId, { status: 'paid', patientId }).filter(
     (r) => r.patientId === patientId || r.hospitalNumber === hospitalNumber
   );
-  if (paid.length > 0) {
-    const last = paid[0];
+  const paidByHn = listAccountsRequests(facilityId, { status: 'paid' }).filter(
+    (r) => r.hospitalNumber === hospitalNumber || r.patientId === patientId
+  );
+  const allPaid = [...paid, ...paidByHn].filter(
+    (r, i, arr) => arr.findIndex((x) => x.id === r.id) === i
+  );
+  if (allPaid.length > 0) {
+    const last = allPaid[0];
     return {
       cleared: true,
-      label: `PAID · ${last.paidReference || last.invoiceNumber || 'receipt'} · continue check-in`,
+      label: `PAID · ${last.paidReference || last.invoiceNumber || 'receipt'} · cleared for booking & check-in`,
       tone: 'ok',
       balanceNgn: 0,
+    };
+  }
+  // Also check if the patient has an unpaid visit today or is a newly registered patient without a paid folder fee
+  const pendingVisit = todayVisits(facilityId).find(
+    (v) =>
+      (v.patientId === patientId || v.hospitalNumber === hospitalNumber) &&
+      v.status !== 'cancelled' &&
+      v.paymentStatus === 'pending'
+  );
+  if (pendingVisit) {
+    const amt = pendingVisit.amount || DEFAULT_REGISTRATION_FEE_NGN;
+    return {
+      cleared: false,
+      label: `FOLDER / VISIT FEE UNPAID · ₦${amt.toLocaleString()} at Accounts — clear payment before booking or check-in`,
+      tone: 'wait',
+      balanceNgn: amt,
+    };
+  }
+  const pt = listPatients(facilityId).find(
+    (p) => p.id === patientId || p.hospitalNumber === hospitalNumber
+  );
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const isNewToday = Boolean(pt?.registeredAt && pt.registeredAt.slice(0, 10) === todayIso);
+  const isInsured = Boolean(pt?.insuranceProvider && pt.insuranceProvider !== 'NONE');
+  const hasPaidReceiptToday = todayPayments(facilityId).some(
+    (pay) => pay.patientId === patientId || pay.hospitalNumber === hospitalNumber
+  );
+  if (isNewToday && !isInsured && !hasPaidReceiptToday) {
+    return {
+      cleared: false,
+      label: `NEW FOLDER FEE UNPAID · ₦${DEFAULT_REGISTRATION_FEE_NGN.toLocaleString()} at Accounts — new patient must pay folder fee before booking or check-in`,
+      tone: 'wait',
+      balanceNgn: DEFAULT_REGISTRATION_FEE_NGN,
     };
   }
   return {
@@ -1134,6 +1173,15 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     const vt = visitTypeMap[exVisitType] || 'walkin';
     const isEmerg = exPriority === 'emergency' || vt === 'emergency';
 
+    // Hard block unpaid folder/registration fee unless life-saving Emergency override is permitted
+    const exGate = getPaymentGate(facilityId, exSelectedPatient.id, exSelectedPatient.hospitalNumber);
+    if (!exGate.cleared && !(isEmerg && adminSettings.allowEmergencyUnpaidOverride)) {
+      flash(`🚫 ${exGate.label}`);
+      setSelected(exSelectedPatient);
+      setPanelOpen(true);
+      return;
+    }
+
     const visit = createPatientEncounter({
       patient: exSelectedPatient,
       facilityId,
@@ -1216,20 +1264,27 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     };
     upsertPatient(patient);
 
-    // Enforce Hospi Patient-Flow Rule:
-    // Create new visit/encounter routed directly to Nurse Triage:
-    // REGISTERED → WAITING_FOR_TRIAGE
-    const initialVisit = createPatientEncounter({
-      patient,
-      facilityId,
-      department: 'General OPD',
-      doctor: 'Any available',
-      visitType: 'walkin',
-      category: 'Outpatient (OPD)',
-      priority: 'normal',
-      reason: 'Initial Registration & Baseline Triage',
-      paymentStatus: (patient.insuranceProvider && patient.insuranceProvider !== 'NONE') ? 'hmo' : 'pending',
-    });
+    // Digital handoff → Accounts: registration / folder fee auto-sent immediately.
+    // Unpaid new patients MUST NOT enter the Triage Queue or book appointments until
+    // Accounts/Cashier confirms folder fee payment (which then auto-queues them to Triage).
+    const fee =
+      patient.category === 'NHIA' || patient.insuranceProvider
+        ? Math.round(DEFAULT_REGISTRATION_FEE_NGN * 0.5)
+        : DEFAULT_REGISTRATION_FEE_NGN;
+
+    if (fee <= 0) {
+      createPatientEncounter({
+        patient,
+        facilityId,
+        department: 'General OPD',
+        doctor: 'Any available',
+        visitType: 'walkin',
+        category: 'Outpatient (OPD)',
+        priority: 'normal',
+        reason: 'Initial Registration & Baseline Triage',
+        paymentStatus: 'hmo',
+      });
+    }
 
     // ── #5 Auto-draft Statewide Digital Health Card ──────────────────────────
     // Non-blocking — card is created in background; receptionist sees confirmation badge
@@ -1254,21 +1309,14 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     resetRegistrationForm();
     emitLiveAction(`Patient registered · ${patient.hospitalNumber}${patient.nin ? ' · NIN bound' : ''}`, { module: 'reception' });
 
-    // Digital handoff → Accounts: registration / folder fee auto-sent immediately
-    const fee =
-      patient.category === 'NHIA' || patient.insuranceProvider
-        ? Math.round(DEFAULT_REGISTRATION_FEE_NGN * 0.5)
-        : DEFAULT_REGISTRATION_FEE_NGN;
     if (fee > 0) {
       const req = autoSendToAccounts(patient, fee, 'New folder · Registration fee');
       if (req) {
         flash(
-          `Registered ${fullName(patient)} · ${patient.hospitalNumber}${
-            patient.nin ? ' · 🔗 NIN bound' : ''
-          } · Auto-sent ₦${fee.toLocaleString()} to Accounts (${req.invoiceNumber}).`
+          `Registered ${fullName(patient)} · ${patient.hospitalNumber} · Sent ₦${fee.toLocaleString()} Folder Fee to Accounts (${req.invoiceNumber}). Patient locked from booking/triage until paid.`
         );
       } else {
-        flash(`Registered ${fullName(patient)} · ${patient.hospitalNumber}${patient.nin ? ' · NIN bound' : ''}`);
+        flash(`Registered ${fullName(patient)} · ${patient.hospitalNumber} · Awaiting Folder Fee payment at Accounts.`);
       }
     } else {
       flash(`Registered ${fullName(patient)} · ${patient.hospitalNumber}${patient.nin ? ' · 🔗 NIN bound to digital card' : ''}`);
@@ -1550,6 +1598,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     const p = apPatient || selected;
     if (!p) {
       flash('Select a patient to book');
+      return;
+    }
+    const gate = getPaymentGate(facilityId, p.id, p.hospitalNumber);
+    if (!gate.cleared) {
+      flash(`🚫 Folder / Registration Fee Unpaid — ${fullName(p)} must pay ₦${gate.balanceNgn.toLocaleString()} at Accounts before booking an appointment or clinical service.`);
+      setSelected(p);
+      setPanelOpen(true);
       return;
     }
     const returning = isReturningPatient(p);
@@ -3225,7 +3280,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   }}
                 >
                   <CheckCircle2 size={16} />
-                  <span>Register & Queue to Triage</span>
+                  <span>{reg.insuranceProvider && reg.insuranceProvider !== 'NONE' ? 'Register & Queue to Triage' : 'Register & Send Folder Fee to Accounts'}</span>
                 </button>
               )}
             </div>
@@ -3799,28 +3854,44 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 <span>Back</span>
               </button>
 
-              <button
-                type="button"
-                onClick={handleRegisterExistingVisit}
-                disabled={!exSelectedPatient}
-                style={{
-                  padding: '9px 24px',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: !exSelectedPatient ? '#94A3B8' : '#0284C7',
-                  color: '#fff',
-                  fontSize: 13,
-                  fontWeight: 800,
-                  cursor: !exSelectedPatient ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 7,
-                  boxShadow: !exSelectedPatient ? 'none' : '0 2px 6px rgba(2, 132, 199, 0.3)',
-                }}
-              >
-                <span>Proceed to Registration</span>
-                <ArrowRight size={15} />
-              </button>
+              {(() => {
+                const exGate = exSelectedPatient
+                  ? getPaymentGate(facilityId, exSelectedPatient.id, exSelectedPatient.hospitalNumber)
+                  : null;
+                const isEmerg = exPriority === 'emergency' || exVisitType === 'Emergency';
+                const blockedByFolderFee = Boolean(
+                  exSelectedPatient && exGate && !exGate.cleared && !(isEmerg && adminSettings.allowEmergencyUnpaidOverride)
+                );
+                return (
+                  <button
+                    type="button"
+                    onClick={handleRegisterExistingVisit}
+                    disabled={!exSelectedPatient || blockedByFolderFee}
+                    title={blockedByFolderFee ? exGate?.label : undefined}
+                    style={{
+                      padding: '9px 24px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background: !exSelectedPatient ? '#94A3B8' : blockedByFolderFee ? '#DC2626' : '#0284C7',
+                      color: '#fff',
+                      fontSize: 13,
+                      fontWeight: 800,
+                      cursor: !exSelectedPatient || blockedByFolderFee ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 7,
+                      boxShadow: !exSelectedPatient || blockedByFolderFee ? 'none' : '0 2px 6px rgba(2, 132, 199, 0.3)',
+                    }}
+                  >
+                    <span>
+                      {blockedByFolderFee
+                        ? `🚫 Locked · Unpaid Folder Fee (₦${(exGate?.balanceNgn || 0).toLocaleString()})`
+                        : 'Proceed to Registration'}
+                    </span>
+                    <ArrowRight size={15} />
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -4206,40 +4277,47 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               <li>POS if balance due</li>
               <li>Book appointment if needed</li>
             </ul>
-            {selected && (
-              <div style={{ marginTop: 16, padding: 12, borderRadius: 12, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                <div style={{ fontWeight: 800, color: '#166534' }}>{fullName(selected)}</div>
-                <div style={{ fontSize: 12, color: C.muted }}>{selected.hospitalNumber}</div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Use 'walkin' as the visit type — card scan at reception = walk-in arrival
-                      setCiType('walkin');
-                      doCheckIn(selected);
-                      setScanCode('');
-                      goView('queue');
-                    }}
-                    style={{ flex: 1, padding: 10, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
-                  >
-                    Walk-in check-in
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Has an appointment — honour appointment type
-                      setCiType('appointment');
-                      doCheckIn(selected);
-                      setScanCode('');
-                      goView('queue');
-                    }}
-                    style={{ flex: 1, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', color: C.navy, fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    Appointment check-in
-                  </button>
+            {selected && (() => {
+              const scanGate = getPaymentGate(facilityId, selected.id, selected.hospitalNumber);
+              return (
+                <div style={{ marginTop: 16, padding: 12, borderRadius: 12, background: scanGate.cleared ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${scanGate.cleared ? '#BBF7D0' : '#FECACA'}` }}>
+                  <div style={{ fontWeight: 800, color: scanGate.cleared ? '#166534' : '#991B1B' }}>{fullName(selected)}</div>
+                  <div style={{ fontSize: 12, color: C.muted }}>{selected.hospitalNumber}</div>
+                  {!scanGate.cleared ? (
+                    <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: '#B91C1C' }}>
+                      🚫 {scanGate.label}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCiType('walkin');
+                          doCheckIn(selected);
+                          setScanCode('');
+                          goView('queue');
+                        }}
+                        style={{ flex: 1, padding: 10, borderRadius: 10, border: 'none', background: C.teal, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
+                      >
+                        Walk-in check-in
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCiType('appointment');
+                          doCheckIn(selected);
+                          setScanCode('');
+                          goView('queue');
+                        }}
+                        style={{ flex: 1, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', color: C.navy, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Appointment check-in
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         </div>
       )}
@@ -4266,7 +4344,14 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   selectedPatient={selected}
                   onChange={(p) => {
                     setSelected(p);
-                    if (p) setWalkStep(2);
+                    if (p) {
+                      const gate = getPaymentGate(facilityId, p.id, p.hospitalNumber);
+                      if (gate.cleared) {
+                        setWalkStep(2);
+                      } else {
+                        flash(`🚫 ${gate.label}`);
+                      }
+                    }
                   }}
                   placeholder="Type patient name or hospital number to check in…"
                 />
@@ -4298,14 +4383,23 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               >
                 New patient · register first
               </button>
-              {selected && (
-                <div style={{ marginTop: 8, padding: 12, borderRadius: 12, background: '#E0F2FE' }}>
-                  Selected: <strong>{fullName(selected)}</strong>
-                  <button type="button" onClick={() => setWalkStep(2)} style={{ display: 'block', marginTop: 8, width: '100%', padding: 10, borderRadius: 10, border: 'none', background: C.navy, color: '#fff', fontWeight: 800, cursor: 'pointer' }}>
-                    Continue with this patient →
-                  </button>
-                </div>
-              )}
+              {selected && (() => {
+                const walkGate = getPaymentGate(facilityId, selected.id, selected.hospitalNumber);
+                return (
+                  <div style={{ marginTop: 8, padding: 12, borderRadius: 12, background: walkGate.cleared ? '#E0F2FE' : '#FEF2F2', border: walkGate.cleared ? 'none' : '1px solid #FECACA' }}>
+                    Selected: <strong>{fullName(selected)}</strong> ({selected.hospitalNumber})
+                    {!walkGate.cleared ? (
+                      <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: '#B91C1C', lineHeight: 1.45 }}>
+                        🚫 {walkGate.label}
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => setWalkStep(2)} style={{ display: 'block', marginTop: 8, width: '100%', padding: 10, borderRadius: 10, border: 'none', background: C.navy, color: '#fff', fontWeight: 800, cursor: 'pointer' }}>
+                        Continue with this patient →
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -4376,6 +4470,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               <button
                 type="button"
                 onClick={() => {
+                  const gate = getPaymentGate(facilityId, selected.id, selected.hospitalNumber);
+                  if (!gate.cleared) {
+                    flash(`🚫 ${gate.label}`);
+                    setPanelOpen(true);
+                    return;
+                  }
                   setCiType('walkin');
                   if (ciPay === 'pending') {
                     const fee = Number(ciAmount) || getDeptFee(ciDept);
@@ -4430,6 +4530,20 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               onChange={(p) => setApPatient(p)}
               placeholder="Type patient name or hospital number…"
             />
+            {apPatient && (() => {
+              const apGate = getPaymentGate(facilityId, apPatient.id, apPatient.hospitalNumber);
+              if (apGate.cleared) return null;
+              return (
+                <div style={{ marginTop: 10, padding: '12px 14px', borderRadius: 10, background: '#FEF2F2', border: '1.5px solid #FCA5A5', color: '#991B1B', fontSize: 12, lineHeight: 1.45 }}>
+                  <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 3 }}>
+                    🚫 Unpaid Folder / Registration Fee — Appointment Booking Locked
+                  </div>
+                  <div>
+                    <strong>{fullName(apPatient)}</strong> ({apPatient.hospitalNumber}) has an unpaid folder/registration fee of <strong>₦{apGate.balanceNgn.toLocaleString()}</strong> at Accounts. Patient must pay their folder fee at the Cashier/Accounts desk before booking any appointment or clinical service.
+                  </div>
+                </div>
+              );
+            })()}
             <label style={{ ...labelStyle, marginTop: 8 }}>Department</label>
             <select style={inputStyle} value={apDept} onChange={(e) => setApDept(e.target.value)}>
               {facilityDepts.map((d) => (
@@ -4480,9 +4594,35 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
             </div>
             <label style={{ ...labelStyle, marginTop: 8 }}>Reason</label>
             <input style={inputStyle} value={apReason} onChange={(e) => setApReason(e.target.value)} />
-            <button type="button" onClick={doBookAppt} style={{ marginTop: 14, width: '100%', padding: 12, borderRadius: 10, border: 'none', background: C.blue, color: '#fff', fontWeight: 800, cursor: 'pointer' }}>
-              Book appointment
-            </button>
+            {(() => {
+              const targetPt = apPatient || selected;
+              const apGate = targetPt ? getPaymentGate(facilityId, targetPt.id, targetPt.hospitalNumber) : null;
+              const isLocked = Boolean(targetPt && apGate && !apGate.cleared);
+              return (
+                <button
+                  type="button"
+                  onClick={doBookAppt}
+                  disabled={isLocked}
+                  title={isLocked ? apGate?.label : undefined}
+                  style={{
+                    marginTop: 14,
+                    width: '100%',
+                    padding: 12,
+                    borderRadius: 10,
+                    border: 'none',
+                    background: isLocked ? '#DC2626' : C.blue,
+                    color: '#fff',
+                    fontWeight: 800,
+                    cursor: isLocked ? 'not-allowed' : 'pointer',
+                    opacity: isLocked ? 0.92 : 1,
+                  }}
+                >
+                  {isLocked
+                    ? `🚫 Locked · Pay Folder Fee (₦${(apGate?.balanceNgn || 0).toLocaleString()}) at Accounts First`
+                    : 'Book appointment'}
+                </button>
+              );
+            })()}
           </div>
           <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
             <div style={{ fontWeight: 800, marginBottom: 12 }}>Today · {appts.length} appointments</div>
@@ -4504,6 +4644,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       onClick={() => {
                         const p = patients.find((x) => x.id === a.patientId);
                         if (p) {
+                          const gate = getPaymentGate(facilityId, p.id, p.hospitalNumber);
+                          if (!gate.cleared) {
+                            flash(`🚫 ${gate.label}`);
+                            setSelected(p);
+                            setPanelOpen(true);
+                            return;
+                          }
                           const fee = getDeptFee(a.department);
                           autoSendToAccounts(p, fee, `${a.department} appointment fee`);
                           const visit = checkInPatient({

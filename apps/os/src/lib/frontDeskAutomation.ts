@@ -356,15 +356,21 @@ export function checkInPatientByRef(input: {
   if (!p) {
     return { ok: false, message: `Can't check in — no patient matched **${input.patientRef}**.` };
   }
-  // Payment gate: if awaiting accounts, warn but allow walk-in note
+  // Payment gate: hard-block check-in if folder/registration fee or ledger invoice is unpaid at Accounts
   const awaiting = listAccountsRequests(input.facilityId, { patientId: p.id }).filter(
     (r) => r.status === 'awaiting_payment'
   );
   const unpaid = listBillLines(input.facilityId, { patientId: p.id }).filter(
     (l) => l.status === 'unpaid' || l.status === 'partial'
   );
-  const paymentStatus =
-    awaiting.length || unpaid.length ? ('pending' as const) : ('paid' as const);
+  if ((awaiting.length > 0 || unpaid.length > 0) && input.visitType !== 'emergency') {
+    const due = awaiting.reduce((s, r) => s + r.amountNgn, 0) || unpaid.reduce((s, l) => s + (l.amountNgn - (l.paidNgn || 0)), 0);
+    return {
+      ok: false,
+      message: `🚫 Cannot check in **${p.firstName} ${p.lastName}** (${p.hospitalNumber}) — unpaid folder/registration fee of **₦${due.toLocaleString()}** at Accounts. Patient must pay at Cashier/Accounts first.`,
+    };
+  }
+  const paymentStatus = 'paid' as const;
 
   const visit = checkInPatient({
     patient: p,
@@ -447,6 +453,19 @@ export function bookAppointmentByRef(input: {
 }): { ok: boolean; message: string } {
   const p = resolvePatientRef(input.facilityId, input.patientRef);
   if (!p) return { ok: false, message: `No patient matched **${input.patientRef}**.` };
+  const awaiting = listAccountsRequests(input.facilityId, { patientId: p.id }).filter(
+    (r) => r.status === 'awaiting_payment'
+  );
+  const unpaid = listBillLines(input.facilityId, { patientId: p.id }).filter(
+    (l) => l.status === 'unpaid' || l.status === 'partial'
+  );
+  if (awaiting.length > 0 || unpaid.length > 0) {
+    const due = awaiting.reduce((s, r) => s + r.amountNgn, 0) || unpaid.reduce((s, l) => s + (l.amountNgn - (l.paidNgn || 0)), 0);
+    return {
+      ok: false,
+      message: `🚫 Cannot book appointment for **${p.firstName} ${p.lastName}** (${p.hospitalNumber}) — unpaid folder/registration fee of **₦${due.toLocaleString()}** at Accounts. Patient must pay folder fee first.`,
+    };
+  }
   const when = input.whenIso || new Date(Date.now() + 86400000).toISOString();
   const appt = bookAppointment({
     patientId: p.id,

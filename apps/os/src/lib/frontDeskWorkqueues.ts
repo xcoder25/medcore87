@@ -14,6 +14,8 @@ import {
 } from './receptionOpsStore';
 import type { FacilityPatient } from './patientRegistryStore';
 import { CONSULT_FEES, RECEPTION_DEPTS } from './receptionConstants';
+import { listAccountsRequests } from './frontDeskAccountsBridge';
+import { patientBalance } from './patientBillingStore';
 
 const KEY = 'medcore_os_frontdesk_wq_v1';
 const EVT = 'medcore-frontdesk-wq';
@@ -229,6 +231,13 @@ export function bookSlot(slotId: string, patient: FacilityPatient, overbook = fa
   const slot = state.slots[idx];
   if (slot.status === 'blocked') return null;
   if (slot.status === 'booked' && !overbook) return null;
+
+  // Enforce Folder / Registration Fee Gate before booking provider schedule slots
+  const awaiting = listAccountsRequests(slot.facilityId, { status: 'awaiting_payment', patientId: patient.id });
+  const bal = patientBalance(slot.facilityId, patient.id) || patientBalance(slot.facilityId, patient.hospitalNumber);
+  if (awaiting.length > 0 || bal > 0) {
+    return null;
+  }
 
   const dayIso = `${slot.day}T${String(Math.floor(slot.startMin / 60)).padStart(2, '0')}:${String(slot.startMin % 60).padStart(2, '0')}:00`;
   let appt: ReceptionAppointment | null = null;
