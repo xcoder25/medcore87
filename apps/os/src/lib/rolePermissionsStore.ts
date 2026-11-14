@@ -494,6 +494,34 @@ const ROLE_MODULE_DENY: Record<string, string[]> = {
 
 export function roleCanAccessModule(roleKey: string, moduleKey: string): boolean {
   if (roleKey === 'hospital_admin') return true;
+  // Always allow staff card + home desk + notifications
+  if (moduleKey === 'dashboard' || moduleKey === 'my-card' || moduleKey === 'notifications') return true;
+
+  // Check if Admin explicitly configured this role in RolePermissionsMatrix
+  let adminExplicitModules: string[] | null = null;
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(ROLE_PERMISSIONS_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as RolePermissionsMap;
+        if (Array.isArray(saved?.[roleKey])) {
+          adminExplicitModules = saved[roleKey];
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (adminExplicitModules) {
+    if (adminExplicitModules.includes('*') || adminExplicitModules.includes(moduleKey)) return true;
+    if (moduleKey === 'laboratory' && adminExplicitModules.includes('lab')) return true;
+    if (moduleKey === 'lab' && adminExplicitModules.includes('laboratory')) return true;
+    if (moduleKey === 'm87-ai' && adminExplicitModules.includes('ai')) return true;
+    if (moduleKey === 'ai' && adminExplicitModules.includes('m87-ai')) return true;
+    return false;
+  }
+
   const deny = ROLE_MODULE_DENY[roleKey] || [];
   if (deny.includes(moduleKey)) return false;
   const mods = getModulesForRole(roleKey);
@@ -505,8 +533,6 @@ export function roleCanAccessModule(roleKey: string, moduleKey: string): boolean
   if (moduleKey === 'lab' && mods.includes('laboratory') && !deny.includes('lab')) return true;
   if (moduleKey === 'm87-ai' && mods.includes('ai')) return true;
   if (moduleKey === 'ai' && mods.includes('m87-ai')) return true;
-  // Always allow staff card + home desk
-  if (moduleKey === 'dashboard' || moduleKey === 'my-card' || moduleKey === 'notifications') return true;
   return mods.includes(moduleKey);
 }
 

@@ -20,6 +20,8 @@ import { listPatients, type FacilityPatient } from '@/lib/patientRegistryStore';
 import { useFormDraft } from '../../lib/formDraftStore';
 import { FormDraftBanner } from '../common/FormDraftBanner';
 import { appendAudit } from '../../lib/auditLogStore';
+import { getAdminSettings } from '../../lib/adminSettingsStore';
+import { patientBalance } from '../../lib/patientBillingStore';
 import type { UserSession } from '../auth/AuthScreen';
 
 interface DischargeRecord {
@@ -66,6 +68,18 @@ export function DischargeSummaryCompilerSuite({ session }: { session?: UserSessi
   const [aiGenerating, setAiGenerating] = useState<boolean>(false);
 
   const selectedPatient: FacilityPatient | undefined = patients.find((p: FacilityPatient) => p.id === selectedPatientId);
+  const adminSettings = getAdminSettings(facilityId);
+  const outstandingBalanceNgn = (() => {
+    try {
+      return patientBalance(facilityId, selectedPatientId) || 0;
+    } catch {
+      return 0;
+    }
+  })();
+  const isClearanceBlocked =
+    adminSettings.requireBillingClearanceBeforeDischarge &&
+    outstandingBalanceNgn > 0 &&
+    formData.dischargeCondition !== 'Discharged Against Medical Advice (DAMA)';
 
   // Form State
   const [formData, setFormData] = useState<DischargeRecord>({
@@ -214,14 +228,44 @@ export function DischargeSummaryCompilerSuite({ session }: { session?: UserSessi
           {previewMode && (
             <button
               onClick={handlePrint}
-              className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold text-sm shadow hover:opacity-90 flex items-center gap-2"
+              disabled={isClearanceBlocked}
+              title={
+                isClearanceBlocked
+                  ? `Accounts clearance required before final discharge sign-off (₦${outstandingBalanceNgn.toLocaleString()} unpaid)`
+                  : 'Sign & print official discharge summary'
+              }
+              className={`px-4 py-2 rounded-xl font-bold text-sm shadow flex items-center gap-2 ${
+                isClearanceBlocked
+                  ? 'bg-rose-100 text-rose-700 border border-rose-300 cursor-not-allowed'
+                  : 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:opacity-90'
+              }`}
             >
               <Printer className="w-4 h-4" />
-              Print / Export PDF
+              {isClearanceBlocked ? `Blocked: ₦${outstandingBalanceNgn.toLocaleString()} Unpaid` : 'Print / Export PDF'}
             </button>
           )}
         </div>
       </div>
+
+      {/* Clinical Governance: Accounts Clearance Policy Status */}
+      {adminSettings.requireBillingClearanceBeforeDischarge && (
+        <div
+          className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-3 ${
+            outstandingBalanceNgn > 0
+              ? 'bg-amber-50 border-amber-300 text-amber-900 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-200'
+              : 'bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-200'
+          }`}
+        >
+          <span>
+            {outstandingBalanceNgn > 0
+              ? `⚠️ Hospital Governance Policy: Accounts clearance is required before final discharge sign-off. Current unpaid balance for ${formData.patientName}: ₦${outstandingBalanceNgn.toLocaleString()}.`
+              : `✅ Accounts Clearance Verified: Zero unpaid balance for ${formData.patientName}. Ready for discharge sign-off.`}
+          </span>
+          <span className="px-2.5 py-1 rounded-full bg-white/80 dark:bg-slate-800 text-[11px] font-bold">
+            Policy: Active
+          </span>
+        </div>
+      )}
 
       {!previewMode ? (
         /* Edit & Compile Form */

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Payment receipt generation module — MedCore Hospital OS
  *
  * - Issues official receipt numbers
@@ -157,17 +157,28 @@ export function issuePaymentReceipt(
     }
   })();
 
+  const adminSettings = (() => {
+    try {
+      return getAdminSettings(input.facilityId);
+    } catch {
+      return null;
+    }
+  })();
+
   const isDirectAkwaRemit =
     input.method.toLowerCase().includes('akwaremit') ||
     (input.channel || '').toLowerCase().includes('akwaremit');
 
   const remittanceStatus = isDirectAkwaRemit ? 'direct_akwaremit' : 'pending';
+  const resolvedFacilityName = adminSettings?.displayName
+    ? (adminSettings.lga ? `${adminSettings.displayName}, ${adminSettings.lga}` : adminSettings.displayName)
+    : input.facilityName;
 
   const receipt: PaymentReceiptRecord = {
     id: `RCPT-${Date.now().toString(36).toUpperCase()}`,
     receiptNo: nextReceiptNo(input.facilityId),
     facilityId: input.facilityId,
-    facilityName: input.facilityName,
+    facilityName: resolvedFacilityName,
     patientId: input.patientId,
     patientName: input.patientName,
     hospitalNumber: input.hospitalNumber,
@@ -187,9 +198,10 @@ export function issuePaymentReceipt(
     status: 'issued',
     issuedAt: new Date().toISOString(),
     category: inferCategory(input.method, input.channel),
-    header: settings?.receiptHeader,
-    footer: settings?.receiptFooter,
-    taxId: settings?.receiptTaxId,
+    header: settings?.receiptHeader || `${resolvedFacilityName} — Official Receipt`,
+    footer: adminSettings?.receiptFooterText || settings?.receiptFooter,
+    taxId: settings?.receiptTaxId || adminSettings?.registrationNo,
+    logoUrl: adminSettings?.logoUrl || undefined,
   };
 
   writeAll([receipt, ...readAll()]);

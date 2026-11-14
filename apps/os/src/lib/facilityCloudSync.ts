@@ -107,6 +107,23 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
     if (key === 'clinical_vitals') canonicalKey = FACILITY_KEYS.vitals;
 
     try {
+      if (
+        (canonicalKey === FACILITY_KEYS.facilityCatalog || canonicalKey === 'medcore_facility_catalog_v1') &&
+        value &&
+        typeof value === 'object'
+      ) {
+        const c = value as { facilityId?: string };
+        const fid = String(c.facilityId || '').trim();
+        const payload = JSON.stringify(value);
+        const prev = localStorage.getItem('medcore_facility_catalog_v1');
+        if (prev === payload) return;
+        localStorage.setItem('medcore_facility_catalog_v1', payload);
+        if (fid) localStorage.setItem(`medcore_facility_catalog_v1:${fid}`, payload);
+        window.dispatchEvent(new CustomEvent('medcore-facility-catalog', { detail: value }));
+        window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key } }));
+        emitForKey(key, value);
+        return;
+      }
       if (canonicalKey === FACILITY_KEYS.staff && value && typeof value === 'object') {
         const dir = value as { staffCards?: unknown[]; staffRegistry?: unknown[]; facilityId?: string };
         applyCloudStaffDirectory(dir);

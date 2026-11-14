@@ -45,6 +45,7 @@ import {
   isStaffFlushLocked,
   syncAccessRosterFromSources,
 } from '../../lib/staffCardStore';
+import { applyFacilityRemoteKey, startHospitalCloudSync } from '../../lib/facilityCloudSync';
 
 type AdminModule =
   | 'dashboard'
@@ -97,6 +98,7 @@ const NAV: NavSection[] = [
       { key: 'staffing', label: 'Staff Presence & Rosters', icon: Users },
       { key: 'transfer', label: 'Hospital Staff Transfer', icon: ArrowRightLeft },
       { key: 'patient-flow', label: 'Patient Flow Visibility', icon: RefreshCw },
+      { key: 'ambulance', label: 'Ambulance & EMS Fleet', icon: PhoneCall },
       { key: 'my-card', label: 'My Administrator ID Card', icon: IdCard },
     ],
   },
@@ -105,8 +107,8 @@ const NAV: NavSection[] = [
     items: [
       { key: 'role-permissions', label: 'Role Visibility & Matrix', icon: Lock },
       { key: 'compliance', label: 'Compliance & Audit Logs', icon: FileText },
-      { key: 'facility', label: 'Hospital Facility Setup', icon: Building2 },
-      { key: 'settings', label: 'Hospital Settings & Configuration', icon: Settings },
+      { key: 'facility', label: 'Clinical Architecture & Wards', icon: Building2 },
+      { key: 'settings', label: 'Hospital Settings & Policy', icon: Settings },
     ],
   },
 ];
@@ -242,6 +244,20 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       ? (s.lga ? `${s.displayName}, ${s.lga}` : s.displayName)
       : (session.facility || 'Hospital Facility');
   });
+  const [facilityLogoUrl, setFacilityLogoUrl] = useState(() => {
+    try {
+      return getAdminSettings(session.hospitalId).logoUrl || '';
+    } catch {
+      return '';
+    }
+  });
+  const [maintenanceMessage, setMaintenanceMessage] = useState(() => {
+    try {
+      return getAdminSettings(session.hospitalId).maintenanceMessage || '';
+    } catch {
+      return '';
+    }
+  });
 
   useEffect(() => {
     const updateFromStore = () => {
@@ -249,13 +265,17 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       if (s.displayName) {
         setFacilityDisplayName(s.lga ? `${s.displayName}, ${s.lga}` : s.displayName);
       }
+      setFacilityLogoUrl(s.logoUrl || '');
+      setMaintenanceMessage(s.maintenanceMessage || '');
     };
     updateFromStore();
     const unsub = subscribeAdminSettings(updateFromStore);
     window.addEventListener('medcore-facility-updated', updateFromStore);
+    window.addEventListener('medcore-facility-catalog', updateFromStore);
     return () => {
       unsub();
       window.removeEventListener('medcore-facility-updated', updateFromStore);
+      window.removeEventListener('medcore-facility-catalog', updateFromStore);
     };
   }, [session.hospitalId]);
   const [pendingSync, setPendingSync] = useState(0);
@@ -272,45 +292,10 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
     window.addEventListener('offline', onOff);
     const id = setInterval(() => setClock(formatNow()), 1000);
 
-    // Same-hospital multi-user: pull shared facility data from LAN API when present
-    const applyKey = (key: string, value: unknown) => {
-      try {
-        if (value === undefined) return;
-        // Protect staff from empty or destructive remote overwrites
-        if (
-          key === 'medcore_os_access_control' ||
-          key === 'medcore_os_staff_registry' ||
-          key === 'medcore_staff_id_cards' ||
-          key === 'medcore_os_staff_cards' ||
-          key === 'medcore_staff_cards'
-        ) {
-          if (!Array.isArray(value) || value.length === 0) {
-            if (!isStaffFlushLocked()) return;
-          }
-          if (
-            key === 'medcore_staff_id_cards' ||
-            key === 'medcore_os_staff_cards' ||
-            key === 'medcore_staff_cards'
-          ) {
-            applyCloudStaffDirectory({ staffCards: value as any[], facilityId: fid });
-            return;
-          }
-          if (key === 'medcore_os_staff_registry') {
-            applyCloudStaffDirectory({ staffRegistry: value as any[], facilityId: fid });
-            return;
-          }
-          if (key === 'medcore_os_access_control') {
-            syncAccessRosterFromSources(fid);
-            return;
-          }
-        }
-        localStorage.setItem(key, JSON.stringify(value));
-        window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key } }));
-      } catch { /* ignore */ }
-    };
-    const stopSync = startFacilitySyncLoop(fid, applyKey, 15000);
+    // Same-hospital multi-user: unified cloud + SSE + LAN sync with remote hydration guard
+    const stopCloudSync = startHospitalCloudSync(fid);
+    const applyKey = (key: string, value: unknown) => applyFacilityRemoteKey(key, value);
     void enableFirestoreOffline();
-    const stopOutbox = startOutboxAutoFlush(20000);
     const pendingIv = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       setPendingSync(getOutboxPendingCount());
@@ -331,9 +316,8 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       clearInterval(id);
       window.removeEventListener('online', onOn);
       window.removeEventListener('offline', onOff);
-      stopSync();
+      stopCloudSync();
       stopFs();
-      stopOutbox();
       clearInterval(pendingIv);
     };
   }, [session.hospitalId, session.facility]);
@@ -373,11 +357,11 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'staffing':
         return <StaffingOverview session={session} />;
       case 'facility':
-        return <FacilityOnboarding session={session} />;
+        return <FacilityOnboarding session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
       case 'command':
         return <CommandCentreDashboard />;
       case 'beds':
-        return <BedManagement />;
+        return <BedManagement session={session} />;
       case 'patient-flow':
         return <PatientFlowVisibility />;
       case 'ambulance':
@@ -389,23 +373,23 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'enrolment':
         return <AccessControl session={session} initialTab="enrol" onNavigate={(k) => goModule(k as AdminModule)} />;
       case 'compliance':
-        return <ComplianceAuditLogs />;
+        return <ComplianceAuditLogs session={session} />;
       case 'cashier':
         return <AdminRevenueOverview session={session} />;
       case 'akwaremit':
         return <AkwaRemitRevenueSuite session={session} />;
       case 'notifications':
-        return <NotificationCentre session={session} />;
+        return <NotificationCentre session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
       case 'my-card':
         return <MyStaffIdPanel session={session} />;
       case 'settings':
-        return <AdminSettings session={session} />;
+        return <AdminSettings session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
       case 'm87-ai':
         return <M87AICopilotSuite session={session} onNavigate={(k: string) => goModule(k as AdminModule)} />;
       default:
         return <AdminWorkspace session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
     }
-  }, [module, session]);
+  }, [module, session, goModule]);
 
   return (
     <div className="admin-shell">
@@ -504,7 +488,11 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
               title={`${facilityDisplayName} · Click to edit hospital settings`}
               style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', font: 'inherit' }}
             >
-              <Building2 size={14} style={{ flexShrink: 0 }} />
+              {facilityLogoUrl ? (
+                <img src={facilityLogoUrl} alt="" style={{ width: 18, height: 18, objectFit: 'contain', borderRadius: 4, flexShrink: 0 }} />
+              ) : (
+                <Building2 size={14} style={{ flexShrink: 0 }} />
+              )}
               <span>{facilityDisplayName}</span>
             </button>
             <HybridConnectivityDrawer />
@@ -559,6 +547,40 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
             </button>
           </div>
         </header>
+        {maintenanceMessage && (
+          <div
+            style={{
+              background: 'linear-gradient(90deg, #FEF3C7 0%, #FFFBEB 100%)',
+              borderBottom: '1px solid #FDE68A',
+              color: '#92400E',
+              padding: '7px 18px',
+              fontSize: 12.5,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <span>📢 HOSPITAL BROADCAST NOTICE: {maintenanceMessage}</span>
+            <button
+              type="button"
+              onClick={() => goModule('settings')}
+              style={{
+                border: '1px solid #F59E0B',
+                background: '#FFFFFF',
+                color: '#B45309',
+                borderRadius: 6,
+                padding: '2px 8px',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Manage Notice
+            </button>
+          </div>
+        )}
         <main className="admin-shell-content">
           {body}
         </main>

@@ -67,6 +67,7 @@ import { releaseOrdersForPatient } from '../../lib/clinicalEventBus';
 import { useFormDraft } from '../../lib/formDraftStore';
 import { FormDraftBanner } from '../common/FormDraftBanner';
 import { appendAudit } from '../../lib/auditLogStore';
+import { getAdminSettings, subscribeAdminSettings, type AdminFacilitySettings } from '../../lib/adminSettingsStore';
 
 const C = {
   blue: '#0284C7',
@@ -131,17 +132,18 @@ export const PosPaymentDesk: React.FC<Props> = ({
   const cashier = session?.name || 'Cashier';
   const cashierBadge = session?.badgeId || 'CSH-001';
 
+  const [adminSettings, setAdminSettings] = useState<AdminFacilitySettings>(() => getAdminSettings(facilityId));
   const [patients, setPatients] = useState<FacilityPatient[]>([]);
   const [visits, setVisits] = useState<ReceptionVisit[]>([]);
   const [payments, setPayments] = useState<ReceptionPayment[]>([]);
   const [stats, setStats] = useState(dayStats(facilityId));
   const [query, setQuery] = useState('');
   const [patient, setPatient] = useState<FacilityPatient | null>(null);
-  const [amount, setAmount] = useState('5000');
+  const [amount, setAmount] = useState(() => String(getAdminSettings(facilityId).defaultOpdFeeNgn || 5000));
   const [gatewayMethod, setGatewayMethod] = useState<PosGatewayMethod>('cash');
   const [purpose, setPurpose] = useState('Consultation');
-  const [lines, setLines] = useState<{ label: string; amount: number }[]>([
-    { label: 'Consultation', amount: 5000 },
+  const [lines, setLines] = useState<{ label: string; amount: number }[]>(() => [
+    { label: 'Consultation', amount: getAdminSettings(facilityId).defaultOpdFeeNgn || 5000 },
   ]);
   const [toast, setToast] = useState<string | null>(null);
   const [lastReceipt, setLastReceipt] = useState<ReceptionPayment | null>(null);
@@ -236,10 +238,12 @@ export const PosPaymentDesk: React.FC<Props> = ({
     const u1 = subscribePatients(reload);
     const u2 = subscribeReceptionOps(reload);
     const u3 = subscribeBills(() => setBillTick((n) => n + 1));
+    const u4 = subscribeAdminSettings((next) => setAdminSettings(next));
     return () => {
       u1();
       u2();
       u3();
+      u4();
     };
   }, [reload]);
 
@@ -704,7 +708,7 @@ export const PosPaymentDesk: React.FC<Props> = ({
               }}
             />
             <div>
-              <div style={{ fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span>{activeShift ? `Shift Open · ${cashier} (${cashierBadge})` : `No Active Shift · ${cashier}`}</span>
                 <span
                   style={{
@@ -715,12 +719,26 @@ export const PosPaymentDesk: React.FC<Props> = ({
                     background: 'rgba(255,255,255,0.15)',
                   }}
                 >
-                  AkwaRemit TSA Gateway Mode
+                  {adminSettings.akwaRemitEnabled ? `AkwaRemit TSA (${adminSettings.akwaRemitMerchantId})` : 'TSA Offline'}
                 </span>
+                {adminSettings.posTerminals?.length > 0 && (
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: 20,
+                      background: 'rgba(16,185,129,0.2)',
+                      color: '#6EE7B7',
+                    }}
+                  >
+                    POS: {adminSettings.posTerminals[0].bank} ({adminSettings.posTerminals[0].terminalId})
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 11.5, color: '#94A3B8', marginTop: 2 }}>
                 {activeShift
-                  ? `Starting Cash Float: ₦${activeShift.startingFloatNgn.toLocaleString()} · Opened ${new Date(activeShift.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  ? `Starting Cash Float: ₦${activeShift.startingFloatNgn.toLocaleString()} · Opened ${new Date(activeShift.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · Cash Limit: ₦${(adminSettings.cashHoldingLimitNgn || 250000).toLocaleString()}`
                   : 'Cashiers must open a shift with their physical starting float before recording collections.'}
               </div>
             </div>
@@ -770,6 +788,29 @@ export const PosPaymentDesk: React.FC<Props> = ({
             )}
           </div>
         </div>
+
+        {/* Cash Holding Limit Alert from Admin Settings */}
+        {adminSettings.cashHoldingLimitNgn > 0 && stats.revenue >= adminSettings.cashHoldingLimitNgn && (
+          <div
+            style={{
+              background: '#FEF2F2',
+              border: '1px solid #FCA5A5',
+              color: '#991B1B',
+              borderRadius: 12,
+              padding: '10px 16px',
+              fontSize: 12,
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+            }}
+          >
+            <span>
+              ⚠️ Cash Holding Limit Reached: Today&apos;s collection (₦{stats.revenue.toLocaleString()}) exceeds the facility cash drawer ceiling of ₦{adminSettings.cashHoldingLimitNgn.toLocaleString()}. Please remit excess cash to the Vault / AkwaRemit TSA.
+            </span>
+          </div>
+        )}
 
         {/* Hero Section */}
         {!embedded && (

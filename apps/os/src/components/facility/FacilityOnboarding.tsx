@@ -44,24 +44,20 @@ import {
 } from '../../lib/facilityCatalogStore';
 
 type Section =
-  | 'identity'
   | 'capacity'
+  | 'clinics'
   | 'services'
   | 'diagnostics'
   | 'pharmacy'
-  | 'emergency'
-  | 'clinics'
-  | 'operations';
+  | 'emergency';
 
 const SECTIONS: { id: Section; label: string; icon: React.ReactNode }[] = [
-  { id: 'identity', label: 'Identity & licence', icon: <Building2 size={15} /> },
-  { id: 'capacity', label: 'Clinical beds & units', icon: <BedDouble size={15} /> },
-  { id: 'services', label: 'Clinical services', icon: <Stethoscope size={15} /> },
-  { id: 'diagnostics', label: 'Lab & imaging', icon: <FlaskConical size={15} /> },
-  { id: 'pharmacy', label: 'Pharmacy & blood', icon: <Pill size={15} /> },
+  { id: 'capacity', label: 'Wards, beds & theatres', icon: <BedDouble size={15} /> },
+  { id: 'clinics', label: 'OPD clinics & schedules', icon: <Hospital size={15} /> },
+  { id: 'services', label: 'Clinical service lines', icon: <Stethoscope size={15} /> },
+  { id: 'diagnostics', label: 'Lab & radiology orderables', icon: <FlaskConical size={15} /> },
+  { id: 'pharmacy', label: 'Pharmacy & blood bank', icon: <Pill size={15} /> },
   { id: 'emergency', label: 'Emergency & maternity', icon: <Ambulance size={15} /> },
-  { id: 'clinics', label: 'OPD clinics', icon: <Hospital size={15} /> },
-  { id: 'operations', label: 'Hours & payers (clinical)', icon: <Clock size={15} /> },
 ];
 
 function fallbackLayout(totalBeds: number, facilityType: string): WardCapacityRow[] {
@@ -174,6 +170,7 @@ Services on: ${Object.entries(catalog.services || {})
 
 interface Props {
   session?: UserSession;
+  onNavigate?: (moduleKey: string) => void;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -227,9 +224,9 @@ function ToggleChip({
   );
 }
 
-export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
+export const FacilityOnboarding: React.FC<Props> = ({ session, onNavigate }) => {
   const facilityId = session?.hospitalId || 'UNKNOWN';
-  const [section, setSection] = useState<Section>('identity');
+  const [section, setSection] = useState<Section>('capacity');
   const [catalog, setCatalog] = useState<FacilityCatalog>(() =>
     loadFacilityCatalog(facilityId, session?.facility)
   );
@@ -246,7 +243,7 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
     setCatalog(loadFacilityCatalog(facilityId, session?.facility));
   }, [facilityId, session?.facility]);
 
-  // Realtime: other workstations / tabs update this admin's catalog live
+  // Realtime: other workstations / tabs or AdminSettings updates refresh this catalog live
   useEffect(() => {
     if (!facilityId || facilityId === 'UNKNOWN') return;
     const unsub = subscribeFacilityCatalog(facilityId, (remote) => {
@@ -254,9 +251,18 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
       setLive(true);
       setBedTick((t) => t + 1);
     });
+    const onAdminSettings = () => {
+      setCatalog(loadFacilityCatalog(facilityId, session?.facility));
+    };
+    window.addEventListener('medcore-admin-settings', onAdminSettings);
+    window.addEventListener('medcore-facility-updated', onAdminSettings);
     setLive(true);
-    return unsub;
-  }, [facilityId]);
+    return () => {
+      unsub();
+      window.removeEventListener('medcore-admin-settings', onAdminSettings);
+      window.removeEventListener('medcore-facility-updated', onAdminSettings);
+    };
+  }, [facilityId, session?.facility]);
 
   const existingBeds = useMemo(() => {
     void bedTick;
@@ -624,6 +630,66 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
         </button>
       )}
 
+      {/* Synced Hospital Identity, Licensing & Tariff Summary (De-duplicated from Hospital Settings) */}
+      <div
+        style={{
+          background: '#F8FAFC',
+          border: '1px solid #CBD5E1',
+          borderRadius: 14,
+          padding: '14px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <strong style={{ fontSize: '0.9rem', color: '#0F172A' }}>
+              {catalog.name || session?.facility || facilityId}
+            </strong>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#E0F2FE', color: '#0369A1' }}>
+              {catalog.tier || 'Secondary Care'} · {catalog.type || 'General Hospital'}
+            </span>
+            {catalog.lga && (
+              <span style={{ fontSize: '0.75rem', color: '#475569', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <MapPin size={12} color="#0284C7" /> {catalog.lga} LGA
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: '0.76rem', color: '#64748B', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            <span><strong>Licence:</strong> {catalog.licenseNo || 'Pending in Settings'}</span>
+            <span><strong>CMD:</strong> {catalog.medicalDirector || 'Pending in Settings'}</span>
+            <span><strong>OPD Hours:</strong> {catalog.workingHoursStart}–{catalog.workingHoursEnd}</span>
+            <span><strong>OPD Tariff:</strong> ₦{(catalog.defaultOpdFeeNgn || 5000).toLocaleString()}</span>
+            <span><strong>Payers:</strong> {[catalog.acceptsNhis && 'NHIA/AKSHIA', catalog.acceptsHmo && 'Private HMO'].filter(Boolean).join(' + ') || 'Cash'}</span>
+          </div>
+        </div>
+        {onNavigate && (
+          <button
+            type="button"
+            onClick={() => onNavigate('settings')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '8px 14px',
+              borderRadius: 10,
+              border: '1px solid #BAE6FD',
+              background: '#EFF6FF',
+              color: '#0284C7',
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <Building2 size={14} /> Edit Identity, Licensing & Tariffs →
+          </button>
+        )}
+      </div>
+
       {/* Section nav */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {SECTIONS.map((s) => (
@@ -659,130 +725,6 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
           padding: 20,
         }}
       >
-        {/* ── Identity ─────────────────────────────────────────── */}
-        {section === 'identity' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div
-              style={{
-                background: '#F0F9FF',
-                border: '1px solid #BAE6FD',
-                borderRadius: 12,
-                padding: '12px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                color: '#0369A1',
-                fontSize: '0.82rem',
-              }}
-            >
-              <Building2 size={20} style={{ flexShrink: 0 }} />
-              <div>
-                <strong style={{ display: 'block', color: '#0C4A6E' }}>Central Hospital Identity Synchronization</strong>
-                <span>Official hospital name, LGA, address, and credentials can also be managed under <strong>Hospital Settings</strong>. Changes made here or in Settings automatically synchronize across clinical and administrative workspaces.</span>
-              </div>
-            </div>
-
-            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0A2540' }}>
-              Identity & licensing
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-              <label style={labelStyle}>
-                Hospital name
-                <input style={inputStyle} value={catalog.name} onChange={(e) => patch({ name: e.target.value })} />
-              </label>
-              <label style={labelStyle}>
-                Type
-                <input style={inputStyle} value={catalog.type} onChange={(e) => patch({ type: e.target.value })} />
-              </label>
-              <label style={labelStyle}>
-                Tier
-                <input style={inputStyle} value={catalog.tier} onChange={(e) => patch({ tier: e.target.value })} />
-              </label>
-              <label style={labelStyle}>
-                Ownership
-                <select
-                  style={inputStyle}
-                  value={catalog.ownership}
-                  onChange={(e) => patch({ ownership: e.target.value as FacilityCatalog['ownership'] })}
-                >
-                  <option value="public_state">Public (State)</option>
-                  <option value="public_federal">Public (Federal)</option>
-                  <option value="mission">Mission / Faith-based</option>
-                  <option value="private">Private</option>
-                  <option value="ppp">PPP</option>
-                </select>
-              </label>
-              <label style={labelStyle}>
-                LGA
-                <input style={inputStyle} value={catalog.lga} onChange={(e) => patch({ lga: e.target.value })} />
-              </label>
-              <label style={labelStyle}>
-                Phone
-                <input style={inputStyle} value={catalog.phone} onChange={(e) => patch({ phone: e.target.value })} />
-              </label>
-              <label style={labelStyle}>
-                Email
-                <input style={inputStyle} value={catalog.email} onChange={(e) => patch({ email: e.target.value })} />
-              </label>
-              <label style={labelStyle}>
-                Licence No.
-                <input style={inputStyle} value={catalog.licenseNo} onChange={(e) => patch({ licenseNo: e.target.value })} />
-              </label>
-              <label style={labelStyle}>
-                Licence expiry
-                <input
-                  type="date"
-                  style={inputStyle}
-                  value={catalog.licenseExpiry}
-                  onChange={(e) => patch({ licenseExpiry: e.target.value })}
-                />
-              </label>
-              <label style={labelStyle}>
-                Registration / HFR No.
-                <input
-                  style={inputStyle}
-                  value={catalog.registrationNo || ''}
-                  onChange={(e) => patch({ registrationNo: e.target.value })}
-                />
-              </label>
-              <label style={labelStyle}>
-                Medical Director
-                <input
-                  style={inputStyle}
-                  value={catalog.medicalDirector}
-                  onChange={(e) => patch({ medicalDirector: e.target.value })}
-                />
-              </label>
-              <label style={{ ...labelStyle, gridColumn: '1 / -1' }}>
-                Address
-                <input style={inputStyle} value={catalog.address} onChange={(e) => patch({ address: e.target.value })} />
-              </label>
-            </div>
-            {(catalog.address || catalog.phone || catalog.email) && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.85rem', color: '#475569' }}>
-                {catalog.address && (
-                  <span>
-                    <MapPin size={14} color="#0052D4" style={{ verticalAlign: 'middle', marginRight: 6 }} />
-                    {catalog.address}
-                  </span>
-                )}
-                {catalog.phone && (
-                  <span>
-                    <Phone size={14} color="#0052D4" style={{ verticalAlign: 'middle', marginRight: 6 }} />
-                    {catalog.phone}
-                  </span>
-                )}
-                {catalog.email && (
-                  <span>
-                    <Globe size={14} color="#0052D4" style={{ verticalAlign: 'middle', marginRight: 6 }} />
-                    {catalog.email}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* ── Capacity ─────────────────────────────────────────── */}
         {section === 'capacity' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1283,6 +1225,16 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
               />
               <Baby size={14} /> Obstetrics & labour ward active
             </label>
+            <label style={labelStyle}>
+              Clinical Architecture & Accreditation Inspector Notes
+              <textarea
+                value={catalog.notes}
+                onChange={(e) => patch({ notes: e.target.value })}
+                rows={3}
+                style={{ ...inputStyle, resize: 'vertical' }}
+                placeholder="Referral partners, oxygen plant capacity, ICU backup generator notes…"
+              />
+            </label>
           </div>
         )}
 
@@ -1376,101 +1328,6 @@ export const FacilityOnboarding: React.FC<Props> = ({ session }) => {
             >
               <Plus size={14} /> Add clinic
             </button>
-          </div>
-        )}
-
-        {/* ── Operations ───────────────────────────────────────── */}
-        {section === 'operations' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0A2540' }}>
-              <Clock size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-              Hours, fees & payers
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
-              <label style={labelStyle}>
-                OPD opens
-                <input
-                  type="time"
-                  style={inputStyle}
-                  value={catalog.workingHoursStart}
-                  onChange={(e) => patch({ workingHoursStart: e.target.value })}
-                />
-              </label>
-              <label style={labelStyle}>
-                OPD closes
-                <input
-                  type="time"
-                  style={inputStyle}
-                  value={catalog.workingHoursEnd}
-                  onChange={(e) => patch({ workingHoursEnd: e.target.value })}
-                />
-              </label>
-              <label style={labelStyle}>
-                Default OPD fee (₦)
-                <input
-                  type="number"
-                  min={0}
-                  style={inputStyle}
-                  value={catalog.defaultOpdFeeNgn}
-                  onChange={(e) => patch({ defaultOpdFeeNgn: Math.max(0, Number(e.target.value) || 0) })}
-                />
-              </label>
-            </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: '0.88rem' }}>
-              <input
-                type="checkbox"
-                checked={catalog.operates24x7}
-                onChange={(e) => patch({ operates24x7: e.target.checked })}
-              />
-              Facility operates 24×7 (inpatient)
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: '0.88rem' }}>
-              <input
-                type="checkbox"
-                checked={catalog.emergency24x7}
-                onChange={(e) => patch({ emergency24x7: e.target.checked })}
-              />
-              Emergency department 24×7
-            </label>
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: '0.88rem' }}>
-                <input
-                  type="checkbox"
-                  checked={catalog.acceptsNhis}
-                  onChange={(e) => patch({ acceptsNhis: e.target.checked })}
-                />
-                <CreditCard size={14} /> Accepts NHIS
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: '0.88rem' }}>
-                <input
-                  type="checkbox"
-                  checked={catalog.acceptsHmo}
-                  onChange={(e) => patch({ acceptsHmo: e.target.checked })}
-                />
-                Accepts HMO / private insurance
-              </label>
-            </div>
-            {catalog.acceptsHmo && (
-              <label style={labelStyle}>
-                Accepted HMOs (comma-separated)
-                <input
-                  style={inputStyle}
-                  value={catalog.acceptedHmoList}
-                  onChange={(e) => patch({ acceptedHmoList: e.target.value })}
-                  placeholder="e.g. Hygeia, AXA Mansard, Leadway"
-                />
-              </label>
-            )}
-            <label style={labelStyle}>
-              Notes (inspectors / AI context)
-              <textarea
-                value={catalog.notes}
-                onChange={(e) => patch({ notes: e.target.value })}
-                rows={3}
-                style={{ ...inputStyle, resize: 'vertical' }}
-                placeholder="Referral partners, known gaps, generator capacity…"
-              />
-            </label>
           </div>
         )}
       </div>

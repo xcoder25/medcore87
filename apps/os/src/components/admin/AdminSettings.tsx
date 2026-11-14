@@ -61,6 +61,7 @@ import { loadFacilityCatalog, saveFacilityCatalog } from '../../lib/facilityCata
 
 interface Props {
   session: UserSession;
+  onNavigate?: (moduleKey: string) => void;
 }
 
 type SettingsTab =
@@ -81,7 +82,7 @@ const C = {
   lightBg: '#F8FAFC',
 };
 
-export const AdminSettings: React.FC<Props> = ({ session }) => {
+export const AdminSettings: React.FC<Props> = ({ session, onNavigate }) => {
   const facilityId = session.hospitalId || 'IGH-EKT';
   const [settings, setSettings] = useState<AdminFacilitySettings>(() => getAdminSettings(facilityId));
   const [draft, setDraft] = useState<AdminFacilitySettings>(settings);
@@ -616,6 +617,28 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
             </span>
           )}
 
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate('facility')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '10px 16px',
+                borderRadius: 10,
+                border: `1px solid ${C.border}`,
+                background: '#F8FAFC',
+                color: C.navy,
+                fontWeight: 700,
+                fontSize: 12.5,
+                cursor: 'pointer',
+              }}
+            >
+              <Building2 size={15} color={C.blue} /> Wards, Theatres & Clinics →
+            </button>
+          )}
+
           <button
             type="button"
             onClick={save}
@@ -893,6 +916,100 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
               <div style={{ gridColumn: 'span 6' }}>
                 <label style={labelStyle}>Physical Address</label>
                 <input style={inputStyle} value={draft.address} onChange={(e) => patch({ address: e.target.value })} />
+              </div>
+
+              {/* Consolidated Licensing, Leadership & Operating Hours (De-duplicated from Facility Setup) */}
+              <div style={{ gridColumn: 'span 3' }}>
+                <label style={labelStyle}>Facility Ownership</label>
+                <select
+                  style={inputStyle}
+                  value={draft.ownership || 'public_state'}
+                  onChange={(e) => patch({ ownership: e.target.value as any })}
+                >
+                  <option value="public_state">Public (State Government)</option>
+                  <option value="public_federal">Public (Federal Government)</option>
+                  <option value="mission">Mission / Faith-Based</option>
+                  <option value="private">Private Specialist</option>
+                  <option value="ppp">Public-Private Partnership (PPP)</option>
+                </select>
+              </div>
+
+              <div style={{ gridColumn: 'span 3' }}>
+                <label style={labelStyle}>MoH / HEFAMAA Licence No.</label>
+                <input
+                  style={inputStyle}
+                  value={draft.licenseNo || ''}
+                  onChange={(e) => patch({ licenseNo: e.target.value })}
+                  placeholder="e.g. AKS-MOH-LIC-2026-041"
+                />
+              </div>
+
+              <div style={{ gridColumn: 'span 3' }}>
+                <label style={labelStyle}>Licence Expiry Date</label>
+                <input
+                  type="date"
+                  style={inputStyle}
+                  value={draft.licenseExpiry || ''}
+                  onChange={(e) => patch({ licenseExpiry: e.target.value })}
+                />
+              </div>
+
+              <div style={{ gridColumn: 'span 3' }}>
+                <label style={labelStyle}>National HFR Registration No.</label>
+                <input
+                  style={inputStyle}
+                  value={draft.registrationNo || ''}
+                  onChange={(e) => patch({ registrationNo: e.target.value })}
+                  placeholder="e.g. 03/06/1/2/1/0001"
+                />
+              </div>
+
+              <div style={{ gridColumn: 'span 6' }}>
+                <label style={labelStyle}>Chief Medical Director / Medical Superintendent</label>
+                <input
+                  style={inputStyle}
+                  value={draft.medicalDirector || ''}
+                  onChange={(e) => patch({ medicalDirector: e.target.value })}
+                  placeholder="e.g. Dr. Iniobong Udoh, MBBS, FWACP"
+                />
+              </div>
+
+              <div style={{ gridColumn: 'span 3' }}>
+                <label style={labelStyle}>OPD Clinic Opens</label>
+                <input
+                  type="time"
+                  style={inputStyle}
+                  value={draft.workingHoursStart || '08:00'}
+                  onChange={(e) => patch({ workingHoursStart: e.target.value })}
+                />
+              </div>
+
+              <div style={{ gridColumn: 'span 3' }}>
+                <label style={labelStyle}>OPD Clinic Closes</label>
+                <input
+                  type="time"
+                  style={inputStyle}
+                  value={draft.workingHoursEnd || '18:00'}
+                  onChange={(e) => patch({ workingHoursEnd: e.target.value })}
+                />
+              </div>
+
+              <div style={{ gridColumn: 'span 6' }}>
+                <Toggle
+                  label="Inpatient Wards Operate 24×7"
+                  desc="Continuous 24-hour nursing and medical officer coverage across inpatient wards"
+                  checked={draft.operates24x7 ?? true}
+                  onChange={(v) => patch({ operates24x7: v })}
+                />
+              </div>
+
+              <div style={{ gridColumn: 'span 6' }}>
+                <Toggle
+                  label="Accident & Emergency (A&E) Open 24×7"
+                  desc="24-hour emergency triage, resuscitation, and ambulance receiving bay active"
+                  checked={draft.emergency24x7 ?? true}
+                  onChange={(v) => patch({ emergency24x7: v })}
+                />
               </div>
 
               <div style={{ gridColumn: 'span 12' }}>
@@ -1601,6 +1718,32 @@ export const AdminSettings: React.FC<Props> = ({ session }) => {
             </div>
 
             <div style={{ marginTop: 14 }}>
+              <Toggle
+                label="Accepts NHIA / NHIS Federal Capitation & Fee-for-Service"
+                desc="Enable federal National Health Insurance Authority enrolment verification and claims processing"
+                checked={draft.acceptsNhis ?? true}
+                onChange={(v) => patch({ acceptsNhis: v })}
+              />
+
+              <Toggle
+                label="Accepts Private HMOs & Corporate Retainers"
+                desc="Enable private HMO pre-authorization codes and corporate retainer billing lines"
+                checked={draft.acceptsHmo ?? true}
+                onChange={(v) => patch({ acceptsHmo: v })}
+              />
+
+              {(draft.acceptsHmo ?? true) && (
+                <div style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>Empanelled Private HMOs (Comma-Separated)</label>
+                  <input
+                    style={inputStyle}
+                    value={draft.acceptedHmoList || ''}
+                    onChange={(e) => patch({ acceptedHmoList: e.target.value })}
+                    placeholder="e.g. Hygeia, AXA Mansard, Leadway, Reliance HMO, Avon HMO"
+                  />
+                </div>
+              )}
+
               <Toggle
                 label="Automatic Eligibility Verification at Check-In"
                 desc="Query the AKSHIA/NHIA UPI gateway as soon as patient NIN or Policy Number is keyed in at the front desk"

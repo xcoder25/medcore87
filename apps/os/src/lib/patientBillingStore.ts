@@ -4,6 +4,7 @@
  */
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 import { tryAutoDeduct, creditCancelledServiceToWallet } from './patientWalletStore';
+import { getAdminSettings } from './adminSettingsStore';
 
 export type BillLineStatus = 'unpaid' | 'paid' | 'hmo' | 'waived' | 'partial' | 'cancelled_to_credit';
 export type BillLineSource = 'pharmacy' | 'lab' | 'consult' | 'other' | 'opd' | 'billing' | 'imaging';
@@ -137,6 +138,16 @@ export function billPharmacyRx(input: {
 }): PatientBillLine {
   const existing = getLineForOrder(input.orderId);
   if (existing) return existing;
+  let finalAmount = input.amountNgn ?? DEFAULT_RX_FEE_NGN;
+  try {
+    const adm = getAdminSettings(input.facilityId);
+    const markup = Number(adm.pharmacyMarkupPercent) || 0;
+    if (markup > 0 && !input.amountNgn) {
+      finalAmount = Math.round(DEFAULT_RX_FEE_NGN * (1 + markup / 100));
+    }
+  } catch {
+    /* ignore */
+  }
   return addBillLine({
     facilityId: input.facilityId,
     patientId: input.patientId,
@@ -144,7 +155,7 @@ export function billPharmacyRx(input: {
     patientName: input.patientName,
     source: 'pharmacy',
     description: `Pharmacy · ${input.drugName}`,
-    amountNgn: input.amountNgn ?? DEFAULT_RX_FEE_NGN,
+    amountNgn: finalAmount,
     orderId: input.orderId,
     status: 'unpaid',
   });
@@ -161,6 +172,17 @@ export function billLabOrder(input: {
 }): PatientBillLine {
   const existing = getLineForOrder(input.orderId);
   if (existing) return existing;
+  let finalAmount = input.amountNgn ?? DEFAULT_LAB_FEE_NGN;
+  if (!input.amountNgn) {
+    try {
+      const adm = getAdminSettings(input.facilityId);
+      if (Number(adm.defaultLabFeeNgn) > 0) {
+        finalAmount = Number(adm.defaultLabFeeNgn);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   return addBillLine({
     facilityId: input.facilityId,
     patientId: input.patientId,
@@ -168,7 +190,7 @@ export function billLabOrder(input: {
     patientName: input.patientName,
     source: 'lab',
     description: `Laboratory · ${input.testName}`,
-    amountNgn: input.amountNgn ?? DEFAULT_LAB_FEE_NGN,
+    amountNgn: finalAmount,
     orderId: input.orderId,
     status: 'unpaid',
   });

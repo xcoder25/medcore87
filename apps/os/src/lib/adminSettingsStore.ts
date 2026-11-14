@@ -33,6 +33,12 @@ export interface AdminFacilitySettings {
   emergencyPhone: string;
   email: string;
   hospitalTier: 'district_general' | 'secondary_specialist' | 'tertiary_teaching' | 'primary_health_centre';
+  facilityType: string;
+  ownership: 'public_state' | 'public_federal' | 'mission' | 'private' | 'ppp';
+  licenseNo: string;
+  licenseExpiry: string;
+  registrationNo: string;
+  medicalDirector: string;
   receiptFooterText: string;
 
   /** Hospital LAN hub base URL e.g. http://192.168.1.10:4000 */
@@ -54,6 +60,8 @@ export interface AdminFacilitySettings {
   /** Operations & Hours */
   workingHoursStart: string;
   workingHoursEnd: string;
+  operates24x7: boolean;
+  emergency24x7: boolean;
 
   /** Clinical Governance & Protocols */
   triageProtocol: 'NEWS2' | 'ESI';
@@ -61,12 +69,15 @@ export interface AdminFacilitySettings {
   unattendedQueueAlertMins: number;
   requireBillingClearanceBeforeDischarge: boolean;
 
-  /** Insurance & NHIA / AKSHIA */
+  /** Insurance & NHIA / AKSHIA / HMO */
   nhiaProviderCode: string;
   akshiaProviderId: string;
   insuranceCopayPercent: number;
   preAuthThresholdNgn: number;
   autoVerifyInsuranceOnCheckin: boolean;
+  acceptsNhis: boolean;
+  acceptsHmo: boolean;
+  acceptedHmoList: string;
 
   /** Feature toggles & AI */
   aiReceptionEnabled: boolean;
@@ -92,6 +103,12 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   emergencyPhone: '0800-MEDCORE-911',
   email: '',
   hospitalTier: 'district_general',
+  facilityType: 'General Hospital',
+  ownership: 'public_state',
+  licenseNo: '',
+  licenseExpiry: '',
+  registrationNo: '',
+  medicalDirector: '',
   receiptFooterText: 'Official State Revenue Receipt. Thank you for your service.',
 
   lanApiUrl: '',
@@ -110,6 +127,8 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
 
   workingHoursStart: '08:00',
   workingHoursEnd: '18:00',
+  operates24x7: true,
+  emergency24x7: true,
 
   triageProtocol: 'NEWS2',
   requireVitalsBeforeConsult: true,
@@ -121,6 +140,9 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   insuranceCopayPercent: 10,
   preAuthThresholdNgn: 50000,
   autoVerifyInsuranceOnCheckin: true,
+  acceptsNhis: true,
+  acceptsHmo: true,
+  acceptedHmoList: 'Hygeia, AXA Mansard, Leadway, Reliance HMO',
 
   aiReceptionEnabled: true,
   aiQueueReminders: true,
@@ -233,6 +255,76 @@ export function saveAdminSettings(
     try {
       (window as unknown as { __MEDCORE_API_URL?: string }).__MEDCORE_API_URL = next.lanApiUrl;
       localStorage.setItem('medcore_lan_api_url', next.lanApiUrl);
+    } catch {
+      /* ignore */
+    }
+  }
+  // Bi-directionally mirror shared identity, licensing, hours, tariff, and insurance fields into FacilityCatalog
+  if (typeof window !== 'undefined') {
+    try {
+      const catKey = `medcore_facility_catalog_v1:${next.facilityId || 'DEFAULT'}`;
+      const rawCat = localStorage.getItem(catKey) || localStorage.getItem('medcore_facility_catalog_v1');
+      const existingCat = rawCat ? JSON.parse(rawCat) : { facilityId: next.facilityId };
+      const tierLabelMap: Record<string, string> = {
+        primary_health_centre: 'Primary Care (PHC)',
+        district_general: 'Secondary Care',
+        secondary_specialist: 'Secondary Specialist',
+        tertiary_teaching: 'Tertiary Care',
+      };
+      const syncedCat = {
+        ...existingCat,
+        facilityId: next.facilityId,
+        name: next.displayName || existingCat.name || '',
+        type: next.facilityType || existingCat.type || 'General Hospital',
+        tier: tierLabelMap[next.hospitalTier] || existingCat.tier || 'Secondary Care',
+        ownership: next.ownership || existingCat.ownership || 'public_state',
+        lga: next.lga || existingCat.lga || '',
+        address: next.address || existingCat.address || '',
+        phone: next.phone || existingCat.phone || '',
+        email: next.email || existingCat.email || '',
+        licenseNo: next.licenseNo || existingCat.licenseNo || '',
+        licenseExpiry: next.licenseExpiry || existingCat.licenseExpiry || '',
+        registrationNo: next.registrationNo || existingCat.registrationNo || '',
+        medicalDirector: next.medicalDirector || existingCat.medicalDirector || '',
+        workingHoursStart: next.workingHoursStart || existingCat.workingHoursStart || '08:00',
+        workingHoursEnd: next.workingHoursEnd || existingCat.workingHoursEnd || '18:00',
+        operates24x7: next.operates24x7 ?? existingCat.operates24x7 ?? true,
+        emergency24x7: next.emergency24x7 ?? existingCat.emergency24x7 ?? true,
+        defaultOpdFeeNgn: next.defaultOpdFeeNgn ?? existingCat.defaultOpdFeeNgn ?? 5000,
+        acceptsNhis: next.acceptsNhis ?? existingCat.acceptsNhis ?? true,
+        acceptsHmo: next.acceptsHmo ?? existingCat.acceptsHmo ?? true,
+        acceptedHmoList: next.acceptedHmoList ?? existingCat.acceptedHmoList ?? '',
+        updatedAt: next.updatedAt,
+        updatedBy: next.updatedBy,
+      };
+      localStorage.setItem(catKey, JSON.stringify(syncedCat));
+      localStorage.setItem('medcore_facility_catalog_v1', JSON.stringify(syncedCat));
+      localStorage.setItem(
+        `medcore_hospital_profile_${next.facilityId}`,
+        JSON.stringify({
+          id: next.facilityId,
+          name: syncedCat.name,
+          type: syncedCat.type,
+          lga: syncedCat.lga,
+          address: syncedCat.address,
+          phone: syncedCat.phone,
+          email: syncedCat.email,
+          licenseNo: syncedCat.licenseNo,
+          licenseExpiry: syncedCat.licenseExpiry,
+          status: 'active',
+          tier: syncedCat.tier,
+          medicalDirector: syncedCat.medicalDirector,
+        })
+      );
+      window.dispatchEvent(new CustomEvent('medcore-facility-catalog', { detail: syncedCat }));
+      const fullFacilityName = next.displayName
+        ? (next.lga ? `${next.displayName}, ${next.lga}` : next.displayName)
+        : syncedCat.name;
+      window.dispatchEvent(
+        new CustomEvent('medcore-facility-updated', {
+          detail: { ...next, fullFacilityName },
+        })
+      );
     } catch {
       /* ignore */
     }

@@ -224,11 +224,23 @@ export default function OSPage() {
   const [cmdSearch, setCmdSearch] = useState('');
   const [wsConnected, setWsConnected] = useState(true);
 
-  // Live facility display name — updates when hospital settings are saved
+  // Live facility display name, crest logo & broadcast banner — updates when hospital settings are saved
   const [facilityDisplayName, setFacilityDisplayName] = useState(() => {
     try {
       const s = getAdminSettings(userSession?.hospitalId);
       if (s.displayName) return s.lga ? s.displayName + ', ' + s.lga : s.displayName;
+    } catch { /* ignore */ }
+    return '';
+  });
+  const [facilityLogoUrl, setFacilityLogoUrl] = useState(() => {
+    try {
+      return getAdminSettings(userSession?.hospitalId).logoUrl || '';
+    } catch { /* ignore */ }
+    return '';
+  });
+  const [maintenanceMessage, setMaintenanceMessage] = useState(() => {
+    try {
+      return getAdminSettings(userSession?.hospitalId).maintenanceMessage || '';
     } catch { /* ignore */ }
     return '';
   });
@@ -250,7 +262,7 @@ export default function OSPage() {
 
 
 
-  // Live facility name: re-read settings whenever admin saves hospital identity
+  // Live facility name, logo & broadcast banner: re-read settings whenever admin saves hospital identity or catalog
   useEffect(() => {
     const handler = () => {
       try {
@@ -258,10 +270,19 @@ export default function OSPage() {
         if (s.displayName) {
           setFacilityDisplayName(s.lga ? s.displayName + ', ' + s.lga : s.displayName);
         }
+        setFacilityLogoUrl(s.logoUrl || '');
+        setMaintenanceMessage(s.maintenanceMessage || '');
       } catch { /* ignore */ }
     };
+    handler();
     window.addEventListener('medcore-facility-updated', handler);
-    return () => window.removeEventListener('medcore-facility-updated', handler);
+    window.addEventListener('medcore-admin-settings', handler);
+    window.addEventListener('medcore-facility-catalog', handler);
+    return () => {
+      window.removeEventListener('medcore-facility-updated', handler);
+      window.removeEventListener('medcore-admin-settings', handler);
+      window.removeEventListener('medcore-facility-catalog', handler);
+    };
   }, [userSession?.hospitalId]);
 
   // If admin removes current module, send user home (must run before any early return)
@@ -286,7 +307,11 @@ export default function OSPage() {
     window.addEventListener('medcore-role-permissions', bump);
     window.addEventListener('medcore-admin-sync', bump);
     const onStorage = (e: StorageEvent) => {
-      if (e.key === 'medcore_os_role_permissions_v3' || e.key === 'medcore_os_role_permissions_v2') bump();
+      if (
+        e.key === 'medcore_os_role_permissions_v4' ||
+        e.key === 'medcore_os_role_permissions_v3' ||
+        e.key === 'medcore_os_role_permissions_v2'
+      ) bump();
     };
     window.addEventListener('storage', onStorage);
     return () => {
@@ -1717,7 +1742,11 @@ const handleLockScreen = () => {
         <header className="os-top-hud">
           <div className="os-top-hud-facility">
             <div className="os-top-hud-facility-icon">
-              <Building2 size={16} color="#0284C7" />
+              {facilityLogoUrl ? (
+                <img src={facilityLogoUrl} alt="" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
+              ) : (
+                <Building2 size={16} color="#0284C7" />
+              )}
             </div>
             <div className="os-top-hud-facility-meta">
               <span className="os-top-hud-facility-name">
@@ -1889,6 +1918,27 @@ const handleLockScreen = () => {
             <i />
           </span>
         </header>
+
+        {/* Hospital Admin Broadcast / Maintenance Notice */}
+        {maintenanceMessage && (
+          <div
+            style={{
+              background: 'linear-gradient(90deg, #FEF3C7 0%, #FFFBEB 100%)',
+              borderBottom: '1px solid #FDE68A',
+              color: '#92400E',
+              padding: '6px 18px',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              flexShrink: 0,
+            }}
+          >
+            <span>📢 HOSPITAL BROADCAST NOTICE:</span>
+            <span style={{ fontWeight: 600, color: '#78350F' }}>{maintenanceMessage}</span>
+          </div>
+        )}
 
         {/* LIVE UPDATES ticker removed */}
 

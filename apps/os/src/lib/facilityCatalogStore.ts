@@ -291,12 +291,49 @@ export function loadFacilityCatalog(facilityId: string, name?: string): Facility
   const blank = defaultCatalog(facilityId, name);
   if (typeof window === 'undefined') return blank;
   try {
-    const raw = localStorage.getItem(storageKey(facilityId));
-    if (!raw) return blank;
-    const parsed = JSON.parse(raw) as FacilityCatalog;
+    const raw =
+      localStorage.getItem(storageKey(facilityId)) ||
+      localStorage.getItem(FACILITY_CATALOG_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Partial<FacilityCatalog>) : {};
+
+    // Hydrate shared identity, licensing, hours & tariff fields from AdminSettings if present
+    let adminOverride: Partial<FacilityCatalog> = {};
+    try {
+      const adminRaw =
+        localStorage.getItem(`medcore_os_admin_settings_v1:${facilityId}`) ||
+        localStorage.getItem('medcore_os_admin_settings_v1');
+      if (adminRaw) {
+        const adm = JSON.parse(adminRaw);
+        adminOverride = {
+          name: adm.displayName || parsed.name || blank.name,
+          type: adm.facilityType || parsed.type || blank.type,
+          lga: adm.lga || parsed.lga || blank.lga,
+          address: adm.address || parsed.address || blank.address,
+          phone: adm.phone || parsed.phone || blank.phone,
+          email: adm.email || parsed.email || blank.email,
+          licenseNo: adm.licenseNo || parsed.licenseNo || blank.licenseNo,
+          licenseExpiry: adm.licenseExpiry || parsed.licenseExpiry || blank.licenseExpiry,
+          registrationNo: adm.registrationNo || parsed.registrationNo || blank.registrationNo,
+          medicalDirector: adm.medicalDirector || parsed.medicalDirector || blank.medicalDirector,
+          ownership: adm.ownership || parsed.ownership || blank.ownership,
+          workingHoursStart: adm.workingHoursStart || parsed.workingHoursStart || blank.workingHoursStart,
+          workingHoursEnd: adm.workingHoursEnd || parsed.workingHoursEnd || blank.workingHoursEnd,
+          operates24x7: adm.operates24x7 ?? parsed.operates24x7 ?? blank.operates24x7,
+          emergency24x7: adm.emergency24x7 ?? parsed.emergency24x7 ?? blank.emergency24x7,
+          defaultOpdFeeNgn: adm.defaultOpdFeeNgn ?? parsed.defaultOpdFeeNgn ?? blank.defaultOpdFeeNgn,
+          acceptsNhis: adm.acceptsNhis ?? parsed.acceptsNhis ?? blank.acceptsNhis,
+          acceptsHmo: adm.acceptsHmo ?? parsed.acceptsHmo ?? blank.acceptsHmo,
+          acceptedHmoList: adm.acceptedHmoList ?? parsed.acceptedHmoList ?? blank.acceptedHmoList,
+        };
+      }
+    } catch {
+      /* ignore */
+    }
+
     return {
       ...blank,
       ...parsed,
+      ...adminOverride,
       facilityId,
       services: { ...blank.services, ...(parsed.services || {}) },
       labCapabilities: { ...blank.labCapabilities, ...(parsed.labCapabilities || {}) },
@@ -319,6 +356,7 @@ export function saveFacilityCatalog(catalog: FacilityCatalog, actor?: string): F
   };
   if (typeof window !== 'undefined') {
     localStorage.setItem(storageKey(next.facilityId), JSON.stringify(next));
+    localStorage.setItem(FACILITY_CATALOG_KEY, JSON.stringify(next));
     // legacy profile mirror for older readers
     try {
       localStorage.setItem(
@@ -339,6 +377,44 @@ export function saveFacilityCatalog(catalog: FacilityCatalog, actor?: string): F
           medicalDirector: next.medicalDirector,
         })
       );
+    } catch {
+      /* ignore */
+    }
+    // Bi-directionally mirror shared identity, licensing, hours & tariff fields into AdminSettings
+    try {
+      const admKey = `medcore_os_admin_settings_v1:${next.facilityId || 'DEFAULT'}`;
+      const admRaw = localStorage.getItem(admKey) || localStorage.getItem('medcore_os_admin_settings_v1');
+      if (admRaw) {
+        const adm = JSON.parse(admRaw);
+        const syncedAdm = {
+          ...adm,
+          facilityId: next.facilityId,
+          displayName: next.name || adm.displayName || '',
+          facilityType: next.type || adm.facilityType || 'General Hospital',
+          ownership: next.ownership || adm.ownership || 'public_state',
+          lga: next.lga || adm.lga || '',
+          address: next.address || adm.address || '',
+          phone: next.phone || adm.phone || '',
+          email: next.email || adm.email || '',
+          licenseNo: next.licenseNo || adm.licenseNo || '',
+          licenseExpiry: next.licenseExpiry || adm.licenseExpiry || '',
+          registrationNo: next.registrationNo || adm.registrationNo || '',
+          medicalDirector: next.medicalDirector || adm.medicalDirector || '',
+          workingHoursStart: next.workingHoursStart || adm.workingHoursStart || '08:00',
+          workingHoursEnd: next.workingHoursEnd || adm.workingHoursEnd || '18:00',
+          operates24x7: next.operates24x7 ?? adm.operates24x7 ?? true,
+          emergency24x7: next.emergency24x7 ?? adm.emergency24x7 ?? true,
+          defaultOpdFeeNgn: next.defaultOpdFeeNgn ?? adm.defaultOpdFeeNgn ?? 5000,
+          acceptsNhis: next.acceptsNhis ?? adm.acceptsNhis ?? true,
+          acceptsHmo: next.acceptsHmo ?? adm.acceptsHmo ?? true,
+          acceptedHmoList: next.acceptedHmoList ?? adm.acceptedHmoList ?? '',
+          updatedAt: next.updatedAt,
+          updatedBy: next.updatedBy,
+        };
+        localStorage.setItem(admKey, JSON.stringify(syncedAdm));
+        localStorage.setItem('medcore_os_admin_settings_v1', JSON.stringify(syncedAdm));
+        window.dispatchEvent(new CustomEvent('medcore-admin-settings', { detail: syncedAdm }));
+      }
     } catch {
       /* ignore */
     }

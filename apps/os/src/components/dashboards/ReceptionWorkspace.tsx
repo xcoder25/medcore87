@@ -91,6 +91,8 @@ import {
   emitPatientPresence,
 } from '../../lib/presenceArrivalEngine';
 import { broadcastOpdStage } from '../../hooks/useOpdSync';
+import { getAdminSettings } from '../../lib/adminSettingsStore';
+import { loadFacilityCatalog } from '../../lib/facilityCatalogStore';
 
 interface Props {
   session: UserSession;
@@ -384,15 +386,34 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const streamRef = useRef<MediaStream | null>(null);
 
   // Check-in / POS form
+  const [adminSettings, setAdminSettings] = useState(() => getAdminSettings(facilityId));
+  const [facilityCatalog, setFacilityCatalog] = useState(() => loadFacilityCatalog(facilityId, facilityName));
+  const facilityDepts = useMemo(() => {
+    const customClinics = (facilityCatalog.clinics || []).map((c) => c.name).filter(Boolean);
+    return Array.from(new Set([...customClinics, ...RECEPTION_DEPTS]));
+  }, [facilityCatalog.clinics]);
+  const getDeptFee = useCallback(
+    (dept: string) => {
+      if (/emergency|casualty|triage/i.test(dept)) {
+        return adminSettings.emergencyTriageFeeNgn || CONSULT_FEES[dept] || 10000;
+      }
+      if (dept === 'General OPD' || !CONSULT_FEES[dept]) {
+        return adminSettings.defaultOpdFeeNgn || 5000;
+      }
+      return CONSULT_FEES[dept] || adminSettings.defaultOpdFeeNgn || 5000;
+    },
+    [adminSettings.defaultOpdFeeNgn, adminSettings.emergencyTriageFeeNgn]
+  );
+
   const [ciDept, setCiDept] = useState<string>('General OPD');
   const [ciDoctor, setCiDoctor] = useState('Any available');
   const [ciType, setCiType] = useState<VisitType>('walkin');
   const [ciPay, setCiPay] = useState<ReceptionVisit['paymentStatus']>('pending');
-  const [ciAmount, setCiAmount] = useState('5000');
+  const [ciAmount, setCiAmount] = useState(() => String(getAdminSettings(facilityId).defaultOpdFeeNgn || 5000));
   const [ciReason, setCiReason] = useState('Consultation');
   const [posMethod, setPosMethod] = useState<PaymentMethod>('cash');
     const payMethodBoxRef = useRef<HTMLDivElement>(null);
-  const [posAmount, setPosAmount] = useState('5000');
+  const [posAmount, setPosAmount] = useState(() => String(getAdminSettings(facilityId).defaultOpdFeeNgn || 5000));
   const [posPurpose, setPosPurpose] = useState('OPD consultation');
   const [posPatient, setPosPatient] = useState<FacilityPatient | null>(null);
   const [acctTargetBadge, setAcctTargetBadge] = useState('');
@@ -446,17 +467,23 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     setAppts(listAppointments(facilityId));
     setPayments(todayPayments(facilityId));
     setStats(dayStats(facilityId));
-  }, [facilityId]);
+    setAdminSettings(getAdminSettings(facilityId));
+    setFacilityCatalog(loadFacilityCatalog(facilityId, facilityName));
+  }, [facilityId, facilityName]);
 
   useEffect(() => {
     const bump = () => reload();
     window.addEventListener('medcore-opd-stage', bump);
     window.addEventListener('medcore-accounts-paid', bump);
     window.addEventListener('medcore-clinical-orders', bump);
+    window.addEventListener('medcore-admin-settings', bump);
+    window.addEventListener('medcore-facility-catalog', bump);
     return () => {
       window.removeEventListener('medcore-opd-stage', bump);
       window.removeEventListener('medcore-accounts-paid', bump);
       window.removeEventListener('medcore-clinical-orders', bump);
+      window.removeEventListener('medcore-admin-settings', bump);
+      window.removeEventListener('medcore-facility-catalog', bump);
     };
   }, [reload]);
 
@@ -525,8 +552,8 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   }, [facilityId, reload]);
 
   useEffect(() => {
-    setCiAmount(String(CONSULT_FEES[ciDept] ?? 5000));
-  }, [ciDept]);
+    setCiAmount(String(getDeptFee(ciDept)));
+  }, [ciDept, getDeptFee]);
 
   // Existing Patient Search Effect
   useEffect(() => {
@@ -3940,7 +3967,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 16 }}>
                 <div style={{ fontWeight: 800, marginBottom: 10, fontSize: 13 }}>By department</div>
-                {RECEPTION_DEPTS.slice(0, 6).map((d) => {
+                {facilityDepts.slice(0, 6).map((d) => {
                   const n = visits.filter((v) => v.department === d && (v.status === 'waiting' || v.status === 'called')).length;
                   return (
                     <div key={d} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
@@ -4289,7 +4316,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               <input style={inputStyle} value={ciReason} onChange={(e) => setCiReason(e.target.value)} placeholder="e.g. Consultation, fever, follow-up" />
               <label style={labelStyle}>Department</label>
               <select style={inputStyle} value={ciDept} onChange={(e) => setCiDept(e.target.value)}>
-                {RECEPTION_DEPTS.map((d) => (
+                {facilityDepts.map((d) => (
                   <option key={d}>{d}</option>
                 ))}
               </select>
@@ -4351,7 +4378,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 onClick={() => {
                   setCiType('walkin');
                   if (ciPay === 'pending') {
-                    const fee = Number(ciAmount) || CONSULT_FEES[ciDept] || 5000;
+                    const fee = Number(ciAmount) || getDeptFee(ciDept);
                     autoSendToAccounts(selected, fee, `${ciDept} consultation fee`);
                   }
                   doCheckIn(selected);
@@ -4405,7 +4432,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
             />
             <label style={{ ...labelStyle, marginTop: 8 }}>Department</label>
             <select style={inputStyle} value={apDept} onChange={(e) => setApDept(e.target.value)}>
-              {RECEPTION_DEPTS.map((d) => (
+              {facilityDepts.map((d) => (
                 <option key={d}>{d}</option>
               ))}
             </select>
@@ -4477,7 +4504,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       onClick={() => {
                         const p = patients.find((x) => x.id === a.patientId);
                         if (p) {
-                          const fee = CONSULT_FEES[a.department] || 5000;
+                          const fee = getDeptFee(a.department);
                           autoSendToAccounts(p, fee, `${a.department} appointment fee`);
                           const visit = checkInPatient({
                             patient: p,
