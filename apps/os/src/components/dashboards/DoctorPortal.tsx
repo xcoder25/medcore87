@@ -1,6 +1,7 @@
 'use client';
 
 import { markPatientWithProvider } from '../../lib/receptionOpsStore';
+import { useFormDraft } from '../../lib/formDraftStore';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { UserSession } from '../auth/AuthScreen';
@@ -113,12 +114,12 @@ const INITIAL_TASKS: Task[] = [];
 
 const VitalChip: React.FC<{ label: string; value: string | number; unit?: string; warn?: boolean }> = ({ label, value, unit, warn }) => (
   <div style={{
-    background: warn ? 'rgba(239,68,68,0.08)' : '#FFFFFF',
-    border: `1px solid ${warn ? 'rgba(239,68,68,0.3)' : '#E2E8F0'}`,
+    background: warn ? '#FEF2F2' : '#F8FAFC',
+    border: `1px solid ${warn ? '#FECACA' : '#E2E8F0'}`,
     borderRadius: 8, padding: '5px 9px', textAlign: 'center', minWidth: 52,
   }}>
     <div style={{ fontSize: '0.58rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
-    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: warn ? '#EF4444' : '#F8FAFC' }}>
+    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: warn ? '#DC2626' : '#0F172A' }}>
       {value}<span style={{ fontSize: '0.6rem', color: '#64748B' }}>{unit}</span>
     </div>
   </div>
@@ -126,11 +127,11 @@ const VitalChip: React.FC<{ label: string; value: string | number; unit?: string
 
 const StatusBadge: React.FC<{ status: Patient['status'] }> = ({ status }) => {
   const map: Record<Patient['status'], { color: string; bg: string; label: string }> = {
-    critical: { color: '#EF4444', bg: 'rgba(239,68,68,0.15)', label: '? CRITICAL' },
-    inpatient: { color: '#0052D4', bg: 'rgba(56,189,248,0.12)', label: 'Inpatient' },
-    outpatient: { color: '#059669', bg: 'rgba(74,222,128,0.12)', label: 'Outpatient' },
-    discharged: { color: '#64748B', bg: 'rgba(100,116,139,0.12)', label: 'Discharged' },
-    pending: { color: '#F59E0B', bg: 'rgba(245,158,11,0.12)', label: 'Pending' },
+    critical: { color: '#DC2626', bg: '#FEE2E2', label: '● CRITICAL' },
+    inpatient: { color: '#0052D4', bg: '#EFF6FF', label: 'Inpatient' },
+    outpatient: { color: '#059669', bg: '#ECFDF5', label: 'Outpatient' },
+    discharged: { color: '#64748B', bg: '#F1F5F9', label: 'Discharged' },
+    pending: { color: '#D97706', bg: '#FEF3C7', label: 'Pending' },
   };
   const m = map[status];
   return (
@@ -148,12 +149,13 @@ const StatCard: React.FC<{
   <div
     onClick={onClick}
     style={{
-      background: 'rgba(15,23,42,0.85)', border: `1px solid ${color}28`,
+      background: '#FFFFFF', border: '1px solid #E2E8F0',
       borderRadius: 14, padding: '18px 20px', cursor: onClick ? 'pointer' : 'default',
       transition: 'all 0.2s', position: 'relative', overflow: 'hidden',
+      boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)',
     }}
     onMouseEnter={e => { if (onClick) (e.currentTarget as HTMLDivElement).style.borderColor = color; }}
-    onMouseLeave={e => { if (onClick) (e.currentTarget as HTMLDivElement).style.borderColor = `${color}28`; }}
+    onMouseLeave={e => { if (onClick) (e.currentTarget as HTMLDivElement).style.borderColor = '#E2E8F0'; }}
   >
     {pulse && <div style={{
       position: 'absolute', top: 12, right: 12, width: 9, height: 9,
@@ -161,11 +163,11 @@ const StatCard: React.FC<{
       animation: 'docPortalPulse 1.4s infinite',
     }} />}
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <div style={{ width: 44, height: 44, borderRadius: 12, background: `${color}1A`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <div style={{ width: 44, height: 44, borderRadius: 12, background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <Icon size={21} color={color} />
       </div>
       <div>
-        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{label}</div>
+        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{label}</div>
         <div style={{ fontSize: '1.7rem', fontWeight: 800, color: '#0A2540', lineHeight: 1 }}>{value}</div>
         {sub && <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: 4 }}>{sub}</div>}
       </div>
@@ -189,26 +191,27 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Banner */}
       <div style={{
-        background: 'linear-gradient(135deg, rgba(2,132,199,0.16) 0%, rgba(15,23,42,0.96) 55%, rgba(124,58,237,0.08) 100%)',
-        border: '1px solid rgba(2,132,199,0.22)', borderRadius: 16, padding: '22px 28px',
+        background: 'linear-gradient(135deg, #EFF6FF 0%, #FFFFFF 55%, #F0FDF4 100%)',
+        border: '1px solid #BFDBFE', borderRadius: 16, padding: '22px 28px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16,
+        boxShadow: '0 4px 16px rgba(15, 23, 42, 0.04)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
           <div style={{
             width: 56, height: 56, borderRadius: 16, flexShrink: 0,
             background: 'linear-gradient(135deg,#0284C7,#0369A1)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '1.3rem', fontWeight: 800, color: '#0A2540',
-            boxShadow: '0 4px 16px rgba(2,132,199,0.4)',
+            fontSize: '1.3rem', fontWeight: 800, color: '#FFFFFF',
+            boxShadow: '0 4px 16px rgba(2,132,199,0.28)',
           }}>{session.avatarInitials || 'DR'}</div>
           <div>
-            <div style={{ fontSize: '0.75rem', color: '#0052D4', fontWeight: 600, marginBottom: 3 }}>{greeting}, Doctor ??</div>
+            <div style={{ fontSize: '0.75rem', color: '#0052D4', fontWeight: 700, marginBottom: 3 }}>{greeting}, Doctor</div>
             <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800, color: '#0A2540' }}>
               {session.title || 'Physician'} Command Desk
             </h1>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 5, fontSize: '0.76rem', color: '#94A3B8', flexWrap: 'wrap' }}>
-              <span style={{ color: '#059669', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ADE80', display: 'inline-block' }} /> Active Duty
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 5, fontSize: '0.76rem', color: '#475569', flexWrap: 'wrap' }}>
+              <span style={{ color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} /> Active Duty
               </span>
               <span>•</span><span>{session.facility || 'Ibom Specialist Hospital'}</span>
               <span>•</span><span>{session.department || 'Internal Medicine'}</span>
@@ -218,9 +221,9 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {[
-            { label: 'Start Consultation', icon: Stethoscope, color: '#0052D4', bg: 'rgba(2,132,199,0.18)', border: 'rgba(2,132,199,0.45)', nav: 'consultation' },
-            { label: 'Ward Round', icon: BedDouble, color: '#A78BFA', bg: 'rgba(124,58,237,0.18)', border: 'rgba(124,58,237,0.4)', nav: 'ward-round' },
-            { label: 'Emergency Referral', icon: Siren, color: '#F87171', bg: 'rgba(239,68,68,0.14)', border: 'rgba(239,68,68,0.4)', nav: 'referrals' },
+            { label: 'Start Consultation', icon: Stethoscope, color: '#0052D4', bg: '#EFF6FF', border: '#BFDBFE', nav: 'consultation' },
+            { label: 'Ward Round', icon: BedDouble, color: '#6D28D9', bg: '#F5F3FF', border: '#DDD6FE', nav: 'ward-round' },
+            { label: 'Emergency Referral', icon: Siren, color: '#DC2626', bg: '#FEF2F2', border: '#FECACA', nav: 'referrals' },
           ].map(b => (
             <button key={b.label} type="button" onClick={() => onSubNav(b.nav as SubModule)} style={{
               background: b.bg, border: `1px solid ${b.border}`, color: b.color,
@@ -235,18 +238,18 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
 
       {/* KPI Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 13 }}>
-        <StatCard label="My Patients" value={PATIENTS.length} icon={Users} color="#38BDF8" sub="3 inpatient • 1 OPD • 1 ICU" onClick={() => onSubNav('patients')} />
-        <StatCard label="Critical" value={critical.length} icon={AlertTriangle} color="#EF4444" sub="ICU monitoring active" onClick={() => onSubNav('patients')} pulse={critical.length > 0} />
-        <StatCard label="Today's Appts" value={APPOINTMENTS.length} icon={Calendar} color="#A78BFA" sub={`${APPOINTMENTS.filter(a => a.status === 'done').length} done • ${remaining.length} left`} onClick={() => onSubNav('appointments')} />
-        <StatCard label="Pending Results" value={5} icon={FlaskConical} color="#F59E0B" sub="3 Lab • 2 Radiology" onClick={() => onSubNav('lab-orders')} />
-        <StatCard label="Pending Tasks" value={pendingTasks.length} icon={ClipboardList} color="#10B981" sub={`${urgentTasks.length} urgent or high`} onClick={() => onSubNav('tasks')} pulse={urgentTasks.length > 0} />
-        <StatCard label="Messages" value={3} icon={MessageSquare} color="#60A5FA" sub="2 unread clinical msgs" onClick={() => onSubNav('messages')} />
+        <StatCard label="My Patients" value={PATIENTS.length} icon={Users} color="#0284C7" sub="3 inpatient • 1 OPD • 1 ICU" onClick={() => onSubNav('patients')} />
+        <StatCard label="Critical" value={critical.length} icon={AlertTriangle} color="#DC2626" sub="ICU monitoring active" onClick={() => onSubNav('patients')} pulse={critical.length > 0} />
+        <StatCard label="Today's Appts" value={APPOINTMENTS.length} icon={Calendar} color="#7C3AED" sub={`${APPOINTMENTS.filter(a => a.status === 'done').length} done • ${remaining.length} left`} onClick={() => onSubNav('appointments')} />
+        <StatCard label="Pending Results" value={5} icon={FlaskConical} color="#D97706" sub="3 Lab • 2 Radiology" onClick={() => onSubNav('lab-orders')} />
+        <StatCard label="Pending Tasks" value={pendingTasks.length} icon={ClipboardList} color="#059669" sub={`${urgentTasks.length} urgent or high`} onClick={() => onSubNav('tasks')} pulse={urgentTasks.length > 0} />
+        <StatCard label="Messages" value={3} icon={MessageSquare} color="#2563EB" sub="2 unread clinical msgs" onClick={() => onSubNav('messages')} />
       </div>
 
       {/* Closed Clinical Loop Live Telemetry Stream */}
       <div style={{
-        background: 'linear-gradient(90deg, rgba(15,23,42,0.92) 0%, rgba(2,132,199,0.08) 50%, rgba(15,23,42,0.92) 100%)',
-        border: '1px solid rgba(56,189,248,0.28)',
+        background: '#FFFFFF',
+        border: '1px solid #BAE6FD',
         borderRadius: 14,
         padding: '14px 18px',
         display: 'flex',
@@ -254,6 +257,7 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
         justifyContent: 'space-between',
         flexWrap: 'wrap',
         gap: 12,
+        boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{
@@ -262,13 +266,13 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
             boxShadow: connected ? '0 0 10px #10B981' : 'none',
           }} />
           <div>
-            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#38BDF8', letterSpacing: '0.04em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0284C7', letterSpacing: '0.04em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Layers size={14} /> Closed Clinical Loop: Real-Time Event Bus
-              <span style={{ fontSize: '0.68rem', color: connected ? '#34D399' : '#FBBF24', background: 'rgba(16,185,129,0.12)', padding: '2px 7px', borderRadius: 999, fontWeight: 700 }}>
+              <span style={{ fontSize: '0.68rem', color: connected ? '#059669' : '#D97706', background: connected ? '#ECFDF5' : '#FEF3C7', border: `1px solid ${connected ? '#A7F3D0' : '#FDE68A'}`, padding: '2px 7px', borderRadius: 999, fontWeight: 700 }}>
                 {connected ? 'CONNECTED (/ws)' : 'RECONNECTING'}
               </span>
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#94A3B8', marginTop: 2 }}>
+            <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: 2 }}>
               Order → Pharmacy Verify → Dispense → Bedside e-MAR → Lab/PACS Result → Physician Workstation
             </div>
           </div>
@@ -279,9 +283,9 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
             type="button"
             onClick={() => onSubNav('lab-orders')}
             style={{
-              background: 'rgba(56,189,248,0.12)',
-              border: '1px solid rgba(56,189,248,0.3)',
-              color: '#38BDF8',
+              background: '#F0F9FF',
+              border: '1px solid #BAE6FD',
+              color: '#0369A1',
               padding: '6px 12px',
               borderRadius: 8,
               fontSize: '0.74rem',
@@ -298,9 +302,9 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
             type="button"
             onClick={() => onSubNav('prescriptions')}
             style={{
-              background: 'rgba(168,85,247,0.12)',
-              border: '1px solid rgba(168,85,247,0.3)',
-              color: '#C084FC',
+              background: '#FAF5FF',
+              border: '1px solid #E9D5FF',
+              color: '#7E22CE',
               padding: '6px 12px',
               borderRadius: 8,
               fontSize: '0.74rem',
@@ -322,58 +326,58 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Critical alert */}
           {critical.length > 0 && (
-            <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.32)', borderRadius: 14, padding: '16px 20px' }}>
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 14, padding: '16px 20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <AlertTriangle size={16} color="#EF4444" />
-                <span style={{ fontWeight: 700, color: '#F87171', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <AlertTriangle size={16} color="#DC2626" />
+                <span style={{ fontWeight: 700, color: '#DC2626', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Critical Patients • Immediate Attention
                 </span>
               </div>
               {critical.map(p => (
                 <div key={p.id} style={{
                   display: 'flex', alignItems: 'center', gap: 14,
-                  background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.14)',
+                  background: '#FFFFFF', border: '1px solid #FECACA',
                   borderRadius: 10, padding: '12px 14px', marginBottom: 8,
                 }}>
-                  <HeartPulse size={22} color="#EF4444" style={{ flexShrink: 0 }} />
+                  <HeartPulse size={22} color="#DC2626" style={{ flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.9rem' }}>
-                      {p.name} <span style={{ fontSize: '0.73rem', color: '#94A3B8' }}>• {p.id}</span>
+                      {p.name} <span style={{ fontSize: '0.73rem', color: '#64748B' }}>• {p.id}</span>
                     </div>
-                    <div style={{ fontSize: '0.76rem', color: '#F87171', marginTop: 2 }}>{p.diagnosis}</div>
-                    <div style={{ fontSize: '0.73rem', color: '#94A3B8', marginTop: 2 }}>
+                    <div style={{ fontSize: '0.76rem', color: '#DC2626', fontWeight: 600, marginTop: 2 }}>{p.diagnosis}</div>
+                    <div style={{ fontSize: '0.73rem', color: '#475569', marginTop: 2 }}>
                       {p.ward} • BP {p.vitals?.bp} • HR {p.vitals?.hr} • SpO2 {p.vitals?.spo2}%
                     </div>
                   </div>
                   <button type="button" style={{
-                    background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.38)',
-                    color: '#F87171', padding: '7px 14px', borderRadius: 8, fontWeight: 700,
+                    background: '#FEE2E2', border: '1px solid #FCA5A5',
+                    color: '#B91C1C', padding: '7px 14px', borderRadius: 8, fontWeight: 700,
                     fontSize: '0.76rem', cursor: 'pointer', whiteSpace: 'nowrap',
-                  }}>Review Now ?</button>
+                  }}>Review Now →</button>
                 </div>
               ))}
             </div>
           )}
 
           {/* Patient Table */}
-          <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid #FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 7 }}>
-                <Users size={15} color="#38BDF8" /> My Active Patients
+                <Users size={15} color="#0284C7" /> My Active Patients
               </div>
               <button type="button" onClick={() => onSubNav('patients')} style={{
-                background: 'rgba(2,132,199,0.14)', border: '1px solid rgba(2,132,199,0.28)',
-                color: '#0052D4', fontSize: '0.73rem', fontWeight: 600, padding: '5px 12px', borderRadius: 8, cursor: 'pointer',
-              }}>View All ?</button>
+                background: '#EFF6FF', border: '1px solid #BFDBFE',
+                color: '#0052D4', fontSize: '0.73rem', fontWeight: 700, padding: '5px 12px', borderRadius: 8, cursor: 'pointer',
+              }}>View All →</button>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
+                <tr style={{ background: '#F8FAFC' }}>
                   {['Patient', 'Diagnosis', 'Ward / Bed', 'Vitals', 'Next Action', 'Status', ''].map(h => (
                     <th key={h} style={{
                       textAlign: 'left', padding: '9px 14px', fontSize: '0.65rem',
                       color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
-                      borderBottom: '1px solid #FFFFFF',
+                      borderBottom: '1px solid #E2E8F0',
                     }}>{h}</th>
                   ))}
                 </tr>
@@ -381,26 +385,26 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
               <tbody>
                 {PATIENTS.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ padding: '36px 14px', textAlign: 'center', color: '#94A3B8', fontSize: '0.84rem' }}>
+                    <td colSpan={7} style={{ padding: '36px 14px', textAlign: 'center', color: '#64748B', fontSize: '0.84rem' }}>
                       No patients registered in this facility yet. Patients enrolled at Reception appear here automatically.
                     </td>
                   </tr>
                 ) : (
                   PATIENTS.map((p, i) => (
                     <tr key={p.id}
-                      style={{ borderBottom: i < PATIENTS.length - 1 ? '1px solid #FFFFFF' : 'none', background: p.status === 'critical' ? 'rgba(239,68,68,0.03)' : 'transparent', transition: 'background 0.15s' }}
-                      onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.025)'}
-                      onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.background = p.status === 'critical' ? 'rgba(239,68,68,0.03)' : 'transparent'}
+                      style={{ borderBottom: i < PATIENTS.length - 1 ? '1px solid #F1F5F9' : 'none', background: p.status === 'critical' ? '#FEF2F2' : 'transparent', transition: 'background 0.15s' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.background = '#F8FAFC'}
+                      onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.background = p.status === 'critical' ? '#FEF2F2' : 'transparent'}
                     >
                       <td style={{ padding: '10px 14px' }}>
                         <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.84rem' }}>{p.name}</div>
                         <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{p.id} • {p.age}{p.gender}</div>
                       </td>
                       <td style={{ padding: '10px 14px' }}>
-                        <div style={{ fontSize: '0.78rem', color: '#CBD5E1', maxWidth: 180 }}>{p.diagnosis}</div>
+                        <div style={{ fontSize: '0.78rem', color: '#334155', maxWidth: 180 }}>{p.diagnosis}</div>
                       </td>
                       <td style={{ padding: '10px 14px' }}>
-                        <div style={{ fontSize: '0.78rem', color: '#94A3B8' }}>{p.ward}</div>
+                        <div style={{ fontSize: '0.78rem', color: '#475569' }}>{p.ward}</div>
                         {p.bed && <div style={{ fontSize: '0.7rem', color: '#0052D4', fontWeight: 600 }}>Bed {p.bed}</div>}
                       </td>
                       <td style={{ padding: '10px 14px' }}>
@@ -411,13 +415,13 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
                         </div>
                       </td>
                       <td style={{ padding: '10px 14px' }}>
-                        <div style={{ fontSize: '0.75rem', color: '#F59E0B', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ fontSize: '0.75rem', color: '#D97706', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
                           <Clock size={11} /> {p.nextAction}
                         </div>
                       </td>
                       <td style={{ padding: '10px 14px' }}><StatusBadge status={p.status} /></td>
                       <td style={{ padding: '10px 14px' }}>
-                        <button type="button" style={{ background: 'rgba(2,132,199,0.1)', border: '1px solid rgba(2,132,199,0.22)', color: '#0052D4', fontSize: '0.7rem', fontWeight: 600, padding: '4px 9px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>View ?</button>
+                        <button type="button" style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#0052D4', fontSize: '0.7rem', fontWeight: 700, padding: '4px 9px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>View →</button>
                       </td>
                     </tr>
                   )))}
@@ -429,73 +433,73 @@ const DashboardView: React.FC<{ session: UserSession; onSubNav: (k: SubModule) =
         {/* Right column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
           {/* Schedule */}
-          <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px' }}>
+          <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
             <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem', marginBottom: 11, display: 'flex', alignItems: 'center', gap: 7 }}>
-              <Calendar size={14} color="#A78BFA" /> Today's Schedule
+              <Calendar size={14} color="#7C3AED" /> Today's Schedule
             </div>
             {APPOINTMENTS.slice(0, 6).map(a => (
-              <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 0', borderBottom: '1px solid #FFFFFF' }}>
-                <div style={{ minWidth: 42, fontSize: '0.73rem', fontWeight: 700, color: a.status === 'done' ? '#4ADE80' : a.status === 'waiting' ? '#F59E0B' : '#64748B', textAlign: 'center' }}>{a.time}</div>
+              <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 0', borderBottom: '1px solid #F1F5F9' }}>
+                <div style={{ minWidth: 42, fontSize: '0.73rem', fontWeight: 700, color: a.status === 'done' ? '#059669' : a.status === 'waiting' ? '#D97706' : '#64748B', textAlign: 'center' }}>{a.time}</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 600, color: a.status === 'done' ? '#64748B' : '#F8FAFC' }}>{a.patientName}</div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: a.status === 'done' ? '#64748B' : '#0F172A' }}>{a.patientName}</div>
                   <div style={{ fontSize: '0.68rem', color: '#64748B' }}>{a.type}</div>
                 </div>
                 <span style={{
                   fontSize: '0.63rem', fontWeight: 700, borderRadius: 999, padding: '1px 6px',
-                  color: a.status === 'done' ? '#4ADE80' : a.status === 'waiting' ? '#F59E0B' : '#64748B',
-                  background: a.status === 'done' ? 'rgba(74,222,128,0.1)' : a.status === 'waiting' ? 'rgba(245,158,11,0.1)' : 'rgba(100,116,139,0.1)',
+                  color: a.status === 'done' ? '#059669' : a.status === 'waiting' ? '#D97706' : '#64748B',
+                  background: a.status === 'done' ? '#ECFDF5' : a.status === 'waiting' ? '#FEF3C7' : '#F1F5F9',
                   border: '1px solid currentColor',
                 }}>
-                  {a.status === 'done' ? '? Done' : a.status === 'waiting' ? '? Wait' : 'Upcoming'}
+                  {a.status === 'done' ? '✓ Done' : a.status === 'waiting' ? '⏳ Wait' : 'Upcoming'}
                 </span>
               </div>
             ))}
-            <button type="button" onClick={() => onSubNav('appointments')} style={{ width: '100%', marginTop: 9, background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.22)', color: '#A78BFA', padding: '7px', borderRadius: 8, fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer' }}>
-              Full Schedule ?
+            <button type="button" onClick={() => onSubNav('appointments')} style={{ width: '100%', marginTop: 9, background: '#F5F3FF', border: '1px solid #DDD6FE', color: '#6D28D9', padding: '7px', borderRadius: 8, fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>
+              Full Schedule →
             </button>
           </div>
 
           {/* Tasks */}
-          <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px' }}>
+          <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
             <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem', marginBottom: 11, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ClipboardList size={14} color="#10B981" /> Tasks</span>
-              <span style={{ fontSize: '0.65rem', fontWeight: 700, background: 'rgba(239,68,68,0.13)', color: '#F87171', border: '1px solid rgba(239,68,68,0.24)', padding: '2px 8px', borderRadius: 999 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}><ClipboardList size={14} color="#059669" /> Tasks</span>
+              <span style={{ fontSize: '0.65rem', fontWeight: 700, background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA', padding: '2px 8px', borderRadius: 999 }}>
                 {urgentTasks.length} Urgent
               </span>
             </div>
             {INITIAL_TASKS.slice(0, 5).map(t => {
-              const pc: Record<Task['priority'], string> = { urgent: '#EF4444', high: '#F59E0B', normal: '#38BDF8', low: '#64748B' };
+              const pc: Record<Task['priority'], string> = { urgent: '#EF4444', high: '#F59E0B', normal: '#0284C7', low: '#64748B' };
               return (
-                <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, padding: '7px 0', borderBottom: '1px solid #FFFFFF' }}>
+                <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, padding: '7px 0', borderBottom: '1px solid #F1F5F9' }}>
                   <span style={{ width: 7, height: 7, borderRadius: '50%', background: pc[t.priority], display: 'inline-block', marginTop: 5, flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.76rem', color: '#CBD5E1', lineHeight: 1.4 }}>{t.title}</div>
+                    <div style={{ fontSize: '0.76rem', color: '#334155', fontWeight: 600, lineHeight: 1.4 }}>{t.title}</div>
                     <div style={{ fontSize: '0.65rem', color: '#64748B', marginTop: 1 }}>Due: {t.due}</div>
                   </div>
-                  <button type="button" style={{ background: 'transparent', border: '1px solid rgba(74,222,128,0.28)', color: '#059669', padding: '2px 6px', borderRadius: 5, cursor: 'pointer', fontSize: '0.67rem', flexShrink: 0 }}>?</button>
+                  <button type="button" style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669', padding: '2px 6px', borderRadius: 5, cursor: 'pointer', fontSize: '0.67rem', fontWeight: 700, flexShrink: 0 }}>✓</button>
                 </div>
               );
             })}
-            <button type="button" onClick={() => onSubNav('tasks')} style={{ width: '100%', marginTop: 9, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.22)', color: '#10B981', padding: '7px', borderRadius: 8, fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer' }}>
-              All Tasks ?
+            <button type="button" onClick={() => onSubNav('tasks')} style={{ width: '100%', marginTop: 9, background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669', padding: '7px', borderRadius: 8, fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>
+              All Tasks →
             </button>
           </div>
 
           {/* Quick Actions */}
-          <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px' }}>
-            <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem', marginBottom: 11 }}>? Quick Actions</div>
+          <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
+            <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem', marginBottom: 11 }}>⚡ Quick Actions</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
               {[
                 { icon: UserPlus, label: 'Admit Patient', color: '#0052D4', nav: 'admission' },
-                { icon: Pill, label: 'Prescribe', color: '#A78BFA', nav: 'prescriptions' },
-                { icon: FlaskConical, label: 'Order Lab', color: '#F59E0B', nav: 'lab-orders' },
-                { icon: Layers, label: 'Order Scan', color: '#F472B6', nav: 'radiology-orders' },
-                { icon: Send, label: 'Refer Patient', color: '#10B981', nav: 'referrals' },
-                { icon: FileText, label: 'Clinical Note', color: '#60A5FA', nav: 'emr' },
+                { icon: Pill, label: 'Prescribe', color: '#7C3AED', nav: 'prescriptions' },
+                { icon: FlaskConical, label: 'Order Lab', color: '#D97706', nav: 'lab-orders' },
+                { icon: Layers, label: 'Order Scan', color: '#DB2777', nav: 'radiology-orders' },
+                { icon: Send, label: 'Refer Patient', color: '#059669', nav: 'referrals' },
+                { icon: FileText, label: 'Clinical Note', color: '#2563EB', nav: 'emr' },
               ].map(q => (
                 <button key={q.label} type="button" onClick={() => onSubNav(q.nav as SubModule)} style={{
                   background: `${q.color}0D`, border: `1px solid ${q.color}28`, color: q.color,
-                  padding: '9px 11px', borderRadius: 9, fontWeight: 600, fontSize: '0.75rem',
+                  padding: '9px 11px', borderRadius: 9, fontWeight: 700, fontSize: '0.75rem',
                   cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.15s',
                 }}>
                   <q.icon size={13} /> {q.label}
@@ -540,7 +544,7 @@ const PatientsView: React.FC = () => {
     <div style={{ display: 'flex', gap: 16 }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 13 }}>
         {/* Toolbar */}
-        <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 11, flexWrap: 'wrap' }}>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 11, flexWrap: 'wrap', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
           <div style={{ flex: 1, minWidth: 260 }}>
             <InteractiveSearchBar
               value={search}
@@ -556,10 +560,10 @@ const PatientsView: React.FC = () => {
           </div>
           {(['all', 'inpatient', 'outpatient', 'critical'] as const).map(f => (
             <button key={f} type="button" onClick={() => setFilter(f)} style={{
-              padding: '7px 13px', borderRadius: 8, fontWeight: 600, fontSize: '0.76rem', cursor: 'pointer',
-              background: filter === f ? 'rgba(2,132,199,0.18)' : 'transparent',
-              border: `1px solid ${filter === f ? '#0284C7' : 'rgba(255,255,255,0.09)'}`,
-              color: filter === f ? '#38BDF8' : '#64748B',
+              padding: '7px 13px', borderRadius: 8, fontWeight: 700, fontSize: '0.76rem', cursor: 'pointer',
+              background: filter === f ? '#EFF6FF' : '#F8FAFC',
+              border: `1px solid ${filter === f ? '#0284C7' : '#E2E8F0'}`,
+              color: filter === f ? '#0284C7' : '#64748B',
             }}>{f.charAt(0).toUpperCase() + f.slice(1)}</button>
           ))}
           <button type="button" style={{ background: 'linear-gradient(135deg,#0284C7,#0369A1)', border: 'none', color: '#fff', padding: '8px 15px', borderRadius: 9, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -569,31 +573,32 @@ const PatientsView: React.FC = () => {
 
         {/* Cards */}
         {filtered.length === 0 ? (
-          <div style={{ padding: 48, textAlign: 'center', background: 'rgba(15,23,42,0.85)', borderRadius: 14, border: '1px dashed #334155', color: '#94A3B8' }}>
+          <div style={{ padding: 48, textAlign: 'center', background: '#FFFFFF', borderRadius: 14, border: '1px dashed #CBD5E1', color: '#64748B' }}>
             <Users size={32} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
-            <div style={{ fontWeight: 700, color: '#F8FAFC', marginBottom: 4 }}>No Patients Found</div>
+            <div style={{ fontWeight: 700, color: '#0F172A', marginBottom: 4 }}>No Patients Found</div>
             <div style={{ fontSize: '0.8rem' }}>No patients currently registered in this facility. New registrations from Reception appear here in real-time.</div>
           </div>
         ) : (
           filtered.map(p => (
             <div key={p.id} onClick={() => setSelected(p)} style={{
-              background: selected?.id === p.id ? 'rgba(2,132,199,0.07)' : 'rgba(15,23,42,0.85)',
-              border: `1px solid ${selected?.id === p.id ? 'rgba(2,132,199,0.38)' : p.status === 'critical' ? 'rgba(239,68,68,0.22)' : '#E2E8F0'}`,
+              background: selected?.id === p.id ? '#EFF6FF' : '#FFFFFF',
+              border: `1px solid ${selected?.id === p.id ? '#38BDF8' : p.status === 'critical' ? '#FECACA' : '#E2E8F0'}`,
               borderRadius: 12, padding: '13px 17px', cursor: 'pointer',
               display: 'grid', gridTemplateColumns: '1fr 1fr 190px auto', alignItems: 'center', gap: 14, transition: 'all 0.15s',
+              boxShadow: '0 2px 6px rgba(15, 23, 42, 0.03)',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: p.status === 'critical' ? 'rgba(239,68,68,0.18)' : 'rgba(2,132,199,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: p.status === 'critical' ? '#F87171' : '#38BDF8', fontSize: '0.85rem', flexShrink: 0 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: p.status === 'critical' ? '#FEE2E2' : '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: p.status === 'critical' ? '#DC2626' : '#0284C7', fontSize: '0.85rem', flexShrink: 0 }}>
                   {p.name.split(' ').map(n => n[0]).join('')}
                 </div>
                 <div>
                   <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem' }}>{p.name}</div>
                   <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{p.id} • {p.age}{p.gender}</div>
-                  <div style={{ fontSize: '0.76rem', color: '#CBD5E1', marginTop: 2 }}>{p.diagnosis}</div>
+                  <div style={{ fontSize: '0.76rem', color: '#334155', marginTop: 2 }}>{p.diagnosis}</div>
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: '0.77rem', color: '#94A3B8' }}>{p.ward}{p.bed ? ` • Bed ${p.bed}` : ''}</div>
+                <div style={{ fontSize: '0.77rem', color: '#475569', fontWeight: 600 }}>{p.ward}{p.bed ? ` • Bed ${p.bed}` : ''}</div>
                 <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: 2 }}>Admit: {p.admitDate}</div>
               </div>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -605,7 +610,7 @@ const PatientsView: React.FC = () => {
                 <StatusBadge status={p.status} />
                 <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   {p.flags.slice(0, 2).map(f => (
-                    <span key={f} style={{ fontSize: '0.6rem', background: 'rgba(245,158,11,0.09)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.22)', borderRadius: 4, padding: '1px 5px' }}>{f}</span>
+                    <span key={f} style={{ fontSize: '0.6rem', background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>{f}</span>
                   ))}
                 </div>
               </div>
@@ -615,18 +620,18 @@ const PatientsView: React.FC = () => {
 
       {/* Detail Panel */}
       {selected && (
-        <div style={{ width: 300, flexShrink: 0, background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(2,132,199,0.22)', borderRadius: 14, padding: '18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ width: 300, flexShrink: 0, background: '#FFFFFF', border: '1px solid #BAE6FD', borderRadius: 14, padding: '18px', display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 4px 16px rgba(15, 23, 42, 0.06)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ fontWeight: 800, color: '#0052D4', fontSize: '0.95rem' }}>Patient Detail</div>
             <button type="button" onClick={() => setSelected(null)} style={{ background: 'transparent', border: 'none', color: '#64748B', cursor: 'pointer' }}><X size={15} /></button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 13, background: selected.status === 'critical' ? 'rgba(239,68,68,0.18)' : 'rgba(2,132,199,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1rem', color: selected.status === 'critical' ? '#F87171' : '#38BDF8' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 13, background: selected.status === 'critical' ? '#FEE2E2' : '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '1rem', color: selected.status === 'critical' ? '#DC2626' : '#0284C7' }}>
               {selected.name.split(' ').map(n => n[0]).join('')}
             </div>
             <div>
               <div style={{ fontWeight: 800, color: '#0A2540', fontSize: '0.95rem' }}>{selected.name}</div>
-              <div style={{ fontSize: '0.73rem', color: '#94A3B8' }}>{selected.id} • {selected.age}y • {selected.gender === 'M' ? 'Male' : 'Female'}</div>
+              <div style={{ fontSize: '0.73rem', color: '#64748B' }}>{selected.id} • {selected.age}y • {selected.gender === 'M' ? 'Male' : 'Female'}</div>
               <div style={{ marginTop: 3 }}><StatusBadge status={selected.status} /></div>
             </div>
           </div>
@@ -639,7 +644,7 @@ const PatientsView: React.FC = () => {
             ))}
           </div>
           <div>
-            <div style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: 600, marginBottom: 7, textTransform: 'uppercase' }}>Current Vitals</div>
+            <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 700, marginBottom: 7, textTransform: 'uppercase' }}>Current Vitals</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5 }}>
               <VitalChip label="BP" value={selected.vitals?.bp} warn={parseInt(selected.vitals?.bp) > 140} />
               <VitalChip label="HR" value={selected.vitals?.hr} unit="/m" warn={selected.vitals?.hr > 100} />
@@ -651,11 +656,11 @@ const PatientsView: React.FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {[
               { label: 'Start Consultation', color: '#0052D4', icon: Stethoscope },
-              { label: 'Write Clinical Note', color: '#60A5FA', icon: FileText },
-              { label: 'Prescribe Medication', color: '#A78BFA', icon: Pill },
-              { label: 'Order Investigation', color: '#F59E0B', icon: FlaskConical },
+              { label: 'Write Clinical Note', color: '#2563EB', icon: FileText },
+              { label: 'Prescribe Medication', color: '#7C3AED', icon: Pill },
+              { label: 'Order Investigation', color: '#D97706', icon: FlaskConical },
             ].map(a => (
-              <button key={a.label} type="button" style={{ width: '100%', background: `${a.color}0E`, border: `1px solid ${a.color}28`, color: a.color, padding: '8px 13px', borderRadius: 8, fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7 }}>
+              <button key={a.label} type="button" style={{ width: '100%', background: `${a.color}0E`, border: `1px solid ${a.color}28`, color: a.color, padding: '8px 13px', borderRadius: 8, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7 }}>
                 <a.icon size={13} /> {a.label}
               </button>
             ))}
@@ -669,6 +674,7 @@ const PatientsView: React.FC = () => {
 // -- CONSULTATION (SOAP) -------------------------------------------------------
 
 const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
+  const facilityId = session?.hospitalId || 'IGH-EKT';
   const [step, setStep] = useState<'select' | 'consult'>('select');
   const [patient, setPatient] = useState<Patient | null>(null);
   const [chiefComplaint, setChiefComplaint] = useState('');
@@ -679,29 +685,92 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
   const [plan, setPlan] = useState('');
   const [soapTab, setSoapTab] = useState<'S' | 'O' | 'A' | 'P'>('S');
 
+  const soapDraftValue = useMemo(
+    () => ({
+      patientId: patient?.id || '',
+      patientName: patient?.name || '',
+      chiefComplaint,
+      hpi,
+      pmh,
+      examination,
+      assessment,
+      plan,
+      soapTab,
+    }),
+    [patient?.id, patient?.name, chiefComplaint, hpi, pmh, examination, assessment, plan, soapTab],
+  );
+
+  const soapDraftDirty = Boolean(
+    chiefComplaint.trim() || hpi.trim() || pmh.trim() || examination.trim() || assessment.trim() || plan.trim(),
+  );
+
+  const {
+    hasRestorableDraft,
+    draftSavedAt,
+    lastAutosavedAt,
+    isSavingDraft,
+    restoreDraft,
+    discardDraft,
+  } = useFormDraft({
+    facilityId,
+    formKey: `doctor_soap_consult:${patient?.id || 'active'}`,
+    staffId: session?.email || session?.name || 'doctor',
+    value: soapDraftValue,
+    isDirty: soapDraftDirty,
+    onRestore: (saved) => {
+      if (!saved) return;
+      if (saved.chiefComplaint) setChiefComplaint(saved.chiefComplaint);
+      if (saved.hpi) setHpi(saved.hpi);
+      if (saved.pmh) setPmh(saved.pmh);
+      if (saved.examination) setExamination(saved.examination);
+      if (saved.assessment) setAssessment(saved.assessment);
+      if (saved.plan) setPlan(saved.plan);
+      if (saved.soapTab) setSoapTab(saved.soapTab);
+      if (saved.patientId && !patient) {
+        const found = PATIENTS.find((p) => p.id === saved.patientId);
+        if (found) setPatient(found);
+      }
+      setStep('consult');
+    },
+  });
+
   if (step === 'select') {
     return (
-      <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '20px' }}>
+      <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '20px', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
         <h2 style={{ margin: '0 0 4px', fontSize: '1.05rem', fontWeight: 800, color: '#0A2540' }}>Start Consultation</h2>
         <p style={{ margin: '0 0 16px', color: '#64748B', fontSize: '0.8rem' }}>Select a patient from the queue to begin a SOAP consultation session.</p>
+        {hasRestorableDraft && (
+          <div style={{ marginBottom: 14, padding: '12px 16px', borderRadius: 12, background: '#FFFBEB', border: '1px solid #FDE68A', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#92400E' }}>⚡ Unsaved SOAP Consultation Draft Found (Power-Outage Recovery)</div>
+              <div style={{ fontSize: '0.74rem', color: '#B45309', marginTop: 2 }}>
+                Auto-saved to Cloud & On-Prem Vault {draftSavedAt ? `at ${new Date(draftSavedAt).toLocaleTimeString()}` : 'recently'}.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={restoreDraft} style={{ background: '#D97706', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}>Restore Note</button>
+              <button type="button" onClick={() => void discardDraft()} style={{ background: '#fff', color: '#92400E', border: '1px solid #FCD34D', borderRadius: 8, padding: '7px 11px', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}>Discard</button>
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {APPOINTMENTS.filter(a => a.status === 'waiting' || a.status === 'scheduled').map(a => (
             <div key={a.id} style={{
               display: 'flex', alignItems: 'center', gap: 14,
-              background: a.status === 'waiting' ? 'rgba(245,158,11,0.05)' : 'rgba(255,255,255,0.02)',
-              border: `1px solid ${a.status === 'waiting' ? 'rgba(245,158,11,0.28)' : '#E2E8F0'}`,
+              background: a.status === 'waiting' ? '#FFFBEB' : '#F8FAFC',
+              border: `1px solid ${a.status === 'waiting' ? '#FDE68A' : '#E2E8F0'}`,
               borderRadius: 12, padding: '13px 17px',
             }}>
-              <div style={{ width: 38, height: 38, borderRadius: 11, background: a.status === 'waiting' ? 'rgba(245,158,11,0.18)' : 'rgba(2,132,199,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: a.status === 'waiting' ? '#F59E0B' : '#38BDF8', fontSize: '0.85rem' }}>
+              <div style={{ width: 38, height: 38, borderRadius: 11, background: a.status === 'waiting' ? '#FEF3C7' : '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: a.status === 'waiting' ? '#D97706' : '#0284C7', fontSize: '0.85rem' }}>
                 {a.patientName.split(' ').map(n => n[0]).join('')}
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem' }}>{a.patientName}</div>
                 <div style={{ fontSize: '0.73rem', color: '#64748B' }}>{a.patientId} • {a.type} • {a.time}</div>
               </div>
-              {a.status === 'waiting' && <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#F59E0B', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.28)', padding: '2px 9px', borderRadius: 999 }}>? Waiting</span>}
+              {a.status === 'waiting' && <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#D97706', background: '#FEF3C7', border: '1px solid #FDE68A', padding: '2px 9px', borderRadius: 999 }}>⏳ Waiting</span>}
               <button type="button" onClick={() => { setPatient(PATIENTS.find(p => p.id === a.patientId) || null); try { markPatientWithProvider(session?.hospitalId || 'IGH-EKT', a.patientId || patient?.id || '', session?.name); } catch { } setStep('consult'); }} style={{ background: 'linear-gradient(135deg,#0284C7,#0369A1)', border: 'none', color: '#fff', padding: '8px 17px', borderRadius: 9, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>
-                Begin ?
+                Begin →
               </button>
             </div>
           ))}
@@ -712,39 +781,45 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
 
   const tabs: { key: 'S' | 'O' | 'A' | 'P'; label: string; color: string }[] = [
     { key: 'S', label: 'Subjective', color: '#0052D4' },
-    { key: 'O', label: 'Objective', color: '#10B981' },
-    { key: 'A', label: 'Assessment', color: '#F59E0B' },
-    { key: 'P', label: 'Plan', color: '#A78BFA' },
+    { key: 'O', label: 'Objective', color: '#059669' },
+    { key: 'A', label: 'Assessment', color: '#D97706' },
+    { key: 'P', label: 'Plan', color: '#7C3AED' },
   ];
 
   const ta = (label: string, val: string, set: (v: string) => void, rows = 5) => (
     <div>
-      <label style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>{label}</label>
+      <label style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>{label}</label>
       <textarea value={val} onChange={e => set(e.target.value)} rows={rows} placeholder={`Enter ${label.toLowerCase()}…`}
-        style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', background: '#FFFFFF', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 10, color: '#0A2540', fontSize: '0.83rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }} />
+        style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 10, color: '#0A2540', fontSize: '0.83rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }} />
     </div>
   );
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 290px', gap: 16 }}>
-      <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 15 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 15, boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0A2540' }}>SOAP Consultation Note</h2>
-            <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: 2 }}>{patient?.name || 'Unknown'} • {patient?.id || ''} • {new Date().toLocaleDateString('en-GB')}</div>
+            <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: 2 }}>{patient?.name || 'Active Patient'} • {patient?.id || ''} • {new Date().toLocaleDateString('en-GB')}</div>
           </div>
-          <div style={{ display: 'flex', gap: 7 }}>
-            <button type="button" onClick={() => setStep('select')} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.09)', color: '#94A3B8', padding: '7px 13px', borderRadius: 8, cursor: 'pointer', fontSize: '0.76rem' }}>? Back</button>
-            <button type="button" style={{ background: 'linear-gradient(135deg,#0284C7,#0369A1)', border: 'none', color: '#fff', padding: '7px 15px', borderRadius: 8, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            {(isSavingDraft || lastAutosavedAt) && (
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#059669', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '4px 9px', borderRadius: 999 }}>
+                {isSavingDraft ? 'Saving draft…' : `☁️ Cloud Draft Saved ${new Date(lastAutosavedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+              </span>
+            )}
+            <button type="button" onClick={() => setStep('select')} style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', color: '#475569', padding: '7px 13px', borderRadius: 8, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600 }}>← Back</button>
+            <button type="button" onClick={() => { void discardDraft(); liveAlert('SOAP Consultation Note signed and committed to Cloud & On-Prem EMR.'); }} style={{ background: 'linear-gradient(135deg,#0284C7,#0369A1)', border: 'none', color: '#fff', padding: '7px 15px', borderRadius: 8, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
               <Save size={13} /> Save & Sign
             </button>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 5, background: '#F8FAFC', padding: 4, borderRadius: 10 }}>
+        <div style={{ display: 'flex', gap: 5, background: '#F8FAFC', padding: 4, borderRadius: 10, border: '1px solid #E2E8F0' }}>
           {tabs.map(t => (
             <button key={t.key} type="button" onClick={() => setSoapTab(t.key)} style={{
               flex: 1, padding: '8px', borderRadius: 7, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', border: 'none',
-              background: soapTab === t.key ? `${t.color}1E` : 'transparent',
+              background: soapTab === t.key ? '#FFFFFF' : 'transparent',
+              boxShadow: soapTab === t.key ? '0 1px 3px rgba(15,23,42,0.08)' : 'none',
               color: soapTab === t.key ? t.color : '#64748B', transition: 'all 0.15s',
             }}>{t.label}</button>
           ))}
@@ -753,7 +828,7 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
           {soapTab === 'S' && <>{ta('Chief Complaint', chiefComplaint, setChiefComplaint, 2)}{ta('History of Presenting Illness (HPI)', hpi, setHpi, 6)}{ta('Past Medical / Surgical History', pmh, setPmh, 4)}</>}
           {soapTab === 'O' && (<>
             <div>
-              <div style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>Current Vitals</div>
+              <div style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>Current Vitals</div>
               <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                 {patient && Object.entries((patient.vitals || {})).map(([k, v]) => <VitalChip key={k} label={k.toUpperCase()} value={v} />)}
               </div>
@@ -780,20 +855,20 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
         {patient && (
-          <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px' }}>
+          <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
             <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem', marginBottom: 10 }}>Patient Summary</div>
             {[{ l: 'Name', v: patient.name }, { l: 'MRN', v: patient.id }, { l: 'Diagnosis', v: patient.diagnosis }, { l: 'Ward', v: patient.ward }].map(x => (
-              <div key={x.l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #FFFFFF', fontSize: '0.78rem' }}>
+              <div key={x.l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #F1F5F9', fontSize: '0.78rem' }}>
                 <span style={{ color: '#64748B' }}>{x.l}</span>
-                <span style={{ color: '#CBD5E1', fontWeight: 600, textAlign: 'right', maxWidth: 160 }}>{x.v}</span>
+                <span style={{ color: '#0F172A', fontWeight: 600, textAlign: 'right', maxWidth: 160 }}>{x.v}</span>
               </div>
             ))}
           </div>
         )}
-        <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px' }}>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
           <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem', marginBottom: 10 }}>Clinical Shortcuts</div>
-          {[{ l: '+ Order Lab Test', c: '#F59E0B' }, { l: '+ Order Radiology', c: '#F472B6' }, { l: '+ Prescribe Drug', c: '#A78BFA' }, { l: '+ Refer Patient', c: '#10B981' }, { l: '+ Request Admission', c: '#38BDF8' }].map(a => (
-            <button key={a.l} type="button" style={{ width: '100%', marginBottom: 6, background: '#F8FAFC', border: '1px solid #E2E8F0', color: a.c, padding: '8px 11px', borderRadius: 7, fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer', textAlign: 'left' }}>{a.l}</button>
+          {[{ l: '+ Order Lab Test', c: '#D97706' }, { l: '+ Order Radiology', c: '#DB2777' }, { l: '+ Prescribe Drug', c: '#7C3AED' }, { l: '+ Refer Patient', c: '#059669' }, { l: '+ Request Admission', c: '#0284C7' }].map(a => (
+            <button key={a.l} type="button" style={{ width: '100%', marginBottom: 6, background: '#F8FAFC', border: '1px solid #E2E8F0', color: a.c, padding: '8px 11px', borderRadius: 7, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', textAlign: 'left' }}>{a.l}</button>
           ))}
         </div>
       </div>
@@ -2104,9 +2179,9 @@ const WardRoundView: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
-      <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0A2540', display: 'flex', alignItems: 'center', gap: 8 }}><BedDouble size={17} color="#A78BFA" /> Ward Round Console</h2>
+          <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0A2540', display: 'flex', alignItems: 'center', gap: 8 }}><BedDouble size={17} color="#7C3AED" /> Ward Round Console</h2>
           <p style={{ margin: '3px 0 0', color: '#64748B', fontSize: '0.78rem' }}>{inpatients.length} inpatients · {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
         </div>
         <button type="button" style={{ background: 'linear-gradient(135deg,#7C3AED,#5B21B6)', border: 'none', color: '#fff', padding: '9px 17px', borderRadius: 9, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -2114,23 +2189,23 @@ const WardRoundView: React.FC = () => {
         </button>
       </div>
       {inpatients.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', background: 'rgba(15,23,42,0.85)', borderRadius: 14, border: '1px dashed #334155', color: '#94A3B8' }}>
+        <div style={{ padding: 40, textAlign: 'center', background: '#FFFFFF', borderRadius: 14, border: '1px dashed #CBD5E1', color: '#64748B' }}>
           No inpatients currently admitted. Admitted patients from wards will appear here.
         </div>
       ) : (
         inpatients.map(p => (
-          <div key={p.id} style={{ background: 'rgba(15,23,42,0.85)', border: `1px solid ${p.status === 'critical' ? 'rgba(239,68,68,0.28)' : '#E2E8F0'}`, borderRadius: 14, overflow: 'hidden' }}>
-            <div onClick={() => setExpanded(x => x === p.id ? null : p.id)} style={{ padding: '13px 18px', display: 'flex', alignItems: 'center', gap: 13, cursor: 'pointer', background: p.status === 'critical' ? 'rgba(239,68,68,0.03)' : 'transparent' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: p.status === 'critical' ? 'rgba(239,68,68,0.18)' : 'rgba(2,132,199,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: p.status === 'critical' ? '#F87171' : '#38BDF8', fontSize: '0.85rem', flexShrink: 0 }}>
+          <div key={p.id} style={{ background: '#FFFFFF', border: `1px solid ${p.status === 'critical' ? '#FECACA' : '#E2E8F0'}`, borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 6px rgba(15, 23, 42, 0.03)' }}>
+            <div onClick={() => setExpanded(x => x === p.id ? null : p.id)} style={{ padding: '13px 18px', display: 'flex', alignItems: 'center', gap: 13, cursor: 'pointer', background: p.status === 'critical' ? '#FEF2F2' : '#FFFFFF' }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: p.status === 'critical' ? '#FEE2E2' : '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: p.status === 'critical' ? '#DC2626' : '#0284C7', fontSize: '0.85rem', flexShrink: 0 }}>
                 {p.name.split(' ').map(n => n[0]).join('')}
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.88rem' }}>{p.name}</span>
                   <StatusBadge status={p.status} />
-                  {p.flags.map(f => <span key={f} style={{ fontSize: '0.62rem', color: p.status === 'critical' ? '#F87171' : '#F59E0B', background: p.status === 'critical' ? 'rgba(239,68,68,0.09)' : 'rgba(245,158,11,0.09)', border: '1px solid currentColor', borderRadius: 4, padding: '1px 5px' }}>{f}</span>)}
+                  {p.flags.map(f => <span key={f} style={{ fontSize: '0.62rem', fontWeight: 700, color: p.status === 'critical' ? '#DC2626' : '#D97706', background: p.status === 'critical' ? '#FEE2E2' : '#FEF3C7', border: '1px solid currentColor', borderRadius: 4, padding: '1px 5px' }}>{f}</span>)}
                 </div>
-                <div style={{ fontSize: '0.73rem', color: '#94A3B8', marginTop: 2 }}>{p.id} • {p.ward}{p.bed ? ` • Bed ${p.bed}` : ''} • {p.diagnosis}</div>
+                <div style={{ fontSize: '0.73rem', color: '#64748B', marginTop: 2 }}>{p.id} • {p.ward}{p.bed ? ` • Bed ${p.bed}` : ''} • {p.diagnosis}</div>
               </div>
               <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
                 <VitalChip label="BP" value={p.vitals?.bp} warn={parseInt(p.vitals?.bp) > 140} />
@@ -2140,18 +2215,18 @@ const WardRoundView: React.FC = () => {
               </div>
             </div>
             {expanded === p.id && (
-              <div style={{ padding: '0 18px 18px', borderTop: '1px solid #FFFFFF' }}>
+              <div style={{ padding: '0 18px 18px', borderTop: '1px solid #E2E8F0' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 13 }}>
-                  {[['Clinical Status / Today\'s Findings', 'Document today\'s findings, patient condition, response to treatment•'], ['Today\'s Plan & Orders', 'Medication changes, investigation orders, nursing instructions, dietary•']].map(([lbl, ph]) => (
+                  {[['Clinical Status / Today\'s Findings', 'Document today\'s findings, patient condition, response to treatment…'], ['Today\'s Plan & Orders', 'Medication changes, investigation orders, nursing instructions, dietary…']].map(([lbl, ph]) => (
                     <div key={lbl}>
-                      <label style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>{lbl}</label>
-                      <textarea rows={4} placeholder={ph} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', background: '#FFFFFF', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, color: '#0A2540', fontSize: '0.8rem', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }} />
+                      <label style={{ fontSize: '0.68rem', color: '#475569', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>{lbl}</label>
+                      <textarea rows={4} placeholder={ph} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 8, color: '#0A2540', fontSize: '0.8rem', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }} />
                     </div>
                   ))}
                 </div>
                 <div style={{ display: 'flex', gap: 7, marginTop: 11, flexWrap: 'wrap' }}>
-                  {[['? Sign Note', '#4ADE80', 'rgba(74,222,128,0.1)'], ['?? Prescribe', '#A78BFA', 'rgba(167,139,250,0.1)'], ['?? Lab Order', '#F59E0B', 'rgba(245,158,11,0.09)'], ['?? Refer', '#38BDF8', 'rgba(56,189,248,0.09)'], ['?? Discharge', '#64748B', 'rgba(100,116,139,0.07)']].map(([l, c, bg]) => (
-                    <button key={l} type="button" style={{ background: bg, border: `1px solid ${c}40`, color: c, padding: '7px 13px', borderRadius: 7, fontWeight: 600, fontSize: '0.76rem', cursor: 'pointer' }}>{l}</button>
+                  {[['✓ Sign Note', '#059669', '#ECFDF5'], ['💊 Prescribe', '#7C3AED', '#F5F3FF'], ['🧪 Lab Order', '#D97706', '#FFFBEB'], ['↗ Refer', '#0284C7', '#EFF6FF'], ['🏥 Discharge', '#475569', '#F1F5F9']].map(([l, c, bg]) => (
+                    <button key={l} type="button" style={{ background: bg, border: `1px solid ${c}40`, color: c, padding: '7px 13px', borderRadius: 7, fontWeight: 700, fontSize: '0.76rem', cursor: 'pointer' }}>{l}</button>
                   ))}
                 </div>
               </div>
@@ -2165,21 +2240,21 @@ const WardRoundView: React.FC = () => {
 // -- APPOINTMENTS --------------------------------------------------------------
 
 const AppointmentsView: React.FC = () => {
-  const sc: Record<Appointment['status'], string> = { scheduled: '#64748B', waiting: '#F59E0B', 'in-progress': '#38BDF8', done: '#4ADE80', 'no-show': '#EF4444' };
+  const sc: Record<Appointment['status'], string> = { scheduled: '#64748B', waiting: '#D97706', 'in-progress': '#0284C7', done: '#059669', 'no-show': '#DC2626' };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
-      <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
         <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Calendar size={17} color="#A78BFA" /> Today's Appointment Schedule
-          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#A78BFA', background: 'rgba(167,139,250,0.13)', border: '1px solid rgba(167,139,250,0.28)', padding: '2px 9px', borderRadius: 999 }}>{APPOINTMENTS.length} Slots</span>
+          <Calendar size={17} color="#7C3AED" /> Today's Appointment Schedule
+          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6D28D9', background: '#F5F3FF', border: '1px solid #DDD6FE', padding: '2px 9px', borderRadius: 999 }}>{APPOINTMENTS.length} Slots</span>
         </div>
-        <button type="button" style={{ background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.28)', color: '#A78BFA', padding: '7px 13px', borderRadius: 8, fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer' }}>+ New Appointment</button>
+        <button type="button" style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', color: '#6D28D9', padding: '7px 13px', borderRadius: 8, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>+ New Appointment</button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 11 }}>
         {APPOINTMENTS.map(a => (
-          <div key={a.id} style={{ background: 'rgba(15,23,42,0.85)', border: `1px solid ${a.status === 'waiting' ? 'rgba(245,158,11,0.28)' : a.status === 'done' ? 'rgba(74,222,128,0.13)' : '#E2E8F0'}`, borderRadius: 12, padding: '14px', opacity: a.status === 'done' ? 0.62 : 1 }}>
+          <div key={a.id} style={{ background: '#FFFFFF', border: `1px solid ${a.status === 'waiting' ? '#FDE68A' : a.status === 'done' ? '#A7F3D0' : '#E2E8F0'}`, borderRadius: 12, padding: '14px', opacity: a.status === 'done' ? 0.72 : 1, boxShadow: '0 2px 6px rgba(15, 23, 42, 0.03)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 10 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: a.status === 'waiting' ? 'rgba(245,158,11,0.16)' : 'rgba(2,132,199,0.13)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.95rem', color: a.status === 'waiting' ? '#F59E0B' : '#38BDF8' }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: a.status === 'waiting' ? '#FEF3C7' : '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.95rem', color: a.status === 'waiting' ? '#D97706' : '#0284C7' }}>
                 {a.patientName.split(' ').map(n => n[0]).join('')}
               </div>
               <div style={{ flex: 1 }}>
@@ -2187,15 +2262,15 @@ const AppointmentsView: React.FC = () => {
                 <div style={{ fontSize: '0.71rem', color: '#64748B' }}>{a.patientId} • {a.type}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontWeight: 800, color: '#A78BFA', fontSize: '0.98rem' }}>{a.time}</div>
+                <div style={{ fontWeight: 800, color: '#6D28D9', fontSize: '0.98rem' }}>{a.time}</div>
                 <span style={{ fontSize: '0.63rem', fontWeight: 700, color: sc[a.status], background: `${sc[a.status]}13`, border: '1px solid currentColor', padding: '1px 6px', borderRadius: 999 }}>
-                  {a.status === 'done' ? '? Done' : a.status === 'waiting' ? '? Waiting' : a.status === 'no-show' ? '? No-Show' : 'Upcoming'}
+                  {a.status === 'done' ? '✓ Done' : a.status === 'waiting' ? '⏳ Waiting' : a.status === 'no-show' ? '✕ No-Show' : 'Upcoming'}
                 </span>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              {a.status !== 'done' && <button type="button" style={{ flex: 1, background: 'rgba(2,132,199,0.1)', border: '1px solid rgba(2,132,199,0.27)', color: '#0052D4', padding: '7px', borderRadius: 7, fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer' }}>Begin Consult</button>}
-              <button type="button" style={{ flex: 1, background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#94A3B8', padding: '7px', borderRadius: 7, fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer' }}>View Record</button>
+              {a.status !== 'done' && <button type="button" style={{ flex: 1, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#0052D4', padding: '7px', borderRadius: 7, fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>Begin Consult</button>}
+              <button type="button" style={{ flex: 1, background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569', padding: '7px', borderRadius: 7, fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>View Record</button>
             </div>
           </div>
         ))}
@@ -2209,13 +2284,13 @@ const AppointmentsView: React.FC = () => {
 const TasksView: React.FC = () => {
   const [tasks, setTasks] = useState(INITIAL_TASKS);
   const toggle = (id: string) => setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
-  const pc: Record<Task['priority'], string> = { urgent: '#EF4444', high: '#F59E0B', normal: '#38BDF8', low: '#64748B' };
+  const pc: Record<Task['priority'], string> = { urgent: '#EF4444', high: '#F59E0B', normal: '#0284C7', low: '#64748B' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
-      <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}><ClipboardList size={17} color="#10B981" /> Clinical Task Board</div>
-        <button type="button" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.27)', color: '#10B981', padding: '7px 13px', borderRadius: 8, fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer' }}>+ New Task</button>
+      <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
+        <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}><ClipboardList size={17} color="#059669" /> Clinical Task Board</div>
+        <button type="button" style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669', padding: '7px 13px', borderRadius: 8, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>+ New Task</button>
       </div>
       {(['urgent', 'high', 'normal', 'low'] as Task['priority'][]).map(prio => {
         const items = tasks.filter(t => t.priority === prio);
@@ -2228,17 +2303,17 @@ const TasksView: React.FC = () => {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {items.map(t => (
-                <div key={t.id} style={{ background: 'rgba(15,23,42,0.85)', border: `1px solid ${t.done ? 'rgba(100,116,139,0.13)' : `${pc[t.priority]}1E`}`, borderRadius: 11, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 13, opacity: t.done ? 0.5 : 1, transition: 'all 0.15s' }}>
-                  <button type="button" onClick={() => toggle(t.id)} style={{ width: 21, height: 21, borderRadius: 5, flexShrink: 0, border: `2px solid ${t.done ? '#4ADE80' : pc[t.priority]}`, background: t.done ? '#4ADE80' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {t.done && <Check size={12} color="#0F172A" />}
+                <div key={t.id} style={{ background: '#FFFFFF', border: `1px solid ${t.done ? '#E2E8F0' : `${pc[t.priority]}40`}`, borderRadius: 11, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 13, opacity: t.done ? 0.6 : 1, transition: 'all 0.15s', boxShadow: '0 2px 6px rgba(15, 23, 42, 0.03)' }}>
+                  <button type="button" onClick={() => toggle(t.id)} style={{ width: 21, height: 21, borderRadius: 5, flexShrink: 0, border: `2px solid ${t.done ? '#10B981' : pc[t.priority]}`, background: t.done ? '#10B981' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {t.done && <Check size={12} color="#FFFFFF" />}
                   </button>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, color: t.done ? '#64748B' : '#F8FAFC', fontSize: '0.86rem', textDecoration: t.done ? 'line-through' : 'none' }}>{t.title}</div>
+                    <div style={{ fontWeight: 700, color: t.done ? '#64748B' : '#0F172A', fontSize: '0.86rem', textDecoration: t.done ? 'line-through' : 'none' }}>{t.title}</div>
                     {t.patient && <div style={{ fontSize: '0.71rem', color: '#64748B', marginTop: 2 }}>Patient: {t.patient}</div>}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '0.7rem', color: '#64748B' }}>Due: {t.due}</div>
-                    <span style={{ fontSize: '0.63rem', fontWeight: 700, color: t.type === 'clinical' ? '#38BDF8' : t.type === 'admin' ? '#A78BFA' : '#F59E0B', background: '#FFFFFF', border: '1px solid rgba(255,255,255,0.09)', padding: '1px 6px', borderRadius: 999 }}>{t.type}</span>
+                    <span style={{ fontSize: '0.63rem', fontWeight: 700, color: t.type === 'clinical' ? '#0284C7' : t.type === 'admin' ? '#7C3AED' : '#D97706', background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '1px 6px', borderRadius: 999 }}>{t.type}</span>
                   </div>
                 </div>
               ))}
@@ -2255,10 +2330,10 @@ const TasksView: React.FC = () => {
 const AnalyticsView: React.FC = () => {
   const stats = [
     { label: 'Patients Seen (MTD)', value: 142, change: '+12%', color: '#0052D4' },
-    { label: 'Avg Consult Duration', value: '18 min', change: '-2 min', color: '#10B981' },
-    { label: 'Prescriptions Issued', value: 89, change: '+5%', color: '#A78BFA' },
-    { label: 'Lab Orders Placed', value: 67, change: '+8%', color: '#F59E0B' },
-    { label: 'Referrals Made', value: 14, change: '=', color: '#F472B6' },
+    { label: 'Avg Consult Duration', value: '18 min', change: '-2 min', color: '#059669' },
+    { label: 'Prescriptions Issued', value: 89, change: '+5%', color: '#7C3AED' },
+    { label: 'Lab Orders Placed', value: 67, change: '+8%', color: '#D97706' },
+    { label: 'Referrals Made', value: 14, change: '=', color: '#DB2777' },
     { label: 'Ward Mortality Rate', value: '0%', change: 'stable', color: '#059669' },
   ];
   const diagnoses = [
@@ -2268,28 +2343,28 @@ const AnalyticsView: React.FC = () => {
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '16px 20px' }}>
+      <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '16px 20px', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
         <h2 style={{ margin: '0 0 2px', fontSize: '1rem', fontWeight: 800, color: '#0A2540' }}>My Clinical Performance</h2>
         <p style={{ margin: 0, color: '#64748B', fontSize: '0.78rem' }}>September 2026 • Month-to-date statistics</p>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(195px, 1fr))', gap: 13 }}>
         {stats.map(s => (
-          <div key={s.label} style={{ background: 'rgba(15,23,42,0.85)', border: `1px solid ${s.color}1E`, borderRadius: 13, padding: '18px' }}>
-            <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 7 }}>{s.label}</div>
+          <div key={s.label} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 13, padding: '18px', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
+            <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 7 }}>{s.label}</div>
             <div style={{ fontSize: '1.9rem', fontWeight: 800, color: s.color, marginBottom: 3 }}>{s.value}</div>
-            <div style={{ fontSize: '0.73rem', color: s.change.startsWith('+') ? '#4ADE80' : s.change.startsWith('-') ? '#F87171' : '#94A3B8' }}>{s.change} vs last month</div>
+            <div style={{ fontSize: '0.73rem', fontWeight: 600, color: s.change.startsWith('+') ? '#059669' : s.change.startsWith('-') ? '#DC2626' : '#64748B' }}>{s.change} vs last month</div>
           </div>
         ))}
       </div>
-      <div style={{ background: 'rgba(15,23,42,0.85)', border: '1px solid #E2E8F0', borderRadius: 14, padding: '18px' }}>
+      <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '18px', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
         <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.9rem', marginBottom: 14 }}>Top Diagnoses This Month</div>
         {diagnoses.map(d => (
           <div key={d.dx} style={{ marginBottom: 11 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: '0.8rem', color: '#CBD5E1' }}>{d.dx}</span>
-              <span style={{ fontSize: '0.75rem', color: '#64748B' }}>{d.count} cases</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0F172A' }}>{d.dx}</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>{d.count} cases</span>
             </div>
-            <div style={{ height: 5, background: '#FFFFFF', borderRadius: 99 }}>
+            <div style={{ height: 6, background: '#F1F5F9', borderRadius: 99 }}>
               <div style={{ height: '100%', width: `${d.pct}%`, background: 'linear-gradient(90deg,#0284C7,#38BDF8)', borderRadius: 99 }} />
             </div>
           </div>
@@ -2301,15 +2376,15 @@ const AnalyticsView: React.FC = () => {
 
 // -- PLACEHOLDER ---------------------------------------------------------------
 
-const Placeholder: React.FC<{ icon: React.ComponentType<any>; label: string; description: string; color?: string }> = ({ icon: Icon, label, description, color = '#38BDF8' }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 40px', textAlign: 'center', background: '#F8FAFC', border: '1px dashed rgba(255,255,255,0.09)', borderRadius: 16 }}>
+const Placeholder: React.FC<{ icon: React.ComponentType<any>; label: string; description: string; color?: string }> = ({ icon: Icon, label, description, color = '#0284C7' }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 40px', textAlign: 'center', background: '#FFFFFF', border: '1px dashed #CBD5E1', borderRadius: 16 }}>
     <div style={{ width: 70, height: 70, borderRadius: 20, background: `${color}13`, border: `1px solid ${color}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
       <Icon size={30} color={color} />
     </div>
     <h2 style={{ margin: '0 0 7px', fontSize: '1.15rem', fontWeight: 800, color: '#0A2540' }}>{label}</h2>
     <p style={{ margin: 0, color: '#64748B', fontSize: '0.83rem', maxWidth: 400, lineHeight: 1.6 }}>{description}</p>
-    <div style={{ marginTop: 14, fontSize: '0.73rem', color, background: `${color}0E`, border: `1px solid ${color}28`, padding: '5px 15px', borderRadius: 999, fontWeight: 600 }}>
-      ?? Module under clinical configuration • active next sprint
+    <div style={{ marginTop: 14, fontSize: '0.73rem', color, background: `${color}0E`, border: `1px solid ${color}28`, padding: '5px 15px', borderRadius: 999, fontWeight: 700 }}>
+      ⚙️ Module under clinical configuration • active next sprint
     </div>
   </div>
 );

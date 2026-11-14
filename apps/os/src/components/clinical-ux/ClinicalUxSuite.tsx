@@ -1033,12 +1033,12 @@ function SpecialtyViews({ facilityId, patient }: { facilityId: string; patient: 
     <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 14, padding: 16 }}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
         {[
-          { id: 'ophthalmology', label: '?? Eye Clinic / Ophthalmology' },
-          { id: 'fluid_balance', label: '?? Nursing Fluid Balance (I/O)' },
-          { id: 'consent', label: '?? Legal & Treatment Consents' },
-          { id: 'maternity', label: '?? Maternity / ANC' },
-          { id: 'paeds', label: '?? Paediatrics / Growth' },
-          { id: 'cardiac', label: '?? Cardiac / ECG' },
+          { id: 'ophthalmology', label: '👁️ Eye Clinic / Ophthalmology' },
+          { id: 'fluid_balance', label: '💧 Nursing Fluid Balance (I/O)' },
+          { id: 'consent', label: '✍️ Legal & Treatment Consents' },
+          { id: 'maternity', label: '🤱 Maternity / ANC' },
+          { id: 'paeds', label: '👶 Paediatrics / Growth' },
+          { id: 'cardiac', label: '❤️ Cardiac / ECG' },
         ].map((v) => (
           <button key={v.id} type="button" onClick={() => setView(v.id as any)} style={view === v.id ? btnPri : btnSec}>
             {v.label}

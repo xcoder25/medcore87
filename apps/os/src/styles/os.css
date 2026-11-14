@@ -9943,3 +9943,109 @@ img,
     transform: rotate(360deg);
   }
 }
+
+@keyframes docPortalPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55);
+  }
+  50% {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+}
+
+/* ============================================================================
+   PREMIUM CLINICAL ERGONOMICS & HIGH-CONTRAST WORKSPACE POLISH
+   ============================================================================ */
+
+.os-shell,
+.admin-shell {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular numbers for vitals, dosages, lab values, and currency figures */
+.os-shell table td,
+.admin-shell table td,
+.os-shell input[type="number"],
+.admin-shell input[type="number"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Crisp focus rings and hover states for all clinical inputs, selects, and textareas */
+.os-main-viewport input:not([type="checkbox"]):not([type="radio"]):not(.os-cmd-input),
+.os-main-viewport select,
+.os-main-viewport textarea,
+.admin-shell-main input:not([type="checkbox"]):not([type="radio"]),
+.admin-shell-main select,
+.admin-shell-main textarea {
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+}
+
+.os-main-viewport input:not([type="checkbox"]):not([type="radio"]):not(.os-cmd-input):hover,
+.os-main-viewport select:hover,
+.os-main-viewport textarea:hover,
+.admin-shell-main input:not([type="checkbox"]):not([type="radio"]):hover,
+.admin-shell-main select:hover,
+.admin-shell-main textarea:hover {
+  border-color: #94A3B8 !important;
+}
+
+.os-main-viewport input:not([type="checkbox"]):not([type="radio"]):not(.os-cmd-input):focus,
+.os-main-viewport select:focus,
+.os-main-viewport textarea:focus,
+.admin-shell-main input:not([type="checkbox"]):not([type="radio"]):focus,
+.admin-shell-main select:focus,
+.admin-shell-main textarea:focus {
+  border-color: #0284C7 !important;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.14) !important;
+  outline: none !important;
+}
+
+/* Ergonomic table row tracking across all clinical & administrative tables */
+.os-main-viewport table tbody tr,
+.admin-shell-main table tbody tr {
+  transition: background-color 0.12s ease;
+}
+
+.os-main-viewport table tbody tr:hover,
+.admin-shell-main table tbody tr:hover {
+  background-color: rgba(241, 245, 249, 0.75);
+}
+
+/* Tactile button ergonomics for shift-long comfort */
+.os-main-viewport button:not(:disabled),
+.admin-shell-main button:not(:disabled) {
+  transition: transform 0.12s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.os-main-viewport button:not(:disabled):active,
+.admin-shell-main button:not(:disabled):active {
+  transform: scale(0.985);
+}
+
+/* Refined clinical scrollbars */
+.os-main-viewport ::-webkit-scrollbar,
+.admin-shell-main ::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.os-main-viewport ::-webkit-scrollbar-track,
+.admin-shell-main ::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.6);
+  border-radius: 999px;
+}
+
+.os-main-viewport ::-webkit-scrollbar-thumb,
+.admin-shell-main ::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 999px;
+}
+
+.os-main-viewport ::-webkit-scrollbar-thumb:hover,
+.admin-shell-main ::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
