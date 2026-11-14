@@ -1,109 +1,110 @@
 /**
- * Edge + cloud only runtime mode.
+ * Edge + Cloud + On-Prem Runtime Mode (Zero-localStorage Architecture).
  *
- * Heavy facility clinical data no longer persists in browser localStorage /
- * IndexedDB (main source of slow boot and quota lag). Source of truth is
- * Firestore; this module keeps a session memory map so existing
- * localStorage.getItem/setItem call sites stay fast without disk I/O.
+ * All `medcore_*` clinical, staff, operational, session, and admin keys are
+ * strictly prohibited from durable `window.localStorage`.
  *
- * Kept on durable storage (small):
- *  - medcore_os_session
- *  - medcore_admin_api_secret / API secrets
- *  - remember-me / UI prefs (tiny)
+ * - Source of truth: Cloud (`/api/facility/sync` — Aurora PostgreSQL + Server Vault)
+ *   and On-Prem LAN Hub (`hospitalSync`).
+ * - Browser runtime cache: Session RAM (`mem` Map) + tab-scoped `sessionStorage`
+ *   for active login tab reload continuity.
+ * - Only 2 non-PII UI flags are permitted in `localStorage`:
+ *   1. `medcore_remember_me` (boolean flag)
+ *   2. `medcore_ui_theme` ('light' | 'dark')
+ *   (Plus Firebase Auth SDK's internal `firebase:authUser:*` keys).
  */
 
-const HEAVY_PREFIXES = [
-  'medcore_os_',
-  'medcore_staff_',
-  'medcore_facility_',
-  'medcore_anc_',
-  'medcore_him',
-  'medcore_pilot_',
-  'medcore_onboarding',
-  'medcore_admin_onboarding',
-  'medcore_sync_',
-  'medcore_fd_',
-  'medcore_payment_',
-  'medcore_patient_',
-  'medcore_formulary',
-  'medcore_drug_',
-  'medcore_pharmacy_',
-  'medcore_transfers',
-  'medcore_os_sync_outbox',
-] as const;
-
-const DURABLE_PREFIXES = [
-  'medcore_os_session',
-  'medcore_admin_api_secret',
-  'medcore_admin_api_secret_v1',
-  'medcore_remember_facility',
-  'medcore_ui_theme',
+const ALLOWED_LOCALSTORAGE_KEYS = new Set<string>([
   'medcore_remember_me',
-  // Admin settings, facility configs, and identity must survive reloads
+  'medcore_ui_theme',
+]);
+
+/** Keys mirrored to tab-scoped `sessionStorage` so F5 reload in the same tab stays signed in without localStorage */
+const SESSION_TAB_PREFIXES = [
+  'medcore_os_session',
+  'medcore_claimed_facility_id',
+  'medcore_claimed_facility_name',
+  'medcore_lan_api_url',
+  'medcore_admin_onboarding_done',
+  'medcore_os_onboarding',
   'medcore_os_admin_settings_v1',
   'medcore_facility_profile',
   'medcore_os_facilities',
-  'medcore_role_permissions_v1',
-  'medcore_attendance_cameras',
-  'medcore_attendance_cam_settings',
-  'medcore_admin_onboarding_done',
-  'medcore_os_onboarding',
-  'medcore_os_staff_onboard_',
-  'medcore_staff_onboard',
-  'medcore_claimed_facility_id',
-  'medcore_claimed_facility_name',
-  'medcore_facility_onboard',
-  'medcore_role_guide_seen',
-  'medcore_role_guide_seen_v1',
-  'medcore_lan_api_url',
-  // Staff directory, ID cards, access control, activity, and presence must survive reloads
-  'medcore_staff_id_cards',
   'medcore_os_staff_cards',
-  'medcore_staff_cards',
+  'medcore_staff_id_cards',
   'medcore_os_staff_registry',
   'medcore_staff_registry',
   'medcore_os_access_control',
-  'medcore_access_control',
   'medcore_access_records',
-  'medcore_os_access_records',
-  'medcore_os_staff_presence',
-  'medcore_staff_presence',
-  'medcore_os_staff_presence_v1',
-  'medcore_os_revoked_staff_v1',
-  'medcore_os_hidden_staff_names_v1',
-  'medcore_staff_flush_lock_until',
-  'medcore_os_compliance_items',
-  'medcore_os_admin_activity',
-  'medcore_os_open_positions',
-  'medcore_os_transfers',
-  'medcore_pilot_version',
+  'medcore_role_permissions_v1',
+  'medcore_role_permissions_v4',
 ] as const;
+
+function isSessionTabKey(key: string): boolean {
+  if (!key) return false;
+  return SESSION_TAB_PREFIXES.some((p) => key === p || key.startsWith(p) || key.startsWith(`${p}:`));
+}
 
 /** In-memory facility data for this browser tab session */
 const mem = new Map<string, string>();
 
 let installed = false;
+let rawSessionStorage: Storage | null = null;
 
+/**
+ * Returns true for every MedCore key that must NOT live in durable `localStorage`.
+ */
 export function isHeavyStorageKey(key: string): boolean {
   if (!key) return false;
-  // If key matches or starts with any durable prefix (handles scoped keys and prefix keys), allow persistence
-  for (const p of DURABLE_PREFIXES) {
-    if (key === p || key.startsWith(p) || key.startsWith(`${p}:`)) return false;
+  if (ALLOWED_LOCALSTORAGE_KEYS.has(key)) return false;
+  if (key.startsWith('firebase:')) return false;
+  if (
+    key.startsWith('medcore_') ||
+    key === 'clinical_vitals' ||
+    key === 'adminSettings'
+  ) {
+    return true;
   }
-  return HEAVY_PREFIXES.some((p) => key.startsWith(p));
+  return false;
 }
 
 export function memGet(key: string): string | null {
-  if (!mem.has(key)) return null;
-  return mem.get(key) ?? null;
+  if (mem.has(key)) return mem.get(key) ?? null;
+  if (rawSessionStorage && isSessionTabKey(key)) {
+    try {
+      const fromTab = rawSessionStorage.getItem(key);
+      if (fromTab !== null) {
+        mem.set(key, fromTab);
+        return fromTab;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
 }
 
 export function memSet(key: string, value: string): void {
-  mem.set(key, value);
+  const str = String(value);
+  mem.set(key, str);
+  if (rawSessionStorage && isSessionTabKey(key)) {
+    try {
+      rawSessionStorage.setItem(key, str);
+    } catch {
+      /* quota */
+    }
+  }
 }
 
 export function memRemove(key: string): void {
   mem.delete(key);
+  if (rawSessionStorage) {
+    try {
+      rawSessionStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 export function memGetJson<T>(key: string): T | null {
@@ -124,19 +125,75 @@ export function memSetJson(key: string, value: unknown): void {
   }
 }
 
-/** Wipe heavy keys from durable browser storage (one-time per boot). */
+// Background cloud-sync queue for any intercepted writes
+const pendingSyncBag: Record<string, unknown> = {};
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
+
+function resolveActiveFacilityForSync(): string {
+  try {
+    const sessRaw = memGet('medcore_os_session');
+    if (sessRaw) {
+      const parsed = JSON.parse(sessRaw) as { hospitalId?: string };
+      if (parsed?.hospitalId) return String(parsed.hospitalId).trim();
+    }
+    const claimed = memGet('medcore_claimed_facility_id');
+    if (claimed) return claimed.trim();
+  } catch {
+    /* ignore */
+  }
+  return 'DEFAULT';
+}
+
+function queueCloudMirror(key: string, rawVal: string): void {
+  if (typeof window === 'undefined') return;
+  if (
+    key.startsWith('medcore_os_sync_outbox') ||
+    key === 'medcore_os_session' ||
+    key.includes('secret')
+  ) {
+    return;
+  }
+  try {
+    pendingSyncBag[key] = JSON.parse(rawVal);
+  } catch {
+    pendingSyncBag[key] = rawVal;
+  }
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    syncTimer = null;
+    const facilityId = resolveActiveFacilityForSync();
+    const batch = { ...pendingSyncBag };
+    for (const k of Object.keys(pendingSyncBag)) delete pendingSyncBag[k];
+    if (Object.keys(batch).length === 0) return;
+    void fetch('/api/facility/sync', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ facilityId, data: batch }),
+    }).catch(() => {});
+  }, 200);
+}
+
+/**
+ * Migrate any legacy `medcore_*` keys out of `window.localStorage` into Session RAM + Cloud,
+ * then wipe them from `window.localStorage` so disk storage is clean.
+ */
 export function purgeHeavyLocalStorage(): number {
   if (typeof window === 'undefined') return 0;
   let removed = 0;
   try {
     const keys: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
       if (k && isHeavyStorageKey(k)) keys.push(k);
     }
     for (const k of keys) {
       try {
-        localStorage.removeItem(k);
+        const existingVal = window.localStorage.getItem(k);
+        if (existingVal !== null && !mem.has(k)) {
+          memSet(k, existingVal);
+          queueCloudMirror(k, existingVal);
+        }
+        window.localStorage.removeItem(k);
         removed++;
       } catch {
         /* ignore */
@@ -145,57 +202,63 @@ export function purgeHeavyLocalStorage(): number {
   } catch {
     /* private mode */
   }
-  try {
-    const keys: string[] = [];
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const k = sessionStorage.key(i);
-      if (k && isHeavyStorageKey(k)) keys.push(k);
-    }
-    for (const k of keys) {
-      try {
-        sessionStorage.removeItem(k);
-        removed++;
-      } catch {
-        /* ignore */
-      }
-    }
-  } catch {
-    /* ignore */
-  }
   return removed;
 }
 
 /**
- * Patch localStorage so heavy MedCore keys stay in RAM only.
- * Cloud (Firestore onSnapshot / writes) remains source of truth across PCs.
+ * Patch `window.localStorage` so all `medcore_*` keys live in Session RAM + Cloud/On-Prem only.
  */
 export function installEdgeCloudOnlyStorage(): void {
   if (typeof window === 'undefined' || installed) return;
   installed = true;
+
+  try {
+    rawSessionStorage = window.sessionStorage;
+  } catch {
+    rawSessionStorage = null;
+  }
 
   const raw = window.localStorage;
   const protoGet = raw.getItem.bind(raw);
   const protoSet = raw.setItem.bind(raw);
   const protoRemove = raw.removeItem.bind(raw);
   const protoClear = raw.clear.bind(raw);
-  const protoKey = raw.key.bind(raw);
 
-  // One-time disk purge of stale facility blobs
+  // Hydrate Session RAM from tab sessionStorage if reloading the tab
+  if (rawSessionStorage) {
+    try {
+      for (let i = 0; i < rawSessionStorage.length; i++) {
+        const k = rawSessionStorage.key(i);
+        if (k && isHeavyStorageKey(k)) {
+          const v = rawSessionStorage.getItem(k);
+          if (v !== null) mem.set(k, v);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Migrate and wipe all legacy medcore_* keys from disk localStorage
   const n = purgeHeavyLocalStorage();
   if (n > 0 && typeof console !== 'undefined') {
-    console.info(`[edgeCloudOnly] purged ${n} heavy localStorage keys — cloud is source of truth`);
+    console.info(
+      `[edgeCloudOnly] migrated & purged ${n} localStorage keys — Cloud & On-Prem are sole source of truth`
+    );
   }
 
   raw.getItem = (key: string) => {
     if (isHeavyStorageKey(key)) {
-      return mem.has(key) ? (mem.get(key) as string) : null;
+      return memGet(key);
     }
     return protoGet(key);
   };
 
   raw.setItem = (key: string, value: string) => {
     if (isHeavyStorageKey(key)) {
-      mem.set(key, String(value));
+      const str = String(value);
+      memSet(key, str);
+      queueCloudMirror(key, str);
       return;
     }
     return protoSet(key, value);
@@ -203,20 +266,23 @@ export function installEdgeCloudOnlyStorage(): void {
 
   raw.removeItem = (key: string) => {
     if (isHeavyStorageKey(key)) {
-      mem.delete(key);
+      memRemove(key);
       return;
     }
     return protoRemove(key);
   };
 
-  // clear() still clears durable prefs; heavy already only in mem
   raw.clear = () => {
     mem.clear();
+    if (rawSessionStorage) {
+      try {
+        rawSessionStorage.clear();
+      } catch {
+        /* ignore */
+      }
+    }
     return protoClear();
   };
-
-  // length/key stay disk-oriented; acceptable for our usage
-  void protoKey;
 }
 
 /** Unregister service worker caches that can serve stale heavy assets. */

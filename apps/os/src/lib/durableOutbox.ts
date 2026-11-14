@@ -116,15 +116,30 @@ export async function flushOutbox(): Promise<{ synced: number; remaining: number
   const failedFacilities = new Set<string>();
 
   for (const [facilityId, partial] of Array.from(byFacility)) {
-    // Hospital hub first (LAN), then cloud — matches "UPS hub is source of truth on site"
+    // 1) On-Prem Hospital Hub (LAN) — survives ISP blackout
     let okLan = false;
     try {
       okLan = await pushFacilityData(facilityId, partial);
     } catch {
       okLan = false;
     }
-    // Broadcast locally / LAN sync
-    if (okLan || online) {
+
+    // 2) Cloud Sync API (/api/facility/sync -> Aurora Postgres / Server Vault)
+    let okCloud = false;
+    if (online) {
+      try {
+        const res = await fetch('/api/facility/sync', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ facilityId, data: partial }),
+        });
+        okCloud = res.ok;
+      } catch {
+        okCloud = false;
+      }
+    }
+
+    if (okLan || okCloud) {
       synced += Object.keys(partial).length;
     } else {
       failedFacilities.add(facilityId);

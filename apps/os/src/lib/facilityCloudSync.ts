@@ -15,6 +15,7 @@ import {
   syncAccessRosterFromSources,
 } from './staffCardStore';
 import { enableEdgeCloudOnlyRuntime } from './edgeCloudOnly';
+import { hydrateFacilityFromCloudAndPrem } from './cloudStore';
 import { MedCoreAppSyncSyncManager, type AppSyncRealtimeMessage } from './aws/appsyncRealtime';
 
 /** Map storage keys → CustomEvents so existing subscribe*() hooks refresh live */
@@ -151,6 +152,9 @@ export function startHospitalCloudSync(facilityId: string): () => void {
 
   enableEdgeCloudOnlyRuntime();
   const applyKey = (key: string, value: unknown) => applyFacilityRemoteKey(key, value);
+
+  // Hydrate all facility clinical & operational state from Cloud + On-Prem LAN Hub into RAM
+  void hydrateFacilityFromCloudAndPrem(facilityId, applyKey);
 
   // Initial fetch from Postgres-backed API
   void (async () => {

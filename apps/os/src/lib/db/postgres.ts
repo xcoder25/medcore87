@@ -249,6 +249,30 @@ export async function ensureSchema(): Promise<void> {
 
         CREATE INDEX IF NOT EXISTS idx_notif_facility ON notifications (facility_id, created_at DESC);
 
+        CREATE TABLE IF NOT EXISTS facility_kv (
+          facility_id TEXT NOT NULL,
+          key TEXT NOT NULL,
+          value JSONB NOT NULL DEFAULT '{}'::jsonb,
+          updated_at TIMESTAMPTZ DEFAULT NOW(),
+          PRIMARY KEY (facility_id, key)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_facility_kv_updated ON facility_kv (facility_id, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS form_drafts (
+          facility_id TEXT NOT NULL,
+          form_type TEXT NOT NULL,
+          draft_id TEXT NOT NULL,
+          staff_badge TEXT,
+          step INT DEFAULT 1,
+          payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+          updated_at TIMESTAMPTZ DEFAULT NOW(),
+          expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '24 hours'),
+          PRIMARY KEY (facility_id, form_type, draft_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_form_drafts_lookup ON form_drafts (facility_id, form_type, updated_at DESC);
+
         -- Multi-Tenant Security Layer: PostgreSQL Row-Level Security (RLS)
         -- Guarantees that users at Facility A can never see patient or staff data from Facility B
         ALTER TABLE patients ENABLE ROW LEVEL SECURITY;

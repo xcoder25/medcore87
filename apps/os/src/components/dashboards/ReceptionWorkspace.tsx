@@ -56,6 +56,7 @@ import {
   verifyInsurance,
 } from '../../lib/receptionConstants';
 import { emitLiveAction } from '../../lib/liveActions';
+import { useFormDraft } from '../../lib/formDraftStore';
 import {
   sendPaymentRequestToAccounts,
   DEFAULT_REGISTRATION_FEE_NGN,
@@ -1039,7 +1040,40 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     setCrossFacilityPatient(null);
     setInsVerify(null);
     stopCam();
+    void regDraft.clearCurrentDraft();
   };
+
+  // Power-outage-resilient Cloud & On-Prem form draft auto-save
+  const regDraft = useFormDraft({
+    facilityId,
+    formType: 'patient_registration',
+    draftId: session.badgeId || 'frontdesk',
+    staffBadge: session.badgeId,
+    step: regStep,
+    data: { reg, patientIdPreview },
+    isDirty: (d) =>
+      Boolean(
+        d?.reg &&
+          (d.reg.firstName?.trim() ||
+            d.reg.lastName?.trim() ||
+            d.reg.phone?.trim() ||
+            d.reg.dob ||
+            d.reg.nin?.trim() ||
+            d.reg.emergencyContact?.trim())
+      ),
+    onRestore: (restored, savedStep) => {
+      if (restored?.reg) {
+        setReg({ ...emptyReg, ...restored.reg });
+      }
+      if (restored?.patientIdPreview) {
+        setPatientIdPreview(restored.patientIdPreview);
+      }
+      if (savedStep && savedStep >= 1 && savedStep <= 5) {
+        setRegStep(savedStep as RegStep);
+      }
+      flash('✓ Registration draft restored from Cloud / On-Prem storage.');
+    },
+  });
 
   const calculateAge = (dobString?: string) => {
     if (!dobString) return '';
@@ -2013,6 +2047,81 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               </button>
             </div>
           </div>
+
+          {/* Power-Outage / Unfinished Draft Restoration Banner */}
+          {regDraft.restorableDraft && (
+            <div
+              style={{
+                margin: '16px 24px 0 24px',
+                padding: '14px 18px',
+                borderRadius: 12,
+                background: 'linear-gradient(90deg, #FFFBEB 0%, #FEF3C7 100%)',
+                border: '1px solid #F59E0B',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 16,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <AlertTriangle size={20} color="#D97706" />
+                <div>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: '#92400E' }}>
+                    Unfinished Registration Draft Recovered (Cloud / On-Prem Outage Protection)
+                  </div>
+                  <div style={{ fontSize: 12, color: '#B45309', marginTop: 2 }}>
+                    {[
+                      regDraft.restorableDraft.payload?.reg?.firstName,
+                      regDraft.restorableDraft.payload?.reg?.lastName,
+                    ]
+                      .filter(Boolean)
+                      .join(' ') || 'Unnamed Patient'}{' '}
+                    · Step {regDraft.restorableDraft.step || 1} of 5 · Saved{' '}
+                    {new Date(regDraft.restorableDraft.updatedAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    })}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={regDraft.applyRestoredDraft}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: '#D97706',
+                    color: '#fff',
+                    fontSize: 12.5,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Continue Draft
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void regDraft.discardRestoredDraft()}
+                  style={{
+                    padding: '7px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #F59E0B',
+                    background: '#fff',
+                    color: '#92400E',
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Start Fresh
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Stepper Bar */}
           <div style={{ padding: '16px 24px', background: '#F8FAFC', borderBottom: `1px solid ${C.border}` }}>
@@ -2989,7 +3098,10 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               </button>
               <button
                 type="button"
-                onClick={() => flash('Draft saved locally.')}
+                onClick={async () => {
+                  await regDraft.saveDraftNow();
+                  flash('✓ Draft saved to Cloud & On-Prem Hub (protected against power outage).');
+                }}
                 style={{
                   padding: '9px 14px',
                   borderRadius: 8,
@@ -3005,8 +3117,20 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 }}
               >
                 <Save size={14} />
-                <span>Save as Draft</span>
+                <span>
+                  {regDraft.status === 'saving'
+                    ? 'Saving Draft…'
+                    : regDraft.status === 'saved'
+                      ? 'Draft Saved (Cloud)'
+                      : 'Save as Draft'}
+                </span>
               </button>
+              {regDraft.lastSavedAt && (
+                <span style={{ fontSize: 11.5, color: '#059669', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <CheckCircle2 size={13} />
+                  Auto-saved {new Date(regDraft.lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: 10 }}>

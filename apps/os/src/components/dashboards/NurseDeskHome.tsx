@@ -15,6 +15,7 @@ import {
 import { InBasketPanel } from '../clinical-core/InBasketPanel';
 import { SharedBedStrip } from '../beds/SharedBedStrip';
 import { NursingTriageStation } from '../clinical-core/NursingTriageStation';
+import { useFormDraft } from '../../lib/formDraftStore';
 import {
   todayVisits,
   subscribeReceptionOps,
@@ -257,6 +258,25 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     );
   }, [vitalsForm]);
 
+  // Power-outage Cloud & On-Prem draft auto-save for Nurse Triage Vitals
+  const vitalsDraft = useFormDraft({
+    facilityId,
+    formType: 'nurse_triage_vitals',
+    draftId: triageModalPatient?.id || nurseBadge || 'triage',
+    staffBadge: nurseBadge,
+    data: { patientVisit: triageModalPatient, vitalsForm },
+    isDirty: (d) => Boolean(d?.patientVisit && d?.vitalsForm?.notes?.trim()),
+    onRestore: (restored) => {
+      if (restored?.patientVisit && !triageModalPatient) {
+        setTriageModalPatient(restored.patientVisit);
+      }
+      if (restored?.vitalsForm) {
+        setVitalsForm(restored.vitalsForm);
+      }
+      flash('✓ Unfinished triage vitals draft restored from Cloud / On-Prem.');
+    },
+  });
+
   // Action handlers
   const handleCallPatient = (visit: ReceptionVisit) => {
     updateVisitStatus(visit.id, 'called');
@@ -349,6 +369,7 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     );
 
     setTriageModalPatient(null);
+    void vitalsDraft.clearCurrentDraft();
     flash(`Vitals saved for ${triageModalPatient.patientName}. Routed to Doctor consult queue.`);
   };
 

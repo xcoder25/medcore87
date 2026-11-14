@@ -16,6 +16,7 @@
 import { broadcastLocal, isLanApiEligible, pushFacilityData } from './hospitalSync';
 import { enqueueFacilitySync } from './durableOutbox';
 import { isCriticalFacilityKey } from './poorNetwork';
+import { syncKeyToCloudAndPrem } from './cloudStore';
 
 export const FACILITY_KEYS = {
   patients: 'medcore_os_patient_registry_v1',
@@ -47,6 +48,13 @@ export function publishFacilityData(facilityId: string, key: string, value: unkn
   if (typeof window === 'undefined' || !facilityId) return;
   const online = typeof navigator === 'undefined' || navigator.onLine;
   const payload = { [key]: value };
+
+  // 0) Persist to Cloud (/api/facility/sync -> Aurora Postgres / Server Vault) + On-Prem LAN Hub
+  try {
+    syncKeyToCloudAndPrem(facilityId, key, value);
+  } catch {
+    /* ignore */
+  }
 
   // 1) Broadcast to AWS EventBridge / AppSync Realtime sync channels
   if (online) {
