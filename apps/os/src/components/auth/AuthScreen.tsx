@@ -504,9 +504,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
     mergeLocal();
     const onCards = () => mergeLocal();
+    const onAdminSync = (ev: Event) => {
+      const k = (ev as CustomEvent<{ key?: string }>)?.detail?.key;
+      if (!k || k === 'medcore_os_access_control' || k === 'medcore_os_staff_registry' || k === 'medcore_os_staff_cards' || k === 'reset') {
+        mergeLocal();
+      }
+    };
     window.addEventListener('medcore-staff-cards-updated', onCards);
     window.addEventListener('medcore-staff-registry-updated', onCards);
-    window.addEventListener('medcore-admin-sync', onCards);
+    window.addEventListener('medcore-admin-sync', onAdminSync);
 
     // ── Aurora PostgreSQL hydration: fetch enrolled staff for this facility ──────
     // Firestore is decommissioned; Aurora Postgres is the cloud source of truth.
@@ -713,7 +719,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     return () => {
       window.removeEventListener('medcore-staff-cards-updated', onCards);
       window.removeEventListener('medcore-staff-registry-updated', onCards);
-      window.removeEventListener('medcore-admin-sync', onCards);
+      window.removeEventListener('medcore-admin-sync', onAdminSync);
       unsubDir();
       unsubCol();
       unsubAuth();

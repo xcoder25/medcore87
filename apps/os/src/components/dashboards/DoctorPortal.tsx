@@ -700,23 +700,21 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
     [patient?.id, patient?.name, chiefComplaint, hpi, pmh, examination, assessment, plan, soapTab],
   );
 
-  const soapDraftDirty = Boolean(
-    chiefComplaint.trim() || hpi.trim() || pmh.trim() || examination.trim() || assessment.trim() || plan.trim(),
-  );
-
-  const {
-    hasRestorableDraft,
-    draftSavedAt,
-    lastAutosavedAt,
-    isSavingDraft,
-    restoreDraft,
-    discardDraft,
-  } = useFormDraft({
+  const soapDraft = useFormDraft({
     facilityId,
-    formKey: `doctor_soap_consult:${patient?.id || 'active'}`,
-    staffId: session?.email || session?.name || 'doctor',
-    value: soapDraftValue,
-    isDirty: soapDraftDirty,
+    formType: 'doctor_soap_consult',
+    draftId: patient?.id || session?.badgeId || 'active',
+    staffBadge: session?.badgeId || session?.email || 'doctor',
+    data: soapDraftValue,
+    isDirty: (d) =>
+      Boolean(
+        d?.chiefComplaint?.trim() ||
+          d?.hpi?.trim() ||
+          d?.pmh?.trim() ||
+          d?.examination?.trim() ||
+          d?.assessment?.trim() ||
+          d?.plan?.trim(),
+      ),
     onRestore: (saved) => {
       if (!saved) return;
       if (saved.chiefComplaint) setChiefComplaint(saved.chiefComplaint);
@@ -739,17 +737,17 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
       <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '20px', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
         <h2 style={{ margin: '0 0 4px', fontSize: '1.05rem', fontWeight: 800, color: '#0A2540' }}>Start Consultation</h2>
         <p style={{ margin: '0 0 16px', color: '#64748B', fontSize: '0.8rem' }}>Select a patient from the queue to begin a SOAP consultation session.</p>
-        {hasRestorableDraft && (
+        {soapDraft.restorableDraft && (
           <div style={{ marginBottom: 14, padding: '12px 16px', borderRadius: 12, background: '#FFFBEB', border: '1px solid #FDE68A', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#92400E' }}>⚡ Unsaved SOAP Consultation Draft Found (Power-Outage Recovery)</div>
               <div style={{ fontSize: '0.74rem', color: '#B45309', marginTop: 2 }}>
-                Auto-saved to Cloud & On-Prem Vault {draftSavedAt ? `at ${new Date(draftSavedAt).toLocaleTimeString()}` : 'recently'}.
+                Auto-saved to Cloud & On-Prem Vault {soapDraft.restorableDraft.updatedAt ? `at ${new Date(soapDraft.restorableDraft.updatedAt).toLocaleTimeString()}` : 'recently'}.
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" onClick={restoreDraft} style={{ background: '#D97706', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}>Restore Note</button>
-              <button type="button" onClick={() => void discardDraft()} style={{ background: '#fff', color: '#92400E', border: '1px solid #FCD34D', borderRadius: 8, padding: '7px 11px', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}>Discard</button>
+              <button type="button" onClick={soapDraft.applyRestoredDraft} style={{ background: '#D97706', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}>Restore Note</button>
+              <button type="button" onClick={() => void soapDraft.discardRestoredDraft()} style={{ background: '#fff', color: '#92400E', border: '1px solid #FCD34D', borderRadius: 8, padding: '7px 11px', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' }}>Discard</button>
             </div>
           </div>
         )}
@@ -803,13 +801,13 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
             <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: 2 }}>{patient?.name || 'Active Patient'} • {patient?.id || ''} • {new Date().toLocaleDateString('en-GB')}</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            {(isSavingDraft || lastAutosavedAt) && (
+            {(soapDraft.status === 'saving' || soapDraft.lastSavedAt) && (
               <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#059669', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '4px 9px', borderRadius: 999 }}>
-                {isSavingDraft ? 'Saving draft…' : `☁️ Cloud Draft Saved ${new Date(lastAutosavedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                {soapDraft.status === 'saving' ? 'Saving draft…' : `☁️ Cloud Draft Saved ${new Date(soapDraft.lastSavedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
               </span>
             )}
             <button type="button" onClick={() => setStep('select')} style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', color: '#475569', padding: '7px 13px', borderRadius: 8, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600 }}>← Back</button>
-            <button type="button" onClick={() => { void discardDraft(); liveAlert('SOAP Consultation Note signed and committed to Cloud & On-Prem EMR.'); }} style={{ background: 'linear-gradient(135deg,#0284C7,#0369A1)', border: 'none', color: '#fff', padding: '7px 15px', borderRadius: 8, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <button type="button" onClick={() => { void soapDraft.clearCurrentDraft(); liveAlert('SOAP Consultation Note signed and committed to Cloud & On-Prem EMR.'); }} style={{ background: 'linear-gradient(135deg,#0284C7,#0369A1)', border: 'none', color: '#fff', padding: '7px 15px', borderRadius: 8, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
               <Save size={13} /> Save & Sign
             </button>
           </div>

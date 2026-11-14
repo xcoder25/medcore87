@@ -50,16 +50,12 @@ function runtimeLanUrl(): string {
   return '';
 }
 
-/** True when env, Admin Settings LAN URL, or localhost hub is available. */
+/** True when env or Admin Settings LAN URL is explicitly configured. */
 export function isLanApiEligible(): boolean {
   if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) {
     return true;
   }
   if (runtimeLanUrl()) return true;
-  if (typeof window !== 'undefined') {
-    const h = window.location.hostname;
-    return h === 'localhost' || h === '127.0.0.1';
-  }
   return false;
 }
 
@@ -69,10 +65,6 @@ export function resolveApiBase(): string {
   }
   const fromSettings = runtimeLanUrl();
   if (fromSettings) return fromSettings;
-  if (typeof window !== 'undefined') {
-    const h = window.location.hostname;
-    if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:4000';
-  }
   return '';
 }
 

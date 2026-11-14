@@ -75,9 +75,10 @@ function read<T>(key: string, fallback: T): T {
 
 function write(key: string, value: unknown) {
   if (typeof window === 'undefined') return;
-  // 1) Durable local write FIRST (survives power loss if browser profile intact)
+  const serialized = JSON.stringify(value);
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    if (localStorage.getItem(key) === serialized) return;
+    localStorage.setItem(key, serialized);
   } catch (e) {
     console.error('[MedCore] local save failed — storage full?', e);
     throw e;

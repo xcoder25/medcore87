@@ -307,43 +307,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     };
   }, [fullName, roleMeta, facilityId, facilityName, photoUrl]);
 
-  // Read-only refresh
+  // Read-only refresh from local memory (cloud fetch happens once on mount / explicit action)
   const loadRecords = useCallback(() => {
     try {
       setRecords(getInitialStaffAccessRecords(facilityId));
     } catch { /* ignore */ }
-
-    void apiListStaff(facilityId).then((res) => {
-      if (!res.ok || !res.staff?.length) return;
-      try {
-        const mapped = res.staff.map((s: any) => ({
-          id: String(s.badge_id || s.badgeId || ''),
-          name: String(s.full_name || s.fullName || s.name || ''),
-          role: String(s.role || ''),
-          department: String(s.department || ''),
-          clearance: Number(s.clearance_level || s.clearanceLevel || 2),
-          status: (String(s.status || 'active') as 'active' | 'suspended' | 'pending'),
-          lastLogin: '—',
-          permissions: Array.isArray(s.permissions) ? (s.permissions as string[]) : [],
-          email: s.email ? String(s.email) : undefined,
-        }));
-        if (mapped.length) {
-          const byId = new Map<string, AccessRecord>();
-          for (const r of getInitialStaffAccessRecords(facilityId)) {
-            if (r?.id) byId.set(r.id.toUpperCase(), r);
-          }
-          for (const m of mapped) {
-            if (m.id) {
-              const prev = byId.get(m.id.toUpperCase());
-              byId.set(m.id.toUpperCase(), prev ? { ...prev, ...m } : m);
-            }
-          }
-          const merged = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
-          setAccessRecords(merged);
-          setRecords(merged);
-        }
-      } catch { /* ignore */ }
-    });
   }, [facilityId]);
 
   const isMounted = useRef(true);
@@ -516,9 +484,15 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     })();
 
     const onRosterUpdate = () => loadRecords();
+    const onAdminSync = (ev: Event) => {
+      const k = (ev as CustomEvent<{ key?: string }>)?.detail?.key;
+      if (!k || k === 'medcore_os_access_control' || k === 'medcore_os_staff_registry' || k === 'medcore_os_staff_cards' || k === 'reset') {
+        loadRecords();
+      }
+    };
     window.addEventListener('medcore-staff-cards-updated', onRosterUpdate);
     window.addEventListener('medcore-staff-registry-updated', onRosterUpdate);
-    window.addEventListener('medcore-admin-sync', onRosterUpdate);
+    window.addEventListener('medcore-admin-sync', onAdminSync);
 
     return () => {
       isMounted.current = false;
@@ -526,7 +500,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       try { unsubCol?.(); } catch { /* ignore */ }
       window.removeEventListener('medcore-staff-cards-updated', onRosterUpdate);
       window.removeEventListener('medcore-staff-registry-updated', onRosterUpdate);
-      window.removeEventListener('medcore-admin-sync', onRosterUpdate);
+      window.removeEventListener('medcore-admin-sync', onAdminSync);
     };
   }, [facilityId, loadRecords]);
 

@@ -14,7 +14,7 @@ import {
   applyCloudStaffDirectory,
   syncAccessRosterFromSources,
 } from './staffCardStore';
-import { enableEdgeCloudOnlyRuntime } from './edgeCloudOnly';
+import { enableEdgeCloudOnlyRuntime, withRemoteHydration } from './edgeCloudOnly';
 import { hydrateFacilityFromCloudAndPrem } from './cloudStore';
 import { MedCoreAppSyncSyncManager, type AppSyncRealtimeMessage } from './aws/appsyncRealtime';
 
@@ -77,70 +77,73 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
   if (value === undefined || value === null) return;
   if (key === 'updatedAt' || key === 'resetAt') return;
 
-  if (
-    (key === 'medcore_os_admin_settings_v1' || key === 'adminSettings') &&
-    value &&
-    typeof value === 'object'
-  ) {
-    try {
-      const s = value as { facilityId?: string };
-      const fid = String(s.facilityId || '').trim();
-      const payload = JSON.stringify(value);
-      localStorage.setItem('medcore_os_admin_settings_v1', payload);
-      if (fid) localStorage.setItem(`medcore_os_admin_settings_v1:${fid}`, payload);
-      window.dispatchEvent(new CustomEvent('medcore-admin-settings', { detail: value }));
-      window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key } }));
-      emitForKey(key, value);
-      return;
-    } catch {
-      /* fall through */
-    }
-  }
-
-  // Canonicalize legacy keys
-  let canonicalKey = key;
-  if (key === 'medcore_os_reception_ops_v1') canonicalKey = FACILITY_KEYS.reception;
-  if (key === 'medcore_staff_id_cards') canonicalKey = FACILITY_KEYS.staff;
-  if (key === 'clinical_vitals') canonicalKey = FACILITY_KEYS.vitals;
-
-  try {
-    if (canonicalKey === FACILITY_KEYS.staff && value && typeof value === 'object') {
-      const dir = value as { staffCards?: unknown[]; staffRegistry?: unknown[]; facilityId?: string };
-      applyCloudStaffDirectory(dir);
-      emitForKey(canonicalKey, value);
-      return;
-    }
-    if (canonicalKey === HIM_STORAGE_KEY) {
-      applyHimRemote(value);
-      emitForKey(canonicalKey, value);
-      return;
-    }
-    if (canonicalKey === STAFF_PRESENCE_KEY && value && typeof value === 'object') {
-      let local: Record<string, unknown> = {};
+  withRemoteHydration(() => {
+    if (
+      (key === 'medcore_os_admin_settings_v1' || key === 'adminSettings') &&
+      value &&
+      typeof value === 'object'
+    ) {
       try {
-        local = JSON.parse(localStorage.getItem(canonicalKey) || '{}') || {};
+        const s = value as { facilityId?: string };
+        const fid = String(s.facilityId || '').trim();
+        const payload = JSON.stringify(value);
+        const prev = localStorage.getItem('medcore_os_admin_settings_v1');
+        if (prev === payload) return;
+        localStorage.setItem('medcore_os_admin_settings_v1', payload);
+        if (fid) localStorage.setItem(`medcore_os_admin_settings_v1:${fid}`, payload);
+        window.dispatchEvent(new CustomEvent('medcore-admin-settings', { detail: value }));
+        window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key } }));
+        emitForKey(key, value);
+        return;
       } catch {
-        local = {};
+        /* fall through */
       }
-      const merged = mergePresenceMaps(
-        local as Parameters<typeof mergePresenceMaps>[0],
-        value as Parameters<typeof mergePresenceMaps>[0]
-      );
-      const next = JSON.stringify(merged);
+    }
+
+    // Canonicalize legacy keys
+    let canonicalKey = key;
+    if (key === 'medcore_os_reception_ops_v1') canonicalKey = FACILITY_KEYS.reception;
+    if (key === 'medcore_staff_id_cards') canonicalKey = FACILITY_KEYS.staff;
+    if (key === 'clinical_vitals') canonicalKey = FACILITY_KEYS.vitals;
+
+    try {
+      if (canonicalKey === FACILITY_KEYS.staff && value && typeof value === 'object') {
+        const dir = value as { staffCards?: unknown[]; staffRegistry?: unknown[]; facilityId?: string };
+        applyCloudStaffDirectory(dir);
+        return;
+      }
+      if (canonicalKey === HIM_STORAGE_KEY) {
+        applyHimRemote(value);
+        emitForKey(canonicalKey, value);
+        return;
+      }
+      if (canonicalKey === STAFF_PRESENCE_KEY && value && typeof value === 'object') {
+        let local: Record<string, unknown> = {};
+        try {
+          local = JSON.parse(localStorage.getItem(canonicalKey) || '{}') || {};
+        } catch {
+          local = {};
+        }
+        const merged = mergePresenceMaps(
+          local as Parameters<typeof mergePresenceMaps>[0],
+          value as Parameters<typeof mergePresenceMaps>[0]
+        );
+        const next = JSON.stringify(merged);
+        const prev = localStorage.getItem(canonicalKey);
+        if (prev === next) return;
+        localStorage.setItem(canonicalKey, next);
+        emitForKey(key, merged);
+        return;
+      }
+      const next = JSON.stringify(value);
       const prev = localStorage.getItem(canonicalKey);
       if (prev === next) return;
       localStorage.setItem(canonicalKey, next);
-      emitForKey(key, merged);
-      return;
+      emitForKey(key, value);
+    } catch {
+      /* quota / private mode */
     }
-    const next = JSON.stringify(value);
-    const prev = localStorage.getItem(canonicalKey);
-    if (prev === next) return;
-    localStorage.setItem(canonicalKey, next);
-    emitForKey(key, value);
-  } catch {
-    /* quota / private mode */
-  }
+  });
 }
 
 /**

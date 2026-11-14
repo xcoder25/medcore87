@@ -209,6 +209,8 @@ function writeCards(cards: StaffCardRecord[]) {
   if (typeof window === 'undefined') return;
   try {
     const raw = JSON.stringify(cards);
+    const prev = localStorage.getItem(STAFF_CARD_STORAGE_KEY);
+    if (prev === raw) return;
     localStorage.setItem(STAFF_CARD_STORAGE_KEY, raw);
     localStorage.setItem('medcore_os_staff_cards', raw);
     localStorage.setItem('medcore_staff_cards', raw);
@@ -391,22 +393,14 @@ export function syncAccessRosterFromSources(facilityId: string): {
   }));
 
   try {
-    localStorage.setItem('medcore_os_access_control', JSON.stringify(rows));
-    window.dispatchEvent(
-      new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_access_control' } })
-    );
-  } catch {
-    /* ignore */
-  }
-
-  try {
-    void import('./adminRealtimeStore').then((m) => {
-      try {
-        m.setAccessRecords(rows as never);
-      } catch {
-        /* ignore */
-      }
-    });
+    const nextRaw = JSON.stringify(rows);
+    const prevRaw = localStorage.getItem('medcore_os_access_control');
+    if (prevRaw !== nextRaw) {
+      localStorage.setItem('medcore_os_access_control', nextRaw);
+      window.dispatchEvent(
+        new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_access_control' } })
+      );
+    }
   } catch {
     /* ignore */
   }

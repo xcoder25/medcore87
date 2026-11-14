@@ -198,9 +198,18 @@ export function useFormDraft<T>(opts: UseFormDraftOptions<T>): UseFormDraftResul
   const dirtyRef = useRef<boolean>(false);
   const suppressSaveRef = useRef<boolean>(false);
 
+  const evalDirty = (val: T): boolean => {
+    try {
+      if (typeof isDirty === 'function') return Boolean(isDirty(val));
+      return Boolean(isDirty);
+    } catch {
+      return false;
+    }
+  };
+
   latestDataRef.current = data;
   latestStepRef.current = step;
-  dirtyRef.current = isDirty(data);
+  dirtyRef.current = evalDirty(data);
 
   // 1) Check Cloud & On-Prem for an existing unfinished draft on mount
   useEffect(() => {
@@ -208,7 +217,7 @@ export function useFormDraft<T>(opts: UseFormDraftOptions<T>): UseFormDraftResul
     void (async () => {
       const existing = await loadDraft<T>(facilityId, formType, draftId);
       if (cancelled || !existing || !existing.payload) return;
-      if (isDirty(existing.payload)) {
+      if (evalDirty(existing.payload)) {
         setRestorableDraft(existing);
       }
     })();
@@ -224,7 +233,7 @@ export function useFormDraft<T>(opts: UseFormDraftOptions<T>): UseFormDraftResul
       suppressSaveRef.current = false;
       return;
     }
-    if (!isDirty(data)) return;
+    if (!evalDirty(data)) return;
 
     setStatus('saving');
     const timer = setTimeout(async () => {

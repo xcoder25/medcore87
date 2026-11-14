@@ -17,11 +17,13 @@
 const ALLOWED_LOCALSTORAGE_KEYS = new Set<string>([
   'medcore_remember_me',
   'medcore_ui_theme',
+  'medcore_pilot_version',
 ]);
 
 /** Keys mirrored to tab-scoped `sessionStorage` so F5 reload in the same tab stays signed in without localStorage */
 const SESSION_TAB_PREFIXES = [
   'medcore_os_session',
+  'medcore_pilot_version',
   'medcore_claimed_facility_id',
   'medcore_claimed_facility_name',
   'medcore_lan_api_url',
@@ -128,6 +130,19 @@ export function memSetJson(key: string, value: unknown): void {
 // Background cloud-sync queue for any intercepted writes
 const pendingSyncBag: Record<string, unknown> = {};
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
+let suppressCloudMirrorDepth = 0;
+
+/**
+ * Run a callback while suppressing Cloud mirror write-backs (used when hydrating remote state).
+ */
+export function withRemoteHydration<T>(fn: () => T): T {
+  suppressCloudMirrorDepth++;
+  try {
+    return fn();
+  } finally {
+    suppressCloudMirrorDepth = Math.max(0, suppressCloudMirrorDepth - 1);
+  }
+}
 
 function resolveActiveFacilityForSync(): string {
   try {
@@ -145,10 +160,12 @@ function resolveActiveFacilityForSync(): string {
 }
 
 function queueCloudMirror(key: string, rawVal: string): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || suppressCloudMirrorDepth > 0) return;
   if (
     key.startsWith('medcore_os_sync_outbox') ||
     key === 'medcore_os_session' ||
+    key === 'medcore_os_admin_activity' ||
+    key === 'medcore_os_staff_presence_v1' ||
     key.includes('secret')
   ) {
     return;
@@ -170,7 +187,7 @@ function queueCloudMirror(key: string, rawVal: string): void {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ facilityId, data: batch }),
     }).catch(() => {});
-  }, 200);
+  }, 600);
 }
 
 /**
@@ -257,6 +274,7 @@ export function installEdgeCloudOnlyStorage(): void {
   raw.setItem = (key: string, value: string) => {
     if (isHeavyStorageKey(key)) {
       const str = String(value);
+      if (mem.get(key) === str) return;
       memSet(key, str);
       queueCloudMirror(key, str);
       return;
@@ -267,6 +285,11 @@ export function installEdgeCloudOnlyStorage(): void {
   raw.removeItem = (key: string) => {
     if (isHeavyStorageKey(key)) {
       memRemove(key);
+      try {
+        protoRemove(key);
+      } catch {
+        /* ignore */
+      }
       return;
     }
     return protoRemove(key);
