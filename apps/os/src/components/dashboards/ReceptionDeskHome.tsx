@@ -15,11 +15,6 @@ import {
 import { listStaffCards, isReceptionRole } from '../../lib/staffCardStore';
 import type { FacilityPatient } from '../../lib/patientRegistryStore';
 import type { ReceptionVisit, ReceptionAppointment, ReceptionDayStats } from '../../lib/receptionOpsStore';
-import {
-  listAccountsRequests,
-  subscribeAccountsRequests,
-  type FrontDeskAccountsRequest,
-} from '../../lib/frontDeskAccountsBridge';
 
 import {
   Search, UserPlus, CreditCard, Calendar, QrCode, Users, Clock,
@@ -104,17 +99,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activeFrontDesk, setActiveFrontDesk] = useState(0);
   const [inBasketOpen, setInBasketOpen] = useState(false);
-  const [queueTab, setQueueTab] = useState<'all' | 'accounts' | 'triage' | 'doctor' | 'completed'>('all');
-  const [accountsRequests, setAccountsRequests] = useState<FrontDeskAccountsRequest[]>([]);
-
-  const reloadAccounts = useCallback(() => {
-    setAccountsRequests(listAccountsRequests(facilityId, { status: 'awaiting_payment' }));
-  }, [facilityId]);
-
-  useEffect(() => {
-    reloadAccounts();
-    return subscribeAccountsRequests(reloadAccounts);
-  }, [reloadAccounts]);
+  const [queueTab, setQueueTab] = useState<'all' | 'triage' | 'doctor' | 'completed'>('all');
 
   const recountFrontDeskStaff = useCallback(() => {
     try {
@@ -611,12 +596,11 @@ export const ReceptionDeskHome: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* Stage tabs: Accounts Queue vs Triage Queue vs Doctor Queue vs Completed */}
+            {/* Stage tabs: Triage Queue vs Doctor Queue vs Completed */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
               {[
                 { id: 'all' as const, l: 'All Active OPD', v: waiting.length + called.length + withProv.length, c: '#2563EB', bg: '#EFF6FF' },
-                { id: 'accounts' as const, l: '💳 Accounts Queue (Awaiting Pay)', v: accountsRequests.length, c: '#D97706', bg: '#FFFBEB' },
-                { id: 'triage' as const, l: '🩺 Triage Queue (Paid · Vitals)', v: triageVisits.length, c: '#0D9488', bg: '#F0FDFA' },
+                { id: 'triage' as const, l: '🩺 Triage Queue (Vitals)', v: triageVisits.length, c: '#0D9488', bg: '#F0FDFA' },
                 { id: 'doctor' as const, l: '👨‍⚕️ Doctor Consult Queue', v: doctorVisits.length, c: '#7C3AED', bg: '#F5F3FF' },
                 { id: 'completed' as const, l: '🏁 Completed Today', v: completed.length, c: '#16A34A', bg: '#F0FDF4' },
               ].map((tab) => {
@@ -649,81 +633,6 @@ export const ReceptionDeskHome: React.FC<Props> = ({
               })}
             </div>
 
-            {/* If Accounts Queue tab is active, render dedicated Accounts Queue */}
-            {queueTab === 'accounts' ? (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ textAlign: 'left', color: C.muted, fontSize: 11, fontWeight: 700 }}>
-                      {['#', 'Patient Name', 'Hospital No', 'Invoice / Order', 'Purpose', 'Amount', 'Wait at Accounts', 'Status', 'Handoff Routing'].map((h) => (
-                        <th key={h} style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {accountsRequests.length === 0 ? (
-                      <tr>
-                        <td colSpan={9} style={{ padding: 28, textAlign: 'center', color: C.muted }}>
-                          No patients currently waiting at Accounts. New registrations are automatically queued here.
-                        </td>
-                      </tr>
-                    ) : (
-                      accountsRequests.map((req, idx) => (
-                        <tr key={req.id} style={{ borderBottom: `1px solid ${C.border}` }}>
-                          <td style={{ padding: '12px 10px', color: C.muted }}>{idx + 1}</td>
-                          <td style={{ padding: '12px 10px', fontWeight: 800, color: C.text }}>{req.patientName}</td>
-                          <td style={{ padding: '12px 10px', color: C.muted, fontSize: 12 }}>{req.hospitalNumber}</td>
-                          <td style={{ padding: '12px 10px', fontFamily: 'monospace', fontSize: 12 }}>
-                            {req.invoiceNumber || req.id}
-                          </td>
-                          <td style={{ padding: '12px 10px', color: C.muted }}>{req.purpose}</td>
-                          <td style={{ padding: '12px 10px', fontWeight: 800, color: '#B45309' }}>
-                            ₦{req.amountNgn.toLocaleString()}
-                          </td>
-                          <td style={{ padding: '12px 10px' }}>{waitMins(req.sentAt)} min</td>
-                          <td style={{ padding: '12px 10px' }}>
-                            <span
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                padding: '4px 10px',
-                                borderRadius: 999,
-                                background: '#FEF3C7',
-                                color: '#92400E',
-                                border: '1px solid #FDE68A',
-                              }}
-                            >
-                              ⏳ Awaiting Payment
-                            </span>
-                          </td>
-                          <td style={{ padding: '12px 10px' }}>
-                            <span
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                color: '#0D9488',
-                                background: '#F0FDFA',
-                                padding: '5px 12px',
-                                borderRadius: 8,
-                                border: '1px solid #CCFBF1',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 5,
-                              }}
-                              title="When accounts marks paid, patient automatically transfers to the Triage Queue"
-                            >
-                              ⚡ Auto → Triage on Pay
-                            </span>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
               /* Table */
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -855,7 +764,6 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                 </tbody>
               </table>
             </div>
-            )}
             <div
               style={{
                 display: 'flex',

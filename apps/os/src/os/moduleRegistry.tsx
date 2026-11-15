@@ -35,7 +35,7 @@ import { resolveOnboardingMode } from '../components/onboarding/HospitalOnboardi
 export { resolveOnboardingMode };
 export const HospitalOnboardingWizard = dynamic(() => import('../components/onboarding/HospitalOnboardingWizard').then(m => ({ default: m.HospitalOnboardingWizard })), { loading: () => <ModulePageLoader label="Loading onboarding…" /> });
 export const RoleFirstRunGuide = dynamic(() => import('../components/onboarding/RoleFirstRunGuide').then(m => ({ default: m.RoleFirstRunGuide })), { loading: () => <ModulePageLoader label="Loading guide…" /> });
-export const FacilityOnboarding = dynamic(() => import('../components/facility/FacilityOnboarding').then(m => m.FacilityOnboarding), { loading: () => <ModulePageLoader label="Opening Facility Onboarding…" /> });
+export const AdminSettings = dynamic(() => import('../components/admin/AdminSettings').then(m => m.AdminSettings), { loading: () => <ModulePageLoader label="Opening Hospital Settings & Facility Setup…" /> });
 
 export const AuthIdentity = dynamic(() => import('../components/auth/AuthIdentity').then(m => m.AuthIdentity), { loading: () => <ModulePageLoader label="Opening Auth Identity…" /> });
 export const DigitalPatientCard = dynamic(() => import('../components/patient-card/DigitalPatientCard').then(m => m.DigitalPatientCard), { loading: () => <ModulePageLoader label="Opening Patient Card…" /> });
@@ -232,7 +232,7 @@ export const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
   'iot-devices': ConnectedDevicesSuite,
   'device-gateway': DeviceGatewaySettings,
   auth: AuthIdentity,
-  facility: FacilityOnboarding,
+  facility: (props: any) => <AdminSettings {...props} initialTab="architecture" />,
   rbac: AccessControl,
   compliance: ComplianceAuditLogs,
   safety: ClinicalSafetyBcpSuite,

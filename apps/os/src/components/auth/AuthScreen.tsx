@@ -6,9 +6,11 @@ import {
   Building2, Lock, User, Eye, EyeOff, ArrowRight, CheckCircle2, AlertCircle, ShieldCheck,
   KeyRound, Mail, RefreshCw, X, ShieldAlert, Check, ChevronLeft
 } from 'lucide-react';
-import { inferRoleKey, defaultPermissionsForRole } from '../../lib/staffCardStore';
+import { inferRoleKey, defaultPermissionsForRole, listStaffCards } from '../../lib/staffCardStore';
 import { isStaffRevokedLocal } from '../../lib/staffPresenceStore';
 import { getClaimedFacilityId } from '../../lib/onboardingStore';
+import { getAdminSettings, type AdminFacilitySettings } from '../../lib/adminSettingsStore';
+import { StaffFaceMfaModal } from './StaffFaceMfaModal';
 
 // --- Types --------------------------------------------------------------------
 
@@ -143,6 +145,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
   /** email = work email form; badge = Staff ID No. + PIN */
   const [authMode, setAuthMode] = useState<'email' | 'badge'>('badge');
   const [firebaseLive, setFirebaseLive] = useState(false);
+  const [pendingMfaSession, setPendingMfaSession] = useState<UserSession | null>(null);
+  const [mfaSettings, setMfaSettings] = useState<AdminFacilitySettings | null>(null);
 
   // ── Forgot Password / PIN Recovery State ─────────────────────────────
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -726,9 +730,39 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     };
   }, [selectedHospital.id]);
 
+  const completeMfaLogin = (verifiedSession: UserSession) => {
+    setPendingMfaSession(null);
+    setSuccess(true);
+    if (onLogin) onLogin(verifiedSession);
+    if (onLoginSuccess) onLoginSuccess(verifiedSession);
+  };
+
   const triggerLogin = (session: UserSession) => {
-    if (onLogin) onLogin(session);
-    if (onLoginSuccess) onLoginSuccess(session);
+    let enrichedSession = session;
+    if (!enrichedSession.photoUrl && enrichedSession.badgeId) {
+      try {
+        const bNorm = String(enrichedSession.badgeId).toUpperCase().replace(/\s+/g, '');
+        const hit = listStaffCards().find(
+          (c) => String(c.badgeId || '').toUpperCase().replace(/\s+/g, '') === bNorm
+        );
+        if (hit?.photoUrl) {
+          enrichedSession = { ...enrichedSession, photoUrl: hit.photoUrl };
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const adminCfg = getAdminSettings(enrichedSession.hospitalId);
+    if (adminCfg.requireStaffMfa !== false) {
+      setMfaSettings(adminCfg);
+      setPendingMfaSession(enrichedSession);
+      setSuccess(false);
+      setLoading(false);
+      return;
+    }
+
+    completeMfaLogin(enrichedSession);
   };
 
   // Strict staff match by badge ID only (no fuzzy / demo name shortcuts)
@@ -2817,6 +2851,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             </div>
           </div>
         </div>
+      )}
+
+      {pendingMfaSession && (
+        <StaffFaceMfaModal
+          session={pendingMfaSession}
+          settings={mfaSettings || getAdminSettings(pendingMfaSession.hospitalId)}
+          onVerified={(verified) => completeMfaLogin(verified)}
+          onCancel={() => {
+            setPendingMfaSession(null);
+            setSuccess(false);
+            setLoading(false);
+            setError('2FA Biometric / MFA verification was cancelled. Access blocked.');
+          }}
+        />
       )}
 
     </div>

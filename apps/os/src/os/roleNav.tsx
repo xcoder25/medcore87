@@ -116,7 +116,7 @@ const MASTER_PILLARS: NavSection[] = [
     label: '7. Governance, Safety & Access',
     items: [
       { key: 'auth', icon: Shield, label: 'Staff sign-in & identity' },
-      { key: 'facility', icon: Building2, label: 'Hospital Facility Setup' },
+      { key: 'facility', icon: Building2, label: 'Hospital Settings & Facility Setup' },
       { key: 'rbac', icon: Shield, label: 'Staff Access & Enrolment' },
       { key: 'compliance', icon: FileText, label: 'Clinical Audit & Quality Logs' },
       { key: 'incident-safety', icon: ShieldAlert, label: 'Clinical Incident & Safety Governance', badge: 'CQI' },
@@ -555,7 +555,7 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
           label: 'Identity, Security & Finance',
           items: [
             { key: 'rbac', icon: Shield, label: 'Staff Access & Enrolment' },
-            { key: 'facility', icon: Building2, label: 'Hospital Management' },
+            { key: 'facility', icon: Building2, label: 'Hospital Settings & Facility Setup' },
             { key: 'compliance', icon: FileText, label: 'Compliance & Audit' },
             { key: 'akwaremit', icon: Landmark, label: 'AkwaRemit Revenue Hub', badge: 'AKS' },
             { key: 'cashier', icon: BarChart3, label: 'Revenue & Cashier' },
@@ -580,7 +580,7 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
           items: [
             { key: 'rbac', icon: Shield, label: 'Staff Access & Enrolment', badge: 'Admin' },
             { key: 'auth', icon: Shield, label: 'Staff sign-in & identity' },
-            { key: 'facility', icon: Building2, label: 'Hospital Facility Setup' },
+            { key: 'facility', icon: Building2, label: 'Hospital Settings & Facility Setup' },
             { key: 'my-card', icon: IdCard, label: 'My staff ID' },
           ],
         },

@@ -88,6 +88,12 @@ export interface AdminFacilitySettings {
   akwaremitMerchantId: string;
   akwaremitEnvironment: 'live' | 'test';
 
+  /** Staff 2FA / Biometric Facial Recognition Security */
+  requireStaffMfa: boolean;
+  requireStaffFacialRecognition: boolean;
+  allowMfaBackupCodeFallback: boolean;
+  faceMatchThresholdPercent: number;
+
   updatedAt: string;
   updatedBy?: string;
 }
@@ -151,6 +157,12 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   maintenanceMessage: '',
   akwaremitMerchantId: 'AKW-MERCH-88210',
   akwaremitEnvironment: 'live',
+
+  requireStaffMfa: true,
+  requireStaffFacialRecognition: true,
+  allowMfaBackupCodeFallback: true,
+  faceMatchThresholdPercent: 80,
+
   updatedBy: undefined,
 };
 

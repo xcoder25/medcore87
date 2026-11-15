@@ -21,7 +21,6 @@ import { HybridConnectivityDrawer } from '../realtime/HybridConnectivityDrawer';
 // Lazy module map — same keys as page.tsx
 import { HospitalStaffTransfer } from '../staffing/HospitalStaffTransfer';
 import { StaffingOverview } from '../staffing/StaffingOverview';
-import { FacilityOnboarding } from '../facility/FacilityOnboarding';
 import { CommandCentreDashboard } from '../command-centre/CommandCentreDashboard';
 import { BedManagement } from '../beds/BedManagement';
 import { PatientFlowVisibility } from '../patient-flow/PatientFlowVisibility';
@@ -107,8 +106,7 @@ const NAV: NavSection[] = [
     items: [
       { key: 'role-permissions', label: 'Role Visibility & Matrix', icon: Lock },
       { key: 'compliance', label: 'Compliance & Audit Logs', icon: FileText },
-      { key: 'facility', label: 'Clinical Architecture & Wards', icon: Building2 },
-      { key: 'settings', label: 'Hospital Settings & Policy', icon: Settings },
+      { key: 'settings', label: 'Hospital Settings & Facility Setup', icon: Settings },
     ],
   },
 ];
@@ -357,7 +355,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'staffing':
         return <StaffingOverview session={session} />;
       case 'facility':
-        return <FacilityOnboarding session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
+        return <AdminSettings session={session} initialTab="architecture" onNavigate={(k) => goModule(k as AdminModule)} />;
       case 'command':
         return <CommandCentreDashboard />;
       case 'beds':

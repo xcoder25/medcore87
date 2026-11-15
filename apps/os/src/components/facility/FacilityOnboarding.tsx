@@ -171,6 +171,7 @@ Services on: ${Object.entries(catalog.services || {})
 interface Props {
   session?: UserSession;
   onNavigate?: (moduleKey: string) => void;
+  embedded?: boolean;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -224,7 +225,7 @@ function ToggleChip({
   );
 }
 
-export const FacilityOnboarding: React.FC<Props> = ({ session, onNavigate }) => {
+export const FacilityOnboarding: React.FC<Props> = ({ session, onNavigate, embedded = false }) => {
   const facilityId = session?.hospitalId || 'UNKNOWN';
   const [section, setSection] = useState<Section>('capacity');
   const [catalog, setCatalog] = useState<FacilityCatalog>(() =>
@@ -450,65 +451,67 @@ export const FacilityOnboarding: React.FC<Props> = ({ session, onNavigate }) => 
     }));
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 1040 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: embedded ? '100%' : 1040 }}>
       {/* Header */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #E0F2FE 0%, #ECFDF5 100%)',
-          borderRadius: 16,
-          padding: 18,
-          border: '1px solid #BAE6FD',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <Building2 size={22} color="#0052D4" />
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <h2 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 800, color: '#0A2540' }}>
-              Clinical facility profile (EMR)
-            </h2>
-            <p style={{ margin: '4px 0 0', fontSize: '0.83rem', color: '#475569' }}>
-              Clinical profile for <strong>{catalog.name || session?.facility}</strong> (
-              {facilityId}): service lines, orderables, OPD/A&amp;E, and beds for <em>patient placement</em> — not building, EVS, or plant maintenance.
-            </p>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-            <span
-              style={{
-                padding: '5px 12px',
-                borderRadius: 999,
-                background: completeness.score >= 80 ? 'rgba(5,150,105,0.12)' : 'rgba(217,119,6,0.12)',
-                color: completeness.score >= 80 ? '#047857' : '#B45309',
-                fontSize: '0.75rem',
-                fontWeight: 800,
-              }}
-            >
-              <Shield size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-              Setup {completeness.score}%
-            </span>
-            {completeness.missing.length > 0 && (
-              <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
-                Missing: {completeness.missing.slice(0, 3).join(', ')}
-                {completeness.missing.length > 3 ? '…' : ''}
+      {!embedded && (
+        <div
+          style={{
+            background: 'linear-gradient(135deg, #E0F2FE 0%, #ECFDF5 100%)',
+            borderRadius: 16,
+            padding: 18,
+            border: '1px solid #BAE6FD',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <Building2 size={22} color="#0052D4" />
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <h2 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 800, color: '#0A2540' }}>
+                Clinical facility profile (EMR)
+              </h2>
+              <p style={{ margin: '4px 0 0', fontSize: '0.83rem', color: '#475569' }}>
+                Clinical profile for <strong>{catalog.name || session?.facility}</strong> (
+                {facilityId}): service lines, orderables, OPD/A&amp;E, and beds for <em>patient placement</em> — not building, EVS, or plant maintenance.
+              </p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+              <span
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 999,
+                  background: completeness.score >= 80 ? 'rgba(5,150,105,0.12)' : 'rgba(217,119,6,0.12)',
+                  color: completeness.score >= 80 ? '#047857' : '#B45309',
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                }}
+              >
+                <Shield size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                Setup {completeness.score}%
+              </span>
+              {completeness.missing.length > 0 && (
+                <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                  Missing: {completeness.missing.slice(0, 3).join(', ')}
+                  {completeness.missing.length > 3 ? '…' : ''}
+                </span>
+              )}
+            </div>
+            {live && (
+              <span
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: 999,
+                  background: 'rgba(16,185,129,0.12)',
+                  color: '#047857',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                }}
+                title="Settings sync in real time across all hospital workstations"
+              >
+                ● Live
               </span>
             )}
           </div>
-          {live && (
-            <span
-              style={{
-                padding: '5px 10px',
-                borderRadius: 999,
-                background: 'rgba(16,185,129,0.12)',
-                color: '#047857',
-                fontSize: '0.72rem',
-                fontWeight: 800,
-              }}
-              title="Settings sync in real time across all hospital workstations"
-            >
-              ● Live
-            </span>
-          )}
         </div>
-      </div>
+      )}
 
       {/* AI Assist — single + bulk */}
       {showAiPanel && (
