@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAkwaRemitServerConfig, verifyWebhookSignature } from '../../../../lib/akwaremitServer';
+import { publishFacilitySseEvent } from '../../../../lib/sseBroker';
 
 export const runtime = 'nodejs';
 
@@ -13,7 +14,9 @@ export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const signature = req.headers.get('x-akwaremit-signature');
 
-  if (signature && !verifyWebhookSignature(signature, rawBody)) {
+  // Enforce HMAC signature whenever a live webhook secret is configured in server env
+  const hasEnvSecret = Boolean(process.env.AKWAREMIT_WEBHOOK_SECRET && process.env.AKWAREMIT_WEBHOOK_SECRET.trim());
+  if ((hasEnvSecret || signature) && !verifyWebhookSignature(signature, rawBody)) {
     return NextResponse.json({ error: 'INVALID_SIGNATURE', message: 'Signature verification failed' }, { status: 401 });
   }
 
@@ -49,6 +52,28 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const confirmedStatus = status === 'paid' || status === 'success' ? 'paid' : 'pending';
+  const facilityId = String(body.facilityId || 'IGH-EKT').trim().toUpperCase();
+
+  if (confirmedStatus === 'paid') {
+    try {
+      publishFacilitySseEvent({
+        facilityId,
+        key: 'akwaremit-webhook-paid',
+        value: {
+          arn,
+          amountNgn: amountReceivedNgn,
+          channel,
+          transactionRef,
+          merchantId: config.merchantId,
+        },
+        actor: 'akwaremit-webhook',
+      });
+    } catch {
+      /* ignore SSE publish failures */
+    }
+  }
+
   console.log(`[AkwaRemit Webhook] Confirmed: ${arn} · ₦${amountReceivedNgn} via ${channel} · Status: ${status} · Merchant: ${config.merchantId}`);
 
   return NextResponse.json({
@@ -57,7 +82,7 @@ export async function POST(req: NextRequest) {
     merchantId: config.merchantId,
     amountNgn: amountReceivedNgn,
     channel,
-    status: status === 'paid' || status === 'success' ? 'paid' : 'pending',
+    status: confirmedStatus,
     transactionRef,
     exactAmountValidated: true,
     action: 'release_electronic_file_to_next_department',

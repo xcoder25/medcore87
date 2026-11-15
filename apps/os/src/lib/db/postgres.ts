@@ -368,6 +368,56 @@ export async function ensureSchema(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS idx_inpatient_beds_ward ON inpatient_beds (facility_id, ward, status);
 
+        CREATE TABLE IF NOT EXISTS reception_visits (
+          id TEXT NOT NULL,
+          facility_id TEXT NOT NULL,
+          patient_id TEXT,
+          hospital_number TEXT,
+          patient_name TEXT,
+          queue_number TEXT,
+          department TEXT,
+          doctor TEXT,
+          status TEXT DEFAULT 'waiting',
+          payment_status TEXT DEFAULT 'unpaid',
+          visit_type TEXT DEFAULT 'walkin',
+          payload JSONB DEFAULT '{}'::jsonb,
+          checked_in_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW(),
+          PRIMARY KEY (facility_id, id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_reception_visits_status ON reception_visits (facility_id, status, checked_in_at DESC);
+
+        CREATE TABLE IF NOT EXISTS accounts_requests (
+          id TEXT NOT NULL,
+          facility_id TEXT NOT NULL,
+          patient_id TEXT,
+          hospital_number TEXT,
+          patient_name TEXT,
+          amount_ngn NUMERIC(14,2) DEFAULT 0,
+          purpose TEXT,
+          status TEXT DEFAULT 'awaiting_payment',
+          invoice_number TEXT,
+          paid_reference TEXT,
+          paid_via TEXT,
+          payload JSONB DEFAULT '{}'::jsonb,
+          sent_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW(),
+          PRIMARY KEY (facility_id, id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_accounts_requests_status ON accounts_requests (facility_id, status, sent_at DESC);
+
+        CREATE TABLE IF NOT EXISTS staff_biometrics (
+          badge_id TEXT NOT NULL,
+          facility_id TEXT NOT NULL,
+          staff_name TEXT,
+          descriptor JSONB NOT NULL DEFAULT '[]'::jsonb,
+          version INT DEFAULT 1,
+          enrolled_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW(),
+          PRIMARY KEY (facility_id, badge_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_staff_biometrics_lookup ON staff_biometrics (facility_id, badge_id);
+
         CREATE TABLE IF NOT EXISTS clinical_audit_ledger (
           id TEXT NOT NULL,
           facility_id TEXT NOT NULL,
@@ -399,6 +449,9 @@ export async function ensureSchema(): Promise<void> {
         ALTER TABLE lab_results ENABLE ROW LEVEL SECURITY;
         ALTER TABLE invoices_receipts ENABLE ROW LEVEL SECURITY;
         ALTER TABLE inpatient_beds ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE reception_visits ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE accounts_requests ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE staff_biometrics ENABLE ROW LEVEL SECURITY;
         ALTER TABLE clinical_audit_ledger ENABLE ROW LEVEL SECURITY;
 
         DO $$
@@ -408,7 +461,8 @@ export async function ensureSchema(): Promise<void> {
           FOREACH t IN ARRAY ARRAY[
             'patients', 'staff', 'clinical_orders', 'notifications',
             'facility_kv', 'form_drafts', 'vital_signs', 'prescriptions',
-            'lab_results', 'invoices_receipts', 'inpatient_beds', 'clinical_audit_ledger'
+            'lab_results', 'invoices_receipts', 'inpatient_beds',
+            'reception_visits', 'accounts_requests', 'staff_biometrics', 'clinical_audit_ledger'
           ]
           LOOP
             IF NOT EXISTS (
@@ -656,6 +710,137 @@ export async function projectKeyToRelationalTables(
           String(v.urgency || 'routine'),
           String(v.recordedBy || v.triagedBy || ''),
           JSON.stringify(v),
+        ]
+      );
+    }
+  }
+
+  // 5) Reception Visits & Queue
+  if (key === 'medcore_os_reception_ops_v2' && value && typeof value === 'object') {
+    const visits = Array.isArray((value as any).visits) ? (value as any).visits : [];
+    for (const raw of visits.slice(0, 250)) {
+      if (!raw || typeof raw !== 'object') continue;
+      const v = raw as Record<string, any>;
+      const id = String(v.id || '').trim();
+      if (!id) continue;
+      await c.query(
+        `INSERT INTO reception_visits (
+           id, facility_id, patient_id, hospital_number, patient_name, queue_number,
+           department, doctor, status, payment_status, visit_type, payload, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, NOW())
+         ON CONFLICT (facility_id, id) DO UPDATE SET
+           status = EXCLUDED.status,
+           payment_status = EXCLUDED.payment_status,
+           department = EXCLUDED.department,
+           doctor = EXCLUDED.doctor,
+           payload = EXCLUDED.payload,
+           updated_at = NOW()`,
+        [
+          id,
+          facilityId,
+          String(v.patientId || ''),
+          String(v.hospitalNumber || ''),
+          String(v.patientName || ''),
+          String(v.queueNumber || ''),
+          String(v.department || ''),
+          String(v.doctor || ''),
+          String(v.status || 'waiting'),
+          String(v.paymentStatus || 'unpaid'),
+          String(v.visitType || 'walkin'),
+          JSON.stringify(v),
+        ]
+      );
+    }
+  }
+
+  // 6) Front Desk <-> Accounts Pending Payment Requests
+  if (key === 'medcore_os_fd_accounts_requests_v1' && Array.isArray(value)) {
+    for (const raw of value.slice(0, 250)) {
+      if (!raw || typeof raw !== 'object') continue;
+      const r = raw as Record<string, any>;
+      const id = String(r.id || '').trim();
+      if (!id) continue;
+      await c.query(
+        `INSERT INTO accounts_requests (
+           id, facility_id, patient_id, hospital_number, patient_name, amount_ngn,
+           purpose, status, invoice_number, paid_reference, paid_via, payload, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, NOW())
+         ON CONFLICT (facility_id, id) DO UPDATE SET
+           status = EXCLUDED.status,
+           paid_reference = EXCLUDED.paid_reference,
+           paid_via = EXCLUDED.paid_via,
+           payload = EXCLUDED.payload,
+           updated_at = NOW()`,
+        [
+          id,
+          facilityId,
+          String(r.patientId || ''),
+          String(r.hospitalNumber || ''),
+          String(r.patientName || ''),
+          Number(r.amountNgn || 0),
+          String(r.purpose || ''),
+          String(r.status || 'awaiting_payment'),
+          String(r.invoiceNumber || ''),
+          String(r.paidReference || ''),
+          String(r.paidVia || ''),
+          JSON.stringify(r),
+        ]
+      );
+    }
+  }
+
+  // 7) Notifications
+  if (key === 'medcore_os_notifications_v1' && Array.isArray(value)) {
+    for (const raw of value.slice(0, 200)) {
+      if (!raw || typeof raw !== 'object') continue;
+      const n = raw as Record<string, any>;
+      const id = String(n.id || '').trim();
+      if (!id) continue;
+      await c.query(
+        `INSERT INTO notifications (
+           id, facility_id, level, title, body, module, patient_id, role_hint, target_staff, read, payload
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+         ON CONFLICT (id) DO UPDATE SET
+           read = EXCLUDED.read,
+           payload = EXCLUDED.payload`,
+        [
+          id,
+          facilityId,
+          String(n.level || 'info'),
+          String(n.title || ''),
+          String(n.body || ''),
+          String(n.module || ''),
+          String(n.patientId || ''),
+          String(n.roleHint || ''),
+          String(n.targetStaff || ''),
+          Boolean(n.read),
+          JSON.stringify(n),
+        ]
+      );
+    }
+  }
+
+  // 8) Staff Face Biometric Templates
+  if (key === 'medcore_staff_face_biometrics_v1' && value && typeof value === 'object' && !Array.isArray(value)) {
+    for (const [badgeKey, raw] of Object.entries(value as Record<string, any>).slice(0, 200)) {
+      if (!raw || typeof raw !== 'object') continue;
+      const badgeId = String(raw.badgeId || badgeKey || '').trim().toUpperCase();
+      if (!badgeId) continue;
+      await c.query(
+        `INSERT INTO staff_biometrics (
+           badge_id, facility_id, staff_name, descriptor, version, updated_at
+         ) VALUES ($1, $2, $3, $4::jsonb, $5, NOW())
+         ON CONFLICT (facility_id, badge_id) DO UPDATE SET
+           staff_name = EXCLUDED.staff_name,
+           descriptor = EXCLUDED.descriptor,
+           version = EXCLUDED.version,
+           updated_at = NOW()`,
+        [
+          badgeId,
+          facilityId,
+          String(raw.staffName || ''),
+          JSON.stringify(Array.isArray(raw.descriptor) ? raw.descriptor : []),
+          Number(raw.version || 1),
         ]
       );
     }

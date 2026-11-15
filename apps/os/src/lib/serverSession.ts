@@ -13,6 +13,15 @@ export interface VerifiedServerSession {
   role: string;
   facilityId: string;
   clearanceLevel: number;
+  mfaVerified?: boolean;
+  iat: number;
+  exp: number;
+}
+
+export interface MfaProofPayload {
+  badgeId: string;
+  facilityId: string;
+  method: 'face' | 'code';
   iat: number;
   exp: number;
 }
@@ -100,6 +109,49 @@ export async function verifySessionToken(token?: string | null): Promise<Verifie
     if (!parsed || typeof parsed !== 'object' || (parsed.exp && parsed.exp < now)) {
       return null;
     }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export async function signMfaToken(
+  badgeId: string,
+  facilityId: string,
+  method: 'face' | 'code',
+  ttlSeconds = 300
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const full: MfaProofPayload = {
+    badgeId: String(badgeId || '').trim().toUpperCase(),
+    facilityId: String(facilityId || 'IGH-EKT').trim().toUpperCase(),
+    method,
+    iat: now,
+    exp: now + ttlSeconds,
+  };
+  const bodyB64 = base64UrlEncodeBytes(new TextEncoder().encode(JSON.stringify(full)));
+  const sigB64 = await hmacSha256(bodyB64, getSecret());
+  return `mfa.${bodyB64}.${sigB64}`;
+}
+
+export async function verifyMfaToken(
+  token?: string | null,
+  expectedBadgeId?: string,
+  expectedFacilityId?: string
+): Promise<MfaProofPayload | null> {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3 || parts[0] !== 'mfa') return null;
+  const [, bodyB64, sigB64] = parts;
+  if (!bodyB64 || !sigB64) return null;
+  try {
+    const expectedSig = await hmacSha256(bodyB64, getSecret());
+    if (expectedSig !== sigB64) return null;
+    const parsed = JSON.parse(new TextDecoder().decode(base64UrlDecodeToBytes(bodyB64))) as MfaProofPayload;
+    const now = Math.floor(Date.now() / 1000);
+    if (!parsed || (parsed.exp && parsed.exp < now)) return null;
+    if (expectedBadgeId && parsed.badgeId !== expectedBadgeId.trim().toUpperCase()) return null;
+    if (expectedFacilityId && parsed.facilityId !== expectedFacilityId.trim().toUpperCase()) return null;
     return parsed;
   } catch {
     return null;

@@ -243,6 +243,46 @@ export const StaffFaceMfaModal: React.FC<StaffFaceMfaModalProps> = ({
     return all[badge] || null;
   }, [badge]);
 
+  // Hydrate server-persisted face template so staff biometrics follow them across workstations
+  useEffect(() => {
+    if (!badge || typeof fetch === 'undefined') return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/auth/mfa?facilityId=${encodeURIComponent(facilityId)}&badgeId=${encodeURIComponent(badge)}`
+        );
+        if (!res.ok || cancelled) return;
+        const json = (await res.json()) as {
+          ok?: boolean;
+          enrolled?: boolean;
+          template?: { descriptor?: number[]; enrolledAt?: string; staffName?: string };
+        };
+        if (json.ok && json.enrolled && json.template?.descriptor?.length) {
+          const all = readAllBiometrics();
+          if (!all[badge]) {
+            all[badge] = {
+              badgeId: badge,
+              name: json.template.staffName || session.name,
+              role: session.role,
+              facilityId,
+              descriptor: json.template.descriptor,
+              enrolledAt: json.template.enrolledAt || new Date().toISOString(),
+              lastVerifiedAt: new Date().toISOString(),
+              enrolledByMethod: 'live_camera',
+            };
+            writeAllBiometrics(all, facilityId);
+          }
+        }
+      } catch {
+        /* offline fallback */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [badge, facilityId, session.name, session.role]);
+
   const cardPhotoUrl = useMemo(() => {
     if (session.photoUrl) return session.photoUrl;
     try {
@@ -511,12 +551,32 @@ export const StaffFaceMfaModal: React.FC<StaffFaceMfaModalProps> = ({
       setCamState('verified');
       setScanStatus(`Identity confirmed (${score}% biometric match) · Unlocking clinical OS…`);
       stopCamera();
+      let serverMfaToken: string | undefined;
+      try {
+        const res = await fetch('/api/auth/mfa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'verify_face',
+            facilityId,
+            badgeId: badge,
+            staffName: session.name,
+            descriptor: liveDescriptor,
+            thresholdPercent: threshold,
+          }),
+        });
+        const j = (await res.json().catch(() => null)) as { mfaToken?: string } | null;
+        if (j?.mfaToken) serverMfaToken = j.mfaToken;
+      } catch {
+        /* offline */
+      }
       window.setTimeout(() => {
         onVerified({
           ...session,
+          token: serverMfaToken || session.token,
           authMethod: `${session.authMethod} + Face 2FA`,
         });
-      }, 650);
+      }, 450);
       return;
     }
 
@@ -551,12 +611,31 @@ export const StaffFaceMfaModal: React.FC<StaffFaceMfaModalProps> = ({
     setCamState('verified');
     setScanStatus('Facial template locked & verified for future logins · Unlocking OS…');
     stopCamera();
+    let serverMfaToken: string | undefined;
+    try {
+      const res = await fetch('/api/auth/mfa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'enroll',
+          facilityId,
+          badgeId: badge,
+          staffName: session.name,
+          descriptor: liveDescriptor,
+        }),
+      });
+      const j = (await res.json().catch(() => null)) as { mfaToken?: string } | null;
+      if (j?.mfaToken) serverMfaToken = j.mfaToken;
+    } catch {
+      /* offline */
+    }
     window.setTimeout(() => {
       onVerified({
         ...session,
+        token: serverMfaToken || session.token,
         authMethod: `${session.authMethod} + Face ID Enrolled`,
       });
-    }, 700);
+    }, 500);
   };
 
   const handleOtpSubmit = (e: React.FormEvent) => {
@@ -608,6 +687,11 @@ export const StaffFaceMfaModal: React.FC<StaffFaceMfaModalProps> = ({
     });
 
     stopCamera();
+    void fetch('/api/auth/mfa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'verify_code', facilityId, badgeId: badge, code: cleaned }),
+    }).catch(() => {});
     onVerified({
       ...session,
       authMethod: `${session.authMethod} + MFA Code`,

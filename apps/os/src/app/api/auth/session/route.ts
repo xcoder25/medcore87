@@ -3,6 +3,7 @@ import {
   SESSION_COOKIE_NAME,
   signSessionToken,
   verifySessionToken,
+  verifyMfaToken,
 } from '../../../../lib/serverSession';
 
 export const runtime = 'nodejs';
@@ -41,6 +42,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'badgeId required' }, { status: 400 });
     }
 
+    const mfaToken = typeof body.mfaToken === 'string' ? body.mfaToken : undefined;
+    const verifiedMfa = mfaToken ? await verifyMfaToken(mfaToken, badgeId, facilityId) : null;
+
     const token = await signSessionToken({
       badgeId,
       name,
@@ -48,6 +52,7 @@ export async function POST(req: NextRequest) {
       role,
       facilityId,
       clearanceLevel,
+      mfaVerified: Boolean(verifiedMfa),
     });
 
     const res = NextResponse.json({
