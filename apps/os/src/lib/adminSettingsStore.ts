@@ -68,6 +68,7 @@ export interface AdminFacilitySettings {
   requireVitalsBeforeConsult: boolean;
   unattendedQueueAlertMins: number;
   requireBillingClearanceBeforeDischarge: boolean;
+  allowEmergencyUnpaidOverride?: boolean;
 
   /** Insurance & NHIA / AKSHIA / HMO */
   nhiaProviderCode: string;

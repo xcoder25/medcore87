@@ -166,10 +166,15 @@ export interface UseFormDraftResult<T> {
   status: DraftSaveStatus;
   lastSavedAt: string | null;
   restorableDraft: FormDraftEnvelope<T> | null;
+  hasRecoverableDraft: boolean;
+  isSaving: boolean;
   applyRestoredDraft: () => void;
+  restoreDraft: () => void;
   discardRestoredDraft: () => Promise<void>;
+  discardDraft: () => Promise<void>;
   saveDraftNow: () => Promise<void>;
   clearCurrentDraft: () => Promise<void>;
+  clearDraft: () => Promise<void>;
 }
 
 /**
@@ -336,9 +341,14 @@ export function useFormDraft<T>(opts: UseFormDraftOptions<T>): UseFormDraftResul
     status,
     lastSavedAt,
     restorableDraft,
+    hasRecoverableDraft: Boolean(restorableDraft),
+    isSaving: status === 'saving',
     applyRestoredDraft,
+    restoreDraft: applyRestoredDraft,
     discardRestoredDraft,
+    discardDraft: discardRestoredDraft,
     saveDraftNow,
     clearCurrentDraft,
+    clearDraft: clearCurrentDraft,
   };
 }

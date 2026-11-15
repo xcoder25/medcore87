@@ -364,7 +364,7 @@ export function checkInPatientByRef(input: {
     (l) => l.status === 'unpaid' || l.status === 'partial'
   );
   if ((awaiting.length > 0 || unpaid.length > 0) && input.visitType !== 'emergency') {
-    const due = awaiting.reduce((s, r) => s + r.amountNgn, 0) || unpaid.reduce((s, l) => s + (l.amountNgn - (l.paidNgn || 0)), 0);
+    const due = awaiting.reduce((s, r) => s + r.amountNgn, 0) || unpaid.reduce((s, l) => s + l.amountNgn, 0);
     return {
       ok: false,
       message: `🚫 Cannot check in **${p.firstName} ${p.lastName}** (${p.hospitalNumber}) — unpaid folder/registration fee of **₦${due.toLocaleString()}** at Accounts. Patient must pay at Cashier/Accounts first.`,
@@ -460,7 +460,7 @@ export function bookAppointmentByRef(input: {
     (l) => l.status === 'unpaid' || l.status === 'partial'
   );
   if (awaiting.length > 0 || unpaid.length > 0) {
-    const due = awaiting.reduce((s, r) => s + r.amountNgn, 0) || unpaid.reduce((s, l) => s + (l.amountNgn - (l.paidNgn || 0)), 0);
+    const due = awaiting.reduce((s, r) => s + r.amountNgn, 0) || unpaid.reduce((s, l) => s + l.amountNgn, 0);
     return {
       ok: false,
       message: `🚫 Cannot book appointment for **${p.firstName} ${p.lastName}** (${p.hospitalNumber}) — unpaid folder/registration fee of **₦${due.toLocaleString()}** at Accounts. Patient must pay folder fee first.`,

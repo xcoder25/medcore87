@@ -10,7 +10,7 @@ import {
   QrCode, Clock, Building2, CheckCircle2, ArrowRight, Printer, X,
   Phone, MapPin, Wallet, Sparkles, Camera, ShieldCheck, Banknote,
   IdCard, Stethoscope, Bell, ChevronRight, RefreshCw, ScanLine,
-  Check, Edit2, Info, UserCheck, FileText, Copy, Save, ArrowLeft,
+  Check, Edit2, Info, User, UserCheck, FileText, FileSpreadsheet, Copy, Save, ArrowLeft,
   Plus, BarChart3, Shield,
 } from 'lucide-react';
 import {
@@ -451,7 +451,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [ciAmount, setCiAmount] = useState(() => String(getAdminSettings(facilityId).defaultOpdFeeNgn || 5000));
   const [ciReason, setCiReason] = useState('Consultation');
   const [posMethod, setPosMethod] = useState<PaymentMethod>('cash');
-    const payMethodBoxRef = useRef<HTMLDivElement>(null);
+  const payMethodBoxRef = useRef<HTMLDivElement>(null);
   const [posAmount, setPosAmount] = useState(() => String(getAdminSettings(facilityId).defaultOpdFeeNgn || 5000));
   const [posPurpose, setPosPurpose] = useState('OPD consultation');
   const [posPatient, setPosPatient] = useState<FacilityPatient | null>(null);
@@ -694,16 +694,16 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       const d = result.data;
       setReg((prev) => ({
         ...prev,
-        firstName:    d.firstName  || prev.firstName,
-        lastName:     d.lastName   || prev.lastName,
-        middleName:   d.middleName || prev.middleName,
-        dob:          d.dob        || prev.dob,
-        sex:          (d.sex && ['Male','Female','Other'].includes(d.sex) ? d.sex as FacilityPatient['sex'] : prev.sex),
-        phone:        d.phone      || prev.phone,
+        firstName: d.firstName || prev.firstName,
+        lastName: d.lastName || prev.lastName,
+        middleName: d.middleName || prev.middleName,
+        dob: d.dob || prev.dob,
+        sex: (d.sex && ['Male', 'Female', 'Other'].includes(d.sex) ? d.sex as FacilityPatient['sex'] : prev.sex),
+        phone: d.phone || prev.phone,
       }));
       setNinStatus('prefilled');
     }).catch(() => setNinStatus('idle'));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reg.nin, facilityId]);
 
   const flash = (msg: string) => {
@@ -1011,10 +1011,10 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     setRegErrors((prev) => {
       const stepFields =
         step === 1 ? ['firstName', 'lastName', 'dob', 'sex', 'maritalStatus', 'preferredLanguage', 'nin']
-        : step === 2 ? ['phone', 'email', 'address', 'state', 'lga']
-        : step === 3 ? ['emergencyContact', 'emergencyRelation']
-        : step === 4 ? ['category', 'insuranceProvider', 'insuranceId']
-        : [];
+          : step === 2 ? ['phone', 'email', 'address', 'state', 'lga']
+            : step === 3 ? ['emergencyContact', 'emergencyRelation']
+              : step === 4 ? ['category', 'insuranceProvider', 'insuranceId']
+                : [];
       const next = { ...prev };
       stepFields.forEach((f) => delete next[f]);
       return { ...next, ...errors };
@@ -1114,12 +1114,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     isDirty: (d) =>
       Boolean(
         d?.reg &&
-          (d.reg.firstName?.trim() ||
-            d.reg.lastName?.trim() ||
-            d.reg.phone?.trim() ||
-            d.reg.dob ||
-            d.reg.nin?.trim() ||
-            d.reg.emergencyContact?.trim())
+        (d.reg.firstName?.trim() ||
+          d.reg.lastName?.trim() ||
+          d.reg.phone?.trim() ||
+          d.reg.dob ||
+          d.reg.nin?.trim() ||
+          d.reg.emergencyContact?.trim())
       ),
     onRestore: (restored, savedStep) => {
       if (restored?.reg) {
@@ -1501,9 +1501,8 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         setSendAcctDialog({
           kind: 'success',
           title: 'Sent to Accounts',
-          body: `${fullName(p)} · ₦${amt.toLocaleString()} · ${req.invoiceNumber || req.id}${
-            acctTargetName ? ` · routed to ${acctTargetName}` : ` · ${activeAcct.length} desk(s) online`
-          }. Patient pays at Accounts, then returns with the receipt.`,
+          body: `${fullName(p)} · ₦${amt.toLocaleString()} · ${req.invoiceNumber || req.id}${acctTargetName ? ` · routed to ${acctTargetName}` : ` · ${activeAcct.length} desk(s) online`
+            }. Patient pays at Accounts, then returns with the receipt.`,
         });
       }
     } catch (e: any) {
@@ -1627,7 +1626,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   };
 
 
-  
+
   // Realtime presence / gesture from patient app → AI check-in card
   useEffect(() => {
     return subscribePresence((payload) => {
@@ -2279,7 +2278,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
         </div>
       )}
 
-            {/* REGISTER — NEW PATIENT REGISTRATION FORM */}
+      {/* REGISTER — NEW PATIENT REGISTRATION FORM */}
       {view === 'register' && (
         <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
           {/* Header Banner */}
@@ -3254,7 +3253,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                           Standard Hospital Flow Rule: Mandatory Nurse Triage
                         </strong>
                         <p style={{ margin: '4px 0 0 0', fontSize: 12, color: '#1E40AF', lineHeight: 1.5 }}>
-                          Registering this patient will create permanent record <strong>#{patientIdPreview}</strong> and immediately generate encounter status: 
+                          Registering this patient will create permanent record <strong>#{patientIdPreview}</strong> and immediately generate encounter status:
                           <span style={{ fontWeight: 800, background: '#DBEAFE', padding: '2px 6px', borderRadius: 4, margin: '0 4px' }}>WAITING_FOR_TRIAGE</span>.
                           The patient cannot bypass nurse triage to doctor consultation.
                         </p>
@@ -4047,16 +4046,13 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 type="button"
                 onClick={() => {
                   if (exSelectedPatient) {
-                    printQueueTicket(
-                      {
-                        queueNumber: 'REG-PENDING',
-                        department: exVisitType,
-                        patientName: fullName(exSelectedPatient),
-                        hospitalNumber: exSelectedPatient.hospitalNumber,
-                        time: new Date().toLocaleTimeString(),
-                      },
-                      facilityName
-                    );
+                    printQueueTicket({
+                      queueNumber: 'REG-PENDING',
+                      department: exVisitType,
+                      patientName: fullName(exSelectedPatient),
+                      hospitalNumber: exSelectedPatient.hospitalNumber,
+                      facilityName,
+                    });
                   } else {
                     flash('Select a patient first to print slip');
                   }
@@ -4231,9 +4227,9 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                         </td>
                         <td style={{ padding: 10 }}>
                           <div>
-                          <span style={{ fontSize: 11, fontWeight: 700 }}>{v.status}{v.aiReminderSent ? ' 🔔' : ''}</span>
-                          <div style={{ fontSize: 10, color: C.muted, marginTop: 2, maxWidth: 160 }}>{opdStageHint(v.status, v.paymentStatus, v.department, v.triagedAt)}</div>
-                        </div>
+                            <span style={{ fontSize: 11, fontWeight: 700 }}>{v.status}{v.aiReminderSent ? ' 🔔' : ''}</span>
+                            <div style={{ fontSize: 10, color: C.muted, marginTop: 2, maxWidth: 160 }}>{opdStageHint(v.status, v.paymentStatus, v.department, v.triagedAt)}</div>
+                          </div>
                         </td>
                         <td style={{ padding: 10 }}>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -4768,179 +4764,179 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               </div>
             ))}
           </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16 }}>
-          <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
-            <div style={{ fontWeight: 800, marginBottom: 12 }}>Book appointment</div>
-            <label style={labelStyle}>Patient</label>
-            <SearchablePatientSelect
-              facilityId={facilityId}
-              selectedPatient={apPatient}
-              onChange={(p) => setApPatient(p)}
-              placeholder="Type patient name or hospital number…"
-            />
-            {apPatient && (() => {
-              const apGate = getPaymentGate(facilityId, apPatient.id, apPatient.hospitalNumber);
-              if (apGate.cleared) return null;
-              return (
-                <div style={{ marginTop: 10, padding: '12px 14px', borderRadius: 10, background: '#FEF2F2', border: '1.5px solid #FCA5A5', color: '#991B1B', fontSize: 12, lineHeight: 1.45 }}>
-                  <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 3 }}>
-                    🚫 Unpaid Folder / Registration Fee — Appointment Booking Locked
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16 }}>
+            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
+              <div style={{ fontWeight: 800, marginBottom: 12 }}>Book appointment</div>
+              <label style={labelStyle}>Patient</label>
+              <SearchablePatientSelect
+                facilityId={facilityId}
+                selectedPatient={apPatient}
+                onChange={(p) => setApPatient(p)}
+                placeholder="Type patient name or hospital number…"
+              />
+              {apPatient && (() => {
+                const apGate = getPaymentGate(facilityId, apPatient.id, apPatient.hospitalNumber);
+                if (apGate.cleared) return null;
+                return (
+                  <div style={{ marginTop: 10, padding: '12px 14px', borderRadius: 10, background: '#FEF2F2', border: '1.5px solid #FCA5A5', color: '#991B1B', fontSize: 12, lineHeight: 1.45 }}>
+                    <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 3 }}>
+                      🚫 Unpaid Folder / Registration Fee — Appointment Booking Locked
+                    </div>
+                    <div>
+                      <strong>{fullName(apPatient)}</strong> ({apPatient.hospitalNumber}) has an unpaid folder/registration fee of <strong>₦{apGate.balanceNgn.toLocaleString()}</strong> at Accounts. Patient must pay their folder fee at the Cashier/Accounts desk before booking any appointment or clinical service.
+                    </div>
                   </div>
+                );
+              })()}
+              <label style={{ ...labelStyle, marginTop: 8 }}>Department</label>
+              <select style={inputStyle} value={apDept} onChange={(e) => setApDept(e.target.value)}>
+                {facilityDepts.map((d) => (
+                  <option key={d}>{d}</option>
+                ))}
+              </select>
+              {/* Clinical governance: only returning patients may pick a specific doctor */}
+              {apPatient && isReturningPatient(apPatient) ? (
+                <>
+                  <label style={{ ...labelStyle, marginTop: 8 }}>Assign to doctor</label>
+                  <select style={inputStyle} value={apDoctor} onChange={(e) => setApDoctor(e.target.value)}>
+                    <option value="Any available">Any available (open pool)</option>
+                    {facilityDoctors.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                  {facilityDoctors.length === 0 && (
+                    <input
+                      style={{ ...inputStyle, marginTop: 6 }}
+                      placeholder="Doctor full name"
+                      value={apDoctor === 'Any available' ? '' : apDoctor}
+                      onChange={(e) => setApDoctor(e.target.value || 'Any available')}
+                    />
+                  )}
+                </>
+              ) : (
+                <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: '#FFF7ED', border: '1px solid #FED7AA', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: 16 }}>🩺</span>
                   <div>
-                    <strong>{fullName(apPatient)}</strong> ({apPatient.hospitalNumber}) has an unpaid folder/registration fee of <strong>₦{apGate.balanceNgn.toLocaleString()}</strong> at Accounts. Patient must pay their folder fee at the Cashier/Accounts desk before booking any appointment or clinical service.
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#92400E' }}>Routes through Nurse Triage</div>
+                    <div style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>
+                      {apPatient
+                        ? 'First-time patient — nurse triage assesses and assigns a doctor on arrival.'
+                        : 'Select a patient above to determine if direct doctor booking is available.'}
+                    </div>
                   </div>
                 </div>
-              );
-            })()}
-            <label style={{ ...labelStyle, marginTop: 8 }}>Department</label>
-            <select style={inputStyle} value={apDept} onChange={(e) => setApDept(e.target.value)}>
-              {facilityDepts.map((d) => (
-                <option key={d}>{d}</option>
-              ))}
-            </select>
-            {/* Clinical governance: only returning patients may pick a specific doctor */}
-            {apPatient && isReturningPatient(apPatient) ? (
-              <>
-                <label style={{ ...labelStyle, marginTop: 8 }}>Assign to doctor</label>
-                <select style={inputStyle} value={apDoctor} onChange={(e) => setApDoctor(e.target.value)}>
-                  <option value="Any available">Any available (open pool)</option>
-                  {facilityDoctors.map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-                {facilityDoctors.length === 0 && (
-                  <input
-                    style={{ ...inputStyle, marginTop: 6 }}
-                    placeholder="Doctor full name"
-                    value={apDoctor === 'Any available' ? '' : apDoctor}
-                    onChange={(e) => setApDoctor(e.target.value || 'Any available')}
-                  />
-                )}
-              </>
-            ) : (
-              <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: '#FFF7ED', border: '1px solid #FED7AA', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                <span style={{ fontSize: 16 }}>🩺</span>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: '#92400E' }}>Routes through Nurse Triage</div>
-                  <div style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>
-                    {apPatient
-                      ? 'First-time patient — nurse triage assesses and assigns a doctor on arrival.'
-                      : 'Select a patient above to determine if direct doctor booking is available.'}
-                  </div>
+                  <label style={labelStyle}>Date</label>
+                  <input type="date" style={inputStyle} value={apDate} onChange={(e) => setApDate(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Time</label>
+                  <input type="time" style={inputStyle} value={apTime} onChange={(e) => setApTime(e.target.value)} />
                 </div>
               </div>
-            )}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
-              <div>
-                <label style={labelStyle}>Date</label>
-                <input type="date" style={inputStyle} value={apDate} onChange={(e) => setApDate(e.target.value)} />
-              </div>
-              <div>
-                <label style={labelStyle}>Time</label>
-                <input type="time" style={inputStyle} value={apTime} onChange={(e) => setApTime(e.target.value)} />
-              </div>
+              <label style={{ ...labelStyle, marginTop: 8 }}>Reason</label>
+              <input style={inputStyle} value={apReason} onChange={(e) => setApReason(e.target.value)} />
+              {(() => {
+                const targetPt = apPatient || selected;
+                const apGate = targetPt ? getPaymentGate(facilityId, targetPt.id, targetPt.hospitalNumber) : null;
+                const isLocked = Boolean(targetPt && apGate && !apGate.cleared);
+                return (
+                  <button
+                    type="button"
+                    onClick={doBookAppt}
+                    disabled={isLocked}
+                    title={isLocked ? apGate?.label : undefined}
+                    style={{
+                      marginTop: 14,
+                      width: '100%',
+                      padding: 12,
+                      borderRadius: 10,
+                      border: 'none',
+                      background: isLocked ? '#DC2626' : C.blue,
+                      color: '#fff',
+                      fontWeight: 800,
+                      cursor: isLocked ? 'not-allowed' : 'pointer',
+                      opacity: isLocked ? 0.92 : 1,
+                    }}
+                  >
+                    {isLocked
+                      ? `🚫 Locked · Pay Folder Fee (₦${(apGate?.balanceNgn || 0).toLocaleString()}) at Accounts First`
+                      : 'Book appointment'}
+                  </button>
+                );
+              })()}
             </div>
-            <label style={{ ...labelStyle, marginTop: 8 }}>Reason</label>
-            <input style={inputStyle} value={apReason} onChange={(e) => setApReason(e.target.value)} />
-            {(() => {
-              const targetPt = apPatient || selected;
-              const apGate = targetPt ? getPaymentGate(facilityId, targetPt.id, targetPt.hospitalNumber) : null;
-              const isLocked = Boolean(targetPt && apGate && !apGate.cleared);
-              return (
-                <button
-                  type="button"
-                  onClick={doBookAppt}
-                  disabled={isLocked}
-                  title={isLocked ? apGate?.label : undefined}
-                  style={{
-                    marginTop: 14,
-                    width: '100%',
-                    padding: 12,
-                    borderRadius: 10,
-                    border: 'none',
-                    background: isLocked ? '#DC2626' : C.blue,
-                    color: '#fff',
-                    fontWeight: 800,
-                    cursor: isLocked ? 'not-allowed' : 'pointer',
-                    opacity: isLocked ? 0.92 : 1,
-                  }}
-                >
-                  {isLocked
-                    ? `🚫 Locked · Pay Folder Fee (₦${(apGate?.balanceNgn || 0).toLocaleString()}) at Accounts First`
-                    : 'Book appointment'}
-                </button>
-              );
-            })()}
-          </div>
-          <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
-            <div style={{ fontWeight: 800, marginBottom: 12 }}>Today · {appts.length} appointments</div>
-            {appts.map((a) => (
-              <div key={a.id} style={{ display: 'flex', gap: 10, padding: '12px 0', borderBottom: `1px solid ${C.border}`, alignItems: 'center' }}>
-                <div style={{ fontWeight: 800, color: C.blue, minWidth: 52 }}>
-                  {a.scheduledAt.slice(11, 16)}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700 }}>{a.patientName}</div>
-                  <div style={{ fontSize: 12, color: C.muted }}>
-                    {a.department} · {a.doctor} · {a.status}
+            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, padding: 18 }}>
+              <div style={{ fontWeight: 800, marginBottom: 12 }}>Today · {appts.length} appointments</div>
+              {appts.map((a) => (
+                <div key={a.id} style={{ display: 'flex', gap: 10, padding: '12px 0', borderBottom: `1px solid ${C.border}`, alignItems: 'center' }}>
+                  <div style={{ fontWeight: 800, color: C.blue, minWidth: 52 }}>
+                    {a.scheduledAt.slice(11, 16)}
                   </div>
-                </div>
-                {a.status === 'booked' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const p = patients.find((x) => x.id === a.patientId);
-                        if (p) {
-                          const gate = getPaymentGate(facilityId, p.id, p.hospitalNumber);
-                          if (!gate.cleared) {
-                            flash(`🚫 ${gate.label}`);
-                            setSelected(p);
-                            setPanelOpen(true);
-                            return;
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700 }}>{a.patientName}</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>
+                      {a.department} · {a.doctor} · {a.status}
+                    </div>
+                  </div>
+                  {a.status === 'booked' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const p = patients.find((x) => x.id === a.patientId);
+                          if (p) {
+                            const gate = getPaymentGate(facilityId, p.id, p.hospitalNumber);
+                            if (!gate.cleared) {
+                              flash(`🚫 ${gate.label}`);
+                              setSelected(p);
+                              setPanelOpen(true);
+                              return;
+                            }
+                            const fee = getDeptFee(a.department);
+                            autoSendToAccounts(p, fee, `${a.department} appointment fee`);
+                            const visit = checkInPatient({
+                              patient: p,
+                              facilityId,
+                              department: a.department,
+                              doctor: a.doctor,
+                              visitType: 'appointment',
+                              reason: a.reason,
+                              paymentStatus: 'pending',
+                              amount: fee,
+                              appointmentId: a.id,
+                              appointmentTime: a.scheduledAt.slice(11, 16),
+                            });
+                            notifyDoctorAssignment(visit, fullName(p));
+                            reload();
+                            flash(
+                              a.doctor && !/^any/i.test(a.doctor)
+                                ? `Appointment checked in · assigned to ${a.doctor} · Auto-sent ₦${fee.toLocaleString()} to Accounts`
+                                : `Appointment checked in · Auto-sent ₦${fee.toLocaleString()} to Accounts`
+                            );
                           }
-                          const fee = getDeptFee(a.department);
-                          autoSendToAccounts(p, fee, `${a.department} appointment fee`);
-                          const visit = checkInPatient({
-                            patient: p,
-                            facilityId,
-                            department: a.department,
-                            doctor: a.doctor,
-                            visitType: 'appointment',
-                            reason: a.reason,
-                            paymentStatus: 'pending',
-                            amount: fee,
-                            appointmentId: a.id,
-                            appointmentTime: a.scheduledAt.slice(11, 16),
-                          });
-                          notifyDoctorAssignment(visit, fullName(p));
-                          reload();
-                          flash(
-                            a.doctor && !/^any/i.test(a.doctor)
-                              ? `Appointment checked in · assigned to ${a.doctor} · Auto-sent ₦${fee.toLocaleString()} to Accounts`
-                              : `Appointment checked in · Auto-sent ₦${fee.toLocaleString()} to Accounts`
-                          );
-                        }
-                      }}
-                      style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, border: 'none', background: C.teal, color: '#fff', cursor: 'pointer' }}
-                    >
-                      Check in
-                    </button>
-                    <button type="button" onClick={() => { if (window.confirm('Cancel scheduled appointment for ' + a.patientName + '?')) { cancelAppointment(a.id); reload(); } }} style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer' }}>
-                      Cancel
-                    </button>
-                  </>
-                )}
-              </div>
-            ))}
-            {appts.length === 0 && (
-              <div style={{ padding: 24, textAlign: 'center', color: C.muted, border: `1px dashed ${C.border}`, borderRadius: 12 }}>
-                <div style={{ fontWeight: 700, color: C.navy, marginBottom: 6 }}>No appointments today</div>
-                Book from the form on the left after selecting a registered patient. Walk-ins should use the <strong>Walk-in</strong> tool, not this list.
-              </div>
-            )}
+                        }}
+                        style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, border: 'none', background: C.teal, color: '#fff', cursor: 'pointer' }}
+                      >
+                        Check in
+                      </button>
+                      <button type="button" onClick={() => { if (window.confirm('Cancel scheduled appointment for ' + a.patientName + '?')) { cancelAppointment(a.id); reload(); } }} style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer' }}>
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+              {appts.length === 0 && (
+                <div style={{ padding: 24, textAlign: 'center', color: C.muted, border: `1px dashed ${C.border}`, borderRadius: 12 }}>
+                  <div style={{ fontWeight: 700, color: C.navy, marginBottom: 6 }}>No appointments today</div>
+                  Book from the form on the left after selecting a registered patient. Walk-ins should use the <strong>Walk-in</strong> tool, not this list.
+                </div>
+              )}
+            </div>
           </div>
-        </div>
         </div>
       )}
 
@@ -4952,7 +4948,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
 
 
-{aiCard && (
+      {aiCard && (
         <div
           style={{
             position: 'fixed',

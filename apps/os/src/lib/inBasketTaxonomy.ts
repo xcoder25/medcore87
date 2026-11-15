@@ -415,10 +415,79 @@ const DEFAULT_FOLDERS: InBasketFolderDef[] = [
   },
 ];
 
+/** Accounting / Cashier / Billing Folders */
+const ACCOUNTS_FOLDERS: InBasketFolderDef[] = [
+  {
+    id: 'pending_payments',
+    label: 'Incoming Pending Payments & Invoices',
+    epicLabel: 'Pending Payments',
+    icon: CreditCard,
+    color: '#D97706',
+    bg: '#FFFBEB',
+    borderColor: '#FDE68A',
+    matcher: (n) =>
+      ['pending payment', 'incoming', 'awaiting', 'invoice', 'folder fee', 'registration fee', 'bill'].some((kw) =>
+        (n.title + ' ' + n.body).toLowerCase().includes(kw)
+      ) || n.module === 'cashier' || n.module === 'billing',
+  },
+  {
+    id: 'cleared_receipts',
+    label: 'Cleared Payments & AkwaRemit Receipts',
+    epicLabel: 'Cleared / Receipts',
+    icon: ClipboardList,
+    color: '#059669',
+    bg: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    matcher: (n) =>
+      ['cleared', 'paid', 'receipt', 'akwaremit', 'arn', 'pos', 'settlement'].some((kw) =>
+        (n.title + ' ' + n.body).toLowerCase().includes(kw)
+      ),
+  },
+  {
+    id: 'claims_ar',
+    label: 'HMO / NHIA Claims & AR Follow-ups',
+    epicLabel: 'Claims & AR',
+    icon: FileText,
+    color: '#0284C7',
+    bg: '#F0F9FF',
+    borderColor: '#BAE6FD',
+    matcher: (n) =>
+      ['hmo', 'nhia', 'akshia', 'claim', 'ar ', 'receivable', 'waiver', 'credit'].some((kw) =>
+        (n.title + ' ' + n.body).toLowerCase().includes(kw)
+      ),
+  },
+  {
+    id: 'messages',
+    label: 'Front Desk & Staff Messages',
+    epicLabel: 'Messages',
+    icon: MessageSquare,
+    color: '#7C3AED',
+    bg: '#F5F3FF',
+    borderColor: '#DDD6FE',
+    matcher: (n) =>
+      ['message', 'handoff', 'intercom', 'shift', 'front desk'].some((kw) =>
+        (n.title + ' ' + n.body).toLowerCase().includes(kw)
+      ),
+  },
+  {
+    id: 'system',
+    label: 'Facility Finance Notices',
+    epicLabel: 'Notices',
+    icon: Megaphone,
+    color: '#0891B2',
+    bg: '#ECFEFF',
+    borderColor: '#A5F3FC',
+    matcher: () => true,
+  },
+];
+
 /** Resolve folders according to the user's role */
 export function getRoleInBasketFolders(roleKey?: string): InBasketFolderDef[] {
   const rk = (roleKey || '').toLowerCase();
-  if (rk.includes('reception') || rk.includes('front') || rk.includes('cashier')) {
+  if (rk.includes('account') || rk.includes('cashier') || rk.includes('billing') || rk.includes('finance')) {
+    return ACCOUNTS_FOLDERS;
+  }
+  if (rk.includes('reception') || rk.includes('front')) {
     return RECEPTION_FOLDERS;
   }
   if (rk.includes('nurse') || rk.includes('matron') || rk.includes('sister') || rk.includes('midwife')) {
@@ -456,6 +525,14 @@ export function getRoleInBasketMeta(roleKey?: string): {
   accent: string;
 } {
   const rk = (roleKey || '').toLowerCase();
+  if (rk.includes('account') || rk.includes('cashier') || rk.includes('billing') || rk.includes('finance')) {
+    return {
+      title: 'Accounts & Cashier In Basket',
+      scopeBadge: 'ACCOUNTS SCOPE',
+      subtitle: 'Incoming pending payments from Front Desk, AkwaRemit receipts, billing & claims alerts',
+      accent: '#059669',
+    };
+  }
   if (rk.includes('reception') || rk.includes('front')) {
     return {
       title: 'Front Desk In Basket',

@@ -719,7 +719,7 @@ export const PosPaymentDesk: React.FC<Props> = ({
                     background: 'rgba(255,255,255,0.15)',
                   }}
                 >
-                  {adminSettings.akwaRemitEnabled ? `AkwaRemit TSA (${adminSettings.akwaRemitMerchantId})` : 'TSA Offline'}
+                  {adminSettings.akwaremitEnabled ? `AkwaRemit TSA (${adminSettings.akwaremitMerchantId})` : 'TSA Offline'}
                 </span>
                 {adminSettings.posTerminals?.length > 0 && (
                   <span
@@ -732,7 +732,7 @@ export const PosPaymentDesk: React.FC<Props> = ({
                       color: '#6EE7B7',
                     }}
                   >
-                    POS: {adminSettings.posTerminals[0].bank} ({adminSettings.posTerminals[0].terminalId})
+                    POS: {adminSettings.posTerminals[0].department} ({adminSettings.posTerminals[0].terminalId})
                   </span>
                 )}
               </div>
@@ -790,7 +790,7 @@ export const PosPaymentDesk: React.FC<Props> = ({
         </div>
 
         {/* Cash Holding Limit Alert from Admin Settings */}
-        {adminSettings.cashHoldingLimitNgn > 0 && stats.revenue >= adminSettings.cashHoldingLimitNgn && (
+        {adminSettings.cashHoldingLimitNgn > 0 && (stats.collected || 0) >= adminSettings.cashHoldingLimitNgn && (
           <div
             style={{
               background: '#FEF2F2',
@@ -807,7 +807,7 @@ export const PosPaymentDesk: React.FC<Props> = ({
             }}
           >
             <span>
-              ⚠️ Cash Holding Limit Reached: Today&apos;s collection (₦{stats.revenue.toLocaleString()}) exceeds the facility cash drawer ceiling of ₦{adminSettings.cashHoldingLimitNgn.toLocaleString()}. Please remit excess cash to the Vault / AkwaRemit TSA.
+              ⚠️ Cash Holding Limit Reached: Today&apos;s collection (₦{(stats.collected || 0).toLocaleString()}) exceeds the facility cash drawer ceiling of ₦{adminSettings.cashHoldingLimitNgn.toLocaleString()}. Please remit excess cash to the Vault / AkwaRemit TSA.
             </span>
           </div>
         )}
@@ -1100,6 +1100,27 @@ export const PosPaymentDesk: React.FC<Props> = ({
                 </div>
               )}
 
+              {!patient ? (
+                <div
+                  style={{
+                    borderRadius: 14,
+                    border: `1.5px dashed ${C.border}`,
+                    background: '#F8FAFC',
+                    padding: '28px 20px',
+                    textAlign: 'center',
+                    color: C.muted,
+                  }}
+                >
+                  <UserRound size={30} color="#94A3B8" style={{ marginBottom: 8 }} />
+                  <div style={{ fontSize: 14, fontWeight: 800, color: C.navy }}>
+                    Enter or Select a Patient ID to Proceed
+                  </div>
+                  <div style={{ fontSize: 12.5, marginTop: 4, maxWidth: 420, marginInline: 'auto', lineHeight: 1.5 }}>
+                    Search by Patient ID, Hospital Number (MRN), phone number, or name above — or click an open invoice in the Unpaid Queue — to generate an AkwaRemit ARN and choose Cash, POS, or Bank Transfer.
+                  </div>
+                </div>
+              ) : (
+                <>
               {/* ── AKWAREMIT REFERENCE NUMBER (ARN) DISPLAY ── */}
               <div
                 style={{
@@ -1571,6 +1592,8 @@ export const PosPaymentDesk: React.FC<Props> = ({
                   </button>
                 ))}
               </div>
+                </>
+              )}
             </div>
           </div>
 

@@ -52,6 +52,8 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
   const facilityId = session?.hospitalId || 'IGH-EKT';
   const roleKey = inferRoleKey(session?.roleKey || session?.role || session?.title, session?.badgeId);
   const isReception = roleKey === 'reception' || roleKey.includes('front');
+  const isAccounts =
+    roleKey.includes('account') || roleKey.includes('cashier') || roleKey.includes('billing') || roleKey.includes('finance');
   const sessionOpts = { staffName: session?.name, roleKey: session?.roleKey || roleKey };
 
   const folders = useMemo(() => getRoleInBasketFolders(roleKey), [roleKey]);
@@ -137,6 +139,36 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
               module: 'patient-flow',
               patientId: p.patientId,
               roleHint: 'reception',
+            });
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // If accounts/cashier, synchronize incoming pending payment requests once with deduplication
+    if (isAccounts && !syncDoneRef.current) {
+      syncDoneRef.current = true;
+      try {
+        const currentNotifications = listNotifications(facilityId, false, sessionOpts);
+        const pendingReqs = listAccountsRequests(facilityId, { status: 'awaiting_payment' });
+        for (const r of pendingReqs.slice(0, 10)) {
+          const alreadyNotified = currentNotifications.some(
+            (n) =>
+              n.patientId === r.patientId &&
+              n.module === 'cashier' &&
+              (n.title.includes('Pending Payment') || (r.invoiceNumber && n.body.includes(r.invoiceNumber)))
+          );
+          if (!alreadyNotified) {
+            pushNotification({
+              facilityId,
+              level: 'important',
+              title: `Incoming Pending Payment · ₦${r.amountNgn.toLocaleString()}`,
+              body: `${r.patientName} (${r.hospitalNumber}) · ${r.purpose}${r.invoiceNumber ? ` · ${r.invoiceNumber}` : ''} sent by ${r.sentBy}`,
+              module: 'cashier',
+              patientId: r.patientId,
+              roleHint: 'accountant',
             });
           }
         }

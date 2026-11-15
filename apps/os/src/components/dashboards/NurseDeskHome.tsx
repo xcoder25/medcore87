@@ -289,7 +289,7 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
 
   const handleOpenTriage = (visit: ReceptionVisit) => {
     setTriageModalPatient(visit);
-    updateVisitStatus(visit.id, 'called', 'TRIAGE_IN_PROGRESS');
+    updateVisitStatus(visit.id, 'called');
     reload();
     // Pre-populate if recent vitals exist
     const past = allVitals.find((v) => v.patientId === visit.patientId);
@@ -360,7 +360,7 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
       },
     });
 
-    updateVisitStatus(triageModalPatient.id, 'waiting', 'WAITING_FOR_DOCTOR');
+    updateVisitStatus(triageModalPatient.id, 'waiting');
     reload();
 
     emitLiveAction(

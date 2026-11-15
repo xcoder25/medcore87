@@ -40,7 +40,7 @@ export const NotificationBell: React.FC<Props> = ({
   session,
   onOpenInbox,
 }) => {
-  const fid = facilityId || session?.hospitalId || 'IGH-EKT';
+  const fid = session?.hospitalId || facilityId || 'IGH-EKT';
   const roleKey = inferRoleKey(session?.roleKey || session?.role || session?.title, session?.badgeId);
   const sessionOpts = { staffName: session?.name, roleKey: session?.roleKey || roleKey };
 

@@ -76,10 +76,8 @@ export function DischargeSummaryCompilerSuite({ session }: { session?: UserSessi
       return 0;
     }
   })();
-  const isClearanceBlocked =
-    adminSettings.requireBillingClearanceBeforeDischarge &&
-    outstandingBalanceNgn > 0 &&
-    formData.dischargeCondition !== 'Discharged Against Medical Advice (DAMA)';
+  const isClearanceBlockedPlaceholder = false;
+  void isClearanceBlockedPlaceholder;
 
   // Form State
   const [formData, setFormData] = useState<DischargeRecord>({
@@ -135,6 +133,11 @@ export function DischargeSummaryCompilerSuite({ session }: { session?: UserSessi
     doctorLicense: 'MDCN/REG/2021/68421',
     compiledAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
   });
+
+  const isClearanceBlocked =
+    adminSettings.requireBillingClearanceBeforeDischarge &&
+    outstandingBalanceNgn > 0 &&
+    formData.dischargeCondition !== 'Discharged Against Medical Advice (DAMA)';
 
   // Power-Outage Auto-Save for Inpatient Discharge Summary Compiler
   const dischargeDraft = useFormDraft({
@@ -217,11 +220,10 @@ export function DischargeSummaryCompilerSuite({ session }: { session?: UserSessi
         <div className="flex items-center gap-2">
           <button
             onClick={() => setPreviewMode(!previewMode)}
-            className={`px-4 py-2 rounded-xl font-bold text-sm border transition-all ${
-              previewMode
+            className={`px-4 py-2 rounded-xl font-bold text-sm border transition-all ${previewMode
                 ? 'bg-teal-600 text-white border-teal-600 shadow-md'
                 : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-300'
-            }`}
+              }`}
           >
             {previewMode ? 'Edit Mode' : 'Official Document Preview'}
           </button>
@@ -234,11 +236,10 @@ export function DischargeSummaryCompilerSuite({ session }: { session?: UserSessi
                   ? `Accounts clearance required before final discharge sign-off (₦${outstandingBalanceNgn.toLocaleString()} unpaid)`
                   : 'Sign & print official discharge summary'
               }
-              className={`px-4 py-2 rounded-xl font-bold text-sm shadow flex items-center gap-2 ${
-                isClearanceBlocked
+              className={`px-4 py-2 rounded-xl font-bold text-sm shadow flex items-center gap-2 ${isClearanceBlocked
                   ? 'bg-rose-100 text-rose-700 border border-rose-300 cursor-not-allowed'
                   : 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:opacity-90'
-              }`}
+                }`}
             >
               <Printer className="w-4 h-4" />
               {isClearanceBlocked ? `Blocked: ₦${outstandingBalanceNgn.toLocaleString()} Unpaid` : 'Print / Export PDF'}
@@ -250,11 +251,10 @@ export function DischargeSummaryCompilerSuite({ session }: { session?: UserSessi
       {/* Clinical Governance: Accounts Clearance Policy Status */}
       {adminSettings.requireBillingClearanceBeforeDischarge && (
         <div
-          className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-3 ${
-            outstandingBalanceNgn > 0
+          className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-3 ${outstandingBalanceNgn > 0
               ? 'bg-amber-50 border-amber-300 text-amber-900 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-200'
               : 'bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-200'
-          }`}
+            }`}
         >
           <span>
             {outstandingBalanceNgn > 0

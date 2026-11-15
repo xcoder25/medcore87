@@ -400,7 +400,7 @@ export function buildFederatedSearchIndex(opts: {
   // 7) Hospital Staff Roster
   if (isModulePermitted('staffing') || isModulePermitted('rbac') || roleKey === 'hospital_admin') {
     try {
-      const staff = listStaffCards(facilityId);
+      const staff = listStaffCards();
       for (const s of staff.slice(0, 40)) {
         hits.push({
           id: `staff-${s.badgeId}`,

@@ -168,6 +168,22 @@ export function sendPaymentRequestToAccounts(input: {
   };
 
   write([row, ...read().filter((r) => r.id !== row.id)]);
+  if (amount > 0) {
+    try {
+      pushNotification({
+        facilityId: input.facilityId,
+        level: 'important',
+        title: `Incoming Pending Payment · ₦${amount.toLocaleString()}`,
+        body: `${input.patientName} (${input.hospitalNumber}) · ${input.purpose} (${invNum}) sent by ${input.sentBy}`,
+        module: 'cashier',
+        patientId: input.patientId,
+        roleHint: 'accountant',
+        targetStaff: input.assignedAccountantName || undefined,
+      });
+    } catch {
+      /* ignore */
+    }
+  }
   return row;
 }
 

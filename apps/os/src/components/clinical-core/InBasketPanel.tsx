@@ -89,12 +89,13 @@ export const InBasketPanel: React.FC<Props> = ({
     const isDoctor = role.includes('doctor') || role.includes('surgeon') || role.includes('consultant');
     const isNurse = role.includes('nurse') || role.includes('matron') || role.includes('sister');
     const isReception = role.includes('recep') || role.includes('record') || role.includes('front');
+    const isAccounts = role.includes('account') || role.includes('cashier') || role.includes('billing') || role.includes('finance');
     const isPharmacy = role.includes('pharm');
 
     // ─────────────────────────────────────────────────────────────────────────────
     // 1. CLINICAL MEDICAL ALERTS (Physicians & Ward Nurses ONLY)
     // ─────────────────────────────────────────────────────────────────────────────
-    if (!isReception) {
+    if (!isReception && !isAccounts) {
       for (const a of listPendingCriticalAcks(facilityId)) {
         out.push({
           id: `crit-${a.orderId}`,
@@ -129,7 +130,7 @@ export const InBasketPanel: React.FC<Props> = ({
     // ─────────────────────────────────────────────────────────────────────────────
     // 2. PHARMACY DISPENSING ORDERS (Pharmacy Staff ONLY)
     // ─────────────────────────────────────────────────────────────────────────────
-    if (isPharmacy || (!isReception && !isDoctor && role.includes('admin'))) {
+    if (isPharmacy || (!isReception && !isAccounts && !isDoctor && role.includes('admin'))) {
       for (const o of listOrders(facilityId).filter((x) => x.type === 'rx' && x.status === 'ordered')) {
         out.push({
           id: `rx-${o.id}`,
@@ -167,7 +168,53 @@ export const InBasketPanel: React.FC<Props> = ({
     // ─────────────────────────────────────────────────────────────────────────────
     // 4. FRONT DESK RECEPTION EXCLUSIVE IN-BASKET (Desk-Relevant Concerns Only)
     // ─────────────────────────────────────────────────────────────────────────────
-    if (isReception) {
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 4. ACCOUNTS / CASHIER EXCLUSIVE IN-BASKET (Incoming Pending Payments & Billing)
+    // ─────────────────────────────────────────────────────────────────────────────
+    if (isAccounts) {
+      try {
+        const pendingReqs = listAccountsRequests(facilityId, { status: 'awaiting_payment' });
+        for (const r of pendingReqs.slice(0, 10)) {
+          out.push({
+            id: `acct-pend-${r.id}`,
+            kind: 'accounts',
+            title: `Incoming Pending Payment · ₦${r.amountNgn.toLocaleString()}`,
+            detail: `${r.patientName} (${r.hospitalNumber}) · ${r.purpose}${r.invoiceNumber ? ` · ${r.invoiceNumber}` : ''}`,
+            patientId: r.patientId,
+            patientName: r.patientName,
+            at: r.sentAt,
+            module: 'cashier',
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+
+      for (const n of listNotifications(facilityId, true, { staffName, roleKey })) {
+        const hint = (n.roleHint || '').toLowerCase();
+        const mod = (n.module || '').toLowerCase();
+        if (
+          hint !== 'accountant' &&
+          hint !== 'cashier' &&
+          hint !== 'accounts' &&
+          mod !== 'cashier' &&
+          mod !== 'billing' &&
+          mod !== 'accounts'
+        ) {
+          continue;
+        }
+        out.push({
+          id: `acct-notif-${n.id}`,
+          kind: 'notice',
+          title: n.title,
+          detail: n.body,
+          patientId: n.patientId,
+          patientName: undefined,
+          at: n.createdAt,
+          module: n.module || 'cashier',
+        });
+      }
+    } else if (isReception) {
       // (a) Booked appointments scheduled for today awaiting arrival check-in
       try {
         const todayStr = new Date().toISOString().slice(0, 10);

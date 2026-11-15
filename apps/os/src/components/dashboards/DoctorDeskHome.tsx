@@ -270,7 +270,7 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
 
   const takePatient = (v: ReceptionVisit) => {
     setBusyId(v.id);
-    updateVisitStatus(v.id, 'with_provider', 'IN_CONSULTATION');
+    updateVisitStatus(v.id, 'with_provider');
     setLastCompleted(null);
     try {
       const parts = (v.patientName || '').split(' ');
@@ -302,7 +302,7 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
 
   const completeVisit = (v: ReceptionVisit) => {
     setBusyId(v.id);
-    updateVisitStatus(v.id, 'completed', 'DISCHARGED');
+    updateVisitStatus(v.id, 'completed');
     setLastCompleted({ patientName: v.patientName, queueNumber: v.queueNumber });
     emitLiveAction(`Completed ${v.patientName}`, { module: 'doctor-portal' });
     try {
