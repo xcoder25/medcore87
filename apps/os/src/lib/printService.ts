@@ -43,6 +43,41 @@ export function printQueueTicket(input: {
   );
 }
 
+export function printAppointmentSlip(input: {
+  patientName: string;
+  hospitalNumber: string;
+  department: string;
+  doctor?: string;
+  scheduledAt: string;
+  status: string;
+  reason?: string;
+  facilityName: string;
+}) {
+  const dt = new Date(input.scheduledAt);
+  const formatted = Number.isNaN(dt.getTime())
+    ? input.scheduledAt
+    : `${dt.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} at ${dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  printHtml(
+    `Appointment Slip — ${input.hospitalNumber}`,
+    `
+    <div style="border:1px solid #cbd5e1;border-radius:12px;padding:18px">
+      <h2 style="margin:0">${input.facilityName}</h2>
+      <p style="margin:4px 0 12px;color:#64748b">OFFICIAL OUTPATIENT APPOINTMENT SLIP</p>
+      <hr/>
+      <p><b>Patient:</b> ${input.patientName}</p>
+      <p><b>Patient ID / MRN:</b> ${input.hospitalNumber}</p>
+      <p><b>Clinic / Department:</b> ${input.department}</p>
+      <p><b>Assigned Doctor:</b> ${input.doctor || 'Clinic Consultant'}</p>
+      <p><b>Scheduled Date &amp; Time:</b> ${formatted}</p>
+      <p><b>Status:</b> ${input.status.toUpperCase()}</p>
+      ${input.reason ? `<p><b>Clinical Note / Reason:</b> ${input.reason}</p>` : ''}
+      <hr/>
+      <p style="font-size:11px;color:#64748b">Please arrive 15 minutes before your scheduled time with this slip. Printed ${new Date().toLocaleString()}</p>
+    </div>
+    `
+  );
+}
+
 export function printPaymentReceipt(input: {
   reference: string;
   patientName: string;

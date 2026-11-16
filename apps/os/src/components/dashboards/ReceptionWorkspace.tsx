@@ -50,6 +50,7 @@ import { pushNotification } from '../../lib/notificationEngine';
 import { uploadImageToS3 } from '../../lib/storageClient';
 import {
   AKWA_IBOM_LGAS,
+  NIGERIA_STATE_LGAS,
   NIGERIA_INSURANCE,
   RECEPTION_DEPTS,
   CONSULT_FEES,
@@ -66,7 +67,7 @@ import {
   reconcileAllVisitPayments,
 } from '../../lib/frontDeskAccountsBridge';
 import { patientBalance } from '../../lib/patientBillingStore';
-import { printQueueTicket, printPaymentReceipt } from '../../lib/printService';
+import { printQueueTicket, printPaymentReceipt, printAppointmentSlip } from '../../lib/printService';
 import { opdStageHint } from '../../lib/nigerianOpdFlow';
 import { withViewTransition, measureRect, flipElement } from '../../lib/motion';
 import { appendAudit } from '../../lib/auditLogStore';
@@ -2912,15 +2913,17 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       </label>
                       <select
                         value={reg.state}
-                        onChange={(e) => updateRegField('state', e.target.value)}
+                        onChange={(e) => {
+                          const nextState = e.target.value;
+                          const stateLgas = NIGERIA_STATE_LGAS[nextState] || [];
+                          updateRegField('state', nextState);
+                          updateRegField('lga', stateLgas[0] || '');
+                        }}
                         style={inputStyle}
                       >
-                        <option value="Akwa Ibom">Akwa Ibom</option>
-                        <option value="Cross River">Cross River</option>
-                        <option value="Rivers">Rivers</option>
-                        <option value="Abia">Abia</option>
-                        <option value="Lagos">Lagos</option>
-                        <option value="FCT Abuja">FCT Abuja</option>
+                        {Object.keys(NIGERIA_STATE_LGAS).map((st) => (
+                          <option key={st} value={st}>{st}</option>
+                        ))}
                       </select>
                     </div>
 
@@ -2933,7 +2936,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                         onChange={(e) => updateRegField('lga', e.target.value)}
                         style={inputStyle}
                       >
-                        {AKWA_IBOM_LGAS.map((lga) => (
+                        {(NIGERIA_STATE_LGAS[reg.state] || AKWA_IBOM_LGAS).map((lga) => (
                           <option key={lga} value={lga}>{lga}</option>
                         ))}
                       </select>
@@ -3656,6 +3659,70 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                 <span>Search</span>
               </button>
 
+              <button
+                type="button"
+                onClick={() => {
+                  const q = exSearchQuery.trim().toUpperCase();
+                  if (!q) {
+                    flash('Enter a Patient ID (e.g. IGH-PT-XXXX) first to check appointments');
+                    return;
+                  }
+                  const matchedPatient =
+                    patients.find(
+                      (p) =>
+                        (p.hospitalNumber || '').toUpperCase() === q ||
+                        (p.id || '').toUpperCase() === q
+                    ) || exFoundPatients[0] || null;
+                  if (matchedPatient) {
+                    setExSelectedPatient(matchedPatient);
+                    setExFoundPatients([matchedPatient]);
+                  }
+                  const pid = (matchedPatient?.id || '').toUpperCase();
+                  const hosp = (matchedPatient?.hospitalNumber || q).toUpperCase();
+                  const matchedAppts = appts
+                    .filter((a) => {
+                      const aPid = (a.patientId || '').toUpperCase();
+                      const aHosp = (a.hospitalNumber || '').toUpperCase();
+                      return (pid && aPid === pid) || aHosp === hosp || aPid === q;
+                    })
+                    .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt));
+                  if (matchedAppts.length === 0) {
+                    flash(`No booked appointments found for Patient ID ${hosp}`);
+                    return;
+                  }
+                  const active = matchedAppts.find((a) => a.status === 'booked' || a.status === 'arrived') || matchedAppts[0];
+                  printAppointmentSlip({
+                    patientName: active.patientName || (matchedPatient ? fullName(matchedPatient) : hosp),
+                    hospitalNumber: active.hospitalNumber || hosp,
+                    department: active.department,
+                    doctor: active.doctor,
+                    scheduledAt: active.scheduledAt,
+                    status: active.status,
+                    reason: active.reason,
+                    facilityName,
+                  });
+                  flash(`Found ${matchedAppts.length} appointment(s) for ${hosp} — printing slip`);
+                }}
+                style={{
+                  height: 40,
+                  padding: '0 14px',
+                  borderRadius: 10,
+                  border: '1px solid #A7F3D0',
+                  background: '#ECFDF5',
+                  color: '#047857',
+                  fontWeight: 700,
+                  fontSize: 12.5,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Calendar size={14} />
+                <span>Check &amp; Print Appointment</span>
+              </button>
+
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748B', fontSize: 12 }}>
                 <span>Or scan ID card</span>
                 <button
@@ -3797,6 +3864,109 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   </div>
                 )}
               </div>
+
+              {/* Doctor-Booked Appointments Status & Print Card */}
+              {exSelectedPatient && (() => {
+                const pid = (exSelectedPatient.id || '').toUpperCase();
+                const hosp = (exSelectedPatient.hospitalNumber || '').toUpperCase();
+                const patAppts = appts
+                  .filter((a) => {
+                    const aPid = (a.patientId || '').toUpperCase();
+                    const aHosp = (a.hospitalNumber || '').toUpperCase();
+                    return (pid && aPid === pid) || (hosp && aHosp === hosp);
+                  })
+                  .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt));
+                return (
+                  <div style={{ background: '#fff', borderRadius: 14, border: patAppts.some((a) => a.status === 'booked' || a.status === 'arrived') ? '1.5px solid #0EA5E9' : `1px solid ${C.border}`, padding: 18 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Calendar size={16} color="#0284C7" />
+                        <span style={{ fontWeight: 800, fontSize: 14, color: '#0F172A' }}>
+                          Doctor-Booked Appointments ({patAppts.length})
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: patAppts.length > 0 ? '#E0F2FE' : '#F1F5F9', color: patAppts.length > 0 ? '#0369A1' : '#64748B' }}>
+                        PID: {exSelectedPatient.hospitalNumber}
+                      </span>
+                    </div>
+
+                    {patAppts.length === 0 ? (
+                      <div style={{ fontSize: 12.5, color: '#64748B', padding: '6px 0' }}>
+                        No doctor-booked appointments on file for this patient ID.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {patAppts.map((a) => {
+                          const isBooked = a.status === 'booked' || a.status === 'arrived';
+                          const dt = new Date(a.scheduledAt);
+                          const dateText = Number.isNaN(dt.getTime())
+                            ? a.scheduledAt
+                            : `${dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} · ${dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+                          return (
+                            <div
+                              key={a.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
+                                gap: 10,
+                                padding: '10px 12px',
+                                borderRadius: 10,
+                                background: isBooked ? '#F0F9FF' : '#F8FAFC',
+                                border: isBooked ? '1px solid #BAE6FD' : '1px solid #E2E8F0',
+                              }}
+                            >
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 7px', borderRadius: 6, background: isBooked ? '#0284C7' : '#64748B', color: '#fff', textTransform: 'uppercase' }}>
+                                    {a.status}
+                                  </span>
+                                  <span style={{ fontWeight: 800, fontSize: 13, color: '#0F172A' }}>{dateText}</span>
+                                </div>
+                                <div style={{ fontSize: 12, color: '#334155', marginTop: 3 }}>
+                                  <strong>{a.department}</strong> · {a.doctor || 'Clinic Doctor'}
+                                  {a.reason ? ` · ${a.reason}` : ''}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  printAppointmentSlip({
+                                    patientName: a.patientName || fullName(exSelectedPatient),
+                                    hospitalNumber: a.hospitalNumber || exSelectedPatient.hospitalNumber,
+                                    department: a.department,
+                                    doctor: a.doctor,
+                                    scheduledAt: a.scheduledAt,
+                                    status: a.status,
+                                    reason: a.reason,
+                                    facilityName,
+                                  })
+                                }
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: 8,
+                                  border: '1px solid #0284C7',
+                                  background: '#fff',
+                                  color: '#0284C7',
+                                  fontWeight: 700,
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 5,
+                                }}
+                              >
+                                <Printer size={13} /> Print Appointment
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Register Visit for This Patient Form */}
               {exSelectedPatient && (
