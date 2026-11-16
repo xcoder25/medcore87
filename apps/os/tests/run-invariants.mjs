@@ -47,12 +47,12 @@ function loadTsModule(relPath, mocks = {}) {
 
 test('serverSession: signs and verifies session & MFA tokens with tenant binding', async () => {
   const ss = loadTsModule('src/lib/serverSession.ts');
-  const mfaToken = await ss.signMfaToken('igh-csh-01', 'igh-ekt', 'face', 300);
+  const mfaToken = await ss.signMfaToken('igh-csh-01', 'igh-ekt', 'email_otp', 300);
   assert.ok(mfaToken.startsWith('mfa.'));
 
   const okMfa = await ss.verifyMfaToken(mfaToken, 'IGH-CSH-01', 'IGH-EKT');
   assert.ok(okMfa);
-  assert.equal(okMfa.method, 'face');
+  assert.equal(okMfa.method, 'email_otp');
 
   const wrongBadge = await ss.verifyMfaToken(mfaToken, 'IGH-DOC-02', 'IGH-EKT');
   assert.equal(wrongBadge, null);

@@ -21,7 +21,7 @@ export interface VerifiedServerSession {
 export interface MfaProofPayload {
   badgeId: string;
   facilityId: string;
-  method: 'face' | 'code';
+  method: 'email_otp' | 'code';
   iat: number;
   exp: number;
 }
@@ -118,7 +118,7 @@ export async function verifySessionToken(token?: string | null): Promise<Verifie
 export async function signMfaToken(
   badgeId: string,
   facilityId: string,
-  method: 'face' | 'code',
+  method: 'email_otp' | 'code',
   ttlSeconds = 300
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);

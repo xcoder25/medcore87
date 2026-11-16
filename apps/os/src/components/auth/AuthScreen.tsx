@@ -10,7 +10,7 @@ import { inferRoleKey, defaultPermissionsForRole, listStaffCards } from '../../l
 import { isStaffRevokedLocal } from '../../lib/staffPresenceStore';
 import { getClaimedFacilityId } from '../../lib/onboardingStore';
 import { getAdminSettings, type AdminFacilitySettings } from '../../lib/adminSettingsStore';
-import { StaffFaceMfaModal } from './StaffFaceMfaModal';
+import { StaffEmailOtpModal } from './StaffEmailOtpModal';
 
 // --- Types --------------------------------------------------------------------
 
@@ -754,14 +754,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
   const triggerLogin = (session: UserSession) => {
     let enrichedSession = session;
-    if (!enrichedSession.photoUrl && enrichedSession.badgeId) {
+    if ((!enrichedSession.photoUrl || !enrichedSession.email) && enrichedSession.badgeId) {
       try {
         const bNorm = String(enrichedSession.badgeId).toUpperCase().replace(/\s+/g, '');
         const hit = listStaffCards().find(
           (c) => String(c.badgeId || '').toUpperCase().replace(/\s+/g, '') === bNorm
         );
-        if (hit?.photoUrl) {
+        if (hit?.photoUrl && !enrichedSession.photoUrl) {
           enrichedSession = { ...enrichedSession, photoUrl: hit.photoUrl };
+        }
+        const hitEmail = (hit as { email?: string } | undefined)?.email;
+        if (hitEmail && !enrichedSession.email) {
+          enrichedSession = { ...enrichedSession, email: hitEmail };
         }
       } catch {
         /* ignore */
@@ -2869,7 +2873,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       )}
 
       {pendingMfaSession && (
-        <StaffFaceMfaModal
+        <StaffEmailOtpModal
           session={pendingMfaSession}
           settings={mfaSettings || getAdminSettings(pendingMfaSession.hospitalId)}
           onVerified={(verified) => completeMfaLogin(verified)}
@@ -2877,7 +2881,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             setPendingMfaSession(null);
             setSuccess(false);
             setLoading(false);
-            setError('2FA Biometric / MFA verification was cancelled. Access blocked.');
+            setError('2FA Email OTP verification was cancelled. Access blocked.');
           }}
         />
       )}

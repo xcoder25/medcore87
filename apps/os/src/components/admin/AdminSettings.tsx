@@ -36,17 +36,11 @@ import {
   EyeOff,
   Zap,
   Layers,
-  ScanFace,
-  RotateCcw,
+  Mail,
 } from 'lucide-react';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 import { FacilityOnboarding } from '../facility/FacilityOnboarding';
-import {
-  listStaffFaceBiometrics,
-  resetStaffFaceBiometric,
-  getStaffMfaTotpCode,
-  type StaffFaceBiometricRecord,
-} from '../auth/StaffFaceMfaModal';
+import { getStaffMfaTotpCode } from '../auth/StaffEmailOtpModal';
 import {
   getAdminSettings,
   saveAdminSettings,
@@ -101,9 +95,6 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'identity');
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
-  const [enrolledFaces, setEnrolledFaces] = useState<StaffFaceBiometricRecord[]>(() =>
-    listStaffFaceBiometrics(facilityId)
-  );
   const [totpBadgeQuery, setTotpBadgeQuery] = useState('');
   const [generatedTotpCode, setGeneratedTotpCode] = useState<string | null>(null);
   const [pending, setPending] = useState(0);
@@ -202,14 +193,10 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
       setPending(getOutboxPendingCount());
     }, 15000);
     setPending(getOutboxPendingCount());
-    const onFaceBio = () => setEnrolledFaces(listStaffFaceBiometrics(facilityId));
-    window.addEventListener('medcore-face-biometrics-updated', onFaceBio);
-    setEnrolledFaces(listStaffFaceBiometrics(facilityId));
     return () => {
       unsub();
       window.removeEventListener('online', onOn);
       window.removeEventListener('offline', onOff);
-      window.removeEventListener('medcore-face-biometrics-updated', onFaceBio);
       clearInterval(iv);
     };
   }, [facilityId, dirty]);
@@ -1924,14 +1911,14 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 38, height: 38, borderRadius: 10, background: '#EFF6FF', color: C.blue, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <ScanFace size={20} />
+                  <Mail size={20} />
                 </div>
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 800, color: C.navy }}>
-                    Staff 2FA &amp; Biometric Facial Recognition Gate
+                    Staff 2FA &amp; Email OTP Verification Gate
                   </div>
                   <div style={{ fontSize: 12, color: C.muted }}>
-                    Blocks unauthorized or outside logins even if a badge ID &amp; PIN is exposed. Enforced in real time at staff sign-in.
+                    Auto-generates and dispatches a 6-digit OTP to the staff member&apos;s work email on every login.
                   </div>
                 </div>
               </div>
@@ -1946,27 +1933,20 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
                   border: `1px solid ${(draft.requireStaffMfa ?? true) ? '#A7F3D0' : '#FECACA'}`,
                 }}
               >
-                {(draft.requireStaffMfa ?? true) ? '● 2FA Enforcement Active' : '○ 2FA Disabled'}
+                {(draft.requireStaffMfa ?? true) ? '● Email OTP 2FA Active' : '○ 2FA Disabled'}
               </span>
             </div>
 
             <Toggle
-              label="Require Two-Factor Authentication (2FA / MFA) for All Staff Logins"
-              desc="Requires every staff member to pass a second verification step (Facial Recognition or Admin MFA Code) after entering PIN/Password"
+              label="Require Two-Factor Authentication (2FA / Email OTP) for All Staff Logins"
+              desc="Auto-generates a single-use 6-digit OTP and sends it to the staff member's registered email after PIN/Password"
               checked={draft.requireStaffMfa ?? true}
               onChange={(v) => patch({ requireStaffMfa: v })}
             />
 
             <Toggle
-              label="Prioritize Live Biometric Facial Recognition + Liveness Check"
-              desc="Verifies physical camera presence against the staff member's enrolled facial template at sign-in"
-              checked={draft.requireStaffFacialRecognition ?? true}
-              onChange={(v) => patch({ requireStaffFacialRecognition: v })}
-            />
-
-            <Toggle
-              label="Allow 6-Digit Workstation MFA Code Fallback (Non-Camera PCs)"
-              desc="When turned off, logins are strictly restricted to workstations with a working camera and passing facial verification"
+              label="Allow Offline 6-Digit Workstation MFA Code Fallback"
+              desc="Allows Hospital Admin to issue a 5-minute offline verification code when a clinic workstation has no internet/email"
               checked={draft.allowMfaBackupCodeFallback ?? true}
               onChange={(v) => patch({ allowMfaBackupCodeFallback: v })}
             />
@@ -1974,24 +1954,24 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16, marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
               <div style={{ gridColumn: 'span 6' }}>
                 <label style={labelStyle}>
-                  Biometric Facial Match Threshold ({draft.faceMatchThresholdPercent ?? 80}%)
+                  Email OTP Expiry Window ({draft.otpExpiryMinutes ?? 5} minutes)
                 </label>
                 <input
                   type="range"
-                  min={65}
-                  max={95}
+                  min={2}
+                  max={15}
                   step={1}
-                  value={draft.faceMatchThresholdPercent ?? 80}
-                  onChange={(e) => patch({ faceMatchThresholdPercent: Number(e.target.value) || 80 })}
+                  value={draft.otpExpiryMinutes ?? 5}
+                  onChange={(e) => patch({ otpExpiryMinutes: Number(e.target.value) || 5 })}
                   style={{ width: '100%', accentColor: C.blue, cursor: 'pointer' }}
                 />
                 <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>
-                  Higher percentages (80%–92%) give stricter outsider rejection; lower helps in dim clinical lighting.
+                  Single-use 6-digit OTP automatically expires after this window (recommended: 5 minutes).
                 </div>
               </div>
 
               <div style={{ gridColumn: 'span 6' }}>
-                <label style={labelStyle}>Issue 5-Minute 6-Digit Workstation MFA Code (For Non-Camera PCs)</label>
+                <label style={labelStyle}>Issue 5-Minute Offline Workstation MFA Code (For No-Internet Clinics)</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     style={{ ...inputStyle, flex: 1 }}
@@ -2030,72 +2010,6 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Enrolled Staff Face Templates List */}
-            <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: C.navy, marginBottom: 8 }}>
-                Enrolled Staff Face Templates ({enrolledFaces.length})
-              </div>
-              {enrolledFaces.length === 0 ? (
-                <div style={{ fontSize: 12, color: C.muted }}>
-                  No staff facial templates locked yet. Each staff member automatically locks their live face template on their next 2FA sign-in.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                  {enrolledFaces.map((rec) => (
-                    <div
-                      key={rec.badgeId}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        padding: '8px 12px',
-                        borderRadius: 12,
-                        border: `1px solid ${C.border}`,
-                        background: '#F8FAFC',
-                      }}
-                    >
-                      {rec.snapshotDataUrl && (
-                        <img
-                          src={rec.snapshotDataUrl}
-                          alt={rec.name}
-                          style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', border: '1px solid #CBD5E1' }}
-                        />
-                      )}
-                      <div>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color: C.navy }}>{rec.name}</div>
-                        <div style={{ fontSize: 11, color: C.muted, fontFamily: 'monospace' }}>{rec.badgeId}</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          resetStaffFaceBiometric(rec.badgeId, facilityId);
-                          setEnrolledFaces(listStaffFaceBiometrics(facilityId));
-                          pushActivity(`Reset Face ID biometric template for ${rec.name} (${rec.badgeId})`);
-                        }}
-                        style={{
-                          marginLeft: 6,
-                          padding: '5px 10px',
-                          borderRadius: 8,
-                          border: '1px solid #FECACA',
-                          background: '#FEF2F2',
-                          color: '#DC2626',
-                          fontSize: 11,
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                        }}
-                        title="Allow staff member to re-enroll their face on next login"
-                      >
-                        <RotateCcw size={12} /> Reset Face ID
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
 

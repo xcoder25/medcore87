@@ -89,11 +89,10 @@ export interface AdminFacilitySettings {
   akwaremitMerchantId: string;
   akwaremitEnvironment: 'live' | 'test';
 
-  /** Staff 2FA / Biometric Facial Recognition Security */
+  /** Staff 2FA / Email OTP Security */
   requireStaffMfa: boolean;
-  requireStaffFacialRecognition: boolean;
   allowMfaBackupCodeFallback: boolean;
-  faceMatchThresholdPercent: number;
+  otpExpiryMinutes: number;
 
   updatedAt: string;
   updatedBy?: string;
@@ -160,9 +159,8 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   akwaremitEnvironment: 'live',
 
   requireStaffMfa: true,
-  requireStaffFacialRecognition: true,
   allowMfaBackupCodeFallback: true,
-  faceMatchThresholdPercent: 80,
+  otpExpiryMinutes: 5,
 
   updatedBy: undefined,
 };
