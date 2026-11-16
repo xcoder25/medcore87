@@ -636,6 +636,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       setError('Enter staff full name.');
       return;
     }
+    const mailTrim = (email || '').trim().toLowerCase();
+    if (!mailTrim || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mailTrim)) {
+      setError('Enter a valid work email — required so the staff member can receive 2FA login OTPs.');
+      return;
+    }
     if (!roleKey || !roleMeta) {
       setError('Select a specialty / role.');
       return;
@@ -1348,7 +1353,13 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                               </div>
                               <div>
                                 <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0F172A' }}>{r.name}</div>
-                                {r.email && <div style={{ fontSize: '0.74rem', color: '#64748B' }}>{r.email}</div>}
+                                {r.email ? (
+                                  <div style={{ fontSize: '0.74rem', color: '#64748B' }}>{r.email}</div>
+                                ) : (
+                                  <div style={{ fontSize: '0.72rem', color: '#D97706', fontWeight: 700 }}>
+                                    ⚠ No email (2FA OTP blocked — Edit profile to add)
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -1462,11 +1473,15 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (!editName.trim()) { setEditError('Name is required.'); return; }
+                    const mail = (editEmail || '').trim().toLowerCase();
+                    if (!mail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
+                      setEditError('A valid work email is required so this staff member can receive 2FA OTPs.');
+                      return;
+                    }
                     setEditBusy(true); setEditError('');
                     try {
                       const badge = String(editId || '').toUpperCase();
                       const name = editName.trim();
-                      const mail = (editEmail || '').trim().toLowerCase() || undefined;
                       const { setAccessRecords: saveRecords, getAccessRecords: getRecs } = await import('../../lib/adminRealtimeStore');
                       const all = getRecs();
                       const updated = all.map((row) =>
@@ -1495,7 +1510,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                           const carr = JSON.parse(cardRaw);
                           if (!Array.isArray(carr)) continue;
                           const nextCards = carr.map((c: Record<string, unknown>) =>
-                            String(c.badgeId || '').toUpperCase() === badge ? { ...c, fullName: name } : c
+                            String(c.badgeId || '').toUpperCase() === badge ? { ...c, fullName: name, email: mail } : c
                           );
                           localStorage.setItem(key, JSON.stringify(nextCards));
                         }
@@ -1513,6 +1528,21 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                           department: editDept || undefined,
                           status: editStatus,
                           facilityId,
+                        });
+                      } catch { /* ignore */ }
+
+                      try {
+                        await fetch('/api/staff', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            badgeId: badge,
+                            facilityId,
+                            fullName: name,
+                            email: mail,
+                            department: editDept || undefined,
+                            status: editStatus,
+                          }),
                         });
                       } catch { /* ignore */ }
 
@@ -1546,8 +1576,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                   </label>
 
                   <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
-                    Work email
-                    <input className="os-search-input" style={{ width: '100%', marginTop: 4, padding: '8px 10px' }} type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+                    Work email (Required for 2FA OTP) *
+                    <input className="os-search-input" style={{ width: '100%', marginTop: 4, padding: '8px 10px' }} type="email" required value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="name@hospital.gov.ng" />
                   </label>
 
                   <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
@@ -1686,11 +1716,12 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                 </label>
 
                 <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
-                  Work Email (Optional)
+                  Work Email (Required for 2FA OTP) *
                   <input
                     className="os-search-input"
                     style={{ width: '100%', marginTop: 6, padding: '10px 12px', fontSize: '0.88rem' }}
                     type="email"
+                    required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="name@hospital.gov.ng"
