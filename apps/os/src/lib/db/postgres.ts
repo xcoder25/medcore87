@@ -418,6 +418,18 @@ export async function ensureSchema(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS idx_staff_biometrics_lookup ON staff_biometrics (facility_id, badge_id);
 
+        CREATE TABLE IF NOT EXISTS staff_otp_challenges (
+          facility_id TEXT NOT NULL,
+          badge_id TEXT NOT NULL,
+          email TEXT NOT NULL,
+          otp_hash TEXT NOT NULL,
+          expires_at BIGINT NOT NULL,
+          attempts INT DEFAULT 0,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          PRIMARY KEY (facility_id, badge_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_staff_otp_expires ON staff_otp_challenges (expires_at);
+
         CREATE TABLE IF NOT EXISTS clinical_audit_ledger (
           id TEXT NOT NULL,
           facility_id TEXT NOT NULL,
@@ -452,6 +464,7 @@ export async function ensureSchema(): Promise<void> {
         ALTER TABLE reception_visits ENABLE ROW LEVEL SECURITY;
         ALTER TABLE accounts_requests ENABLE ROW LEVEL SECURITY;
         ALTER TABLE staff_biometrics ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE staff_otp_challenges ENABLE ROW LEVEL SECURITY;
         ALTER TABLE clinical_audit_ledger ENABLE ROW LEVEL SECURITY;
 
         DO $$
@@ -462,7 +475,8 @@ export async function ensureSchema(): Promise<void> {
             'patients', 'staff', 'clinical_orders', 'notifications',
             'facility_kv', 'form_drafts', 'vital_signs', 'prescriptions',
             'lab_results', 'invoices_receipts', 'inpatient_beds',
-            'reception_visits', 'accounts_requests', 'staff_biometrics', 'clinical_audit_ledger'
+            'reception_visits', 'accounts_requests', 'staff_biometrics',
+            'staff_otp_challenges', 'clinical_audit_ledger'
           ]
           LOOP
             IF NOT EXISTS (

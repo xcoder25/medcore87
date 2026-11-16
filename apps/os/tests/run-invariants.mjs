@@ -146,3 +146,15 @@ test('akwaremitServer: verifies HMAC-SHA256 webhook signatures accurately', () =
   assert.equal(srv.verifyWebhookSignature(validSig, payload + ' '), false);
   assert.equal(srv.verifyWebhookSignature('bad-sig', payload), false);
 });
+
+test('rateLimit: enforces sliding-window brute-force limits per key', () => {
+  const rl = loadTsModule('src/lib/rateLimit.ts');
+  const key = `test-otp-${Date.now()}`;
+  for (let i = 0; i < 3; i++) {
+    const res = rl.checkRateLimit(key, 3, 60_000);
+    assert.equal(res.allowed, true);
+  }
+  const blocked = rl.checkRateLimit(key, 3, 60_000);
+  assert.equal(blocked.allowed, false);
+  assert.ok(blocked.retryAfterSeconds >= 1);
+});

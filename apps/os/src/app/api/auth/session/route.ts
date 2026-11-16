@@ -5,6 +5,7 @@ import {
   verifySessionToken,
   verifyMfaToken,
 } from '../../../../lib/serverSession';
+import { checkRateLimit, getClientIp } from '../../../../lib/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,14 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    const ip = getClientIp(req.headers);
+    const rl = checkRateLimit(`session:${ip}`, 25, 10 * 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { ok: false, error: 'RATE_LIMITED', retryAfterSeconds: rl.retryAfterSeconds },
+        { status: 429 }
+      );
+    }
     const body = await req.json();
     const badgeId = String(body.badgeId || body.id || '').trim();
     const name = String(body.name || 'Staff').trim();

@@ -733,7 +733,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
   const completeMfaLogin = (verifiedSession: UserSession) => {
     setPendingMfaSession(null);
     setSuccess(true);
-    if (typeof fetch !== 'undefined' && verifiedSession.token?.startsWith('mfa.')) {
+    if (typeof fetch !== 'undefined') {
       void fetch('/api/auth/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -744,7 +744,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           role: verifiedSession.role,
           facilityId: verifiedSession.hospitalId || 'IGH-EKT',
           clearanceLevel: verifiedSession.clearanceLevel || 1,
-          mfaToken: verifiedSession.token,
+          mfaToken: verifiedSession.token?.startsWith('mfa.') ? verifiedSession.token : undefined,
         }),
       }).catch(() => { });
     }

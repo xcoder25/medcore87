@@ -3,9 +3,10 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { isPostgresConfigured } from '../../../../lib/db/postgres';
+import { ensureSchema, isPostgresConfigured, withTenantClient } from '../../../../lib/db/postgres';
 import { findStaffAnyFacility, getStaff } from '../../../../lib/db/staffRepo';
 import { signMfaToken } from '../../../../lib/serverSession';
+import { checkRateLimit, getClientIp } from '../../../../lib/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,6 +44,111 @@ function writeOtpVault(map: Record<string, OtpChallengeRecord>): void {
 
 function challengeKey(facilityId: string, badgeId: string): string {
   return `${facilityId.trim().toUpperCase()}::${badgeId.trim().toUpperCase()}`;
+}
+
+async function saveOtpChallenge(rec: OtpChallengeRecord): Promise<void> {
+  const vault = readOtpVault();
+  vault[challengeKey(rec.facilityId, rec.badgeId)] = rec;
+  writeOtpVault(vault);
+
+  if (isPostgresConfigured()) {
+    try {
+      await ensureSchema();
+      await withTenantClient(rec.facilityId, async (c) => {
+        await c.query(
+          `INSERT INTO staff_otp_challenges (facility_id, badge_id, email, otp_hash, expires_at, attempts, created_at)
+           VALUES ($1, $2, $3, $4, $5, 0, NOW())
+           ON CONFLICT (facility_id, badge_id) DO UPDATE SET
+             email = EXCLUDED.email,
+             otp_hash = EXCLUDED.otp_hash,
+             expires_at = EXCLUDED.expires_at,
+             attempts = 0,
+             created_at = NOW()`,
+          [rec.facilityId, rec.badgeId, rec.email, rec.otpHash, rec.expiresAt]
+        );
+      });
+    } catch {
+      /* vault fallback already saved */
+    }
+  }
+}
+
+async function loadOtpChallenge(facilityId: string, badgeId: string): Promise<OtpChallengeRecord | null> {
+  if (isPostgresConfigured()) {
+    try {
+      await ensureSchema();
+      let pgRow: OtpChallengeRecord | null = null;
+      await withTenantClient(facilityId, async (c) => {
+        const res = await c.query<{
+          email: string;
+          otp_hash: string;
+          expires_at: string | number;
+          attempts: number;
+          created_at: Date;
+        }>(
+          `SELECT email, otp_hash, expires_at, attempts, created_at
+           FROM staff_otp_challenges
+           WHERE facility_id = $1 AND badge_id = $2`,
+          [facilityId, badgeId]
+        );
+        if (res.rows[0]) {
+          const r = res.rows[0];
+          pgRow = {
+            facilityId,
+            badgeId,
+            email: r.email,
+            otpHash: r.otp_hash,
+            expiresAt: Number(r.expires_at),
+            attempts: Number(r.attempts || 0),
+            createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+          };
+        }
+      });
+      if (pgRow) return pgRow;
+    } catch {
+      /* fallback to vault */
+    }
+  }
+  return readOtpVault()[challengeKey(facilityId, badgeId)] || null;
+}
+
+async function incrementOtpAttempts(facilityId: string, badgeId: string, nextAttempts: number): Promise<void> {
+  const vault = readOtpVault();
+  const key = challengeKey(facilityId, badgeId);
+  if (vault[key]) {
+    vault[key].attempts = nextAttempts;
+    writeOtpVault(vault);
+  }
+  if (isPostgresConfigured()) {
+    try {
+      await withTenantClient(facilityId, async (c) => {
+        await c.query(
+          `UPDATE staff_otp_challenges SET attempts = $3 WHERE facility_id = $1 AND badge_id = $2`,
+          [facilityId, badgeId, nextAttempts]
+        );
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+async function deleteOtpChallenge(facilityId: string, badgeId: string): Promise<void> {
+  const vault = readOtpVault();
+  delete vault[challengeKey(facilityId, badgeId)];
+  writeOtpVault(vault);
+  if (isPostgresConfigured()) {
+    try {
+      await withTenantClient(facilityId, async (c) => {
+        await c.query(
+          `DELETE FROM staff_otp_challenges WHERE facility_id = $1 AND badge_id = $2`,
+          [facilityId, badgeId]
+        );
+      });
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 function hashOtp(otp: string, badgeId: string, facilityId: string): string {
@@ -160,6 +266,7 @@ async function dispatchOtpEmail(opts: {
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = getClientIp(req.headers);
     const body = (await req.json()) as {
       action?: 'send_otp' | 'verify_otp' | 'verify_code';
       facilityId?: string;
@@ -180,6 +287,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'send_otp') {
+      const rl = checkRateLimit(`otp-send:${ip}:${badgeId}`, 5, 5 * 60 * 1000);
+      if (!rl.allowed) {
+        return NextResponse.json(
+          { ok: false, error: 'RATE_LIMITED', message: `Too many OTP requests. Retry in ${rl.retryAfterSeconds}s.` },
+          { status: 429 }
+        );
+      }
+
       const resolvedEmail = await resolveStaffEmail(facilityId, badgeId, body.email);
       if (!resolvedEmail) {
         return NextResponse.json(
@@ -195,7 +310,7 @@ export async function POST(req: NextRequest) {
       const expiryMinutes = Math.max(2, Math.min(15, Number(body.expiryMinutes) || 5));
       const otp = String(crypto.randomInt(100000, 1000000));
       const now = Date.now();
-      const record: OtpChallengeRecord = {
+      await saveOtpChallenge({
         badgeId,
         facilityId,
         email: resolvedEmail,
@@ -203,11 +318,7 @@ export async function POST(req: NextRequest) {
         expiresAt: now + expiryMinutes * 60 * 1000,
         attempts: 0,
         createdAt: new Date(now).toISOString(),
-      };
-
-      const vault = readOtpVault();
-      vault[challengeKey(facilityId, badgeId)] = record;
-      writeOtpVault(vault);
+      });
 
       const sendResult = await dispatchOtpEmail({
         to: resolvedEmail,
@@ -225,21 +336,25 @@ export async function POST(req: NextRequest) {
         maskedEmail: maskEmail(resolvedEmail),
         expiresInSeconds: expiryMinutes * 60,
         deliveryError: sendResult.error,
-        // Provide preview code only when no external mail provider is configured (pilot/local mode)
         ...(sendResult.channel === 'console_fallback' ? { devPreviewCode: otp } : {}),
       });
     }
 
     if (action === 'verify_otp') {
+      const rl = checkRateLimit(`otp-verify:${ip}:${badgeId}`, 10, 10 * 60 * 1000);
+      if (!rl.allowed) {
+        return NextResponse.json(
+          { ok: false, verified: false, error: 'RATE_LIMITED', message: `Too many attempts. Wait ${rl.retryAfterSeconds}s.` },
+          { status: 429 }
+        );
+      }
+
       const clean = String(body.code || '').replace(/\D/g, '').trim();
       if (clean.length !== 6) {
         return NextResponse.json({ ok: false, verified: false, error: 'Enter the 6-digit Email OTP.' }, { status: 400 });
       }
 
-      const vault = readOtpVault();
-      const key = challengeKey(facilityId, badgeId);
-      const record = vault[key];
-
+      const record = await loadOtpChallenge(facilityId, badgeId);
       if (!record) {
         return NextResponse.json(
           { ok: false, verified: false, error: 'OTP_NOT_FOUND', message: 'No active OTP challenge. Click Resend OTP.' },
@@ -248,8 +363,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (Date.now() > record.expiresAt) {
-        delete vault[key];
-        writeOtpVault(vault);
+        await deleteOtpChallenge(facilityId, badgeId);
         return NextResponse.json(
           { ok: false, verified: false, error: 'OTP_EXPIRED', message: 'OTP expired. Click Resend OTP to receive a new code.' },
           { status: 401 }
@@ -257,8 +371,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (record.attempts >= 5) {
-        delete vault[key];
-        writeOtpVault(vault);
+        await deleteOtpChallenge(facilityId, badgeId);
         return NextResponse.json(
           { ok: false, verified: false, error: 'OTP_LOCKED', message: 'Too many incorrect attempts. Request a new OTP.' },
           { status: 429 }
@@ -267,23 +380,20 @@ export async function POST(req: NextRequest) {
 
       const candidateHash = hashOtp(clean, badgeId, facilityId);
       if (candidateHash !== record.otpHash) {
-        record.attempts += 1;
-        vault[key] = record;
-        writeOtpVault(vault);
+        const nextAttempts = record.attempts + 1;
+        await incrementOtpAttempts(facilityId, badgeId, nextAttempts);
         return NextResponse.json(
           {
             ok: false,
             verified: false,
             error: 'INVALID_OTP',
-            message: `Invalid OTP (${5 - record.attempts} attempts remaining).`,
+            message: `Invalid OTP (${5 - nextAttempts} attempts remaining).`,
           },
           { status: 401 }
         );
       }
 
-      // Single-use OTP verified — clear challenge and issue signed MFA proof token
-      delete vault[key];
-      writeOtpVault(vault);
+      await deleteOtpChallenge(facilityId, badgeId);
       const mfaToken = await signMfaToken(badgeId, facilityId, 'email_otp');
       return NextResponse.json({
         ok: true,
@@ -295,6 +405,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'verify_code') {
+      const rl = checkRateLimit(`code-verify:${ip}:${badgeId}`, 10, 10 * 60 * 1000);
+      if (!rl.allowed) {
+        return NextResponse.json(
+          { ok: false, verified: false, error: 'RATE_LIMITED', message: `Too many attempts. Wait ${rl.retryAfterSeconds}s.` },
+          { status: 429 }
+        );
+      }
+
       const clean = String(body.code || '').replace(/\D/g, '');
       const valid =
         clean.length === 6 &&
