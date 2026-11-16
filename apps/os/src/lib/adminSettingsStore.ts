@@ -158,7 +158,7 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   akwaremitMerchantId: 'AKW-MERCH-88210',
   akwaremitEnvironment: 'live',
 
-  requireStaffMfa: true,
+  requireStaffMfa: false,
   allowMfaBackupCodeFallback: true,
   otpExpiryMinutes: 5,
 

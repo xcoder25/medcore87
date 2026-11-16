@@ -1928,19 +1928,19 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
                   fontWeight: 800,
                   padding: '5px 12px',
                   borderRadius: 999,
-                  background: (draft.requireStaffMfa ?? true) ? '#ECFDF5' : '#FEF2F2',
-                  color: (draft.requireStaffMfa ?? true) ? '#047857' : '#B91C1C',
-                  border: `1px solid ${(draft.requireStaffMfa ?? true) ? '#A7F3D0' : '#FECACA'}`,
+                  background: (draft.requireStaffMfa ?? false) ? '#ECFDF5' : '#FEF2F2',
+                  color: (draft.requireStaffMfa ?? false) ? '#047857' : '#B91C1C',
+                  border: `1px solid ${(draft.requireStaffMfa ?? false) ? '#A7F3D0' : '#FECACA'}`,
                 }}
               >
-                {(draft.requireStaffMfa ?? true) ? '● Email OTP 2FA Active' : '○ 2FA Disabled'}
+                {(draft.requireStaffMfa ?? false) ? '● Email OTP 2FA Active' : '○ 2FA Disabled'}
               </span>
             </div>
 
             <Toggle
               label="Require Two-Factor Authentication (2FA / Email OTP) for All Staff Logins"
               desc="Auto-generates a single-use 6-digit OTP and sends it to the staff member's registered email after PIN/Password"
-              checked={draft.requireStaffMfa ?? true}
+              checked={draft.requireStaffMfa ?? false}
               onChange={(v) => patch({ requireStaffMfa: v })}
             />
 

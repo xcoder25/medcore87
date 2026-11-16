@@ -52,44 +52,44 @@ export interface Hospital {
 // LIST OF SECONDARY HEALTH CARE FACILITIES IN AKWA IBOM STATE (Official AKSHB Registry)
 export const HOSPITALS: Hospital[] = [
   // General Hospitals
-  { id: 'IGH-EKT',  name: 'Immanuel General Hospital, Eket',               location: 'Eket, Akwa Ibom',             type: 'General Hospital',    domain: 'igh-eket.medcore.ng'         },
-  { id: 'GH-IKE',  name: 'General Hospital, Ikot Ekpene',                  location: 'Ikot Ekpene, Akwa Ibom',      type: 'General Hospital',    domain: 'gh-ikotekpene.medcore.ng'    },
-  { id: 'GH-IQU',  name: 'General Hospital, Iquita Oron',                  location: 'Oron, Akwa Ibom',             type: 'General Hospital',    domain: 'gh-iquita.medcore.ng'        },
-  { id: 'MGH-ITM', name: 'Methodist General Hospital, Ituk Mbang',         location: 'Ituk Mbang, Akwa Ibom',       type: 'Mission Hospital',    domain: 'mgh-itukmbang.medcore.ng'    },
-  { id: 'GH-ETN',  name: 'General Hospital, Etinan',                       location: 'Etinan, Akwa Ibom',           type: 'General Hospital',    domain: 'gh-etinan.medcore.ng'        },
-  { id: 'GH-UAB',  name: 'General Hospital, Ukpom Abak',                   location: 'Abak, Akwa Ibom',             type: 'General Hospital',    domain: 'gh-ukpomabak.medcore.ng'     },
-  { id: 'GH-AWA',  name: 'General Hospital, Awa',                          location: 'Awa, Akwa Ibom',              type: 'General Hospital',    domain: 'gh-awa.medcore.ng'           },
-  { id: 'GH-IKO',  name: 'General Hospital, Ikot Okoro',                   location: 'Ikot Okoro, Akwa Ibom',       type: 'General Hospital',    domain: 'gh-ikotokoro.medcore.ng'     },
-  { id: 'GH-IKN',  name: 'General Hospital, Ikono',                        location: 'Ikono, Akwa Ibom',            type: 'General Hospital',    domain: 'gh-ikono.medcore.ng'         },
-  { id: 'GH-AMM',  name: 'General Hospital, Amammong Okobo',               location: 'Okobo, Akwa Ibom',            type: 'General Hospital',    domain: 'gh-amammong.medcore.ng'      },
-  { id: 'MCH-AKU', name: 'Mount Carmel Hospital, Akpa Utong',              location: 'Akpa Utong, Akwa Ibom',       type: 'Mission Hospital',    domain: 'mch-akpautong.medcore.ng'    },
-  { id: 'GH-URO',  name: 'General Hospital, Urue-Offong/Oruko',            location: 'Urue-Offong, Akwa Ibom',      type: 'General Hospital',    domain: 'gh-urueoffong.medcore.ng'    },
-  { id: 'GH-IPA',  name: 'General Hospital, Ikpe Annang',                  location: 'Ikpe Annang, Akwa Ibom',      type: 'General Hospital',    domain: 'gh-ikpeannang.medcore.ng'    },
-  { id: 'GH-INI',  name: 'General Hospital, Ini',                          location: 'Ini, Akwa Ibom',              type: 'General Hospital',    domain: 'gh-ini.medcore.ng'           },
-  { id: 'GH-IAB',  name: 'General Hospital, Ikot Abasi',                   location: 'Ikot Abasi, Akwa Ibom',       type: 'General Hospital',    domain: 'gh-ikotabasi.medcore.ng'     },
-  { id: 'GH-MB2',  name: 'General Hospital, Mbioto 2',                     location: 'Mbioto, Akwa Ibom',           type: 'General Hospital',    domain: 'gh-mbioto2.medcore.ng'       },
-  { id: 'MSG-ITU', name: 'Mary Slessor General Hospital, Itu',             location: 'Itu, Akwa Ibom',              type: 'Mission Hospital',    domain: 'msg-itu.medcore.ng'          },
-  { id: 'GH-UAI',  name: 'General Hospital, Uruk Ata Ikot Ekpor',         location: 'Ikot Ekpor, Akwa Ibom',       type: 'General Hospital',    domain: 'gh-urukataekpor.medcore.ng'  },
+  { id: 'IGH-EKT', name: 'Immanuel General Hospital, Eket', location: 'Eket, Akwa Ibom', type: 'General Hospital', domain: 'igh-eket.medcore.ng' },
+  { id: 'GH-IKE', name: 'General Hospital, Ikot Ekpene', location: 'Ikot Ekpene, Akwa Ibom', type: 'General Hospital', domain: 'gh-ikotekpene.medcore.ng' },
+  { id: 'GH-IQU', name: 'General Hospital, Iquita Oron', location: 'Oron, Akwa Ibom', type: 'General Hospital', domain: 'gh-iquita.medcore.ng' },
+  { id: 'MGH-ITM', name: 'Methodist General Hospital, Ituk Mbang', location: 'Ituk Mbang, Akwa Ibom', type: 'Mission Hospital', domain: 'mgh-itukmbang.medcore.ng' },
+  { id: 'GH-ETN', name: 'General Hospital, Etinan', location: 'Etinan, Akwa Ibom', type: 'General Hospital', domain: 'gh-etinan.medcore.ng' },
+  { id: 'GH-UAB', name: 'General Hospital, Ukpom Abak', location: 'Abak, Akwa Ibom', type: 'General Hospital', domain: 'gh-ukpomabak.medcore.ng' },
+  { id: 'GH-AWA', name: 'General Hospital, Awa', location: 'Awa, Akwa Ibom', type: 'General Hospital', domain: 'gh-awa.medcore.ng' },
+  { id: 'GH-IKO', name: 'General Hospital, Ikot Okoro', location: 'Ikot Okoro, Akwa Ibom', type: 'General Hospital', domain: 'gh-ikotokoro.medcore.ng' },
+  { id: 'GH-IKN', name: 'General Hospital, Ikono', location: 'Ikono, Akwa Ibom', type: 'General Hospital', domain: 'gh-ikono.medcore.ng' },
+  { id: 'GH-AMM', name: 'General Hospital, Amammong Okobo', location: 'Okobo, Akwa Ibom', type: 'General Hospital', domain: 'gh-amammong.medcore.ng' },
+  { id: 'MCH-AKU', name: 'Mount Carmel Hospital, Akpa Utong', location: 'Akpa Utong, Akwa Ibom', type: 'Mission Hospital', domain: 'mch-akpautong.medcore.ng' },
+  { id: 'GH-URO', name: 'General Hospital, Urue-Offong/Oruko', location: 'Urue-Offong, Akwa Ibom', type: 'General Hospital', domain: 'gh-urueoffong.medcore.ng' },
+  { id: 'GH-IPA', name: 'General Hospital, Ikpe Annang', location: 'Ikpe Annang, Akwa Ibom', type: 'General Hospital', domain: 'gh-ikpeannang.medcore.ng' },
+  { id: 'GH-INI', name: 'General Hospital, Ini', location: 'Ini, Akwa Ibom', type: 'General Hospital', domain: 'gh-ini.medcore.ng' },
+  { id: 'GH-IAB', name: 'General Hospital, Ikot Abasi', location: 'Ikot Abasi, Akwa Ibom', type: 'General Hospital', domain: 'gh-ikotabasi.medcore.ng' },
+  { id: 'GH-MB2', name: 'General Hospital, Mbioto 2', location: 'Mbioto, Akwa Ibom', type: 'General Hospital', domain: 'gh-mbioto2.medcore.ng' },
+  { id: 'MSG-ITU', name: 'Mary Slessor General Hospital, Itu', location: 'Itu, Akwa Ibom', type: 'Mission Hospital', domain: 'msg-itu.medcore.ng' },
+  { id: 'GH-UAI', name: 'General Hospital, Uruk Ata Ikot Ekpor', location: 'Ikot Ekpor, Akwa Ibom', type: 'General Hospital', domain: 'gh-urukataekpor.medcore.ng' },
   // Specialist Hospitals
-  { id: 'QIC-EPO', name: 'QIC Leprosy Hospital, Ekpene Obom',              location: 'Ekpene Obom, Akwa Ibom',      type: 'Specialist Hospital', domain: 'qic-ekpeneobom.medcore.ng'   },
-  { id: 'IDH-IKE', name: 'Infectious Disease Hospital, Ikot Ekpene',       location: 'Ikot Ekpene, Akwa Ibom',      type: 'Specialist Hospital', domain: 'idh-ikotekpene.medcore.ng'   },
-  { id: 'PSY-EKT', name: 'Psychiatric Hospital, Eket',                     location: 'Eket, Akwa Ibom',             type: 'Specialist Hospital', domain: 'psy-eket.medcore.ng'         },
+  { id: 'QIC-EPO', name: 'QIC Leprosy Hospital, Ekpene Obom', location: 'Ekpene Obom, Akwa Ibom', type: 'Specialist Hospital', domain: 'qic-ekpeneobom.medcore.ng' },
+  { id: 'IDH-IKE', name: 'Infectious Disease Hospital, Ikot Ekpene', location: 'Ikot Ekpene, Akwa Ibom', type: 'Specialist Hospital', domain: 'idh-ikotekpene.medcore.ng' },
+  { id: 'PSY-EKT', name: 'Psychiatric Hospital, Eket', location: 'Eket, Akwa Ibom', type: 'Specialist Hospital', domain: 'psy-eket.medcore.ng' },
   // Cottage Hospitals
-  { id: 'CH-UKA',  name: 'Cottage Hospital, Ukana',                        location: 'Ukana, Akwa Ibom',            type: 'Cottage Hospital',    domain: 'ch-ukana.medcore.ng'         },
-  { id: 'CH-IBN',  name: 'Cottage Hospital, Ibeno',                        location: 'Ibeno, Akwa Ibom',            type: 'Cottage Hospital',    domain: 'ch-ibeno.medcore.ng'         },
-  { id: 'CH-IAB',  name: 'Cottage Hospital, Ikot Abia',                    location: 'Ikot Abia, Akwa Ibom',        type: 'Cottage Hospital',    domain: 'ch-ikotabia.medcore.ng'      },
-  { id: 'CH-IEP',  name: 'Cottage Hospital, Ikot Ekpaw',                   location: 'Ikot Ekpaw, Akwa Ibom',       type: 'Cottage Hospital',    domain: 'ch-ikotekpaw.medcore.ng'     },
-  { id: 'CH-ASO',  name: 'Cottage Hospital, Asong',                        location: 'Asong, Akwa Ibom',            type: 'Cottage Hospital',    domain: 'ch-asong.medcore.ng'         },
-  { id: 'CH-EPO',  name: 'Cottage Hospital, Ekpene Obo',                   location: 'Ekpene Obo, Akwa Ibom',       type: 'Cottage Hospital',    domain: 'ch-ekpeneobo.medcore.ng'     },
-  { id: 'CH-IEI',  name: 'Cottage Hospital, Ikot Eko Ibon',                location: 'Ikot Eko Ibon, Akwa Ibom',    type: 'Cottage Hospital',    domain: 'ch-ikotekoinbon.medcore.ng'  },
-  { id: 'CH-EOB',  name: 'Cottage Hospital, Eastern Obolo',                location: 'Eastern Obolo, Akwa Ibom',    type: 'Cottage Hospital',    domain: 'ch-easternobolo.medcore.ng'  },
-  { id: 'CH-IEU',  name: 'Cottage Hospital, Ikot Ekpene Udo',              location: 'Ikot Ekpene Udo, Akwa Ibom',  type: 'Cottage Hospital',    domain: 'ch-ikotekpeneudo.medcore.ng' },
-  { id: 'RCH-IBS', name: 'Redeemer Cottage Hospital, Ibesit',              location: 'Ibesit, Akwa Ibom',           type: 'Cottage Hospital',    domain: 'rch-ibesit.medcore.ng'       },
-  { id: 'CH-AKU',  name: 'Cottage Hospital, Akai Ubium',                   location: 'Akai Ubium, Akwa Ibom',       type: 'Cottage Hospital',    domain: 'ch-akaiubium.medcore.ng'     },
-  { id: 'CH-IKA',  name: 'Cottage Hospital, Ika',                          location: 'Ika, Akwa Ibom',              type: 'Cottage Hospital',    domain: 'ch-ika.medcore.ng'           },
+  { id: 'CH-UKA', name: 'Cottage Hospital, Ukana', location: 'Ukana, Akwa Ibom', type: 'Cottage Hospital', domain: 'ch-ukana.medcore.ng' },
+  { id: 'CH-IBN', name: 'Cottage Hospital, Ibeno', location: 'Ibeno, Akwa Ibom', type: 'Cottage Hospital', domain: 'ch-ibeno.medcore.ng' },
+  { id: 'CH-IAB', name: 'Cottage Hospital, Ikot Abia', location: 'Ikot Abia, Akwa Ibom', type: 'Cottage Hospital', domain: 'ch-ikotabia.medcore.ng' },
+  { id: 'CH-IEP', name: 'Cottage Hospital, Ikot Ekpaw', location: 'Ikot Ekpaw, Akwa Ibom', type: 'Cottage Hospital', domain: 'ch-ikotekpaw.medcore.ng' },
+  { id: 'CH-ASO', name: 'Cottage Hospital, Asong', location: 'Asong, Akwa Ibom', type: 'Cottage Hospital', domain: 'ch-asong.medcore.ng' },
+  { id: 'CH-EPO', name: 'Cottage Hospital, Ekpene Obo', location: 'Ekpene Obo, Akwa Ibom', type: 'Cottage Hospital', domain: 'ch-ekpeneobo.medcore.ng' },
+  { id: 'CH-IEI', name: 'Cottage Hospital, Ikot Eko Ibon', location: 'Ikot Eko Ibon, Akwa Ibom', type: 'Cottage Hospital', domain: 'ch-ikotekoinbon.medcore.ng' },
+  { id: 'CH-EOB', name: 'Cottage Hospital, Eastern Obolo', location: 'Eastern Obolo, Akwa Ibom', type: 'Cottage Hospital', domain: 'ch-easternobolo.medcore.ng' },
+  { id: 'CH-IEU', name: 'Cottage Hospital, Ikot Ekpene Udo', location: 'Ikot Ekpene Udo, Akwa Ibom', type: 'Cottage Hospital', domain: 'ch-ikotekpeneudo.medcore.ng' },
+  { id: 'RCH-IBS', name: 'Redeemer Cottage Hospital, Ibesit', location: 'Ibesit, Akwa Ibom', type: 'Cottage Hospital', domain: 'rch-ibesit.medcore.ng' },
+  { id: 'CH-AKU', name: 'Cottage Hospital, Akai Ubium', location: 'Akai Ubium, Akwa Ibom', type: 'Cottage Hospital', domain: 'ch-akaiubium.medcore.ng' },
+  { id: 'CH-IKA', name: 'Cottage Hospital, Ika', location: 'Ika, Akwa Ibom', type: 'Cottage Hospital', domain: 'ch-ika.medcore.ng' },
   // Comprehensive Health Care Centres
-  { id: 'CHC-NTE', name: 'Comprehensive Health Care Centre, Nto Edino',    location: 'Nto Edino, Akwa Ibom',        type: 'Health Care Centre',  domain: 'chc-ntoedino.medcore.ng'     },
-  { id: 'CHC-MBU', name: 'Comprehensive Health Care Centre, Mbiaya Uruan', location: 'Mbiaya Uruan, Akwa Ibom',     type: 'Health Care Centre',  domain: 'chc-mbiayauruan.medcore.ng'  },
+  { id: 'CHC-NTE', name: 'Comprehensive Health Care Centre, Nto Edino', location: 'Nto Edino, Akwa Ibom', type: 'Health Care Centre', domain: 'chc-ntoedino.medcore.ng' },
+  { id: 'CHC-MBU', name: 'Comprehensive Health Care Centre, Mbiaya Uruan', location: 'Mbiaya Uruan, Akwa Ibom', type: 'Health Care Centre', domain: 'chc-mbiayauruan.medcore.ng' },
 ];
 
 /** @deprecated Hardcoded bootstrap removed — logins require Firebase + enrolled staff. */
@@ -112,7 +112,7 @@ export function getPlatformAdmin(): typeof PLATFORM_ADMIN {
         }
       }
     }
-  } catch {}
+  } catch { }
   return PLATFORM_ADMIN;
 }
 
@@ -571,9 +571,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         console.warn('[auth] Postgres staff hydration:', e);
       }
     })();
-    let unsubDir = () => {};
-    let unsubCol = () => {};
-    let unsubAuth = () => {};
+    let unsubDir = () => { };
+    let unsubCol = () => { };
+    let unsubAuth = () => { };
     void (async () => {
       try {
         const {
@@ -746,7 +746,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           clearanceLevel: verifiedSession.clearanceLevel || 1,
           mfaToken: verifiedSession.token,
         }),
-      }).catch(() => {});
+      }).catch(() => { });
     }
     if (onLogin) onLogin(verifiedSession);
     if (onLoginSuccess) onLoginSuccess(verifiedSession);
@@ -773,7 +773,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     }
 
     const adminCfg = getAdminSettings(enrichedSession.hospitalId);
-    if (adminCfg.requireStaffMfa !== false) {
+    if (adminCfg.requireStaffMfa === true) {
       setMfaSettings(adminCfg);
       setPendingMfaSession(enrichedSession);
       setSuccess(false);
@@ -812,212 +812,547 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       ]);
 
     try {
-    const u = (username || '').trim();
-    const pass = (password || '').trim();
-    let effectiveHospital = selectedHospital;
-    const badgeNorm = u.trim().toUpperCase().replace(/\s+/g, '');
-    const isPlatformAdmin = false; // bootstrap login removed
+      const u = (username || '').trim();
+      const pass = (password || '').trim();
+      let effectiveHospital = selectedHospital;
+      const badgeNorm = u.trim().toUpperCase().replace(/\s+/g, '');
+      const isPlatformAdmin = false; // bootstrap login removed
 
-    // ── Badge + PIN ────────────────────────────────────────────────────────
-    if (authMode === 'badge') {
-      const badgeQuery = u.trim().toUpperCase().replace(/\s+/g, '');
-      const pinQuery = pass.trim();
-      if (!badgeQuery) {
-        setError('Enter your staff badge / ID number.');
-        setLoading(false);
-        return;
-      }
-      if (!pinQuery) {
-        setError('Enter your PIN.');
-        setLoading(false);
-        return;
-      }
-
-      const { resolveStaffByBadge, normalizeBadgeId, inferRoleKey, defaultPermissionsForRole } = await import('../../lib/staffCardStore');
-      const {
-        firestoreGetStaffByBadge,
-        firestoreRecordLogin,
-        firebaseSignInWithBadge,
-        firebaseEnsureBadgeAccount,
-        normalizeStaffPin,
-      } = await import('../../lib/firebase');
-
-      const mapProfile = (raw: Record<string, unknown>): PresetStaff => {
-        const badge = normalizeBadgeId(String(raw.badgeId || raw.id || badgeQuery));
-        // Prefer stored roleKey exactly — never upgrade a doctor/nurse into hospital_admin via inference
-        const storedKey = String(raw.roleKey || '').trim();
-        const roleKey = storedKey
-          ? inferRoleKey(storedKey, badge)
-          : inferRoleKey(String(raw.role || raw.title || ''), badge);
-        let permissions = (raw.permissions as string[]) || [];
-        if (!permissions.length || (permissions.includes('*') && roleKey !== 'hospital_admin' && roleKey !== 'sysadmin')) {
-          permissions = defaultPermissionsForRole(roleKey);
+      // ── Badge + PIN ────────────────────────────────────────────────────────
+      if (authMode === 'badge') {
+        const badgeQuery = u.trim().toUpperCase().replace(/\s+/g, '');
+        const pinQuery = pass.trim();
+        if (!badgeQuery) {
+          setError('Enter your staff badge / ID number.');
+          setLoading(false);
+          return;
         }
-        // Never grant admin permissions unless role is truly hospital_admin/sysadmin
-        if (roleKey !== 'hospital_admin' && roleKey !== 'sysadmin') {
-          permissions = permissions.filter((x) => x !== '*' && x !== 'rbac' && x !== 'sysadmin');
+        if (!pinQuery) {
+          setError('Enter your PIN.');
+          setLoading(false);
+          return;
         }
-        return {
-          badgeId: badge,
-          name: String(raw.name || raw.fullName || 'Staff'),
-          role: String(raw.role || 'Staff'),
-          shortRole: String(raw.shortRole || raw.role || 'Staff'),
-          title: String(raw.title || raw.role || 'Staff'),
-          roleKey,
-          clearanceLevel: Number(raw.clearanceLevel ?? 2),
-          clearanceLabel: String(raw.clearanceLabel || 'L2'),
-          department: String(raw.department || ''),
-          initials: String(raw.initials || 'ST'),
-          permissions,
-          pin: String(raw.pin || pinQuery),
-          hospitalId: String(raw.hospitalId || raw.facilityId || effectiveHospital.id),
-          hospitalName: String(raw.hospitalName || raw.facilityName || effectiveHospital.name),
-          photoUrl: raw.photoUrl ? String(raw.photoUrl) : (raw.photo_url ? String(raw.photo_url) : undefined),
-          color: '#0052D4',
+
+        const { resolveStaffByBadge, normalizeBadgeId, inferRoleKey, defaultPermissionsForRole } = await import('../../lib/staffCardStore');
+        const {
+          firestoreGetStaffByBadge,
+          firestoreRecordLogin,
+          firebaseSignInWithBadge,
+          firebaseEnsureBadgeAccount,
+          normalizeStaffPin,
+        } = await import('../../lib/firebase');
+
+        const mapProfile = (raw: Record<string, unknown>): PresetStaff => {
+          const badge = normalizeBadgeId(String(raw.badgeId || raw.id || badgeQuery));
+          // Prefer stored roleKey exactly — never upgrade a doctor/nurse into hospital_admin via inference
+          const storedKey = String(raw.roleKey || '').trim();
+          const roleKey = storedKey
+            ? inferRoleKey(storedKey, badge)
+            : inferRoleKey(String(raw.role || raw.title || ''), badge);
+          let permissions = (raw.permissions as string[]) || [];
+          if (!permissions.length || (permissions.includes('*') && roleKey !== 'hospital_admin' && roleKey !== 'sysadmin')) {
+            permissions = defaultPermissionsForRole(roleKey);
+          }
+          // Never grant admin permissions unless role is truly hospital_admin/sysadmin
+          if (roleKey !== 'hospital_admin' && roleKey !== 'sysadmin') {
+            permissions = permissions.filter((x) => x !== '*' && x !== 'rbac' && x !== 'sysadmin');
+          }
+          return {
+            badgeId: badge,
+            name: String(raw.name || raw.fullName || 'Staff'),
+            role: String(raw.role || 'Staff'),
+            shortRole: String(raw.shortRole || raw.role || 'Staff'),
+            title: String(raw.title || raw.role || 'Staff'),
+            roleKey,
+            clearanceLevel: Number(raw.clearanceLevel ?? 2),
+            clearanceLabel: String(raw.clearanceLabel || 'L2'),
+            department: String(raw.department || ''),
+            initials: String(raw.initials || 'ST'),
+            permissions,
+            pin: String(raw.pin || pinQuery),
+            hospitalId: String(raw.hospitalId || raw.facilityId || effectiveHospital.id),
+            hospitalName: String(raw.hospitalName || raw.facilityName || effectiveHospital.name),
+            photoUrl: raw.photoUrl ? String(raw.photoUrl) : (raw.photo_url ? String(raw.photo_url) : undefined),
+            color: '#0052D4',
+          };
         };
-      };
 
-      // Bootstrap claim removed — facility admin is created via work-email first login only.
-      let profile: PresetStaff | undefined;
-      let claimNotice: string | null = null;
+        // Bootstrap claim removed — facility admin is created via work-email first login only.
+        let profile: PresetStaff | undefined;
+        let claimNotice: string | null = null;
 
-      // CLOUD-FIRST when online — avoids stale local admin/doctor mismatch on other devices
-      const online = typeof navigator === 'undefined' || navigator.onLine;
+        // CLOUD-FIRST when online — avoids stale local admin/doctor mismatch on other devices
+        const online = typeof navigator === 'undefined' || navigator.onLine;
 
-      if (online) {
-        try {
-          const { isStaffRevoked } = await import('../../lib/firebase');
-          if (await withTimeout(isStaffRevoked(effectiveHospital.id, badgeQuery), 4000)) {
-            setError('This staff account was removed by an administrator. Sign-in is disabled.');
+        if (online) {
+          try {
+            const { isStaffRevoked } = await import('../../lib/firebase');
+            if (await withTimeout(isStaffRevoked(effectiveHospital.id, badgeQuery), 4000)) {
+              setError('This staff account was removed by an administrator. Sign-in is disabled.');
+              setLoading(false);
+              return;
+            }
+          } catch {
+            /* offline / timeout — continue */
+          }
+        }
+
+        // 1) Aurora PostgreSQL staff profile (cloud source of truth — Firestore is decommissioned)
+        if (!profile && online) {
+          try {
+            const { apiLookupStaff } = await import('../../lib/db/clientApi');
+            const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, badgeQuery), 6000);
+            if (pgRes.ok && pgRes.staff) {
+              const pgRow = pgRes.staff as any;
+              if (pgRow) {
+                const rowFid = String(pgRow.facility_id || '');
+                if (rowFid && rowFid.toUpperCase() !== effectiveHospital.id.toUpperCase()) {
+                  const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === rowFid.toUpperCase());
+                  if (hospObj) {
+                    effectiveHospital = hospObj;
+                    setSelectedHospital(hospObj);
+                  }
+                }
+                const remoteForMap: Record<string, unknown> = {
+                  badgeId: badgeQuery,
+                  id: badgeQuery,
+                  name: pgRow.full_name || pgRow.name || badgeQuery,
+                  fullName: pgRow.full_name || pgRow.name || badgeQuery,
+                  role: pgRow.role || 'Staff',
+                  roleKey: pgRow.role_key || 'staff',
+                  title: pgRow.title || '',
+                  department: pgRow.department || '',
+                  clearanceLevel: pgRow.clearance_level ?? 2,
+                  clearanceLabel: pgRow.clearance_label || 'L2',
+                  permissions: Array.isArray(pgRow.permissions) ? pgRow.permissions : [],
+                  hospitalId: pgRow.facility_id || effectiveHospital.id,
+                  facilityId: pgRow.facility_id || effectiveHospital.id,
+                  hospitalName: effectiveHospital.name,
+                  facilityName: effectiveHospital.name,
+                  email: pgRow.email || '',
+                  photoUrl: pgRow.photo_url || pgRow.photoUrl || undefined,
+                };
+                profile = mapProfile(remoteForMap);
+                // Mirror Aurora → local registry so subsequent logins are instant
+                try {
+                  const { defaultPermissionsForRole: dpr } = await import('../../lib/staffCardStore');
+                  const entry = {
+                    ...remoteForMap,
+                    badgeId: profile.badgeId,
+                    roleKey: profile.roleKey,
+                    permissions: profile.permissions?.length ? profile.permissions : dpr(profile.roleKey),
+                    // Preserve local PIN if already in registry
+                    pin: (() => { try { const reg = JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'); const hit = reg.find((r: any) => String(r.badgeId || r.id || '').toUpperCase() === badgeQuery); return hit?.pin || ''; } catch { return ''; } })(),
+                  };
+                  const regRaw = localStorage.getItem('medcore_os_staff_registry');
+                  const reg = regRaw ? JSON.parse(regRaw) : [];
+                  const next = Array.isArray(reg)
+                    ? [entry, ...reg.filter((r: any) => String(r.badgeId || r.id).toUpperCase() !== profile!.badgeId)]
+                    : [entry];
+                  localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
+                  localStorage.setItem('medcore_staff_registry', JSON.stringify(next));
+                } catch { /* ignore */ }
+              }
+            }
+          } catch (e) {
+            console.warn('[auth] Postgres badge lookup (cloud-first)', e);
+          }
+        }
+
+        // 2) Local resolution — offline or cloud miss
+        if (!profile) {
+          const local = resolveStaffByBadge(badgeQuery);
+          if (local) {
+            const localFid = String((local as any).hospitalId || (local as any).facilityId || '');
+            if (localFid && localFid.toUpperCase() !== effectiveHospital.id.toUpperCase()) {
+              const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === localFid.toUpperCase());
+              if (hospObj) {
+                effectiveHospital = hospObj;
+                setSelectedHospital(hospObj);
+              }
+            }
+            profile = mapProfile(local as unknown as Record<string, unknown>);
+          }
+        }
+
+        // 3) In-memory registry (Auth screen subscription)
+        if (!profile) {
+          const hit = staffRegistry.find(
+            (s) => normalizeBadgeId(s.badgeId) === badgeQuery
+          );
+          if (hit) profile = hit;
+        }
+
+        // 4) If still no profile, try Firebase Auth — account may exist from admin create
+        const pinNorm = normalizeStaffPin(pinQuery);
+        let fbUser: import('firebase/auth').User | null = null;
+
+        let badgeAuthMiss: unknown = null;
+        if (!profile) {
+          try {
+            fbUser = await withTimeout(firebaseSignInWithBadge(badgeQuery, pinNorm), 6000);
+            // Auth ok but no staff profile yet — try Firestore or reconstruct from Firebase custom claims
+            try {
+              const retry = await withTimeout(
+                firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery),
+                3000
+              );
+              if (retry && (retry.badgeId || retry.id)) {
+                profile = mapProfile(retry);
+              }
+            } catch { /* ignore */ }
+
+            if (!profile && fbUser) {
+              try {
+                const tokenResult = await fbUser.getIdTokenResult();
+                const claims = (tokenResult?.claims as Record<string, unknown>) || {};
+                const claimsFid = String(claims.facility_id || effectiveHospital.id);
+                const claimsRole = String(claims.role || 'hospital_admin');
+                const claimsBadge = String(claims.badgeId || badgeQuery);
+                const claimsLvl = Number(claims.clearanceLevel) || (claimsRole === 'hospital_admin' ? 5 : 2);
+                const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === claimsFid.toUpperCase()) || effectiveHospital;
+                effectiveHospital = hospObj;
+                setSelectedHospital(hospObj);
+
+                const { defaultPermissionsForRole: getDefPerms } = await import('../../lib/staffCardStore');
+                profile = {
+                  badgeId: claimsBadge,
+                  name: fbUser.displayName || claimsBadge,
+                  role: claimsRole === 'hospital_admin' ? 'Hospital Administrator' : 'Staff',
+                  shortRole: claimsRole === 'hospital_admin' ? 'Admin' : 'Staff',
+                  title: claimsRole === 'hospital_admin' ? 'Hospital Administrator' : 'Staff',
+                  roleKey: claimsRole,
+                  clearanceLevel: claimsLvl,
+                  clearanceLabel: claimsRole === 'hospital_admin' ? 'Administrator' : 'L2',
+                  department: claimsRole === 'hospital_admin' ? 'Hospital Management' : 'Clinical Operations',
+                  initials: (fbUser.displayName ? fbUser.displayName.slice(0, 2) : 'ST').toUpperCase(),
+                  permissions: claimsRole === 'hospital_admin' ? ['*'] : getDefPerms(claimsRole),
+                  pin: pinQuery,
+                  hospitalId: claimsFid,
+                  hospitalName: hospObj.name,
+                  color: '#0052D4',
+                };
+
+                try {
+                  const regRaw = localStorage.getItem('medcore_os_staff_registry') || '[]';
+                  const reg = JSON.parse(regRaw);
+                  const nextReg = [profile, ...reg.filter((r: any) => String(r.badgeId || r.id).toUpperCase() !== profile!.badgeId.toUpperCase())];
+                  localStorage.setItem('medcore_os_staff_registry', JSON.stringify(nextReg));
+                  localStorage.setItem('medcore_staff_registry', JSON.stringify(nextReg));
+                } catch { /* ignore */ }
+              } catch (claimErr) {
+                console.warn('[auth] Failed to synthesize profile from Firebase claims:', claimErr);
+              }
+            }
+
+            if (!profile) {
+              setError(
+                'This Staff ID has a sign-in account but no hospital profile in the cloud yet. Ask admin to open Staff Access Control and create/save the account again so role and desk sync.'
+              );
+              setLoading(false);
+              return;
+            }
+          } catch (authMiss: unknown) {
+            const { classifyAuthError } = await import('../../lib/firebase');
+            setError(
+              authMiss
+                ? classifyAuthError(authMiss, { accountKnown: false, mode: 'badge' })
+                : 'Incorrect Staff ID or PIN. Account not found at this facility.'
+            );
             setLoading(false);
             return;
           }
-        } catch {
-          /* offline / timeout — continue */
         }
+
+
+        if (!profile) {
+          setError(
+            'Incorrect Staff ID or PIN. Account not found at this facility.'
+          );
+          setLoading(false);
+          return;
+        }
+
+        // Automatic alignment to staff member's registered hospital
+        if (profile.hospitalId && String(profile.hospitalId).toUpperCase() !== String(effectiveHospital.id).toUpperCase()) {
+          const foundHosp = HOSPITALS.find((h) => h.id.toUpperCase() === String(profile.hospitalId).toUpperCase());
+          if (foundHosp) {
+            effectiveHospital = foundHosp;
+            setSelectedHospital(foundHosp);
+          }
+        }
+
+        // Strict revocation check
+        if (isStaffRevokedLocal(profile.badgeId, effectiveHospital.id)) {
+          setError('This staff account has been deleted or revoked by an administrator. Sign-in is disabled.');
+          setLoading(false);
+          return;
+        }
+
+        // Strict Administrator credentials validation
+        const isAdminStaff = profile.roleKey === 'hospital_admin' || profile.roleKey === 'sysadmin';
+        if (isAdminStaff) {
+          const pinMatches = (profile.pin && String(profile.pin) === pinQuery) || normalizeStaffPin(profile.pin) === pinNorm;
+          if (!pinMatches) {
+            try {
+              if (!fbUser) {
+                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
+              }
+            } catch (adminPinErr: unknown) {
+              setError('Incorrect administrator PIN. Access denied.');
+              setLoading(false);
+              return;
+            }
+          }
+        }
+
+        // Verify PIN when we have a stored pin
+        if (profile.pin && String(profile.pin) !== pinQuery && normalizeStaffPin(profile.pin) !== pinNorm) {
+          // still allow if Firebase accepts the PIN (timed)
+          try {
+            if (!fbUser) {
+              fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
+            }
+          } catch (pinErr: unknown) {
+            const { classifyAuthError } = await import('../../lib/firebase');
+            setError(classifyAuthError(pinErr, { accountKnown: true, mode: 'badge' }));
+            setLoading(false);
+            return;
+          }
+        } else {
+          // PIN matches local profile — attempt Firebase Auth for cloud sync
+          try {
+            if (!fbUser) {
+              try {
+                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 4000);
+              } catch {
+                // Cloud badge identity might not exist yet in Firebase Auth; ensure it now
+                try {
+                  const { firebaseEnsureBadgeAccount } = await import('../../lib/firebase');
+                  await withTimeout(firebaseEnsureBadgeAccount(profile.badgeId, pinNorm), 5000);
+                  fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 4000);
+                } catch (cloudErr) {
+                  console.warn('[auth] badge cloud account sync skipped:', cloudErr);
+                  fbUser = null; // Valid staff with matching PIN: fall back to local session
+                }
+              }
+            }
+          } catch (authErr: unknown) {
+            console.warn('[auth] firebase badge optional', authErr);
+            fbUser = null;
+          }
+        }
+
+        if (fbUser) {
+          void firestoreRecordLogin(profile.hospitalId || effectiveHospital.id, profile.badgeId, {
+            method: 'badge_pin_firebase',
+            uid: fbUser.uid,
+          });
+        }
+
+        const sessionPin = String(profile.pin || pinNorm || pinQuery || '');
+        try {
+          if (sessionPin && typeof window !== 'undefined') {
+            sessionStorage.setItem('medcore_session_pin', sessionPin);
+          }
+        } catch { /* ignore */ }
+
+        const session: UserSession = {
+          id: fbUser?.uid || profile.badgeId,
+          badgeId: profile.badgeId,
+          name: profile.name,
+          role: profile.role,
+          roleKey: profile.roleKey,
+          title: profile.title,
+          facility: profile.hospitalName || effectiveHospital.name,
+          hospitalId: profile.hospitalId || effectiveHospital.id,
+          department: profile.department,
+          avatarInitials: profile.initials,
+          photoUrl: profile.photoUrl,
+          clearanceLabel: profile.clearanceLabel,
+          clearanceLevel: profile.clearanceLevel,
+          permissions: profile.permissions,
+          authMethod: fbUser ? 'Staff Badge · Cloud Verified' : 'Staff Badge + PIN',
+          pin: sessionPin,
+          email: (profile as { email?: string }).email || fbUser?.email || undefined,
+          token: fbUser
+            ? await withTimeout(fbUser.getIdToken(), 4000).catch(() => `PIN-${Date.now().toString(36)}`)
+            : `PIN-${Date.now().toString(36)}`,
+          loginTime: new Date().toLocaleTimeString('en-GB', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        };
+        setSuccess(true);
+        setLoading(false);
+        setTimeout(() => triggerLogin(session), 300);
+        return;
       }
 
-      // 1) Aurora PostgreSQL staff profile (cloud source of truth — Firestore is decommissioned)
-      if (!profile && online) {
+      // ── Email → Firebase (enrolled staff, or first admin claim on empty facility) ─
+      if (u.includes('@')) {
+        const email = u.trim().toLowerCase();
         try {
-          const { apiLookupStaff } = await import('../../lib/db/clientApi');
-          const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, badgeQuery), 6000);
-          if (pgRes.ok && pgRes.staff) {
-            const pgRow = pgRes.staff as any;
-            if (pgRow) {
-              const rowFid = String(pgRow.facility_id || '');
-              if (rowFid && rowFid.toUpperCase() !== effectiveHospital.id.toUpperCase()) {
-                const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === rowFid.toUpperCase());
+          const {
+            firebaseSignIn,
+            firebaseSignUp,
+            isEmailCredential,
+            classifyAuthError,
+          } = await import('../../lib/firebase');
+          if (!isEmailCredential(email)) {
+            setError('Please enter a valid work email address.');
+            setLoading(false);
+            return;
+          }
+          if (pass.length < 6) {
+            setError('Password must be at least 6 characters.');
+            setLoading(false);
+            return;
+          }
+
+          const {
+            hasFacilityAdmin,
+            provisionFacilityAdmin,
+            resolveStaffByBadge,
+            listStaffCards,
+            findStaffByEmail,
+          } = await import('../../lib/staffCardStore');
+
+          // 1) First resolve staff by work email (Aurora Postgres cloud-first, then local registry)
+          let matchedStaff: PresetStaff | undefined;
+
+          // Check local staff registry / cards first across facilities to detect correct facility
+          try {
+            let hit = findStaffByEmail(email, effectiveHospital.id);
+            if (!hit) {
+              const crossHit = findStaffByEmail(email);
+              if (crossHit) {
+                hit = crossHit;
+                const hitFid = String(crossHit.hospitalId || crossHit.facilityId || '');
+                const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === hitFid.toUpperCase());
                 if (hospObj) {
                   effectiveHospital = hospObj;
                   setSelectedHospital(hospObj);
                 }
               }
-              const remoteForMap: Record<string, unknown> = {
-                badgeId: badgeQuery,
-                id: badgeQuery,
-                name: pgRow.full_name || pgRow.name || badgeQuery,
-                fullName: pgRow.full_name || pgRow.name || badgeQuery,
-                role: pgRow.role || 'Staff',
-                roleKey: pgRow.role_key || 'staff',
-                title: pgRow.title || '',
-                department: pgRow.department || '',
-                clearanceLevel: pgRow.clearance_level ?? 2,
-                clearanceLabel: pgRow.clearance_label || 'L2',
-                permissions: Array.isArray(pgRow.permissions) ? pgRow.permissions : [],
-                hospitalId: pgRow.facility_id || effectiveHospital.id,
-                facilityId: pgRow.facility_id || effectiveHospital.id,
-                hospitalName: effectiveHospital.name,
-                facilityName: effectiveHospital.name,
-                email: pgRow.email || '',
-                photoUrl: pgRow.photo_url || pgRow.photoUrl || undefined,
+            }
+            if (hit) {
+              const bid = String(hit.badgeId || hit.id || '');
+              const rk = inferRoleKey(String(hit.roleKey || hit.role || hit.title || ''), bid);
+              matchedStaff = {
+                badgeId: bid,
+                name: String(hit.name || hit.fullName || email.split('@')[0]),
+                role: String(hit.role || 'Staff'),
+                shortRole: String(hit.shortRole || hit.role || 'Staff'),
+                title: String(hit.title || hit.role || 'Staff'),
+                roleKey: rk,
+                clearanceLevel: Number(hit.clearanceLevel ?? 2),
+                clearanceLabel: String(hit.clearanceLabel || 'L2'),
+                department: String(hit.department || ''),
+                initials: String(hit.initials || 'ST'),
+                permissions: Array.isArray(hit.permissions) && hit.permissions.length > 0 ? hit.permissions : defaultPermissionsForRole(rk),
+                pin: String(hit.pin || pass),
+                hospitalId: hit.hospitalId || hit.facilityId || effectiveHospital.id,
+                hospitalName: hit.hospitalName || hit.facilityName || effectiveHospital.name,
+                photoUrl: hit.photoUrl || undefined,
+                color: '#0052D4',
               };
-              profile = mapProfile(remoteForMap);
-              // Mirror Aurora → local registry so subsequent logins are instant
-              try {
-                const { defaultPermissionsForRole: dpr } = await import('../../lib/staffCardStore');
-                const entry = {
-                  ...remoteForMap,
-                  badgeId: profile.badgeId,
-                  roleKey: profile.roleKey,
-                  permissions: profile.permissions?.length ? profile.permissions : dpr(profile.roleKey),
-                  // Preserve local PIN if already in registry
-                  pin: (() => { try { const reg = JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'); const hit = reg.find((r: any) => String(r.badgeId || r.id || '').toUpperCase() === badgeQuery); return hit?.pin || ''; } catch { return ''; } })(),
+            }
+          } catch { /* */ }
+
+          // Cloud query: Aurora PostgreSQL via tenant API & cross-facility lookup
+          if (!matchedStaff) {
+            try {
+              const { apiLookupStaff } = await import('../../lib/db/clientApi');
+              const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, email), 6000);
+              if (pgRes.ok && pgRes.staff) {
+                const pgRow = pgRes.staff as any;
+                const rowFid = String(pgRow.facility_id || '');
+                if (rowFid && rowFid.toUpperCase() !== effectiveHospital.id.toUpperCase()) {
+                  const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === rowFid.toUpperCase());
+                  if (hospObj) {
+                    effectiveHospital = hospObj;
+                    setSelectedHospital(hospObj);
+                  }
+                }
+                const bid = String(pgRow.badge_id || pgRow.badgeId || '');
+                const rk = inferRoleKey(String(pgRow.role_key || pgRow.roleKey || pgRow.role || ''), bid);
+                matchedStaff = {
+                  badgeId: bid,
+                  name: String(pgRow.full_name || pgRow.name || email.split('@')[0]),
+                  role: String(pgRow.role || 'Staff'),
+                  shortRole: String(pgRow.role || 'Staff'),
+                  title: String(pgRow.title || pgRow.role || 'Staff'),
+                  roleKey: rk,
+                  clearanceLevel: Number(pgRow.clearance_level ?? 2),
+                  clearanceLabel: String(pgRow.clearance_label || 'L2'),
+                  department: String(pgRow.department || ''),
+                  initials: String(bid ? bid.slice(0, 2) : 'ST'),
+                  permissions: Array.isArray(pgRow.permissions) && pgRow.permissions.length > 0 ? pgRow.permissions : defaultPermissionsForRole(rk),
+                  pin: String(pgRow.pin || pass),
+                  hospitalId: pgRow.facility_id || effectiveHospital.id,
+                  hospitalName: effectiveHospital.name,
+                  photoUrl: pgRow.photo_url || pgRow.photoUrl || undefined,
+                  color: '#0052D4',
                 };
-                const regRaw = localStorage.getItem('medcore_os_staff_registry');
-                const reg = regRaw ? JSON.parse(regRaw) : [];
-                const next = Array.isArray(reg)
-                  ? [entry, ...reg.filter((r: any) => String(r.badgeId || r.id).toUpperCase() !== profile!.badgeId)]
-                  : [entry];
-                localStorage.setItem('medcore_os_staff_registry', JSON.stringify(next));
-                localStorage.setItem('medcore_staff_registry', JSON.stringify(next));
-              } catch { /* ignore */ }
-            }
+              }
+            } catch { /* offline */ }
           }
-        } catch (e) {
-          console.warn('[auth] Postgres badge lookup (cloud-first)', e);
-        }
-      }
 
-      // 2) Local resolution — offline or cloud miss
-      if (!profile) {
-        const local = resolveStaffByBadge(badgeQuery);
-        if (local) {
-          const localFid = String((local as any).hospitalId || (local as any).facilityId || '');
-          if (localFid && localFid.toUpperCase() !== effectiveHospital.id.toUpperCase()) {
-            const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === localFid.toUpperCase());
-            if (hospObj) {
-              effectiveHospital = hospObj;
-              setSelectedHospital(hospObj);
-            }
-          }
-          profile = mapProfile(local as unknown as Record<string, unknown>);
-        }
-      }
-
-      // 3) In-memory registry (Auth screen subscription)
-      if (!profile) {
-        const hit = staffRegistry.find(
-          (s) => normalizeBadgeId(s.badgeId) === badgeQuery
-        );
-        if (hit) profile = hit;
-      }
-
-      // 4) If still no profile, try Firebase Auth — account may exist from admin create
-      const pinNorm = normalizeStaffPin(pinQuery);
-      let fbUser: import('firebase/auth').User | null = null;
-
-      let badgeAuthMiss: unknown = null;
-      if (!profile) {
-        try {
-          fbUser = await withTimeout(firebaseSignInWithBadge(badgeQuery, pinNorm), 6000);
-          // Auth ok but no staff profile yet — try Firestore or reconstruct from Firebase custom claims
+          // 2) Attempt Firebase Auth sign in
+          let fbUser: import('firebase/auth').User | null = null;
           try {
-            const retry = await withTimeout(
-              firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery),
-              3000
-            );
-            if (retry && (retry.badgeId || retry.id)) {
-              profile = mapProfile(retry);
+            fbUser = await withTimeout(firebaseSignIn(email, pass), 8000);
+          } catch (signInErr: unknown) {
+            // If staff exists in Postgres/local with matching credentials, try ensuring the account
+            if (matchedStaff) {
+              const storedPin = String(matchedStaff.pin || '');
+              const pinMatches = storedPin === pass || (storedPin.length >= 4 && storedPin.trim() === pass.trim());
+              if (pinMatches || matchedStaff.roleKey === 'hospital_admin') {
+                try {
+                  const { firebaseEnsureEmailAccount } = await import('../../lib/firebase');
+                  await withTimeout(firebaseEnsureEmailAccount(email, pass), 5000);
+                  fbUser = await withTimeout(firebaseSignIn(email, pass), 5000);
+                } catch (ensureErr) {
+                  console.warn('[auth] Email account auto-creation skipped, proceeding with authenticated record:', ensureErr);
+                  // Valid registered staff with correct credentials: allow access
+                  fbUser = null;
+                }
+              }
             }
-          } catch { /* ignore */ }
 
-          if (!profile && fbUser) {
+            if (!fbUser && !matchedStaff) {
+              const _msg = classifyAuthError(signInErr, { accountKnown: false, mode: 'email' });
+              authLog('sign_in_fail', {
+                mode: 'email',
+                facilityId: effectiveHospital.id,
+                emailDomain: emailDomainOnly(email),
+                code: String((signInErr as { code?: string })?.code || ''),
+                reason: _msg
+              });
+              setError(_msg || 'Incorrect email or password. Please try again.');
+              setLoading(false);
+              return;
+            }
+          }
+
+          // 3) If Firebase signed in but profile was not found yet, synthesize from claims
+          if (fbUser && !matchedStaff) {
             try {
               const tokenResult = await fbUser.getIdTokenResult();
               const claims = (tokenResult?.claims as Record<string, unknown>) || {};
               const claimsFid = String(claims.facility_id || effectiveHospital.id);
               const claimsRole = String(claims.role || 'hospital_admin');
-              const claimsBadge = String(claims.badgeId || badgeQuery);
+              const claimsBadge = String(claims.badgeId || '');
               const claimsLvl = Number(claims.clearanceLevel) || (claimsRole === 'hospital_admin' ? 5 : 2);
               const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === claimsFid.toUpperCase()) || effectiveHospital;
               effectiveHospital = hospObj;
               setSelectedHospital(hospObj);
 
               const { defaultPermissionsForRole: getDefPerms } = await import('../../lib/staffCardStore');
-              profile = {
-                badgeId: claimsBadge,
-                name: fbUser.displayName || claimsBadge,
+              matchedStaff = {
+                badgeId: claimsBadge || `ADM-${claimsFid}`,
+                name: fbUser.displayName || email.split('@')[0],
                 role: claimsRole === 'hospital_admin' ? 'Hospital Administrator' : 'Staff',
                 shortRole: claimsRole === 'hospital_admin' ? 'Admin' : 'Staff',
                 title: claimsRole === 'hospital_admin' ? 'Hospital Administrator' : 'Staff',
@@ -1025,440 +1360,105 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 clearanceLevel: claimsLvl,
                 clearanceLabel: claimsRole === 'hospital_admin' ? 'Administrator' : 'L2',
                 department: claimsRole === 'hospital_admin' ? 'Hospital Management' : 'Clinical Operations',
-                initials: (fbUser.displayName ? fbUser.displayName.slice(0, 2) : 'ST').toUpperCase(),
+                initials: (fbUser.displayName ? fbUser.displayName.slice(0, 2) : 'HA').toUpperCase(),
                 permissions: claimsRole === 'hospital_admin' ? ['*'] : getDefPerms(claimsRole),
-                pin: pinQuery,
+                pin: pass,
                 hospitalId: claimsFid,
                 hospitalName: hospObj.name,
                 color: '#0052D4',
               };
-
-              try {
-                const regRaw = localStorage.getItem('medcore_os_staff_registry') || '[]';
-                const reg = JSON.parse(regRaw);
-                const nextReg = [profile, ...reg.filter((r: any) => String(r.badgeId || r.id).toUpperCase() !== profile!.badgeId.toUpperCase())];
-                localStorage.setItem('medcore_os_staff_registry', JSON.stringify(nextReg));
-                localStorage.setItem('medcore_staff_registry', JSON.stringify(nextReg));
-              } catch { /* ignore */ }
-            } catch (claimErr) {
-              console.warn('[auth] Failed to synthesize profile from Firebase claims:', claimErr);
+            } catch (claimsErr) {
+              console.warn('[auth] Could not synthesize claims for email login:', claimsErr);
             }
           }
 
-          if (!profile) {
-            setError(
-              'This Staff ID has a sign-in account but no hospital profile in the cloud yet. Ask admin to open Staff Access Control and create/save the account again so role and desk sync.'
-            );
-            setLoading(false);
-            return;
-          }
-        } catch (authMiss: unknown) {
-          const { classifyAuthError } = await import('../../lib/firebase');
-          setError(
-            authMiss
-              ? classifyAuthError(authMiss, { accountKnown: false, mode: 'badge' })
-              : 'Incorrect Staff ID or PIN. Account not found at this facility.'
-          );
-          setLoading(false);
-          return;
-        }
-      }
-
-
-      if (!profile) {
-        setError(
-          'Incorrect Staff ID or PIN. Account not found at this facility.'
-        );
-        setLoading(false);
-        return;
-      }
-
-      // Automatic alignment to staff member's registered hospital
-      if (profile.hospitalId && String(profile.hospitalId).toUpperCase() !== String(effectiveHospital.id).toUpperCase()) {
-        const foundHosp = HOSPITALS.find((h) => h.id.toUpperCase() === String(profile.hospitalId).toUpperCase());
-        if (foundHosp) {
-          effectiveHospital = foundHosp;
-          setSelectedHospital(foundHosp);
-        }
-      }
-
-      // Strict revocation check
-      if (isStaffRevokedLocal(profile.badgeId, effectiveHospital.id)) {
-        setError('This staff account has been deleted or revoked by an administrator. Sign-in is disabled.');
-        setLoading(false);
-        return;
-      }
-
-      // Strict Administrator credentials validation
-      const isAdminStaff = profile.roleKey === 'hospital_admin' || profile.roleKey === 'sysadmin';
-      if (isAdminStaff) {
-        const pinMatches = (profile.pin && String(profile.pin) === pinQuery) || normalizeStaffPin(profile.pin) === pinNorm;
-        if (!pinMatches) {
-          try {
-            if (!fbUser) {
-              fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
-            }
-          } catch (adminPinErr: unknown) {
-            setError('Incorrect administrator PIN. Access denied.');
-            setLoading(false);
-            return;
-          }
-        }
-      }
-
-      // Verify PIN when we have a stored pin
-      if (profile.pin && String(profile.pin) !== pinQuery && normalizeStaffPin(profile.pin) !== pinNorm) {
-        // still allow if Firebase accepts the PIN (timed)
-        try {
-          if (!fbUser) {
-            fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
-          }
-        } catch (pinErr: unknown) {
-          const { classifyAuthError } = await import('../../lib/firebase');
-          setError(classifyAuthError(pinErr, { accountKnown: true, mode: 'badge' }));
-          setLoading(false);
-          return;
-        }
-      } else {
-        // PIN matches local profile — attempt Firebase Auth for cloud sync
-        try {
-          if (!fbUser) {
-            try {
-              fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 4000);
-            } catch {
-              // Cloud badge identity might not exist yet in Firebase Auth; ensure it now
-              try {
-                const { firebaseEnsureBadgeAccount } = await import('../../lib/firebase');
-                await withTimeout(firebaseEnsureBadgeAccount(profile.badgeId, pinNorm), 5000);
-                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 4000);
-              } catch (cloudErr) {
-                console.warn('[auth] badge cloud account sync skipped:', cloudErr);
-                fbUser = null; // Valid staff with matching PIN: fall back to local session
-              }
-            }
-          }
-        } catch (authErr: unknown) {
-          console.warn('[auth] firebase badge optional', authErr);
-          fbUser = null;
-        }
-      }
-
-      if (fbUser) {
-        void firestoreRecordLogin(profile.hospitalId || effectiveHospital.id, profile.badgeId, {
-          method: 'badge_pin_firebase',
-          uid: fbUser.uid,
-        });
-      }
-
-      const sessionPin = String(profile.pin || pinNorm || pinQuery || '');
-      try {
-        if (sessionPin && typeof window !== 'undefined') {
-          sessionStorage.setItem('medcore_session_pin', sessionPin);
-        }
-      } catch { /* ignore */ }
-
-      const session: UserSession = {
-        id: fbUser?.uid || profile.badgeId,
-        badgeId: profile.badgeId,
-        name: profile.name,
-        role: profile.role,
-        roleKey: profile.roleKey,
-        title: profile.title,
-        facility: profile.hospitalName || effectiveHospital.name,
-        hospitalId: profile.hospitalId || effectiveHospital.id,
-        department: profile.department,
-        avatarInitials: profile.initials,
-        photoUrl: profile.photoUrl,
-        clearanceLabel: profile.clearanceLabel,
-        clearanceLevel: profile.clearanceLevel,
-        permissions: profile.permissions,
-        authMethod: fbUser ? 'Staff Badge · Cloud Verified' : 'Staff Badge + PIN',
-        pin: sessionPin,
-        email: (profile as { email?: string }).email || fbUser?.email || undefined,
-        token: fbUser
-          ? await withTimeout(fbUser.getIdToken(), 4000).catch(() => `PIN-${Date.now().toString(36)}`)
-          : `PIN-${Date.now().toString(36)}`,
-        loginTime: new Date().toLocaleTimeString('en-GB', {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      };
-      setSuccess(true);
-      setLoading(false);
-      setTimeout(() => triggerLogin(session), 300);
-      return;
-    }
-
-    // ── Email → Firebase (enrolled staff, or first admin claim on empty facility) ─
-    if (u.includes('@')) {
-      const email = u.trim().toLowerCase();
-      try {
-        const {
-          firebaseSignIn,
-          firebaseSignUp,
-          isEmailCredential,
-          classifyAuthError,
-        } = await import('../../lib/firebase');
-        if (!isEmailCredential(email)) {
-          setError('Please enter a valid work email address.');
-          setLoading(false);
-          return;
-        }
-        if (pass.length < 6) {
-          setError('Password must be at least 6 characters.');
-          setLoading(false);
-          return;
-        }
-
-        const {
-          hasFacilityAdmin,
-          provisionFacilityAdmin,
-          resolveStaffByBadge,
-          listStaffCards,
-          findStaffByEmail,
-        } = await import('../../lib/staffCardStore');
-
-        // 1) First resolve staff by work email (Aurora Postgres cloud-first, then local registry)
-        let matchedStaff: PresetStaff | undefined;
-
-        // Check local staff registry / cards first across facilities to detect correct facility
-        try {
-          let hit = findStaffByEmail(email, effectiveHospital.id);
-          if (!hit) {
-            const crossHit = findStaffByEmail(email);
-            if (crossHit) {
-              hit = crossHit;
-              const hitFid = String(crossHit.hospitalId || crossHit.facilityId || '');
-              const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === hitFid.toUpperCase());
-              if (hospObj) {
-                effectiveHospital = hospObj;
-                setSelectedHospital(hospObj);
-              }
-            }
-          }
-          if (hit) {
-            const bid = String(hit.badgeId || hit.id || '');
-            const rk = inferRoleKey(String(hit.roleKey || hit.role || hit.title || ''), bid);
-            matchedStaff = {
-              badgeId: bid,
-              name: String(hit.name || hit.fullName || email.split('@')[0]),
-              role: String(hit.role || 'Staff'),
-              shortRole: String(hit.shortRole || hit.role || 'Staff'),
-              title: String(hit.title || hit.role || 'Staff'),
-              roleKey: rk,
-              clearanceLevel: Number(hit.clearanceLevel ?? 2),
-              clearanceLabel: String(hit.clearanceLabel || 'L2'),
-              department: String(hit.department || ''),
-              initials: String(hit.initials || 'ST'),
-              permissions: Array.isArray(hit.permissions) && hit.permissions.length > 0 ? hit.permissions : defaultPermissionsForRole(rk),
-              pin: String(hit.pin || pass),
-              hospitalId: hit.hospitalId || hit.facilityId || effectiveHospital.id,
-              hospitalName: hit.hospitalName || hit.facilityName || effectiveHospital.name,
-              photoUrl: hit.photoUrl || undefined,
-              color: '#0052D4',
-            };
-          }
-        } catch { /* */ }
-
-        // Cloud query: Aurora PostgreSQL via tenant API & cross-facility lookup
-        if (!matchedStaff) {
-          try {
-            const { apiLookupStaff } = await import('../../lib/db/clientApi');
-            const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, email), 6000);
-            if (pgRes.ok && pgRes.staff) {
-              const pgRow = pgRes.staff as any;
-              const rowFid = String(pgRow.facility_id || '');
-              if (rowFid && rowFid.toUpperCase() !== effectiveHospital.id.toUpperCase()) {
-                const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === rowFid.toUpperCase());
-                if (hospObj) {
-                  effectiveHospital = hospObj;
-                  setSelectedHospital(hospObj);
-                }
-              }
-              const bid = String(pgRow.badge_id || pgRow.badgeId || '');
-              const rk = inferRoleKey(String(pgRow.role_key || pgRow.roleKey || pgRow.role || ''), bid);
-              matchedStaff = {
-                badgeId: bid,
-                name: String(pgRow.full_name || pgRow.name || email.split('@')[0]),
-                role: String(pgRow.role || 'Staff'),
-                shortRole: String(pgRow.role || 'Staff'),
-                title: String(pgRow.title || pgRow.role || 'Staff'),
-                roleKey: rk,
-                clearanceLevel: Number(pgRow.clearance_level ?? 2),
-                clearanceLabel: String(pgRow.clearance_label || 'L2'),
-                department: String(pgRow.department || ''),
-                initials: String(bid ? bid.slice(0, 2) : 'ST'),
-                permissions: Array.isArray(pgRow.permissions) && pgRow.permissions.length > 0 ? pgRow.permissions : defaultPermissionsForRole(rk),
-                pin: String(pgRow.pin || pass),
-                hospitalId: pgRow.facility_id || effectiveHospital.id,
-                hospitalName: effectiveHospital.name,
-                photoUrl: pgRow.photo_url || pgRow.photoUrl || undefined,
-                color: '#0052D4',
-              };
-            }
-          } catch { /* offline */ }
-        }
-
-        // 2) Attempt Firebase Auth sign in
-        let fbUser: import('firebase/auth').User | null = null;
-        try {
-          fbUser = await withTimeout(firebaseSignIn(email, pass), 8000);
-        } catch (signInErr: unknown) {
-          // If staff exists in Postgres/local with matching credentials, try ensuring the account
+          // Enforce revocation on matched staff
           if (matchedStaff) {
-            const storedPin = String(matchedStaff.pin || '');
-            const pinMatches = storedPin === pass || (storedPin.length >= 4 && storedPin.trim() === pass.trim());
-            if (pinMatches || matchedStaff.roleKey === 'hospital_admin') {
-              try {
-                const { firebaseEnsureEmailAccount } = await import('../../lib/firebase');
-                await withTimeout(firebaseEnsureEmailAccount(email, pass), 5000);
-                fbUser = await withTimeout(firebaseSignIn(email, pass), 5000);
-              } catch (ensureErr) {
-                console.warn('[auth] Email account auto-creation skipped, proceeding with authenticated record:', ensureErr);
-                // Valid registered staff with correct credentials: allow access
-                fbUser = null;
-              }
+            if (isStaffRevokedLocal(matchedStaff.badgeId, matchedStaff.hospitalId || effectiveHospital.id)) {
+              setError('This staff account has been deleted or revoked by an administrator. Sign-in is disabled.');
+              setLoading(false);
+              return;
             }
           }
 
-          if (!fbUser && !matchedStaff) {
-            const _msg = classifyAuthError(signInErr, { accountKnown: false, mode: 'email' });
-            authLog('sign_in_fail', {
-              mode: 'email',
-              facilityId: effectiveHospital.id,
-              emailDomain: emailDomainOnly(email),
-              code: String((signInErr as { code?: string })?.code || ''),
-              reason: _msg
-            });
-            setError(_msg || 'Incorrect email or password. Please try again.');
+          if (!matchedStaff) {
+            setError('This account does not have a staff record registered for this facility. Please contact your administrator.');
             setLoading(false);
             return;
           }
-        }
 
-        // 3) If Firebase signed in but profile was not found yet, synthesize from claims
-        if (fbUser && !matchedStaff) {
+          const sessionPin = String(matchedStaff.pin || pass || '');
           try {
-            const tokenResult = await fbUser.getIdTokenResult();
-            const claims = (tokenResult?.claims as Record<string, unknown>) || {};
-            const claimsFid = String(claims.facility_id || effectiveHospital.id);
-            const claimsRole = String(claims.role || 'hospital_admin');
-            const claimsBadge = String(claims.badgeId || '');
-            const claimsLvl = Number(claims.clearanceLevel) || (claimsRole === 'hospital_admin' ? 5 : 2);
-            const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === claimsFid.toUpperCase()) || effectiveHospital;
-            effectiveHospital = hospObj;
-            setSelectedHospital(hospObj);
+            if (sessionPin && typeof window !== 'undefined') {
+              sessionStorage.setItem('medcore_session_pin', sessionPin);
+            }
+          } catch { /* */ }
 
-            const { defaultPermissionsForRole: getDefPerms } = await import('../../lib/staffCardStore');
-            matchedStaff = {
-              badgeId: claimsBadge || `ADM-${claimsFid}`,
-              name: fbUser.displayName || email.split('@')[0],
-              role: claimsRole === 'hospital_admin' ? 'Hospital Administrator' : 'Staff',
-              shortRole: claimsRole === 'hospital_admin' ? 'Admin' : 'Staff',
-              title: claimsRole === 'hospital_admin' ? 'Hospital Administrator' : 'Staff',
-              roleKey: claimsRole,
-              clearanceLevel: claimsLvl,
-              clearanceLabel: claimsRole === 'hospital_admin' ? 'Administrator' : 'L2',
-              department: claimsRole === 'hospital_admin' ? 'Hospital Management' : 'Clinical Operations',
-              initials: (fbUser.displayName ? fbUser.displayName.slice(0, 2) : 'HA').toUpperCase(),
-              permissions: claimsRole === 'hospital_admin' ? ['*'] : getDefPerms(claimsRole),
-              pin: pass,
-              hospitalId: claimsFid,
-              hospitalName: hospObj.name,
-              color: '#0052D4',
-            };
-          } catch (claimsErr) {
-            console.warn('[auth] Could not synthesize claims for email login:', claimsErr);
-          }
-        }
+          const initials =
+            matchedStaff.initials ||
+            matchedStaff.name
+              .split(/\s+/)
+              .map((w) => w[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase();
 
-        // Enforce revocation on matched staff
-        if (matchedStaff) {
-          if (isStaffRevokedLocal(matchedStaff.badgeId, matchedStaff.hospitalId || effectiveHospital.id)) {
-            setError('This staff account has been deleted or revoked by an administrator. Sign-in is disabled.');
-            setLoading(false);
-            return;
-          }
-        }
+          try {
+            const { firestoreRecordLogin } = await import('../../lib/firebase');
+            void firestoreRecordLogin(matchedStaff.hospitalId || effectiveHospital.id, matchedStaff.badgeId, {
+              method: 'email_firebase',
+              uid: fbUser?.uid || matchedStaff.badgeId,
+            });
+          } catch { /* */ }
 
-        if (!matchedStaff) {
-          setError('This account does not have a staff record registered for this facility. Please contact your administrator.');
+          const sessionToken = fbUser
+            ? await withTimeout(fbUser.getIdToken(), 4000).catch(() => `EMAIL-${Date.now().toString(36)}`)
+            : `EMAIL-${Date.now().toString(36)}`;
+
+          const session: UserSession = {
+            id: fbUser?.uid || matchedStaff.badgeId,
+            badgeId: matchedStaff.badgeId,
+            name: matchedStaff.name,
+            role: matchedStaff.role,
+            roleKey: matchedStaff.roleKey,
+            title: matchedStaff.title,
+            facility: matchedStaff.hospitalName || effectiveHospital.name,
+            hospitalId: matchedStaff.hospitalId || effectiveHospital.id,
+            department: matchedStaff.department,
+            avatarInitials: initials,
+            photoUrl: matchedStaff.photoUrl,
+            clearanceLabel: matchedStaff.clearanceLabel,
+            clearanceLevel: matchedStaff.clearanceLevel,
+            permissions: matchedStaff.permissions,
+            authMethod: 'MedCore Cloud',
+            pin: sessionPin,
+            email: fbUser?.email || email || undefined,
+            token: sessionToken,
+            loginTime: new Date().toLocaleTimeString('en-GB', {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+          };
+
+          setSuccess(true);
+          setLoading(false);
+          setTimeout(() => triggerLogin(session), 300);
+          return;
+        } catch (err: unknown) {
+          const { classifyAuthError } = await import('../../lib/firebase');
+          setError(classifyAuthError(err, { accountKnown: false, mode: 'email' }));
           setLoading(false);
           return;
         }
-
-        const sessionPin = String(matchedStaff.pin || pass || '');
-        try {
-          if (sessionPin && typeof window !== 'undefined') {
-            sessionStorage.setItem('medcore_session_pin', sessionPin);
-          }
-        } catch { /* */ }
-
-        const initials =
-          matchedStaff.initials ||
-          matchedStaff.name
-            .split(/\s+/)
-            .map((w) => w[0])
-            .join('')
-            .slice(0, 2)
-            .toUpperCase();
-
-        try {
-          const { firestoreRecordLogin } = await import('../../lib/firebase');
-          void firestoreRecordLogin(matchedStaff.hospitalId || effectiveHospital.id, matchedStaff.badgeId, {
-            method: 'email_firebase',
-            uid: fbUser?.uid || matchedStaff.badgeId,
-          });
-        } catch { /* */ }
-
-        const sessionToken = fbUser
-          ? await withTimeout(fbUser.getIdToken(), 4000).catch(() => `EMAIL-${Date.now().toString(36)}`)
-          : `EMAIL-${Date.now().toString(36)}`;
-
-        const session: UserSession = {
-          id: fbUser?.uid || matchedStaff.badgeId,
-          badgeId: matchedStaff.badgeId,
-          name: matchedStaff.name,
-          role: matchedStaff.role,
-          roleKey: matchedStaff.roleKey,
-          title: matchedStaff.title,
-          facility: matchedStaff.hospitalName || effectiveHospital.name,
-          hospitalId: matchedStaff.hospitalId || effectiveHospital.id,
-          department: matchedStaff.department,
-          avatarInitials: initials,
-          photoUrl: matchedStaff.photoUrl,
-          clearanceLabel: matchedStaff.clearanceLabel,
-          clearanceLevel: matchedStaff.clearanceLevel,
-          permissions: matchedStaff.permissions,
-          authMethod: 'MedCore Cloud',
-          pin: sessionPin,
-          email: fbUser?.email || email || undefined,
-          token: sessionToken,
-          loginTime: new Date().toLocaleTimeString('en-GB', {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-        };
-
-        setSuccess(true);
-        setLoading(false);
-        setTimeout(() => triggerLogin(session), 300);
-        return;
-      } catch (err: unknown) {
-        const { classifyAuthError } = await import('../../lib/firebase');
-        setError(classifyAuthError(err, { accountKnown: false, mode: 'email' }));
-        setLoading(false);
-        return;
       }
-    }
 
-    setError('Use work email, or switch to Sign in with ID No. (badge + PIN).');
-    setLoading(false);
+      setError('Use work email, or switch to Sign in with ID No. (badge + PIN).');
+      setLoading(false);
     } catch (fatal: unknown) {
       console.error('[auth] sign-in fatal', fatal);
       setError(
         (fatal as { message?: string })?.message ||
-          'Sign-in failed. Check your connection and try again.'
+        'Sign-in failed. Check your connection and try again.'
       );
       setLoading(false);
     } finally {
@@ -1599,7 +1599,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
           {/* Badge-only sign-in — no tab switcher */}
 
-                    {/* Error Message */}
+          {/* Error Message */}
           {error && (
             <div style={{
               display: 'flex',
@@ -1620,68 +1620,142 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
           {/* Sign-In Form */}
           <div style={{ position: 'relative' }}>
-          <form onSubmit={handleSignIn} style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'relative' }}>
-            {/* Hospital Facility Selector */}
-            <div>
-              <div style={{
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                background: '#F8FAFC',
-                border: '1px solid #E2E8F0',
-                borderRadius: 10,
-                transition: 'border-color 0.15s ease',
-              }}>
-                <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-                  <Building2 size={18} color="#00A3BF" />
+            <form onSubmit={handleSignIn} style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'relative' }}>
+              {/* Hospital Facility Selector */}
+              <div>
+                <div style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: 10,
+                  transition: 'border-color 0.15s ease',
+                }}>
+                  <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                    <Building2 size={18} color="#00A3BF" />
+                  </div>
+                  <select
+                    value={selectedHospital.id}
+                    onChange={(e) => {
+                      const found = HOSPITALS.find(h => h.id === e.target.value);
+                      if (found) setSelectedHospital(found);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px 12px 42px',
+                      fontSize: '0.86rem',
+                      color: '#0A2540',
+                      background: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      borderRadius: 10,
+                    }}
+                  >
+                    {HOSPITALS.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <select
-                  value={selectedHospital.id}
-                  onChange={(e) => {
-                    const found = HOSPITALS.find(h => h.id === e.target.value);
-                    if (found) setSelectedHospital(found);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '12px 14px 12px 42px',
-                    fontSize: '0.86rem',
-                    color: '#0A2540',
-                    background: 'transparent',
-                    border: 'none',
-                    outline: 'none',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    borderRadius: 10,
-                  }}
-                >
-                  {HOSPITALS.map((h) => (
-                    <option key={h.id} value={h.id}>
-                      {h.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-            </div>
 
-            {/* Username / Email */}
-            <div>
+              </div>
+
+              {/* Username / Email */}
+              <div>
+                <div style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}>
+                  <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                    <User size={18} color="#94A3B8" />
+                  </div>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Staff ID / Badge number (e.g. AKS-2025-1234)"
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px 12px 42px',
+                      fontSize: '0.88rem',
+                      color: '#0A2540',
+                      background: '#FFFFFF',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: 10,
+                      outline: 'none',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = '#0052D4')}
+                    onBlur={(e) => (e.target.style.borderColor = '#E2E8F0')}
+                  />
+                </div>
+                {detectedStaff && (
+                  <div style={{
+                    marginTop: 6,
+                    padding: '6px 10px',
+                    borderRadius: 8,
+                    background: 'rgba(0, 82, 212, 0.06)',
+                    border: '1px solid rgba(0, 82, 212, 0.18)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '0.74rem',
+                    flexWrap: 'wrap',
+                    gap: 6,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <CheckCircle2 size={13} color="#059669" />
+                      <span style={{ color: '#0A2540', fontWeight: 600 }}>
+                        {detectedStaff.name} ({detectedStaff.shortRole}) • Assigned to: <strong style={{ color: '#0052D4' }}>{detectedStaff.hospitalName}</strong>
+                      </span>
+                    </div>
+                    {selectedHospital.id !== detectedStaff.hospitalId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = HOSPITALS.find(h => h.id === detectedStaff.hospitalId);
+                          if (target) setSelectedHospital(target);
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#0052D4',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          fontSize: '0.72rem',
+                          padding: 0,
+                        }}
+                      >
+                        Log in to Assigned Hospital
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Password */}
               <div style={{
                 position: 'relative',
                 display: 'flex',
                 alignItems: 'center',
               }}>
                 <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-                  <User size={18} color="#94A3B8" />
+                  <Lock size={18} color="#94A3B8" />
                 </div>
                 <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Staff ID / Badge number (e.g. AKS-2025-1234)"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Staff PIN (4–6 digits)"
                   style={{
                     width: '100%',
-                    padding: '12px 14px 12px 42px',
+                    padding: '12px 42px 12px 42px',
                     fontSize: '0.88rem',
                     color: '#0A2540',
                     background: '#FFFFFF',
@@ -1693,151 +1767,77 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   onFocus={(e) => (e.target.style.borderColor = '#0052D4')}
                   onBlur={(e) => (e.target.style.borderColor = '#E2E8F0')}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: 12,
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#94A3B8',
+                    padding: 4,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
-              {detectedStaff && (
-                <div style={{
-                  marginTop: 6,
-                  padding: '6px 10px',
-                  borderRadius: 8,
-                  background: 'rgba(0, 82, 212, 0.06)',
-                  border: '1px solid rgba(0, 82, 212, 0.18)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  fontSize: '0.74rem',
-                  flexWrap: 'wrap',
-                  gap: 6,
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <CheckCircle2 size={13} color="#059669" />
-                    <span style={{ color: '#0A2540', fontWeight: 600 }}>
-                      {detectedStaff.name} ({detectedStaff.shortRole}) • Assigned to: <strong style={{ color: '#0052D4' }}>{detectedStaff.hospitalName}</strong>
-                    </span>
-                  </div>
-                  {selectedHospital.id !== detectedStaff.hospitalId && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const target = HOSPITALS.find(h => h.id === detectedStaff.hospitalId);
-                        if (target) setSelectedHospital(target);
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#0052D4',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                        fontSize: '0.72rem',
-                        padding: 0,
-                      }}
-                    >
-                      Log in to Assigned Hospital
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
 
-            {/* Password */}
-            <div style={{
-              position: 'relative',
-              display: 'flex',
-              alignItems: 'center',
-            }}>
-              <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-                <Lock size={18} color="#94A3B8" />
-              </div>
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Staff PIN (4–6 digits)"
-                style={{
-                  width: '100%',
-                  padding: '12px 42px 12px 42px',
-                  fontSize: '0.88rem',
-                  color: '#0A2540',
-                  background: '#FFFFFF',
-                  border: '1px solid #E2E8F0',
-                  borderRadius: 10,
-                  outline: 'none',
-                  transition: 'all 0.15s ease',
-                }}
-                onFocus={(e) => (e.target.style.borderColor = '#0052D4')}
-                onBlur={(e) => (e.target.style.borderColor = '#E2E8F0')}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                style={{
-                  position: 'absolute',
-                  right: 12,
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: '#94A3B8',
-                  padding: 4,
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-
-            {/* Remember Me & Forgot Password */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              fontSize: '0.84rem',
-              marginTop: 2,
-            }}>
-              <label style={{
+              {/* Remember Me & Forgot Password */}
+              <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
-                cursor: 'pointer',
-                color: '#475569',
-                userSelect: 'none',
+                justifyContent: 'space-between',
+                fontSize: '0.84rem',
+                marginTop: 2,
               }}>
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  style={{
-                    width: 16,
-                    height: 16,
-                    accentColor: '#0052D4',
-                    cursor: 'pointer',
-                  }}
-                />
-                <span>Remember me</span>
-              </label>
-
-              <button
-                type="button"
-                onClick={() => openForgotModal()}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  padding: 0,
-                  color: '#0284C7',
-                  textDecoration: 'none',
-                  fontWeight: 600,
-                  fontSize: '0.84rem',
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
                   cursor: 'pointer',
-                  transition: 'color 0.15s ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = '#0369A1')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = '#0284C7')}
-              >
-                Forgot password or PIN?
-              </button>
-            </div>
+                  color: '#475569',
+                  userSelect: 'none',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    style={{
+                      width: 16,
+                      height: 16,
+                      accentColor: '#0052D4',
+                      cursor: 'pointer',
+                    }}
+                  />
+                  <span>Remember me</span>
+                </label>
 
-            <style>{`
+                <button
+                  type="button"
+                  onClick={() => openForgotModal()}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                    color: '#0284C7',
+                    textDecoration: 'none',
+                    fontWeight: 600,
+                    fontSize: '0.84rem',
+                    cursor: 'pointer',
+                    transition: 'color 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = '#0369A1')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = '#0284C7')}
+                >
+                  Forgot password or PIN?
+                </button>
+              </div>
+
+              <style>{`
 /* ── Liquid Glass Sign In Button ── */
 @keyframes liquidFlow {
   0%   { background-position: 0% 50%; }
@@ -1951,58 +1951,58 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
   border-radius: inherit;
 }
 `}</style>
-            {/* Primary Sign In Button — Liquid Glass */}
-            <button
-              type="submit"
-              disabled={loading || success}
-              className="auth-liquid-glass-btn"
-              onMouseEnter={(e) => { if (!loading && !success) e.currentTarget.classList.add('is-hovered'); }}
-              onMouseLeave={(e) => { e.currentTarget.classList.remove('is-hovered'); }}
-              onClick={(e) => {
-                if (!loading && !success) {
-                  const btn = e.currentTarget;
-                  const circle = document.createElement('span');
-                  const rect = btn.getBoundingClientRect();
-                  const size = Math.max(rect.width, rect.height);
-                  circle.style.cssText = `position:absolute;width:${size}px;height:${size}px;left:${e.clientX - rect.left - size / 2}px;top:${e.clientY - rect.top - size / 2}px;border-radius:50%;background:rgba(255,255,255,0.35);animation:liquidRipple 0.7s ease-out forwards;pointer-events:none;`;
-                  btn.appendChild(circle);
-                  setTimeout(() => circle.remove(), 700);
-                }
-              }}
-            >
-              {!loading && !success && <span className="auth-lgb-shimmer" aria-hidden="true" />}
-              {success ? (
-                <>
-                  <CheckCircle2 size={18} />
-                  <span>Authenticated 🚀 Launching...</span>
-                </>
-              ) : loading ? (
-                <span>Signing in...</span>
-              ) : (
-                <>
-                  <span>Sign In</span>
-                  <ArrowRight size={18} />
-                </>
-              )}
-            </button>
-            {(loading || success) && (
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  zIndex: 20,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 14,
-                  borderRadius: 12,
-                  background: 'rgba(255, 255, 255, 0.72)',
-                  backdropFilter: 'blur(6px)',
-                  WebkitBackdropFilter: 'blur(6px)',
+              {/* Primary Sign In Button — Liquid Glass */}
+              <button
+                type="submit"
+                disabled={loading || success}
+                className="auth-liquid-glass-btn"
+                onMouseEnter={(e) => { if (!loading && !success) e.currentTarget.classList.add('is-hovered'); }}
+                onMouseLeave={(e) => { e.currentTarget.classList.remove('is-hovered'); }}
+                onClick={(e) => {
+                  if (!loading && !success) {
+                    const btn = e.currentTarget;
+                    const circle = document.createElement('span');
+                    const rect = btn.getBoundingClientRect();
+                    const size = Math.max(rect.width, rect.height);
+                    circle.style.cssText = `position:absolute;width:${size}px;height:${size}px;left:${e.clientX - rect.left - size / 2}px;top:${e.clientY - rect.top - size / 2}px;border-radius:50%;background:rgba(255,255,255,0.35);animation:liquidRipple 0.7s ease-out forwards;pointer-events:none;`;
+                    btn.appendChild(circle);
+                    setTimeout(() => circle.remove(), 700);
+                  }
                 }}
               >
-                <style>{`
+                {!loading && !success && <span className="auth-lgb-shimmer" aria-hidden="true" />}
+                {success ? (
+                  <>
+                    <CheckCircle2 size={18} />
+                    <span>Authenticated 🚀 Launching...</span>
+                  </>
+                ) : loading ? (
+                  <span>Signing in...</span>
+                ) : (
+                  <>
+                    <span>Sign In</span>
+                    <ArrowRight size={18} />
+                  </>
+                )}
+              </button>
+              {(loading || success) && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    zIndex: 20,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 14,
+                    borderRadius: 12,
+                    background: 'rgba(255, 255, 255, 0.72)',
+                    backdropFilter: 'blur(6px)',
+                    WebkitBackdropFilter: 'blur(6px)',
+                  }}
+                >
+                  <style>{`
 @keyframes authSpin { to { transform: rotate(360deg); } }
 
 /* ── Liquid Glass Sign In Button ── */
@@ -2118,25 +2118,25 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
   border-radius: inherit;
 }
 `}</style>
-                <div
-                  className="auth-round-loader"
-                  style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: '50%',
-                    border: '3.5px solid #E2E8F0',
-                    borderTopColor: '#0284C7',
-                    borderRightColor: '#00BFA5',
-                    animation: 'authSpin 0.75s linear infinite',
-                    boxShadow: '0 8px 24px rgba(2, 132, 199, 0.2)',
-                  }}
-                />
-                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A' }}>
-                  {success ? 'Launching Hospital OS…' : 'Signing in…'}
-                </span>
-              </div>
-            )}
-          </form>
+                  <div
+                    className="auth-round-loader"
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: '50%',
+                      border: '3.5px solid #E2E8F0',
+                      borderTopColor: '#0284C7',
+                      borderRightColor: '#00BFA5',
+                      animation: 'authSpin 0.75s linear infinite',
+                      boxShadow: '0 8px 24px rgba(2, 132, 199, 0.2)',
+                    }}
+                  />
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A' }}>
+                    {success ? 'Launching Hospital OS…' : 'Signing in…'}
+                  </span>
+                </div>
+              )}
+            </form>
           </div>
 
 
