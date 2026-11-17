@@ -730,23 +730,30 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     };
   }, [selectedHospital.id]);
 
-  const completeMfaLogin = (verifiedSession: UserSession) => {
+  const completeMfaLogin = async (verifiedSession: UserSession) => {
     setPendingMfaSession(null);
     setSuccess(true);
     if (typeof fetch !== 'undefined') {
-      void fetch('/api/auth/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          badgeId: verifiedSession.badgeId || verifiedSession.id,
-          name: verifiedSession.name,
-          roleKey: verifiedSession.roleKey,
-          role: verifiedSession.role,
-          facilityId: verifiedSession.hospitalId || 'IGH-EKT',
-          clearanceLevel: verifiedSession.clearanceLevel || 1,
-          mfaToken: verifiedSession.token?.startsWith('mfa.') ? verifiedSession.token : undefined,
-        }),
-      }).catch(() => { });
+      try {
+        await Promise.race([
+          fetch('/api/auth/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              badgeId: verifiedSession.badgeId || verifiedSession.id,
+              name: verifiedSession.name,
+              roleKey: verifiedSession.roleKey,
+              role: verifiedSession.role,
+              facilityId: verifiedSession.hospitalId || 'IGH-EKT',
+              clearanceLevel: verifiedSession.clearanceLevel || 1,
+              mfaToken: verifiedSession.token?.startsWith('mfa.') ? verifiedSession.token : undefined,
+            }),
+          }),
+          new Promise((resolve) => setTimeout(resolve, 1500)),
+        ]);
+      } catch {
+        /* offline fallback */
+      }
     }
     if (onLogin) onLogin(verifiedSession);
     if (onLoginSuccess) onLoginSuccess(verifiedSession);
@@ -781,7 +788,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       return;
     }
 
-    completeMfaLogin(enrichedSession);
+    void completeMfaLogin(enrichedSession);
   };
 
   // Strict staff match by badge ID only (no fuzzy / demo name shortcuts)
@@ -2876,7 +2883,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         <StaffEmailOtpModal
           session={pendingMfaSession}
           settings={mfaSettings || getAdminSettings(pendingMfaSession.hospitalId)}
-          onVerified={(verified) => completeMfaLogin(verified)}
+          onVerified={(verified) => void completeMfaLogin(verified)}
           onCancel={() => {
             setPendingMfaSession(null);
             setSuccess(false);

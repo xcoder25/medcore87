@@ -196,3 +196,66 @@ test('hipaaPrivacy: scrubPhiOnLogout removes all PHI keys from localStorage and 
   assert.equal(ssMap.has('medcore_focus_patient'), false);
   assert.equal(ssMap.has('medcore_os_patient_context_v1'), false);
 });
+
+test('middleware: allows public auth/lookup routes, blocks unauthenticated PHI, enforces RBAC', async () => {
+  const ss = loadTsModule('src/lib/serverSession.ts');
+  const nextServerMock = {
+    NextResponse: {
+      next: (opts) => ({ status: 200, nextOpts: opts }),
+      json: (body, init) => ({ status: init?.status || 200, body }),
+    },
+  };
+  const mw = loadTsModule('src/middleware.ts', {
+    'next/server': nextServerMock,
+  });
+
+  const makeReq = (pathname, method = 'GET', cookieVal = '', query = '') => ({
+    method,
+    headers: new Headers(),
+    cookies: {
+      get: (name) => (name === ss.SESSION_COOKIE_NAME && cookieVal ? { value: cookieVal } : undefined),
+    },
+    nextUrl: {
+      pathname,
+      searchParams: new URLSearchParams(query),
+    },
+  });
+
+  // 1) Public auth & staff lookup pass without cookie
+  const authRes = await mw.middleware(makeReq('/api/auth/session', 'POST'));
+  assert.equal(authRes.status, 200);
+  const lookupRes = await mw.middleware(makeReq('/api/staff/lookup', 'GET', '', 'badgeId=IGH-01'));
+  assert.equal(lookupRes.status, 200);
+
+  // 2) Unauthenticated PHI request blocked with 401
+  const unauthPatients = await mw.middleware(makeReq('/api/patients', 'GET', '', 'facilityId=IGH-EKT'));
+  assert.equal(unauthPatients.status, 401);
+
+  // 3) Authenticated clinician can access own facility PHI, blocked from admin-only staff creation
+  const docCookie = await ss.signSessionToken({
+    badgeId: 'IGH-DOC-01',
+    name: 'Dr. Ada',
+    roleKey: 'doctor',
+    role: 'Doctor',
+    facilityId: 'IGH-EKT',
+    clearanceLevel: 2,
+  });
+  const docPatients = await mw.middleware(makeReq('/api/patients', 'GET', docCookie, 'facilityId=IGH-EKT'));
+  assert.equal(docPatients.status, 200);
+  assert.equal(docPatients.nextOpts.request.headers.get('x-medcore-facility-id'), 'IGH-EKT');
+
+  const docCreateStaff = await mw.middleware(makeReq('/api/staff/create', 'POST', docCookie));
+  assert.equal(docCreateStaff.status, 403);
+
+  // 4) Authenticated Hospital Admin passes admin-only staff creation
+  const adminCookie = await ss.signSessionToken({
+    badgeId: 'IGH-ADM-01',
+    name: 'Admin',
+    roleKey: 'hospital_admin',
+    role: 'Hospital Administrator',
+    facilityId: 'IGH-EKT',
+    clearanceLevel: 5,
+  });
+  const adminCreateStaff = await mw.middleware(makeReq('/api/staff/create', 'POST', adminCookie));
+  assert.equal(adminCreateStaff.status, 200);
+});
