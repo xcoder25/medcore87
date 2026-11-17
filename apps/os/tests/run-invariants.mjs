@@ -158,3 +158,41 @@ test('rateLimit: enforces sliding-window brute-force limits per key', () => {
   assert.equal(blocked.allowed, false);
   assert.ok(blocked.retryAfterSeconds >= 1);
 });
+
+test('hipaaPrivacy: scrubPhiOnLogout removes all PHI keys from localStorage and sessionStorage', () => {
+  const lsMap = new Map([
+    ['medcore_os_patient_registry_v1', '[{"id":"PT-1"}]'],
+    ['medcore_os_patient_context_v1', '{"patientId":"PT-1"}'],
+    ['medcore_os_session', '{"badgeId":"DOC-1"}'],
+    ['non_phi_theme', 'light'],
+  ]);
+  const ssMap = new Map([
+    ['medcore_focus_patient', 'PT-1'],
+    ['medcore_os_patient_context_v1', '{"patientId":"PT-1"}'],
+  ]);
+  globalThis.window = {
+    dispatchEvent: () => {},
+  };
+  globalThis.localStorage = {
+    getItem: (k) => lsMap.get(k) ?? null,
+    setItem: (k, v) => lsMap.set(k, String(v)),
+    removeItem: (k) => lsMap.delete(k),
+  };
+  globalThis.sessionStorage = {
+    getItem: (k) => ssMap.get(k) ?? null,
+    setItem: (k, v) => ssMap.set(k, String(v)),
+    removeItem: (k) => ssMap.delete(k),
+  };
+
+  const hp = loadTsModule('src/lib/hipaaPrivacy.ts', {
+    './auditLogStore': { appendAudit: () => {} },
+  });
+  hp.scrubPhiOnLogout({ reason: 'inactivity_timeout' });
+
+  assert.equal(lsMap.has('medcore_os_patient_registry_v1'), false);
+  assert.equal(lsMap.has('medcore_os_patient_context_v1'), false);
+  assert.equal(lsMap.has('medcore_os_session'), false);
+  assert.equal(lsMap.get('non_phi_theme'), 'light');
+  assert.equal(ssMap.has('medcore_focus_patient'), false);
+  assert.equal(ssMap.has('medcore_os_patient_context_v1'), false);
+});

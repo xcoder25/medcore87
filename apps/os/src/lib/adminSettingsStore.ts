@@ -89,10 +89,12 @@ export interface AdminFacilitySettings {
   akwaremitMerchantId: string;
   akwaremitEnvironment: 'live' | 'test';
 
-  /** Staff 2FA / Email OTP Security */
+  /** Staff 2FA / Email OTP & HIPAA Security */
   requireStaffMfa: boolean;
   allowMfaBackupCodeFallback: boolean;
   otpExpiryMinutes: number;
+  inactivityTimeoutMinutes: number;
+  hipaaBaaAttested?: boolean;
 
   updatedAt: string;
   updatedBy?: string;
@@ -161,6 +163,8 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   requireStaffMfa: false,
   allowMfaBackupCodeFallback: true,
   otpExpiryMinutes: 5,
+  inactivityTimeoutMinutes: 15,
+  hipaaBaaAttested: false,
 
   updatedBy: undefined,
 };

@@ -19,7 +19,10 @@ export interface PatientContext {
 function read(): PatientContext | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = localStorage.getItem(KEY);
+    // HIPAA: keep active patient chart context strictly in sessionStorage (never persistent localStorage)
+    const legacy = localStorage.getItem(KEY);
+    if (legacy) localStorage.removeItem(KEY);
+    const raw = sessionStorage.getItem(KEY);
     return raw ? (JSON.parse(raw) as PatientContext) : null;
   } catch {
     return null;
@@ -28,11 +31,15 @@ function read(): PatientContext | null {
 
 function write(ctx: PatientContext | null) {
   if (typeof window === 'undefined') return;
-  if (!ctx) localStorage.removeItem(KEY);
-  else localStorage.setItem(KEY, JSON.stringify(ctx));
   try {
-    if (ctx) sessionStorage.setItem('medcore_focus_patient', ctx.patientId);
-    else sessionStorage.removeItem('medcore_focus_patient');
+    localStorage.removeItem(KEY);
+    if (!ctx) {
+      sessionStorage.removeItem(KEY);
+      sessionStorage.removeItem('medcore_focus_patient');
+    } else {
+      sessionStorage.setItem(KEY, JSON.stringify(ctx));
+      sessionStorage.setItem('medcore_focus_patient', ctx.patientId);
+    }
   } catch {
     /* ignore */
   }

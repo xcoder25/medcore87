@@ -13,9 +13,11 @@ import NotificationBell from '../realtime/NotificationBell';
 import { GlobalPatientContextBar } from '../clinical-core/GlobalPatientContextBar';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
 import { UserProfileModal } from '../auth/UserProfileModal';
+import { InactivityLockGuard } from '../auth/InactivityLockGuard';
 import { HybridConnectivityDrawer } from '../realtime/HybridConnectivityDrawer';
 import { startConnectivityCircuitBreaker } from '../../lib/connectivityCircuitBreaker';
 import { startDeltaSyncWorker } from '../../lib/deltaSyncEngine';
+import { scrubPhiOnLogout } from '../../lib/hipaaPrivacy';
 
 export type ShellNavItem = {
   key: string;
@@ -280,7 +282,20 @@ export const OsAppShell: React.FC<Props> = ({
               <span>{(session.role || 'Staff').split('/')[0]}</span>
               <ChevronDown size={13} style={{ color: '#64748B', marginLeft: 2 }} />
             </div>
-            <button type="button" className="admin-shell-icon-btn" onClick={onLogout} title="Sign out">
+            <button
+              type="button"
+              className="admin-shell-icon-btn"
+              onClick={() => {
+                scrubPhiOnLogout({
+                  reason: 'manual_logout',
+                  facilityId: session.hospitalId || 'IGH-EKT',
+                  actor: session.name,
+                  actorBadge: session.badgeId,
+                });
+                onLogout();
+              }}
+              title="Sign out"
+            >
               <LogOut size={16} />
             </button>
           </div>
@@ -290,12 +305,27 @@ export const OsAppShell: React.FC<Props> = ({
           {children}
         </></main>
 
+        <InactivityLockGuard
+          facilityId={session.hospitalId || 'IGH-EKT'}
+          staffName={session.name}
+          staffBadge={session.badgeId}
+          onAutoLogout={onLogout}
+        />
+
         <UserProfileModal
           session={session}
           isOpen={showProfileModal}
           onClose={() => setShowProfileModal(false)}
           onOpenCredentials={() => setShowCredModal(true)}
-          onLogout={onLogout}
+          onLogout={() => {
+            scrubPhiOnLogout({
+              reason: 'manual_logout',
+              facilityId: session.hospitalId || 'IGH-EKT',
+              actor: session.name,
+              actorBadge: session.badgeId,
+            });
+            onLogout();
+          }}
         />
         <ChangeCredentialsModal
           session={session}

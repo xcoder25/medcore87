@@ -2013,6 +2013,66 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
             </div>
           </div>
 
+          {/* HIPAA Technical & Administrative Readiness Card */}
+          <div
+            style={{
+              gridColumn: 'span 12',
+              background: '#FFFFFF',
+              borderRadius: 16,
+              border: `1px solid ${C.border}`,
+              padding: 24,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: C.navy }}>
+                  HIPAA Technical &amp; Administrative Safeguards (§164.312)
+                </div>
+                <div style={{ fontSize: 12, color: C.muted }}>
+                  Automatic workstation logoff, browser PHI scrubbing, tenant RLS, and BAA attestation.
+                </div>
+              </div>
+              <span
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  padding: '5px 12px',
+                  borderRadius: 999,
+                  background: draft.hipaaBaaAttested ? '#ECFDF5' : '#FFFBEB',
+                  color: draft.hipaaBaaAttested ? '#047857' : '#B45309',
+                  border: `1px solid ${draft.hipaaBaaAttested ? '#A7F3D0' : '#FDE68A'}`,
+                }}
+              >
+                {draft.hipaaBaaAttested ? '✓ BAA & Policy Attested' : '○ Pending BAA Attestation'}
+              </span>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>
+                Workstation Inactivity Auto-Logoff ({draft.inactivityTimeoutMinutes ?? 15} minutes)
+              </label>
+              <input
+                type="range"
+                min={5}
+                max={60}
+                step={5}
+                value={draft.inactivityTimeoutMinutes ?? 15}
+                onChange={(e) => patch({ inactivityTimeoutMinutes: Number(e.target.value) || 15 })}
+                style={{ width: '100%', accentColor: C.blue, cursor: 'pointer' }}
+              />
+              <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>
+                Automatically locks unattended clinical PCs, scrubs local PHI caches, and ends the session after idle timeout (HIPAA recommends 15 min).
+              </div>
+            </div>
+
+            <Toggle
+              label="BAA & HIPAA Staff Training Attestation Signed"
+              desc="Confirm that Business Associate Agreements (AWS/Postgres, Vercel, Email provider) and staff privacy training are on file for this facility"
+              checked={Boolean(draft.hipaaBaaAttested)}
+              onChange={(v) => patch({ hipaaBaaAttested: v })}
+            />
+          </div>
+
           {/* Backup & Governance Card */}
           <div
             style={{

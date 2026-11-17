@@ -45,6 +45,8 @@ import {
   syncAccessRosterFromSources,
 } from '../../lib/staffCardStore';
 import { applyFacilityRemoteKey, startHospitalCloudSync } from '../../lib/facilityCloudSync';
+import { InactivityLockGuard } from '../auth/InactivityLockGuard';
+import { scrubPhiOnLogout } from '../../lib/hipaaPrivacy';
 
 type AdminModule =
   | 'dashboard'
@@ -540,11 +542,30 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
               <span>Admin</span>
               <ChevronDown size={13} style={{ color: '#64748B', marginLeft: 2 }} />
             </div>
-            <button type="button" className="admin-shell-icon-btn" onClick={onLogout} title="Sign out">
+            <button
+              type="button"
+              className="admin-shell-icon-btn"
+              onClick={() => {
+                scrubPhiOnLogout({
+                  reason: 'manual_logout',
+                  facilityId: session.hospitalId || 'IGH-EKT',
+                  actor: session.name,
+                  actorBadge: session.badgeId,
+                });
+                onLogout();
+              }}
+              title="Sign out"
+            >
               <LogOut size={16} />
             </button>
           </div>
         </header>
+        <InactivityLockGuard
+          facilityId={session.hospitalId || 'IGH-EKT'}
+          staffName={session.name}
+          staffBadge={session.badgeId}
+          onAutoLogout={onLogout}
+        />
         {maintenanceMessage && (
           <div
             style={{
