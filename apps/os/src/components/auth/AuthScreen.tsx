@@ -1118,12 +1118,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             );
             if (vpRes.ok) {
               const vpJson = (await vpRes.json()) as { hasPinHash?: boolean; verified?: boolean };
-              if (vpJson.hasPinHash) {
-                if (!vpJson.verified) {
-                  setError(isAdminStaff ? 'Incorrect administrator PIN. Access denied.' : 'Incorrect PIN. Please try again.');
-                  setLoading(false);
-                  return;
-                }
+              if (vpJson.verified) {
                 serverPinVerified = true;
               }
             }
@@ -1144,8 +1139,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           }
         }
 
-        // Verify PIN when we have a stored pin and neither local nor server hash matched
-        if (!localPinMatches && !serverPinVerified && profile.pin) {
+        // Verify PIN via Firebase Auth when neither local nor server hash matched
+        if (!localPinMatches && !serverPinVerified) {
           try {
             if (!fbUser) {
               fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
