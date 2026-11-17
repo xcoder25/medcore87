@@ -1096,26 +1096,56 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           return;
         }
 
-        // Strict Administrator credentials validation
+        // Strict Administrator & Staff PIN validation (local PIN -> Postgres pin_hash -> Firebase Auth)
         const isAdminStaff = profile.roleKey === 'hospital_admin' || profile.roleKey === 'sysadmin';
-        if (isAdminStaff) {
-          const pinMatches = (profile.pin && String(profile.pin) === pinQuery) || normalizeStaffPin(profile.pin) === pinNorm;
-          if (!pinMatches) {
-            try {
-              if (!fbUser) {
-                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
+        const localPinMatches = Boolean(
+          profile.pin && (String(profile.pin) === pinQuery || normalizeStaffPin(profile.pin) === pinNorm)
+        );
+        let serverPinVerified = false;
+        if (!localPinMatches && online) {
+          try {
+            const vpRes = await withTimeout(
+              fetch('/api/auth/verify-pin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  facilityId: profile.hospitalId || effectiveHospital.id,
+                  badgeId: profile.badgeId,
+                  pin: pinNorm,
+                }),
+              }),
+              5000
+            );
+            if (vpRes.ok) {
+              const vpJson = (await vpRes.json()) as { hasPinHash?: boolean; verified?: boolean };
+              if (vpJson.hasPinHash) {
+                if (!vpJson.verified) {
+                  setError(isAdminStaff ? 'Incorrect administrator PIN. Access denied.' : 'Incorrect PIN. Please try again.');
+                  setLoading(false);
+                  return;
+                }
+                serverPinVerified = true;
               }
-            } catch (adminPinErr: unknown) {
-              setError('Incorrect administrator PIN. Access denied.');
-              setLoading(false);
-              return;
             }
+          } catch {
+            /* offline or timeout — fall through to Firebase Auth check */
           }
         }
 
-        // Verify PIN when we have a stored pin
-        if (profile.pin && String(profile.pin) !== pinQuery && normalizeStaffPin(profile.pin) !== pinNorm) {
-          // still allow if Firebase accepts the PIN (timed)
+        if (isAdminStaff && !localPinMatches && !serverPinVerified) {
+          try {
+            if (!fbUser) {
+              fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
+            }
+          } catch {
+            setError('Incorrect administrator PIN. Access denied.');
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Verify PIN when we have a stored pin and neither local nor server hash matched
+        if (!localPinMatches && !serverPinVerified && profile.pin) {
           try {
             if (!fbUser) {
               fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
@@ -1126,7 +1156,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             setLoading(false);
             return;
           }
-        } else {
+        } else if (localPinMatches || serverPinVerified) {
           // PIN matches local profile — attempt Firebase Auth for cloud sync
           try {
             if (!fbUser) {
