@@ -112,14 +112,15 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const claims = (fbUserRecord?.customClaims || {}) as Record<string, unknown>;
     const officialEmail = String(
       matchedStaff?.email ||
+        claims.workEmail ||
         (isEmail ? query.toLowerCase() : '') ||
         (fbUserRecord?.email && !String(fbUserRecord.email).includes('naija-bites-1s3y1.firebaseapp.com')
           ? fbUserRecord.email
           : '')
     ).trim();
-    const claims = (fbUserRecord?.customClaims || {}) as Record<string, unknown>;
     const displayName =
       matchedStaff?.full_name ||
       matchedStaff?.name ||

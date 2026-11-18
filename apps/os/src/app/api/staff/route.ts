@@ -98,12 +98,6 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isPostgresConfigured()) {
-    return NextResponse.json(
-      { ok: false, error: 'Postgres not configured', configured: false },
-      { status: 503 }
-    );
-  }
   let body: Record<string, unknown> = {};
   try {
     body = await req.json();
@@ -113,12 +107,50 @@ export async function POST(req: NextRequest) {
   const badgeId = String(body.badgeId || '').trim().toUpperCase();
   const facilityId = String(body.facilityId || '').trim();
   const fullName = String(body.fullName || body.name || '').trim();
+  const cleanEmail = body.email ? String(body.email).trim().toLowerCase() : undefined;
   if (!badgeId || !facilityId || !fullName) {
     return NextResponse.json(
       { ok: false, error: 'badgeId, facilityId, fullName required' },
       { status: 400 }
     );
   }
+
+  // Sync updated workEmail & displayName to Firebase Auth so OTP lookup works immediately
+  try {
+    const adminAuth = getAdminAuth();
+    if (adminAuth && cleanEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      const idSlug = badgeId.replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      const badgeEmail = `badge.${idSlug}@naija-bites-1s3y1.firebaseapp.com`;
+      const badgeUser = await adminAuth.getUserByEmail(badgeEmail).catch(() => null);
+      if (badgeUser) {
+        const prevClaims = (badgeUser.customClaims || {}) as Record<string, unknown>;
+        await adminAuth.updateUser(badgeUser.uid, { displayName: fullName }).catch(() => {});
+        await adminAuth.setCustomUserClaims(badgeUser.uid, {
+          ...prevClaims,
+          facility_id: prevClaims.facility_id || facilityId,
+          badgeId,
+          workEmail: cleanEmail,
+        });
+      }
+      const emailUser = await adminAuth.getUserByEmail(cleanEmail).catch(() => null);
+      if (emailUser) {
+        const prevClaims = (emailUser.customClaims || {}) as Record<string, unknown>;
+        await adminAuth.setCustomUserClaims(emailUser.uid, {
+          ...prevClaims,
+          facility_id: prevClaims.facility_id || facilityId,
+          badgeId,
+          workEmail: cleanEmail,
+        });
+      }
+    }
+  } catch (fbErr) {
+    console.warn('[api/staff POST] Firebase claim sync warning:', fbErr);
+  }
+
+  if (!isPostgresConfigured()) {
+    return NextResponse.json({ ok: true, configured: false, syncedFirebase: true });
+  }
+
   try {
     const row = await upsertStaff({
       badgeId,
@@ -128,7 +160,7 @@ export async function POST(req: NextRequest) {
       roleKey: body.roleKey ? String(body.roleKey) : undefined,
       title: body.title ? String(body.title) : undefined,
       department: body.department ? String(body.department) : undefined,
-      email: body.email ? String(body.email) : undefined,
+      email: cleanEmail,
       phone: body.phone ? String(body.phone) : undefined,
       status: body.status ? String(body.status) : 'active',
       clearanceLevel: typeof body.clearanceLevel === 'number' ? body.clearanceLevel : undefined,

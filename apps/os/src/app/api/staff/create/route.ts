@@ -102,6 +102,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const hasWorkEmail = Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+    const cleanWorkEmail = hasWorkEmail ? String(email).trim().toLowerCase() : undefined;
+
     if (badgeUserRecord) {
       try {
         await adminAuth.setCustomUserClaims(badgeUserRecord.uid, {
@@ -109,6 +112,7 @@ export async function POST(request: NextRequest) {
           role: String(roleKey),
           badgeId: bId,
           clearanceLevel: Number(clearanceLevel) || 1,
+          ...(cleanWorkEmail ? { workEmail: cleanWorkEmail } : {}),
         });
       } catch (claimsErr) {
         console.warn('[api/staff/create] Badge custom claims error:', claimsErr);
@@ -117,7 +121,6 @@ export async function POST(request: NextRequest) {
 
     // 2. If valid email provided, create/update Email Auth User in Firebase Auth (for Email + Password sign in)
     let emailUserRecord;
-    const hasWorkEmail = Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
     if (hasWorkEmail) {
       const cleanEmail = email.trim().toLowerCase();
       const cleanPassword = badgePin;
