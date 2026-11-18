@@ -62,7 +62,10 @@ export function getPgConfig():
   const secretAccessKey = env('AWS_SECRET_ACCESS_KEY') || env('MEDCORE_AWS_SECRET_ACCESS_KEY');
   const roleArn = env('AWS_ROLE_ARN') || env('MEDCORE_AWS_ROLE_ARN');
 
-  if ((accessKeyId && secretAccessKey) || roleArn) {
+  const explicitRdsPassword =
+    env('MEDCORE_AWS_DB_PGPASSWORD') || env('MEDCORE_AWS_DB_PASSWORD');
+
+  if (explicitRdsPassword || (accessKeyId && secretAccessKey) || roleArn) {
     const host = env('AWS_RDS_HOST') || PRIMARY_RDS_HOST;
     const port = PRIMARY_RDS_PORT;
     const database = PRIMARY_RDS_DATABASE;
@@ -78,24 +81,26 @@ export function getPgConfig():
       port,
       database,
       user,
-      password: async () => {
-        const { Signer } = await import('@aws-sdk/rds-signer');
-        let credentials: any;
-        if (accessKeyId && secretAccessKey) {
-          credentials = { accessKeyId, secretAccessKey };
-        } else {
-          const { awsCredentialsProvider } = await import('@vercel/functions/oidc');
-          credentials = awsCredentialsProvider({ roleArn });
-        }
-        const signer = new Signer({
-          region,
-          hostname: host,
-          port,
-          username: user,
-          credentials,
-        });
-        return signer.getAuthToken();
-      },
+      password: explicitRdsPassword
+        ? explicitRdsPassword
+        : async () => {
+            const { Signer } = await import('@aws-sdk/rds-signer');
+            let credentials: any;
+            if (accessKeyId && secretAccessKey) {
+              credentials = { accessKeyId, secretAccessKey };
+            } else {
+              const { awsCredentialsProvider } = await import('@vercel/functions/oidc');
+              credentials = awsCredentialsProvider({ roleArn });
+            }
+            const signer = new Signer({
+              region,
+              hostname: host,
+              port,
+              username: user,
+              credentials,
+            });
+            return signer.getAuthToken();
+          },
       ssl: { rejectUnauthorized: false },
     };
   }
