@@ -8,7 +8,7 @@ export async function GET() {
     return NextResponse.json({
       ok: false,
       configured: false,
-      message: 'Set MEDCORE_AWS_DB_PGHOST + MEDCORE_AWS_DB_PGPASSWORD (or DATABASE_URL)',
+      message: 'Set MEDCORE_AWS_DB_PGHOST + MEDCORE_AWS_DB_PGPASSWORD (or AWS IAM credentials / DATABASE_URL)',
     });
   }
   try {

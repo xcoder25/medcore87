@@ -31,7 +31,12 @@ function env(name: string): string {
   return (process.env[name] || '').trim();
 }
 
-/** Build connection config from Vercel/AWS integration or DATABASE_URL */
+function inferRegionFromRdsHost(host: string): string {
+  const m = host.match(/\.([a-z]{2}-[a-z]+-\d+)\.rds\.amazonaws\.com$/i);
+  return m ? m[1].toLowerCase() : '';
+}
+
+/** Build connection config from Vercel/AWS integration, RDS IAM Auth, or DATABASE_URL */
 export function getPgConfig():
   | { connectionString: string; ssl?: boolean | { rejectUnauthorized: boolean } }
   | {
@@ -39,7 +44,7 @@ export function getPgConfig():
       port: number;
       database: string;
       user: string;
-      password: string;
+      password: string | (() => Promise<string>);
       ssl: boolean | { rejectUnauthorized: boolean };
     }
   | null {
@@ -56,7 +61,7 @@ export function getPgConfig():
     };
   }
 
-  const host = env('MEDCORE_AWS_DB_PGHOST') || env('PGHOST');
+  const host = env('MEDCORE_AWS_DB_PGHOST') || env('PGHOST') || env('AWS_RDS_HOST');
   const port = parseInt(env('MEDCORE_AWS_DB_PGPORT') || env('PGPORT') || '5432', 10);
   const database = env('MEDCORE_AWS_DB_PGDATABASE') || env('PGDATABASE') || 'postgres';
   const user =
@@ -70,7 +75,7 @@ export function getPgConfig():
     env('MEDCORE_AWS_DB_PASSWORD') ||
     env('POSTGRES_PASSWORD');
 
-  if (!host || !password) return null;
+  if (!host) return null;
 
   const sslMode = (env('MEDCORE_AWS_DB_PGSSLMODE') || env('PGSSLMODE') || 'require').toLowerCase();
   const ssl =
@@ -78,7 +83,50 @@ export function getPgConfig():
       ? false
       : { rejectUnauthorized: false };
 
-  return { host, port, database, user, password, ssl };
+  if (password) {
+    return { host, port, database, user, password, ssl };
+  }
+
+  // Fallback to AWS RDS IAM Authentication (via Vercel OIDC AWS_ROLE_ARN or IAM Access Keys)
+  const roleArn = env('AWS_ROLE_ARN') || env('MEDCORE_AWS_ROLE_ARN');
+  const accessKeyId = env('AWS_ACCESS_KEY_ID') || env('MEDCORE_AWS_ACCESS_KEY_ID');
+  const secretAccessKey = env('AWS_SECRET_ACCESS_KEY') || env('MEDCORE_AWS_SECRET_ACCESS_KEY');
+  if (!roleArn && !(accessKeyId && secretAccessKey)) {
+    return null;
+  }
+
+  const region =
+    env('AWS_REGION') ||
+    env('AWS_DEFAULT_REGION') ||
+    env('MEDCORE_AWS_REGION') ||
+    inferRegionFromRdsHost(host) ||
+    'eu-north-1';
+
+  return {
+    host,
+    port,
+    database,
+    user,
+    password: async () => {
+      const { Signer } = await import('@aws-sdk/rds-signer');
+      let credentials: any;
+      if (roleArn) {
+        const { awsCredentialsProvider } = await import('@vercel/functions/oidc');
+        credentials = awsCredentialsProvider({ roleArn });
+      } else {
+        credentials = { accessKeyId, secretAccessKey };
+      }
+      const signer = new Signer({
+        region,
+        hostname: host,
+        port,
+        username: user,
+        credentials,
+      });
+      return signer.getAuthToken();
+    },
+    ssl,
+  };
 }
 
 export function isPostgresConfigured(): boolean {
