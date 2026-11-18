@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
     const hasWorkEmail = Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
     if (hasWorkEmail) {
       const cleanEmail = email.trim().toLowerCase();
-      const cleanPassword = String(password || pin || '123456');
+      const cleanPassword = badgePin;
       try {
         emailUserRecord = await adminAuth.getUserByEmail(cleanEmail);
         await adminAuth.updateUser(emailUserRecord.uid, {

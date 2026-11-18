@@ -1323,7 +1323,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   department: String(pgRow.department || ''),
                   initials: String(bid ? bid.slice(0, 2) : 'ST'),
                   permissions: Array.isArray(pgRow.permissions) && pgRow.permissions.length > 0 ? pgRow.permissions : defaultPermissionsForRole(rk),
-                  pin: String(pgRow.pin || pass),
+                  pin: String(pgRow.pin || ''),
                   hospitalId: pgRow.facility_id || effectiveHospital.id,
                   hospitalName: effectiveHospital.name,
                   photoUrl: pgRow.photo_url || pgRow.photoUrl || undefined,
@@ -1338,13 +1338,35 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           try {
             fbUser = await withTimeout(firebaseSignIn(email, effectivePass), 8000);
           } catch (signInErr: unknown) {
-            // If staff exists in Postgres/local with matching credentials, try ensuring the account
+            // If staff exists in Postgres/local with matching credentials, verify via Postgres pin_hash or local pin and ensure Firebase
             if (matchedStaff) {
               const storedPin = String(matchedStaff.pin || '');
-              const pinMatches =
+              let pinMatches =
                 storedPin === pass ||
                 storedPin === effectivePass ||
                 (storedPin.length >= 4 && storedPin.trim() === pass.trim());
+              if (!pinMatches && matchedStaff.badgeId && (typeof navigator === 'undefined' || navigator.onLine)) {
+                try {
+                  const vpRes = await withTimeout(
+                    fetch('/api/auth/verify-pin', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        facilityId: matchedStaff.hospitalId || effectiveHospital.id,
+                        badgeId: matchedStaff.badgeId,
+                        pin: effectivePass,
+                      }),
+                    }),
+                    4000
+                  );
+                  if (vpRes.ok) {
+                    const vpJson = (await vpRes.json()) as { verified?: boolean };
+                    if (vpJson.verified) pinMatches = true;
+                  }
+                } catch {
+                  /* ignore */
+                }
+              }
               if (pinMatches || matchedStaff.roleKey === 'hospital_admin') {
                 try {
                   const { firebaseEnsureEmailAccount } = await import('../../lib/firebase');
@@ -1352,9 +1374,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   fbUser = await withTimeout(firebaseSignIn(email, effectivePass), 5000);
                 } catch (ensureErr) {
                   console.warn('[auth] Email account auto-creation skipped, proceeding with authenticated record:', ensureErr);
-                  // Valid registered staff with correct credentials: allow access
                   fbUser = null;
                 }
+              } else {
+                setError('Incorrect PIN/password for this email account.');
+                setLoading(false);
+                return;
               }
             }
 

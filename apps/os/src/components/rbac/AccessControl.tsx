@@ -645,8 +645,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       setError('Select a specialty / role.');
       return;
     }
-    if (!String(pin || '').trim() || String(pin || '').trim().length < 4) {
-      setError('Enter a secure sign-in PIN (min 4-6 digits).');
+    if (!/^\d{6}$/.test(String(pin || '').trim())) {
+      setError('Enter an exact 6-digit numeric sign-in PIN (used for both Staff ID and Email login).');
       return;
     }
 
@@ -1846,7 +1846,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
 
                 <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span>Sign-in PIN (6 Digits) *</span>
+                    <span>6-Digit Sign-in PIN (Badge &amp; Email) *</span>
                     <button type="button" onClick={handleGeneratePin} style={{ border: 'none', background: 'transparent', color: '#0052D4', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>
                       Auto-Generate
                     </button>
@@ -1854,9 +1854,12 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                   <input
                     className="os-search-input"
                     style={{ width: '100%', marginTop: 6, padding: '10px 12px', fontSize: '0.88rem', fontFamily: 'var(--os-font-mono)' }}
+                    inputMode="numeric"
+                    pattern="\d{6}"
+                    placeholder="e.g. 482910"
                     value={pin}
-                    onChange={(e) => setPin(e.target.value)}
-                    maxLength={12}
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    maxLength={6}
                     required
                   />
                 </label>
