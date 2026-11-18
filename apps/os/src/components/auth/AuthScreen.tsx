@@ -156,6 +156,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
   const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
   const [forgotLookupResult, setForgotLookupResult] = useState<{
     badgeId: string;
+    facilityId?: string;
     name: string;
     role: string;
     roleKey?: string;
@@ -168,6 +169,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
   const [forgotStep, setForgotStep] = useState<'identify' | 'options' | 'direct_pin' | 'email_sent'>('identify');
   const [forgotNewPin, setForgotNewPin] = useState('');
   const [forgotConfirmPin, setForgotConfirmPin] = useState('');
+  const [forgotOtpCode, setForgotOtpCode] = useState('');
+  const [forgotOtpPreview, setForgotOtpPreview] = useState<string | null>(null);
   const [forgotShowPin, setForgotShowPin] = useState(false);
 
   const openForgotModal = () => {
@@ -177,6 +180,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     setForgotLookupResult(null);
     setForgotNewPin('');
     setForgotConfirmPin('');
+    setForgotOtpCode('');
+    setForgotOtpPreview(null);
     setForgotStep('identify');
     setShowForgotModal(true);
   };
@@ -214,6 +219,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       if (data.ok && data.found) {
         setForgotLookupResult({
           badgeId: data.badgeId || query,
+          facilityId: data.facilityId || selectedHospital.id,
           name: data.name || 'Healthcare Staff',
           role: data.role || 'Staff Member',
           roleKey: data.roleKey || '',
@@ -228,84 +234,63 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         return;
       }
 
-      // 2. Fallback to local store lookup (for offline workstations)
-      const { resolveStaffByBadge, findStaffByEmail, normalizeBadgeId } = await import('../../lib/staffCardStore');
-      const localCard = resolveStaffByBadge(query);
-      const emailCard = !localCard && query.includes('@') ? findStaffByEmail(query, selectedHospital.id) : null;
-      const hit = localCard || emailCard;
+      // Real-time identity verification failed on server — do not spoof from stale local cache
+      setForgotError(
+        data.error ||
+          `No real-time staff record matching "${query}" was found at ${selectedHospital.name}. Verify your Staff Badge ID or Work Email.`
+      );
+    } catch {
+      setForgotError('Unable to reach authentication server for real-time identity verification.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
 
-      if (hit) {
-        const bId = normalizeBadgeId(hit.badgeId || (hit as any).id || query);
-        const regMail = String((hit as any).email || (hit as any).workEmail || (query.includes('@') ? query : '')).trim();
-        const masked = regMail && regMail.includes('@') ? `${regMail.slice(0, 2)}***@${regMail.split('@')[1]}` : '';
+  const handleStartOtpPinReset = async () => {
+    if (!forgotLookupResult) return;
+    if (!forgotLookupResult.hasRegisteredEmail || !forgotLookupResult.registeredEmail) {
+      setForgotError(
+        'No work email is registered for this staff account. Ask your Hospital Administrator to add your work email in Staff Access & Enrolment.'
+      );
+      return;
+    }
 
-        setForgotLookupResult({
-          badgeId: bId,
-          name: hit.name || 'Healthcare Staff',
-          role: hit.role || 'Staff Member',
-          roleKey: (hit as any).roleKey || '',
-          clearanceLevel: (hit as any).clearanceLevel,
-          department: hit.department || '',
-          registeredEmail: regMail,
-          maskedEmail: masked,
-          hasRegisteredEmail: Boolean(regMail && !regMail.includes('naija-bites-1s3y1.firebaseapp.com')),
-        });
-        setForgotStep('options');
+    setForgotLoading(true);
+    setForgotError(null);
+    setForgotOtpPreview(null);
+    setForgotOtpCode('');
+
+    try {
+      const res = await fetch('/api/auth/mfa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_otp',
+          facilityId: forgotLookupResult.facilityId || selectedHospital.id,
+          badgeId: forgotLookupResult.badgeId,
+          staffName: forgotLookupResult.name,
+          email: forgotLookupResult.registeredEmail,
+          expiryMinutes: 5,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        maskedEmail?: string;
+        devPreviewCode?: string;
+        message?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        setForgotError(data.message || data.error || 'Failed to dispatch real-time verification OTP.');
         setForgotLoading(false);
         return;
       }
-
-      // Not found
-      setForgotError(data.error || `No staff record matching "${query}" was found at ${selectedHospital.name}. Please check your Badge ID or contact the Facility Administrator.`);
+      if (data.devPreviewCode) {
+        setForgotOtpPreview(data.devPreviewCode);
+      }
+      setForgotStep('direct_pin');
     } catch {
-      // Offline fallback
-      try {
-        const { resolveStaffByBadge, normalizeBadgeId } = await import('../../lib/staffCardStore');
-        const localHit = resolveStaffByBadge(query);
-        if (localHit) {
-          const bId = normalizeBadgeId(localHit.badgeId);
-          setForgotLookupResult({
-            badgeId: bId,
-            name: localHit.name,
-            role: localHit.role,
-            department: localHit.department,
-            registeredEmail: '',
-            maskedEmail: '',
-            hasRegisteredEmail: false,
-          });
-          setForgotStep('options');
-          setForgotLoading(false);
-          return;
-        }
-      } catch { /* ignore */ }
-
-      // Also check localStorage registry as tertiary fallback
-      try {
-        const regRaw = localStorage.getItem('medcore_os_staff_registry');
-        const reg: any[] = regRaw ? JSON.parse(regRaw) : [];
-        const bUp = query.trim().toUpperCase();
-        const found = reg.find((r: any) => String(r.badgeId || r.id || '').toUpperCase() === bUp);
-        if (found) {
-          const { normalizeBadgeId } = await import('../../lib/staffCardStore');
-          const bId = normalizeBadgeId(found.badgeId || found.id || query);
-          setForgotLookupResult({
-            badgeId: bId,
-            name: found.name || found.fullName || 'Healthcare Staff',
-            role: found.role || 'Staff Member',
-            roleKey: found.roleKey || '',
-            clearanceLevel: found.clearanceLevel,
-            department: found.department || '',
-            registeredEmail: found.email || found.workEmail || '',
-            maskedEmail: '',
-            hasRegisteredEmail: false,
-          });
-          setForgotStep('options');
-          setForgotLoading(false);
-          return;
-        }
-      } catch { /* ignore */ }
-
-      setForgotError('Unable to reach authentication server. Please verify your Staff Badge ID.');
+      setForgotError('Network error while sending real-time Email OTP.');
     } finally {
       setForgotLoading(false);
     }
@@ -363,15 +348,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     e.preventDefault();
     if (!forgotLookupResult) return;
 
+    const otpClean = forgotOtpCode.replace(/\D/g, '').trim();
     const p = forgotNewPin.trim();
     const c = forgotConfirmPin.trim();
 
-    if (!p) {
-      setForgotError('Please enter a new PIN.');
+    if (otpClean.length !== 6) {
+      setForgotError('Enter the 6-digit verification OTP sent to your work email.');
       return;
     }
-    if (p.length < 4) {
-      setForgotError('Security PIN must be at least 4 digits.');
+    if (!/^\d{6}$/.test(p)) {
+      setForgotError('New PIN must be an exact 6-digit numeric PIN (used for both Badge ID and Email login).');
       return;
     }
     if (p !== c) {
@@ -383,71 +369,68 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     setForgotError(null);
 
     const badgeId = forgotLookupResult.badgeId;
-    const facilityId = selectedHospital.id;
+    const facilityId = forgotLookupResult.facilityId || selectedHospital.id;
 
     try {
-      // 1. Update local stores immediately
-      const { updateStaffPin, inferRoleKey } = await import('../../lib/staffCardStore');
-      updateStaffPin(badgeId, p, facilityId);
-
-      // 1b. Also patch local registry so the roleKey is preserved after reset
-      try {
-        const regRaw = localStorage.getItem('medcore_os_staff_registry');
-        const reg: any[] = regRaw ? JSON.parse(regRaw) : [];
-        const bUp = badgeId.toUpperCase();
-        const idx = reg.findIndex((r: any) => String(r.badgeId || r.id || '').toUpperCase() === bUp);
-        const storedRoleKey = forgotLookupResult!.roleKey || inferRoleKey(forgotLookupResult!.role, badgeId);
-        if (idx >= 0) {
-          reg[idx] = { ...reg[idx], pin: p, roleKey: storedRoleKey };
-        } else {
-          // Insert minimal record so login can find it
-          reg.unshift({
-            badgeId,
-            id: badgeId,
-            name: forgotLookupResult!.name,
-            role: forgotLookupResult!.role,
-            roleKey: storedRoleKey,
-            clearanceLevel: forgotLookupResult!.clearanceLevel ?? 3,
-            department: forgotLookupResult!.department,
-            facilityId,
-            hospitalId: facilityId,
-            pin: p,
-          });
-        }
-        localStorage.setItem('medcore_os_staff_registry', JSON.stringify(reg));
-        localStorage.setItem('medcore_staff_registry', JSON.stringify(reg));
-      } catch { /* non-fatal */ }
-
-      // 2. Update remote API / Firebase Auth / Firestore
-      try {
-        await fetch('/api/auth/reset-pin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'reset_pin',
-            badgeId,
-            newPin: p,
-            facilityId,
-            email: forgotLookupResult.registeredEmail,
-          }),
-        });
-      } catch {
-        /* background sync non-blocking */
+      // 1. Verify Email OTP in real time on the server to obtain signed mfaToken
+      const otpRes = await fetch('/api/auth/mfa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'verify_otp',
+          facilityId,
+          badgeId,
+          code: otpClean,
+        }),
+      });
+      const otpJson = (await otpRes.json().catch(() => ({}))) as {
+        ok?: boolean;
+        verified?: boolean;
+        mfaToken?: string;
+        message?: string;
+        error?: string;
+      };
+      if (!otpRes.ok || !otpJson.verified || !otpJson.mfaToken) {
+        setForgotError(otpJson.message || otpJson.error || 'Invalid or expired Email OTP.');
+        setForgotLoading(false);
+        return;
       }
 
-      // Log security event
+      // 2. Submit OTP-verified 6-digit PIN reset (updates BOTH Badge + Email in Firebase Auth & Postgres)
+      const resetRes = await fetch('/api/auth/reset-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reset_pin',
+          badgeId,
+          newPin: p,
+          facilityId,
+          email: forgotLookupResult.registeredEmail,
+          mfaToken: otpJson.mfaToken,
+        }),
+      });
+      const resetJson = (await resetRes.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
+      if (!resetRes.ok || !resetJson.ok) {
+        setForgotError(resetJson.message || resetJson.error || 'Failed to update 6-digit PIN on server.');
+        setForgotLoading(false);
+        return;
+      }
+
+      // 3. Mirror updated 6-digit PIN to local store
+      const { updateStaffPin } = await import('../../lib/staffCardStore');
+      updateStaffPin(badgeId, p, facilityId);
+
       try {
         authLog('sign_in_ok', { mode: 'badge', badgeId, facilityId });
       } catch { /* ignore */ }
 
-      // Success
-      setForgotSuccess(`PIN successfully updated to ${p}! Logging you in…`);
+      setForgotSuccess('6-digit PIN verified and updated for both Badge ID & Email login!');
       setUsername(badgeId);
       setPassword(p);
 
       setTimeout(() => {
         closeForgotModal();
-      }, 1500);
+      }, 1400);
     } catch (err: any) {
       setForgotError(err?.message || 'Failed to update PIN. Please try again.');
     } finally {
@@ -2538,66 +2521,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {/* Method 1: Instant PIN Reset (Self-Service) */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForgotError(null);
-                        setForgotStep('direct_pin');
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: 14,
-                        padding: 14,
-                        borderRadius: 12,
-                        border: '1.5px solid #0284C7',
-                        background: '#FFFFFF',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                        boxShadow: '0 2px 8px rgba(2, 132, 199, 0.08)',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = '#F8FAFC';
-                        e.currentTarget.style.borderColor = '#0369A1';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = '#FFFFFF';
-                        e.currentTarget.style.borderColor = '#0284C7';
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 9,
-                          background: '#E0F2FE',
-                          color: '#0284C7',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <KeyRound size={18} />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0F172A' }}>
-                          Instant PIN Reset (Fast On-Duty Access)
-                        </div>
-                        <div style={{ fontSize: '0.77rem', color: '#64748B', marginTop: 3, lineHeight: 1.4 }}>
-                          Define a new 4–6 digit PIN immediately to sign in and resume clinical duties without delay.
-                        </div>
-                      </div>
-                      <ArrowRight size={16} color="#0284C7" style={{ marginTop: 4, flexShrink: 0 }} />
-                    </button>
-
-                    {/* Method 2: Send Email Reset Link */}
+                    {/* Real-Time Email OTP Verification + 6-Digit PIN Reset */}
                     {forgotLookupResult.hasRegisteredEmail ? (
                       <button
                         type="button"
-                        onClick={handleSendResetEmail}
+                        onClick={() => void handleStartOtpPinReset()}
                         disabled={forgotLoading}
                         style={{
                           display: 'flex',
@@ -2605,19 +2533,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                           gap: 14,
                           padding: 14,
                           borderRadius: 12,
-                          border: '1px solid #E2E8F0',
+                          border: '1.5px solid #0284C7',
                           background: '#FFFFFF',
                           textAlign: 'left',
                           cursor: forgotLoading ? 'not-allowed' : 'pointer',
                           transition: 'all 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#F8FAFC';
-                          e.currentTarget.style.borderColor = '#CBD5E1';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = '#FFFFFF';
-                          e.currentTarget.style.borderColor = '#E2E8F0';
+                          boxShadow: '0 2px 8px rgba(2, 132, 199, 0.08)',
                         }}
                       >
                         <div
@@ -2625,42 +2546,45 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                             width: 36,
                             height: 36,
                             borderRadius: 9,
-                            background: '#F1F5F9',
-                            color: '#475569',
+                            background: '#E0F2FE',
+                            color: '#0284C7',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             flexShrink: 0,
                           }}
                         >
-                          <Mail size={18} />
+                          <KeyRound size={18} />
                         </div>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0F172A' }}>
-                            Send Password Reset Email
+                            Verify via Email OTP &amp; Reset 6-Digit PIN
                           </div>
                           <div style={{ fontSize: '0.77rem', color: '#64748B', marginTop: 3, lineHeight: 1.4 }}>
-                            Send official password reset instructions to <strong>{forgotLookupResult.maskedEmail}</strong>.
+                            Send a real-time 6-digit OTP to <strong>{forgotLookupResult.maskedEmail}</strong> to set a new 6-digit PIN for both Badge ID and Email login.
                           </div>
                         </div>
-                        <ArrowRight size={16} color="#94A3B8" style={{ marginTop: 4, flexShrink: 0 }} />
+                        <ArrowRight size={16} color="#0284C7" style={{ marginTop: 4, flexShrink: 0 }} />
                       </button>
                     ) : (
                       <div
                         style={{
-                          padding: '10px 14px',
+                          padding: '12px 14px',
                           borderRadius: 10,
-                          background: '#F8FAFC',
-                          border: '1px solid #E2E8F0',
-                          fontSize: '0.77rem',
-                          color: '#64748B',
+                          background: '#FFFBEB',
+                          border: '1px solid #FDE68A',
+                          fontSize: '0.78rem',
+                          color: '#92400E',
                           display: 'flex',
-                          alignItems: 'center',
+                          alignItems: 'flex-start',
                           gap: 8,
+                          lineHeight: 1.45,
                         }}
                       >
-                        <ShieldAlert size={16} color="#94A3B8" />
-                        <span>No personal email is attached to this badge card. Use Instant PIN Reset above.</span>
+                        <ShieldAlert size={16} color="#D97706" style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span>
+                          No work email is registered on this account for real-time OTP verification. Contact your Hospital Administrator to update your profile email.
+                        </span>
                       </div>
                     )}
                   </div>
@@ -2705,23 +2629,89 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 </div>
               )}
 
-              {/* STEP 3: DIRECT PIN RESET */}
+              {/* STEP 3: EMAIL OTP VERIFICATION + 6-DIGIT PIN RESET */}
               {forgotStep === 'direct_pin' && forgotLookupResult && (
                 <form onSubmit={handleResetPinSubmit}>
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
-                      Set New Sign-in PIN for {forgotLookupResult.name}
+                      Verify OTP &amp; Set New 6-Digit PIN for {forgotLookupResult.name}
                     </div>
                     <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: 2 }}>
-                      Badge: <code>{forgotLookupResult.badgeId}</code>
+                      Badge: <code>{forgotLookupResult.badgeId}</code> · OTP sent to <strong>{forgotLookupResult.maskedEmail}</strong>
                     </div>
                   </div>
+
+                  {forgotOtpPreview && (
+                    <div
+                      style={{
+                        marginBottom: 12,
+                        padding: '8px 12px',
+                        borderRadius: 8,
+                        background: '#FFFBEB',
+                        border: '1px solid #FDE68A',
+                        color: '#92400E',
+                        fontSize: '0.76rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <span>Pilot OTP (mail provider unset):</span>
+                      <code style={{ fontWeight: 900, fontSize: '0.9rem', letterSpacing: '0.15em' }}>{forgotOtpPreview}</code>
+                    </div>
+                  )}
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 18 }}>
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                         <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
-                          New Security PIN (4–6 Digits) *
+                          6-Digit Email Verification OTP *
+                        </label>
+                        <button
+                          type="button"
+                          disabled={forgotLoading}
+                          onClick={() => void handleStartOtpPinReset()}
+                          style={{
+                            border: 'none',
+                            background: 'transparent',
+                            color: '#0284C7',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Resend OTP
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={forgotOtpCode}
+                        onChange={(e) => setForgotOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="Enter 6-digit Email OTP"
+                        required
+                        autoFocus
+                        style={{
+                          width: '100%',
+                          height: 44,
+                          padding: '0 14px',
+                          borderRadius: 10,
+                          border: '1.5px solid #CBD5E1',
+                          fontSize: '0.95rem',
+                          color: '#0F172A',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                          letterSpacing: '0.2em',
+                          fontFamily: 'var(--os-font-mono, monospace)',
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
+                          New 6-Digit PIN (Used for Badge &amp; Email) *
                         </label>
                         <button
                           type="button"
@@ -2745,12 +2735,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                       <div style={{ position: 'relative' }}>
                         <input
                           type={forgotShowPin ? 'text' : 'password'}
+                          inputMode="numeric"
+                          pattern="\d{6}"
                           value={forgotNewPin}
-                          onChange={(e) => setForgotNewPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                          placeholder="Enter 4 to 6 digit PIN"
+                          onChange={(e) => setForgotNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          placeholder="Enter 6-digit numeric PIN"
                           required
-                          maxLength={8}
-                          autoFocus
+                          maxLength={6}
                           style={{
                             width: '100%',
                             height: 44,
@@ -2786,16 +2777,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
                     <div>
                       <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: 6 }}>
-                        Confirm New Security PIN *
+                        Confirm New 6-Digit PIN *
                       </label>
                       <div style={{ position: 'relative' }}>
                         <input
                           type={forgotShowPin ? 'text' : 'password'}
+                          inputMode="numeric"
+                          pattern="\d{6}"
                           value={forgotConfirmPin}
-                          onChange={(e) => setForgotConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                          placeholder="Confirm your 4 to 6 digit PIN"
+                          onChange={(e) => setForgotConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          placeholder="Confirm 6-digit numeric PIN"
                           required
-                          maxLength={8}
+                          maxLength={6}
                           style={{
                             width: '100%',
                             height: 44,
