@@ -80,8 +80,8 @@ export function getS3Config(): S3StorageConfig {
 
   const hasOidc = Boolean(bucket && roleArn);
   const hasKeys = Boolean(bucket && accessKeyId && secretAccessKey);
-  const isConfigured = hasOidc || hasKeys;
-  const authMethod = hasOidc ? 'oidc_role' : hasKeys ? 'iam_keys' : 'none';
+  const isConfigured = hasKeys || hasOidc;
+  const authMethod = hasKeys ? 'iam_keys' : hasOidc ? 'oidc_role' : 'none';
 
   return {
     bucket,
