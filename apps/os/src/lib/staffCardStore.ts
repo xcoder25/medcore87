@@ -17,6 +17,7 @@ import {
   firestoreRevokeStaff,
 } from './firebase';
 import { removeStaffPresence, markStaffRevokedLocal } from './staffPresenceStore';
+import { publishFacilityData } from './roleSyncBus';
 
 let _migrationRan = false;
 
@@ -946,6 +947,9 @@ export function commitStaffEnrolment(
     window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'medcore_os_staff_registry' } }));
     window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: next }));
     window.dispatchEvent(new CustomEvent('medcore-staff-cards-updated', { detail: cards }));
+    if (input.facilityId) {
+      publishFacilityData(input.facilityId, 'medcore_os_staff_registry', next);
+    }
   } catch {
     /* ignore */
   }

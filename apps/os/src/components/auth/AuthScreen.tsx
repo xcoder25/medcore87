@@ -825,8 +825,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       const badgeNorm = u.trim().toUpperCase().replace(/\s+/g, '');
       const isPlatformAdmin = false; // bootstrap login removed
 
-      // ── Badge + PIN ────────────────────────────────────────────────────────
-      if (authMode === 'badge') {
+      // ── Badge + PIN (auto-route emails to Email login below) ───────────────
+      if (authMode === 'badge' && !u.includes('@')) {
         const badgeQuery = u.trim().toUpperCase().replace(/\s+/g, '');
         const pinQuery = pass.trim();
         if (!badgeQuery) {
@@ -876,7 +876,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             department: String(raw.department || ''),
             initials: String(raw.initials || 'ST'),
             permissions,
-            pin: String(raw.pin || pinQuery),
+            pin: String(raw.pin || ''),
             hospitalId: String(raw.hospitalId || raw.facilityId || effectiveHospital.id),
             hospitalName: String(raw.hospitalName || raw.facilityName || effectiveHospital.name),
             photoUrl: raw.photoUrl ? String(raw.photoUrl) : (raw.photo_url ? String(raw.photo_url) : undefined),
@@ -1230,17 +1230,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             firebaseSignUp,
             isEmailCredential,
             classifyAuthError,
+            normalizeStaffPin,
           } = await import('../../lib/firebase');
           if (!isEmailCredential(email)) {
             setError('Please enter a valid work email address.');
             setLoading(false);
             return;
           }
-          if (pass.length < 6) {
-            setError('Password must be at least 6 characters.');
+          if (pass.length < 4) {
+            setError('Password / PIN must be at least 4 characters.');
             setLoading(false);
             return;
           }
+          const effectivePass = pass.length < 6 ? normalizeStaffPin(pass) : pass;
 
           const {
             hasFacilityAdmin,
@@ -1334,17 +1336,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           // 2) Attempt Firebase Auth sign in
           let fbUser: import('firebase/auth').User | null = null;
           try {
-            fbUser = await withTimeout(firebaseSignIn(email, pass), 8000);
+            fbUser = await withTimeout(firebaseSignIn(email, effectivePass), 8000);
           } catch (signInErr: unknown) {
             // If staff exists in Postgres/local with matching credentials, try ensuring the account
             if (matchedStaff) {
               const storedPin = String(matchedStaff.pin || '');
-              const pinMatches = storedPin === pass || (storedPin.length >= 4 && storedPin.trim() === pass.trim());
+              const pinMatches =
+                storedPin === pass ||
+                storedPin === effectivePass ||
+                (storedPin.length >= 4 && storedPin.trim() === pass.trim());
               if (pinMatches || matchedStaff.roleKey === 'hospital_admin') {
                 try {
                   const { firebaseEnsureEmailAccount } = await import('../../lib/firebase');
-                  await withTimeout(firebaseEnsureEmailAccount(email, pass), 5000);
-                  fbUser = await withTimeout(firebaseSignIn(email, pass), 5000);
+                  await withTimeout(firebaseEnsureEmailAccount(email, effectivePass), 5000);
+                  fbUser = await withTimeout(firebaseSignIn(email, effectivePass), 5000);
                 } catch (ensureErr) {
                   console.warn('[auth] Email account auto-creation skipped, proceeding with authenticated record:', ensureErr);
                   // Valid registered staff with correct credentials: allow access
