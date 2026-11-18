@@ -33,6 +33,7 @@ export interface S3StorageConfig {
 
 export function getS3Config(): S3StorageConfig {
   const bucket =
+    clean(process.env.AWS_S3_BUCKET_NAME) ||
     clean(process.env.S3_BUCKET_NAME) ||
     clean(process.env.MEDCORE_S3_BUCKET) ||
     clean(process.env.MEDCORE_S3_BUCKET_NAME) ||
