@@ -774,18 +774,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     void completeMfaLogin(enrichedSession);
   };
 
-  // Strict staff match by badge ID only (no fuzzy / demo name shortcuts)
+  // Strict staff match by exact badge ID only (never reveal staff name on partial/incomplete badge)
   const detectedStaff = useMemo(() => {
     const u = (username || '').trim().toLowerCase();
     if (!u) return null;
-    const exact = staffRegistry.find((s) => s.badgeId.toLowerCase() === u);
-    if (exact) return exact;
-    // Allow partial only if a single badge starts with the typed id (min 4 chars)
-    if (u.length >= 4) {
-      const starts = staffRegistry.filter((s) => s.badgeId.toLowerCase().startsWith(u));
-      if (starts.length === 1) return starts[0];
-    }
-    return null;
+    return staffRegistry.find((s) => s.badgeId.toLowerCase() === u) || null;
   }, [username, staffRegistry]);
 
   const handleSignIn = async (e?: React.FormEvent) => {
