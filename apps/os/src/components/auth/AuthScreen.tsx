@@ -102,17 +102,6 @@ export const PLATFORM_ADMIN = {
 };
 
 export function getPlatformAdmin(): typeof PLATFORM_ADMIN {
-  try {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('medcore_platform_admin_override');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && (parsed.password || parsed.email)) {
-          return { ...PLATFORM_ADMIN, ...parsed };
-        }
-      }
-    }
-  } catch { }
   return PLATFORM_ADMIN;
 }
 
@@ -237,7 +226,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       // Real-time identity verification failed on server — do not spoof from stale local cache
       setForgotError(
         data.error ||
-          `No real-time staff record matching "${query}" was found at ${selectedHospital.name}. Verify your Staff Badge ID or Work Email.`
+        `No real-time staff record matching "${query}" was found at ${selectedHospital.name}. Verify your Staff Badge ID or Work Email.`
       );
     } catch {
       setForgotError('Unable to reach authentication server for real-time identity verification.');
@@ -543,8 +532,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               facilityId: r.facility_id || selectedHospital.id,
               hospitalId: r.facility_id || selectedHospital.id,
               email: r.email || prev?.email || '',
-              // PIN is NOT stored in Postgres plaintext — preserve whatever is in localStorage
-              pin: prev?.pin || '',
             });
           }
           const merged = Array.from(byBadge.values());
@@ -612,7 +599,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 const b = String(s.badgeId || s.id || '').toUpperCase();
                 if (!b || isStaffRevokedLocal(b, selectedHospital.id)) continue;
                 const prev = byBadge.get(b);
-                byBadge.set(b, prev ? { ...prev, ...s, badgeId: b } : { ...s, badgeId: b, pin: s.pin || '1234' });
+                byBadge.set(b, prev ? { ...prev, ...s, badgeId: b } : { ...s, badgeId: b });
               }
               localStorage.setItem('medcore_os_staff_registry', JSON.stringify(Array.from(byBadge.values())));
             } catch { /* ignore */ }
@@ -664,7 +651,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               department: r.department || '',
               initials: r.initials,
               permissions: r.permissions || ['dashboard'],
-              pin: r.pin || '1234',
               hospitalId: r.hospitalId || r.facilityId || selectedHospital.id,
               hospitalName: r.hospitalName || r.facilityName || selectedHospital.name,
               status: r.status || 'active',
@@ -683,7 +669,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               byBadge.set(b, {
                 ...prev,
                 ...s,
-                pin: s.pin || prev?.pin || '1234',
               });
             }
             const merged = Array.from(byBadge.values());
@@ -825,6 +810,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           firestoreRecordLogin,
           firebaseSignInWithBadge,
           firebaseEnsureBadgeAccount,
+          isFirebaseClientConfigured,
           normalizeStaffPin,
         } = await import('../../lib/firebase');
 
@@ -927,8 +913,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                     badgeId: profile.badgeId,
                     roleKey: profile.roleKey,
                     permissions: profile.permissions?.length ? profile.permissions : dpr(profile.roleKey),
-                    // Preserve local PIN if already in registry
-                    pin: (() => { try { const reg = JSON.parse(localStorage.getItem('medcore_os_staff_registry') || '[]'); const hit = reg.find((r: any) => String(r.badgeId || r.id || '').toUpperCase() === badgeQuery); return hit?.pin || ''; } catch { return ''; } })(),
                   };
                   const regRaw = localStorage.getItem('medcore_os_staff_registry');
                   const reg = regRaw ? JSON.parse(regRaw) : [];
@@ -969,12 +953,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           if (hit) profile = hit;
         }
 
-        // 4) If still no profile, try Firebase Auth — account may exist from admin create
+        // 4) If still no profile and browser Firebase client is configured, try Firebase Auth
         const pinNorm = normalizeStaffPin(pinQuery);
         let fbUser: import('firebase/auth').User | null = null;
 
         let badgeAuthMiss: unknown = null;
-        if (!profile) {
+        if (!profile && isFirebaseClientConfigured()) {
           try {
             fbUser = await withTimeout(firebaseSignInWithBadge(badgeQuery, pinNorm), 6000);
             // Auth ok but no staff profile yet — try Firestore or reconstruct from Firebase custom claims
@@ -1013,7 +997,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   department: claimsRole === 'hospital_admin' ? 'Hospital Management' : 'Clinical Operations',
                   initials: (fbUser.displayName ? fbUser.displayName.slice(0, 2) : 'ST').toUpperCase(),
                   permissions: claimsRole === 'hospital_admin' ? ['*'] : getDefPerms(claimsRole),
-                  pin: pinQuery,
+                  pin: '',
                   hospitalId: claimsFid,
                   hospitalName: hospObj.name,
                   color: '#0052D4',
@@ -1081,6 +1065,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           profile.pin && (String(profile.pin) === pinQuery || normalizeStaffPin(profile.pin) === pinNorm)
         );
         let serverPinVerified = false;
+        let verifyPinMeta: { hasPinHash?: boolean; verified?: boolean; needsServerFirebaseKey?: boolean } | null = null;
         if (!localPinMatches && online) {
           try {
             const vpRes = await withTimeout(
@@ -1096,24 +1081,39 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               5000
             );
             if (vpRes.ok) {
-              const vpJson = (await vpRes.json()) as { hasPinHash?: boolean; verified?: boolean };
+              const vpJson = (await vpRes.json()) as {
+                hasPinHash?: boolean;
+                verified?: boolean;
+                needsServerFirebaseKey?: boolean;
+              };
+              verifyPinMeta = vpJson;
               if (vpJson.verified) {
                 serverPinVerified = true;
               }
             }
           } catch {
-            /* offline or timeout — fall through to Firebase Auth check */
+            /* offline or timeout — fall through to client Firebase Auth check if configured */
           }
         }
 
         if (isAdminStaff && !localPinMatches && !serverPinVerified) {
-          try {
-            if (!fbUser) {
-              fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
+          if (isFirebaseClientConfigured()) {
+            try {
+              if (!fbUser) {
+                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
+              }
+            } catch (adminErr: unknown) {
+              const { classifyAuthError } = await import('../../lib/firebase');
+              setError(classifyAuthError(adminErr, { accountKnown: true, mode: 'badge' }));
+              setLoading(false);
+              return;
             }
-          } catch (adminErr: unknown) {
-            const { classifyAuthError } = await import('../../lib/firebase');
-            setError(classifyAuthError(adminErr, { accountKnown: true, mode: 'badge' }));
+          } else {
+            setError(
+              verifyPinMeta?.needsServerFirebaseKey
+                ? 'This legacy account is not yet synced to Aurora Postgres. Add server-only FIREBASE_WEB_API_KEY in Vercel (not NEXT_PUBLIC_) or reset PIN once via Forgot PIN.'
+                : 'Incorrect administrator PIN. Access denied.'
+            );
             setLoading(false);
             return;
           }
@@ -1121,18 +1121,28 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
         // Verify PIN via Firebase Auth when neither local nor server hash matched
         if (!localPinMatches && !serverPinVerified) {
-          try {
-            if (!fbUser) {
-              fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
+          if (isFirebaseClientConfigured()) {
+            try {
+              if (!fbUser) {
+                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
+              }
+            } catch (pinErr: unknown) {
+              const { classifyAuthError } = await import('../../lib/firebase');
+              setError(classifyAuthError(pinErr, { accountKnown: true, mode: 'badge' }));
+              setLoading(false);
+              return;
             }
-          } catch (pinErr: unknown) {
-            const { classifyAuthError } = await import('../../lib/firebase');
-            setError(classifyAuthError(pinErr, { accountKnown: true, mode: 'badge' }));
+          } else {
+            setError(
+              verifyPinMeta?.needsServerFirebaseKey
+                ? 'This legacy account is not yet synced to Aurora Postgres. Add server-only FIREBASE_WEB_API_KEY in Vercel (not NEXT_PUBLIC_) or reset PIN once via Forgot PIN.'
+                : 'Incorrect Staff ID or PIN.'
+            );
             setLoading(false);
             return;
           }
-        } else if (localPinMatches || serverPinVerified) {
-          // PIN matches local profile — attempt Firebase Auth for cloud sync
+        } else if ((localPinMatches || serverPinVerified) && isFirebaseClientConfigured()) {
+          // PIN matches local/server profile — optional client Firebase Auth sync when configured
           try {
             if (!fbUser) {
               try {
@@ -1140,12 +1150,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               } catch {
                 // Cloud badge identity might not exist yet in Firebase Auth; ensure it now
                 try {
-                  const { firebaseEnsureBadgeAccount } = await import('../../lib/firebase');
                   await withTimeout(firebaseEnsureBadgeAccount(profile.badgeId, pinNorm), 5000);
                   fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 4000);
                 } catch (cloudErr) {
                   console.warn('[auth] badge cloud account sync skipped:', cloudErr);
-                  fbUser = null; // Valid staff with matching PIN: fall back to local session
+                  fbUser = null; // Valid staff with matching PIN: fall back to server session
                 }
               }
             }
@@ -1162,13 +1171,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           });
         }
 
-        const sessionPin = String(profile.pin || pinNorm || pinQuery || '');
-        try {
-          if (sessionPin && typeof window !== 'undefined') {
-            sessionStorage.setItem('medcore_session_pin', sessionPin);
-          }
-        } catch { /* ignore */ }
-
         const session: UserSession = {
           id: fbUser?.uid || profile.badgeId,
           badgeId: profile.badgeId,
@@ -1184,12 +1186,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           clearanceLabel: profile.clearanceLabel,
           clearanceLevel: profile.clearanceLevel,
           permissions: profile.permissions,
-          authMethod: fbUser ? 'Staff Badge · Cloud Verified' : 'Staff Badge + PIN',
-          pin: sessionPin,
+          authMethod: fbUser ? 'Staff Badge · Cloud Verified' : 'Staff Badge · Server Verified',
           email: (profile as { email?: string }).email || fbUser?.email || undefined,
-          token: fbUser
-            ? await withTimeout(fbUser.getIdToken(), 4000).catch(() => `PIN-${Date.now().toString(36)}`)
-            : `PIN-${Date.now().toString(36)}`,
           loginTime: new Date().toLocaleTimeString('en-GB', {
             hour: '2-digit',
             minute: '2-digit',
@@ -1207,9 +1205,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         try {
           const {
             firebaseSignIn,
-            firebaseSignUp,
             isEmailCredential,
             classifyAuthError,
+            isFirebaseClientConfigured,
             normalizeStaffPin,
           } = await import('../../lib/firebase');
           if (!isEmailCredential(email)) {
@@ -1265,7 +1263,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 department: String(hit.department || ''),
                 initials: String(hit.initials || 'ST'),
                 permissions: Array.isArray(hit.permissions) && hit.permissions.length > 0 ? hit.permissions : defaultPermissionsForRole(rk),
-                pin: String(hit.pin || pass),
+                pin: '',
                 hospitalId: hit.hospitalId || hit.facilityId || effectiveHospital.id,
                 hospitalName: hit.hospitalName || hit.facilityName || effectiveHospital.name,
                 photoUrl: hit.photoUrl || undefined,
@@ -1274,117 +1272,169 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             }
           } catch { /* */ }
 
-          // Cloud query: Aurora PostgreSQL via tenant API & cross-facility lookup
-          if (!matchedStaff) {
+          const lookupEmailStaffFromCloud = async (): Promise<PresetStaff | undefined> => {
             try {
               const { apiLookupStaff } = await import('../../lib/db/clientApi');
               const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, email), 6000);
-              if (pgRes.ok && pgRes.staff) {
-                const pgRow = pgRes.staff as any;
-                const rowFid = String(pgRow.facility_id || '');
-                if (rowFid && rowFid.toUpperCase() !== effectiveHospital.id.toUpperCase()) {
-                  const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === rowFid.toUpperCase());
-                  if (hospObj) {
-                    effectiveHospital = hospObj;
-                    setSelectedHospital(hospObj);
-                  }
+              if (!pgRes.ok || !pgRes.staff) return undefined;
+              const pgRow = pgRes.staff as any;
+              const rowFid = String(pgRow.facility_id || '');
+              if (rowFid && rowFid.toUpperCase() !== effectiveHospital.id.toUpperCase()) {
+                const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === rowFid.toUpperCase());
+                if (hospObj) {
+                  effectiveHospital = hospObj;
+                  setSelectedHospital(hospObj);
                 }
-                const bid = String(pgRow.badge_id || pgRow.badgeId || '');
-                const rk = inferRoleKey(String(pgRow.role_key || pgRow.roleKey || pgRow.role || ''), bid);
-                matchedStaff = {
-                  badgeId: bid,
-                  name: String(pgRow.full_name || pgRow.name || email.split('@')[0]),
-                  role: String(pgRow.role || 'Staff'),
-                  shortRole: String(pgRow.role || 'Staff'),
-                  title: String(pgRow.title || pgRow.role || 'Staff'),
-                  roleKey: rk,
-                  clearanceLevel: Number(pgRow.clearance_level ?? 2),
-                  clearanceLabel: String(pgRow.clearance_label || 'L2'),
-                  department: String(pgRow.department || ''),
-                  initials: String(bid ? bid.slice(0, 2) : 'ST'),
-                  permissions: Array.isArray(pgRow.permissions) && pgRow.permissions.length > 0 ? pgRow.permissions : defaultPermissionsForRole(rk),
-                  pin: String(pgRow.pin || ''),
-                  hospitalId: pgRow.facility_id || effectiveHospital.id,
-                  hospitalName: effectiveHospital.name,
-                  photoUrl: pgRow.photo_url || pgRow.photoUrl || undefined,
-                  color: '#0052D4',
-                };
               }
-            } catch { /* offline */ }
+              const bid = String(pgRow.badge_id || pgRow.badgeId || '');
+              const rk = inferRoleKey(String(pgRow.role_key || pgRow.roleKey || pgRow.role || ''), bid);
+              return {
+                badgeId: bid,
+                name: String(pgRow.full_name || pgRow.name || email.split('@')[0]),
+                role: String(pgRow.role || 'Staff'),
+                shortRole: String(pgRow.role || 'Staff'),
+                title: String(pgRow.title || pgRow.role || 'Staff'),
+                roleKey: rk,
+                clearanceLevel: Number(pgRow.clearance_level ?? 2),
+                clearanceLabel: String(pgRow.clearance_label || 'L2'),
+                department: String(pgRow.department || ''),
+                initials: String(bid ? bid.slice(0, 2) : 'ST'),
+                permissions: Array.isArray(pgRow.permissions) && pgRow.permissions.length > 0 ? pgRow.permissions : defaultPermissionsForRole(rk),
+                pin: '',
+                hospitalId: pgRow.facility_id || effectiveHospital.id,
+                hospitalName: effectiveHospital.name,
+                photoUrl: pgRow.photo_url || pgRow.photoUrl || undefined,
+                color: '#0052D4',
+              };
+            } catch {
+              return undefined;
+            }
+          };
+
+          // Cloud query: Aurora PostgreSQL + Firebase Admin lookup
+          if (!matchedStaff) {
+            matchedStaff = await lookupEmailStaffFromCloud();
           }
 
-          // 2) Attempt Firebase Auth sign in
+          // 2) Server-first verification (/api/auth/verify-pin -> Postgres pin_hash or server FIREBASE_WEB_API_KEY)
           let fbUser: import('firebase/auth').User | null = null;
-          try {
-            fbUser = await withTimeout(firebaseSignIn(email, effectivePass), 8000);
-          } catch (signInErr: unknown) {
-            // If staff exists in Postgres/local with matching credentials, verify via Postgres pin_hash or local pin and ensure Firebase
-            if (matchedStaff) {
-              const storedPin = String(matchedStaff.pin || '');
-              let pinMatches =
-                storedPin === pass ||
-                storedPin === effectivePass ||
-                (storedPin.length >= 4 && storedPin.trim() === pass.trim());
-              if (!pinMatches && matchedStaff.badgeId && (typeof navigator === 'undefined' || navigator.onLine)) {
-                try {
-                  const vpRes = await withTimeout(
-                    fetch('/api/auth/verify-pin', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        facilityId: matchedStaff.hospitalId || effectiveHospital.id,
-                        badgeId: matchedStaff.badgeId,
-                        pin: effectivePass,
-                      }),
-                    }),
-                    4000
-                  );
-                  if (vpRes.ok) {
-                    const vpJson = (await vpRes.json()) as { verified?: boolean };
-                    if (vpJson.verified) pinMatches = true;
-                  }
-                } catch {
-                  /* ignore */
+          let serverEmailVerified = false;
+          let emailVerifyMeta: {
+            hasPinHash?: boolean;
+            verified?: boolean;
+            needsServerFirebaseKey?: boolean;
+          } | null = null;
+
+          if (typeof navigator === 'undefined' || navigator.onLine) {
+            try {
+              const vpRes = await withTimeout(
+                fetch('/api/auth/verify-pin', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    facilityId: matchedStaff?.hospitalId || effectiveHospital.id,
+                    badgeId: matchedStaff?.badgeId,
+                    email,
+                    pin: effectivePass,
+                  }),
+                }),
+                5000
+              );
+              if (vpRes.ok) {
+                const vpJson = (await vpRes.json()) as {
+                  hasPinHash?: boolean;
+                  verified?: boolean;
+                  needsServerFirebaseKey?: boolean;
+                };
+                emailVerifyMeta = vpJson;
+                if (vpJson.verified) {
+                  serverEmailVerified = true;
                 }
               }
-              if (pinMatches) {
-                try {
-                  const { firebaseEnsureEmailAccount } = await import('../../lib/firebase');
-                  await withTimeout(firebaseEnsureEmailAccount(email, effectivePass), 5000);
-                  fbUser = await withTimeout(firebaseSignIn(email, effectivePass), 5000);
-                } catch (ensureErr) {
-                  console.warn('[auth] Email account auto-creation skipped, proceeding with authenticated record:', ensureErr);
-                  fbUser = null;
+            } catch {
+              /* offline or timeout */
+            }
+          }
+
+          // If verified server-side via Firebase REST but matchedStaff wasn't loaded yet, fetch profile once
+          if (serverEmailVerified && !matchedStaff) {
+            matchedStaff = await lookupEmailStaffFromCloud();
+          }
+
+          if (!serverEmailVerified) {
+            if (isFirebaseClientConfigured()) {
+              try {
+                fbUser = await withTimeout(firebaseSignIn(email, effectivePass), 8000);
+              } catch (signInErr: unknown) {
+                if (matchedStaff) {
+                  const storedPin = String(matchedStaff.pin || '');
+                  const pinMatches = Boolean(
+                    storedPin &&
+                      (storedPin === pass ||
+                        storedPin === effectivePass ||
+                        (storedPin.length >= 4 && storedPin.trim() === pass.trim()))
+                  );
+                  if (pinMatches) {
+                    try {
+                      const { firebaseEnsureEmailAccount } = await import('../../lib/firebase');
+                      await withTimeout(firebaseEnsureEmailAccount(email, effectivePass), 5000);
+                      fbUser = await withTimeout(firebaseSignIn(email, effectivePass), 5000);
+                    } catch (ensureErr) {
+                      console.warn('[auth] Email account auto-creation skipped, proceeding with authenticated record:', ensureErr);
+                      fbUser = null;
+                    }
+                  } else {
+                    const signInCode = String((signInErr as { code?: string })?.code || '');
+                    const signInMsg = String((signInErr as { message?: string })?.message || '');
+                    const isBadApiKey =
+                      signInCode === 'auth/invalid-api-key' ||
+                      signInMsg.includes('auth/invalid-api-key') ||
+                      signInMsg.includes('api-key-not-valid');
+                    setError(
+                      isBadApiKey
+                        ? classifyAuthError(signInErr, { accountKnown: true, mode: 'email' })
+                        : 'Incorrect PIN/password for this email account.'
+                    );
+                    setLoading(false);
+                    return;
+                  }
                 }
-              } else {
-                const signInCode = String((signInErr as { code?: string })?.code || '');
-                const signInMsg = String((signInErr as { message?: string })?.message || '');
-                const isBadApiKey =
-                  signInCode === 'auth/invalid-api-key' ||
-                  signInMsg.includes('auth/invalid-api-key') ||
-                  signInMsg.includes('api-key-not-valid');
-                setError(
-                  isBadApiKey
-                    ? classifyAuthError(signInErr, { accountKnown: true, mode: 'email' })
-                    : 'Incorrect PIN/password for this email account.'
-                );
+
+                if (!fbUser && !matchedStaff) {
+                  const _msg = classifyAuthError(signInErr, { accountKnown: false, mode: 'email' });
+                  authLog('sign_in_fail', {
+                    mode: 'email',
+                    facilityId: effectiveHospital.id,
+                    emailDomain: emailDomainOnly(email),
+                    code: String((signInErr as { code?: string })?.code || ''),
+                    reason: _msg
+                  });
+                  setError(_msg || 'Incorrect email or password. Please try again.');
+                  setLoading(false);
+                  return;
+                }
+              }
+            } else {
+              const storedPin = String(matchedStaff?.pin || '');
+              const localPinMatches = Boolean(
+                storedPin &&
+                  (storedPin === pass ||
+                    storedPin === effectivePass ||
+                    (storedPin.length >= 4 && storedPin.trim() === pass.trim()))
+              );
+              if (!localPinMatches) {
+                if (emailVerifyMeta?.needsServerFirebaseKey) {
+                  setError(
+                    'This legacy account is not yet synced to Aurora Postgres. Add server-only FIREBASE_WEB_API_KEY in Vercel (not NEXT_PUBLIC_) or reset PIN once via Forgot PIN.'
+                  );
+                } else if (!matchedStaff) {
+                  setError('This account does not exist. Check the email or ask your administrator to enrol you.');
+                } else {
+                  setError('Incorrect PIN/password for this email account.');
+                }
                 setLoading(false);
                 return;
               }
-            }
-
-            if (!fbUser && !matchedStaff) {
-              const _msg = classifyAuthError(signInErr, { accountKnown: false, mode: 'email' });
-              authLog('sign_in_fail', {
-                mode: 'email',
-                facilityId: effectiveHospital.id,
-                emailDomain: emailDomainOnly(email),
-                code: String((signInErr as { code?: string })?.code || ''),
-                reason: _msg
-              });
-              setError(_msg || 'Incorrect email or password. Please try again.');
-              setLoading(false);
-              return;
             }
           }
 
@@ -1414,7 +1464,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 department: claimsRole === 'hospital_admin' ? 'Hospital Management' : 'Clinical Operations',
                 initials: (fbUser.displayName ? fbUser.displayName.slice(0, 2) : 'HA').toUpperCase(),
                 permissions: claimsRole === 'hospital_admin' ? ['*'] : getDefPerms(claimsRole),
-                pin: pass,
+                pin: '',
                 hospitalId: claimsFid,
                 hospitalName: hospObj.name,
                 color: '#0052D4',
@@ -1439,13 +1489,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             return;
           }
 
-          const sessionPin = String(matchedStaff.pin || pass || '');
-          try {
-            if (sessionPin && typeof window !== 'undefined') {
-              sessionStorage.setItem('medcore_session_pin', sessionPin);
-            }
-          } catch { /* */ }
-
           const initials =
             matchedStaff.initials ||
             matchedStaff.name
@@ -1463,10 +1506,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             });
           } catch { /* */ }
 
-          const sessionToken = fbUser
-            ? await withTimeout(fbUser.getIdToken(), 4000).catch(() => `EMAIL-${Date.now().toString(36)}`)
-            : `EMAIL-${Date.now().toString(36)}`;
-
           const session: UserSession = {
             id: fbUser?.uid || matchedStaff.badgeId,
             badgeId: matchedStaff.badgeId,
@@ -1483,9 +1522,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             clearanceLevel: matchedStaff.clearanceLevel,
             permissions: matchedStaff.permissions,
             authMethod: 'MedCore Cloud',
-            pin: sessionPin,
             email: fbUser?.email || email || undefined,
-            token: sessionToken,
             loginTime: new Date().toLocaleTimeString('en-GB', {
               hour: '2-digit',
               minute: '2-digit',

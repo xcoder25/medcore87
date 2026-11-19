@@ -9,6 +9,7 @@ import type { UserSession } from './AuthScreen';
 import { getPlatformAdmin } from './AuthScreen';
 import { firebaseChangePassword, firebaseChangeBadgePin } from '../../lib/firebase';
 import { updateStaffPin } from '../../lib/staffCardStore';
+import { stripSecretsDeep } from '../../lib/hipaaPrivacy';
 
 interface ChangeCredentialsModalProps {
   session: UserSession;
@@ -107,17 +108,6 @@ export const ChangeCredentialsModal: React.FC<ChangeCredentialsModalProps> = ({
         }
       }
 
-      // 2. Handle platform bootstrap admin or local offline override
-      const isPlatformAdmin =
-        currentPassword === effectiveAdmin.password ||
-        (session.roleKey === 'hospital_admin' && currentPassword === effectiveAdmin.password);
-
-      if (isPlatformAdmin || updated) {
-        const nextAdmin = { ...effectiveAdmin, password: newPassword };
-        localStorage.setItem('medcore_platform_admin_override', JSON.stringify(nextAdmin));
-        updated = true;
-      }
-
       if (!updated) {
         setErrorMessage('Current password is incorrect or network is unavailable.');
         setIsSubmitting(false);
@@ -185,9 +175,8 @@ export const ChangeCredentialsModal: React.FC<ChangeCredentialsModalProps> = ({
       const storeUpdated = updateStaffPin(badgeId, newPin.trim(), effectiveHospital);
 
       if (session) {
-        session.token = `PIN-${Date.now().toString(36)}`;
         try {
-          localStorage.setItem('medcore_os_session', JSON.stringify(session));
+          localStorage.setItem('medcore_os_session', JSON.stringify(stripSecretsDeep(session)));
         } catch {}
       }
 

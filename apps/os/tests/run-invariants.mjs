@@ -259,3 +259,47 @@ test('middleware: allows public auth/lookup routes, blocks unauthenticated PHI, 
   const adminCreateStaff = await mw.middleware(makeReq('/api/staff/create', 'POST', adminCookie));
   assert.equal(adminCreateStaff.status, 200);
 });
+
+test('hipaaPrivacy: stripSecretsDeep & sanitizeStorageString remove all PINs, passwords, tokens, and API secrets', () => {
+  const hp = loadTsModule('src/lib/hipaaPrivacy.ts', {
+    './auditLogStore': { appendAudit: () => {} },
+  });
+
+  const dirty = {
+    badgeId: 'IGH-ADM-01',
+    name: 'Dr. Ini Akpan',
+    pin: '482910',
+    password: 'super-secret-password',
+    token: 'eyJhbGciOiJIUzI1NiJ9',
+    nested: {
+      apiKey: 'AIzaSyFakeKey',
+      webhookSecret: 'whsec_12345',
+      paystackSecretKey: 'sk_live_abc',
+      facilityId: 'IGH-EKT',
+    },
+    rows: [
+      { id: '1', pinHash: 'deadbeef', label: 'Safe Label' },
+    ],
+  };
+
+  const cleanObj = hp.stripSecretsDeep(dirty);
+  assert.equal(cleanObj.badgeId, 'IGH-ADM-01');
+  assert.equal(cleanObj.name, 'Dr. Ini Akpan');
+  assert.equal('pin' in cleanObj, false);
+  assert.equal('password' in cleanObj, false);
+  assert.equal('token' in cleanObj, false);
+  assert.equal('apiKey' in cleanObj.nested, false);
+  assert.equal('webhookSecret' in cleanObj.nested, false);
+  assert.equal('paystackSecretKey' in cleanObj.nested, false);
+  assert.equal(cleanObj.nested.facilityId, 'IGH-EKT');
+  assert.equal('pinHash' in cleanObj.rows[0], false);
+  assert.equal(cleanObj.rows[0].label, 'Safe Label');
+
+  const serialized = hp.sanitizeStorageString(JSON.stringify(dirty));
+  const parsed = JSON.parse(serialized);
+  assert.equal(parsed.pin, undefined);
+  assert.equal(parsed.password, undefined);
+  assert.equal(parsed.token, undefined);
+  assert.equal(parsed.nested.apiKey, undefined);
+  assert.equal(hp.sanitizeStorageString('IGH-EKT'), 'IGH-EKT');
+});

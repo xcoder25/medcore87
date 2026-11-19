@@ -330,53 +330,10 @@ export default function RegPage() {
 
       const finalBadgeId = data.badgeId || effectiveBadgeId;
 
-      /* Pre-save claimed facility & admin profile to localStorage so login recognizes it immediately */
+      /* Store only non-secret claimed facility indicator in browser */
       try {
         localStorage.setItem('medcore_claimed_facility_id', facilityId);
         localStorage.setItem('medcore_claimed_facility_name', selectedFacility?.name ?? facilityId);
-
-        const adminEntry = {
-          id: finalBadgeId,
-          badgeId: finalBadgeId,
-          name: fullName.trim(),
-          fullName: fullName.trim(),
-          role: 'Hospital Administrator',
-          roleKey: 'hospital_admin',
-          title: 'Hospital Administrator',
-          department: 'Hospital Management',
-          clearanceLevel: 5,
-          clearanceLabel: 'Administrator',
-          hospitalId: facilityId,
-          facilityId,
-          hospitalName: selectedFacility?.name ?? facilityId,
-          facilityName: selectedFacility?.name ?? facilityId,
-          email: email.trim() || undefined,
-          pin,
-          permissions: ['*'],
-          status: 'ACTIVE',
-        };
-
-        const regRaw = localStorage.getItem('medcore_os_staff_registry') || '[]';
-        const reg = JSON.parse(regRaw);
-        const nextReg = [adminEntry, ...reg.filter((r: any) => String(r.badgeId || r.id).toUpperCase() !== finalBadgeId.toUpperCase())];
-        localStorage.setItem('medcore_os_staff_registry', JSON.stringify(nextReg));
-        localStorage.setItem('medcore_staff_registry', JSON.stringify(nextReg));
-
-        const accessRaw = localStorage.getItem('medcore_os_access_control') || '[]';
-        const access = JSON.parse(accessRaw);
-        const accessRow = {
-          id: finalBadgeId,
-          name: fullName.trim(),
-          role: 'Hospital Administrator',
-          department: 'Hospital Management',
-          status: 'Active',
-          lastLogin: 'Never',
-          permissions: ['*'],
-        };
-        const nextAccess = [accessRow, ...access.filter((a: any) => String(a.id).toUpperCase() !== finalBadgeId.toUpperCase())];
-        localStorage.setItem('medcore_os_access_control', JSON.stringify(nextAccess));
-
-        window.dispatchEvent(new CustomEvent('medcore-staff-registry-updated', { detail: nextReg }));
         window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: 'staff' } }));
       } catch { /* ignore */ }
 

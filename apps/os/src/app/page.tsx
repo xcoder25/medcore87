@@ -55,7 +55,8 @@ const PatientDropNotification = dynamic(
 );
 import { listPatients, hydratePatientRegistry } from '../lib/patientRegistryStore';
 import { hydrateBedBoard } from '../lib/bedBoardStore';
-import { normalizeStaffPin, firebaseSignInWithBadge } from '../lib/firebase';
+import { normalizeStaffPin, firebaseSignInWithBadge, isFirebaseClientConfigured } from '../lib/firebase';
+import { stripSecretsDeep } from '../lib/hipaaPrivacy';
 import {
   buildFederatedSearchIndex,
   scoreSearchCandidate,
@@ -324,9 +325,15 @@ export default function OSPage() {
 
   useEffect(() => {
     try {
+      // Remove any legacy secret keys from browser storage
+      try {
+        localStorage.removeItem('medcore_platform_admin_override');
+        sessionStorage.removeItem('medcore_session_pin');
+      } catch { /* ignore */ }
+
       const saved = localStorage.getItem('medcore_os_session');
       if (saved) {
-        const restored = JSON.parse(saved) as UserSession;
+        const restored = stripSecretsDeep(JSON.parse(saved) as UserSession);
         if (restored?.badgeId && isStaffRevokedLocal(restored.badgeId, restored.hospitalId || '')) {
           localStorage.removeItem('medcore_os_session');
           if (typeof window !== 'undefined') sessionStorage.removeItem('medcore_session_pin');
@@ -338,7 +345,7 @@ export default function OSPage() {
           restored.roleKey || restored.role || restored.title,
           restored.badgeId
         );
-        const fixed = { ...restored, roleKey };
+        const fixed = stripSecretsDeep({ ...restored, roleKey });
         setUserSession(fixed);
         setActiveModule('dashboard');
         void hydratePatientRegistry(fixed.hospitalId);
@@ -468,26 +475,21 @@ export default function OSPage() {
   };
 
   const handleLoginSuccess = (session: UserSession) => {
-    // Canonicalise role so reception never opens clinical desk
+    // Canonicalise role so reception never opens clinical desk; strip all secrets before browser storage
     const roleKey = inferRoleKey(
       session.roleKey || session.role || session.title,
       session.badgeId
     );
-    const sessionPin = session.pin || (session as any).pin;
-    const normalized: UserSession = {
+    const normalized: UserSession = stripSecretsDeep({
       ...session,
-      pin: sessionPin,
       roleKey,
       permissions:
         session.permissions && session.permissions.length > 0
           ? session.permissions
           : defaultPermissionsForRole(roleKey),
-    };
+    });
     try {
       localStorage.setItem('medcore_os_session', JSON.stringify(normalized));
-      if (sessionPin && typeof window !== 'undefined') {
-        sessionStorage.setItem('medcore_session_pin', sessionPin);
-      }
     } catch { /* ignore */ }
     setUserSession(normalized);
     setActiveModule('dashboard');
@@ -587,80 +589,43 @@ const handleLockScreen = () => {
 
     try {
       const enteredNorm = normalizeStaffPin(entered);
-
-      // 1. Gather all legitimate candidate PINs for this staff session
-      const candidates: string[] = [];
-
-      // A. Session in-memory PIN
-      if (userSession?.pin) candidates.push(String(userSession.pin));
-      if ((userSession as any)?.pin) candidates.push(String((userSession as any).pin));
-
-      // B. Active browser sessionStorage
-      if (typeof window !== 'undefined') {
-        const storedPin = sessionStorage.getItem('medcore_session_pin');
-        if (storedPin) candidates.push(storedPin);
-      }
-
       const badgeRaw = userSession?.badgeId ? String(userSession.badgeId).trim() : '';
-      const badge = badgeRaw ? normalizeBadgeId(badgeRaw) : '';
 
-      if (badge) {
-        // C. resolveStaffByBadge (checks live registry & cards)
-        const resolved = resolveStaffByBadge(badge);
-        if (resolved?.pin) candidates.push(String(resolved.pin));
+      let matched = false;
 
-        // D. Local staff registries (medcore_os_staff_registry, medcore_staff_registry)
-        if (typeof window !== 'undefined') {
-          for (const regKey of ['medcore_os_staff_registry', 'medcore_staff_registry']) {
-            try {
-              const raw = localStorage.getItem(regKey);
-              if (raw) {
-                const list = JSON.parse(raw);
-                if (Array.isArray(list)) {
-                  const hit = list.find((r: any) => normalizeBadgeId(r.badgeId || r.id) === badge);
-                  if (hit?.pin) candidates.push(String(hit.pin));
-                }
-              }
-            } catch { /* ignore */ }
+      // 1. Server-side PIN verification (Aurora Postgres pin_hash + server Firebase REST)
+      if (badgeRaw || userSession?.email) {
+        try {
+          const vpRes = await fetch('/api/auth/verify-pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              facilityId: userSession?.hospitalId,
+              badgeId: badgeRaw || undefined,
+              email: userSession?.email || undefined,
+              pin: enteredNorm,
+            }),
+          });
+          if (vpRes.ok) {
+            const vpJson = (await vpRes.json()) as { verified?: boolean };
+            if (vpJson.verified) matched = true;
           }
+        } catch {
+          /* offline / network miss */
         }
-
-        // E. Live staff cards list
-        const card = listStaffCards().find((c) => normalizeBadgeId(c.badgeId) === badge);
-        if ((card as any)?.pin) candidates.push(String((card as any).pin));
-
-        // F. PRESET_STAFF presets
-        const preset = PRESET_STAFF.find((p) => normalizeBadgeId(p.badgeId) === badge);
-        if (preset?.pin) candidates.push(String(preset.pin));
-
       }
 
-      // 2. Check if entered PIN matches ANY candidate
-      let matched = candidates.some(
-        (cand) =>
-          cand &&
-          (normalizeStaffPin(cand) === enteredNorm ||
-            cand === entered ||
-            cand.trim() === entered)
-      );
-
-      // 3. If still unmatched and we have a badge, try authenticating with Firebase Auth
-      if (!matched && badgeRaw) {
+      // 2. Fallback to browser Firebase client Auth only when explicitly configured
+      if (!matched && badgeRaw && isFirebaseClientConfigured()) {
         try {
           await firebaseSignInWithBadge(badgeRaw, enteredNorm);
           matched = true;
-          // Cache verified PIN into sessionStorage for immediate subsequent unlocks
-          try {
-            if (typeof window !== 'undefined') {
-              sessionStorage.setItem('medcore_session_pin', entered);
-            }
-          } catch { /* ignore */ }
         } catch {
           matched = false;
         }
       }
 
-      // 4. Strict check: ONLY unlock if matched is strictly true. NEVER unlock on empty or wrong PIN!
+      // 3. Strict check: ONLY unlock if matched is strictly true. NEVER unlock on empty or wrong PIN!
       if (matched) {
         setIsLocked(false);
         setUnlockPin('');
@@ -715,16 +680,16 @@ const handleLockScreen = () => {
       department: staff.department,
       avatarInitials: staff.initials,
       authMethod: 'Admin switch',
-      token: `AUTH-${Date.now().toString(36).toUpperCase()}`,
       loginTime: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
       permissions: staff.permissions,
     };
-    setUserSession(newSession);
+    const safeSwitchSession = stripSecretsDeep(newSession);
+    setUserSession(safeSwitchSession);
     setActiveModule('dashboard');
     setModuleKey(prev => prev + 1);
     setShowRoleModal(false);
     try {
-      localStorage.setItem('medcore_os_session', JSON.stringify(newSession));
+      localStorage.setItem('medcore_os_session', JSON.stringify(safeSwitchSession));
       void fetch('/api/auth/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -5,6 +5,63 @@
  */
 import { appendAudit } from './auditLogStore';
 
+export const SECRET_FIELD_KEYS = [
+  'pin',
+  'password',
+  'pass',
+  'pinHash',
+  'pin_hash',
+  'token',
+  'idToken',
+  'accessToken',
+  'refreshToken',
+  'secret',
+  'apiKey',
+  'webhookSecret',
+  'akwaremitApiKey',
+  'akwaremitWebhookSecret',
+  'paystackSecretKey',
+  'privateKey',
+] as const;
+
+const SECRET_FIELD_KEYS_LOWER = new Set(SECRET_FIELD_KEYS.map((k) => k.toLowerCase()));
+
+/**
+ * Recursively strips all secret fields (PINs, passwords, tokens, API/webhook secrets)
+ * before serializing objects into browser storage or client caches.
+ */
+export function stripSecretsDeep<T>(value: T): T {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => stripSecretsDeep(item)) as unknown as T;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (SECRET_FIELD_KEYS_LOWER.has(k.toLowerCase())) continue;
+    out[k] = stripSecretsDeep(v);
+  }
+  return out as T;
+}
+
+/**
+ * Parses JSON payloads (when applicable) and strips all secret keys recursively.
+ */
+export function sanitizeStorageString(raw: string): string {
+  if (typeof raw !== 'string') return '';
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    return raw;
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    return JSON.stringify(stripSecretsDeep(parsed));
+  } catch {
+    return raw;
+  }
+}
+
 export const PHI_LOCAL_STORAGE_KEYS: readonly string[] = [
   'medcore_os_patient_registry_v1',
   'medcore_os_reception_ops_v2',
@@ -23,6 +80,12 @@ export const PHI_LOCAL_STORAGE_KEYS: readonly string[] = [
   'medcore_os_ambulance_v1',
   'medcore_anc_plans_v1',
   'medcore_os_session',
+  'medcore_platform_admin_override',
+  'medcore_os_staff_registry',
+  'medcore_staff_registry',
+  'medcore_staff_id_cards',
+  'medcore_os_staff_cards',
+  'medcore_staff_cards',
 ];
 
 export function scrubPhiOnLogout(opts?: {
@@ -66,6 +129,7 @@ export function scrubPhiOnLogout(opts?: {
   try {
     sessionStorage.removeItem('medcore_focus_patient');
     sessionStorage.removeItem('medcore_os_patient_context_v1');
+    sessionStorage.removeItem('medcore_session_pin');
   } catch {
     /* ignore */
   }

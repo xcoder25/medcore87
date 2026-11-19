@@ -14,6 +14,13 @@
  *   (Plus Firebase Auth SDK's internal `firebase:authUser:*` keys).
  */
 
+import { sanitizeStorageString } from './hipaaPrivacy';
+
+const BLOCKED_SECRET_STORAGE_KEYS = new Set<string>([
+  'medcore_platform_admin_override',
+  'medcore_session_pin',
+]);
+
 const ALLOWED_LOCALSTORAGE_KEYS = new Set<string>([
   'medcore_remember_me',
   'medcore_ui_theme',
@@ -87,7 +94,11 @@ export function memGet(key: string): string | null {
 }
 
 export function memSet(key: string, value: string): void {
-  const str = String(value);
+  if (BLOCKED_SECRET_STORAGE_KEYS.has(key)) {
+    memRemove(key);
+    return;
+  }
+  const str = sanitizeStorageString(String(value));
   mem.set(key, str);
   if (rawSessionStorage && isSessionTabKey(key)) {
     try {
@@ -162,6 +173,7 @@ function resolveActiveFacilityForSync(): string {
 function queueCloudMirror(key: string, rawVal: string): void {
   if (typeof window === 'undefined' || suppressCloudMirrorDepth > 0) return;
   if (
+    BLOCKED_SECRET_STORAGE_KEYS.has(key) ||
     key.startsWith('medcore_os_sync_outbox') ||
     key === 'medcore_os_session' ||
     key === 'medcore_os_admin_activity' ||
@@ -170,10 +182,11 @@ function queueCloudMirror(key: string, rawVal: string): void {
   ) {
     return;
   }
+  const safeVal = sanitizeStorageString(rawVal);
   try {
-    pendingSyncBag[key] = JSON.parse(rawVal);
+    pendingSyncBag[key] = JSON.parse(safeVal);
   } catch {
-    pendingSyncBag[key] = rawVal;
+    pendingSyncBag[key] = safeVal;
   }
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = setTimeout(() => {
@@ -242,14 +255,28 @@ export function installEdgeCloudOnlyStorage(): void {
   const protoRemove = raw.removeItem.bind(raw);
   const protoClear = raw.clear.bind(raw);
 
-  // Hydrate Session RAM from tab sessionStorage if reloading the tab
+  // Hydrate Session RAM from tab sessionStorage if reloading the tab (stripping any secrets)
   if (rawSessionStorage) {
     try {
+      const tabKeys: string[] = [];
       for (let i = 0; i < rawSessionStorage.length; i++) {
         const k = rawSessionStorage.key(i);
-        if (k && isHeavyStorageKey(k)) {
+        if (k) tabKeys.push(k);
+      }
+      for (const k of tabKeys) {
+        if (BLOCKED_SECRET_STORAGE_KEYS.has(k)) {
+          rawSessionStorage.removeItem(k);
+          continue;
+        }
+        if (isHeavyStorageKey(k)) {
           const v = rawSessionStorage.getItem(k);
-          if (v !== null) mem.set(k, v);
+          if (v !== null) {
+            const safeV = sanitizeStorageString(v);
+            mem.set(k, safeV);
+            if (safeV !== v) {
+              rawSessionStorage.setItem(k, safeV);
+            }
+          }
         }
       }
     } catch {
@@ -273,11 +300,20 @@ export function installEdgeCloudOnlyStorage(): void {
   };
 
   raw.setItem = (key: string, value: string) => {
+    if (BLOCKED_SECRET_STORAGE_KEYS.has(key)) {
+      try {
+        protoRemove(key);
+      } catch {
+        /* ignore */
+      }
+      memRemove(key);
+      return;
+    }
     if (isHeavyStorageKey(key)) {
-      const str = String(value);
-      if (mem.get(key) === str) return;
-      memSet(key, str);
-      queueCloudMirror(key, str);
+      const safeStr = sanitizeStorageString(String(value));
+      if (mem.get(key) === safeStr) return;
+      memSet(key, safeStr);
+      queueCloudMirror(key, safeStr);
       return;
     }
     return protoSet(key, value);

@@ -40,6 +40,10 @@ const firebaseConfig = {
 let app: FirebaseApp | undefined;
 let auth: Auth | undefined;
 
+export function isFirebaseClientConfigured(): boolean {
+  return Boolean(firebaseConfig.apiKey);
+}
+
 export function getFirebaseApp(): FirebaseApp {
   if (!app) {
     app = getApps().length ? getApps()[0]! : initializeApp(firebaseConfig);
@@ -304,7 +308,7 @@ export function firestoreSubscribeFacility(
   _facilityId?: any,
   _cb?: (data: any) => void
 ): () => void {
-  return () => {};
+  return () => { };
 }
 
 export async function firestorePushStaffDirectory(..._args: any[]): Promise<boolean> {
@@ -315,7 +319,7 @@ export function firestoreSubscribeStaffDirectory(
   _facilityId?: any,
   _cb?: (data: { staffCards?: any[]; staffRegistry?: any[] }) => void
 ): () => void {
-  return () => {};
+  return () => { };
 }
 
 export function networkTransferRef(..._args: any[]): any {
@@ -329,7 +333,7 @@ export async function firestoreUpsertNetworkTransfer(..._args: any[]): Promise<b
 export function firestoreSubscribeNetworkTransfers(
   _cb?: (transfers: any[]) => void
 ): () => void {
-  return () => {};
+  return () => { };
 }
 
 export function networkNotificationRef(..._args: any[]): any {
@@ -344,7 +348,7 @@ export function firestoreSubscribeNetworkNotifications(
   _facilityId?: any,
   _cb?: (notifications: any[]) => void
 ): () => void {
-  return () => {};
+  return () => { };
 }
 
 export function staffPresenceRef(..._args: any[]): any {
@@ -363,7 +367,7 @@ export function firestoreSubscribePresence(
   _facilityId?: any,
   _cb?: (presenceMap: any) => void
 ): () => void {
-  return () => {};
+  return () => { };
 }
 
 export function staffMemberRef(..._args: any[]): any {
@@ -459,7 +463,7 @@ export function firestoreSubscribeRevokedStaff(
   _facilityId?: any,
   _cb?: (revokedBadgeIds: string[]) => void
 ): () => void {
-  return () => {};
+  return () => { };
 }
 
 export async function firestoreDeleteStaffMember(..._args: any[]): Promise<boolean> {
@@ -474,16 +478,19 @@ export function firestoreSubscribeStaffCollection(
   _facilityId?: any,
   _cb?: (staffRows: any[]) => void
 ): () => void {
-  return () => {};
+  return () => { };
 }
 
 export async function firestoreClearFacilityAllData(..._args: any[]): Promise<boolean> {
   return true;
 }
 
-export async function firestoreRecordLogin(..._args: any[]): Promise<void> {}
+export async function firestoreRecordLogin(..._args: any[]): Promise<void> { }
 
 export function subscribeFirebaseAuth(cb: (user: User | null) => void): AuthUnsubscribe {
+  if (!isFirebaseClientConfigured()) {
+    return () => {};
+  }
   return onAuthStateChanged(getFirebaseAuth(), cb);
 }
 

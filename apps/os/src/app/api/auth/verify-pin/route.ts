@@ -1,11 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as crypto from 'crypto';
 import { hashPin, isPostgresConfigured } from '../../../../lib/db/postgres';
-import { findStaffAnyFacility, getStaff } from '../../../../lib/db/staffRepo';
+import { findStaffAnyFacility, getStaff, upsertStaff } from '../../../../lib/db/staffRepo';
+import { getAdminAuth } from '../../../../lib/firebaseAdmin';
 import { checkRateLimit, getClientIp } from '../../../../lib/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+function badgeAuthEmail(badgeId: string): string {
+  const id = (badgeId || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `badge.${id}@naija-bites-1s3y1.firebaseapp.com`;
+}
+
+function normalizeStaffPin(pin: string): string {
+  const p = (pin || '').trim();
+  if (p.length >= 6) return p;
+  return (p + '000000').slice(0, 6);
+}
 
 function safeEqualHex(a: string, b: string): boolean {
   try {
@@ -24,19 +40,25 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as {
       facilityId?: string;
       badgeId?: string;
+      email?: string;
       pin?: string;
     };
 
     const facilityId = String(body.facilityId || '').trim().toUpperCase();
     const badgeId = String(body.badgeId || '').trim().toUpperCase();
+    const cleanEmail = String(body.email || '').trim().toLowerCase();
     const rawPin = String(body.pin || '').trim();
     const normPin = rawPin.replace(/\s+/g, '');
 
-    if (!badgeId || !normPin) {
-      return NextResponse.json({ ok: false, verified: false, error: 'badgeId and pin required' }, { status: 400 });
+    if ((!badgeId && !cleanEmail) || !normPin) {
+      return NextResponse.json(
+        { ok: false, verified: false, error: 'badgeId or email and pin required' },
+        { status: 400 }
+      );
     }
 
-    const rl = checkRateLimit(`verify-pin:${ip}:${badgeId}`, 15, 10 * 60 * 1000);
+    const rateKey = badgeId || cleanEmail;
+    const rl = checkRateLimit(`verify-pin:${ip}:${rateKey}`, 15, 10 * 60 * 1000);
     if (!rl.allowed) {
       return NextResponse.json(
         { ok: false, verified: false, error: 'RATE_LIMITED', retryAfterSeconds: rl.retryAfterSeconds },
@@ -44,23 +66,126 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!isPostgresConfigured()) {
-      return NextResponse.json({ ok: true, configured: false, hasPinHash: false, verified: false });
+    // 1) Aurora PostgreSQL check first
+    if (isPostgresConfigured()) {
+      try {
+        const lookupTarget = badgeId || cleanEmail;
+        const row =
+          (facilityId && badgeId ? await getStaff(facilityId, badgeId) : null) ||
+          (await findStaffAnyFacility(lookupTarget)) ||
+          (cleanEmail && badgeId ? await findStaffAnyFacility(cleanEmail) : null);
+
+        if (row) {
+          const storedHash = String((row as { pin_hash?: string | null }).pin_hash || '').trim();
+          if (storedHash) {
+            const verified =
+              safeEqualHex(hashPin(normPin), storedHash) ||
+              safeEqualHex(hashPin(rawPin), storedHash) ||
+              safeEqualHex(hashPin(normalizeStaffPin(normPin)), storedHash);
+            return NextResponse.json({
+              ok: true,
+              configured: true,
+              hasPinHash: true,
+              verified,
+              source: 'postgres',
+            });
+          }
+        }
+      } catch (pgErr) {
+        console.warn('[api/auth/verify-pin] Postgres lookup warning:', pgErr);
+      }
     }
 
-    const row = (facilityId ? await getStaff(facilityId, badgeId) : null) || (await findStaffAnyFacility(badgeId));
-    if (!row) {
-      return NextResponse.json({ ok: true, configured: true, hasPinHash: false, verified: false });
+    // 2) Server-only Firebase REST verification fallback (no browser NEXT_PUBLIC_* needed)
+    const webApiKey = (
+      process.env.FIREBASE_WEB_API_KEY ||
+      process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
+      ''
+    )
+      .trim()
+      .replace(/^["']|["']$/g, '');
+
+    if (webApiKey) {
+      const candidateEmail = cleanEmail || badgeAuthEmail(badgeId);
+      const fbPass = normalizeStaffPin(normPin);
+      const fbRes = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(webApiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: candidateEmail,
+            password: fbPass,
+            returnSecureToken: false,
+          }),
+        }
+      );
+
+      if (fbRes.ok) {
+        // Best-effort backfill into Aurora Postgres so future logins verify against Postgres
+        if (isPostgresConfigured()) {
+          try {
+            const adminAuth = getAdminAuth();
+            const fbUser = adminAuth ? await adminAuth.getUserByEmail(candidateEmail).catch(() => null) : null;
+            const claims = (fbUser?.customClaims || {}) as Record<string, unknown>;
+            const resolvedBadge = String(claims.badgeId || badgeId || '').trim().toUpperCase();
+            const resolvedFid = String(claims.facility_id || facilityId || 'IGH-EKT').trim().toUpperCase();
+            const resolvedRoleKey = String(claims.role || 'staff').trim() || 'staff';
+            const resolvedClearance =
+              Number(claims.clearanceLevel) || (resolvedRoleKey === 'hospital_admin' ? 5 : 2);
+            const resolvedEmail =
+              cleanEmail ||
+              (claims.workEmail ? String(claims.workEmail).trim().toLowerCase() : undefined);
+
+            if (resolvedBadge && resolvedFid) {
+              await upsertStaff({
+                badgeId: resolvedBadge,
+                facilityId: resolvedFid,
+                fullName: fbUser?.displayName || resolvedBadge,
+                role: resolvedRoleKey === 'hospital_admin' ? 'Hospital Administrator' : 'Staff',
+                roleKey: resolvedRoleKey,
+                clearanceLevel: resolvedClearance,
+                clearanceLabel:
+                  resolvedRoleKey === 'hospital_admin' ? 'Administrator' : `L${resolvedClearance}`,
+                email: resolvedEmail,
+                authEmail: badgeAuthEmail(resolvedBadge),
+                pin: fbPass,
+              });
+            }
+          } catch (syncErr) {
+            console.warn('[api/auth/verify-pin] Postgres backfill warning:', syncErr);
+          }
+        }
+
+        return NextResponse.json({
+          ok: true,
+          configured: isPostgresConfigured(),
+          hasPinHash: false,
+          verified: true,
+          source: 'firebase_server',
+        });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        configured: isPostgresConfigured(),
+        hasPinHash: false,
+        verified: false,
+        source: 'firebase_server',
+      });
     }
 
-    const storedHash = String((row as { pin_hash?: string | null }).pin_hash || '').trim();
-    if (!storedHash) {
-      return NextResponse.json({ ok: true, configured: true, hasPinHash: false, verified: false });
-    }
-
-    const verified = safeEqualHex(hashPin(normPin), storedHash) || safeEqualHex(hashPin(rawPin), storedHash);
-    return NextResponse.json({ ok: true, configured: true, hasPinHash: true, verified });
+    return NextResponse.json({
+      ok: true,
+      configured: isPostgresConfigured(),
+      hasPinHash: false,
+      verified: false,
+      needsServerFirebaseKey: true,
+    });
   } catch (e) {
-    return NextResponse.json({ ok: false, verified: false, error: (e as Error).message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, verified: false, error: (e as Error).message },
+      { status: 500 }
+    );
   }
 }
