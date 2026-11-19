@@ -403,6 +403,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         body: JSON.stringify({
           action: 'reset_pin',
           badgeId,
+          staffName: forgotLookupResult.name,
           newPin: p,
           facilityId,
           email: forgotLookupResult.registeredEmail,

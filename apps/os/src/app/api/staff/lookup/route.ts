@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured } from '../../../../lib/db/postgres';
-import { getStaff, findStaffAnyFacility } from '../../../../lib/db/staffRepo';
+import { getStaff, findStaffAnyFacility, upsertStaff } from '../../../../lib/db/staffRepo';
 import { getAdminAuth } from '../../../../lib/firebaseAdmin';
 
 export const runtime = 'nodejs';
@@ -44,6 +44,94 @@ export async function GET(req: NextRequest) {
       }
       if (row) {
         const { pin_hash: _pinHash, ...safeRow } = row as typeof row & { pin_hash?: string };
+        const rowBadge = String(row.badge_id || '').trim().toUpperCase();
+        const isDegradedName =
+          !row.full_name || row.full_name.trim().toUpperCase() === rowBadge;
+        const isDegradedRole = !row.role_key;
+
+        if (isDegradedName || isDegradedRole) {
+          try {
+            const adminAuth = getAdminAuth();
+            if (adminAuth && rowBadge) {
+              const fbBadgeUser = await adminAuth.getUserByEmail(badgeAuthEmail(rowBadge)).catch(() => null);
+              const rowEmail = String(row.email || '').trim().toLowerCase();
+              const hasRealRowEmail = Boolean(
+                rowEmail && rowEmail.includes('@') && !rowEmail.endsWith('.firebaseapp.com')
+              );
+              const fbEmailUser =
+                hasRealRowEmail &&
+                (!fbBadgeUser ||
+                  !fbBadgeUser.displayName ||
+                  fbBadgeUser.displayName.trim().toUpperCase() === rowBadge)
+                  ? await adminAuth.getUserByEmail(rowEmail).catch(() => null)
+                  : null;
+
+              const claims = ((fbBadgeUser?.customClaims || fbEmailUser?.customClaims) ||
+                {}) as Record<string, unknown>;
+              const fbDisplayName =
+                [fbBadgeUser?.displayName, fbEmailUser?.displayName]
+                  .map((d) => String(d || '').trim())
+                  .find((d) => d && d.toUpperCase() !== rowBadge) || '';
+              const repairedName = isDegradedName
+                ? fbDisplayName || row.full_name || rowBadge
+                : row.full_name;
+              const repairedRoleKey = row.role_key || String(claims.role || 'staff');
+              const isAdmin =
+                repairedRoleKey === 'hospital_admin' || repairedRoleKey === 'sysadmin';
+              const repairedClearance =
+                (row.clearance_level && row.clearance_level > 1
+                  ? row.clearance_level
+                  : Number(claims.clearanceLevel)) || (isAdmin ? 5 : 2);
+              const repairedRole =
+                row.role || (isAdmin ? 'Hospital Administrator' : 'Staff');
+              const repairedTitle = row.title || repairedRole;
+              const repairedDept =
+                row.department || (isAdmin ? 'Hospital Management' : 'Clinical Operations');
+              const repairedClearanceLabel =
+                row.clearance_label || (isAdmin ? 'Administrator' : `L${repairedClearance}`);
+              const existingPerms = Array.isArray(row.permissions) ? (row.permissions as string[]) : [];
+              const repairedPerms = existingPerms.length
+                ? existingPerms
+                : isAdmin
+                ? ['*']
+                : [];
+              const repairedEmail =
+                row.email ||
+                (claims.workEmail ? String(claims.workEmail).trim().toLowerCase() : null);
+
+              Object.assign(safeRow, {
+                full_name: repairedName,
+                role: repairedRole,
+                role_key: repairedRoleKey,
+                title: repairedTitle,
+                department: repairedDept,
+                clearance_level: repairedClearance,
+                clearance_label: repairedClearanceLabel,
+                permissions: repairedPerms,
+                email: repairedEmail,
+              });
+
+              if (fbDisplayName || (isDegradedRole && claims.role)) {
+                void upsertStaff({
+                  badgeId: rowBadge,
+                  facilityId: String(row.facility_id || facilityId || claims.facility_id || 'IGH-EKT').toUpperCase(),
+                  fullName: repairedName,
+                  role: repairedRole,
+                  roleKey: repairedRoleKey,
+                  title: repairedTitle,
+                  department: repairedDept,
+                  clearanceLevel: repairedClearance,
+                  clearanceLabel: repairedClearanceLabel,
+                  permissions: repairedPerms.length ? repairedPerms : undefined,
+                  email: repairedEmail || undefined,
+                }).catch(() => {});
+              }
+            }
+          } catch (healErr) {
+            console.warn('[api/staff/lookup] Auto-heal warning:', healErr);
+          }
+        }
+
         return NextResponse.json({ ok: true, configured: true, staff: safeRow });
       }
     } catch (e) {

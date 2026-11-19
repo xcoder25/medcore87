@@ -229,34 +229,52 @@ export async function POST(req: NextRequest) {
     const pin6 = newPinRaw;
     const authEmail = badgeAuthEmail(badgeId);
     const workEmail = String(body.email || '').trim().toLowerCase();
+    const hasRealWorkEmail = Boolean(
+      workEmail && workEmail.includes('@') && !workEmail.endsWith('.firebaseapp.com')
+    );
+    const rawBodyName = String(body.staffName || '').trim();
+    const bodyStaffName =
+      rawBodyName && rawBodyName.toUpperCase() !== badgeId ? rawBodyName : '';
     let updatedInAuth = false;
+    let badgeUser: any = null;
+    let emailUser: any = null;
 
     // 1. Update BOTH Badge Auth User AND Work Email Auth User in Firebase Auth with the exact same 6-digit PIN
     if (adminAuth) {
       try {
-        const badgeUser = await adminAuth.getUserByEmail(authEmail).catch(() => null);
+        badgeUser = await adminAuth.getUserByEmail(authEmail).catch(() => null);
+        if (hasRealWorkEmail) {
+          emailUser = await adminAuth.getUserByEmail(workEmail).catch(() => null);
+        }
+
+        const preDisplayName =
+          [badgeUser?.displayName, emailUser?.displayName]
+            .map((d) => String(d || '').trim())
+            .find((d) => d && d.toUpperCase() !== badgeId) ||
+          bodyStaffName ||
+          badgeId;
+
         if (badgeUser) {
           await adminAuth.updateUser(badgeUser.uid, { password: pin6 });
           updatedInAuth = true;
         } else {
-          await adminAuth.createUser({
+          badgeUser = await adminAuth.createUser({
             email: authEmail,
             password: pin6,
-            displayName: badgeId,
+            displayName: preDisplayName,
           });
           updatedInAuth = true;
         }
 
-        if (workEmail && workEmail.includes('@') && !workEmail.includes('naija-bites-1s3y1.firebaseapp.com')) {
-          const emailUser = await adminAuth.getUserByEmail(workEmail).catch(() => null);
+        if (hasRealWorkEmail) {
           if (emailUser) {
             await adminAuth.updateUser(emailUser.uid, { password: pin6 });
             updatedInAuth = true;
           } else {
-            await adminAuth.createUser({
+            emailUser = await adminAuth.createUser({
               email: workEmail,
               password: pin6,
-              displayName: badgeId,
+              displayName: preDisplayName,
             });
             updatedInAuth = true;
           }
@@ -266,23 +284,68 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Update in Aurora PostgreSQL
+    const fbClaims = (badgeUser?.customClaims ||
+      emailUser?.customClaims ||
+      {}) as Record<string, unknown>;
+    const fbDisplayName =
+      [badgeUser?.displayName, emailUser?.displayName]
+        .map((d) => String(d || '').trim())
+        .find((d) => d && d.toUpperCase() !== badgeId) || '';
+    const fbRoleKey = String(fbClaims.role || '').trim();
+    const fbClearance =
+      Number(fbClaims.clearanceLevel) ||
+      (fbRoleKey === 'hospital_admin' || fbRoleKey === 'sysadmin' ? 5 : 2);
+    const fbFacilityId = String(fbClaims.facility_id || '').trim().toUpperCase();
+    const fbWorkEmail = String(fbClaims.workEmail || '').trim().toLowerCase();
+
+    // 2. Update in Aurora PostgreSQL while preserving real name, role, clearance, and permissions
     if (isPostgresConfigured() && resolvedFacility) {
       try {
-        const existing = (await getStaff(resolvedFacility, badgeId)) || (await findStaffAnyFacility(badgeId));
+        const existing =
+          (await getStaff(resolvedFacility, badgeId)) || (await findStaffAnyFacility(badgeId));
+        const existingName =
+          existing?.full_name && existing.full_name.trim().toUpperCase() !== badgeId
+            ? existing.full_name.trim()
+            : '';
+        const resolvedFullName = existingName || fbDisplayName || bodyStaffName || badgeId;
+        const resolvedRoleKey = existing?.role_key || fbRoleKey || 'staff';
+        const isAdmin =
+          resolvedRoleKey === 'hospital_admin' || resolvedRoleKey === 'sysadmin';
+        const resolvedRole = existing?.role || (isAdmin ? 'Hospital Administrator' : 'Staff');
+        const resolvedTitle = existing?.title || resolvedRole;
+        const resolvedDept =
+          existing?.department || (isAdmin ? 'Hospital Management' : 'Clinical Operations');
+        const resolvedClearance =
+          existing?.clearance_level && existing.clearance_level > 1
+            ? existing.clearance_level
+            : fbClearance;
+        const resolvedClearanceLabel =
+          existing?.clearance_label || (isAdmin ? 'Administrator' : `L${resolvedClearance}`);
+        const existingPerms = Array.isArray(existing?.permissions)
+          ? (existing.permissions as string[])
+          : [];
+        const resolvedPermissions = existingPerms.length
+          ? existingPerms
+          : isAdmin
+          ? ['*']
+          : undefined;
+        const resolvedEmail = existing?.email || (workEmail || fbWorkEmail || undefined);
+        const targetFacilityId = existing?.facility_id || fbFacilityId || resolvedFacility;
+
         await upsertStaff({
           badgeId,
-          facilityId: existing?.facility_id || resolvedFacility,
-          fullName: existing?.full_name || badgeId,
-          role: existing?.role || undefined,
-          roleKey: existing?.role_key || undefined,
-          title: existing?.title || undefined,
-          department: existing?.department || undefined,
-          email: existing?.email || (workEmail || undefined),
+          facilityId: targetFacilityId,
+          fullName: resolvedFullName,
+          role: resolvedRole,
+          roleKey: resolvedRoleKey,
+          title: resolvedTitle,
+          department: resolvedDept,
+          email: resolvedEmail,
           phone: existing?.phone || undefined,
           status: existing?.status || 'active',
-          clearanceLevel: existing?.clearance_level || 1,
-          clearanceLabel: existing?.clearance_label || undefined,
+          clearanceLevel: resolvedClearance,
+          clearanceLabel: resolvedClearanceLabel,
+          permissions: resolvedPermissions,
           pin: pin6,
           authEmail: existing?.auth_email || authEmail,
         });

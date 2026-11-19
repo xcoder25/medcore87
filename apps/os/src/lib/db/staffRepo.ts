@@ -65,17 +65,25 @@ export async function upsertStaff(input: {
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,NOW()
       )
       ON CONFLICT (facility_id, badge_id) DO UPDATE SET
-        full_name = EXCLUDED.full_name,
-        role = EXCLUDED.role,
-        role_key = EXCLUDED.role_key,
-        title = EXCLUDED.title,
-        department = EXCLUDED.department,
+        full_name = CASE
+          WHEN UPPER(TRIM(EXCLUDED.full_name)) = UPPER(TRIM(staff.badge_id))
+               AND NULLIF(TRIM(staff.full_name), '') IS NOT NULL
+            THEN staff.full_name
+          ELSE EXCLUDED.full_name
+        END,
+        role = COALESCE(EXCLUDED.role, staff.role),
+        role_key = COALESCE(EXCLUDED.role_key, staff.role_key),
+        title = COALESCE(EXCLUDED.title, staff.title),
+        department = COALESCE(EXCLUDED.department, staff.department),
         email = COALESCE(EXCLUDED.email, staff.email),
         phone = COALESCE(EXCLUDED.phone, staff.phone),
         status = EXCLUDED.status,
         clearance_level = EXCLUDED.clearance_level,
-        clearance_label = EXCLUDED.clearance_label,
-        permissions = EXCLUDED.permissions,
+        clearance_label = COALESCE(EXCLUDED.clearance_label, staff.clearance_label),
+        permissions = CASE
+          WHEN jsonb_array_length(EXCLUDED.permissions) > 0 THEN EXCLUDED.permissions
+          ELSE staff.permissions
+        END,
         photo_url = COALESCE(EXCLUDED.photo_url, staff.photo_url),
         pin_hash = COALESCE(EXCLUDED.pin_hash, staff.pin_hash),
         auth_email = COALESCE(EXCLUDED.auth_email, staff.auth_email),

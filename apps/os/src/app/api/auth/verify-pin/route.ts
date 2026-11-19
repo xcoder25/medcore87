@@ -126,27 +126,51 @@ export async function POST(req: NextRequest) {
         if (isPostgresConfigured()) {
           try {
             const adminAuth = getAdminAuth();
-            const fbUser = adminAuth ? await adminAuth.getUserByEmail(candidateEmail).catch(() => null) : null;
-            const claims = (fbUser?.customClaims || {}) as Record<string, unknown>;
+            const fbPrimaryUser = adminAuth
+              ? await adminAuth.getUserByEmail(candidateEmail).catch(() => null)
+              : null;
+            const claims = (fbPrimaryUser?.customClaims || {}) as Record<string, unknown>;
             const resolvedBadge = String(claims.badgeId || badgeId || '').trim().toUpperCase();
-            const resolvedFid = String(claims.facility_id || facilityId || 'IGH-EKT').trim().toUpperCase();
-            const resolvedRoleKey = String(claims.role || 'staff').trim() || 'staff';
+            const fbBadgeFallback =
+              adminAuth &&
+              resolvedBadge &&
+              (!fbPrimaryUser ||
+                !fbPrimaryUser.displayName ||
+                fbPrimaryUser.displayName.trim().toUpperCase() === resolvedBadge)
+                ? await adminAuth.getUserByEmail(badgeAuthEmail(resolvedBadge)).catch(() => null)
+                : null;
+            const badgeClaims = (fbBadgeFallback?.customClaims || {}) as Record<string, unknown>;
+            const mergedClaims = { ...badgeClaims, ...claims };
+
+            const resolvedFid = String(mergedClaims.facility_id || facilityId || 'IGH-EKT')
+              .trim()
+              .toUpperCase();
+            const resolvedRoleKey = String(mergedClaims.role || 'staff').trim() || 'staff';
+            const isAdmin =
+              resolvedRoleKey === 'hospital_admin' || resolvedRoleKey === 'sysadmin';
             const resolvedClearance =
-              Number(claims.clearanceLevel) || (resolvedRoleKey === 'hospital_admin' ? 5 : 2);
+              Number(mergedClaims.clearanceLevel) || (isAdmin ? 5 : 2);
             const resolvedEmail =
               cleanEmail ||
-              (claims.workEmail ? String(claims.workEmail).trim().toLowerCase() : undefined);
+              (mergedClaims.workEmail ? String(mergedClaims.workEmail).trim().toLowerCase() : undefined);
+            const resolvedFullName =
+              [fbPrimaryUser?.displayName, fbBadgeFallback?.displayName]
+                .map((d) => String(d || '').trim())
+                .find((d) => d && d.toUpperCase() !== resolvedBadge) || resolvedBadge;
+            const resolvedRole = isAdmin ? 'Hospital Administrator' : 'Staff';
 
             if (resolvedBadge && resolvedFid) {
               await upsertStaff({
                 badgeId: resolvedBadge,
                 facilityId: resolvedFid,
-                fullName: fbUser?.displayName || resolvedBadge,
-                role: resolvedRoleKey === 'hospital_admin' ? 'Hospital Administrator' : 'Staff',
+                fullName: resolvedFullName,
+                role: resolvedRole,
                 roleKey: resolvedRoleKey,
+                title: resolvedRole,
+                department: isAdmin ? 'Hospital Management' : 'Clinical Operations',
                 clearanceLevel: resolvedClearance,
-                clearanceLabel:
-                  resolvedRoleKey === 'hospital_admin' ? 'Administrator' : `L${resolvedClearance}`,
+                clearanceLabel: isAdmin ? 'Administrator' : `L${resolvedClearance}`,
+                permissions: isAdmin ? ['*'] : undefined,
                 email: resolvedEmail,
                 authEmail: badgeAuthEmail(resolvedBadge),
                 pin: fbPass,
