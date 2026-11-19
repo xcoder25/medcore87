@@ -264,6 +264,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       });
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
+        sent?: boolean;
+        channel?: string;
+        fromConfigured?: boolean;
+        deliveryError?: string;
         maskedEmail?: string;
         devPreviewCode?: string;
         message?: string;
@@ -271,6 +275,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
       };
       if (!res.ok || !data.ok) {
         setForgotError(data.message || data.error || 'Failed to dispatch real-time verification OTP.');
+        setForgotLoading(false);
+        return;
+      }
+      if (data.deliveryError || (data.sent === false && !data.devPreviewCode)) {
+        setForgotError(
+          `OTP email could not be delivered: ${data.deliveryError || 'Email gateway rejected delivery.'}`
+        );
         setForgotLoading(false);
         return;
       }
@@ -1370,9 +1381,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   const storedPin = String(matchedStaff.pin || '');
                   const pinMatches = Boolean(
                     storedPin &&
-                      (storedPin === pass ||
-                        storedPin === effectivePass ||
-                        (storedPin.length >= 4 && storedPin.trim() === pass.trim()))
+                    (storedPin === pass ||
+                      storedPin === effectivePass ||
+                      (storedPin.length >= 4 && storedPin.trim() === pass.trim()))
                   );
                   if (pinMatches) {
                     try {
@@ -1418,9 +1429,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               const storedPin = String(matchedStaff?.pin || '');
               const localPinMatches = Boolean(
                 storedPin &&
-                  (storedPin === pass ||
-                    storedPin === effectivePass ||
-                    (storedPin.length >= 4 && storedPin.trim() === pass.trim()))
+                (storedPin === pass ||
+                  storedPin === effectivePass ||
+                  (storedPin.length >= 4 && storedPin.trim() === pass.trim()))
               );
               if (!localPinMatches) {
                 if (emailVerifyMeta?.needsServerFirebaseKey) {

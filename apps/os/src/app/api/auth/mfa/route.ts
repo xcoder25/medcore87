@@ -5,8 +5,31 @@ import * as path from 'path';
 import * as os from 'os';
 import { ensureSchema, isPostgresConfigured, withTenantClient } from '../../../../lib/db/postgres';
 import { findStaffAnyFacility, getStaff } from '../../../../lib/db/staffRepo';
+import { getAdminAuth } from '../../../../lib/firebaseAdmin';
 import { signMfaToken } from '../../../../lib/serverSession';
 import { checkRateLimit, getClientIp } from '../../../../lib/rateLimit';
+
+function cleanEnv(v: string | undefined): string {
+  let val = String(v || '').trim();
+  if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+    val = val.slice(1, -1).trim();
+  }
+  return val;
+}
+
+function isRealWorkEmail(email: string): boolean {
+  const e = email.trim().toLowerCase();
+  return Boolean(e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && !e.endsWith('.firebaseapp.com'));
+}
+
+function badgeAuthEmail(badgeId: string): string {
+  const id = (badgeId || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `badge.${id}@naija-bites-1s3y1.firebaseapp.com`;
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -177,18 +200,31 @@ function computeServerTotpCode(facilityId: string, offsetSteps = 0): string {
 }
 
 async function resolveStaffEmail(facilityId: string, badgeId: string, providedEmail?: string): Promise<string> {
-  const direct = String(providedEmail || '').trim();
-  if (direct && direct.includes('@')) return direct;
+  const direct = String(providedEmail || '').trim().toLowerCase();
+  if (isRealWorkEmail(direct)) return direct;
 
   if (isPostgresConfigured()) {
     try {
       const row = (await getStaff(facilityId, badgeId)) || (await findStaffAnyFacility(badgeId));
-      const dbEmail = String(row?.email || row?.auth_email || '').trim();
-      if (dbEmail && dbEmail.includes('@')) return dbEmail;
+      const dbEmail = String(row?.email || '').trim().toLowerCase();
+      if (isRealWorkEmail(dbEmail)) return dbEmail;
     } catch {
       /* ignore */
     }
   }
+
+  try {
+    const adminAuth = getAdminAuth();
+    if (adminAuth) {
+      const fbUser = await adminAuth.getUserByEmail(badgeAuthEmail(badgeId)).catch(() => null);
+      const claims = (fbUser?.customClaims || {}) as Record<string, unknown>;
+      const claimsEmail = String(claims.workEmail || '').trim().toLowerCase();
+      if (isRealWorkEmail(claimsEmail)) return claimsEmail;
+    }
+  } catch {
+    /* ignore */
+  }
+
   return '';
 }
 
@@ -199,7 +235,12 @@ async function dispatchOtpEmail(opts: {
   badgeId: string;
   facilityId: string;
   expiryMinutes: number;
-}): Promise<{ delivered: boolean; channel: 'resend' | 'webhook' | 'console_fallback'; error?: string }> {
+}): Promise<{
+  delivered: boolean;
+  channel: 'resend' | 'webhook' | 'console_fallback';
+  fromConfigured: boolean;
+  error?: string;
+}> {
   const subject = `MedCore OS Login OTP: ${opts.otp}`;
   const text = `Hello ${opts.staffName},\n\nYour one-time login verification code for MedCore OS (${opts.facilityId}, Badge ${opts.badgeId}) is: ${opts.otp}\n\nThis code expires in ${opts.expiryMinutes} minutes. Do not share it with anyone.`;
   const html = `
@@ -213,10 +254,22 @@ async function dispatchOtpEmail(opts: {
     </div>
   `;
 
-  const resendKey = (process.env.RESEND_API_KEY || '').trim();
+  const resendKey =
+    cleanEnv(process.env.RESEND_API_KEY) || cleanEnv(process.env.MEDCORE_RESEND_API_KEY);
+  const rawFrom =
+    cleanEnv(process.env.MEDCORE_EMAIL_FROM) ||
+    cleanEnv(process.env.RESEND_FROM_EMAIL) ||
+    cleanEnv(process.env.RESEND_FROM) ||
+    cleanEnv(process.env.EMAIL_FROM);
+  const fromConfigured = Boolean(rawFrom);
+
   if (resendKey) {
     try {
-      const from = (process.env.MEDCORE_EMAIL_FROM || 'MedCore OS Security <onboarding@resend.dev>').trim();
+      const from = !rawFrom
+        ? 'MedCore OS Security <onboarding@resend.dev>'
+        : !rawFrom.includes('@')
+        ? `MedCore OS Security <no-reply@${rawFrom.replace(/^https?:\/\//i, '').replace(/\/.*$/, '')}>`
+        : rawFrom;
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -226,16 +279,27 @@ async function dispatchOtpEmail(opts: {
         body: JSON.stringify({ from, to: [opts.to], subject, text, html }),
       });
       if (res.ok) {
-        return { delivered: true, channel: 'resend' };
+        return { delivered: true, channel: 'resend', fromConfigured };
       }
       const errTxt = await res.text().catch(() => '');
-      return { delivered: false, channel: 'resend', error: `Resend HTTP ${res.status}: ${errTxt.slice(0, 120)}` };
+      let parsedMsg = errTxt.slice(0, 260);
+      try {
+        const parsed = JSON.parse(errTxt) as { message?: string; name?: string };
+        if (parsed?.message) parsedMsg = parsed.message;
+      } catch {
+        /* use raw snippet */
+      }
+      const deliveryErr = `Resend HTTP ${res.status}: ${parsedMsg || 'rejected by gateway'}`;
+      console.error('[api/auth/mfa] Resend error:', { status: res.status, fromConfigured, message: parsedMsg });
+      return { delivered: false, channel: 'resend', fromConfigured, error: deliveryErr };
     } catch (e) {
-      return { delivered: false, channel: 'resend', error: (e as Error).message };
+      const msg = (e as Error).message;
+      console.error('[api/auth/mfa] Resend request failed:', msg);
+      return { delivered: false, channel: 'resend', fromConfigured, error: msg };
     }
   }
 
-  const webhookUrl = (process.env.EMAIL_WEBHOOK_URL || '').trim();
+  const webhookUrl = cleanEnv(process.env.EMAIL_WEBHOOK_URL);
   if (webhookUrl) {
     try {
       const res = await fetch(webhookUrl, {
@@ -252,16 +316,16 @@ async function dispatchOtpEmail(opts: {
         }),
       });
       if (res.ok) {
-        return { delivered: true, channel: 'webhook' };
+        return { delivered: true, channel: 'webhook', fromConfigured };
       }
-      return { delivered: false, channel: 'webhook', error: `Webhook HTTP ${res.status}` };
+      return { delivered: false, channel: 'webhook', fromConfigured, error: `Webhook HTTP ${res.status}` };
     } catch (e) {
-      return { delivered: false, channel: 'webhook', error: (e as Error).message };
+      return { delivered: false, channel: 'webhook', fromConfigured, error: (e as Error).message };
     }
   }
 
   console.info(`[MedCore MFA Email OTP] ${opts.facilityId} · ${opts.badgeId} (${opts.to || 'no-email'}) -> ${opts.otp}`);
-  return { delivered: false, channel: 'console_fallback' };
+  return { delivered: false, channel: 'console_fallback', fromConfigured };
 }
 
 export async function POST(req: NextRequest) {
@@ -333,6 +397,7 @@ export async function POST(req: NextRequest) {
         ok: true,
         sent: sendResult.delivered,
         channel: sendResult.channel,
+        fromConfigured: sendResult.fromConfigured,
         maskedEmail: maskEmail(resolvedEmail),
         expiresInSeconds: expiryMinutes * 60,
         deliveryError: sendResult.error,
