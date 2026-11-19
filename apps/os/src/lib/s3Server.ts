@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { awsCredentialsProvider } from '@vercel/functions/oidc';
 import crypto from 'crypto';
@@ -149,7 +149,7 @@ export function isS3Configured(): boolean {
   return getS3Config().isConfigured;
 }
 
-export function buildS3ObjectUrl(key: string): string {
+export function buildDirectS3Url(key: string): string {
   const config = getS3Config();
   if (config.customDomain) {
     const base = config.customDomain.replace(/\/$/, '');
@@ -158,12 +158,22 @@ export function buildS3ObjectUrl(key: string): string {
   return `https://${config.bucket}.s3.${config.region}.amazonaws.com/${key}`;
 }
 
+export function buildS3ObjectUrl(key: string): string {
+  const config = getS3Config();
+  if (config.customDomain) {
+    const base = config.customDomain.replace(/\/$/, '');
+    return `${base}/${key}`;
+  }
+  // Route through authenticated proxy so private HIPAA S3 buckets (Block Public Access ON) render reliably
+  return `/api/storage/object?key=${encodeURIComponent(key)}`;
+}
+
 export async function uploadBufferToS3(
   buffer: Buffer,
   key: string,
   contentType: string = 'image/jpeg',
   metadata?: Record<string, string>
-): Promise<{ url: string; key: string; bucket: string; size: number }> {
+): Promise<{ url: string; s3Url: string; key: string; bucket: string; size: number }> {
   const client = getS3Client();
   const config = getS3Config();
 
@@ -179,10 +189,71 @@ export async function uploadBufferToS3(
 
   return {
     url: buildS3ObjectUrl(key),
+    s3Url: buildDirectS3Url(key),
     key,
     bucket: config.bucket,
     size: buffer.length,
   };
+}
+
+export async function getS3ObjectBuffer(key: string): Promise<{
+  buffer: Buffer;
+  contentType: string;
+  contentLength?: number;
+}> {
+  const client = getS3Client();
+  const config = getS3Config();
+  const res = await client.send(
+    new GetObjectCommand({
+      Bucket: config.bucket,
+      Key: key,
+    })
+  );
+  if (!res.Body) {
+    throw new Error('Empty S3 object body');
+  }
+  const bytes = await res.Body.transformToByteArray();
+  return {
+    buffer: Buffer.from(bytes),
+    contentType: res.ContentType || 'application/octet-stream',
+    contentLength: res.ContentLength ?? bytes.length,
+  };
+}
+
+/**
+ * If photoUrl is a base64 data:image/* payload and S3 is configured, upload it to AWS S3
+ * and return the canonical object URL. Otherwise returns the original URL/value untouched.
+ */
+export async function uploadDataUrlToS3IfNeeded(
+  photoUrl: string | null | undefined,
+  opts: { folder: string; facilityId: string; filename?: string }
+): Promise<string | undefined> {
+  if (!photoUrl) return undefined;
+  const trimmed = String(photoUrl).trim();
+  if (!trimmed) return undefined;
+  if (!trimmed.startsWith('data:image/')) return trimmed;
+  if (!isS3Configured()) return trimmed;
+
+  const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/i.exec(trimmed);
+  if (!match) return trimmed;
+  const mimeType = match[1].toLowerCase();
+  const ext =
+    mimeType.includes('png')
+      ? 'png'
+      : mimeType.includes('webp')
+        ? 'webp'
+        : mimeType.includes('gif')
+          ? 'gif'
+          : 'jpg';
+  const buffer = Buffer.from(match[2], 'base64');
+  const key = generateS3ImageKey(opts.folder, ext, opts.facilityId);
+  const uploaded = await uploadBufferToS3(buffer, key, mimeType, {
+    uploadedAt: new Date().toISOString(),
+    folder: opts.folder,
+    facilityId: opts.facilityId,
+    ...(opts.filename ? { originalFilename: opts.filename } : {}),
+  });
+  return uploaded.url;
 }
 
 export async function generateS3PresignedUploadUrl(

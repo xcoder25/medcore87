@@ -1,4 +1,4 @@
-import { ensureSchema, isPostgresConfigured, query, withTenantClient } from './postgres';
+import { ensureSchema, isPostgresConfigured, toIsoDateOrNull, withTenantClient } from './postgres';
 import { upsertFacility } from './staffRepo';
 
 export type PatientRow = {
@@ -14,6 +14,8 @@ export type PatientRow = {
   status: string | null;
   meta: unknown;
 };
+
+const PATIENT_SELECT_COLS = `id, facility_id, hospital_number, full_name, sex, to_char(date_of_birth, 'YYYY-MM-DD') AS date_of_birth, phone, email, address, status, meta`;
 
 export async function upsertPatient(input: {
   id: string;
@@ -48,14 +50,14 @@ export async function upsertPatient(input: {
         status = EXCLUDED.status,
         meta = COALESCE(EXCLUDED.meta, patients.meta),
         updated_at = NOW()
-      RETURNING *`,
+      RETURNING ${PATIENT_SELECT_COLS}`,
       [
         input.id,
         input.facilityId,
         input.hospitalNumber || null,
         input.fullName,
         input.sex || null,
-        input.dateOfBirth || null,
+        toIsoDateOrNull(input.dateOfBirth),
         input.phone || null,
         input.email || null,
         input.address || null,
@@ -78,22 +80,35 @@ export async function listPatients(
   return withTenantClient(facilityId, async (client) => {
     if (q) {
       const res = await client.query<PatientRow>(
-        `SELECT * FROM patients
-         WHERE (
-              lower(full_name) LIKE $1
-              OR hospital_number ILIKE $2
-              OR phone ILIKE $2
+        `SELECT ${PATIENT_SELECT_COLS} FROM patients
+         WHERE facility_id = $1
+           AND (
+              lower(full_name) LIKE $2
+              OR hospital_number ILIKE $3
+              OR phone ILIKE $3
             )
          ORDER BY updated_at DESC
-         LIMIT $3`,
-        [`%${q.toLowerCase()}%`, `%${q}%`, limit]
+         LIMIT $4`,
+        [facilityId, `%${q.toLowerCase()}%`, `%${q}%`, limit]
       );
       return res.rows;
     }
     const res = await client.query<PatientRow>(
-      `SELECT * FROM patients ORDER BY updated_at DESC LIMIT $1`,
-      [limit]
+      `SELECT ${PATIENT_SELECT_COLS} FROM patients WHERE facility_id = $1 ORDER BY updated_at DESC LIMIT $2`,
+      [facilityId, limit]
     );
     return res.rows;
+  });
+}
+
+export async function deletePatientRow(facilityId: string, id: string): Promise<boolean> {
+  if (!isPostgresConfigured()) throw new Error('Postgres not configured');
+  await ensureSchema();
+  return withTenantClient(facilityId, async (client) => {
+    const res = await client.query(
+      `DELETE FROM patients WHERE facility_id = $1 AND id = $2`,
+      [facilityId, id]
+    );
+    return (res.rowCount || 0) > 0;
   });
 }

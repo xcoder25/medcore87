@@ -5,7 +5,6 @@
 import { todayVisits, dayStats } from './receptionOpsStore';
 import { listOrders } from './clinicalEventBus';
 import { listBeds } from './bedBoardStore';
-import { listUnits } from './ambulanceDispatchStore';
 import { listBillLines } from './patientBillingStore';
 import { getStaffRegistry } from './adminRealtimeStore';
 
@@ -95,17 +94,6 @@ export function buildOpsIntelligence(facilityId: string): OpsRecommendation[] {
         module: 'beds',
       });
     }
-  }
-
-  const ambBusy = listUnits(facilityId).filter((u) => u.status === 'en_route' || u.status === 'at_scene').length;
-  if (ambBusy >= 2) {
-    recs.push({
-      id: 'amb',
-      level: 'info',
-      title: 'Ambulances active',
-      detail: `${ambBusy} units out on calls.`,
-      module: 'ambulance',
-    });
   }
 
   const unpaid = listBillLines(facilityId).filter((b) => b.status === 'unpaid').length;

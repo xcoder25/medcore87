@@ -54,6 +54,7 @@ export async function upsertStaff(input: {
   }
   await upsertFacility(input.facilityId, input.facilityName || input.facilityId);
   const pinHash = input.pin ? hashPin(input.pin) : null;
+  const photoParam = input.photoUrl === undefined ? null : input.photoUrl;
 
   return withTenantClient(input.facilityId, async (client) => {
     const res = await client.query<StaffRow>(
@@ -62,7 +63,7 @@ export async function upsertStaff(input: {
         email, phone, status, clearance_level, clearance_label, permissions,
         photo_url, pin_hash, auth_email, updated_at
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,NOW()
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,NULLIF($14::text, ''),$15,$16,NOW()
       )
       ON CONFLICT (facility_id, badge_id) DO UPDATE SET
         full_name = CASE
@@ -84,7 +85,10 @@ export async function upsertStaff(input: {
           WHEN jsonb_array_length(EXCLUDED.permissions) > 0 THEN EXCLUDED.permissions
           ELSE staff.permissions
         END,
-        photo_url = COALESCE(EXCLUDED.photo_url, staff.photo_url),
+        photo_url = CASE
+          WHEN $14::text = '' THEN NULL
+          ELSE COALESCE(NULLIF($14::text, ''), staff.photo_url)
+        END,
         pin_hash = COALESCE(EXCLUDED.pin_hash, staff.pin_hash),
         auth_email = COALESCE(EXCLUDED.auth_email, staff.auth_email),
         updated_at = NOW()
@@ -103,7 +107,7 @@ export async function upsertStaff(input: {
         input.clearanceLevel ?? 1,
         input.clearanceLabel || null,
         JSON.stringify(input.permissions || []),
-        input.photoUrl || null,
+        photoParam,
         pinHash,
         input.authEmail || null,
       ]

@@ -304,8 +304,14 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
       flash('Please enter first and last name.');
       return;
     }
-    if (!form.phone.trim()) {
-      flash('Phone number is required for card token notifications.');
+    const phoneDigits = form.phone.trim().replace(/\D/g, '');
+    if (phoneDigits.length < 10 || phoneDigits.length > 14) {
+      flash('Enter a valid 10–14 digit phone number for card token notifications.');
+      return;
+    }
+    const cleanNin = form.nin.trim();
+    if (cleanNin && !/^\d{11}$/.test(cleanNin)) {
+      flash('NIN must be exactly 11 digits.');
       return;
     }
 
@@ -1382,7 +1388,10 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
                 </span>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  minLength={11}
                   maxLength={11}
+                  pattern="\d{11}"
                   value={form.nin}
                   onChange={(e) => setForm({ ...form, nin: e.target.value.replace(/\D/g, '').slice(0, 11) })}
                   style={{ width: '100%', padding: '8px 12px', marginTop: 4, borderRadius: 8, border: '1px solid #CBD5E1' }}

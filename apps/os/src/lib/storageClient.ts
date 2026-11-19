@@ -77,71 +77,31 @@ export async function streamDirectToS3Presigned(
       method: 'presigned_put_direct',
     };
   } catch (err: any) {
-    console.warn('[streamDirectToS3Presigned] Direct stream failed, falling back to server relay:', err?.message);
-    // Fallback to server multipart upload if pre-signed direct PUT encounters CORS or network restriction
-    return uploadImageToS3(file, options);
+    console.warn('[streamDirectToS3Presigned] Direct stream failed:', err?.message);
+    return {
+      ok: false,
+      url: '',
+      error: err?.message || 'Direct S3 upload failed',
+      isS3: false,
+    };
   }
 }
 
-/**
- * Upload an image (File, Blob, or base64 data URL) to AWS S3 Object Storage.
- */
-export async function uploadImageToS3(
+async function uploadViaServerRelay(
   fileOrDataUrl: File | Blob | string,
   options: S3UploadOptions = {}
 ): Promise<S3UploadResult> {
   const folder = options.folder || 'general';
 
-  try {
-    // If it's a File or Blob, prefer direct pre-signed PUT streaming
-    if (typeof fileOrDataUrl !== 'string') {
-      const directResult = await streamDirectToS3Presigned(fileOrDataUrl, options);
-      if (directResult.ok) return directResult;
-
-      // Secondary fallback: Multipart Form Data via server
-      const formData = new FormData();
-      formData.append('file', fileOrDataUrl, options.filename || (fileOrDataUrl as File).name || 'upload.jpg');
-      formData.append('folder', folder);
-
-      const res = await fetch('/api/storage/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data?.ok && data?.url) {
-        return {
-          ok: true,
-          url: data.url,
-          key: data.key,
-          size: data.size,
-          isS3: true,
-          method: 'server_relay',
-        };
-      }
-
-      return {
-        ok: false,
-        url: '',
-        error: data?.message || data?.error || `Upload failed with HTTP ${res.status}`,
-        isS3: false,
-      };
-    }
-
-    // It is a base64 Data URL string
-    const dataUrl = fileOrDataUrl.trim();
-    if (!dataUrl) {
-      return { ok: false, url: '', error: 'Empty image provided', isS3: false };
-    }
+  if (typeof fileOrDataUrl !== 'string') {
+    const formData = new FormData();
+    formData.append('file', fileOrDataUrl, options.filename || (fileOrDataUrl as File).name || 'upload.jpg');
+    formData.append('folder', folder);
+    if (options.facilityId) formData.append('facilityId', options.facilityId);
 
     const res = await fetch('/api/storage/upload', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        dataUrl,
-        folder,
-        filename: options.filename,
-      }),
+      body: formData,
     });
 
     const data = await res.json().catch(() => ({}));
@@ -156,13 +116,69 @@ export async function uploadImageToS3(
       };
     }
 
-    // If S3 is unconfigured, return the dataUrl as local fallback so app remains functional
     return {
       ok: false,
-      url: dataUrl,
-      error: data?.message || data?.error || 'S3 upload failed',
+      url: '',
+      error: data?.message || data?.error || `Upload failed with HTTP ${res.status}`,
       isS3: false,
     };
+  }
+
+  const dataUrl = fileOrDataUrl.trim();
+  if (!dataUrl) {
+    return { ok: false, url: '', error: 'Empty image provided', isS3: false };
+  }
+
+  const res = await fetch('/api/storage/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      dataUrl,
+      folder,
+      facilityId: options.facilityId,
+      filename: options.filename,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (res.ok && data?.ok && data?.url) {
+    return {
+      ok: true,
+      url: data.url,
+      key: data.key,
+      size: data.size,
+      isS3: true,
+      method: 'server_relay',
+    };
+  }
+
+  return {
+    ok: false,
+    url: dataUrl,
+    error: data?.message || data?.error || 'S3 upload failed',
+    isS3: false,
+  };
+}
+
+/**
+ * Upload an image (File, Blob, or base64 data URL) to AWS S3 Object Storage.
+ */
+export async function uploadImageToS3(
+  fileOrDataUrl: File | Blob | string,
+  options: S3UploadOptions = {}
+): Promise<S3UploadResult> {
+  try {
+    if (typeof fileOrDataUrl !== 'string') {
+      // Large binaries (>2MB, e.g., DICOM) use direct pre-signed PUT first, then server relay once on failure.
+      // Compressed UI images (e.g. staff headshots) use server relay directly to avoid bucket CORS issues.
+      if (fileOrDataUrl.size > 2 * 1024 * 1024) {
+        const directResult = await streamDirectToS3Presigned(fileOrDataUrl, options);
+        if (directResult.ok) return directResult;
+      }
+      return await uploadViaServerRelay(fileOrDataUrl, options);
+    }
+
+    return await uploadViaServerRelay(fileOrDataUrl, options);
   } catch (err: any) {
     console.warn('[uploadImageToS3] Network or server error:', err);
     return {

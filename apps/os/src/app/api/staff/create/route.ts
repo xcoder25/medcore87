@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminAuth } from '../../../../lib/firebaseAdmin';
 import { isPostgresConfigured } from '../../../../lib/db/postgres';
 import { upsertStaff } from '../../../../lib/db/staffRepo';
+import { uploadDataUrlToS3IfNeeded } from '../../../../lib/s3Server';
 import type { StaffCardRecord, StaffCardTemplate } from '@medcore/types';
 
 export const runtime = 'nodejs';
@@ -13,12 +14,6 @@ function badgeAuthEmail(badgeId: string): string {
     .replace(/[^A-Z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return `badge.${id}@naija-bites-1s3y1.firebaseapp.com`;
-}
-
-function normalizeStaffPin(pin: string): string {
-  const p = (pin || '').trim();
-  if (p.length >= 6) return p;
-  return (p + '000000').slice(0, 6);
 }
 
 export async function POST(request: NextRequest) {
@@ -45,12 +40,43 @@ export async function POST(request: NextRequest) {
     const bId = String(badgeId || '').trim().toUpperCase();
     const fId = String(facilityId || 'DEFAULT-HOSPITAL').trim();
     const name = String(fullName || '').trim();
+    const rawPin = String(pin || password || '').trim();
+    const cleanWorkEmail = email ? String(email).trim().toLowerCase() : undefined;
 
     if (!bId || !name) {
       return NextResponse.json(
         { success: false, error: 'badgeId and fullName are required' },
         { status: 400 }
       );
+    }
+    if (name.length < 3) {
+      return NextResponse.json(
+        { success: false, error: 'Full name must be at least 3 characters.' },
+        { status: 400 }
+      );
+    }
+    if (!cleanWorkEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanWorkEmail)) {
+      return NextResponse.json(
+        { success: false, error: 'A valid official work email is required.' },
+        { status: 400 }
+      );
+    }
+    if (!/^\d{6}$/.test(rawPin)) {
+      return NextResponse.json(
+        { success: false, error: 'Sign-in PIN must be an exact 6-digit numeric code.' },
+        { status: 400 }
+      );
+    }
+
+    let resolvedPhotoUrl: string | undefined;
+    try {
+      resolvedPhotoUrl = await uploadDataUrlToS3IfNeeded(
+        typeof photoUrl === 'string' ? photoUrl : undefined,
+        { folder: 'staff', facilityId: fId, filename: `${bId}-headshot.jpg` }
+      );
+    } catch (s3Err) {
+      console.warn('[api/staff/create] S3 photo upload warning:', s3Err);
+      resolvedPhotoUrl = typeof photoUrl === 'string' && photoUrl ? photoUrl : undefined;
     }
 
     const adminAuth = getAdminAuth();
@@ -64,7 +90,7 @@ export async function POST(request: NextRequest) {
 
     // 1. Create or update Badge Auth User in Firebase Auth (for Staff ID + PIN sign in)
     const badgeEmail = badgeAuthEmail(bId);
-    const badgePin = normalizeStaffPin(String(pin || password || '123456'));
+    const badgePin = rawPin;
     let badgeUserRecord;
     try {
       badgeUserRecord = await adminAuth.getUserByEmail(badgeEmail);
@@ -102,8 +128,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const hasWorkEmail = Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
-    const cleanWorkEmail = hasWorkEmail ? String(email).trim().toLowerCase() : undefined;
+    const hasWorkEmail = Boolean(cleanWorkEmail);
 
     if (badgeUserRecord) {
       try {
@@ -202,7 +227,7 @@ export async function POST(request: NextRequest) {
       status: 'ACTIVE',
       issuedAt,
       expiresAt,
-      photoUrl: photoUrl || null,
+      photoUrl: resolvedPhotoUrl || undefined,
       initials,
       qrPayload: JSON.stringify({
         badgeId: bId,
@@ -223,12 +248,12 @@ export async function POST(request: NextRequest) {
           roleKey: String(roleKey),
           title: String(title),
           department: String(department),
-          email: hasWorkEmail ? email.trim().toLowerCase() : undefined,
+          email: cleanWorkEmail,
           clearanceLevel: Number(clearanceLevel) || 1,
           clearanceLabel: String(clearanceLabel),
-          photoUrl: photoUrl || null,
+          photoUrl: resolvedPhotoUrl,
           authEmail: badgeEmail,
-          pin: String(pin || password || '1234'),
+          pin: rawPin,
           facilityName: String(facilityName),
         });
       } catch (pgErr) {

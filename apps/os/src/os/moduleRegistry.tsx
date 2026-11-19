@@ -65,7 +65,6 @@ export const BloodBankSuite = dynamic(() => import('../components/clinical-core/
 export const InpatientNursingSuite = dynamic(() => import('../components/clinical-core/InpatientNursingSuite').then(m => m.InpatientNursingSuite), { loading: () => <ModulePageLoader label="Opening Inpatient Nursing…" /> });
 export const NursingTriageStation = dynamic(() => import('../components/clinical-core/NursingTriageStation').then(m => m.NursingTriageStation), { loading: () => <ModulePageLoader label="Opening Nursing Triage…" /> });
 export const WorkflowIntelligenceHub = dynamic(() => import('../components/clinical-core/WorkflowIntelligenceHub').then(m => m.WorkflowIntelligenceHub), { loading: () => <ModulePageLoader label="Opening Workflow Hub…" /> });
-export const AmbulanceTransfersSuite = dynamic(() => import('../components/operations/AmbulanceTransfersSuite').then(m => m.AmbulanceTransfersSuite), { loading: () => <ModulePageLoader label="Opening Pre-Hospital Ingestion Bridge…" /> });
 export const SupplyChainInventorySuite = dynamic(() => import('../components/operations/SupplyChainInventorySuite').then(m => m.SupplyChainInventorySuite), { loading: () => <ModulePageLoader label="Opening Medical Inventory…" /> });
 export const BiomedicalEquipmentSuite = dynamic(() => import('../components/operations/BiomedicalEquipmentSuite').then(m => m.BiomedicalEquipmentSuite), { loading: () => <ModulePageLoader label="Opening Biomedical Equipment…" /> });
 export const FacilitiesUtilitiesSuite = dynamic(() => import('../components/operations/FacilitiesUtilitiesSuite').then(m => m.FacilitiesUtilitiesSuite), { loading: () => <ModulePageLoader label="Opening Facilities Utilities…" /> });
@@ -121,7 +120,7 @@ export type ModuleKey =
   | 'certificates' | 'dental' | 'physiotherapy' | 'mortuary' | 'cssd' | 'nutrition' | 'cds-sepsis' | 'consent-legal' | 'fluid-balance' | 'ophthalmology'
   | 'dialysis' | 'oncology' | 'immunization' | 'psychiatry' | 'glucometer-insulin' | 'discharge-summary' | 'pharmacovigilance' | 'incident-safety'
   // Pillar 3: Operations
-  | 'command' | 'beds' | 'patient-flow' | 'universal-queue' | 'appointments' | 'staffing' | 'ambulance' | 'notifications'
+  | 'command' | 'beds' | 'patient-flow' | 'universal-queue' | 'appointments' | 'staffing' | 'notifications'
   | 'inventory' | 'biomedical' | 'facilities' | 'environmental'
   // Pillar 4: Finance
   | 'billing' | 'cashier' | 'claims' | 'revenue-cycle' | 'procurement' | 'akwaremit'
@@ -201,7 +200,6 @@ export const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
   notifications: NotificationCentre as any,
   appointments: AppointmentsManager as any,
   staffing: StaffingOverview,
-  ambulance: AmbulanceTransfersSuite,
   inventory: SupplyChainInventorySuite,
   biomedical: BiomedicalEquipmentSuite,
   facilities: FacilitiesUtilitiesSuite,
@@ -305,7 +303,6 @@ export const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string;
   notifications: { level: 2, label: 'L2 All Roles', roleDesc: 'Hospital notification centre' },
   appointments: { level: 1, label: 'L2 Front Desk', roleDesc: 'Reception & appointment clerks' },
   staffing: { level: 3, label: 'L3 Clinical', roleDesc: 'Duty Roster Officers & Matrons' },
-  ambulance: { level: 2, label: 'L2 Clinical & Operations', roleDesc: 'HL7 / FHIR Pre-Hospital ePCR Ingestion Gateway' },
   inventory: { level: 2, label: 'L2 Support', roleDesc: 'Procurement & Inventory Managers' },
   biomedical: { level: 2, label: 'L2 Support', roleDesc: 'Biomedical Engineers' },
   facilities: { level: 2, label: 'L2 Support', roleDesc: 'Facility Maintenance & Plant Engineers' },

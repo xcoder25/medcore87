@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       {
         ok: false,
         error: 'S3_NOT_CONFIGURED',
-        message: 'AWS S3 object storage is not configured. Set AWS_S3_BUCKET, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY in environment variables.',
+        message: 'AWS S3 object storage is not configured. Set MEDCORE_S3_* (bucket, region, OIDC role or IAM keys) in environment variables.',
         region: config.region,
       },
       { status: 503 }
@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
     let buffer: Buffer;
     let mimeType = 'image/jpeg';
     let folder = 'general';
+    let facilityId = (req.headers.get('x-medcore-facility-id') || 'general-facility').trim();
     let originalFilename: string | undefined;
 
     // Handle Multipart Form Data (standard file upload)
@@ -65,6 +66,8 @@ export async function POST(req: NextRequest) {
       const formData = await req.formData();
       const file = formData.get('file') as File | null;
       folder = String(formData.get('folder') || 'general').trim();
+      const formFac = String(formData.get('facilityId') || '').trim();
+      if (formFac) facilityId = formFac;
 
       if (!file) {
         return NextResponse.json({ ok: false, error: 'File is required in formData under key "file"' }, { status: 400 });
@@ -80,6 +83,8 @@ export async function POST(req: NextRequest) {
       const body = await req.json().catch(() => ({}));
       const dataUrl = String(body.dataUrl || body.image || body.base64 || '').trim();
       folder = String(body.folder || 'general').trim();
+      const bodyFac = String(body.facilityId || '').trim();
+      if (bodyFac) facilityId = bodyFac;
       originalFilename = body.filename;
 
       if (!dataUrl) {
@@ -123,10 +128,11 @@ export async function POST(req: NextRequest) {
       ? originalFilename.split('.').pop() || getExtensionFromMime(mimeType)
       : getExtensionFromMime(mimeType);
 
-    const key = generateS3ImageKey(folder, ext);
+    const key = generateS3ImageKey(folder, ext, facilityId);
     const metadata: Record<string, string> = {
       uploadedAt: new Date().toISOString(),
       folder,
+      facilityId,
       ...(originalFilename ? { originalFilename } : {}),
     };
 

@@ -114,6 +114,19 @@ export async function apiUpsertPatient(payload: Record<string, unknown>) {
   }
 }
 
+export async function apiDeletePatient(
+  facilityId: string,
+  id: string
+): Promise<{ ok: boolean; deleted?: boolean; error?: string }> {
+  try {
+    const qs = new URLSearchParams({ facilityId, id });
+    const res = await fetch(`/api/patients?${qs}`, { method: 'DELETE' });
+    return (await res.json()) as { ok: boolean; deleted?: boolean; error?: string };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 
 let _pgOk: boolean | null = null;
 let _pgCheckedAt = 0;

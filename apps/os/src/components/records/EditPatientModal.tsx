@@ -89,6 +89,16 @@ export const EditPatientModal: React.FC<Props> = ({
       setError('First name and last name are required.');
       return;
     }
+    const cleanNin = nin.trim();
+    if (cleanNin && !/^\d{11}$/.test(cleanNin)) {
+      setError('NIN must be exactly 11 digits (or leave blank).');
+      return;
+    }
+    const phoneDigits = phone.trim().replace(/\D/g, '');
+    if (phone.trim() && (phoneDigits.length < 10 || phoneDigits.length > 14)) {
+      setError('Phone number must be 10–14 digits.');
+      return;
+    }
 
     setBusy(true);
     setError('');
@@ -400,9 +410,12 @@ export const EditPatientModal: React.FC<Props> = ({
                 className="os-search-input"
                 style={{ width: '100%', padding: '8px 10px', fontSize: '0.82rem' }}
                 value={nin}
+                inputMode="numeric"
+                minLength={11}
                 maxLength={11}
+                pattern="\d{11}"
                 placeholder="e.g. 12345678901"
-                onChange={(e) => setNin(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => setNin(e.target.value.replace(/\D/g, '').slice(0, 11))}
               />
             </div>
             <div>

@@ -9,6 +9,8 @@ import { startFacilitySyncLoop, probeHospitalApi, isLanApiEligible } from './hos
 import { startOutboxAutoFlush, flushOutbox } from './durableOutbox';
 import { FACILITY_KEYS } from './roleSyncBus';
 import { applyHimRemote, HIM_STORAGE_KEY } from './himStore';
+import { applyRemotePatients, hydratePatientsFromPostgres } from './patientRegistryStore';
+import { applyRemoteBeds } from './bedBoardStore';
 import { mergePresenceMaps, STAFF_PRESENCE_KEY } from './staffPresenceStore';
 import {
   applyCloudStaffDirectory,
@@ -124,6 +126,14 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
         emitForKey(key, value);
         return;
       }
+      if (canonicalKey === FACILITY_KEYS.patients && Array.isArray(value)) {
+        applyRemotePatients(value);
+        return;
+      }
+      if (canonicalKey === FACILITY_KEYS.beds && value) {
+        applyRemoteBeds(value);
+        return;
+      }
       if (canonicalKey === FACILITY_KEYS.staff && value && typeof value === 'object') {
         const dir = value as { staffCards?: unknown[]; staffRegistry?: unknown[]; facilityId?: string };
         applyCloudStaffDirectory(dir);
@@ -175,6 +185,7 @@ export function startHospitalCloudSync(facilityId: string): () => void {
 
   // Hydrate all facility clinical & operational state from Cloud + On-Prem LAN Hub into RAM
   void hydrateFacilityFromCloudAndPrem(facilityId, applyKey);
+  void hydratePatientsFromPostgres(facilityId);
 
   // Initial fetch from Postgres-backed API
   void (async () => {

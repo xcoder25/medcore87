@@ -140,12 +140,12 @@ export const ChangeCredentialsModal: React.FC<ChangeCredentialsModalProps> = ({
       setErrorMessage('Staff ID not found on active session.');
       return;
     }
-    if (!currentPin.trim()) {
-      setErrorMessage('Please enter your current PIN.');
+    if (!/^\d{6}$/.test(currentPin.trim())) {
+      setErrorMessage('Current PIN must be an exact 6-digit numeric PIN.');
       return;
     }
-    if (!/^\d{4,8}$/.test(newPin.trim())) {
-      setErrorMessage('New PIN must be between 4 and 8 digits (numeric only).');
+    if (!/^\d{6}$/.test(newPin.trim())) {
+      setErrorMessage('New PIN must be an exact 6-digit numeric PIN.');
       return;
     }
     if (newPin !== confirmPin) {
@@ -489,6 +489,7 @@ export const ChangeCredentialsModal: React.FC<ChangeCredentialsModalProps> = ({
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="At least 6 characters"
+                    minLength={6}
                     required
                     style={{
                       width: '100%',
@@ -536,6 +537,7 @@ export const ChangeCredentialsModal: React.FC<ChangeCredentialsModalProps> = ({
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Repeat new password"
+                  minLength={6}
                   required
                   style={{
                     width: '100%',
@@ -570,7 +572,12 @@ export const ChangeCredentialsModal: React.FC<ChangeCredentialsModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={
+                    isSubmitting ||
+                    !currentPassword.trim() ||
+                    newPassword.length < 6 ||
+                    newPassword !== confirmPassword
+                  }
                   style={{
                     padding: '10px 22px',
                     borderRadius: 10,
@@ -596,15 +603,18 @@ export const ChangeCredentialsModal: React.FC<ChangeCredentialsModalProps> = ({
               {/* Current PIN */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: 6 }}>
-                  Current Staff PIN
+                  Current 6-Digit Staff PIN
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showCurrentPin ? 'text' : 'password'}
+                    inputMode="numeric"
                     value={currentPin}
-                    onChange={(e) => setCurrentPin(e.target.value)}
-                    placeholder="Enter current 4–8 digit PIN"
-                    maxLength={8}
+                    onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="Enter current 6-digit PIN"
+                    minLength={6}
+                    maxLength={6}
+                    pattern="\d{6}"
                     required
                     style={{
                       width: '100%',
@@ -640,15 +650,18 @@ export const ChangeCredentialsModal: React.FC<ChangeCredentialsModalProps> = ({
               {/* New PIN */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: 6 }}>
-                  New Security PIN (4–8 numeric digits)
+                  New 6-Digit Security PIN (exact 6 digits)
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showNewPin ? 'text' : 'password'}
+                    inputMode="numeric"
                     value={newPin}
-                    onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-                    placeholder="••••"
-                    maxLength={8}
+                    onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="••••••"
+                    minLength={6}
+                    maxLength={6}
+                    pattern="\d{6}"
                     required
                     style={{
                       width: '100%',
@@ -679,19 +692,27 @@ export const ChangeCredentialsModal: React.FC<ChangeCredentialsModalProps> = ({
                     {showNewPin ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
+                {newPin.length > 0 && newPin.length < 6 && (
+                  <div style={{ fontSize: '0.72rem', color: '#DC2626', marginTop: 4 }}>
+                    {newPin.length}/6 digits — enter all 6 digits
+                  </div>
+                )}
               </div>
 
               {/* Confirm New PIN */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: 6 }}>
-                  Confirm New PIN
+                  Confirm New 6-Digit PIN
                 </label>
                 <input
                   type="password"
+                  inputMode="numeric"
                   value={confirmPin}
-                  onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
-                  placeholder="••••"
-                  maxLength={8}
+                  onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="••••••"
+                  minLength={6}
+                  maxLength={6}
+                  pattern="\d{6}"
                   required
                   style={{
                     width: '100%',
@@ -727,12 +748,20 @@ export const ChangeCredentialsModal: React.FC<ChangeCredentialsModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={
+                    isSubmitting ||
+                    currentPin.length !== 6 ||
+                    newPin.length !== 6 ||
+                    newPin !== confirmPin
+                  }
                   style={{
                     padding: '10px 22px',
                     borderRadius: 10,
                     border: 'none',
-                    background: isSubmitting ? '#94A3B8' : '#0284C7',
+                    background:
+                      isSubmitting || currentPin.length !== 6 || newPin.length !== 6 || newPin !== confirmPin
+                        ? '#94A3B8'
+                        : '#0284C7',
                     color: '#FFFFFF',
                     fontWeight: 800,
                     fontSize: '0.85rem',

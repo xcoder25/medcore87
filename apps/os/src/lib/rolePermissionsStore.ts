@@ -56,7 +56,6 @@ export const MODULE_CATALOG: { key: string; label: string; group: string }[] = [
   { key: 'patient-flow', label: 'Check-in, queue & patient flow', group: 'Operations' },
   { key: 'patient-card', label: 'Patient registration / MPI', group: 'Operations' },
   { key: 'appointments', label: 'Appointments', group: 'Operations' },
-  { key: 'ambulance', label: 'Ambulance & transfers', group: 'Operations' },
   { key: 'staffing', label: 'Staffing & rosters', group: 'Operations' },
   { key: 'transfer', label: 'Inter-facility staff transfer', group: 'Operations' },
 
@@ -414,7 +413,7 @@ const DEFAULTS: Record<string, string[]> = {
   medical_director: [
     'dashboard', 'command', 'doctor-portal', 'm87-ai', 'ai', 'analytics',
     'emergency', 'theatre', 'icu', 'pharmacy', 'laboratory', 'lab', 'radiology',
-    'blood-bank', 'beds', 'nursing', 'ambulance', 'notifications',
+    'blood-bank', 'beds', 'nursing', 'notifications',
     'compliance', 'akwaremit', 'my-card',
     'certificates', 'mortuary', 'cssd', 'cds-sepsis', 'consent-legal', 'fluid-balance', 'ophthalmology', 'dental', 'physiotherapy', 'nutrition',
     'dialysis', 'oncology', 'immunization', 'psychiatry', 'glucometer-insulin', 'discharge-summary', 'pharmacovigilance', 'incident-safety',

@@ -402,7 +402,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <SectionTitle>Clinical desks & modules (in this app)</SectionTitle>
           <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
-            Enable what this facility will run. Each toggle maps to a real MedCore workspace: Reception, Doctor, Nursing/Maternity, Laboratory, Pharmacy, Radiology, Theatre, Beds, Records (HIM), Accounts/Cashier, and Ambulance.
+            Enable what this facility will run. Each toggle maps to a real MedCore workspace: Reception, Doctor, Nursing/Maternity, Laboratory, Pharmacy, Radiology, Theatre, Beds, Records (HIM), and Accounts/Cashier.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <Toggle checked={draft.enableEprescribe} onChange={(v) => patch({ enableEprescribe: v })} label="e-Prescribing & pharmacy" desc="Orders from doctors → Pharmacy dispense queue." />

@@ -240,6 +240,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editStatus, setEditStatus] = useState<'active' | 'suspended' | 'pending'>('active');
+  const [editPhotoUrl, setEditPhotoUrl] = useState('');
+  const [editPhotoBusy, setEditPhotoBusy] = useState(false);
+  const [editPhotoMeta, setEditPhotoMeta] = useState('');
+  const [editPhotoChanged, setEditPhotoChanged] = useState(false);
+  const [photoTick, setPhotoTick] = useState(0);
   const [editError, setEditError] = useState('');
   const [editBusy, setEditBusy] = useState(false);
 
@@ -536,7 +541,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
   const selectedCard = useMemo(() => {
     if (!selected) return undefined;
     return getStaffCard(selected.id);
-  }, [selected]);
+  }, [selected, photoTick]);
 
   // All facility cards for Gallery tab
   const allCards = useMemo(() => {
@@ -545,7 +550,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     } catch {
       return [];
     }
-  }, [facilityId, records]);
+  }, [facilityId, records, photoTick]);
 
   const copyToClipboard = (text: string, keyName: string, customLabel?: string) => {
     try {
@@ -581,16 +586,13 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     setPhotoBusy(true);
     setError('');
     try {
-      // Step 1: Compress client-side (canvas). Show preview immediately — never block UI on network.
+      // Step 1: Compress client-side (canvas), then stream to AWS S3 before unlocking save.
       const result = await compressStaffPhotoFile(file);
 
-      // Show the compressed dataUrl straight away so the form is never "frozen"
+      // Show compressed preview immediately while AWS S3 upload runs
       setPhotoUrl(result.dataUrl);
-      setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · uploading…`);
-      setPhotoBusy(false); // unlock the form; upload continues in background
+      setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · uploading to AWS S3…`);
 
-      // Step 2: Try S3 upload in the background with a hard 10-second timeout.
-      // Build a Blob directly from the compressed dataUrl to avoid sending a huge JSON body.
       let uploadBlob: Blob | null = null;
       try {
         const { dataUrlToBlob } = await import('../../lib/staffPhoto');
@@ -598,26 +600,87 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       } catch { /* ignore — fall back to dataUrl path */ }
 
       const uploadPromise = uploadBlob
-        ? uploadImageToS3(uploadBlob, { folder: 'staff', filename: 'staff-headshot.jpg' })
-        : uploadImageToS3(result.dataUrl, { folder: 'staff', filename: 'staff-headshot.jpg' });
+        ? uploadImageToS3(uploadBlob, { folder: 'staff', facilityId, filename: 'staff-headshot.jpg' })
+        : uploadImageToS3(result.dataUrl, { folder: 'staff', facilityId, filename: 'staff-headshot.jpg' });
 
-      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000));
-
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 15_000));
       const s3Res = await Promise.race([uploadPromise, timeoutPromise]);
 
       if (s3Res && s3Res.ok && s3Res.url && s3Res.isS3) {
-        // Promote from local dataUrl to permanent S3 URL
         setPhotoUrl(s3Res.url);
-        setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · AWS S3`);
+        setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · Stored in AWS S3`);
       } else {
-        // S3 unavailable / timed out — keep the compressed dataUrl (fully functional)
-        setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · local`);
+        const errMsg = s3Res?.error || 'AWS S3 upload timed out — image kept compressed locally';
+        setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · fallback`);
+        if (s3Res && s3Res.error && !String(s3Res.error).includes('S3_NOT_CONFIGURED')) {
+          setError(`Headshot S3 upload warning: ${errMsg}`);
+        }
       }
     } catch (err) {
       setPhotoUrl('');
       setPhotoMeta('');
-      setPhotoBusy(false);
       setError((err as Error)?.message || 'Could not process photo.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const openEditStaff = (row: AccessRecord) => {
+    const existingCard = getStaffCard(row.id);
+    const existingPhoto = String(
+      existingCard?.photoUrl || (row as unknown as Record<string, unknown>).photoUrl || ''
+    );
+    setSelectedId(row.id);
+    setEditId(row.id);
+    setEditName(row.name);
+    setEditRoleKey((row as unknown as Record<string, string>).roleKey || '');
+    setEditDept(row.department || '');
+    setEditPhone((row as unknown as Record<string, string>).phone || '');
+    setEditEmail(row.email || '');
+    setEditStatus(row.status as 'active' | 'suspended' | 'pending');
+    setEditPhotoUrl(existingPhoto);
+    setEditPhotoMeta('');
+    setEditPhotoChanged(false);
+    setEditError('');
+  };
+
+  const readEditPhotoFile = async (file: File | null) => {
+    if (!file) return;
+    setEditPhotoBusy(true);
+    setEditError('');
+    try {
+      const result = await compressStaffPhotoFile(file);
+      setEditPhotoUrl(result.dataUrl);
+      setEditPhotoChanged(true);
+      setEditPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · uploading to AWS S3…`);
+
+      let uploadBlob: Blob | null = null;
+      try {
+        const { dataUrlToBlob } = await import('../../lib/staffPhoto');
+        uploadBlob = dataUrlToBlob(result.dataUrl);
+      } catch { /* ignore */ }
+
+      const filename = `${(editId || 'staff').toUpperCase()}-headshot.jpg`;
+      const uploadPromise = uploadBlob
+        ? uploadImageToS3(uploadBlob, { folder: 'staff', facilityId, filename })
+        : uploadImageToS3(result.dataUrl, { folder: 'staff', facilityId, filename });
+
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 15_000));
+      const s3Res = await Promise.race([uploadPromise, timeoutPromise]);
+
+      if (s3Res && s3Res.ok && s3Res.url && s3Res.isS3) {
+        setEditPhotoUrl(s3Res.url);
+        setEditPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · Stored in AWS S3`);
+      } else {
+        setEditPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · local fallback`);
+        if (s3Res && s3Res.error && !String(s3Res.error).includes('S3_NOT_CONFIGURED')) {
+          setEditError(`Headshot S3 upload warning: ${s3Res.error}`);
+        }
+      }
+    } catch (err) {
+      setEditError((err as Error)?.message || 'Could not process ID photo.');
+    } finally {
+      setEditPhotoBusy(false);
     }
   };
 
@@ -632,13 +695,17 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     setError('');
     setCreateFail(null);
 
-    if (!fullName.trim()) {
-      setError('Enter staff full name.');
+    if (fullName.trim().length < 3) {
+      setError('Full name must be at least 3 characters.');
       return;
     }
     const mailTrim = (email || '').trim().toLowerCase();
     if (!mailTrim || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mailTrim)) {
       setError('Enter a valid work email — required so the staff member can receive 2FA login OTPs.');
+      return;
+    }
+    if (photoBusy) {
+      setError('Wait for headshot upload to AWS S3 to finish.');
       return;
     }
     if (!roleKey || !roleMeta) {
@@ -695,10 +762,24 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       const badgeId = card.badgeId;
 
       let finalPhoto = photoSnap;
-      try {
-        finalPhoto = (await resolveStaffPhotoForEnrol(facilityId, badgeId, photoSnap || undefined)) || photoSnap;
-      } catch {
-        finalPhoto = photoSnap;
+      if (finalPhoto && finalPhoto.startsWith('data:image/')) {
+        try {
+          const s3Up = await uploadImageToS3(finalPhoto, {
+            folder: 'staff',
+            facilityId,
+            filename: `${badgeId}-headshot.jpg`,
+          });
+          if (s3Up.ok && s3Up.url && s3Up.isS3) {
+            finalPhoto = s3Up.url;
+          }
+        } catch { /* fall back */ }
+      }
+      if (finalPhoto && finalPhoto.startsWith('data:image/')) {
+        try {
+          finalPhoto = (await resolveStaffPhotoForEnrol(facilityId, badgeId, finalPhoto)) || finalPhoto;
+        } catch {
+          /* ignore */
+        }
       }
 
       if (finalPhoto) {
@@ -1421,17 +1502,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                                 type="button"
                                 className="os-ghost-btn"
                                 style={{ padding: '4px 8px', fontSize: '0.74rem', color: '#0052D4', borderColor: '#BFDBFE' }}
-                                onClick={() => {
-                                  setSelectedId(r.id);
-                                  setEditId(r.id);
-                                  setEditName(r.name);
-                                  setEditRoleKey((r as any).roleKey || '');
-                                  setEditDept(r.department || '');
-                                  setEditPhone((r as any).phone || '');
-                                  setEditEmail(r.email || '');
-                                  setEditStatus(r.status as any);
-                                  setEditError('');
-                                }}
+                                onClick={() => openEditStaff(r)}
                                 title="Edit staff details"
                               >
                                 <Pencil size={12} />
@@ -1472,21 +1543,83 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                 <form
                   onSubmit={async (e) => {
                     e.preventDefault();
-                    if (!editName.trim()) { setEditError('Name is required.'); return; }
+                    if (editName.trim().length < 3) {
+                      setEditError('Full name must be at least 3 characters.');
+                      return;
+                    }
+                    if (editDept.trim().length < 2) {
+                      setEditError('Department / Unit must be at least 2 characters.');
+                      return;
+                    }
                     const mail = (editEmail || '').trim().toLowerCase();
                     if (!mail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
                       setEditError('A valid work email is required so this staff member can receive 2FA OTPs.');
                       return;
                     }
-                    setEditBusy(true); setEditError('');
+                    if (editPhotoBusy) {
+                      setEditError('Please wait for the ID photo upload to AWS S3 to complete.');
+                      return;
+                    }
+                    setEditBusy(true);
+                    setEditError('');
                     try {
                       const badge = String(editId || '').toUpperCase();
                       const name = editName.trim();
+                      const dept = editDept.trim();
+
+                      let finalPhoto = editPhotoUrl;
+                      if (editPhotoChanged && finalPhoto.startsWith('data:image/')) {
+                        try {
+                          const s3Res = await uploadImageToS3(finalPhoto, {
+                            folder: 'staff',
+                            facilityId,
+                            filename: `${badge}-headshot.jpg`,
+                          });
+                          if (s3Res.ok && s3Res.url && s3Res.isS3) {
+                            finalPhoto = s3Res.url;
+                          }
+                        } catch { /* fall back to compressed dataUrl or server upload */ }
+                      }
+
+                      const apiRes = await fetch('/api/staff', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          badgeId: badge,
+                          facilityId,
+                          fullName: name,
+                          email: mail,
+                          department: dept,
+                          status: editStatus,
+                          ...(editPhotoChanged ? { photoUrl: finalPhoto } : {}),
+                        }),
+                      });
+                      const apiJson = await apiRes.json().catch(() => ({}));
+                      if (!apiRes.ok || apiJson?.ok === false) {
+                        setEditError(apiJson?.error || 'Could not update staff account on server.');
+                        setEditBusy(false);
+                        return;
+                      }
+
+                      if (editPhotoChanged && typeof apiJson?.staff?.photo_url === 'string') {
+                        finalPhoto = apiJson.staff.photo_url;
+                      } else if (editPhotoChanged && typeof apiJson?.photoUrl === 'string') {
+                        finalPhoto = apiJson.photoUrl;
+                      }
+
                       const { setAccessRecords: saveRecords, getAccessRecords: getRecs } = await import('../../lib/adminRealtimeStore');
                       const all = getRecs();
                       const updated = all.map((row) =>
                         row.id === editId
-                          ? { ...row, name, role: editRoleKey || row.role, department: editDept || row.department, status: editStatus, email: mail }
+                          ? {
+                              ...row,
+                              name,
+                              role: editRoleKey || row.role,
+                              department: dept || row.department,
+                              status: editStatus,
+                              email: mail,
+                              ...(editPhotoChanged ? { photoUrl: finalPhoto || undefined } : {}),
+                            }
                           : row
                       );
                       saveRecords(updated);
@@ -1500,7 +1633,16 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                           const next = arr.map((r: Record<string, unknown>) => {
                             const bid = String(r.badgeId || r.id || '').toUpperCase();
                             if (bid !== badge) return r;
-                            return { ...r, name, fullName: name, email: mail || r.email, workEmail: mail || r.workEmail, department: editDept || r.department, status: editStatus || r.status };
+                            return {
+                              ...r,
+                              name,
+                              fullName: name,
+                              email: mail || r.email,
+                              workEmail: mail || r.workEmail,
+                              department: dept || r.department,
+                              status: editStatus || r.status,
+                              ...(editPhotoChanged ? { photoUrl: finalPhoto || null } : {}),
+                            };
                           });
                           localStorage.setItem(key, JSON.stringify(next));
                         }
@@ -1510,7 +1652,15 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                           const carr = JSON.parse(cardRaw);
                           if (!Array.isArray(carr)) continue;
                           const nextCards = carr.map((c: Record<string, unknown>) =>
-                            String(c.badgeId || '').toUpperCase() === badge ? { ...c, fullName: name, email: mail } : c
+                            String(c.badgeId || '').toUpperCase() === badge
+                              ? {
+                                  ...c,
+                                  fullName: name,
+                                  department: dept || c.department,
+                                  email: mail,
+                                  ...(editPhotoChanged ? { photoUrl: finalPhoto || null } : {}),
+                                }
+                              : c
                           );
                           localStorage.setItem(key, JSON.stringify(nextCards));
                         }
@@ -1525,27 +1675,18 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                           name,
                           email: mail,
                           workEmail: mail,
-                          department: editDept || undefined,
+                          department: dept || undefined,
                           status: editStatus,
                           facilityId,
+                          ...(editPhotoChanged ? { photoUrl: finalPhoto || null } : {}),
                         });
                       } catch { /* ignore */ }
 
-                      try {
-                        await fetch('/api/staff', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            badgeId: badge,
-                            facilityId,
-                            fullName: name,
-                            email: mail,
-                            department: editDept || undefined,
-                            status: editStatus,
-                          }),
-                        });
-                      } catch { /* ignore */ }
-
+                      setPhotoTick((t) => t + 1);
+                      emitLiveAction(
+                        editPhotoChanged ? `Updated staff profile & ID badge photo · ${badge}` : `Updated staff profile · ${badge}`,
+                        { module: 'access' }
+                      );
                       setEditId(null);
                     } catch {
                       setEditError('Save failed. Please try again.');
@@ -1566,13 +1707,27 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                   </div>
 
                   <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
-                    Full name
-                    <input className="os-search-input" style={{ width: '100%', marginTop: 4, padding: '8px 10px' }} value={editName} onChange={(e) => setEditName(e.target.value)} />
+                    Full name *
+                    <input
+                      className="os-search-input"
+                      style={{ width: '100%', marginTop: 4, padding: '8px 10px' }}
+                      required
+                      minLength={3}
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                    />
                   </label>
 
                   <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
-                    Department / Unit
-                    <input className="os-search-input" style={{ width: '100%', marginTop: 4, padding: '8px 10px' }} value={editDept} onChange={(e) => setEditDept(e.target.value)} />
+                    Department / Unit *
+                    <input
+                      className="os-search-input"
+                      style={{ width: '100%', marginTop: 4, padding: '8px 10px' }}
+                      required
+                      minLength={2}
+                      value={editDept}
+                      onChange={(e) => setEditDept(e.target.value)}
+                    />
                   </label>
 
                   <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
@@ -1589,12 +1744,83 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                     </select>
                   </label>
 
+                  {/* Replace / Remove ID Badge Headshot (AWS S3) */}
+                  <div>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
+                      ID Badge Headshot (Stored in AWS S3)
+                    </label>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: 10,
+                        borderRadius: 10,
+                        border: '1px dashed #CBD5E1',
+                        background: '#F8FAFC',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 52,
+                          height: 52,
+                          borderRadius: '50%',
+                          overflow: 'hidden',
+                          background: '#E2E8F0',
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: '2px solid #FFFFFF',
+                          boxShadow: '0 2px 6px rgba(15,23,42,0.12)',
+                        }}
+                      >
+                        {editPhotoUrl ? (
+                          <img src={editPhotoUrl} alt="Staff ID headshot" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <span style={{ fontSize: 10, fontWeight: 800, color: '#64748B' }}>No Photo</span>
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 120 }}>
+                        <input
+                          type="file"
+                          accept="image/*,.jpg,.jpeg,.png,.webp"
+                          disabled={editPhotoBusy || editBusy}
+                          onChange={(e) => {
+                            void readEditPhotoFile(e.target.files?.[0] || null);
+                            e.target.value = '';
+                          }}
+                          style={{ fontSize: '0.76rem', width: '100%' }}
+                        />
+                        <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: 4 }}>
+                          {editPhotoBusy
+                            ? 'Uploading replacement photo to AWS S3…'
+                            : editPhotoMeta || (editPhotoUrl ? 'Choose image to replace ID badge photo' : 'Upload portrait photo for ID badge')}
+                        </div>
+                        {editPhotoUrl && (
+                          <button
+                            type="button"
+                            disabled={editPhotoBusy || editBusy}
+                            onClick={() => {
+                              setEditPhotoUrl('');
+                              setEditPhotoMeta('Photo will be removed on save');
+                              setEditPhotoChanged(true);
+                            }}
+                            style={{ border: 'none', background: 'transparent', color: '#DC2626', fontSize: '0.7rem', fontWeight: 700, padding: 0, marginTop: 4, cursor: 'pointer' }}
+                          >
+                            Remove ID photo
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   {editError && <div style={{ fontSize: 12, color: '#DC2626', fontWeight: 600 }}>{editError}</div>}
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
                     <button type="button" onClick={() => setEditId(null)} className="os-ghost-btn" style={{ flex: 1, padding: 8 }}>Cancel</button>
-                    <button type="submit" disabled={editBusy} className="os-primary-btn" style={{ flex: 1, padding: 8, justifyContent: 'center' }}>
-                      <Save size={14} /> {editBusy ? 'Saving…' : 'Save'}
+                    <button type="submit" disabled={editBusy || editPhotoBusy} className="os-primary-btn" style={{ flex: 1, padding: 8, justifyContent: 'center' }}>
+                      <Save size={14} /> {editBusy ? 'Saving…' : editPhotoBusy ? 'Uploading photo…' : 'Save'}
                     </button>
                   </div>
                 </form>
@@ -1612,16 +1838,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                       type="button"
                       className="os-ghost-btn"
                       style={{ padding: '4px 8px', fontSize: '0.74rem', color: '#0052D4' }}
-                      onClick={() => {
-                        setEditId(selected.id);
-                        setEditName(selected.name);
-                        setEditRoleKey((selected as any).roleKey || '');
-                        setEditDept(selected.department || '');
-                        setEditPhone((selected as any).phone || '');
-                        setEditEmail(selected.email || '');
-                        setEditStatus(selected.status as any);
-                        setEditError('');
-                      }}
+                      onClick={() => openEditStaff(selected)}
                     >
                       <Pencil size={12} /> Edit
                     </button>
@@ -1711,6 +1928,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="e.g. Dr. Ngozi Eze"
+                    minLength={3}
                     required
                   />
                 </label>
@@ -1859,9 +2077,15 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                     placeholder="e.g. 482910"
                     value={pin}
                     onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    minLength={6}
                     maxLength={6}
                     required
                   />
+                  {pin.length > 0 && pin.length < 6 && (
+                    <div style={{ fontSize: '0.7rem', color: '#DC2626', marginTop: 4 }}>
+                      {pin.length}/6 digits — exact 6 digits required
+                    </div>
+                  )}
                 </label>
               </div>
 
@@ -1936,11 +2160,17 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
 
               <button
                 type="submit"
-                disabled={busy}
+                disabled={
+                  busy ||
+                  photoBusy ||
+                  fullName.trim().length < 3 ||
+                  !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
+                  !/^\d{6}$/.test(pin)
+                }
                 className="os-primary-btn"
                 style={{ padding: '12px 18px', fontSize: '0.94rem', fontWeight: 800, justifyContent: 'center', marginTop: 4, background: '#0052D4' }}
               >
-                <Plus size={18} /> {busy ? 'Enrolling & Issuing ID Card…' : 'Complete Enrolment & Issue Staff ID'}
+                <Plus size={18} /> {busy ? 'Enrolling & Issuing ID Card…' : photoBusy ? 'Uploading Headshot to AWS S3…' : 'Complete Enrolment & Issue Staff ID'}
               </button>
 
               <LogoProgressBar active={busy} label="Generating tamper-evident ID card & synchronizing access..." />

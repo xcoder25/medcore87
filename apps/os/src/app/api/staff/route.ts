@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured } from '../../../lib/db/postgres';
 import { deleteStaff, listStaff, upsertStaff } from '../../../lib/db/staffRepo';
 import { getAdminAuth } from '../../../lib/firebaseAdmin';
+import { uploadDataUrlToS3IfNeeded } from '../../../lib/s3Server';
 
 export const runtime = 'nodejs';
 
@@ -108,11 +109,48 @@ export async function POST(req: NextRequest) {
   const facilityId = String(body.facilityId || '').trim();
   const fullName = String(body.fullName || body.name || '').trim();
   const cleanEmail = body.email ? String(body.email).trim().toLowerCase() : undefined;
+  const rawPin = body.pin !== undefined && body.pin !== null ? String(body.pin).trim() : undefined;
   if (!badgeId || !facilityId || !fullName) {
     return NextResponse.json(
       { ok: false, error: 'badgeId, facilityId, fullName required' },
       { status: 400 }
     );
+  }
+  if (fullName.length < 3) {
+    return NextResponse.json(
+      { ok: false, error: 'Full name must be at least 3 characters.' },
+      { status: 400 }
+    );
+  }
+  if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    return NextResponse.json(
+      { ok: false, error: 'Enter a valid work email address.' },
+      { status: 400 }
+    );
+  }
+  if (rawPin !== undefined && rawPin !== '' && !/^\d{6}$/.test(rawPin)) {
+    return NextResponse.json(
+      { ok: false, error: 'PIN must be an exact 6-digit numeric code.' },
+      { status: 400 }
+    );
+  }
+
+  let resolvedPhotoUrl: string | undefined = undefined;
+  if (typeof body.photoUrl === 'string') {
+    if (body.photoUrl.trim() === '') {
+      resolvedPhotoUrl = '';
+    } else {
+      try {
+        resolvedPhotoUrl = await uploadDataUrlToS3IfNeeded(body.photoUrl, {
+          folder: 'staff',
+          facilityId,
+          filename: `${badgeId}-headshot.jpg`,
+        });
+      } catch (s3Err) {
+        console.warn('[api/staff POST] S3 photo upload warning:', s3Err);
+        resolvedPhotoUrl = body.photoUrl;
+      }
+    }
   }
 
   // Sync updated workEmail & displayName to Firebase Auth so OTP lookup works immediately
@@ -148,7 +186,12 @@ export async function POST(req: NextRequest) {
   }
 
   if (!isPostgresConfigured()) {
-    return NextResponse.json({ ok: true, configured: false, syncedFirebase: true });
+    return NextResponse.json({
+      ok: true,
+      configured: false,
+      syncedFirebase: true,
+      photoUrl: resolvedPhotoUrl,
+    });
   }
 
   try {
@@ -166,8 +209,8 @@ export async function POST(req: NextRequest) {
       clearanceLevel: typeof body.clearanceLevel === 'number' ? body.clearanceLevel : undefined,
       clearanceLabel: body.clearanceLabel ? String(body.clearanceLabel) : undefined,
       permissions: Array.isArray(body.permissions) ? (body.permissions as string[]) : undefined,
-      photoUrl: body.photoUrl ? String(body.photoUrl) : undefined,
-      pin: body.pin ? String(body.pin) : undefined,
+      photoUrl: resolvedPhotoUrl,
+      pin: rawPin || undefined,
       authEmail: body.authEmail ? String(body.authEmail) : undefined,
       facilityName: body.facilityName ? String(body.facilityName) : undefined,
     });

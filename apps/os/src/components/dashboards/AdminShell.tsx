@@ -7,7 +7,7 @@ import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
 import { AdminWorkspace } from './AdminWorkspace';
 import {
-  LayoutDashboard, Users, Building2, Activity, BedDouble, RefreshCw, PhoneCall,
+  LayoutDashboard, Users, Building2, Activity, BedDouble, RefreshCw,
   Lock, Shield, FileText, BarChart3, Search, Bell, ChevronLeft, LogOut, Settings,
   Brain, Sparkles, ChevronDown, Landmark, ArrowRightLeft, IdCard, CreditCard,
 } from 'lucide-react';
@@ -30,7 +30,6 @@ import { ComplianceAuditLogs } from '../compliance/ComplianceAuditLogs';
 import { AdminRevenueOverview } from '../admin/AdminRevenueOverview';
 import { AdminSettings } from '../admin/AdminSettings';
 import { getAdminSettings, subscribeAdminSettings } from '../../lib/adminSettingsStore';
-import { AdminAmbulanceDesk } from '../operations/AdminAmbulanceDesk';
 import { NotificationCentre } from '../notifications/NotificationCentre';
 import { AkwaRemitRevenueSuite } from '../finance/AkwaRemitRevenueSuite';
 import NotificationBell from '../realtime/NotificationBell';
@@ -56,7 +55,6 @@ type AdminModule =
   | 'command'
   | 'beds'
   | 'patient-flow'
-  | 'ambulance'
   | 'rbac'
   | 'role-permissions'
   | 'enrolment'
@@ -99,7 +97,6 @@ const NAV: NavSection[] = [
       { key: 'staffing', label: 'Staff Presence & Rosters', icon: Users },
       { key: 'transfer', label: 'Hospital Staff Transfer', icon: ArrowRightLeft },
       { key: 'patient-flow', label: 'Patient Flow Visibility', icon: RefreshCw },
-      { key: 'ambulance', label: 'Ambulance & EMS Fleet', icon: PhoneCall },
       { key: 'my-card', label: 'My Administrator ID Card', icon: IdCard },
     ],
   },
@@ -167,7 +164,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
     const KEYWORD_MAP: Partial<Record<AdminModule, string>> = {
       dashboard: 'home overview analytics admissions revenue statistics kpis',
       'm87-ai': 'celestia clinical intelligence cds decision support triage rules ai assistant',
-      command: 'command centre live ops telemetry ambulance bay queue icu emergency',
+      command: 'command centre live ops telemetry queue icu emergency',
       beds: 'bed board wards inpatient admissions bed census occupancy discharge',
       cashier: 'revenue billing invoices receipts cashier pos claims point of sale',
       akwaremit: 'akwaremit remita rrr akwa remit pos terminal shift reconciliation cash vault tally treasury tsa',
@@ -364,8 +361,6 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         return <BedManagement session={session} />;
       case 'patient-flow':
         return <PatientFlowVisibility />;
-      case 'ambulance':
-        return <AdminAmbulanceDesk />;
       case 'rbac':
         return <AccessControl session={session} initialTab="directory" onNavigate={(k) => goModule(k as AdminModule)} />;
       case 'role-permissions':

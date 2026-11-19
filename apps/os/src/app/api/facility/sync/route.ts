@@ -162,9 +162,12 @@ export async function PUT(req: NextRequest) {
              DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
             [facilityId, k, JSON.stringify(v)]
           );
+          await c.query('SAVEPOINT rel_proj');
           try {
             await projectKeyToRelationalTables(c, facilityId, k, v);
+            await c.query('RELEASE SAVEPOINT rel_proj');
           } catch (projErr) {
+            await c.query('ROLLBACK TO SAVEPOINT rel_proj').catch(() => {});
             console.warn('[api/facility/sync] relational projection warning:', (projErr as Error).message);
           }
         }

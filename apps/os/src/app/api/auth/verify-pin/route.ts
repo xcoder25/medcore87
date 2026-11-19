@@ -56,6 +56,12 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (normPin.length < 6) {
+      return NextResponse.json(
+        { ok: false, verified: false, error: 'PIN must be at least 6 characters.' },
+        { status: 400 }
+      );
+    }
 
     const rateKey = badgeId || cleanEmail;
     const rl = checkRateLimit(`verify-pin:${ip}:${rateKey}`, 15, 10 * 60 * 1000);
@@ -80,8 +86,7 @@ export async function POST(req: NextRequest) {
           if (storedHash) {
             const verified =
               safeEqualHex(hashPin(normPin), storedHash) ||
-              safeEqualHex(hashPin(rawPin), storedHash) ||
-              safeEqualHex(hashPin(normalizeStaffPin(normPin)), storedHash);
+              safeEqualHex(hashPin(rawPin), storedHash);
             return NextResponse.json({
               ok: true,
               configured: true,
@@ -107,7 +112,7 @@ export async function POST(req: NextRequest) {
 
     if (webApiKey) {
       const candidateEmail = cleanEmail || badgeAuthEmail(badgeId);
-      const fbPass = normalizeStaffPin(normPin);
+      const fbPass = normPin;
       const fbRes = await fetch(
         `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(webApiKey)}`,
         {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isPostgresConfigured, ensureSchema, query } from '../../../lib/db/postgres';
+import { isPostgresConfigured, ensureSchema, withTenantClient } from '../../../lib/db/postgres';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -82,37 +82,39 @@ export async function GET(req: NextRequest) {
   if (isPostgresConfigured()) {
     try {
       await ensureSchema();
-      const res = await query<{
-        facility_id: string;
-        form_type: string;
-        draft_id: string;
-        staff_badge: string | null;
-        step: number | null;
-        payload: unknown;
-        updated_at: Date;
-        expires_at: Date;
-      }>(
-        `SELECT facility_id, form_type, draft_id, staff_badge, step, payload, updated_at, expires_at
-         FROM form_drafts
-         WHERE facility_id = $1 AND form_type = $2 AND draft_id = $3 AND expires_at > NOW()`,
-        [facilityId, formType, draftId]
-      );
-      if (res.rows.length > 0) {
-        const row = res.rows[0]!;
-        const pgUpdated = new Date(row.updated_at).toISOString();
-        if (!draft || pgUpdated >= draft.updatedAt) {
-          draft = {
-            facilityId: row.facility_id,
-            formType: row.form_type,
-            draftId: row.draft_id,
-            staffBadge: row.staff_badge || undefined,
-            step: row.step ?? 1,
-            payload: row.payload,
-            updatedAt: pgUpdated,
-            expiresAt: new Date(row.expires_at).toISOString(),
-          };
+      await withTenantClient(facilityId, async (c) => {
+        const res = await c.query<{
+          facility_id: string;
+          form_type: string;
+          draft_id: string;
+          staff_badge: string | null;
+          step: number | null;
+          payload: unknown;
+          updated_at: Date;
+          expires_at: Date;
+        }>(
+          `SELECT facility_id, form_type, draft_id, staff_badge, step, payload, updated_at, expires_at
+           FROM form_drafts
+           WHERE facility_id = $1 AND form_type = $2 AND draft_id = $3 AND expires_at > NOW()`,
+          [facilityId, formType, draftId]
+        );
+        if (res.rows.length > 0) {
+          const row = res.rows[0]!;
+          const pgUpdated = new Date(row.updated_at).toISOString();
+          if (!draft || pgUpdated >= draft.updatedAt) {
+            draft = {
+              facilityId: row.facility_id,
+              formType: row.form_type,
+              draftId: row.draft_id,
+              staffBadge: row.staff_badge || undefined,
+              step: row.step ?? 1,
+              payload: row.payload,
+              updatedAt: pgUpdated,
+              expiresAt: new Date(row.expires_at).toISOString(),
+            };
+          }
         }
-      }
+      });
     } catch (e) {
       console.warn('[api/drafts GET] Postgres warning:', (e as Error).message);
     }
@@ -173,18 +175,20 @@ export async function PUT(req: NextRequest) {
   if (isPostgresConfigured()) {
     try {
       await ensureSchema();
-      await query(
-        `INSERT INTO form_drafts (facility_id, form_type, draft_id, staff_badge, step, payload, updated_at, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), NOW() + INTERVAL '24 hours')
-         ON CONFLICT (facility_id, form_type, draft_id)
-         DO UPDATE SET
-           staff_badge = EXCLUDED.staff_badge,
-           step = EXCLUDED.step,
-           payload = EXCLUDED.payload,
-           updated_at = NOW(),
-           expires_at = NOW() + INTERVAL '24 hours'`,
-        [facilityId, formType, draftId, staffBadge || null, step, JSON.stringify(payload)]
-      );
+      await withTenantClient(facilityId, async (c) => {
+        await c.query(
+          `INSERT INTO form_drafts (facility_id, form_type, draft_id, staff_badge, step, payload, updated_at, expires_at)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), NOW() + INTERVAL '24 hours')
+           ON CONFLICT (facility_id, form_type, draft_id)
+           DO UPDATE SET
+             staff_badge = EXCLUDED.staff_badge,
+             step = EXCLUDED.step,
+             payload = EXCLUDED.payload,
+             updated_at = NOW(),
+             expires_at = NOW() + INTERVAL '24 hours'`,
+          [facilityId, formType, draftId, staffBadge || null, step, JSON.stringify(payload)]
+        );
+      });
     } catch (e) {
       console.warn('[api/drafts PUT] Postgres warning:', (e as Error).message);
     }
@@ -220,10 +224,12 @@ export async function DELETE(req: NextRequest) {
   if (isPostgresConfigured()) {
     try {
       await ensureSchema();
-      await query(
-        `DELETE FROM form_drafts WHERE facility_id = $1 AND form_type = $2 AND draft_id = $3`,
-        [facilityId, formType, draftId]
-      );
+      await withTenantClient(facilityId, async (c) => {
+        await c.query(
+          `DELETE FROM form_drafts WHERE facility_id = $1 AND form_type = $2 AND draft_id = $3`,
+          [facilityId, formType, draftId]
+        );
+      });
     } catch {
       /* ignore */
     }

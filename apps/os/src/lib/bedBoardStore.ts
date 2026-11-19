@@ -79,15 +79,33 @@ export async function hydrateBedBoard(): Promise<void> {
   if (a && Array.isArray(a)) _audit = a;
 }
 
-function save(state: State) {
+function writeBedsLocalOnly(state: State) {
   if (typeof window === 'undefined') return;
   _state = state;
-  // Non-blocking async write — does not stall the main thread
   idbSet('bed_board', 'state', state).catch(() =>
-    localStorage.setItem(KEY, JSON.stringify(state)) // fallback
+    localStorage.setItem(KEY, JSON.stringify(state))
   );
   window.dispatchEvent(new CustomEvent(EVT, { detail: state }));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: KEY } }));
+}
+
+export function applyRemoteBeds(remote: unknown): void {
+  if (typeof window === 'undefined' || !remote) return;
+  const rawBeds = Array.isArray(remote)
+    ? remote
+    : Array.isArray((remote as { beds?: unknown[] }).beds)
+      ? (remote as { beds: unknown[] }).beds
+      : null;
+  if (!rawBeds) return;
+  const valid = rawBeds.filter(
+    (b): b is BedRecord => Boolean(b && typeof b === 'object' && (b as BedRecord).id)
+  );
+  writeBedsLocalOnly({ beds: valid });
+}
+
+function save(state: State) {
+  if (typeof window === 'undefined') return;
+  writeBedsLocalOnly(state);
   const fid = state.beds[0]?.facilityId || 'IGH-EKT';
   publishFacilityData(fid, FACILITY_KEYS.beds, state);
 }

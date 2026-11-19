@@ -711,6 +711,8 @@ export default function RegPage() {
                       onChange={(e) => setFullName(e.target.value)}
                       placeholder="e.g. Dr. Ini Akpan"
                       autoComplete="name"
+                      minLength={3}
+                      required
                       onFocus={onFocus as React.FocusEventHandler<HTMLInputElement>}
                       onBlur={onBlur as React.FocusEventHandler<HTMLInputElement>}
                     />
@@ -757,7 +759,10 @@ export default function RegPage() {
                     <input
                       type={showPin ? 'text' : 'password'}
                       inputMode="numeric"
+                      minLength={6}
                       maxLength={6}
+                      pattern="\d{6}"
+                      required
                       className="reg-input"
                       style={{ paddingRight: 42 }}
                       value={pin}
@@ -776,8 +781,10 @@ export default function RegPage() {
                       {showPin ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
-                  <p style={{ fontSize: '0.72rem', color: '#94A3B8', margin: '5px 0 0 2px' }}>
-                    6-digit PIN used for both Badge ID and Work Email sign-in.
+                  <p style={{ fontSize: '0.72rem', color: pin.length > 0 && pin.length < 6 ? '#DC2626' : '#94A3B8', margin: '5px 0 0 2px' }}>
+                    {pin.length > 0 && pin.length < 6
+                      ? `${pin.length}/6 digits — enter all 6 digits.`
+                      : '6-digit PIN used for both Badge ID and Work Email sign-in.'}
                   </p>
                 </div>
 

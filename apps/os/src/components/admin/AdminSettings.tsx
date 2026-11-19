@@ -1037,7 +1037,7 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
               <div style={{ gridColumn: 'span 6' }}>
                 <Toggle
                   label="Accident & Emergency (A&E) Open 24×7"
-                  desc="24-hour emergency triage, resuscitation, and ambulance receiving bay active"
+                  desc="24-hour emergency triage and resuscitation bay active"
                   checked={draft.emergency24x7 ?? true}
                   onChange={(v) => patch({ emergency24x7: v })}
                 />

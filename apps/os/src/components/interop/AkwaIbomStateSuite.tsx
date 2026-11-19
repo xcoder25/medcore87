@@ -229,16 +229,30 @@ export const AkwaIbomStateSuite: React.FC<{ session?: any }> = ({ session }) => 
           <h3 style={{ marginTop: 0 }}>Statewide UPI + referral loop</h3>
           <input style={input} placeholder="First name" value={fn} onChange={(e) => setFn(e.target.value)} />
           <input style={input} placeholder="Last name" value={ln} onChange={(e) => setLn(e.target.value)} />
-          <input style={input} placeholder="NIN (11 digits)" value={nin} onChange={(e) => setNin(e.target.value)} />
+          <input
+            style={input}
+            inputMode="numeric"
+            minLength={11}
+            maxLength={11}
+            pattern="\d{11}"
+            placeholder="NIN (11 digits)"
+            value={nin}
+            onChange={(e) => setNin(e.target.value.replace(/\D/g, '').slice(0, 11))}
+          />
           <button
             type="button"
             style={btn}
             onClick={() => {
+              const cleanNin = nin.trim();
+              if (cleanNin && !/^\d{11}$/.test(cleanNin)) {
+                setMsg('NIN must be exactly 11 digits.');
+                return;
+              }
               const u = ensureUpi({
                 facilityId,
                 firstName: fn,
                 lastName: ln,
-                nin,
+                nin: cleanNin,
                 homeLga: 'Eket',
               });
               setUpiOut(u.upi);

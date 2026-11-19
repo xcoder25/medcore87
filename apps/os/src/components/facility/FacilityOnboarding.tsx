@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Building2, CheckCircle2, MapPin, Phone, Globe, Save, Shield,
   BedDouble, Sparkles, Plus, Trash2, Loader2, FlaskConical, Pill,
-  Ambulance, Stethoscope, Clock, CreditCard, Activity, Baby,
+  Stethoscope, Clock, CreditCard, Activity, Baby,
   Hospital, Radar,
 } from 'lucide-react';
 import type { UserSession } from '../auth/AuthScreen';
@@ -57,7 +57,7 @@ const SECTIONS: { id: Section; label: string; icon: React.ReactNode }[] = [
   { id: 'services', label: 'Clinical service lines', icon: <Stethoscope size={15} /> },
   { id: 'diagnostics', label: 'Lab & radiology orderables', icon: <FlaskConical size={15} /> },
   { id: 'pharmacy', label: 'Pharmacy & blood bank', icon: <Pill size={15} /> },
-  { id: 'emergency', label: 'Emergency & maternity', icon: <Ambulance size={15} /> },
+  { id: 'emergency', label: 'Emergency & maternity', icon: <Activity size={15} /> },
 ];
 
 function fallbackLayout(totalBeds: number, facilityType: string): WardCapacityRow[] {
@@ -356,7 +356,7 @@ export const FacilityOnboarding: React.FC<Props> = ({ session, onNavigate, embed
       const system =
         'You are Celestia, MedCore hospital OS for Nigerian public hospitals. ' +
         'Return ONLY JSON (no markdown) matching FacilityCatalog partial fields: ' +
-        '{"name","type","tier","targetTotalBeds","icuBeds","hduBeds","nicuCots","isolationBeds","emergencyBays","deliverySuites","theatreCount","ambulanceCount",' +
+        '{"name","type","tier","targetTotalBeds","icuBeds","hduBeds","nicuCots","isolationBeds","emergencyBays","deliverySuites","theatreCount",' +
         '"wards":[{"ward","prefix","count","category"}],"theatres":[{"name","type","hasLaminarFlow"}],' +
         '"clinics":[{"name","specialty","days","slotsPerDay"}],' +
         '"services":{"general_medicine":true},' +
@@ -769,7 +769,6 @@ export const FacilityOnboarding: React.FC<Props> = ({ session, onNavigate, embed
                   ['A&E bays', 'emergencyBays'],
                   ['Delivery suites', 'deliverySuites'],
                   ['Theatres', 'theatreCount'],
-                  ['Ambulances', 'ambulanceCount'],
                 ] as const
               ).map(([label, key]) => (
                 <label key={key} style={labelStyle}>
@@ -1167,7 +1166,7 @@ export const FacilityOnboarding: React.FC<Props> = ({ session, onNavigate, embed
         {section === 'emergency' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0A2540' }}>
-              <Ambulance size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+              <Activity size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
               Emergency & maternity readiness
             </h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
@@ -1189,16 +1188,6 @@ export const FacilityOnboarding: React.FC<Props> = ({ session, onNavigate, embed
                   style={inputStyle}
                   value={catalog.deliverySuites}
                   onChange={(e) => patch({ deliverySuites: Math.max(0, Number(e.target.value) || 0) })}
-                />
-              </label>
-              <label style={labelStyle}>
-                Ambulances
-                <input
-                  type="number"
-                  min={0}
-                  style={inputStyle}
-                  value={catalog.ambulanceCount}
-                  onChange={(e) => patch({ ambulanceCount: Math.max(0, Number(e.target.value) || 0) })}
                 />
               </label>
               <label style={labelStyle}>

@@ -303,3 +303,124 @@ test('hipaaPrivacy: stripSecretsDeep & sanitizeStorageString remove all PINs, pa
   assert.equal(parsed.nested.apiKey, undefined);
   assert.equal(hp.sanitizeStorageString('IGH-EKT'), 'IGH-EKT');
 });
+
+test('postgres: validates ISO dates and projects notifications, vitals, and patients safely', async () => {
+  const pg = loadTsModule('src/lib/db/postgres.ts', {
+    pg: { Pool: class MockPool {} },
+    '@aws-sdk/rds-signer': { Signer: class MockSigner {} },
+    '@vercel/functions': { attachDatabasePool: () => {} },
+    '@vercel/functions/oidc': { awsCredentialsProvider: () => async () => ({}) },
+  });
+
+  // Strict ISO YYYY-MM-DD validation
+  assert.equal(pg.toIsoDateOrNull('1994-05-18'), '1994-05-18');
+  assert.equal(pg.toIsoDateOrNull('1994-05-18T12:00:00Z'), '1994-05-18');
+  assert.equal(pg.toIsoDateOrNull('12/05/1990'), null);
+  assert.equal(pg.toIsoDateOrNull('Unknown'), null);
+  assert.equal(pg.toIsoDateOrNull('2026-02-31'), null);
+  assert.equal(pg.toIsoDateOrNull(''), null);
+
+  const queries = [];
+  const mockClient = {
+    query: async (sql, params) => {
+      queries.push({ sql: String(sql), params });
+      return { rows: [], rowCount: 1, command: 'INSERT', oid: 0, fields: [] };
+    },
+    release: () => {},
+  };
+
+  // Notifications projection uses valid `meta` column (not nonexistent module/patient_id/payload)
+  await pg.projectKeyToRelationalTables(mockClient, 'IGH-EKT', 'medcore_os_notifications_v1', [
+    {
+      id: 'N-100',
+      level: 'critical',
+      title: 'Critical Potassium',
+      body: 'K+ 6.4 mmol/L',
+      module: 'laboratory',
+      patientId: 'PT-1',
+      roleHint: 'doctor',
+      targetStaff: 'Dr. Ada',
+      read: false,
+    },
+  ]);
+  const notifQ = queries.find((q) => q.sql.includes('INSERT INTO notifications'));
+  assert.ok(notifQ);
+  assert.equal(notifQ.sql.includes('meta'), true);
+  assert.equal(notifQ.sql.includes('module'), false);
+  assert.equal(notifQ.sql.includes('patient_id'), false);
+  assert.equal(notifQ.sql.includes('payload'), false);
+
+  // Vitals projection supports medcore_os_nursing_vitals_v1, combines BP, rounds INT pulse/spo2
+  await pg.projectKeyToRelationalTables(mockClient, 'IGH-EKT', 'medcore_os_nursing_vitals_v1', [
+    {
+      id: 'VIT-100',
+      patientId: 'PT-1',
+      hospitalNumber: 'IGH-PT-001',
+      bpSystolic: 132,
+      bpDiastolic: 84,
+      pulse: 78.6,
+      tempC: 37.2,
+      spo2: 98.4,
+      weightKg: 68.5,
+      urgency: 'routine',
+      recordedBy: 'Nurse Joy',
+    },
+  ]);
+  const vitalsQ = queries.find((q) => q.sql.includes('INSERT INTO vital_signs'));
+  assert.ok(vitalsQ);
+  assert.equal(vitalsQ.params[5], '132/84');
+  assert.equal(vitalsQ.params[6], 79);
+  assert.equal(vitalsQ.params[7], 37.2);
+  assert.equal(vitalsQ.params[8], 98);
+  assert.equal(vitalsQ.params[9], 68.5);
+
+  // Patient registry projection upserts to patients table with sanitized DOB
+  await pg.projectKeyToRelationalTables(mockClient, 'IGH-EKT', 'medcore_os_patient_registry_v1', [
+    {
+      id: 'PT-99',
+      facilityId: 'IGH-EKT',
+      hospitalNumber: 'IGH-PT-099',
+      firstName: 'Emeka',
+      lastName: 'Okafor',
+      dob: '15/03/1988',
+      sex: 'Male',
+      phone: '08012345678',
+      nin: '12345678901',
+    },
+  ]);
+  const ptQ = queries.find((q) => q.sql.includes('INSERT INTO patients'));
+  assert.ok(ptQ);
+  assert.equal(ptQ.params[3], 'Emeka Okafor');
+  assert.equal(ptQ.params[5], null);
+  assert.equal(JSON.parse(ptQ.params[10]).nin, '12345678901');
+});
+
+test('rolePermissionsStore: ambulance module removed from catalog and role defaults', () => {
+  const rp = loadTsModule('src/lib/rolePermissionsStore.ts', {
+    './facilityContext': { getActiveFacilityId: () => 'IGH-EKT' },
+    './roleSyncBus': { publishFacilityData: () => {} },
+  });
+  assert.equal(rp.MODULE_CATALOG.some((m) => m.key === 'ambulance'), false);
+  const permsMap = rp.getRolePermissionsMap();
+  assert.equal(permsMap.medical_director.includes('ambulance'), false);
+});
+
+test('s3Server: builds private object proxy URLs and tenant-scoped staff headshot keys', () => {
+  process.env.MEDCORE_S3_BUCKET = 'medcore-test-bucket';
+  process.env.MEDCORE_S3_REGION = 'eu-north-1';
+  delete process.env.MEDCORE_S3_CUSTOM_DOMAIN;
+  delete process.env.NEXT_PUBLIC_S3_BASE_URL;
+
+  const s3 = loadTsModule('src/lib/s3Server.ts', {
+    '@aws-sdk/client-s3': { S3Client: class {}, PutObjectCommand: class {}, GetObjectCommand: class {} },
+    '@aws-sdk/s3-request-presigner': { getSignedUrl: async () => 'https://signed.example' },
+    '@vercel/functions/oidc': { awsCredentialsProvider: () => async () => ({}) },
+  });
+
+  const key = s3.generateS3ImageKey('staff', 'jpg', 'IGH-EKT');
+  assert.ok(key.startsWith('igh-ekt/staff/'));
+  assert.ok(key.endsWith('.jpg'));
+
+  const objUrl = s3.buildS3ObjectUrl(key);
+  assert.ok(objUrl.startsWith('/api/storage/object?key='));
+});

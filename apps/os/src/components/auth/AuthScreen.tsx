@@ -810,8 +810,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           setLoading(false);
           return;
         }
-        if (!pinQuery) {
-          setError('Enter your PIN.');
+        if (!pinQuery || pinQuery.length < 6) {
+          setError('PIN must be at least 6 characters (6-digit staff PIN).');
           setLoading(false);
           return;
         }
@@ -1227,12 +1227,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             setLoading(false);
             return;
           }
-          if (pass.length < 4) {
-            setError('Password / PIN must be at least 4 characters.');
+          if (pass.length < 6) {
+            setError('Password / PIN must be at least 6 characters.');
             setLoading(false);
             return;
           }
-          const effectivePass = pass.length < 6 ? normalizeStaffPin(pass) : pass;
+          const effectivePass = pass;
 
           const {
             hasFacilityAdmin,
@@ -1853,7 +1853,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Staff PIN (4–6 digits)"
+                  placeholder="6-Digit Staff PIN / Password (min 6 chars)"
+                  minLength={6}
+                  required
                   style={{
                     width: '100%',
                     padding: '12px 42px 12px 42px',
@@ -2742,7 +2744,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                       <input
                         type="text"
                         inputMode="numeric"
+                        minLength={6}
                         maxLength={6}
+                        pattern="\d{6}"
                         value={forgotOtpCode}
                         onChange={(e) => setForgotOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                         placeholder="Enter 6-digit Email OTP"
@@ -2792,6 +2796,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                         <input
                           type={forgotShowPin ? 'text' : 'password'}
                           inputMode="numeric"
+                          minLength={6}
                           pattern="\d{6}"
                           value={forgotNewPin}
                           onChange={(e) => setForgotNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -2839,6 +2844,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                         <input
                           type={forgotShowPin ? 'text' : 'password'}
                           inputMode="numeric"
+                          minLength={6}
                           pattern="\d{6}"
                           value={forgotConfirmPin}
                           onChange={(e) => setForgotConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -2884,17 +2890,33 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                     </button>
                     <button
                       type="submit"
-                      disabled={forgotLoading}
+                      disabled={
+                        forgotLoading ||
+                        !/^\d{6}$/.test(forgotOtpCode) ||
+                        !/^\d{6}$/.test(forgotNewPin) ||
+                        forgotNewPin !== forgotConfirmPin
+                      }
                       style={{
                         flex: 2,
                         height: 44,
                         borderRadius: 10,
                         border: 'none',
-                        background: 'linear-gradient(90deg, #0284C7 0%, #00BFA5 100%)',
+                        background:
+                          !/^\d{6}$/.test(forgotOtpCode) ||
+                          !/^\d{6}$/.test(forgotNewPin) ||
+                          forgotNewPin !== forgotConfirmPin
+                            ? '#CBD5E1'
+                            : 'linear-gradient(90deg, #0284C7 0%, #00BFA5 100%)',
                         color: '#0A2540',
                         fontSize: '0.88rem',
                         fontWeight: 800,
-                        cursor: forgotLoading ? 'not-allowed' : 'pointer',
+                        cursor:
+                          forgotLoading ||
+                          !/^\d{6}$/.test(forgotOtpCode) ||
+                          !/^\d{6}$/.test(forgotNewPin) ||
+                          forgotNewPin !== forgotConfirmPin
+                            ? 'not-allowed'
+                            : 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',

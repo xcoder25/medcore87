@@ -91,8 +91,6 @@ const MODULE_ALIASES: Record<string, string> = {
   'mpi': 'patient-card',
   'appointments': 'appointments',
   'appointment': 'appointments',
-  'ambulance': 'ambulance',
-  'dispatch': 'ambulance',
   'staffing': 'staffing',
   'rosters': 'staffing',
   'roster': 'staffing',

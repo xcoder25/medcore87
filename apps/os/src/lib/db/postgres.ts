@@ -683,6 +683,43 @@ export function hashPin(pin: string): string {
 }
 
 /**
+ * Validates strict YYYY-MM-DD calendar date strings (e.g., for DATE columns).
+ * Rejects non-ISO dates ("12/05/1990", "Unknown") and impossible dates ("2026-02-31").
+ */
+export function toIsoDateOrNull(raw: unknown): string | null {
+  const s = String(raw ?? '').trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (
+    dt.getUTCFullYear() !== y ||
+    dt.getUTCMonth() + 1 !== mo ||
+    dt.getUTCDate() !== d
+  ) {
+    return null;
+  }
+  return `${m[1]}-${m[2]}-${m[3]}`;
+}
+
+function toIntOrNull(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n);
+}
+
+function toNumOrNull(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+/**
  * Computes a deterministic SHA-256 tamper-evident hash for a clinical audit ledger row.
  */
 export function computeAuditRowHash(input: {
@@ -869,11 +906,21 @@ export async function projectKeyToRelationalTables(
   }
 
   // 4) Vital Signs
-  if ((key === 'medcore_os_vitals_v1' || key === 'clinical_vitals') && Array.isArray(value)) {
+  if (
+    (key === 'medcore_os_nursing_vitals_v1' ||
+      key === 'medcore_os_vitals_v1' ||
+      key === 'clinical_vitals') &&
+    Array.isArray(value)
+  ) {
     for (const raw of value.slice(0, 150)) {
       if (!raw || typeof raw !== 'object') continue;
       const v = raw as Record<string, any>;
       const id = String(v.id || `VIT-${v.patientId || 'PT'}-${v.recordedAt || Date.now()}`).trim();
+      const bp = String(
+        v.bp ||
+          v.bloodPressure ||
+          (v.bpSystolic && v.bpDiastolic ? `${v.bpSystolic}/${v.bpDiastolic}` : '')
+      );
       await c.query(
         `INSERT INTO vital_signs (
            id, facility_id, patient_id, hospital_number, encounter_id, bp, pulse, temp, spo2, weight, urgency, recorded_by, payload
@@ -892,11 +939,11 @@ export async function projectKeyToRelationalTables(
           String(v.patientId || ''),
           String(v.hospitalNumber || ''),
           String(v.encounterId || ''),
-          String(v.bp || v.bloodPressure || ''),
-          Number(v.pulse || v.heartRate || 0) || null,
-          Number(v.temp || v.temperature || 0) || null,
-          Number(v.spo2 || 0) || null,
-          Number(v.weight || 0) || null,
+          bp,
+          toIntOrNull(v.pulse ?? v.heartRate),
+          toNumOrNull(v.tempC ?? v.temp ?? v.temperature),
+          toIntOrNull(v.spo2),
+          toNumOrNull(v.weightKg ?? v.weight),
           String(v.urgency || 'routine'),
           String(v.recordedBy || v.triagedBy || ''),
           JSON.stringify(v),
@@ -988,19 +1035,17 @@ export async function projectKeyToRelationalTables(
       if (!id) continue;
       await c.query(
         `INSERT INTO notifications (
-           id, facility_id, level, title, body, module, patient_id, role_hint, target_staff, read, payload
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+           id, facility_id, level, title, body, role_hint, target_staff, read, meta
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
          ON CONFLICT (id) DO UPDATE SET
            read = EXCLUDED.read,
-           payload = EXCLUDED.payload`,
+           meta = EXCLUDED.meta`,
         [
           id,
           facilityId,
           String(n.level || 'info'),
           String(n.title || ''),
           String(n.body || ''),
-          String(n.module || ''),
-          String(n.patientId || ''),
           String(n.roleHint || ''),
           String(n.targetStaff || ''),
           Boolean(n.read),
@@ -1010,7 +1055,54 @@ export async function projectKeyToRelationalTables(
     }
   }
 
-  // 8) Staff Face Biometric Templates
+  // 8) Patient Registry -> relational patients table
+  if (key === 'medcore_os_patient_registry_v1' && Array.isArray(value)) {
+    for (const raw of value.slice(0, 500)) {
+      if (!raw || typeof raw !== 'object') continue;
+      const p = raw as Record<string, any>;
+      if (p.facilityId && String(p.facilityId).trim() !== facilityId) continue;
+      const id = String(p.id || '').trim();
+      const fullName = String(
+        p.fullName ||
+          [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ') ||
+          p.name ||
+          ''
+      ).trim();
+      if (!id || !fullName) continue;
+      await c.query(
+        `INSERT INTO patients (
+           id, facility_id, hospital_number, full_name, sex, date_of_birth,
+           phone, email, address, status, meta, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, NOW())
+         ON CONFLICT (facility_id, id) DO UPDATE SET
+           hospital_number = COALESCE(EXCLUDED.hospital_number, patients.hospital_number),
+           full_name = EXCLUDED.full_name,
+           sex = COALESCE(EXCLUDED.sex, patients.sex),
+           date_of_birth = COALESCE(EXCLUDED.date_of_birth, patients.date_of_birth),
+           phone = COALESCE(EXCLUDED.phone, patients.phone),
+           email = COALESCE(EXCLUDED.email, patients.email),
+           address = COALESCE(EXCLUDED.address, patients.address),
+           status = EXCLUDED.status,
+           meta = COALESCE(EXCLUDED.meta, patients.meta),
+           updated_at = NOW()`,
+        [
+          id,
+          facilityId,
+          p.hospitalNumber ? String(p.hospitalNumber) : null,
+          fullName,
+          p.sex ? String(p.sex) : null,
+          toIsoDateOrNull(p.dob ?? p.dateOfBirth),
+          p.phone ? String(p.phone) : null,
+          p.email ? String(p.email) : null,
+          p.address ? String(p.address) : null,
+          String(p.status || 'active'),
+          JSON.stringify(p),
+        ]
+      );
+    }
+  }
+
+  // 9) Staff Face Biometric Templates
   if (key === 'medcore_staff_face_biometrics_v1' && value && typeof value === 'object' && !Array.isArray(value)) {
     for (const [badgeKey, raw] of Object.entries(value as Record<string, any>).slice(0, 200)) {
       if (!raw || typeof raw !== 'object') continue;

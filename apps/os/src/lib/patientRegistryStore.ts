@@ -1,4 +1,4 @@
-import { apiListPatients, apiUpsertPatient } from './db/clientApi';
+import { apiDeletePatient, apiListPatients, apiUpsertPatient } from './db/clientApi';
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 import { idbGet, idbSet } from './idb';
 /**
@@ -131,10 +131,10 @@ export async function hydratePatientRegistry(facilityId?: string): Promise<void>
   }
 }
 
-function writeAll(list: FacilityPatient[]) {
+/** Update local caches and UI listeners only (no cloud re-publish) */
+function writeLocalOnly(list: FacilityPatient[]) {
   if (typeof window === 'undefined') return;
   _cache = list;
-  // Write to localStorage synchronously so data survives page refresh and immediate reload
   try {
     localStorage.setItem(
       PATIENT_REGISTRY_KEY,
@@ -143,12 +143,31 @@ function writeAll(list: FacilityPatient[]) {
   } catch (e) {
     console.warn('[MedCore] Patient registry localStorage write warning:', e);
   }
-  // Write to IndexedDB asynchronously (non-blocking — no cap)
   idbSet(IDB_STORE, IDB_KEY, list).catch((e) =>
     console.warn('[MedCore] Patient registry IDB write failed:', e)
   );
   window.dispatchEvent(new CustomEvent('medcore-patients-updated', { detail: list }));
   window.dispatchEvent(new CustomEvent('medcore-admin-sync', { detail: { key: PATIENT_REGISTRY_KEY } }));
+}
+
+/** Apply remote cloud/SSE patient array into RAM + local cache without triggering re-sync */
+export function applyRemotePatients(remote: unknown): void {
+  if (typeof window === 'undefined' || !Array.isArray(remote)) return;
+  const valid = remote.filter(
+    (p): p is FacilityPatient => Boolean(p && typeof p === 'object' && (p as FacilityPatient).id)
+  );
+  const existing = readAll();
+  const byId = new Map<string, FacilityPatient>(existing.map((p) => [p.id, p]));
+  for (const p of valid) {
+    const prev = byId.get(p.id);
+    byId.set(p.id, prev ? { ...prev, ...p } : p);
+  }
+  writeLocalOnly(Array.from(byId.values()));
+}
+
+function writeAll(list: FacilityPatient[]) {
+  if (typeof window === 'undefined') return;
+  writeLocalOnly(list);
   const fid = list[0]?.facilityId || 'IGH-EKT';
   publishFacilityData(fid, FACILITY_KEYS.patients, list.length > 2000 ? list.slice(0, 2000) : list);
   try {
@@ -215,7 +234,7 @@ export function upsertPatient(patient: FacilityPatient): FacilityPatient {
   const all = readAll();
   const next = [patient, ...all.filter((p) => p.id !== patient.id)];
   writeAll(next);
-  // Cloud mirror — single patient upsert to Aurora Postgres
+  // Cloud mirror — single patient upsert to Aurora Postgres (relational + facility_kv)
   void (async () => {
     try {
       await apiUpsertPatient({
@@ -234,26 +253,44 @@ export function upsertPatient(patient: FacilityPatient): FacilityPatient {
           firstName: patient.firstName,
           middleName: patient.middleName,
           lastName: patient.lastName,
+          dob: patient.dob,
           nin: patient.nin,
           shid: patient.shid,
           nhiaNumber: patient.nhiaNumber,
           bloodGroup: patient.bloodGroup,
           genotype: patient.genotype,
+          state: patient.state,
+          lga: patient.lga,
+          stateOfOrigin: patient.stateOfOrigin,
+          maritalStatus: patient.maritalStatus,
+          nationality: patient.nationality,
+          preferredLanguage: patient.preferredLanguage,
           emergencyContact: patient.emergencyContact,
           emergencyRelation: patient.emergencyRelation,
+          emergencyPhone: patient.emergencyPhone,
+          emergencyAddress: patient.emergencyAddress,
           occupation: patient.occupation,
+          category: patient.category,
+          insuranceProvider: patient.insuranceProvider,
+          insuranceId: patient.insuranceId,
+          allergies: patient.allergies,
+          chronicConditions: patient.chronicConditions,
+          surgicalHistory: patient.surgicalHistory,
+          familyHistory: patient.familyHistory,
+          currentMedications: patient.currentMedications,
+          immunizations: patient.immunizations,
+          problems: patient.problems,
+          notesAdmin: patient.notesAdmin,
           photoUrl: patient.photoUrl,
           registeredAt: patient.registeredAt,
+          lastVisit: patient.lastVisit,
+          lastVitals: patient.lastVitals,
+          emergencyFlag: patient.emergencyFlag,
           cardIssueDate: patient.cardIssueDate,
           cardExpiryDate: patient.cardExpiryDate,
+          mrn: patient.mrn,
+          enrolledAt: patient.enrolledAt,
         },
-      });
-      const { firestoreWriteFacility } = await import('./firebase');
-      const count = listPatients(patient.facilityId).length;
-      await firestoreWriteFacility(patient.facilityId, {
-        [`patient_${patient.id}`]: patient,
-        patientsCount: count,
-        patientsUpdatedAt: new Date().toISOString(),
       });
     } catch (err) {
       console.warn('[upsertPatient] Cloud sync error:', err);
@@ -263,20 +300,14 @@ export function upsertPatient(patient: FacilityPatient): FacilityPatient {
 }
 
 export function deletePatient(id: string, facilityId?: string) {
+  const existing = readAll().find((p) => p.id === id);
+  const fid = facilityId || existing?.facilityId;
   const all = readAll().filter((p) => p.id !== id);
   writeAll(all);
-  if (facilityId) {
-    void (async () => {
-      try {
-        const { firestoreWriteFacility } = await import('./firebase');
-        await firestoreWriteFacility(facilityId, {
-          patients: listPatients(facilityId),
-          patientsUpdatedAt: new Date().toISOString(),
-        });
-      } catch {
-        /* ignore */
-      }
-    })();
+  if (fid) {
+    void apiDeletePatient(fid, id).catch(() => {
+      /* ignore */
+    });
   }
 }
 
@@ -285,14 +316,17 @@ export function countPatients(facilityId: string): number {
   return listPatients(facilityId).length;
 }
 
-/**
- * Search patients without rendering the full registry.
- * Default limit 50 — suitable for typeahead at 1,000–10,000 patients.
- */
+const _hydrateCooldown = new Map<string, number>();
 
 /** Pull patient list/search from Aurora when configured; merge into local cache. */
 export async function hydratePatientsFromPostgres(facilityId: string, q?: string): Promise<number> {
   try {
+    const cacheKey = `${facilityId}::${q || ''}`;
+    const now = Date.now();
+    const last = _hydrateCooldown.get(cacheKey) || 0;
+    if (now - last < 5000) return 0;
+    _hydrateCooldown.set(cacheKey, now);
+
     const res = await apiListPatients(facilityId, q);
     if (!res?.ok || !Array.isArray(res.patients) || !res.patients.length) return 0;
     const all = readAll();
@@ -311,6 +345,20 @@ export async function hydratePatientsFromPostgres(facilityId: string, q?: string
       const sex: PatientSex =
         sexRaw === 'Male' || sexRaw === 'Female' ? sexRaw : 'Other';
       const prev = byId.get(id);
+      const rawDbDob = row.date_of_birth || row.dateOfBirth;
+      const dbDob = rawDbDob ? String(rawDbDob).slice(0, 10) : '';
+      const strOrPrev = (k: keyof FacilityPatient): string | undefined => {
+        const mv = meta[k as string];
+        if (typeof mv === 'string' && mv) return mv;
+        const pv = prev?.[k];
+        return typeof pv === 'string' ? pv : undefined;
+      };
+      const arrOrPrev = (k: keyof FacilityPatient): string[] | undefined => {
+        const mv = meta[k as string];
+        if (Array.isArray(mv)) return mv.map((x) => String(x));
+        const pv = prev?.[k];
+        return Array.isArray(pv) ? pv : undefined;
+      };
       const next: FacilityPatient = {
         ...(prev || {}),
         id,
@@ -318,22 +366,50 @@ export async function hydratePatientsFromPostgres(facilityId: string, q?: string
         firstName,
         middleName,
         lastName,
-        dob: String(row.date_of_birth || row.dateOfBirth || prev?.dob || ''),
+        dob: String(meta.dob || dbDob || prev?.dob || ''),
         sex,
         phone: String(row.phone || prev?.phone || ''),
         email: row.email ? String(row.email) : prev?.email,
         address: row.address ? String(row.address) : prev?.address,
-        nin: meta.nin ? String(meta.nin) : prev?.nin,
-        shid: meta.shid ? String(meta.shid) : prev?.shid,
-        nhiaNumber: meta.nhiaNumber ? String(meta.nhiaNumber) : prev?.nhiaNumber,
-        bloodGroup: meta.bloodGroup ? String(meta.bloodGroup) : prev?.bloodGroup,
-        genotype: meta.genotype ? String(meta.genotype) : prev?.genotype,
-        emergencyContact: meta.emergencyContact ? String(meta.emergencyContact) : prev?.emergencyContact,
-        emergencyRelation: meta.emergencyRelation ? String(meta.emergencyRelation) : prev?.emergencyRelation,
-        occupation: meta.occupation ? String(meta.occupation) : prev?.occupation,
-        photoUrl: meta.photoUrl ? String(meta.photoUrl) : prev?.photoUrl,
+        nin: strOrPrev('nin'),
+        shid: strOrPrev('shid'),
+        nhiaNumber: strOrPrev('nhiaNumber'),
+        bloodGroup: strOrPrev('bloodGroup'),
+        genotype: strOrPrev('genotype'),
+        state: strOrPrev('state'),
+        lga: strOrPrev('lga'),
+        stateOfOrigin: strOrPrev('stateOfOrigin'),
+        maritalStatus: strOrPrev('maritalStatus'),
+        nationality: strOrPrev('nationality'),
+        preferredLanguage: strOrPrev('preferredLanguage'),
+        emergencyContact: strOrPrev('emergencyContact'),
+        emergencyRelation: strOrPrev('emergencyRelation'),
+        emergencyPhone: strOrPrev('emergencyPhone'),
+        emergencyAddress: strOrPrev('emergencyAddress'),
+        occupation: strOrPrev('occupation'),
+        category: strOrPrev('category'),
+        insuranceProvider: strOrPrev('insuranceProvider'),
+        insuranceId: strOrPrev('insuranceId'),
+        allergies: arrOrPrev('allergies'),
+        chronicConditions: arrOrPrev('chronicConditions'),
+        surgicalHistory: strOrPrev('surgicalHistory'),
+        familyHistory: strOrPrev('familyHistory'),
+        currentMedications: arrOrPrev('currentMedications'),
+        immunizations: strOrPrev('immunizations'),
+        problems: arrOrPrev('problems'),
+        notesAdmin: strOrPrev('notesAdmin'),
+        photoUrl: strOrPrev('photoUrl'),
+        lastVisit: strOrPrev('lastVisit'),
+        lastVitals: (meta.lastVitals && typeof meta.lastVitals === 'object'
+          ? (meta.lastVitals as FacilityPatient['lastVitals'])
+          : prev?.lastVitals),
+        emergencyFlag: typeof meta.emergencyFlag === 'boolean' ? meta.emergencyFlag : prev?.emergencyFlag,
+        cardIssueDate: strOrPrev('cardIssueDate'),
+        cardExpiryDate: strOrPrev('cardExpiryDate'),
+        mrn: strOrPrev('mrn'),
+        enrolledAt: strOrPrev('enrolledAt'),
         facilityId,
-        facilityName: String(row.facility_name || prev?.facilityName || facilityId),
+        facilityName: String(meta.facilityName || row.facility_name || prev?.facilityName || facilityId),
         status: row.status === 'inactive' ? 'inactive' : prev?.status || 'active',
         registeredAt: String(meta.registeredAt || row.created_at || row.registeredAt || prev?.registeredAt || new Date().toISOString()),
       };
@@ -341,7 +417,7 @@ export async function hydratePatientsFromPostgres(facilityId: string, q?: string
       n++;
     }
     const merged = Array.from(byId.values());
-    writeAll(merged);
+    writeLocalOnly(merged);
     return n;
   } catch (err) {
     console.warn('[hydratePatientsFromPostgres] error:', err);
@@ -461,6 +537,8 @@ export function resetPatientRegistry() {
 export function clearAllPatients(facilityId?: string) {
   if (typeof window === 'undefined') return;
   const fid = facilityId || 'IGH-EKT';
+  _cache = [];
+  idbSet(IDB_STORE, IDB_KEY, []).catch(() => {});
 
   try {
     localStorage.setItem(PATIENT_REGISTRY_KEY, '[]');

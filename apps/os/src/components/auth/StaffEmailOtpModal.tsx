@@ -526,7 +526,10 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                   type="text"
                   inputMode="numeric"
                   autoFocus
+                  minLength={6}
                   maxLength={6}
+                  pattern="\d{6}"
+                  required
                   value={otpInput}
                   onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   placeholder="• • • • • •"
@@ -629,7 +632,10 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                   type="text"
                   inputMode="numeric"
                   autoFocus
+                  minLength={6}
                   maxLength={6}
+                  pattern="\d{6}"
+                  required
                   value={backupInput}
                   onChange={(e) => setBackupInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   placeholder="• • • • • •"
