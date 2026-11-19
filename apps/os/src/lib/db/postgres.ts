@@ -31,7 +31,7 @@ function env(name: string): string {
   return (process.env[name] || '').trim();
 }
 
-const PRIMARY_RDS_HOST = 'database-1.cluster-cnmi6kca2r4k.eu-north-1.rds.amazonaws.com';
+const PRIMARY_RDS_HOST = 'database-1-instance-1.cnmi6kca2r4k.eu-north-1.rds.amazonaws.com';
 const PRIMARY_RDS_PORT = 5432;
 const PRIMARY_RDS_DATABASE = 'postgres';
 const PRIMARY_RDS_USER = 'postgres';
@@ -43,8 +43,8 @@ function inferRegionFromRdsHost(host: string): string {
 }
 
 /**
- * Build connection config prioritizing the dedicated Aurora RDS cluster
- * (`database-1.cluster-cnmi6kca2r4k.eu-north-1.rds.amazonaws.com`) via AWS RDS IAM Auth
+ * Build connection config prioritizing the dedicated Aurora RDS instance
+ * (`database-1-instance-1.cnmi6kca2r4k.eu-north-1.rds.amazonaws.com`) via AWS RDS IAM Auth
  * over legacy Vercel integration env vars.
  */
 export function getPgConfig():
@@ -71,8 +71,7 @@ export function getPgConfig():
     const database = PRIMARY_RDS_DATABASE;
     const user = PRIMARY_RDS_USER;
     const region =
-      env('AWS_REGION') ||
-      env('AWS_DEFAULT_REGION') ||
+      env('AWS_RDS_REGION') ||
       inferRegionFromRdsHost(host) ||
       PRIMARY_RDS_REGION;
 
