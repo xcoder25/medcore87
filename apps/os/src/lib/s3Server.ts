@@ -19,6 +19,32 @@ function clean(v: string | undefined | null): string {
   return val;
 }
 
+function envS3Prefixed(suffixes: string[]): string {
+  for (const s of suffixes) {
+    const exact = clean(process.env[`MEDCORE_S3_${s}`]);
+    if (exact) return exact;
+  }
+
+  const keys = Object.keys(process.env)
+    .filter((k) => k.startsWith('MEDCORE_S3'))
+    .sort();
+  for (const s of suffixes) {
+    const tail = `_${s}`;
+    for (const k of keys) {
+      if (k.endsWith(tail)) {
+        const val = clean(process.env[k]);
+        if (val) return val;
+      }
+    }
+  }
+
+  for (const s of suffixes) {
+    const unprefixed = clean(process.env[s]);
+    if (unprefixed) return unprefixed;
+  }
+  return '';
+}
+
 export interface S3StorageConfig {
   bucket: string;
   region: string;
@@ -33,55 +59,41 @@ export interface S3StorageConfig {
 
 export function getS3Config(): S3StorageConfig {
   const bucket =
-    clean(process.env.AWS_S3_BUCKET_NAME) ||
-    clean(process.env.S3_BUCKET_NAME) ||
-    clean(process.env.MEDCORE_S3_BUCKET) ||
-    clean(process.env.MEDCORE_S3_BUCKET_NAME) ||
-    clean(process.env.MEDCORE_AWS_S3_BUCKET) ||
-    clean(process.env.AWS_S3_BUCKET) ||
-    clean(process.env.AWS_BUCKET_NAME);
+    envS3Prefixed([
+      'S3_BUCKET_NAME',
+      'BUCKET_NAME',
+      'BUCKET',
+      'AWS_S3_BUCKET_NAME',
+      'AWS_S3_BUCKET',
+      'AWS_BUCKET_NAME',
+    ]) || clean(process.env.MEDCORE_AWS_S3_BUCKET);
 
   const region =
-    clean(process.env.AWS_REGION) ||
-    clean(process.env.MEDCORE_S3_REGION) ||
+    envS3Prefixed(['AWS_REGION', 'REGION', 'AWS_DEFAULT_REGION']) ||
     clean(process.env.MEDCORE_AWS_S3_REGION) ||
-    clean(process.env.AWS_DEFAULT_REGION) ||
-    'eu-west-1';
+    'us-east-1';
 
-  const roleArn =
-    clean(process.env.AWS_ROLE_ARN) ||
-    clean(process.env.MEDCORE_S3_ROLE_ARN) ||
-    clean(process.env.MEDCORE_AWS_ROLE_ARN);
+  // Intentionally do NOT read MEDCORE_AWS_ROLE_ARN so S3 OIDC stays isolated from RDS OIDC.
+  const roleArn = envS3Prefixed(['AWS_ROLE_ARN', 'ROLE_ARN']);
 
   const accessKeyId =
-    clean(process.env.AWS_ACCESS_KEY_ID) ||
-    clean(process.env.MEDCORE_S3_ACCESS_KEY_ID) ||
-    clean(process.env.MEDCORE_S3_ACCESS_KEY) ||
-    clean(process.env.MEDCORE_S3_KEY) ||
-    clean(process.env.MEDCORE_AWS_ACCESS_KEY_ID) ||
-    clean(process.env.AWS_ACCESS_KEY);
+    envS3Prefixed(['AWS_ACCESS_KEY_ID', 'ACCESS_KEY_ID', 'ACCESS_KEY', 'KEY']) ||
+    clean(process.env.MEDCORE_AWS_ACCESS_KEY_ID);
 
   const secretAccessKey =
-    clean(process.env.AWS_SECRET_ACCESS_KEY) ||
-    clean(process.env.MEDCORE_S3_SECRET_ACCESS_KEY) ||
-    clean(process.env.MEDCORE_S3_SECRET_KEY) ||
-    clean(process.env.MEDCORE_S3_SECRET) ||
-    clean(process.env.MEDCORE_AWS_SECRET_ACCESS_KEY) ||
-    clean(process.env.AWS_SECRET_KEY);
+    envS3Prefixed(['AWS_SECRET_ACCESS_KEY', 'SECRET_ACCESS_KEY', 'SECRET_KEY', 'SECRET']) ||
+    clean(process.env.MEDCORE_AWS_SECRET_ACCESS_KEY);
 
-  const endpoint =
-    clean(process.env.MEDCORE_S3_ENDPOINT) ||
-    clean(process.env.AWS_S3_ENDPOINT);
+  const endpoint = envS3Prefixed(['ENDPOINT', 'S3_ENDPOINT', 'AWS_S3_ENDPOINT']);
 
   const customDomain =
-    clean(process.env.MEDCORE_S3_CUSTOM_DOMAIN) ||
-    clean(process.env.AWS_S3_CUSTOM_DOMAIN) ||
+    envS3Prefixed(['CUSTOM_DOMAIN', 'S3_CUSTOM_DOMAIN', 'AWS_S3_CUSTOM_DOMAIN']) ||
     clean(process.env.NEXT_PUBLIC_S3_BASE_URL);
 
   const hasOidc = Boolean(bucket && roleArn);
   const hasKeys = Boolean(bucket && accessKeyId && secretAccessKey);
-  const isConfigured = hasKeys || hasOidc;
-  const authMethod = hasKeys ? 'iam_keys' : hasOidc ? 'oidc_role' : 'none';
+  const isConfigured = hasOidc || hasKeys;
+  const authMethod = hasOidc ? 'oidc_role' : hasKeys ? 'iam_keys' : 'none';
 
   return {
     bucket,
@@ -113,6 +125,7 @@ export function getS3Client(): S3Client {
       region: config.region,
       credentials: awsCredentialsProvider({
         roleArn: config.roleArn,
+        clientConfig: { region: config.region },
       }),
       ...(config.endpoint ? { endpoint: config.endpoint, forcePathStyle: true } : {}),
     });
