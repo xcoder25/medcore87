@@ -28,7 +28,11 @@ let pool: Pool | null = null;
 let schemaReady: Promise<void> | null = null;
 
 function env(name: string): string {
-  return (process.env[name] || '').trim();
+  let val = (process.env[name] || '').trim();
+  if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+    val = val.slice(1, -1).trim();
+  }
+  return val;
 }
 
 const PRIMARY_RDS_HOST = 'database-1-instance-1.cnmi6kca2r4k.eu-north-1.rds.amazonaws.com';
@@ -40,6 +44,66 @@ const PRIMARY_RDS_REGION = 'eu-north-1';
 function inferRegionFromRdsHost(host: string): string {
   const m = host.match(/\.([a-z]{2}-[a-z]+-\d+)\.rds\.amazonaws\.com$/i);
   return m ? m[1].toLowerCase() : '';
+}
+
+export type PgAuthMethod =
+  | 'rds_password'
+  | 'iam_keys'
+  | 'oidc_role'
+  | 'legacy_url'
+  | 'legacy_env'
+  | 'none';
+
+function resolvePgTarget() {
+  const accessKeyId = env('AWS_ACCESS_KEY_ID') || env('MEDCORE_AWS_ACCESS_KEY_ID');
+  const secretAccessKey = env('AWS_SECRET_ACCESS_KEY') || env('MEDCORE_AWS_SECRET_ACCESS_KEY');
+  const roleArn = env('AWS_ROLE_ARN') || env('MEDCORE_AWS_ROLE_ARN');
+  const explicitRdsPassword = env('AWS_RDS_PASSWORD');
+
+  if (explicitRdsPassword || (accessKeyId && secretAccessKey) || roleArn) {
+    const host = env('AWS_RDS_HOST') || PRIMARY_RDS_HOST;
+    const region =
+      env('AWS_RDS_REGION') ||
+      inferRegionFromRdsHost(host) ||
+      PRIMARY_RDS_REGION;
+    const authMethod: PgAuthMethod = explicitRdsPassword
+      ? 'rds_password'
+      : accessKeyId && secretAccessKey
+      ? 'iam_keys'
+      : 'oidc_role';
+    return {
+      kind: 'primary' as const,
+      authMethod,
+      host,
+      region,
+      explicitRdsPassword,
+      accessKeyId,
+      secretAccessKey,
+      roleArn,
+    };
+  }
+
+  const url =
+    env('DATABASE_URL') ||
+    env('POSTGRES_URL') ||
+    env('POSTGRES_PRISMA_URL') ||
+    env('MEDCORE_AWS_DB_URL') ||
+    env('MEDCORE_DATABASE_URL');
+  if (url) {
+    return { kind: 'legacy_url' as const, authMethod: 'legacy_url' as const, region: null, url };
+  }
+
+  const host = env('MEDCORE_AWS_DB_PGHOST') || env('PGHOST');
+  const password =
+    env('MEDCORE_AWS_DB_PGPASSWORD') ||
+    env('PGPASSWORD') ||
+    env('MEDCORE_AWS_DB_PASSWORD') ||
+    env('POSTGRES_PASSWORD');
+  if (!host || !password) {
+    return { kind: 'none' as const, authMethod: 'none' as const, region: null };
+  }
+
+  return { kind: 'legacy_env' as const, authMethod: 'legacy_env' as const, region: null, host, password };
 }
 
 /**
@@ -58,22 +122,13 @@ export function getPgConfig():
       ssl: boolean | { rejectUnauthorized: boolean };
     }
   | null {
-  const accessKeyId = env('AWS_ACCESS_KEY_ID') || env('MEDCORE_AWS_ACCESS_KEY_ID');
-  const secretAccessKey = env('AWS_SECRET_ACCESS_KEY') || env('MEDCORE_AWS_SECRET_ACCESS_KEY');
-  const roleArn = env('AWS_ROLE_ARN') || env('MEDCORE_AWS_ROLE_ARN');
+  const target = resolvePgTarget();
 
-  const explicitRdsPassword =
-    env('MEDCORE_AWS_DB_PGPASSWORD') || env('MEDCORE_AWS_DB_PASSWORD');
-
-  if (explicitRdsPassword || (accessKeyId && secretAccessKey) || roleArn) {
-    const host = env('AWS_RDS_HOST') || PRIMARY_RDS_HOST;
+  if (target.kind === 'primary') {
+    const { host, region, explicitRdsPassword, accessKeyId, secretAccessKey, roleArn } = target;
     const port = PRIMARY_RDS_PORT;
     const database = PRIMARY_RDS_DATABASE;
     const user = PRIMARY_RDS_USER;
-    const region =
-      env('AWS_RDS_REGION') ||
-      inferRegionFromRdsHost(host) ||
-      PRIMARY_RDS_REGION;
 
     return {
       host,
@@ -104,46 +159,47 @@ export function getPgConfig():
     };
   }
 
-  const url =
-    env('DATABASE_URL') ||
-    env('POSTGRES_URL') ||
-    env('POSTGRES_PRISMA_URL') ||
-    env('MEDCORE_AWS_DB_URL') ||
-    env('MEDCORE_DATABASE_URL');
-  if (url) {
+  if (target.kind === 'legacy_url') {
     return {
-      connectionString: url,
+      connectionString: target.url,
       ssl: { rejectUnauthorized: false },
     };
   }
 
-  const host = env('MEDCORE_AWS_DB_PGHOST') || env('PGHOST');
-  const port = parseInt(env('MEDCORE_AWS_DB_PGPORT') || env('PGPORT') || '5432', 10);
-  const database = env('MEDCORE_AWS_DB_PGDATABASE') || env('PGDATABASE') || 'postgres';
-  const user =
-    env('MEDCORE_AWS_DB_PGUSER') ||
-    env('PGUSER') ||
-    env('MEDCORE_AWS_DB_USER') ||
-    'postgres';
-  const password =
-    env('MEDCORE_AWS_DB_PGPASSWORD') ||
-    env('PGPASSWORD') ||
-    env('MEDCORE_AWS_DB_PASSWORD') ||
-    env('POSTGRES_PASSWORD');
+  if (target.kind === 'legacy_env') {
+    const port = parseInt(env('MEDCORE_AWS_DB_PGPORT') || env('PGPORT') || '5432', 10);
+    const database = env('MEDCORE_AWS_DB_PGDATABASE') || env('PGDATABASE') || 'postgres';
+    const user =
+      env('MEDCORE_AWS_DB_PGUSER') ||
+      env('PGUSER') ||
+      env('MEDCORE_AWS_DB_USER') ||
+      'postgres';
 
-  if (!host || !password) return null;
+    const sslMode = (env('MEDCORE_AWS_DB_PGSSLMODE') || env('PGSSLMODE') || 'require').toLowerCase();
+    const ssl =
+      sslMode === 'disable' || sslMode === 'false'
+        ? false
+        : { rejectUnauthorized: false };
 
-  const sslMode = (env('MEDCORE_AWS_DB_PGSSLMODE') || env('PGSSLMODE') || 'require').toLowerCase();
-  const ssl =
-    sslMode === 'disable' || sslMode === 'false'
-      ? false
-      : { rejectUnauthorized: false };
+    return { host: target.host, port, database, user, password: target.password, ssl };
+  }
 
-  return { host, port, database, user, password, ssl };
+  return null;
 }
 
 export function isPostgresConfigured(): boolean {
   return getPgConfig() != null;
+}
+
+export function getPgDiagnostics(): {
+  authMethod: PgAuthMethod;
+  region: string | null;
+} {
+  const target = resolvePgTarget();
+  return {
+    authMethod: target.authMethod,
+    region: target.region,
+  };
 }
 
 export function getPool(): Pool {
