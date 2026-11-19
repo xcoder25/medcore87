@@ -6,7 +6,6 @@ import {
   Building2,
   User,
   Mail,
-  Lock,
   KeyRound,
   ShieldCheck,
   Loader2,
@@ -245,16 +244,14 @@ export default function RegPage() {
   const [facilityId, setFacilityId] = useState('');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
-  const [showPass, setShowPass] = useState(false);
+  const [showPin, setShowPin] = useState(false);
   const [badgeId, setBadgeId] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState('');
   const [adminExists, setAdminExists] = useState(false);
   const [checkingAdmin, setCheckingAdmin] = useState(false);
-  const [existingAdminName, setExistingAdminName] = useState('');
   const [done, setDone] = useState<{ badgeId: string; facilityName: string; fullName: string; email?: string } | null>(null);
 
   /* ── Auto-generate Badge ID matching hospital abbreviation ── */
@@ -267,25 +264,16 @@ export default function RegPage() {
     }
   }, [facilityId]);
 
-  /* ── Real-time admin-exists check ─────────────────────────────────────── */
+  /* ── Real-time admin-exists check (public unclaimed check, zero PII) ────── */
   const checkAdminExists = useCallback(async (fid: string) => {
-    if (!fid) { setAdminExists(false); setExistingAdminName(''); return; }
+    if (!fid) { setAdminExists(false); return; }
     setCheckingAdmin(true);
     setAdminExists(false);
     try {
-      const res = await fetch(`/api/staff?facilityId=${encodeURIComponent(fid)}`);
+      const res = await fetch(`/api/auth/facility-status?facilityId=${encodeURIComponent(fid)}`);
       if (res.ok) {
         const data = await res.json();
-        const cards: Array<{ roleKey?: string; clearanceLevel?: number; fullName?: string; name?: string }> =
-          data.staffCards ?? data.staff ?? [];
-        const existing = cards.find((c) => c.roleKey === 'hospital_admin' || (c.clearanceLevel ?? 0) >= 5);
-        if (existing) {
-          setAdminExists(true);
-          setExistingAdminName(existing.fullName || existing.name || 'Hospital Administrator');
-        } else {
-          setAdminExists(false);
-          setExistingAdminName('');
-        }
+        setAdminExists(Boolean(data.hasAdmin));
       }
     } catch { /* network error — do not block */ } finally {
       setCheckingAdmin(false);
@@ -294,39 +282,32 @@ export default function RegPage() {
 
   useEffect(() => {
     if (facilityId) checkAdminExists(facilityId);
-    else { setAdminExists(false); setExistingAdminName(''); }
+    else setAdminExists(false);
   }, [facilityId, checkAdminExists]);
 
   const selectedFacility = useMemo(() => FACILITIES.find((f) => f.id === facilityId) ?? null, [facilityId]);
 
-  /* ── Password strength ─────────────────────────────────────────────────── */
-  const passwordStrength = useMemo(() => {
-    if (!password) return 0;
-    let score = 0;
-    if (password.length >= 6) score++;
-    if (password.length >= 8) score++;
-    if (/[A-Z]/.test(password)) score++;
-    if (/[0-9]/.test(password)) score++;
-    return score;
-  }, [password]);
-
-  const strengthLabel = ['', 'Weak', 'Fair', 'Strong', 'Very Strong'];
-  const strengthColor = ['', '#EF4444', '#F59E0B', '#10B981', '#0052D4'];
-
   /* ── Form validity ─────────────────────────────────────────────────────── */
   const isValid = useMemo(
-    () => Boolean(facilityId) && fullName.trim().length >= 3 && password.length >= 6 && /^\d{4,6}$/.test(pin) && !adminExists && !checkingAdmin,
-    [facilityId, fullName, password, pin, adminExists, checkingAdmin],
+    () =>
+      Boolean(facilityId) &&
+      fullName.trim().length >= 3 &&
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) &&
+      /^\d{6}$/.test(pin) &&
+      !adminExists &&
+      !checkingAdmin,
+    [facilityId, fullName, email, pin, adminExists, checkingAdmin],
   );
 
   /* ── Submit ────────────────────────────────────────────────────────────── */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setServerError('');
+    const cleanEmail = email.trim().toLowerCase();
     if (!facilityId) { setServerError('Please select your hospital / facility.'); return; }
     if (fullName.trim().length < 3) { setServerError('Full name must be at least 3 characters.'); return; }
-    if (password.length < 6) { setServerError('Password must be at least 6 characters.'); return; }
-    if (!/^\d{4,6}$/.test(pin)) { setServerError('PIN must be 4–6 digits.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) { setServerError('Please enter a valid official work email.'); return; }
+    if (!/^\d{6}$/.test(pin)) { setServerError('PIN must be exactly 6 digits.'); return; }
 
     setSubmitting(true);
     try {
@@ -336,18 +317,14 @@ export default function RegPage() {
         facilityId,
         facilityName: selectedFacility?.name ?? facilityId,
         fullName: fullName.trim(),
-        email: email.trim() || undefined,
-        password,
+        email: cleanEmail,
         pin,
-        role: 'Hospital Administrator',
-        roleKey: 'hospital_admin',
-        title: 'Hospital Administrator',
-        department: 'Hospital Management',
-        clearanceLevel: 5,
-        clearanceLabel: 'Administrator',
-        templateKey: 'TPL_CLINICAL',
       };
-      const res = await fetch('/api/staff/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch('/api/auth/register-facility-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
       const data = await res.json();
       if (!res.ok || !data.success) { setServerError(data.error ?? 'Enrollment failed. Please try again.'); return; }
 
@@ -633,7 +610,7 @@ export default function RegPage() {
 
               {done.email && (
                 <div style={{ padding: '10px 14px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', fontSize: '0.78rem', color: '#1E40AF', textAlign: 'center' }}>
-                  Sign in with <strong>Staff ID</strong> <code style={{ fontFamily: 'monospace', background: '#DBEAFE', padding: '1px 6px', borderRadius: 4 }}>{done.badgeId}</code> + PIN, or your work email <strong>{done.email}</strong> + password.
+                  Sign in with <strong>Staff ID</strong> <code style={{ fontFamily: 'monospace', background: '#DBEAFE', padding: '1px 6px', borderRadius: 4 }}>{done.badgeId}</code> or your work email <strong>{done.email}</strong> using your 6-digit PIN.
                 </div>
               )}
 
@@ -740,7 +717,7 @@ export default function RegPage() {
                     }}>
                       <AlertCircle size={14} color="#D97706" style={{ flexShrink: 0, marginTop: 1 }} />
                       <div>
-                        <strong>Administrator already registered</strong> — {existingAdminName} is active for this facility.{' '}
+                        <strong>Administrator already registered</strong> — an active administrator is already enrolled for this facility.{' '}
                         <a href="/" style={{ color: '#B45309', fontWeight: 700, textDecoration: 'underline' }}>Sign in →</a>
                       </div>
                     </div>
@@ -783,11 +760,11 @@ export default function RegPage() {
                   </div>
                 </div>
 
-                {/* ── Official Email (optional) ─────────────────────────── */}
+                {/* ── Official Work Email (required) ────────────────────── */}
                 <div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                     <Mail size={13} color="#64748B" />
-                    Official Email <span style={{ fontWeight: 400, color: '#94A3B8' }}>&nbsp;(optional)</span>
+                    Official Work Email
                   </label>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
@@ -800,90 +777,50 @@ export default function RegPage() {
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="admin@hospital.medcore.ng"
                       autoComplete="email"
+                      required
                       onFocus={onFocus as React.FocusEventHandler<HTMLInputElement>}
                       onBlur={onBlur as React.FocusEventHandler<HTMLInputElement>}
                     />
                   </div>
                   <p style={{ fontSize: '0.72rem', color: '#94A3B8', margin: '5px 0 0 2px' }}>
-                    If omitted, system auto-binds to your Badge ID account.
+                    Used for email login, real-time OTP verification, and 6-digit PIN recovery.
                   </p>
                 </div>
 
-                {/* ── Password ─────────────────────────────────────────── */}
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>
-                      <Lock size={13} color="#64748B" />
-                      Sign-in Password
-                    </label>
-                    {password && (
-                      <span style={{ fontSize: '0.70rem', fontWeight: 700, color: strengthColor[passwordStrength] }}>
-                        {strengthLabel[passwordStrength]}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-                      <Lock size={18} color="#94A3B8" />
-                    </div>
-                    <input
-                      type={showPass ? 'text' : 'password'}
-                      className="reg-input"
-                      style={{ paddingRight: 42 }}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Min. 6 characters"
-                      autoComplete="new-password"
-                      onFocus={onFocus as React.FocusEventHandler<HTMLInputElement>}
-                      onBlur={onBlur as React.FocusEventHandler<HTMLInputElement>}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPass((v) => !v)}
-                      style={{ position: 'absolute', right: 12, background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: 4, display: 'flex', alignItems: 'center' }}
-                    >
-                      {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                  </div>
-                  {/* Strength bar */}
-                  {password && (
-                    <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-                      {[1, 2, 3, 4].map((i) => (
-                        <div key={i} style={{
-                          flex: 1, height: 3, borderRadius: 99,
-                          background: i <= passwordStrength ? strengthColor[passwordStrength] : '#E2E8F0',
-                          transition: 'background 0.2s',
-                        }} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* ── Badge Terminal PIN ────────────────────────────────── */}
+                {/* ── 6-Digit Access PIN (Badge & Email Sign-In) ────────── */}
                 <div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                     <KeyRound size={13} color="#64748B" />
-                    Badge Terminal PIN <span style={{ fontWeight: 400, color: '#94A3B8' }}>&nbsp;(4–6 digits)</span>
+                    6-Digit Access PIN <span style={{ fontWeight: 400, color: '#94A3B8' }}>&nbsp;(Badge &amp; Email Sign-In)</span>
                   </label>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <div style={{ position: 'absolute', left: 14, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
                       <KeyRound size={18} color="#94A3B8" />
                     </div>
                     <input
-                      type="password"
+                      type={showPin ? 'text' : 'password'}
                       inputMode="numeric"
                       maxLength={6}
                       className="reg-input"
+                      style={{ paddingRight: 42 }}
                       value={pin}
                       onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="e.g. 1234"
-                      autoComplete="off"
+                      placeholder="e.g. 482910"
+                      autoComplete="new-password"
                       onFocus={onFocus as React.FocusEventHandler<HTMLInputElement>}
                       onBlur={onBlur as React.FocusEventHandler<HTMLInputElement>}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPin((v) => !v)}
+                      style={{ position: 'absolute', right: 12, background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: 4, display: 'flex', alignItems: 'center' }}
+                      aria-label={showPin ? 'Hide PIN' : 'Show PIN'}
+                    >
+                      {showPin ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                   </div>
                   <p style={{ fontSize: '0.72rem', color: '#94A3B8', margin: '5px 0 0 2px' }}>
-                    Enables fast tap-in authentication at physical hospital wards and desks.
+                    6-digit PIN used for both Badge ID and Work Email sign-in.
                   </p>
                 </div>
 
