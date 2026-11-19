@@ -35,6 +35,32 @@ function env(name: string): string {
   return val;
 }
 
+function envPrefixed(suffixes: string[]): string {
+  for (const s of suffixes) {
+    const exact = env(`MEDCORE_AWS_${s}`);
+    if (exact) return exact;
+  }
+
+  const keys = Object.keys(process.env)
+    .filter((k) => k.startsWith('MEDCORE_AWS') && !k.includes('_S3_'))
+    .sort();
+  for (const s of suffixes) {
+    const tail = `_${s}`;
+    for (const k of keys) {
+      if (k.endsWith(tail)) {
+        const val = env(k);
+        if (val) return val;
+      }
+    }
+  }
+
+  for (const s of suffixes) {
+    const unprefixed = env(s);
+    if (unprefixed) return unprefixed;
+  }
+  return '';
+}
+
 const PRIMARY_RDS_HOST = 'database-1-instance-1.cnmi6kca2r4k.eu-north-1.rds.amazonaws.com';
 const PRIMARY_RDS_PORT = 5432;
 const PRIMARY_RDS_DATABASE = 'postgres';
@@ -55,39 +81,27 @@ export type PgAuthMethod =
   | 'none';
 
 function readRdsConnectionParams() {
-  const host =
-    env('PGHOST') ||
-    env('MEDCORE_AWS_DB_PGHOST') ||
-    env('AWS_RDS_HOST') ||
-    PRIMARY_RDS_HOST;
-  const port =
-    Number(env('PGPORT') || env('MEDCORE_AWS_DB_PGPORT') || String(PRIMARY_RDS_PORT)) ||
-    PRIMARY_RDS_PORT;
-  const database = env('PGDATABASE') || env('MEDCORE_AWS_DB_PGDATABASE') || PRIMARY_RDS_DATABASE;
-  const user =
-    env('PGUSER') ||
-    env('MEDCORE_AWS_DB_PGUSER') ||
-    env('MEDCORE_AWS_DB_USER') ||
-    PRIMARY_RDS_USER;
+  const host = envPrefixed(['PGHOST', 'RDS_HOST']) || env('AWS_RDS_HOST') || PRIMARY_RDS_HOST;
+  const port = Number(envPrefixed(['PGPORT']) || String(PRIMARY_RDS_PORT)) || PRIMARY_RDS_PORT;
+  const database = envPrefixed(['PGDATABASE']) || PRIMARY_RDS_DATABASE;
+  const user = envPrefixed(['PGUSER', 'USER']) || PRIMARY_RDS_USER;
   const region =
     inferRegionFromRdsHost(host) ||
+    envPrefixed(['AWS_REGION', 'REGION']) ||
     env('AWS_RDS_REGION') ||
-    env('AWS_REGION') ||
     env('AWS_DEFAULT_REGION') ||
     PRIMARY_RDS_REGION;
   return { host, port, database, user, region };
 }
 
 function resolvePgTarget() {
-  const roleArn =
-    env('AWS_ROLE_ARN') ||
-    env('MEDCORE_AWS_ROLE_ARN') ||
-    env('MEDCORE_AWS_DB_AWS_ROLE_ARN');
-  const accessKeyId = env('AWS_ACCESS_KEY_ID') || env('MEDCORE_AWS_ACCESS_KEY_ID');
-  const secretAccessKey = env('AWS_SECRET_ACCESS_KEY') || env('MEDCORE_AWS_SECRET_ACCESS_KEY');
+  const roleArn = envPrefixed(['AWS_ROLE_ARN', 'ROLE_ARN']);
+  const accessKeyId = env('AWS_ACCESS_KEY_ID') || envPrefixed(['AWS_ACCESS_KEY_ID', 'ACCESS_KEY_ID']);
+  const secretAccessKey =
+    env('AWS_SECRET_ACCESS_KEY') || envPrefixed(['AWS_SECRET_ACCESS_KEY', 'SECRET_ACCESS_KEY']);
   const explicitRdsPassword = env('AWS_RDS_PASSWORD');
 
-  // Priority 1: Vercel AWS RDS OIDC integration (AWS_ROLE_ARN + PGHOST/PGPORT/PGUSER/PGDATABASE)
+  // Priority 1: Vercel AWS RDS OIDC integration (MEDCORE_AWS* / AWS_ROLE_ARN + PGHOST/PGPORT/PGUSER/PGDATABASE)
   if (roleArn && !explicitRdsPassword) {
     return {
       kind: 'rds' as const,
@@ -115,22 +129,15 @@ function resolvePgTarget() {
 
   // Priority 3: Standard URL connection string
   const url =
-    env('DATABASE_URL') ||
-    env('POSTGRES_URL') ||
-    env('POSTGRES_PRISMA_URL') ||
-    env('MEDCORE_AWS_DB_URL') ||
+    envPrefixed(['DATABASE_URL', 'POSTGRES_URL', 'POSTGRES_PRISMA_URL', 'URL']) ||
     env('MEDCORE_DATABASE_URL');
   if (url) {
     return { kind: 'legacy_url' as const, authMethod: 'legacy_url' as const, region: null, url };
   }
 
   // Priority 4: Legacy host + static password env vars
-  const host = env('PGHOST') || env('MEDCORE_AWS_DB_PGHOST');
-  const password =
-    env('PGPASSWORD') ||
-    env('MEDCORE_AWS_DB_PGPASSWORD') ||
-    env('MEDCORE_AWS_DB_PASSWORD') ||
-    env('POSTGRES_PASSWORD');
+  const host = envPrefixed(['PGHOST']);
+  const password = envPrefixed(['PGPASSWORD', 'PASSWORD', 'POSTGRES_PASSWORD']);
   if (host && password) {
     return { kind: 'legacy_env' as const, authMethod: 'legacy_env' as const, region: null, host, password };
   }
@@ -215,15 +222,11 @@ export function getPgConfig():
   }
 
   if (target.kind === 'legacy_env') {
-    const port = parseInt(env('MEDCORE_AWS_DB_PGPORT') || env('PGPORT') || '5432', 10);
-    const database = env('MEDCORE_AWS_DB_PGDATABASE') || env('PGDATABASE') || 'postgres';
-    const user =
-      env('MEDCORE_AWS_DB_PGUSER') ||
-      env('PGUSER') ||
-      env('MEDCORE_AWS_DB_USER') ||
-      'postgres';
+    const port = parseInt(envPrefixed(['PGPORT']) || '5432', 10);
+    const database = envPrefixed(['PGDATABASE']) || 'postgres';
+    const user = envPrefixed(['PGUSER', 'USER']) || 'postgres';
 
-    const sslMode = (env('MEDCORE_AWS_DB_PGSSLMODE') || env('PGSSLMODE') || 'require').toLowerCase();
+    const sslMode = (envPrefixed(['PGSSLMODE']) || 'require').toLowerCase();
     const ssl =
       sslMode === 'disable' || sslMode === 'false'
         ? false
