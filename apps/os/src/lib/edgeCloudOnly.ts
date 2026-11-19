@@ -182,6 +182,7 @@ function queueCloudMirror(key: string, rawVal: string): void {
     const batch = { ...pendingSyncBag };
     for (const k of Object.keys(pendingSyncBag)) delete pendingSyncBag[k];
     if (Object.keys(batch).length === 0) return;
+    if (typeof window === 'undefined' || !window.localStorage.getItem('medcore_os_session')) return;
     void fetch('/api/facility/sync', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

@@ -16,17 +16,25 @@ import {
   type Unsubscribe as AuthUnsubscribe,
 } from 'firebase/auth';
 
+function cleanEnv(v: string | undefined): string {
+  let val = String(v || '').trim();
+  if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+    val = val.slice(1, -1).trim();
+  }
+  return val;
+}
+
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '',
+  apiKey: cleanEnv(process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
   authDomain:
-    process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'naija-bites-1s3y1.firebaseapp.com',
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'naija-bites-1s3y1',
+    cleanEnv(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN) || 'naija-bites-1s3y1.firebaseapp.com',
+  projectId: cleanEnv(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) || 'naija-bites-1s3y1',
   storageBucket:
-    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'naija-bites-1s3y1.firebasestorage.app',
+    cleanEnv(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET) || 'naija-bites-1s3y1.firebasestorage.app',
   messagingSenderId:
-    process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '667802678337',
+    cleanEnv(process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID) || '667802678337',
   appId:
-    process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:667802678337:web:2018efd10f6ca9dbe742c0',
+    cleanEnv(process.env.NEXT_PUBLIC_FIREBASE_APP_ID) || '1:667802678337:web:2018efd10f6ca9dbe742c0',
 };
 
 let app: FirebaseApp | undefined;
@@ -98,7 +106,15 @@ export function classifyAuthError(
   if (code === 'auth/network-request-failed') {
     return 'Network error. Check your connection and try again.';
   }
-  const msg = String((err as { message?: string })?.message || '');
+  const rawMsg = String((err as { message?: string })?.message || '');
+  if (
+    code === 'auth/invalid-api-key' ||
+    rawMsg.includes('auth/invalid-api-key') ||
+    rawMsg.includes('api-key-not-valid')
+  ) {
+    return 'Firebase client API key is missing or invalid. Set NEXT_PUBLIC_FIREBASE_API_KEY in Vercel Environment Variables and redeploy.';
+  }
+  const msg = rawMsg;
   if (msg && !msg.includes('Firebase')) return msg;
   return known
     ? `Incorrect ${secret}.`

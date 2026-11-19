@@ -505,6 +505,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     // Firestore is decommissioned; Aurora Postgres is the cloud source of truth.
     // We merge rows into localStorage so local login resolution works instantly.
     void (async () => {
+      if (typeof window === 'undefined' || !localStorage.getItem('medcore_os_session')) {
+        return;
+      }
       try {
         const { apiListStaff } = await import('../../lib/db/clientApi');
         const res = await Promise.race([
@@ -1108,8 +1111,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             if (!fbUser) {
               fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
             }
-          } catch {
-            setError('Incorrect administrator PIN. Access denied.');
+          } catch (adminErr: unknown) {
+            const { classifyAuthError } = await import('../../lib/firebase');
+            setError(classifyAuthError(adminErr, { accountKnown: true, mode: 'badge' }));
             setLoading(false);
             return;
           }
@@ -1343,7 +1347,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   /* ignore */
                 }
               }
-              if (pinMatches || matchedStaff.roleKey === 'hospital_admin') {
+              if (pinMatches) {
                 try {
                   const { firebaseEnsureEmailAccount } = await import('../../lib/firebase');
                   await withTimeout(firebaseEnsureEmailAccount(email, effectivePass), 5000);
@@ -1353,7 +1357,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   fbUser = null;
                 }
               } else {
-                setError('Incorrect PIN/password for this email account.');
+                const signInCode = String((signInErr as { code?: string })?.code || '');
+                const signInMsg = String((signInErr as { message?: string })?.message || '');
+                const isBadApiKey =
+                  signInCode === 'auth/invalid-api-key' ||
+                  signInMsg.includes('auth/invalid-api-key') ||
+                  signInMsg.includes('api-key-not-valid');
+                setError(
+                  isBadApiKey
+                    ? classifyAuthError(signInErr, { accountKnown: true, mode: 'email' })
+                    : 'Incorrect PIN/password for this email account.'
+                );
                 setLoading(false);
                 return;
               }

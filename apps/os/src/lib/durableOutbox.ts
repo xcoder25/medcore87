@@ -125,8 +125,9 @@ export async function flushOutbox(): Promise<{ synced: number; remaining: number
     }
 
     // 2) Cloud Sync API (/api/facility/sync -> Aurora Postgres / Server Vault)
+    const hasSession = typeof window !== 'undefined' && Boolean(localStorage.getItem('medcore_os_session'));
     let okCloud = false;
-    if (online) {
+    if (online && hasSession) {
       try {
         const res = await fetch('/api/facility/sync', {
           method: 'PUT',

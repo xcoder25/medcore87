@@ -166,13 +166,13 @@ function resolvePgTarget() {
 export function getPgConfig():
   | { connectionString: string; ssl?: boolean | { rejectUnauthorized: boolean } }
   | {
-      host: string;
-      port: number;
-      database: string;
-      user: string;
-      password: string | (() => Promise<string>);
-      ssl: boolean | { rejectUnauthorized: boolean };
-    }
+    host: string;
+    port: number;
+    database: string;
+    user: string;
+    password: string | (() => Promise<string>);
+    ssl: boolean | { rejectUnauthorized: boolean };
+  }
   | null {
   const target = resolvePgTarget();
 
@@ -188,28 +188,28 @@ export function getPgConfig():
       password: explicitRdsPassword
         ? explicitRdsPassword
         : async () => {
-            if (!cachedSigner) {
-              const { Signer } = await import('@aws-sdk/rds-signer');
-              let credentials: any;
-              if (authMethod === 'oidc_role') {
-                const { awsCredentialsProvider } = await import('@vercel/functions/oidc');
-                credentials = awsCredentialsProvider({
-                  roleArn,
-                  clientConfig: { region },
-                });
-              } else {
-                credentials = { accessKeyId, secretAccessKey };
-              }
-              cachedSigner = new Signer({
-                hostname: host,
-                port,
-                username: user,
-                region,
-                credentials,
+          if (!cachedSigner) {
+            const { Signer } = await import('@aws-sdk/rds-signer');
+            let credentials: any;
+            if (authMethod === 'oidc_role') {
+              const { awsCredentialsProvider } = await import('@vercel/functions/oidc');
+              credentials = awsCredentialsProvider({
+                roleArn,
+                clientConfig: { region },
               });
+            } else {
+              credentials = { accessKeyId, secretAccessKey };
             }
-            return cachedSigner.getAuthToken();
-          },
+            cachedSigner = new Signer({
+              hostname: host,
+              port,
+              username: user,
+              region,
+              credentials,
+            });
+          }
+          return cachedSigner.getAuthToken();
+        },
       ssl: { rejectUnauthorized: false },
     };
   }
@@ -308,7 +308,7 @@ export async function withClient<T>(fn: (c: PoolClient) => Promise<T>): Promise<
 /**
  * Executes a callback within a transactional connection block with PostgreSQL Row-Level Security (RLS)
  * scoped to the active facility.
- * Enforces: SET LOCAL app.current_facility_id = '<facilityId>';
+ * Enforces: SELECT set_config('app.current_facility_id', '<facilityId>', true);
  * Guaranteeing that users at Facility A can NEVER read or modify patient records from Facility B.
  */
 export async function withTenantClient<T>(
@@ -320,13 +320,13 @@ export async function withTenantClient<T>(
     await c.query('BEGIN;');
     try {
       if (fid) {
-        await c.query('SET LOCAL app.current_facility_id = $1;', [fid]);
+        await c.query("SELECT set_config('app.current_facility_id', $1, true);", [fid]);
       }
       const result = await fn(c);
       await c.query('COMMIT;');
       return result;
     } catch (err) {
-      await c.query('ROLLBACK;').catch(() => {});
+      await c.query('ROLLBACK;').catch(() => { });
       throw err;
     }
   });

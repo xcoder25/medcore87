@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ensureSchema, getPgDiagnostics, isPostgresConfigured, query } from '../../../../lib/db/postgres';
+import { ensureSchema, getPgDiagnostics, isPostgresConfigured, withTenantClient } from '../../../../lib/db/postgres';
 
 export const runtime = 'nodejs';
 
@@ -17,7 +17,11 @@ export async function GET() {
   }
   try {
     await ensureSchema();
-    const r = await query<{ now: string }>('SELECT NOW()::text AS now');
+    const r = await withTenantClient('HEALTH-CHECK', (c) =>
+      c.query<{ now: string; tenant: string }>(
+        "SELECT NOW()::text AS now, current_setting('app.current_facility_id', true) AS tenant"
+      )
+    );
     return NextResponse.json({
       ok: true,
       configured: true,
