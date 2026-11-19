@@ -12,7 +12,7 @@ export async function GET() {
       configured: false,
       authMethod: diag.authMethod,
       region: diag.region,
-      message: 'Set MEDCORE_AWS_DB_PGHOST + MEDCORE_AWS_DB_PGPASSWORD (or AWS IAM credentials / DATABASE_URL)',
+      message: 'Set AWS_ROLE_ARN + PGHOST (Vercel OIDC) or DATABASE_URL',
     });
   }
   try {
@@ -38,7 +38,10 @@ export async function GET() {
         error: errorMsg,
         ...(isPam
           ? {
-              hint: 'AWS RDS PAM rejected the IAM auth token. Ensure IAM DB auth is enabled on the cluster, GRANT rds_iam TO postgres was applied, and the IAM user for AWS_ACCESS_KEY_ID has an explicit rds-db:connect policy (AmazonRDSFullAccess does not include rds-db:connect).',
+              hint:
+                diag.authMethod === 'oidc_role'
+                  ? 'AWS RDS PAM rejected the OIDC IAM auth token. Ensure IAM DB auth is enabled on the cluster, GRANT rds_iam TO postgres was applied, and the IAM role in AWS_ROLE_ARN has an rds-db:connect policy.'
+                  : 'AWS RDS PAM rejected the IAM auth token. Ensure IAM DB auth is enabled on the cluster, GRANT rds_iam TO postgres was applied, and the IAM user for AWS_ACCESS_KEY_ID has an explicit rds-db:connect policy (AmazonRDSFullAccess does not include rds-db:connect).',
             }
           : {}),
       },

@@ -54,35 +54,66 @@ export type PgAuthMethod =
   | 'legacy_env'
   | 'none';
 
+function readRdsConnectionParams() {
+  const host =
+    env('PGHOST') ||
+    env('MEDCORE_AWS_DB_PGHOST') ||
+    env('AWS_RDS_HOST') ||
+    PRIMARY_RDS_HOST;
+  const port =
+    Number(env('PGPORT') || env('MEDCORE_AWS_DB_PGPORT') || String(PRIMARY_RDS_PORT)) ||
+    PRIMARY_RDS_PORT;
+  const database = env('PGDATABASE') || env('MEDCORE_AWS_DB_PGDATABASE') || PRIMARY_RDS_DATABASE;
+  const user =
+    env('PGUSER') ||
+    env('MEDCORE_AWS_DB_PGUSER') ||
+    env('MEDCORE_AWS_DB_USER') ||
+    PRIMARY_RDS_USER;
+  const region =
+    inferRegionFromRdsHost(host) ||
+    env('AWS_RDS_REGION') ||
+    env('AWS_REGION') ||
+    env('AWS_DEFAULT_REGION') ||
+    PRIMARY_RDS_REGION;
+  return { host, port, database, user, region };
+}
+
 function resolvePgTarget() {
+  const roleArn =
+    env('AWS_ROLE_ARN') ||
+    env('MEDCORE_AWS_ROLE_ARN') ||
+    env('MEDCORE_AWS_DB_AWS_ROLE_ARN');
   const accessKeyId = env('AWS_ACCESS_KEY_ID') || env('MEDCORE_AWS_ACCESS_KEY_ID');
   const secretAccessKey = env('AWS_SECRET_ACCESS_KEY') || env('MEDCORE_AWS_SECRET_ACCESS_KEY');
-  const roleArn = env('AWS_ROLE_ARN') || env('MEDCORE_AWS_ROLE_ARN');
   const explicitRdsPassword = env('AWS_RDS_PASSWORD');
 
-  if (explicitRdsPassword || (accessKeyId && secretAccessKey) || roleArn) {
-    const host = env('AWS_RDS_HOST') || PRIMARY_RDS_HOST;
-    const region =
-      env('AWS_RDS_REGION') ||
-      inferRegionFromRdsHost(host) ||
-      PRIMARY_RDS_REGION;
-    const authMethod: PgAuthMethod = explicitRdsPassword
-      ? 'rds_password'
-      : accessKeyId && secretAccessKey
-      ? 'iam_keys'
-      : 'oidc_role';
+  // Priority 1: Vercel AWS RDS OIDC integration (AWS_ROLE_ARN + PGHOST/PGPORT/PGUSER/PGDATABASE)
+  if (roleArn && !explicitRdsPassword) {
     return {
-      kind: 'primary' as const,
-      authMethod,
-      host,
-      region,
-      explicitRdsPassword,
-      accessKeyId,
-      secretAccessKey,
+      kind: 'rds' as const,
+      authMethod: 'oidc_role' as const,
+      ...readRdsConnectionParams(),
       roleArn,
+      accessKeyId: '',
+      secretAccessKey: '',
+      explicitRdsPassword: '',
     };
   }
 
+  // Priority 2: Explicit password override
+  if (explicitRdsPassword) {
+    return {
+      kind: 'rds' as const,
+      authMethod: 'rds_password' as const,
+      ...readRdsConnectionParams(),
+      roleArn: '',
+      accessKeyId: '',
+      secretAccessKey: '',
+      explicitRdsPassword,
+    };
+  }
+
+  // Priority 3: Standard URL connection string
   const url =
     env('DATABASE_URL') ||
     env('POSTGRES_URL') ||
@@ -93,23 +124,37 @@ function resolvePgTarget() {
     return { kind: 'legacy_url' as const, authMethod: 'legacy_url' as const, region: null, url };
   }
 
-  const host = env('MEDCORE_AWS_DB_PGHOST') || env('PGHOST');
+  // Priority 4: Legacy host + static password env vars
+  const host = env('PGHOST') || env('MEDCORE_AWS_DB_PGHOST');
   const password =
-    env('MEDCORE_AWS_DB_PGPASSWORD') ||
     env('PGPASSWORD') ||
+    env('MEDCORE_AWS_DB_PGPASSWORD') ||
     env('MEDCORE_AWS_DB_PASSWORD') ||
     env('POSTGRES_PASSWORD');
-  if (!host || !password) {
-    return { kind: 'none' as const, authMethod: 'none' as const, region: null };
+  if (host && password) {
+    return { kind: 'legacy_env' as const, authMethod: 'legacy_env' as const, region: null, host, password };
   }
 
-  return { kind: 'legacy_env' as const, authMethod: 'legacy_env' as const, region: null, host, password };
+  // Priority 5: IAM access keys RDS IAM Auth fallback
+  if (accessKeyId && secretAccessKey) {
+    return {
+      kind: 'rds' as const,
+      authMethod: 'iam_keys' as const,
+      ...readRdsConnectionParams(),
+      roleArn: '',
+      accessKeyId,
+      secretAccessKey,
+      explicitRdsPassword: '',
+    };
+  }
+
+  return { kind: 'none' as const, authMethod: 'none' as const, region: null };
 }
 
 /**
- * Build connection config prioritizing the dedicated Aurora RDS instance
- * (`database-1-instance-1.cnmi6kca2r4k.eu-north-1.rds.amazonaws.com`) via AWS RDS IAM Auth
- * over legacy Vercel integration env vars.
+ * Build connection config prioritizing Vercel's AWS RDS OIDC integration (`AWS_ROLE_ARN` +
+ * `PGHOST`/`PGPORT`/`PGUSER`/`PGDATABASE`) via `@aws-sdk/rds-signer`, with URL, password, and
+ * IAM-key fallbacks.
  */
 export function getPgConfig():
   | { connectionString: string; ssl?: boolean | { rejectUnauthorized: boolean } }
@@ -124,11 +169,9 @@ export function getPgConfig():
   | null {
   const target = resolvePgTarget();
 
-  if (target.kind === 'primary') {
-    const { host, region, explicitRdsPassword, accessKeyId, secretAccessKey, roleArn } = target;
-    const port = PRIMARY_RDS_PORT;
-    const database = PRIMARY_RDS_DATABASE;
-    const user = PRIMARY_RDS_USER;
+  if (target.kind === 'rds') {
+    const { authMethod, host, port, database, user, region, roleArn, accessKeyId, secretAccessKey, explicitRdsPassword } = target;
+    let cachedSigner: any = null;
 
     return {
       host,
@@ -138,22 +181,27 @@ export function getPgConfig():
       password: explicitRdsPassword
         ? explicitRdsPassword
         : async () => {
-            const { Signer } = await import('@aws-sdk/rds-signer');
-            let credentials: any;
-            if (accessKeyId && secretAccessKey) {
-              credentials = { accessKeyId, secretAccessKey };
-            } else {
-              const { awsCredentialsProvider } = await import('@vercel/functions/oidc');
-              credentials = awsCredentialsProvider({ roleArn });
+            if (!cachedSigner) {
+              const { Signer } = await import('@aws-sdk/rds-signer');
+              let credentials: any;
+              if (authMethod === 'oidc_role') {
+                const { awsCredentialsProvider } = await import('@vercel/functions/oidc');
+                credentials = awsCredentialsProvider({
+                  roleArn,
+                  clientConfig: { region },
+                });
+              } else {
+                credentials = { accessKeyId, secretAccessKey };
+              }
+              cachedSigner = new Signer({
+                hostname: host,
+                port,
+                username: user,
+                region,
+                credentials,
+              });
             }
-            const signer = new Signer({
-              region,
-              hostname: host,
-              port,
-              username: user,
-              credentials,
-            });
-            return signer.getAuthToken();
+            return cachedSigner.getAuthToken();
           },
       ssl: { rejectUnauthorized: false },
     };
@@ -207,7 +255,7 @@ export function getPool(): Pool {
   const cfg = getPgConfig();
   if (!cfg) {
     throw new Error(
-      'Postgres not configured. Set MEDCORE_AWS_DB_PGHOST + MEDCORE_AWS_DB_PGPASSWORD (or DATABASE_URL) on Vercel.'
+      'Postgres not configured. Set AWS_ROLE_ARN + PGHOST (Vercel RDS OIDC) or DATABASE_URL on Vercel.'
     );
   }
   let PgPoolClass: any;
@@ -219,10 +267,18 @@ export function getPool(): Pool {
   }
   pool = new PgPoolClass({
     ...cfg,
-    max: 5,
+    max: 20,
     idleTimeoutMillis: 20_000,
     connectionTimeoutMillis: 8_000,
   });
+  try {
+    const { attachDatabasePool } = require('@vercel/functions');
+    if (typeof attachDatabasePool === 'function') {
+      attachDatabasePool(pool);
+    }
+  } catch {
+    // Optional outside Vercel Fluid runtime
+  }
   pool!.on('error', (err: Error) => {
     console.error('[postgres] pool error', err.message);
   });
