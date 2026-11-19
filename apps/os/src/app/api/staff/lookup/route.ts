@@ -143,14 +143,90 @@ export async function GET(req: NextRequest) {
   try {
     const adminAuth = getAdminAuth();
     if (adminAuth) {
-      const lookupEmail = target.includes('@') ? target.toLowerCase() : badgeAuthEmail(target);
-      const fbUser = await adminAuth.getUserByEmail(lookupEmail).catch(() => null);
-      if (fbUser && !fbUser.disabled) {
-        const claims = (fbUser.customClaims || {}) as Record<string, unknown>;
-        const resolvedBadge = String(claims.badgeId || (target.includes('@') ? fbUser.uid.slice(0, 10).toUpperCase() : target)).toUpperCase();
+      const isEmailTarget = target.includes('@');
+      const lookupEmail = isEmailTarget ? target.toLowerCase() : badgeAuthEmail(target);
+      let fbUser = await adminAuth.getUserByEmail(lookupEmail).catch(() => null);
+      let badgeUser = !isEmailTarget ? fbUser : null;
+
+      if (isEmailTarget) {
+        const directClaims = (fbUser?.customClaims || {}) as Record<string, unknown>;
+        if (!fbUser || !directClaims.badgeId) {
+          const listRes = await adminAuth.listUsers(1000).catch(() => null);
+          if (listRes) {
+            for (const u of listRes.users) {
+              const uClaims = (u.customClaims || {}) as Record<string, unknown>;
+              const uWork = String(uClaims.workEmail || '').trim().toLowerCase();
+              const uMail = String(u.email || '').trim().toLowerCase();
+              if (uWork === lookupEmail || uMail === lookupEmail) {
+                if (uMail.startsWith('badge.')) {
+                  if (!badgeUser) badgeUser = u;
+                } else if (!fbUser) {
+                  fbUser = u;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      const activeUser = badgeUser || fbUser;
+      if (activeUser && !activeUser.disabled) {
+        const claims = {
+          ...((fbUser?.customClaims || {}) as Record<string, unknown>),
+          ...((badgeUser?.customClaims || {}) as Record<string, unknown>),
+        };
+        const rawMail = String(badgeUser?.email || fbUser?.email || '').trim().toLowerCase();
+        const badgeFromEmail = rawMail.startsWith('badge.')
+          ? rawMail.replace(/^badge\./, '').replace(/@.*$/, '').toUpperCase()
+          : '';
+        const resolvedBadge = String(
+          claims.badgeId || badgeFromEmail || (isEmailTarget ? activeUser.uid.slice(0, 10) : target)
+        ).toUpperCase();
+        const resolvedFacility = String(claims.facility_id || facilityId || 'IGH-EKT').toUpperCase();
+
+        // Check if Postgres holds the full staff record under the recovered Badge ID
+        if (isPostgresConfigured() && resolvedBadge) {
+          const pgRow =
+            (await getStaff(resolvedFacility, resolvedBadge).catch(() => null)) ||
+            (await findStaffAnyFacility(resolvedBadge).catch(() => null));
+          if (pgRow) {
+            const { pin_hash: _pinHash, ...safePg } = pgRow as typeof pgRow & { pin_hash?: string };
+            if (isEmailTarget && !pgRow.email) {
+              void upsertStaff({
+                badgeId: pgRow.badge_id,
+                facilityId: pgRow.facility_id,
+                fullName: pgRow.full_name,
+                role: pgRow.role || undefined,
+                roleKey: pgRow.role_key || undefined,
+                title: pgRow.title || undefined,
+                department: pgRow.department || undefined,
+                email: lookupEmail,
+                status: pgRow.status || 'active',
+                clearanceLevel: pgRow.clearance_level ?? 2,
+                clearanceLabel: pgRow.clearance_label || undefined,
+                permissions: Array.isArray(pgRow.permissions)
+                  ? (pgRow.permissions as string[])
+                  : undefined,
+                authEmail: pgRow.auth_email || undefined,
+              }).catch(() => {});
+            }
+            return NextResponse.json({
+              ok: true,
+              configured: true,
+              staff: {
+                ...safePg,
+                email: safePg.email || (isEmailTarget ? lookupEmail : null),
+              },
+            });
+          }
+        }
+
         const resolvedRoleKey = String(claims.role || 'staff');
         const resolvedClearance = Number(claims.clearanceLevel) || (resolvedRoleKey === 'hospital_admin' ? 5 : 2);
-        const resolvedFacility = String(claims.facility_id || facilityId || 'IGH-EKT').toUpperCase();
+        const resolvedDisplayName =
+          [badgeUser?.displayName, fbUser?.displayName]
+            .map((d) => String(d || '').trim())
+            .find((d) => d && d.toUpperCase() !== resolvedBadge) || resolvedBadge;
         return NextResponse.json({
           ok: true,
           configured: isPostgresConfigured(),
@@ -160,15 +236,15 @@ export async function GET(req: NextRequest) {
             badgeId: resolvedBadge,
             facility_id: resolvedFacility,
             facilityId: resolvedFacility,
-            full_name: fbUser.displayName || resolvedBadge,
-            fullName: fbUser.displayName || resolvedBadge,
+            full_name: resolvedDisplayName,
+            fullName: resolvedDisplayName,
             role: resolvedRoleKey === 'hospital_admin' ? 'Hospital Administrator' : 'Staff',
             role_key: resolvedRoleKey,
             roleKey: resolvedRoleKey,
             clearance_level: resolvedClearance,
             clearanceLevel: resolvedClearance,
-            clearance_label: `L${resolvedClearance}`,
-            email: target.includes('@') ? target.toLowerCase() : fbUser.email,
+            clearance_label: resolvedRoleKey === 'hospital_admin' ? 'Administrator' : `L${resolvedClearance}`,
+            email: isEmailTarget ? lookupEmail : (claims.workEmail || activeUser.email),
             status: 'active',
           },
         });

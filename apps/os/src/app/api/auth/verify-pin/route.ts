@@ -34,6 +34,68 @@ function safeEqualHex(a: string, b: string): boolean {
   }
 }
 
+async function resolveFirebaseBadgeForEmail(
+  adminAuth: NonNullable<ReturnType<typeof getAdminAuth>>,
+  cleanEmail: string,
+  badgeId: string
+): Promise<{
+  fbUser: any;
+  badgeUser: any;
+  resolvedBadge: string;
+  resolvedFacility: string;
+  mergedClaims: Record<string, unknown>;
+}> {
+  let fbUser: any = cleanEmail
+    ? await adminAuth.getUserByEmail(cleanEmail).catch(() => null)
+    : null;
+  let badgeUser: any = badgeId
+    ? await adminAuth.getUserByEmail(badgeAuthEmail(badgeId)).catch(() => null)
+    : null;
+
+  let fbClaims = (fbUser?.customClaims || {}) as Record<string, unknown>;
+  let badgeClaims = (badgeUser?.customClaims || {}) as Record<string, unknown>;
+  let resolvedBadge = String(badgeClaims.badgeId || fbClaims.badgeId || badgeId || '')
+    .trim()
+    .toUpperCase();
+
+  // If signing in with email and customClaims.badgeId wasn't found yet, match workEmail across users
+  if (cleanEmail && (!resolvedBadge || !badgeUser)) {
+    try {
+      const listRes = await adminAuth.listUsers(1000);
+      for (const u of listRes.users) {
+        const claims = (u.customClaims || {}) as Record<string, unknown>;
+        const uWork = String(claims.workEmail || '').trim().toLowerCase();
+        const uMail = String(u.email || '').trim().toLowerCase();
+        if (uWork === cleanEmail || uMail === cleanEmail) {
+          if (uMail.startsWith('badge.')) {
+            if (!badgeUser) badgeUser = u;
+          } else if (!fbUser) {
+            fbUser = u;
+          }
+          if (!resolvedBadge) {
+            if (claims.badgeId) {
+              resolvedBadge = String(claims.badgeId).trim().toUpperCase();
+            } else if (uMail.startsWith('badge.')) {
+              resolvedBadge = uMail.replace(/^badge\./, '').replace(/@.*$/, '').toUpperCase();
+            }
+          }
+        }
+      }
+      if (resolvedBadge && !badgeUser) {
+        badgeUser = await adminAuth.getUserByEmail(badgeAuthEmail(resolvedBadge)).catch(() => null);
+      }
+      fbClaims = (fbUser?.customClaims || {}) as Record<string, unknown>;
+      badgeClaims = (badgeUser?.customClaims || {}) as Record<string, unknown>;
+    } catch {
+      /* ignore listUsers errors */
+    }
+  }
+
+  const mergedClaims = { ...badgeClaims, ...fbClaims };
+  const resolvedFacility = String(mergedClaims.facility_id || '').trim().toUpperCase();
+  return { fbUser, badgeUser, resolvedBadge, resolvedFacility, mergedClaims };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const ip = getClientIp(req.headers);
@@ -72,25 +134,79 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const adminAuth = getAdminAuth();
+    let effectiveRow: any = null;
+    let fbLookup: Awaited<ReturnType<typeof resolveFirebaseBadgeForEmail>> | null = null;
+
     // 1) Aurora PostgreSQL check first
     if (isPostgresConfigured()) {
       try {
         const lookupTarget = badgeId || cleanEmail;
-        const row =
+        effectiveRow =
           (facilityId && badgeId ? await getStaff(facilityId, badgeId) : null) ||
           (await findStaffAnyFacility(lookupTarget)) ||
           (cleanEmail && badgeId ? await findStaffAnyFacility(cleanEmail) : null);
 
-        if (row) {
-          const storedHash = String((row as { pin_hash?: string | null }).pin_hash || '').trim();
+        // If email wasn't stored on the Postgres row yet, resolve Badge ID via Firebase Admin & re-check Postgres
+        if ((!effectiveRow || !effectiveRow.pin_hash) && adminAuth && (cleanEmail || badgeId)) {
+          fbLookup = await resolveFirebaseBadgeForEmail(adminAuth, cleanEmail, badgeId);
+          const recBadge = fbLookup.resolvedBadge;
+          const recFac = fbLookup.resolvedFacility || facilityId;
+          if (recBadge) {
+            const byBadge =
+              (recFac ? await getStaff(recFac, recBadge) : null) ||
+              (await findStaffAnyFacility(recBadge));
+            if (byBadge) {
+              effectiveRow = byBadge;
+            }
+          }
+        }
+
+        if (effectiveRow) {
+          const storedHash = String((effectiveRow as { pin_hash?: string | null }).pin_hash || '').trim();
           if (storedHash) {
             const verified =
               safeEqualHex(hashPin(normPin), storedHash) ||
               safeEqualHex(hashPin(rawPin), storedHash);
+
+            // Auto-heal email column & Firebase claims on verified login so future email lookups hit Postgres directly
+            if (verified && cleanEmail && !effectiveRow.email) {
+              void upsertStaff({
+                badgeId: effectiveRow.badge_id,
+                facilityId: effectiveRow.facility_id,
+                fullName: effectiveRow.full_name,
+                role: effectiveRow.role || undefined,
+                roleKey: effectiveRow.role_key || undefined,
+                title: effectiveRow.title || undefined,
+                department: effectiveRow.department || undefined,
+                email: cleanEmail,
+                status: effectiveRow.status || 'active',
+                clearanceLevel: effectiveRow.clearance_level ?? 2,
+                clearanceLabel: effectiveRow.clearance_label || undefined,
+                permissions: Array.isArray(effectiveRow.permissions)
+                  ? (effectiveRow.permissions as string[])
+                  : undefined,
+                authEmail: effectiveRow.auth_email || undefined,
+              }).catch(() => {});
+
+              if (adminAuth && fbLookup?.fbUser && !(fbLookup.fbUser.customClaims as any)?.badgeId) {
+                const prev = (fbLookup.fbUser.customClaims || {}) as Record<string, unknown>;
+                void adminAuth.setCustomUserClaims(fbLookup.fbUser.uid, {
+                  ...prev,
+                  facility_id: prev.facility_id || effectiveRow.facility_id,
+                  role: prev.role || effectiveRow.role_key || 'staff',
+                  badgeId: effectiveRow.badge_id,
+                  clearanceLevel: prev.clearanceLevel || effectiveRow.clearance_level || 2,
+                  workEmail: cleanEmail,
+                }).catch(() => {});
+              }
+            }
+
             return NextResponse.json({
               ok: true,
               configured: true,
               hasPinHash: true,
+              accountFound: true,
               verified,
               source: 'postgres',
             });
@@ -99,6 +215,21 @@ export async function POST(req: NextRequest) {
       } catch (pgErr) {
         console.warn('[api/auth/verify-pin] Postgres lookup warning:', pgErr);
       }
+    }
+
+    if (!fbLookup && adminAuth && (cleanEmail || badgeId)) {
+      fbLookup = await resolveFirebaseBadgeForEmail(adminAuth, cleanEmail, badgeId);
+    }
+
+    const fbHasUser = Boolean(fbLookup?.fbUser || fbLookup?.badgeUser);
+    if (!effectiveRow && adminAuth && !fbHasUser) {
+      return NextResponse.json({
+        ok: true,
+        configured: isPostgresConfigured(),
+        hasPinHash: false,
+        accountFound: false,
+        verified: false,
+      });
     }
 
     // 2) Server-only Firebase REST verification fallback (no browser NEXT_PUBLIC_* needed)
@@ -130,20 +261,22 @@ export async function POST(req: NextRequest) {
         // Best-effort backfill into Aurora Postgres so future logins verify against Postgres
         if (isPostgresConfigured()) {
           try {
-            const adminAuth = getAdminAuth();
-            const fbPrimaryUser = adminAuth
-              ? await adminAuth.getUserByEmail(candidateEmail).catch(() => null)
-              : null;
+            const fbPrimaryUser =
+              fbLookup?.fbUser ||
+              (adminAuth ? await adminAuth.getUserByEmail(candidateEmail).catch(() => null) : null);
             const claims = (fbPrimaryUser?.customClaims || {}) as Record<string, unknown>;
-            const resolvedBadge = String(claims.badgeId || badgeId || '').trim().toUpperCase();
+            const resolvedBadge = String(claims.badgeId || fbLookup?.resolvedBadge || badgeId || '')
+              .trim()
+              .toUpperCase();
             const fbBadgeFallback =
-              adminAuth &&
+              fbLookup?.badgeUser ||
+              (adminAuth &&
               resolvedBadge &&
               (!fbPrimaryUser ||
                 !fbPrimaryUser.displayName ||
                 fbPrimaryUser.displayName.trim().toUpperCase() === resolvedBadge)
                 ? await adminAuth.getUserByEmail(badgeAuthEmail(resolvedBadge)).catch(() => null)
-                : null;
+                : null);
             const badgeClaims = (fbBadgeFallback?.customClaims || {}) as Record<string, unknown>;
             const mergedClaims = { ...badgeClaims, ...claims };
 
@@ -190,6 +323,7 @@ export async function POST(req: NextRequest) {
           ok: true,
           configured: isPostgresConfigured(),
           hasPinHash: false,
+          accountFound: true,
           verified: true,
           source: 'firebase_server',
         });
@@ -199,6 +333,7 @@ export async function POST(req: NextRequest) {
         ok: true,
         configured: isPostgresConfigured(),
         hasPinHash: false,
+        accountFound: fbHasUser || Boolean(effectiveRow),
         verified: false,
         source: 'firebase_server',
       });
@@ -208,6 +343,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       configured: isPostgresConfigured(),
       hasPinHash: false,
+      accountFound: fbHasUser || Boolean(effectiveRow),
       verified: false,
       needsServerFirebaseKey: true,
     });

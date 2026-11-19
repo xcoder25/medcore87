@@ -329,7 +329,7 @@ export async function POST(req: NextRequest) {
           : isAdmin
           ? ['*']
           : undefined;
-        const resolvedEmail = existing?.email || (workEmail || fbWorkEmail || undefined);
+    const resolvedEmail = (hasRealWorkEmail ? workEmail : '') || existing?.email || fbWorkEmail || undefined;
         const targetFacilityId = existing?.facility_id || fbFacilityId || resolvedFacility;
 
         await upsertStaff({
@@ -349,9 +349,37 @@ export async function POST(req: NextRequest) {
           pin: pin6,
           authEmail: existing?.auth_email || authEmail,
         });
+
+        if (adminAuth) {
+          const syncedClaims = {
+            facility_id: targetFacilityId,
+            role: resolvedRoleKey,
+            badgeId,
+            clearanceLevel: resolvedClearance,
+            ...(resolvedEmail ? { workEmail: resolvedEmail } : {}),
+          };
+          if (badgeUser) {
+            await adminAuth.setCustomUserClaims(badgeUser.uid, syncedClaims).catch(() => {});
+          }
+          if (emailUser) {
+            await adminAuth.setCustomUserClaims(emailUser.uid, syncedClaims).catch(() => {});
+          }
+        }
       } catch (pgErr) {
         console.warn('[reset-pin] Postgres update error:', pgErr);
       }
+    } else if (adminAuth && (badgeUser || emailUser)) {
+      const targetFacilityId = fbFacilityId || resolvedFacility || 'IGH-EKT';
+      const resolvedRoleKey = fbRoleKey || 'staff';
+      const syncedClaims = {
+        facility_id: targetFacilityId,
+        role: resolvedRoleKey,
+        badgeId,
+        clearanceLevel: fbClearance,
+        ...(hasRealWorkEmail ? { workEmail } : {}),
+      };
+      if (badgeUser) await adminAuth.setCustomUserClaims(badgeUser.uid, syncedClaims).catch(() => {});
+      if (emailUser) await adminAuth.setCustomUserClaims(emailUser.uid, syncedClaims).catch(() => {});
     }
 
     return NextResponse.json({

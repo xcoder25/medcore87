@@ -1077,7 +1077,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           profile.pin && (String(profile.pin) === pinQuery || normalizeStaffPin(profile.pin) === pinNorm)
         );
         let serverPinVerified = false;
-        let verifyPinMeta: { hasPinHash?: boolean; verified?: boolean; needsServerFirebaseKey?: boolean } | null = null;
+        let verifyPinMeta: { hasPinHash?: boolean; accountFound?: boolean; verified?: boolean; needsServerFirebaseKey?: boolean } | null = null;
         if (!localPinMatches && online) {
           try {
             const vpRes = await withTimeout(
@@ -1095,6 +1095,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             if (vpRes.ok) {
               const vpJson = (await vpRes.json()) as {
                 hasPinHash?: boolean;
+                accountFound?: boolean;
                 verified?: boolean;
                 needsServerFirebaseKey?: boolean;
               };
@@ -1122,9 +1123,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             }
           } else {
             setError(
-              verifyPinMeta?.needsServerFirebaseKey
-                ? 'This legacy account is not yet synced to Aurora Postgres. Add server-only FIREBASE_WEB_API_KEY in Vercel (not NEXT_PUBLIC_) or reset PIN once via Forgot PIN.'
-                : 'Incorrect administrator PIN. Access denied.'
+              verifyPinMeta?.accountFound === false
+                ? 'No staff account was found for this Staff Badge ID.'
+                : verifyPinMeta?.needsServerFirebaseKey
+                  ? 'This legacy account is not yet synced to Aurora Postgres. Add server-only FIREBASE_WEB_API_KEY in Vercel (not NEXT_PUBLIC_) or reset PIN once via Forgot PIN.'
+                  : 'Incorrect administrator PIN. Access denied.'
             );
             setLoading(false);
             return;
@@ -1146,9 +1149,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             }
           } else {
             setError(
-              verifyPinMeta?.needsServerFirebaseKey
-                ? 'This legacy account is not yet synced to Aurora Postgres. Add server-only FIREBASE_WEB_API_KEY in Vercel (not NEXT_PUBLIC_) or reset PIN once via Forgot PIN.'
-                : 'Incorrect Staff ID or PIN.'
+              verifyPinMeta?.accountFound === false
+                ? 'No staff account was found for this Staff Badge ID.'
+                : verifyPinMeta?.needsServerFirebaseKey
+                  ? 'This legacy account is not yet synced to Aurora Postgres. Add server-only FIREBASE_WEB_API_KEY in Vercel (not NEXT_PUBLIC_) or reset PIN once via Forgot PIN.'
+                  : 'Incorrect Staff ID or PIN.'
             );
             setLoading(false);
             return;
@@ -1333,6 +1338,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           let serverEmailVerified = false;
           let emailVerifyMeta: {
             hasPinHash?: boolean;
+            accountFound?: boolean;
             verified?: boolean;
             needsServerFirebaseKey?: boolean;
           } | null = null;
@@ -1355,6 +1361,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               if (vpRes.ok) {
                 const vpJson = (await vpRes.json()) as {
                   hasPinHash?: boolean;
+                  accountFound?: boolean;
                   verified?: boolean;
                   needsServerFirebaseKey?: boolean;
                 };
@@ -1435,7 +1442,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   (storedPin.length >= 4 && storedPin.trim() === pass.trim()))
               );
               if (!localPinMatches) {
-                if (emailVerifyMeta?.needsServerFirebaseKey) {
+                if (emailVerifyMeta?.accountFound === false) {
+                  setError('No staff account was found for this email. Check the email address or ask your administrator to enrol you.');
+                } else if (emailVerifyMeta?.needsServerFirebaseKey) {
                   setError(
                     'This legacy account is not yet synced to Aurora Postgres. Add server-only FIREBASE_WEB_API_KEY in Vercel (not NEXT_PUBLIC_) or reset PIN once via Forgot PIN.'
                   );
