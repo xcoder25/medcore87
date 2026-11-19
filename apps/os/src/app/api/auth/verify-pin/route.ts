@@ -136,6 +136,7 @@ export async function POST(req: NextRequest) {
 
     const adminAuth = getAdminAuth();
     let effectiveRow: any = null;
+    let pgTransientError: unknown = null;
     let fbLookup: Awaited<ReturnType<typeof resolveFirebaseBadgeForEmail>> | null = null;
 
     // 1) Aurora PostgreSQL check first
@@ -213,6 +214,7 @@ export async function POST(req: NextRequest) {
           }
         }
       } catch (pgErr) {
+        pgTransientError = pgErr;
         console.warn('[api/auth/verify-pin] Postgres lookup warning:', pgErr);
       }
     }
@@ -222,7 +224,7 @@ export async function POST(req: NextRequest) {
     }
 
     const fbHasUser = Boolean(fbLookup?.fbUser || fbLookup?.badgeUser);
-    if (!effectiveRow && adminAuth && !fbHasUser) {
+    if (!effectiveRow && !pgTransientError && adminAuth && !fbHasUser) {
       return NextResponse.json({
         ok: true,
         configured: isPostgresConfigured(),
@@ -244,18 +246,35 @@ export async function POST(req: NextRequest) {
     if (webApiKey) {
       const candidateEmail = cleanEmail || badgeAuthEmail(badgeId);
       const fbPass = normPin;
-      const fbRes = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(webApiKey)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: candidateEmail,
-            password: fbPass,
-            returnSecureToken: false,
-          }),
-        }
-      );
+      let fbRes: Response;
+      try {
+        fbRes = await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(webApiKey)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: candidateEmail,
+              password: fbPass,
+              returnSecureToken: false,
+            }),
+            signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+              ? AbortSignal.timeout(8000)
+              : undefined,
+          }
+        );
+      } catch (fbFetchErr) {
+        return NextResponse.json(
+          {
+            ok: false,
+            verified: false,
+            transientError: true,
+            error: 'AUTH_SERVICE_TIMEOUT',
+            message: (fbFetchErr as Error)?.message || 'Authentication provider timed out. Please try again.',
+          },
+          { status: 503 }
+        );
+      }
 
       if (fbRes.ok) {
         // Best-effort backfill into Aurora Postgres so future logins verify against Postgres
@@ -329,6 +348,19 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      if (fbRes.status >= 500) {
+        return NextResponse.json(
+          {
+            ok: false,
+            verified: false,
+            transientError: true,
+            error: 'AUTH_SERVICE_UNAVAILABLE',
+            message: 'Authentication provider temporarily unavailable. Please try again.',
+          },
+          { status: 503 }
+        );
+      }
+
       return NextResponse.json({
         ok: true,
         configured: isPostgresConfigured(),
@@ -337,6 +369,19 @@ export async function POST(req: NextRequest) {
         verified: false,
         source: 'firebase_server',
       });
+    }
+
+    if (pgTransientError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          verified: false,
+          transientError: true,
+          error: 'DATABASE_UNAVAILABLE',
+          message: 'Database connection timed out. Please try again.',
+        },
+        { status: 503 }
+      );
     }
 
     return NextResponse.json({

@@ -882,11 +882,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         }
 
         // 1) Aurora PostgreSQL staff profile (cloud source of truth — Firestore is decommissioned)
+        let badgeLookupNetworkError: 'timeout' | 'network' | 'offline' | null = online ? null : 'offline';
         if (!profile && online) {
           try {
             const { apiLookupStaff } = await import('../../lib/db/clientApi');
-            const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, badgeQuery), 6000);
-            if (pgRes.ok && pgRes.staff) {
+            const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, badgeQuery), 12000);
+            if (!pgRes.ok && pgRes.error) {
+              const em = pgRes.error.toLowerCase();
+              badgeLookupNetworkError = em.includes('timeout') || em.includes('abort') ? 'timeout' : 'network';
+            } else if (pgRes.ok && pgRes.staff) {
+              badgeLookupNetworkError = null;
               const pgRow = pgRes.staff as any;
               if (pgRow) {
                 const rowFid = String(pgRow.facility_id || '');
@@ -937,6 +942,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               }
             }
           } catch (e) {
+            const em = String((e as Error)?.message || e || '').toLowerCase();
+            badgeLookupNetworkError = em.includes('timeout') || em.includes('abort') ? 'timeout' : 'network';
             console.warn('[auth] Postgres badge lookup (cloud-first)', e);
           }
         }
@@ -1049,7 +1056,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
         if (!profile) {
           setError(
-            'Incorrect Staff ID or PIN. Account not found at this facility.'
+            badgeLookupNetworkError === 'offline'
+              ? 'You are currently offline and this badge profile is not cached locally. Connect to the internet and try again.'
+              : badgeLookupNetworkError === 'timeout'
+                ? 'Connection timed out while looking up your Staff ID. Check your internet connection and try again.'
+                : badgeLookupNetworkError === 'network'
+                  ? 'Network connection dropped while reaching the hospital server. Please try again.'
+                  : 'Incorrect Staff ID or PIN. Account not found at this facility.'
           );
           setLoading(false);
           return;
@@ -1076,36 +1089,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         const localPinMatches = Boolean(
           profile.pin && (String(profile.pin) === pinQuery || normalizeStaffPin(profile.pin) === pinNorm)
         );
+        const { formatVerifyFailureMessage, verifyPinOnServer } = await import('../../lib/authVerifyClient');
         let serverPinVerified = false;
-        let verifyPinMeta: { hasPinHash?: boolean; accountFound?: boolean; verified?: boolean; needsServerFirebaseKey?: boolean } | null = null;
-        if (!localPinMatches && online) {
-          try {
-            const vpRes = await withTimeout(
-              fetch('/api/auth/verify-pin', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  facilityId: profile.hospitalId || effectiveHospital.id,
-                  badgeId: profile.badgeId,
-                  pin: pinNorm,
-                }),
-              }),
-              5000
-            );
-            if (vpRes.ok) {
-              const vpJson = (await vpRes.json()) as {
-                hasPinHash?: boolean;
-                accountFound?: boolean;
-                verified?: boolean;
-                needsServerFirebaseKey?: boolean;
-              };
-              verifyPinMeta = vpJson;
-              if (vpJson.verified) {
-                serverPinVerified = true;
-              }
-            }
-          } catch {
-            /* offline or timeout — fall through to client Firebase Auth check if configured */
+        let verifyResult: import('../../lib/authVerifyClient').VerifyPinResult | null = null;
+        if (!localPinMatches) {
+          verifyResult = await verifyPinOnServer({
+            facilityId: profile.hospitalId || effectiveHospital.id,
+            badgeId: profile.badgeId,
+            pin: pinNorm,
+          });
+          if (verifyResult.verified) {
+            serverPinVerified = true;
           }
         }
 
@@ -1123,11 +1117,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             }
           } else {
             setError(
-              verifyPinMeta?.accountFound === false
-                ? 'No staff account was found for this Staff Badge ID.'
-                : verifyPinMeta?.needsServerFirebaseKey
-                  ? 'This legacy account is not yet synced to Aurora Postgres. Add server-only FIREBASE_WEB_API_KEY in Vercel (not NEXT_PUBLIC_) or reset PIN once via Forgot PIN.'
-                  : 'Incorrect administrator PIN. Access denied.'
+              verifyResult
+                ? formatVerifyFailureMessage(verifyResult, { mode: 'badge', isAdmin: true })
+                : 'Incorrect administrator PIN. Access denied.'
             );
             setLoading(false);
             return;
@@ -1149,11 +1141,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             }
           } else {
             setError(
-              verifyPinMeta?.accountFound === false
-                ? 'No staff account was found for this Staff Badge ID.'
-                : verifyPinMeta?.needsServerFirebaseKey
-                  ? 'This legacy account is not yet synced to Aurora Postgres. Add server-only FIREBASE_WEB_API_KEY in Vercel (not NEXT_PUBLIC_) or reset PIN once via Forgot PIN.'
-                  : 'Incorrect Staff ID or PIN.'
+              verifyResult
+                ? formatVerifyFailureMessage(verifyResult, { mode: 'badge', isAdmin: false })
+                : 'Incorrect Staff ID or PIN.'
             );
             setLoading(false);
             return;
@@ -1289,11 +1279,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             }
           } catch { /* */ }
 
+          let emailLookupNetworkError: 'timeout' | 'network' | null = null;
           const lookupEmailStaffFromCloud = async (): Promise<PresetStaff | undefined> => {
             try {
               const { apiLookupStaff } = await import('../../lib/db/clientApi');
-              const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, email), 6000);
-              if (!pgRes.ok || !pgRes.staff) return undefined;
+              const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, email), 12000);
+              if (!pgRes.ok) {
+                const em = String(pgRes.error || '').toLowerCase();
+                emailLookupNetworkError = em.includes('timeout') || em.includes('abort') ? 'timeout' : 'network';
+                return undefined;
+              }
+              if (!pgRes.staff) return undefined;
+              emailLookupNetworkError = null;
               const pgRow = pgRes.staff as any;
               const rowFid = String(pgRow.facility_id || '');
               if (rowFid && rowFid.toUpperCase() !== effectiveHospital.id.toUpperCase()) {
@@ -1323,7 +1320,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                 photoUrl: pgRow.photo_url || pgRow.photoUrl || undefined,
                 color: '#0052D4',
               };
-            } catch {
+            } catch (err) {
+              const em = String((err as Error)?.message || err || '').toLowerCase();
+              emailLookupNetworkError = em.includes('timeout') || em.includes('abort') ? 'timeout' : 'network';
               return undefined;
             }
           };
@@ -1334,45 +1333,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           }
 
           // 2) Server-first verification (/api/auth/verify-pin -> Postgres pin_hash or server FIREBASE_WEB_API_KEY)
+          const { formatVerifyFailureMessage, verifyPinOnServer } = await import('../../lib/authVerifyClient');
           let fbUser: import('firebase/auth').User | null = null;
           let serverEmailVerified = false;
-          let emailVerifyMeta: {
-            hasPinHash?: boolean;
-            accountFound?: boolean;
-            verified?: boolean;
-            needsServerFirebaseKey?: boolean;
-          } | null = null;
+          let emailVerifyResult: import('../../lib/authVerifyClient').VerifyPinResult | null = null;
 
-          if (typeof navigator === 'undefined' || navigator.onLine) {
-            try {
-              const vpRes = await withTimeout(
-                fetch('/api/auth/verify-pin', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    facilityId: matchedStaff?.hospitalId || effectiveHospital.id,
-                    badgeId: matchedStaff?.badgeId,
-                    email,
-                    pin: effectivePass,
-                  }),
-                }),
-                5000
-              );
-              if (vpRes.ok) {
-                const vpJson = (await vpRes.json()) as {
-                  hasPinHash?: boolean;
-                  accountFound?: boolean;
-                  verified?: boolean;
-                  needsServerFirebaseKey?: boolean;
-                };
-                emailVerifyMeta = vpJson;
-                if (vpJson.verified) {
-                  serverEmailVerified = true;
-                }
-              }
-            } catch {
-              /* offline or timeout */
-            }
+          emailVerifyResult = await verifyPinOnServer({
+            facilityId: matchedStaff?.hospitalId || effectiveHospital.id,
+            badgeId: matchedStaff?.badgeId,
+            email,
+            pin: effectivePass,
+          });
+          if (emailVerifyResult.verified) {
+            serverEmailVerified = true;
           }
 
           // If verified server-side via Firebase REST but matchedStaff wasn't loaded yet, fetch profile once
@@ -1442,12 +1415,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   (storedPin.length >= 4 && storedPin.trim() === pass.trim()))
               );
               if (!localPinMatches) {
-                if (emailVerifyMeta?.accountFound === false) {
-                  setError('No staff account was found for this email. Check the email address or ask your administrator to enrol you.');
-                } else if (emailVerifyMeta?.needsServerFirebaseKey) {
+                if (
+                  emailVerifyResult &&
+                  (emailVerifyResult.status === 'offline' ||
+                    emailVerifyResult.status === 'timeout' ||
+                    emailVerifyResult.status === 'network_error' ||
+                    emailVerifyResult.status === 'server_error' ||
+                    emailVerifyResult.status === 'rate_limited')
+                ) {
+                  setError(formatVerifyFailureMessage(emailVerifyResult, { mode: 'email' }));
+                } else if (emailLookupNetworkError && emailVerifyResult?.status !== 'invalid_pin') {
                   setError(
-                    'This legacy account is not yet synced to Aurora Postgres. Add server-only FIREBASE_WEB_API_KEY in Vercel (not NEXT_PUBLIC_) or reset PIN once via Forgot PIN.'
+                    emailLookupNetworkError === 'timeout'
+                      ? 'Connection timed out while looking up your account. Your PIN was not rejected — check your network and try again.'
+                      : 'Network connection dropped while reaching the hospital server. Check your internet connection and try again.'
                   );
+                } else if (emailVerifyResult) {
+                  setError(formatVerifyFailureMessage(emailVerifyResult, { mode: 'email' }));
                 } else if (!matchedStaff) {
                   setError('This account does not exist. Check the email or ask your administrator to enrol you.');
                 } else {
@@ -2912,8 +2896,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                         border: 'none',
                         background:
                           !/^\d{6}$/.test(forgotOtpCode) ||
-                          !/^\d{6}$/.test(forgotNewPin) ||
-                          forgotNewPin !== forgotConfirmPin
+                            !/^\d{6}$/.test(forgotNewPin) ||
+                            forgotNewPin !== forgotConfirmPin
                             ? '#CBD5E1'
                             : 'linear-gradient(90deg, #0284C7 0%, #00BFA5 100%)',
                         color: '#0A2540',
@@ -2921,9 +2905,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                         fontWeight: 800,
                         cursor:
                           forgotLoading ||
-                          !/^\d{6}$/.test(forgotOtpCode) ||
-                          !/^\d{6}$/.test(forgotNewPin) ||
-                          forgotNewPin !== forgotConfirmPin
+                            !/^\d{6}$/.test(forgotOtpCode) ||
+                            !/^\d{6}$/.test(forgotNewPin) ||
+                            forgotNewPin !== forgotConfirmPin
                             ? 'not-allowed'
                             : 'pointer',
                         display: 'flex',

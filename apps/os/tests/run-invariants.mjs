@@ -424,3 +424,98 @@ test('s3Server: builds private object proxy URLs and tenant-scoped staff headsho
   const objUrl = s3.buildS3ObjectUrl(key);
   assert.ok(objUrl.startsWith('/api/storage/object?key='));
 });
+
+test('authVerifyClient: distinguishes timeouts/network drops/503s from invalid PIN and retries transient drops', async () => {
+  const av = loadTsModule('src/lib/authVerifyClient.ts');
+
+  // 1) Offline returns offline, never "Incorrect PIN"
+  const offRes = await av.verifyPinOnServer(
+    { facilityId: 'IGH-EKT', badgeId: 'IGH-01', pin: '123456' },
+    { isOnline: () => false }
+  );
+  assert.equal(offRes.status, 'offline');
+  assert.equal(offRes.verified, false);
+  assert.equal(av.formatVerifyFailureMessage(offRes, { mode: 'badge' }).includes('Incorrect'), false);
+
+  // 2) Timeout AbortError returns timeout, never "Incorrect PIN"
+  const abortErr = new Error('The operation was aborted');
+  abortErr.name = 'AbortError';
+  const toRes = await av.verifyPinOnServer(
+    { facilityId: 'IGH-EKT', badgeId: 'IGH-01', pin: '123456' },
+    {
+      isOnline: () => true,
+      maxRetries: 0,
+      fetchImpl: async () => { throw abortErr; },
+    }
+  );
+  assert.equal(toRes.status, 'timeout');
+  assert.equal(av.formatVerifyFailureMessage(toRes, { mode: 'badge' }).toLowerCase().includes('timed out'), true);
+  assert.equal(av.formatVerifyFailureMessage(toRes, { mode: 'badge' }).includes('Incorrect'), false);
+
+  // 3) Network drop followed by success auto-recovers on retry
+  let calls = 0;
+  const retryRes = await av.verifyPinOnServer(
+    { facilityId: 'IGH-EKT', badgeId: 'IGH-01', pin: '123456' },
+    {
+      isOnline: () => true,
+      maxRetries: 1,
+      retryDelayMs: 5,
+      fetchImpl: async () => {
+        calls++;
+        if (calls === 1) throw new TypeError('Failed to fetch');
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, verified: true, accountFound: true, source: 'postgres' }),
+        };
+      },
+    }
+  );
+  assert.equal(calls, 2);
+  assert.equal(retryRes.status, 'verified');
+  assert.equal(retryRes.verified, true);
+
+  // 4) Persistent network drop returns network_error, never "Incorrect PIN"
+  const netFail = await av.verifyPinOnServer(
+    { facilityId: 'IGH-EKT', email: 'doc@hosp.ng', pin: '123456' },
+    {
+      isOnline: () => true,
+      maxRetries: 1,
+      retryDelayMs: 5,
+      fetchImpl: async () => { throw new TypeError('Failed to fetch'); },
+    }
+  );
+  assert.equal(netFail.status, 'network_error');
+  assert.equal(av.formatVerifyFailureMessage(netFail, { mode: 'email' }).includes('Incorrect'), false);
+
+  // 5) HTTP 503 DATABASE_UNAVAILABLE returns server_error, never "Incorrect PIN"
+  const dbDown = await av.verifyPinOnServer(
+    { facilityId: 'IGH-EKT', badgeId: 'IGH-01', pin: '123456' },
+    {
+      isOnline: () => true,
+      maxRetries: 0,
+      fetchImpl: async () => ({
+        ok: false,
+        status: 503,
+        json: async () => ({ ok: false, verified: false, transientError: true, error: 'DATABASE_UNAVAILABLE' }),
+      }),
+    }
+  );
+  assert.equal(dbDown.status, 'server_error');
+  assert.equal(av.formatVerifyFailureMessage(dbDown, { mode: 'badge' }).includes('Incorrect'), false);
+
+  // 6) Genuine wrong PIN returns invalid_pin and displays Incorrect PIN
+  const badPin = await av.verifyPinOnServer(
+    { facilityId: 'IGH-EKT', badgeId: 'IGH-01', pin: '000000' },
+    {
+      isOnline: () => true,
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, verified: false, accountFound: true, hasPinHash: true }),
+      }),
+    }
+  );
+  assert.equal(badPin.status, 'invalid_pin');
+  assert.equal(av.formatVerifyFailureMessage(badPin, { mode: 'badge', isAdmin: false }), 'Incorrect Staff ID or PIN.');
+});
