@@ -3,6 +3,9 @@
 import React, { useState, useMemo } from 'react';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { ReferralItem, INITIAL_REFERRALS } from '../../data/hospitalData';
+import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 import {
   Send, Plus, Building2, AlertTriangle, CheckCircle2,
   Clock, X, ArrowUpRight, ArrowDownLeft, ShieldAlert
@@ -13,6 +16,7 @@ interface ReferralsManagerProps {
 }
 
 export const ReferralsManager: React.FC<ReferralsManagerProps> = ({ onNavigate }) => {
+  const facilityId = (typeof window !== 'undefined' && getActiveFacilityId()) || 'IGH-EKT';
   const [referrals, setReferrals] = useState<ReferralItem[]>(INITIAL_REFERRALS);
   const [activeTab, setActiveTab] = useState<'all' | 'inbound' | 'outbound'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -23,6 +27,7 @@ export const ReferralsManager: React.FC<ReferralsManagerProps> = ({ onNavigate }
   const [formName, setFormName] = useState('');
   const [formMrn, setFormMrn] = useState('');
   const [formDirection, setFormDirection] = useState<'inbound' | 'outbound'>('outbound');
+  const [formError, setFormError] = useState<string | null>(null);
   const [formFacility, setFormFacility] = useState('University of Uyo Teaching Hospital (UUTH)');
   const [formSpecialty, setFormSpecialty] = useState('Neurosurgery');
   const [formPriority, setFormPriority] = useState<'routine' | 'urgent' | 'emergency'>('urgent');
@@ -35,12 +40,36 @@ export const ReferralsManager: React.FC<ReferralsManagerProps> = ({ onNavigate }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim()) return;
+    setFormError(null);
+
+    if (formDirection === 'outbound') {
+      const verif = verifyPatientExists(facilityId, {
+        hospitalNumber: formMrn || undefined,
+        patientName: formName || undefined,
+      });
+      if (!verif.valid || !verif.patient) {
+        setFormError(verif.error || 'Outbound referrals require a verified patient in this facility registry.');
+        return;
+      }
+      setFormName(formatFullPatientName(verif.patient));
+    } else if (!formName.trim()) {
+      setFormError('Select a registered patient or enter the external inbound patient name.');
+      return;
+    } else if (formMrn.trim()) {
+      const verif = verifyPatientExists(facilityId, {
+        hospitalNumber: formMrn.trim(),
+        patientName: formName.trim(),
+      });
+      if (!verif.valid) {
+        setFormError(verif.error || 'Hospital number does not match facility registry.');
+        return;
+      }
+    }
 
     const newRef: ReferralItem = {
       id: `REF-${Date.now().toString().slice(-4)}`,
       patientName: formName.trim(),
-      mrn: formMrn || `MRN-26-${Math.floor(10000 + Math.random() * 90000)}`,
+      mrn: formMrn || `EXT-${Date.now().toString().slice(-5)}`,
       direction: formDirection,
       referringFacility: formDirection === 'outbound' ? 'Ibom Specialist Hospital, Uyo' : formFacility,
       destinationFacility: formDirection === 'outbound' ? formFacility : 'Ibom Specialist Hospital, Uyo',
@@ -54,8 +83,10 @@ export const ReferralsManager: React.FC<ReferralsManagerProps> = ({ onNavigate }
     setReferrals([newRef, ...referrals]);
     setShowModal(false);
     setFormName('');
+    setFormMrn('');
+    setFormError(null);
     setFormSummary('');
-    triggerNotice(`Referral for ${formName} submitted.`);
+    triggerNotice(`Referral for ${newRef.patientName} submitted.`);
   };
 
   const handleUpdateStatus = (id: string, newStatus: ReferralItem['status']) => {
@@ -270,17 +301,40 @@ export const ReferralsManager: React.FC<ReferralsManagerProps> = ({ onNavigate }
             </div>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#94A8BE', marginBottom: 4 }}>PATIENT FULL NAME</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Master Kufre Akpan"
-                  value={formName}
-                  onChange={e => setFormName(e.target.value)}
-                  style={{ width: '100%', padding: '10px 12px', background: '#0A1929', border: '1px solid #1E446B', borderRadius: 8, color: '#0A2540', outline: 'none' }}
-                />
-              </div>
+              <VerifiedPatientField
+                facilityId={facilityId}
+                selectedPatientId={formMrn}
+                required={formDirection === 'outbound'}
+                optional={formDirection === 'inbound'}
+                dark
+                label={formDirection === 'outbound' ? 'Verified Patient (Name or Hospital No.)' : 'Registered Patient (if on file)'}
+                error={formError}
+                onSelect={(p) => {
+                  setFormError(null);
+                  if (p) {
+                    setFormName(formatFullPatientName(p));
+                    setFormMrn(p.hospitalNumber || p.id);
+                  } else {
+                    setFormMrn('');
+                    if (formDirection === 'outbound') setFormName('');
+                  }
+                }}
+              />
+              {formDirection === 'inbound' && !formMrn && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#94A8BE', marginBottom: 4 }}>
+                    EXTERNAL INBOUND PATIENT FULL NAME *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Master Kufre Akpan (External Referral)"
+                    value={formName}
+                    onChange={e => setFormName(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', background: '#0A1929', border: '1px solid #1E446B', borderRadius: 8, color: '#F8FAFC', outline: 'none' }}
+                  />
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>

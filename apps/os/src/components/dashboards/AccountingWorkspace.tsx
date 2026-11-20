@@ -35,7 +35,7 @@ import {
   listBillLines,
   type PatientBillLine,
 } from '../../lib/patientBillingStore';
-import { listPatients, type FacilityPatient } from '../../lib/patientRegistryStore';
+import { listPatients, hydratePatientsFromPostgres, type FacilityPatient } from '../../lib/patientRegistryStore';
 import { todayPayments, dayStats, subscribeReceptionOps } from '../../lib/receptionOpsStore';
 import { PosPaymentDesk } from '../cashier/PosPaymentDesk';
 import { AccountingArDesk } from '../finance/AccountingArDesk';
@@ -88,17 +88,27 @@ const BillingOffice: React.FC<{ session: UserSession; onCollect: (patientId: str
 
   useEffect(() => { void tick; }, [tick]);
 
-  const doSearch = () => {
-    const q = query.trim().toUpperCase();
+  const doSearch = async () => {
+    const raw = query.trim();
+    const q = raw.toUpperCase();
     if (!q) return;
-    const found = allPatients.find(
-      p =>
-        p.hospitalNumber?.toUpperCase() === q ||
-        p.nin?.toUpperCase() === q ||
-        p.id?.toUpperCase() === q ||
-        p.hospitalNumber?.toUpperCase().includes(q) ||
-        `${p.firstName || ''} ${p.lastName || ''}`.toUpperCase().includes(q)
-    );
+    const matchPatient = (pts: FacilityPatient[]) =>
+      pts.find(
+        (p) =>
+          p.hospitalNumber?.toUpperCase() === q ||
+          p.nin?.toUpperCase() === q ||
+          p.id?.toUpperCase() === q ||
+          p.hospitalNumber?.toUpperCase().includes(q) ||
+          `${p.firstName || ''} ${p.lastName || ''}`.toUpperCase().includes(q)
+      );
+
+    let found = matchPatient(allPatients);
+    if (!found) {
+      await hydratePatientsFromPostgres(facilityId, raw).catch(() => 0);
+      const fresh = listPatients(facilityId);
+      setAllPatients(fresh);
+      found = matchPatient(fresh);
+    }
     setFoundPatient(found || null);
     setSearched(true);
     if (found) {

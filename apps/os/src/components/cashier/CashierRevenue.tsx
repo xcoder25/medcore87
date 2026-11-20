@@ -14,6 +14,8 @@ import {
 import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
 import { listBillLines, subscribeBills } from '../../lib/patientBillingStore';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 
 type BillStatus = 'pending' | 'paid' | 'insurance' | 'waived' | 'outstanding';
 

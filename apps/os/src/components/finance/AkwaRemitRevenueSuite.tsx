@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 import type { UserSession } from '../auth/AuthScreen';
 import {
   listAkwaRemitPayments,
@@ -248,8 +250,17 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
   const handleRecordPayment = (e: React.FormEvent) => {
     e.preventDefault();
     setPaymentError(null);
-    if (!newPatientName.trim() || !newAmount || Number(newAmount) <= 0) {
-      setPaymentError('Patient name and a valid amount are required.');
+    const verif = verifyPatientExists(facilityId, {
+      hospitalNumber: newHospitalNo.trim() || undefined,
+      patientName: newPatientName.trim() || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setPaymentError(verif.error || 'Patient or Hospital Number does not exist in the facility registry.');
+      return;
+    }
+    const verified = verif.patient;
+    if (!newAmount || Number(newAmount) <= 0) {
+      setPaymentError('A valid payment amount is required.');
       return;
     }
     if (newMethod === 'akwaremit_pos' && !newPosRef.trim()) {
@@ -267,9 +278,9 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
       receiptNo,
       facilityId,
       facilityName,
-      patientId: `P-${Date.now().toString().slice(-4)}`,
-      patientName: newPatientName.trim(),
-      hospitalNumber: newHospitalNo.trim() || 'MRN-NEW',
+      patientId: verified.id,
+      patientName: formatFullPatientName(verified),
+      hospitalNumber: verified.hospitalNumber || verified.id,
       amountNgn: Number(newAmount),
       method: newMethod,
       serviceCategory: newCategory,
@@ -1542,46 +1553,35 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
             </p>
 
             <form onSubmit={handleRecordPayment} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <VerifiedPatientField
+                facilityId={facilityId}
+                selectedPatientId={newHospitalNo}
+                required
+                label="Verified Patient (Name or Hospital No.)"
+                onSelect={(p) => {
+                  setPaymentError(null);
+                  if (p) {
+                    setNewPatientName(formatFullPatientName(p));
+                    setNewHospitalNo(p.hospitalNumber || p.id);
+                  } else {
+                    setNewPatientName('');
+                    setNewHospitalNo('');
+                  }
+                }}
+              />
+
               <div>
                 <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: 4 }}>
-                  Patient Full Name *
+                  Amount (₦) *
                 </label>
                 <input
-                  type="text"
+                  type="number"
                   required
-                  placeholder="e.g. Mrs. Amaka Okafor"
-                  value={newPatientName}
-                  onChange={(e) => setNewPatientName(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.85rem' }}
+                  placeholder="e.g. 8500"
+                  value={newAmount}
+                  onChange={(e) => setNewAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.85rem', fontWeight: 800 }}
                 />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: 4 }}>
-                    Hospital MRN No
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. MRN-20-14321"
-                    value={newHospitalNo}
-                    onChange={(e) => setNewHospitalNo(e.target.value)}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.85rem' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: 4 }}>
-                    Amount (₦) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    placeholder="e.g. 8500"
-                    value={newAmount}
-                    onChange={(e) => setNewAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.85rem', fontWeight: 800 }}
-                  />
-                </div>
               </div>
 
               <div>

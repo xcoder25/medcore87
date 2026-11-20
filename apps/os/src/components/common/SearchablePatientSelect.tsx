@@ -3,11 +3,16 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   listPatients,
-  searchPatients,
+  hydratePatientsFromPostgres,
   subscribePatients,
   type FacilityPatient,
 } from '../../lib/patientRegistryStore';
-import { Search, ChevronDown, User, X, Check, IdCard } from 'lucide-react';
+import {
+  verifyPatientExists,
+  formatFullPatientName,
+  type PatientVerificationResult,
+} from '../../lib/patientVerification';
+import { Search, ChevronDown, User, X, Check, IdCard, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { scoreSearchCandidate } from '../../lib/universalSearchEngine';
 
 export interface SearchablePatientSelectProps {
@@ -20,13 +25,16 @@ export interface SearchablePatientSelectProps {
   disabled?: boolean;
   required?: boolean;
   autoFocus?: boolean;
+  showVerificationBadge?: boolean;
+  dark?: boolean;
+  onVerificationChange?: (result: PatientVerificationResult) => void;
   style?: React.CSSProperties;
   inputStyle?: React.CSSProperties;
   id?: string;
 }
 
 export const formatPatientName = (p: FacilityPatient): string => {
-  return [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ');
+  return formatFullPatientName(p);
 };
 
 export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = ({
@@ -38,6 +46,9 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
   disabled = false,
   required = false,
   autoFocus = false,
+  showVerificationBadge = true,
+  dark = false,
+  onVerificationChange,
   style,
   inputStyle,
   id,
@@ -47,6 +58,8 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
   const [allPatients, setAllPatients] = useState<FacilityPatient[]>([]);
   const [highlightIndex, setHighlightIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
+  const [checkingRegistry, setCheckingRegistry] = useState(false);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -69,11 +82,12 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
     if (!isOpen) {
       if (activePatient) {
         setQuery(`${formatPatientName(activePatient)} · ${activePatient.hospitalNumber}`);
-      } else {
+        setVerificationError(null);
+      } else if (!query.trim()) {
         setQuery('');
       }
     }
-  }, [activePatient, isOpen]);
+  }, [activePatient, isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filtered patients based on user typing with fuzzy & multi-token scoring
   // Privacy & UX rule: do NOT list patients when the search field is empty
@@ -97,18 +111,74 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
       .map((x) => x.p);
   }, [allPatients, query, isOpen]);
 
-  // Close dropdown when clicking outside
+  // Debounced server registry lookup when typed query has no local hits
+  useEffect(() => {
+    const q = query.trim();
+    if (!isOpen || activePatient || q.length < 2 || filteredPatients.length > 0) {
+      setCheckingRegistry(false);
+      return;
+    }
+    let cancelled = false;
+    setCheckingRegistry(true);
+    const timer = window.setTimeout(() => {
+      void hydratePatientsFromPostgres(facilityId, q)
+        .catch(() => 0)
+        .finally(() => {
+          if (!cancelled) {
+            setAllPatients(listPatients(facilityId));
+            setCheckingRegistry(false);
+          }
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [facilityId, query, isOpen, activePatient, filteredPatients.length]);
+
+  const tryVerifyTypedQuery = (raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      setVerificationError(null);
+      onVerificationChange?.({ valid: false, status: 'empty' });
+      return;
+    }
+    const res = verifyPatientExists(facilityId, { query: trimmed });
+    onVerificationChange?.(res);
+    if (res.valid && res.patient) {
+      setVerificationError(null);
+      onChange(res.patient);
+      setQuery(`${formatPatientName(res.patient)} · ${res.patient.hospitalNumber}`);
+      setIsOpen(false);
+    } else {
+      setVerificationError(
+        res.error || `Patient / Hospital No. "${trimmed}" does not exist in the facility registry.`
+      );
+    }
+  };
+
+  // Close dropdown when clicking outside and verify unpicked text
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
+        if (!activePatient && query.trim()) {
+          tryVerifyTypedQuery(query);
+        }
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  });
 
   const handleSelect = (patient: FacilityPatient) => {
+    setVerificationError(null);
+    onVerificationChange?.({
+      valid: true,
+      status: 'verified',
+      patient,
+      matchedBy: 'hospitalNumber',
+    });
     onChange(patient);
     setQuery(`${formatPatientName(patient)} · ${patient.hospitalNumber}`);
     setIsOpen(false);
@@ -118,15 +188,20 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
     e.stopPropagation();
     onChange(null);
     setQuery('');
+    setVerificationError(null);
+    onVerificationChange?.({ valid: false, status: 'empty' });
     setIsOpen(true);
     if (inputRef.current) inputRef.current.focus();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!isOpen) {
-      if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      if (e.key === 'ArrowDown') {
         setIsOpen(true);
         e.preventDefault();
+      } else if (e.key === 'Enter' && !activePatient && query.trim()) {
+        e.preventDefault();
+        tryVerifyTypedQuery(query);
       }
       return;
     }
@@ -141,6 +216,8 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
       e.preventDefault();
       if (filteredPatients[highlightIndex]) {
         handleSelect(filteredPatients[highlightIndex]);
+      } else if (query.trim()) {
+        tryVerifyTypedQuery(query);
       }
     } else if (e.key === 'Escape') {
       setIsOpen(false);
@@ -192,12 +269,18 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
           placeholder={placeholder}
           onFocus={() => {
             setIsOpen(true);
+            setVerificationError(null);
             if (activePatient) {
               setQuery(''); // Clear text when user wants to search a different patient
             }
           }}
           onChange={(e) => {
-            setQuery(e.target.value);
+            const val = e.target.value;
+            setQuery(val);
+            setVerificationError(null);
+            if (activePatient) {
+              onChange(null);
+            }
             if (!isOpen) setIsOpen(true);
             setHighlightIndex(0);
           }}
@@ -206,11 +289,25 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
             width: '100%',
             padding: '10px 38px 10px 36px',
             borderRadius: 10,
-            border: isOpen ? '1.5px solid #0066FF' : isHovered ? '1.5px solid #94A3B8' : '1px solid #CBD5E1',
-            background: disabled ? '#F1F5F9' : '#FFFFFF',
+            border: verificationError
+              ? '1.5px solid #DC2626'
+              : activePatient
+                ? '1.5px solid #16A34A'
+                : isOpen
+                  ? '1.5px solid #0066FF'
+                  : isHovered
+                    ? '1.5px solid #94A3B8'
+                    : dark
+                      ? '1px solid #334155'
+                      : '1px solid #CBD5E1',
+            background: disabled
+              ? '#F1F5F9'
+              : dark
+                ? '#0F172A'
+                : '#FFFFFF',
             fontSize: 13,
             fontWeight: activePatient ? 600 : 400,
-            color: activePatient ? '#0F172A' : '#334155',
+            color: dark ? '#F8FAFC' : activePatient ? '#0F172A' : '#334155',
             outline: 'none',
             boxShadow: isOpen ? '0 0 0 3.5px rgba(0, 102, 255, 0.16), 0 2px 8px rgba(0, 102, 255, 0.08)' : isHovered ? '0 2px 5px rgba(0, 0, 0, 0.04)' : 'none',
             caretColor: '#0066FF',
@@ -341,10 +438,14 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
             >
               <User size={24} style={{ margin: '0 auto 8px', opacity: 0.4 }} />
               <div style={{ fontWeight: 700, color: '#334155', marginBottom: 4 }}>
-                No patient found matching &quot;{query}&quot;
+                {checkingRegistry
+                  ? `Checking hospital registry for "${query}"…`
+                  : `No patient found matching "${query}"`}
               </div>
               <div style={{ fontSize: 11 }}>
-                Check name spelling, hospital number, or register at reception.
+                {checkingRegistry
+                  ? 'Searching facility records…'
+                  : 'Hospital number or name does not exist in this facility registry. Register at Reception first.'}
               </div>
             </div>
           ) : (
@@ -430,6 +531,43 @@ export const SearchablePatientSelect: React.FC<SearchablePatientSelectProps> = (
               );
             })
           )}
+        </div>
+      )}
+
+      {showVerificationBadge && activePatient && (
+        <div
+          style={{
+            marginTop: 5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 11,
+            fontWeight: 700,
+            color: dark ? '#34D399' : '#047857',
+          }}
+        >
+          <CheckCircle2 size={13} />
+          <span>
+            Verified · {formatPatientName(activePatient)} · {activePatient.hospitalNumber}
+          </span>
+        </div>
+      )}
+
+      {!activePatient && verificationError && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 11,
+            fontWeight: 700,
+            color: dark ? '#FCA5A5' : '#DC2626',
+          }}
+        >
+          <AlertCircle size={13} style={{ flexShrink: 0 }} />
+          <span>{verificationError}</span>
         </div>
       )}
     </div>

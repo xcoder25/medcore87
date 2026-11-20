@@ -53,6 +53,8 @@ import {
   type NursingSbarHandoff,
 } from '../../lib/nursingKardexStore';
 import { listPatients } from '../../lib/patientRegistryStore';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 import { emitLiveAction } from '../../lib/liveActions';
 import { useOpdSync, broadcastOpdStage } from '../../hooks/useOpdSync';
 
@@ -124,6 +126,8 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   const [kardexFilter, setKardexFilter] = useState<'all' | 'pending' | 'overdue' | 'completed'>('all');
   const [selectedWard, setSelectedWard] = useState<string>('all');
   const [notice, setNotice] = useState<string | null>(null);
+  const [taskPatientId, setTaskPatientId] = useState('');
+  const [taskPatientError, setTaskPatientError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<Date>(new Date());
 
   // Realtime tick sync via OPD synchronization
@@ -384,14 +388,28 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
 
   const handleCreateCareTask = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTask.patientName.trim() || !newTask.careActivity.trim()) return;
+    setTaskPatientError(null);
+    if (!newTask.careActivity.trim()) return;
 
+    const verif = verifyPatientExists(facilityId, {
+      patientId: taskPatientId || undefined,
+      hospitalNumber: newTask.hospitalNumber || undefined,
+      patientName: newTask.patientName || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setTaskPatientError(
+        verif.error || 'Patient name or Hospital Number does not exist in the facility registry.'
+      );
+      return;
+    }
+
+    const verified = verif.patient;
     addNursingCareItem({
       facilityId,
       bedNumber: newTask.bedNumber,
       ward: newTask.ward,
-      patientName: newTask.patientName.trim(),
-      hospitalNumber: newTask.hospitalNumber.trim() || `GH-${Date.now().toString().slice(-4)}`,
+      patientName: formatFullPatientName(verified),
+      hospitalNumber: verified.hospitalNumber || verified.id,
       careActivity: newTask.careActivity.trim(),
       dose: newTask.dose.trim() || undefined,
       route: newTask.route,
@@ -2150,19 +2168,22 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
             </div>
 
             <form onSubmit={handleCreateCareTask} style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, display: 'block', marginBottom: 4 }}>
-                  Patient Full Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Samuel Archibong"
-                  value={newTask.patientName}
-                  onChange={(e) => setNewTask({ ...newTask, patientName: e.target.value })}
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13 }}
-                />
-              </div>
+              <VerifiedPatientField
+                facilityId={facilityId}
+                selectedPatientId={taskPatientId}
+                required
+                label="Verified Patient (Name or Hospital No.)"
+                error={taskPatientError}
+                onSelect={(p) => {
+                  setTaskPatientError(null);
+                  setTaskPatientId(p?.id || '');
+                  setNewTask((prev) => ({
+                    ...prev,
+                    patientName: p ? formatFullPatientName(p) : '',
+                    hospitalNumber: p ? (p.hospitalNumber || p.id) : '',
+                  }));
+                }}
+              />
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>

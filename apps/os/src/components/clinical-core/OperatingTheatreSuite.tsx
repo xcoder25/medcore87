@@ -13,6 +13,8 @@ import { useFormDraft } from '../../lib/formDraftStore';
 import { FormDraftBanner } from '../common/FormDraftBanner';
 import { appendAudit } from '../../lib/auditLogStore';
 import type { UserSession } from '../auth/AuthScreen';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 
 interface ExtendedSurgicalCase extends SurgicalCase {
   signInDone?: boolean;
@@ -31,6 +33,8 @@ export const OperatingTheatreSuite: React.FC<{ session?: UserSession }> = ({ ses
   // New Surgery Modal State
   const [showModal, setShowModal] = useState(false);
   const [newPatient, setNewPatient] = useState('');
+  const [newPatientId, setNewPatientId] = useState('');
+  const [patientError, setPatientError] = useState<string | null>(null);
   const [newProcedure, setNewProcedure] = useState('');
   const [newTheatre, setNewTheatre] = useState('Theatre 1 (Main Surgical Suite)');
   const [newSurgeon, setNewSurgeon] = useState('Dr. Emeka Adeyemi (Consultant Orthopaedic)');
@@ -95,12 +99,21 @@ export const OperatingTheatreSuite: React.FC<{ session?: UserSession }> = ({ ses
 
   const handleScheduleSurgery = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPatient.trim() || !newProcedure.trim()) return;
+    setPatientError(null);
+    if (!newProcedure.trim()) return;
+    const verif = verifyPatientExists(facilityId, {
+      patientId: newPatientId || undefined,
+      patientName: newPatient || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setPatientError(verif.error || 'Select a verified registered patient before scheduling.');
+      return;
+    }
 
     const nextId = `OR-2026-${4405 + cases.length}`;
     const newCase: ExtendedSurgicalCase = {
       id: nextId,
-      patientName: newPatient.trim(),
+      patientName: formatFullPatientName(verif.patient),
       theatreNumber: newTheatre,
       procedure: newProcedure.trim(),
       leadSurgeon: newSurgeon,
@@ -118,6 +131,8 @@ export const OperatingTheatreSuite: React.FC<{ session?: UserSession }> = ({ ses
     setSelectedId(newCase.id);
     setShowModal(false);
     setNewPatient('');
+    setNewPatientId('');
+    setPatientError(null);
     setNewProcedure('');
     otDraft.clearDraft();
     appendAudit({
@@ -421,19 +436,18 @@ export const OperatingTheatreSuite: React.FC<{ session?: UserSession }> = ({ ses
               <button className="os-ghost-btn" style={{ padding: 4 }} onClick={() => setShowModal(false)}><X size={16} /></button>
             </div>
             <form onSubmit={handleScheduleSurgery} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
-                  Patient Full Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Aniefiok Udo Peters"
-                  value={newPatient}
-                  onChange={e => setNewPatient(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.86rem', outline: 'none' }}
-                />
-              </div>
+              <VerifiedPatientField
+                facilityId={facilityId}
+                selectedPatientId={newPatientId}
+                required
+                label="Verified Patient (Name or Hospital No.)"
+                error={patientError}
+                onSelect={(p) => {
+                  setPatientError(null);
+                  setNewPatientId(p?.id || '');
+                  setNewPatient(p ? formatFullPatientName(p) : '');
+                }}
+              />
               <div>
                 <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
                   Surgical Procedure Name *

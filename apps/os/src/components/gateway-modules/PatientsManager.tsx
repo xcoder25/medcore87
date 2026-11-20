@@ -1,8 +1,11 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useMemo } from 'react';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { HospitalPatient, INITIAL_PATIENTS } from '../../data/hospitalData';
+import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 import {
   Users, Search, Plus, Stethoscope, FileText, Pill,
   BedDouble, AlertTriangle, CheckCircle2, ChevronRight, X, HeartPulse, UserPlus
@@ -13,11 +16,15 @@ interface PatientsManagerProps {
 }
 
 export const PatientsManager: React.FC<PatientsManagerProps> = ({ onNavigate }) => {
+  const [facilityId] = useState(() => getActiveFacilityId());
   const [patients, setPatients] = useState<HospitalPatient[]>(INITIAL_PATIENTS);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'inpatient' | 'outpatient' | 'critical'>('all');
   const [showAdmitModal, setShowAdmitModal] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<HospitalPatient | null>(null);
+  const [admitPatientId, setAdmitPatientId] = useState('');
+  const [admitHospitalNumber, setAdmitHospitalNumber] = useState('');
+  const [admitError, setAdmitError] = useState<string | null>(null);
 
   // New patient admission form state
   const [newPatient, setNewPatient] = useState({
@@ -60,22 +67,32 @@ export const PatientsManager: React.FC<PatientsManagerProps> = ({ onNavigate }) 
 
   const handleAdmitSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPatient.name.trim()) return;
+    const verif = verifyPatientExists(facilityId, {
+      patientId: admitPatientId || undefined,
+      hospitalNumber: admitHospitalNumber || undefined,
+      patientName: newPatient.name.trim() || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setAdmitError(verif.error || 'Select a verified patient or enter an existing hospital number before admitting.');
+      return;
+    }
+    setAdmitError(null);
+    const vp = verif.patient;
 
     const patient: HospitalPatient = {
-      id: `P-${Date.now().toString().slice(-4)}`,
-      mrn: `MRN-26-${Math.floor(10000 + Math.random() * 90000)}`,
-      name: newPatient.name.trim(),
+      id: vp.id || `P-${Date.now().toString().slice(-4)}`,
+      mrn: vp.hospitalNumber,
+      name: formatFullPatientName(vp),
       age: parseInt(newPatient.age) || 30,
       sex: newPatient.sex,
-      dob: '1995-01-01',
+      dob: vp.dob || '1995-01-01',
       blood: newPatient.blood,
       ward: newPatient.ward,
       bed: newPatient.bed.trim() || 'Pending',
       status: 'stable',
       diagnoses: newPatient.diagnoses ? [newPatient.diagnoses] : ['Acute Clinical Evaluation'],
       allergies: newPatient.allergies ? newPatient.allergies.split(',').map(s => s.trim()) : [],
-      phone: newPatient.phone || '+234-800-000-0000',
+      phone: vp.phone || newPatient.phone || '+234-800-000-0000',
       nok: 'Next of Kin on File',
       attending: 'Dr. Adewale Bello',
       admitDate: new Date().toISOString().split('T')[0],
@@ -86,6 +103,8 @@ export const PatientsManager: React.FC<PatientsManagerProps> = ({ onNavigate }) 
 
     setPatients([patient, ...patients]);
     setShowAdmitModal(false);
+    setAdmitPatientId('');
+    setAdmitHospitalNumber('');
     setNewPatient({ name: '', age: '', sex: 'M', phone: '', ward: 'MMW', bed: '', diagnoses: '', blood: 'O+', allergies: '' });
   };
 
@@ -450,17 +469,39 @@ export const PatientsManager: React.FC<PatientsManagerProps> = ({ onNavigate }) 
             </div>
 
             <form onSubmit={handleAdmitSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#94A8BE', marginBottom: 4 }}>PATIENT FULL NAME</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Samuel Uchechukwu"
-                  value={newPatient.name}
-                  onChange={e => setNewPatient({ ...newPatient, name: e.target.value })}
-                  style={{ width: '100%', padding: '10px 12px', background: '#0A1929', border: '1px solid #1E446B', borderRadius: 8, color: '#0A2540', outline: 'none' }}
-                />
-              </div>
+              <VerifiedPatientField
+                dark
+                facilityId={facilityId}
+                required
+                label="VERIFIED PATIENT (NAME OR HOSPITAL NO.)"
+                selectedPatientId={admitPatientId || undefined}
+                initialHospitalNumber={admitHospitalNumber || undefined}
+                initialName={newPatient.name || undefined}
+                error={admitError}
+                onSelect={(p) => {
+                  setAdmitError(null);
+                  if (!p) {
+                    setAdmitPatientId('');
+                    setAdmitHospitalNumber('');
+                    setNewPatient((prev) => ({ ...prev, name: '' }));
+                    return;
+                  }
+                  const birthYear = p.dob ? parseInt(p.dob.slice(0, 4), 10) : NaN;
+                  const computedAge = !Number.isNaN(birthYear) && birthYear > 1900 ? String(Math.max(0, new Date().getFullYear() - birthYear)) : '';
+                  const sexCode: 'M' | 'F' = p.sex === 'Female' ? 'F' : 'M';
+                  setAdmitPatientId(p.id);
+                  setAdmitHospitalNumber(p.hospitalNumber);
+                  setNewPatient((prev) => ({
+                    ...prev,
+                    name: formatFullPatientName(p),
+                    age: computedAge || prev.age,
+                    sex: sexCode,
+                    phone: p.phone || prev.phone,
+                    blood: p.bloodGroup || prev.blood,
+                    allergies: Array.isArray(p.allergies) && p.allergies.length > 0 ? p.allergies.join(', ') : prev.allergies,
+                  }));
+                }}
+              />
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>

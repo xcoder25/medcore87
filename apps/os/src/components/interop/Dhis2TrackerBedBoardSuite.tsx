@@ -43,6 +43,8 @@ import {
   downloadDhis2Aggregate,
   autoSubmitDhis2,
 } from '../../lib/dhis2Export';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 import { listBeds } from '../../lib/bedBoardStore';
 import {
   BedDouble, CheckCircle2, AlertTriangle, Clock, RefreshCw,
@@ -184,14 +186,28 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
     }
   };
 
+  const [admitError, setAdmitError] = useState<string | null>(null);
+  const [admitPatientId, setAdmitPatientId] = useState('');
+
   const handleAdmitSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBed || !admitForm.patientName.trim()) return;
+    if (!selectedBed) return;
+    setAdmitError(null);
+    const verif = verifyPatientExists(facilityId, {
+      patientId: admitPatientId || undefined,
+      hospitalNumber: admitForm.hospitalNumber || undefined,
+      patientName: admitForm.patientName || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setAdmitError(verif.error || 'Verify patient name or hospital number before admitting.');
+      return;
+    }
 
+    const verified = verif.patient;
     admitPatientTracker({
       facilityId,
-      patientName: admitForm.patientName.trim(),
-      hospitalNumber: admitForm.hospitalNumber.trim() || `GH-${Date.now().toString().slice(-4)}`,
+      patientName: formatFullPatientName(verified),
+      hospitalNumber: verified.hospitalNumber || verified.id,
       ward: selectedBed.ward,
       room: selectedBed.room,
       bed: selectedBed.bed,
@@ -201,6 +217,8 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
     });
 
     setShowAdmitModal(false);
+    setAdmitPatientId('');
+    setAdmitError(null);
     setAdmitForm({ patientName: '', hospitalNumber: '', doctor: '', diagnosis: '', priority: 'routine' });
     reload();
     flash(`Patient enrolled & admitted to ${selectedBed.bedKey} via DHIS2 Tracker.`);
@@ -1056,45 +1074,34 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
             </div>
 
             <form onSubmit={handleAdmitSubmit} style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <VerifiedPatientField
+                facilityId={facilityId}
+                selectedPatientId={admitPatientId}
+                required
+                label="Verified Patient (Name or Hospital No.)"
+                error={admitError}
+                onSelect={(p) => {
+                  setAdmitError(null);
+                  setAdmitPatientId(p?.id || '');
+                  setAdmitForm((prev) => ({
+                    ...prev,
+                    patientName: p ? formatFullPatientName(p) : '',
+                    hospitalNumber: p ? (p.hospitalNumber || p.id) : '',
+                  }));
+                }}
+              />
+
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
-                  Patient Full Name *
+                  Attending Doctor
                 </label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. Samuel Archibong"
-                  value={admitForm.patientName}
-                  onChange={(e) => setAdmitForm({ ...admitForm, patientName: e.target.value })}
+                  placeholder="Dr. Bassey"
+                  value={admitForm.doctor}
+                  onChange={(e) => setAdmitForm({ ...admitForm, doctor: e.target.value })}
                   style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
                 />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
-                    Hospital Number (MRN)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. GH-2026-0891"
-                    value={admitForm.hospitalNumber}
-                    onChange={(e) => setAdmitForm({ ...admitForm, hospitalNumber: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', display: 'block', marginBottom: 4 }}>
-                    Attending Doctor
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Dr. Bassey"
-                    value={admitForm.doctor}
-                    onChange={(e) => setAdmitForm({ ...admitForm, doctor: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
-                  />
-                </div>
               </div>
 
               <div>

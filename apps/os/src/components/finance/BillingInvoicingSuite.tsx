@@ -17,6 +17,9 @@ import {
   markLinePaid,
   BILLING_INVOICE_STORAGE_KEY,
 } from '../../lib/patientBillingStore';
+import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 
 interface ExtendedInvoice extends BillingInvoice {
   department?: string;
@@ -29,6 +32,8 @@ const STORAGE_KEY = 'ibom_os_billing_invoices';
 const INITIAL_INVOICES: ExtendedInvoice[] = [];
 
 export const BillingInvoicingSuite: React.FC = () => {
+  const facilityId =
+    (typeof window !== 'undefined' && getActiveFacilityId()) || 'IGH-EKT';
   const [invoices, setInvoices] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'settled' | 'pending_payment' | 'hmo_dispute'>('all');
@@ -139,10 +144,16 @@ export const BillingInvoicingSuite: React.FC = () => {
     e.preventDefault();
     setFormError('');
 
-    if (!formPatientName.trim()) {
-      setFormError('Please provide the patient full name.');
+    const verif = verifyPatientExists(String(facilityId), {
+      patientId: formPatientId.trim() || undefined,
+      patientName: formPatientName.trim() || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setFormError(verif.error || 'Patient or Hospital Number does not exist in the facility registry.');
       return;
     }
+    const verified = verif.patient;
+    const verifiedName = formatFullPatientName(verified);
     if (activeFormTotal <= 0) {
       setFormError('Total bill amount must be greater than zero.');
       return;
@@ -150,13 +161,13 @@ export const BillingInvoicingSuite: React.FC = () => {
 
     const nextIdNumber = 905 + invoices.length;
     const invNum = `ISH-INV-2026-${nextIdNumber}`;
-    const pId = formPatientId.trim() || `PAT-AK-${Math.floor(1000 + Math.random() * 9000)}`;
+    const pId = verified.hospitalNumber || verified.id;
 
     const newInvoice: ExtendedInvoice = {
       id: `INV-${Date.now().toString().slice(-4)}`,
       invoiceNumber: invNum,
-      patientId: pId,
-      patientName: formPatientName.trim(),
+      patientId: verified.id,
+      patientName: verifiedName,
       admissionDate: formAdmissionDate,
       department: formDepartment,
       totalChargesNgn: activeFormTotal,
@@ -171,21 +182,15 @@ export const BillingInvoicingSuite: React.FC = () => {
     const updated = [newInvoice, ...invoices];
     saveInvoices(updated);
 
-    // Ready for payment → shared ledger → Cashier / POS
-    const facilityId =
-      (typeof window !== 'undefined' &&
-        (localStorage.getItem('medcore_active_facility_id') ||
-          localStorage.getItem('medcore_os_facility_id'))) ||
-      'IGH-EKT';
     if (formStatus === 'pending_payment' && formPatientCopay > 0) {
       try {
         postInvoiceForPayment({
           facilityId: String(facilityId),
           invoiceId: newInvoice.id,
           invoiceNumber: invNum,
-          patientId: pId,
+          patientId: verified.id,
           hospitalNumber: pId,
-          patientName: formPatientName.trim(),
+          patientName: verifiedName,
           patientCopayNgn: formPatientCopay,
           totalChargesNgn: activeFormTotal,
           hmoCoveredNgn: formHmoCovered,
@@ -657,51 +662,22 @@ export const BillingInvoicingSuite: React.FC = () => {
               )}
 
               {/* Patient Identification */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>
-                    Patient Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Nsikak Sunday Udoh"
-                    value={formPatientName}
-                    onChange={e => setFormPatientName(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '9px 12px',
-                      borderRadius: 8,
-                      border: '1px solid #CBD5E1',
-                      fontSize: '0.88rem',
-                      fontWeight: 600,
-                      color: '#0A2540',
-                      outline: 'none',
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>
-                    Patient ID / MRN (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. PAT-AK-5521"
-                    value={formPatientId}
-                    onChange={e => setFormPatientId(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '9px 12px',
-                      borderRadius: 8,
-                      border: '1px solid #CBD5E1',
-                      fontSize: '0.88rem',
-                      fontFamily: 'monospace',
-                      color: '#0A2540',
-                      outline: 'none',
-                    }}
-                  />
-                </div>
-              </div>
+              <VerifiedPatientField
+                facilityId={String(facilityId)}
+                selectedPatientId={formPatientId}
+                required
+                label="Verified Patient (Name or Hospital No.)"
+                onSelect={(p) => {
+                  setFormError('');
+                  if (p) {
+                    setFormPatientName(formatFullPatientName(p));
+                    setFormPatientId(p.hospitalNumber || p.id);
+                  } else {
+                    setFormPatientName('');
+                    setFormPatientId('');
+                  }
+                }}
+              />
 
               {/* Department & Admission Date */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

@@ -16,9 +16,11 @@ import {
 } from 'lucide-react';
 import {
   listPatients,
+  hydratePatientsFromPostgres,
   subscribePatients,
   type FacilityPatient,
 } from '../../lib/patientRegistryStore';
+import { verifyPatientExists } from '../../lib/patientVerification';
 import {
   todayVisits,
   todayPayments,
@@ -153,6 +155,7 @@ export const PosPaymentDesk: React.FC<Props> = ({
   const [copiedAccount, setCopiedAccount] = useState(false);
   const [awaitingWebhook, setAwaitingWebhook] = useState(false);
   const [verifyingStatus, setVerifyingStatus] = useState(false);
+  const [checkingRegistry, setCheckingRegistry] = useState(false);
 
   // Power-Outage Auto-Save for Cashier / AkwaRemit POS Payment Desk
   const posDraft = useFormDraft({
@@ -309,10 +312,36 @@ export const PosPaymentDesk: React.FC<Props> = ({
           p.firstName.toLowerCase().includes(q) ||
           p.lastName.toLowerCase().includes(q) ||
           p.hospitalNumber.toLowerCase().includes(q) ||
-          p.phone.includes(q)
+          p.phone.includes(q) ||
+          (p.nin || '').includes(q) ||
+          (p.nhiaNumber || '').toLowerCase().includes(q)
       )
       .slice(0, 20);
   }, [patients, query]);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (patient || q.length < 2 || searchHits.length > 0) {
+      setCheckingRegistry(false);
+      return;
+    }
+    let cancelled = false;
+    setCheckingRegistry(true);
+    const t = window.setTimeout(() => {
+      void hydratePatientsFromPostgres(facilityId, q)
+        .catch(() => 0)
+        .finally(() => {
+          if (!cancelled) {
+            setPatients(listPatients(facilityId));
+            setCheckingRegistry(false);
+          }
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [facilityId, query, patient, searchHits.length]);
 
   const openBillPatients = useMemo(
     () => listPatientsWithOpenBills(facilityId),
@@ -1004,6 +1033,17 @@ export const PosPaymentDesk: React.FC<Props> = ({
                       setQuery(e.target.value);
                       if (patient) setPatient(null);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && query.trim() && !patient) {
+                        const verif = verifyPatientExists(facilityId, { query: query.trim() });
+                        if (verif.valid && verif.patient) {
+                          e.preventDefault();
+                          setPatient(verif.patient);
+                          setQuery(fullName(verif.patient));
+                          setArn(generateArn());
+                        }
+                      }
+                    }}
                     placeholder="Search by patient name, MRN, or phone number..."
                   />
                   {query && !patient && (
@@ -1023,28 +1063,36 @@ export const PosPaymentDesk: React.FC<Props> = ({
                         marginTop: 4,
                       }}
                     >
-                      {searchHits.map((p) => (
-                        <div
-                          key={p.id}
-                          onClick={() => {
-                            setPatient(p);
-                            setQuery(fullName(p));
-                            setArn(generateArn());
-                          }}
-                          style={{
-                            padding: '10px 14px',
-                            borderBottom: '1px solid #F1F5F9',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                          }}
-                        >
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: 13, color: C.navy }}>{fullName(p)}</div>
-                            <div style={{ fontSize: 11, color: C.muted }}>{p.hospitalNumber} · {p.phone}</div>
-                          </div>
+                      {searchHits.length === 0 ? (
+                        <div style={{ padding: '12px 14px', fontSize: 12, color: checkingRegistry ? '#475569' : '#B91C1C', fontWeight: 700, background: checkingRegistry ? '#F8FAFC' : '#FEF2F2' }}>
+                          {checkingRegistry
+                            ? `Checking hospital registry for "${query.trim()}"…`
+                            : `No registered patient found matching "${query.trim()}". Check the Hospital Number or register at Reception first.`}
                         </div>
-                      ))}
+                      ) : (
+                        searchHits.map((p) => (
+                          <div
+                            key={p.id}
+                            onClick={() => {
+                              setPatient(p);
+                              setQuery(fullName(p));
+                              setArn(generateArn());
+                            }}
+                            style={{
+                              padding: '10px 14px',
+                              borderBottom: '1px solid #F1F5F9',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: C.navy }}>{fullName(p)}</div>
+                              <div style={{ fontSize: 11, color: C.muted }}>{p.hospitalNumber} · {p.phone}</div>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   )}
                 </div>

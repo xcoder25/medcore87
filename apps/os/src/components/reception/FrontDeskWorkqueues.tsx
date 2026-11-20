@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
 import { listPatients, searchPatients, type FacilityPatient } from '../../lib/patientRegistryStore';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 import { listAppointments, listVisits, todayVisits } from '../../lib/receptionOpsStore';
 import {
   ensureDayGrid,
@@ -73,6 +75,9 @@ export const FrontDeskWorkqueues: React.FC<{ session?: UserSession }> = ({ sessi
   const [overbook, setOverbook] = useState(false);
 
   // Referral form
+  const [refPatient, setRefPatient] = useState<FacilityPatient | null>(null);
+  const [refExternalNew, setRefExternalNew] = useState(false);
+  const [refError, setRefError] = useState<string | null>(null);
   const [refForm, setRefForm] = useState({
     patientName: '',
     hospitalNumber: '',
@@ -576,15 +581,38 @@ export const FrontDeskWorkqueues: React.FC<{ session?: UserSession }> = ({ sessi
             style={{ ...card, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}
             onSubmit={(e) => {
               e.preventDefault();
-              if (!refForm.patientName.trim() || !refForm.fromFacility.trim() || !refForm.reason.trim()) {
-                flash('Name, from facility, and reason required');
+              let verifiedPatient = refPatient;
+              if (!refExternalNew || refForm.hospitalNumber.trim()) {
+                const verif = verifyPatientExists(facilityId, {
+                  patientId: refPatient?.id,
+                  hospitalNumber: refForm.hospitalNumber.trim() || undefined,
+                  patientName: refForm.patientName.trim() || undefined,
+                });
+                if (!verif.valid || !verif.patient) {
+                  const msg = verif.error || 'Select a registered patient or enter a valid hospital number (or mark first-time external patient).';
+                  setRefError(msg);
+                  flash(msg);
+                  return;
+                }
+                verifiedPatient = verif.patient;
+              } else if (!refForm.patientName.trim()) {
+                setRefError('External patient name required');
+                flash('Patient name required');
                 return;
               }
+              if (!refForm.fromFacility.trim() || !refForm.reason.trim()) {
+                flash('From facility and clinical reason required');
+                return;
+              }
+              setRefError(null);
+              const resolvedName = verifiedPatient
+                ? formatFullPatientName(verifiedPatient)
+                : refForm.patientName.trim();
               createReferral({
-                patientId: selectedPatient?.id,
-                patientName: refForm.patientName || `${selectedPatient?.firstName || ''} ${selectedPatient?.lastName || ''}`.trim(),
-                hospitalNumber: refForm.hospitalNumber || selectedPatient?.hospitalNumber,
-                phone: refForm.phone || selectedPatient?.phone,
+                patientId: verifiedPatient?.id,
+                patientName: resolvedName,
+                hospitalNumber: verifiedPatient?.hospitalNumber || refForm.hospitalNumber.trim(),
+                phone: refForm.phone.trim() || verifiedPatient?.phone,
                 fromFacility: refForm.fromFacility,
                 fromClinician: refForm.fromClinician,
                 toDepartment: refForm.toDepartment,
@@ -592,6 +620,8 @@ export const FrontDeskWorkqueues: React.FC<{ session?: UserSession }> = ({ sessi
                 urgency: refForm.urgency,
                 facilityId,
               });
+              setRefPatient(null);
+              setRefExternalNew(false);
               setRefForm({
                 patientName: '',
                 hospitalNumber: '',
@@ -607,18 +637,58 @@ export const FrontDeskWorkqueues: React.FC<{ session?: UserSession }> = ({ sessi
             }}
           >
             <div style={{ fontWeight: 800 }}>New referral intake</div>
-            <input
-              style={inp}
-              placeholder="Patient name *"
-              value={refForm.patientName}
-              onChange={(e) => setRefForm({ ...refForm, patientName: e.target.value })}
+            <VerifiedPatientField
+              facilityId={facilityId}
+              label="Patient (Name, Hospital No., or NIN)"
+              value={refPatient}
+              initialName={!refExternalNew ? refForm.patientName || undefined : undefined}
+              initialHospitalNumber={refForm.hospitalNumber || undefined}
+              required={!refExternalNew}
+              optional={refExternalNew}
+              error={refError}
+              onSelect={(p) => {
+                setRefError(null);
+                setRefPatient(p);
+                if (p) {
+                  setRefExternalNew(false);
+                  setRefForm((prev) => ({
+                    ...prev,
+                    patientName: formatFullPatientName(p),
+                    hospitalNumber: p.hospitalNumber,
+                    phone: prev.phone || p.phone || '',
+                  }));
+                } else if (!refExternalNew) {
+                  setRefForm((prev) => ({ ...prev, patientName: '', hospitalNumber: '' }));
+                }
+              }}
             />
-            <input
-              style={inp}
-              placeholder="Hospital number"
-              value={refForm.hospitalNumber}
-              onChange={(e) => setRefForm({ ...refForm, hospitalNumber: e.target.value })}
-            />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.muted, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={refExternalNew}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setRefExternalNew(checked);
+                  setRefError(null);
+                  if (checked) {
+                    setRefPatient(null);
+                    setRefForm((prev) => ({ ...prev, hospitalNumber: '' }));
+                  }
+                }}
+              />
+              First-time external referral (not yet assigned a local hospital number)
+            </label>
+            {refExternalNew && (
+              <input
+                style={inp}
+                placeholder="External patient full name *"
+                value={refForm.patientName}
+                onChange={(e) => {
+                  setRefError(null);
+                  setRefForm({ ...refForm, patientName: e.target.value });
+                }}
+              />
+            )}
             <input
               style={inp}
               placeholder="Phone"

@@ -19,6 +19,7 @@ import {
   subscribePatients,
   generateHospitalNumber,
   searchPatients,
+  hydratePatientsFromPostgres,
   countPatients,
   clearAllPatients,
   type FacilityPatient,
@@ -393,6 +394,8 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     });
   }, [patients]);
   const [scanCode, setScanCode] = useState('');
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [walkStep, setWalkStep] = useState<1 | 2 | 3>(1);
   const [selected, setSelected] = useState<FacilityPatient | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -726,6 +729,99 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
 
   const fullName = (p: FacilityPatient) =>
     [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ');
+
+  const findLocalScanHit = (raw: string, pool: FacilityPatient[]): FacilityPatient | undefined => {
+    const q = raw.trim().toLowerCase();
+    if (!q) return undefined;
+    const qDigits = q.replace(/\D/g, '');
+    return (
+      pool.find(
+        (p) =>
+          p.hospitalNumber.toLowerCase() === q ||
+          (p.shid || '').toLowerCase() === q ||
+          p.id.toLowerCase() === q ||
+          (qDigits.length >= 6 && (p.nin || '').replace(/\D/g, '') === qDigits) ||
+          (p.nhiaNumber || '').toLowerCase() === q ||
+          (p.shid && q.includes(p.shid.toLowerCase()))
+      ) ||
+      pool.find(
+        (p) =>
+          p.hospitalNumber.toLowerCase().includes(q) ||
+          (p.shid || '').toLowerCase().includes(q) ||
+          (p.nhiaNumber || '').toLowerCase().includes(q)
+      )
+    );
+  };
+
+  const runScanLookup = async () => {
+    const raw = scanCode.trim();
+    const q = raw.toLowerCase();
+    if (!raw) {
+      setScanError('Enter or scan a hospital number, card ID, or NIN first.');
+      flash('Enter or scan a code first');
+      return;
+    }
+    setScanError(null);
+    let hit = findLocalScanHit(raw, patients);
+    if (!hit) {
+      setScanBusy(true);
+      try {
+        await hydratePatientsFromPostgres(facilityId, raw);
+        hit = findLocalScanHit(raw, listPatients(facilityId));
+      } catch {
+        /* offline fallback */
+      } finally {
+        setScanBusy(false);
+      }
+    }
+    if (hit) {
+      setSelected(hit);
+      setScanCode('');
+      setScanError(null);
+      const fromWalkIn = viewHistory[viewHistory.length - 1] === 'walkin';
+      if (fromWalkIn) {
+        setWalkStep(2);
+        goView('walkin');
+        flash(`Card matched · ${fullName(hit)} · Continue check-in below`);
+      } else {
+        setPanelOpen(true);
+        flash(`Card matched · ${fullName(hit)}`);
+      }
+      return;
+    }
+    const cross = getCrossFacilityPatientByNin(q, facilityId);
+    if (cross) {
+      setReg({
+        ...emptyReg,
+        firstName: cross.firstName || '',
+        middleName: cross.middleName || '',
+        lastName: cross.lastName || '',
+        dob: cross.dob || '',
+        sex: cross.sex || 'Female',
+        phone: cross.phone || '',
+        email: cross.email || '',
+        address: cross.address || '',
+        state: cross.state || 'Akwa Ibom',
+        lga: cross.lga || 'Uyo',
+        bloodGroup: cross.bloodGroup || '',
+        genotype: cross.genotype || '',
+        emergencyContact: cross.emergencyContact || '',
+        emergencyRelation: cross.emergencyRelation || '',
+        occupation: cross.occupation || '',
+        nin: cross.nin || q.replace(/\D/g, ''),
+      });
+      setCrossFacilityPatient(cross);
+      setNinStatus('prefilled');
+      setScanCode('');
+      setScanError(null);
+      goView('register');
+      flash(`🌐 Patient recognized in State Registry from ${cross.facilityName || 'network facility'}! Demographics prefilled.`);
+      return;
+    }
+    const msg = `Hospital number / ID "${raw}" does not exist in the facility registry. Verify the folder number or register the patient.`;
+    setScanError(msg);
+    flash('Hospital number / ID not found in registry');
+  };
 
   const openPatient = (p: FacilityPatient) => {
     setSelected(p);
@@ -4503,145 +4599,63 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               style={{ ...inputStyle, fontSize: 16, fontFamily: 'var(--os-font-mono, monospace)', letterSpacing: '0.04em' }}
               placeholder="e.g. IGH-PT-XXXX or AKSHIA-…"
               value={scanCode}
-              onChange={(e) => setScanCode(e.target.value)}
+              onChange={(e) => {
+                setScanCode(e.target.value);
+                if (scanError) setScanError(null);
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  const q = scanCode.trim().toLowerCase();
-                  const hit =
-                    patients.find(
-                      (p) =>
-                        p.hospitalNumber.toLowerCase() === q ||
-                        (p.shid || '').toLowerCase() === q ||
-                        p.id.toLowerCase() === q ||
-                        (p.nin || '').replace(/\D/g, '') === q.replace(/\D/g, '') ||
-                        (p.nhiaNumber || '').toLowerCase() === q ||
-                        (p.shid && q.includes(p.shid.toLowerCase()))
-                    ) ||
-                    patients.find(
-                      (p) =>
-                        p.hospitalNumber.toLowerCase().includes(q) ||
-                        (p.shid || '').toLowerCase().includes(q) ||
-                        (p.nhiaNumber || '').toLowerCase().includes(q)
-                    );
-                  if (hit) {
-                    setSelected(hit);
-                    setScanCode('');
-                    // If we came from the walk-in flow, return there with patient pre-selected
-                    const fromWalkIn = viewHistory[viewHistory.length - 1] === 'walkin';
-                    if (fromWalkIn) {
-                      setWalkStep(2);
-                      goView('walkin');
-                      flash(`Card matched · ${fullName(hit)} · Continue check-in below`);
-                    } else {
-                      setPanelOpen(true);
-                      flash(`Card matched · ${fullName(hit)}`);
-                    }
-                  } else {
-                    const cross = getCrossFacilityPatientByNin(q, facilityId);
-                    if (cross) {
-                      setReg({
-                        ...emptyReg,
-                        firstName: cross.firstName || '',
-                        middleName: cross.middleName || '',
-                        lastName: cross.lastName || '',
-                        dob: cross.dob || '',
-                        sex: cross.sex || 'Female',
-                        phone: cross.phone || '',
-                        email: cross.email || '',
-                        address: cross.address || '',
-                        state: cross.state || 'Akwa Ibom',
-                        lga: cross.lga || 'Uyo',
-                        bloodGroup: cross.bloodGroup || '',
-                        genotype: cross.genotype || '',
-                        emergencyContact: cross.emergencyContact || '',
-                        emergencyRelation: cross.emergencyRelation || '',
-                        occupation: cross.occupation || '',
-                        nin: cross.nin || q.replace(/\D/g, ''),
-                      });
-                      setCrossFacilityPatient(cross);
-                      setNinStatus('prefilled');
-                      setScanCode('');
-                      goView('register');
-                      flash(`🌐 Patient recognized in State Registry from ${cross.facilityName || 'network facility'}! Demographics prefilled.`);
-                    } else {
-                      flash('No patient found for this scan — register or try Find patient');
-                    }
-                  }
+                  void runScanLookup();
                 }
               }}
             />
+            {scanError && (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  color: '#b91c1c',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span>{scanError}</span>
+                <button
+                  type="button"
+                  onClick={() => goView('register')}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    border: '1px solid #fca5a5',
+                    background: '#fff',
+                    color: '#991b1b',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Register New Patient
+                </button>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
               <button
                 type="button"
+                disabled={scanBusy}
                 onClick={() => {
-                  const q = scanCode.trim().toLowerCase();
-                  if (!q) {
-                    flash('Enter or scan a code first');
-                    return;
-                  }
-                  const hit =
-                    patients.find(
-                      (p) =>
-                        p.hospitalNumber.toLowerCase() === q ||
-                        (p.shid || '').toLowerCase() === q ||
-                        p.id.toLowerCase() === q ||
-                        (p.nin || '').replace(/\D/g, '') === q.replace(/\D/g, '') ||
-                        (p.nhiaNumber || '').toLowerCase() === q ||
-                        (p.shid && q.includes(p.shid.toLowerCase()))
-                    ) ||
-                    patients.find(
-                      (p) =>
-                        p.hospitalNumber.toLowerCase().includes(q) ||
-                        (p.shid || '').toLowerCase().includes(q)
-                    );
-                  if (hit) {
-                    setSelected(hit);
-                    setScanCode('');
-                    const fromWalkIn = viewHistory[viewHistory.length - 1] === 'walkin';
-                    if (fromWalkIn) {
-                      setWalkStep(2);
-                      goView('walkin');
-                      flash(`Matched · ${fullName(hit)} · Continue check-in below`);
-                    } else {
-                      setPanelOpen(true);
-                      flash(`Matched · ${fullName(hit)}`);
-                    }
-                  } else {
-                    const cross = getCrossFacilityPatientByNin(q, facilityId);
-                    if (cross) {
-                      setReg({
-                        ...emptyReg,
-                        firstName: cross.firstName || '',
-                        middleName: cross.middleName || '',
-                        lastName: cross.lastName || '',
-                        dob: cross.dob || '',
-                        sex: cross.sex || 'Female',
-                        phone: cross.phone || '',
-                        email: cross.email || '',
-                        address: cross.address || '',
-                        state: cross.state || 'Akwa Ibom',
-                        lga: cross.lga || 'Uyo',
-                        bloodGroup: cross.bloodGroup || '',
-                        genotype: cross.genotype || '',
-                        emergencyContact: cross.emergencyContact || '',
-                        emergencyRelation: cross.emergencyRelation || '',
-                        occupation: cross.occupation || '',
-                        nin: cross.nin || q.replace(/\D/g, ''),
-                      });
-                      setCrossFacilityPatient(cross);
-                      setNinStatus('prefilled');
-                      setScanCode('');
-                      goView('register');
-                      flash(`🌐 Patient recognized in State Registry from ${cross.facilityName || 'network facility'}! Demographics prefilled.`);
-                    } else {
-                      flash('No match — register new patient');
-                      goView('register');
-                    }
-                  }
+                  void runScanLookup();
                 }}
                 style={{ padding: '12px 18px', borderRadius: 10, border: 'none', background: C.blue, color: '#fff', fontWeight: 800, cursor: 'pointer' }}
               >
-                Look up card
+                {scanBusy ? 'Verifying…' : 'Look up card'}
               </button>
               <button
                 type="button"

@@ -6,6 +6,7 @@ import {
   type PatientSex,
   upsertPatient,
 } from '../../lib/patientRegistryStore';
+import { isHospitalNumberTaken } from '../../lib/patientVerification';
 import {
   X,
   User,
@@ -98,6 +99,16 @@ export const EditPatientModal: React.FC<Props> = ({
     if (phone.trim() && (phoneDigits.length < 10 || phoneDigits.length > 14)) {
       setError('Phone number must be 10–14 digits.');
       return;
+    }
+    const cleanHn = hospitalNumber.trim();
+    if (cleanHn) {
+      const taken = isHospitalNumberTaken(patient.facilityId, cleanHn, patient.id);
+      if (taken) {
+        setError(
+          `Hospital / Folder Number "${cleanHn}" is already assigned to ${taken.firstName} ${taken.lastName}.`
+        );
+        return;
+      }
     }
 
     setBusy(true);

@@ -12,6 +12,8 @@ import {
   User, Clock, Calendar, MapPin, FileText, Check, Lock, ChevronRight
 } from 'lucide-react';
 import type { UserSession } from '../auth/AuthScreen';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 
 export interface DeceasedRecord {
   id: string;
@@ -101,16 +103,28 @@ export const MortuaryRegistrySuite: React.FC<Props> = ({ session, onNavigate }) 
   const [newBay, setNewBay] = useState('Bay C-01');
   const [newNok, setNewNok] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [intakeError, setIntakeError] = useState<string | null>(null);
 
   const selectedRecord = records.find((r) => r.id === selectedRecordId) || records[0];
 
   const handleAddIntake = () => {
-    if (!newName.trim()) return;
+    setIntakeError(null);
+    const verif = verifyPatientExists(facilityId, {
+      hospitalNumber: newHospitalNo.trim() || undefined,
+      patientName: newName.trim() || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setIntakeError(
+        verif.error || 'Verify patient name or Hospital Folder No. in the facility registry before logging intake.'
+      );
+      return;
+    }
+    const verified = verif.patient;
     const newRec: DeceasedRecord = {
       id: `MOR-${Date.now()}`,
       tagNumber: `MOR-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-      deceasedName: newName,
-      hospitalNumber: newHospitalNo || undefined,
+      deceasedName: formatFullPatientName(verified),
+      hospitalNumber: verified.hospitalNumber || verified.id,
       age: newAge,
       sex: newSex,
       dateOfDeath: new Date().toISOString().split('T')[0],
@@ -122,11 +136,14 @@ export const MortuaryRegistrySuite: React.FC<Props> = ({ session, onNavigate }) 
       coronerCase: false,
       policeClearanceReceived: false,
       mortuaryBillSettled: false,
-      nextOfKinName: newNok || 'Next of Kin Pending',
-      nextOfKinPhone: newPhone || '+234 800 000 0000',
+      nextOfKinName: newNok || verified.emergencyContact || 'Next of Kin Pending',
+      nextOfKinPhone: newPhone || verified.emergencyPhone || '+234 800 000 0000',
     };
     setRecords([newRec, ...records]);
     setSelectedRecordId(newRec.id);
+    setNewName('');
+    setNewHospitalNo('');
+    setIntakeError(null);
     setShowNewIntakeModal(false);
   };
 
@@ -375,24 +392,38 @@ export const MortuaryRegistrySuite: React.FC<Props> = ({ session, onNavigate }) 
               Log Deceased Patient Intake
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.82rem' }}>
+              <VerifiedPatientField
+                facilityId={facilityId}
+                selectedPatientId={newHospitalNo}
+                required
+                label="Verified Patient (Name or Hospital Folder No.)"
+                error={intakeError}
+                onSelect={(p) => {
+                  setIntakeError(null);
+                  if (p) {
+                    setNewName(formatFullPatientName(p));
+                    setNewHospitalNo(p.hospitalNumber || p.id);
+                    if (p.dob) {
+                      const yrs = Math.max(0, new Date().getFullYear() - new Date(p.dob).getFullYear());
+                      if (Number.isFinite(yrs)) setNewAge(yrs);
+                    }
+                    if (p.sex === 'Male' || p.sex === 'Female') setNewSex(p.sex);
+                    if (p.emergencyContact) setNewNok(p.emergencyContact);
+                    if (p.emergencyPhone) setNewPhone(p.emergencyPhone);
+                  } else {
+                    setNewName('');
+                    setNewHospitalNo('');
+                  }
+                }}
+              />
               <div>
-                <label style={{ display: 'block', fontWeight: 700, color: '#64748B', marginBottom: 4 }}>Deceased Full Name *</label>
-                <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1' }} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ display: 'block', fontWeight: 700, color: '#64748B', marginBottom: 4 }}>Hospital Folder No</label>
-                  <input type="text" value={newHospitalNo} onChange={(e) => setNewHospitalNo(e.target.value)} placeholder="e.g. IGH-2026-..." style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontWeight: 700, color: '#64748B', marginBottom: 4 }}>Age & Sex</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input type="number" value={newAge} onChange={(e) => setNewAge(parseInt(e.target.value, 10))} style={{ width: 70, padding: '8px 8px', borderRadius: 8, border: '1px solid #CBD5E1' }} />
-                    <select value={newSex} onChange={(e) => setNewSex(e.target.value as any)} style={{ flex: 1, padding: '8px 8px', borderRadius: 8, border: '1px solid #CBD5E1', background: '#FFF' }}>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                    </select>
-                  </div>
+                <label style={{ display: 'block', fontWeight: 700, color: '#64748B', marginBottom: 4 }}>Age &amp; Sex</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input type="number" value={newAge} onChange={(e) => setNewAge(parseInt(e.target.value, 10))} style={{ width: 70, padding: '8px 8px', borderRadius: 8, border: '1px solid #CBD5E1' }} />
+                  <select value={newSex} onChange={(e) => setNewSex(e.target.value as any)} style={{ flex: 1, padding: '8px 8px', borderRadius: 8, border: '1px solid #CBD5E1', background: '#FFF' }}>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                  </select>
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

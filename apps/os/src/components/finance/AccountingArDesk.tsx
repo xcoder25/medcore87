@@ -41,6 +41,8 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { todayPayments } from '../../lib/receptionOpsStore';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 
 type Tab = 'overview' | 'debtors' | 'aging' | 'claims' | 'remit' | 'shift' | 'worklist';
 
@@ -413,9 +415,24 @@ export const AccountingArDesk: React.FC<Props> = ({ session, onCollectPayment })
             )}
           </Card>
           <Card title="New claim / pre-auth">
-            <Field label="Patient name" value={cName} onChange={setCName} />
-            <Field label="Hospital number" value={cHosp} onChange={setCHosp} />
-            <Field label="Patient ID" value={cPid} onChange={setCPid} />
+            <VerifiedPatientField
+              facilityId={facilityId}
+              selectedPatientId={cPid || cHosp}
+              required
+              label="Verified Patient (Name or Hospital No.)"
+              onSelect={(p) => {
+                if (p) {
+                  setCName(formatFullPatientName(p));
+                  setCHosp(p.hospitalNumber || p.id);
+                  setCPid(p.id);
+                } else {
+                  setCName('');
+                  setCHosp('');
+                  setCPid('');
+                }
+              }}
+            />
+            <div style={{ height: 8 }} />
             <Field label="Payer name" value={cPayer} onChange={setCPayer} />
             <label style={labelStyle}>Payer type</label>
             <select value={cType} onChange={(e) => setCType(e.target.value as typeof cType)} style={inputStyle}>
@@ -429,15 +446,25 @@ export const AccountingArDesk: React.FC<Props> = ({ session, onCollectPayment })
               style={{ ...btnPrimary, width: '100%', marginTop: 10, justifyContent: 'center' }}
               onClick={() => {
                 const amt = Number(cAmt) || 0;
-                if (!cName.trim() || amt <= 0) {
-                  flash('Name and amount required');
+                const verif = verifyPatientExists(facilityId, {
+                  patientId: cPid.trim() || undefined,
+                  hospitalNumber: cHosp.trim() || undefined,
+                  patientName: cName.trim() || undefined,
+                });
+                if (!verif.valid || !verif.patient) {
+                  flash(verif.error || 'Verify patient name or hospital number first');
                   return;
                 }
+                if (amt <= 0) {
+                  flash('Claim amount must be greater than zero');
+                  return;
+                }
+                const verified = verif.patient;
                 upsertClaim({
                   facilityId,
-                  patientId: cPid || cHosp || `PT-${Date.now()}`,
-                  hospitalNumber: cHosp || cPid || '—',
-                  patientName: cName.trim(),
+                  patientId: verified.id,
+                  hospitalNumber: verified.hospitalNumber || verified.id,
+                  patientName: formatFullPatientName(verified),
                   payerType: cType,
                   payerName: cPayer.trim() || cType.toUpperCase(),
                   amountNgn: amt,
@@ -445,6 +472,8 @@ export const AccountingArDesk: React.FC<Props> = ({ session, onCollectPayment })
                   actorName: session.name,
                 });
                 setCName('');
+                setCHosp('');
+                setCPid('');
                 setCAmt('');
                 reload();
                 flash('Claim created · pre-auth pending');

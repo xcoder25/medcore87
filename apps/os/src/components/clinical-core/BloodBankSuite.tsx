@@ -9,6 +9,9 @@ import {
 import type { BloodStockUnit } from '@medcore/types';
 import { liveAlert } from '../../lib/manualActions';
 import { emitLiveAction } from '../../lib/liveActions';
+import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 
 const STORAGE_KEY = 'medcore_os_blood_stock_v2';
 
@@ -24,6 +27,7 @@ const SEED_BLOOD_STOCK: BloodStockUnit[] = [
 ];
 
 export const BloodBankSuite: React.FC = () => {
+  const facilityId = (typeof window !== 'undefined' && getActiveFacilityId()) || 'IGH-EKT';
   const [stock, setStock] = useState<BloodStockUnit[]>(SEED_BLOOD_STOCK);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -35,6 +39,7 @@ export const BloodBankSuite: React.FC = () => {
   const [selectedGroup, setSelectedGroup] = useState('O-');
   const [patientName, setPatientName] = useState('');
   const [hospitalNumber, setHospitalNumber] = useState('');
+  const [issueError, setIssueError] = useState<string | null>(null);
   const [ward, setWard] = useState('Operating Theatre');
   const [indication, setIndication] = useState('Emergency Blood Loss / Trauma');
   const [crossmatchVerified, setCrossmatchVerified] = useState(true);
@@ -78,10 +83,17 @@ export const BloodBankSuite: React.FC = () => {
   // Handle Transfusion Issue
   const handleIssueUnit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!patientName.trim()) {
-      showNotification('Please provide patient name.');
+    setIssueError(null);
+    const verif = verifyPatientExists(facilityId, {
+      hospitalNumber: hospitalNumber.trim() || undefined,
+      patientName: patientName.trim() || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setIssueError(verif.error || 'Verify patient name or Hospital Number before issuing blood.');
+      showNotification(verif.error || 'Unverified patient or Hospital No.');
       return;
     }
+    const verifiedName = formatFullPatientName(verif.patient);
 
     const unitIdx = stock.findIndex(s => s.bloodGroup === selectedGroup);
     if (unitIdx === -1 || stock[unitIdx].unitsAvailable <= 0) {
@@ -96,12 +108,13 @@ export const BloodBankSuite: React.FC = () => {
     };
     saveStock(updated);
 
-    emitLiveAction(`Blood unit ${selectedGroup} released for ${patientName} (${ward})`, { module: 'blood-bank' });
-    liveAlert(`Blood unit ${selectedGroup} issued for transfusion to ${patientName} at ${ward}.`);
-    showNotification(`1 Unit of ${selectedGroup} successfully issued for ${patientName} (${ward}).`);
+    emitLiveAction(`Blood unit ${selectedGroup} released for ${verifiedName} (${verif.patient.hospitalNumber}) · ${ward}`, { module: 'blood-bank' });
+    liveAlert(`Blood unit ${selectedGroup} issued for transfusion to ${verifiedName} at ${ward}.`);
+    showNotification(`1 Unit of ${selectedGroup} successfully issued for ${verifiedName} (${ward}).`);
     setShowIssueModal(false);
     setPatientName('');
     setHospitalNumber('');
+    setIssueError(null);
   };
 
   // Handle Add Donor Unit
@@ -405,49 +418,39 @@ export const BloodBankSuite: React.FC = () => {
                 </select>
               </div>
 
+              <VerifiedPatientField
+                facilityId={facilityId}
+                selectedPatientId={hospitalNumber}
+                required
+                label="Verified Patient (Name or Hospital No.)"
+                error={issueError}
+                onSelect={(p) => {
+                  setIssueError(null);
+                  if (p) {
+                    setPatientName(formatFullPatientName(p));
+                    setHospitalNumber(p.hospitalNumber || p.id);
+                  } else {
+                    setPatientName('');
+                    setHospitalNumber('');
+                  }
+                }}
+              />
+
               <div>
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: 4 }}>
-                  PATIENT NAME
+                  WARD / UNIT
                 </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Samuel Edet"
-                  value={patientName}
-                  onChange={(e) => setPatientName(e.target.value)}
+                <select
+                  value={ward}
+                  onChange={(e) => setWard(e.target.value)}
                   style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.82rem' }}
-                  required
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: 4 }}>
-                    HOSPITAL NO.
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. PAT-2026-091"
-                    value={hospitalNumber}
-                    onChange={(e) => setHospitalNumber(e.target.value)}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.82rem' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: 4 }}>
-                    WARD / UNIT
-                  </label>
-                  <select
-                    value={ward}
-                    onChange={(e) => setWard(e.target.value)}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.82rem' }}
-                  >
-                    <option value="Operating Theatre">Operating Theatre</option>
-                    <option value="Emergency Resuscitation">Emergency Resuscitation</option>
-                    <option value="Labour Ward / Maternity">Labour Ward / Maternity</option>
-                    <option value="Intensive Care Unit (ICU)">Intensive Care Unit (ICU)</option>
-                    <option value="Inpatient Ward 3A">Inpatient Ward 3A</option>
-                  </select>
-                </div>
+                >
+                  <option value="Operating Theatre">Operating Theatre</option>
+                  <option value="Emergency Resuscitation">Emergency Resuscitation</option>
+                  <option value="Labour Ward / Maternity">Labour Ward / Maternity</option>
+                  <option value="Intensive Care Unit (ICU)">Intensive Care Unit (ICU)</option>
+                  <option value="Inpatient Ward 3A">Inpatient Ward 3A</option>
+                </select>
               </div>
 
               {/* Safety Pre-Transfusion Checklist */}

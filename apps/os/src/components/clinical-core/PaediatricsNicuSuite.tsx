@@ -17,6 +17,8 @@ import {
   type NewbornRecord, type FeedingMode, type NicuLevel,
 } from '../../lib/newbornNicuStore';
 import { pushNotification } from '../../lib/notificationEngine';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 
 type Tab = 'board' | 'census' | 'admit' | 'dose' | 'care';
 
@@ -62,6 +64,8 @@ export const PaediatricsNicuSuite: React.FC = () => {
   const [tab, setTab] = useState<Tab>('board');
   const [tick, setTick] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
+  const [motherPatientId, setMotherPatientId] = useState('');
+  const [admitError, setAdmitError] = useState<string | null>(null);
   const toast = (m: string) => {
     setNotice(m);
     setTimeout(() => setNotice(null), 3200);
@@ -103,14 +107,21 @@ export const PaediatricsNicuSuite: React.FC = () => {
 
   const submitAdmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.motherName.trim()) {
-      toast('Mother name required');
+    setAdmitError(null);
+    const verif = verifyPatientExists(facilityId, {
+      patientId: motherPatientId || undefined,
+      patientName: form.motherName || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setAdmitError(verif.error || 'Registered mother name or Hospital Number is required.');
+      toast(verif.error || 'Registered mother required');
       return;
     }
+    const verifiedMother = formatFullPatientName(verif.patient);
     const row = admitNewborn({
       facilityId,
-      motherName: form.motherName.trim(),
-      babyName: form.babyName.trim() || `Baby of ${form.motherName.trim()}`,
+      motherName: verifiedMother,
+      babyName: form.babyName.trim() || `Baby of ${verifiedMother}`,
       sex: form.sex,
       dob: new Date().toISOString().slice(0, 10),
       timeOfBirth: new Date().toISOString(),
@@ -660,16 +671,23 @@ export const PaediatricsNicuSuite: React.FC = () => {
               Live registration — auto-assigns bay for Level 2/3, phototherapy, or oxygen.
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <label style={lab}>
-                Mother name *
-                <input
+              <div>
+                <VerifiedPatientField
+                  facilityId={facilityId}
+                  selectedPatientId={motherPatientId}
                   required
-                  value={form.motherName}
-                  onChange={(e) => setForm({ ...form, motherName: e.target.value })}
-                  style={inp}
-                  placeholder="Full name"
+                  label="Registered Mother (Name or Hospital No.)"
+                  error={admitError}
+                  onSelect={(p) => {
+                    setAdmitError(null);
+                    setMotherPatientId(p?.id || '');
+                    setForm((prev) => ({
+                      ...prev,
+                      motherName: p ? formatFullPatientName(p) : '',
+                    }));
+                  }}
                 />
-              </label>
+              </div>
               <label style={lab}>
                 Baby name
                 <input

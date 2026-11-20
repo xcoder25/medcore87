@@ -972,11 +972,172 @@ test('ui-invariants: Mark paid removed beside Collect, Bed admin guard active, 1
     'src/app/api/akwaremit/batch-settle/route.ts',
     'src/lib/bedAutomation.ts',
     'src/lib/accountsAutomation.ts',
+    'src/lib/patientVerification.ts',
+    'src/components/common/VerifiedPatientField.tsx',
   ];
   for (const rel of newFiles) {
     const content = fs.readFileSync(path.join(OS_ROOT, rel), 'utf8');
     for (const phrase of ['Stored in AWS S3', 'Aurora Postgres', 'Vercel', 'Firebase']) {
       assert.equal(content.includes(phrase), false, `${rel} must not expose "${phrase}"`);
     }
+  }
+});
+
+test('patientVerification: verifies existing hospital numbers, rejects non-existent/mismatched entries, catches duplicate names & folder numbers', async () => {
+  const localRecords = [
+    {
+      id: 'PT-1',
+      hospitalNumber: 'IGH-PT-1001',
+      firstName: 'Ekemini',
+      lastName: 'Okon',
+      nin: '12345678901',
+      mrn: 'MRN-1001',
+      nhiaNumber: 'AKSHIA-55',
+    },
+    {
+      id: 'PT-2',
+      hospitalNumber: 'IGH-PT-1002',
+      firstName: 'John',
+      lastName: 'Doe',
+    },
+    {
+      id: 'PT-3',
+      hospitalNumber: 'IGH-PT-1003',
+      firstName: 'John',
+      lastName: 'Doe',
+    },
+  ];
+
+  const pv = loadTsModule('src/lib/patientVerification.ts', {
+    './patientRegistryStore': {
+      listPatients: () => localRecords,
+      hydratePatientsFromPostgres: async (_fac, search) => {
+        if (String(search || '').includes('9009') && !localRecords.some((p) => p.id === 'PT-9')) {
+          localRecords.push({
+            id: 'PT-9',
+            hospitalNumber: 'IGH-PT-9009',
+            firstName: 'Iniobong',
+            lastName: 'Akpan',
+          });
+        }
+        return localRecords;
+      },
+    },
+  });
+
+  const empty = pv.verifyPatientExists('IGH-EKT', {});
+  assert.equal(empty.valid, false);
+  assert.equal(empty.status, 'empty');
+
+  const okHn = pv.verifyPatientExists('IGH-EKT', { hospitalNumber: 'igh-pt-1001' });
+  assert.equal(okHn.valid, true);
+  assert.equal(okHn.status, 'verified');
+  assert.equal(okHn.matchedBy, 'hospitalNumber');
+  assert.equal(okHn.patient.id, 'PT-1');
+
+  const missing = pv.verifyPatientExists('IGH-EKT', { hospitalNumber: 'IGH-PT-9999' });
+  assert.equal(missing.valid, false);
+  assert.equal(missing.status, 'not_found');
+  assert.ok(missing.error.includes('does not exist'));
+
+  const mismatch = pv.verifyPatientExists('IGH-EKT', {
+    hospitalNumber: 'IGH-PT-1001',
+    patientName: 'Wrong Person',
+  });
+  assert.equal(mismatch.valid, false);
+  assert.equal(mismatch.status, 'mismatch');
+  assert.ok(mismatch.error.includes('belongs to Ekemini Okon'));
+
+  const okNin = pv.verifyPatientExists('IGH-EKT', { query: '12345678901' });
+  assert.equal(okNin.valid, true);
+  assert.equal(okNin.matchedBy, 'nin');
+  assert.equal(okNin.patient.id, 'PT-1');
+
+  const okUniqueName = pv.verifyPatientExists('IGH-EKT', { patientName: 'Ekemini Okon' });
+  assert.equal(okUniqueName.valid, true);
+  assert.equal(okUniqueName.matchedBy, 'name');
+  assert.equal(okUniqueName.patient.id, 'PT-1');
+
+  const ambig = pv.verifyPatientExists('IGH-EKT', { patientName: 'John Doe' });
+  assert.equal(ambig.valid, false);
+  assert.equal(ambig.status, 'ambiguous_name');
+  assert.equal(ambig.matches.length, 2);
+
+  const disambiguated = pv.verifyPatientExists('IGH-EKT', {
+    hospitalNumber: 'IGH-PT-1002',
+    patientName: 'John Doe',
+  });
+  assert.equal(disambiguated.valid, true);
+  assert.equal(disambiguated.patient.id, 'PT-2');
+
+  assert.equal(pv.isHospitalNumberTaken('IGH-EKT', 'igh-pt-1001')?.id, 'PT-1');
+  assert.equal(pv.isHospitalNumberTaken('IGH-EKT', 'IGH-PT-1001', 'PT-1'), undefined);
+
+  const remoteOk = await pv.verifyPatientExistsAsync('IGH-EKT', { hospitalNumber: 'IGH-PT-9009' });
+  assert.equal(remoteOk.valid, true);
+  assert.equal(remoteOk.checkedServer, true);
+  assert.equal(remoteOk.patient.id, 'PT-9');
+
+  const remoteMissing = await pv.verifyPatientExistsAsync('IGH-EKT', { hospitalNumber: 'IGH-PT-0000' });
+  assert.equal(remoteMissing.valid, false);
+  assert.equal(remoteMissing.status, 'not_found');
+  assert.equal(remoteMissing.checkedServer, true);
+});
+
+test('ui-invariants: patient verification enforced across clinical, financial, bed, and registry forms', () => {
+  const mustHaveVerifiedAndValidator = [
+    'src/components/beds/BedManagement.tsx',
+    'src/components/beds/DoctorAdmissionSuite.tsx',
+    'src/components/interop/Dhis2TrackerBedBoardSuite.tsx',
+    'src/components/dashboards/NurseDeskHome.tsx',
+    'src/components/cashier/CashierRevenue.tsx',
+    'src/components/finance/BillingInvoicingSuite.tsx',
+    'src/components/finance/AkwaRemitRevenueSuite.tsx',
+    'src/components/finance/AccountingArDesk.tsx',
+    'src/components/clinical-core/BloodBankSuite.tsx',
+    'src/components/clinical-core/OperatingTheatreSuite.tsx',
+    'src/components/clinical-core/MaternityOgSuite.tsx',
+    'src/components/clinical-core/PaediatricsNicuSuite.tsx',
+    'src/components/clinical-core/MortuaryRegistrySuite.tsx',
+    'src/components/gateway-modules/PatientsManager.tsx',
+    'src/components/gateway-modules/ReferralsManager.tsx',
+    'src/components/interop/AkwaIbomStateSuite.tsx',
+    'src/components/interop/StatewideEmrSuite.tsx',
+    'src/components/reception/FrontDeskWorkqueues.tsx',
+  ];
+  for (const rel of mustHaveVerifiedAndValidator) {
+    const src = fs.readFileSync(path.join(OS_ROOT, rel), 'utf8');
+    assert.ok(src.includes('VerifiedPatientField'), `${rel} must render VerifiedPatientField`);
+    assert.ok(src.includes('verifyPatientExists'), `${rel} must validate via verifyPatientExists`);
+  }
+
+  assert.ok(
+    fs.readFileSync(path.join(OS_ROOT, 'src/components/gateway-modules/ClinicalTasksManager.tsx'), 'utf8')
+      .includes('VerifiedPatientField')
+  );
+  for (const rel of [
+    'src/components/dashboards/DoctorPortal.tsx',
+    'src/components/dashboards/LabDeskHome.tsx',
+    'src/components/common/VerifiedPatientField.tsx',
+  ]) {
+    assert.ok(
+      fs.readFileSync(path.join(OS_ROOT, rel), 'utf8').includes('SearchablePatientSelect'),
+      `${rel} must use SearchablePatientSelect`
+    );
+  }
+  assert.ok(
+    fs.readFileSync(path.join(OS_ROOT, 'src/components/records/EditPatientModal.tsx'), 'utf8')
+      .includes('isHospitalNumberTaken')
+  );
+  for (const rel of [
+    'src/components/cashier/PosPaymentDesk.tsx',
+    'src/components/dashboards/AccountingWorkspace.tsx',
+    'src/components/dashboards/ReceptionWorkspace.tsx',
+    'src/components/common/SearchablePatientSelect.tsx',
+  ]) {
+    assert.ok(
+      fs.readFileSync(path.join(OS_ROOT, rel), 'utf8').includes('hydratePatientsFromPostgres'),
+      `${rel} must hydrate missing patient lookups from the facility registry API`
+    );
   }
 });

@@ -1876,21 +1876,18 @@ const LabOrdersView: React.FC<{ session: UserSession }> = ({ session }) => {
 
       <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ fontWeight: 800, fontSize: 14 }}>New lab order</div>
-        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
-          Patient
-          <select
-            value={patientId}
-            onChange={(e) => setPatientId(e.target.value)}
-            style={{ display: 'block', width: '100%', marginTop: 4, padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}
-          >
-            <option value="">Select…</option>
-            {registry.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.firstName} {p.lastName} · {p.hospitalNumber}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+          Patient *
+          <div style={{ marginTop: 4 }}>
+            <SearchablePatientSelect
+              facilityId={facilityId}
+              value={patientId}
+              onChange={(p) => setPatientId(p?.id || '')}
+              placeholder="Type patient name or hospital number to verify…"
+              required
+            />
+          </div>
+        </div>
         <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
           Priority
           <select
@@ -2202,21 +2199,18 @@ const RadiologyOrdersView: React.FC<{ session: UserSession }> = ({ session }) =>
       </div>
       <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ fontWeight: 800, fontSize: 14 }}>New imaging order</div>
-        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
-          Patient
-          <select
-            value={patientId}
-            onChange={(e) => setPatientId(e.target.value)}
-            style={{ display: 'block', width: '100%', marginTop: 4, padding: 10, borderRadius: 10, border: '1px solid #E2E8F0' }}
-          >
-            <option value="">Select…</option>
-            {registry.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.firstName} {p.lastName} · {p.hospitalNumber}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+          Patient *
+          <div style={{ marginTop: 4 }}>
+            <SearchablePatientSelect
+              facilityId={facilityId}
+              value={patientId}
+              onChange={(p) => setPatientId(p?.id || '')}
+              placeholder="Type patient name or hospital number to verify…"
+              required
+            />
+          </div>
+        </div>
         <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>
           Study
           <select

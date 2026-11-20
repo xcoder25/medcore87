@@ -34,6 +34,8 @@ import {
 import { downloadRadetCsv, downloadNdrJson } from '../../lib/lamisStore';
 import { exportNpcVitalStatistics } from '../../lib/ecrvsService';
 import { runOfflineTabletCertification, certSummary } from '../../lib/offlineTabletCert';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 
 type Tab = 'akshia' | 'upi' | 'wallet' | 'anc' | 'reports' | 'cert';
 
@@ -62,6 +64,7 @@ export const AkwaIbomStateSuite: React.FC<{ session?: any }> = ({ session }) => 
   const [wHn, setWHn] = useState('');
   const [wName, setWName] = useState('');
   const [wAmt, setWAmt] = useState(20000);
+  const [walletError, setWalletError] = useState<string | null>(null);
   const wallet = wPid ? getWallet(facilityId, wPid) : null;
   const wTxns = wPid ? listWalletTxns(facilityId, wPid).slice(0, 8) : [];
 
@@ -317,9 +320,27 @@ export const AkwaIbomStateSuite: React.FC<{ session?: any }> = ({ session }) => 
           <p style={{ fontSize: 12, color: '#64748B' }}>
             Lab/Rx bill lines auto-deduct when wallet has balance (wired in billing store).
           </p>
-          <input style={input} placeholder="Patient ID" value={wPid} onChange={(e) => setWPid(e.target.value)} />
-          <input style={input} placeholder="Hospital number" value={wHn} onChange={(e) => setWHn(e.target.value)} />
-          <input style={input} placeholder="Patient name" value={wName} onChange={(e) => setWName(e.target.value)} />
+          <div style={{ marginBottom: 10 }}>
+            <VerifiedPatientField
+              facilityId={facilityId}
+              selectedPatientId={wPid || wHn}
+              required
+              label="Verified Patient (Name or Hospital No.)"
+              error={walletError}
+              onSelect={(p) => {
+                setWalletError(null);
+                if (p) {
+                  setWPid(p.id);
+                  setWHn(p.hospitalNumber || p.id);
+                  setWName(formatFullPatientName(p));
+                } else {
+                  setWPid('');
+                  setWHn('');
+                  setWName('');
+                }
+              }}
+            />
+          </div>
           <input style={input} type="number" value={wAmt} onChange={(e) => setWAmt(Number(e.target.value))} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {(['cash', 'pos', 'transfer', 'moniepoint', 'opay'] as const).map((ch) => (
@@ -328,11 +349,23 @@ export const AkwaIbomStateSuite: React.FC<{ session?: any }> = ({ session }) => 
                 type="button"
                 style={btn}
                 onClick={() => {
+                  const verif = verifyPatientExists(facilityId, {
+                    patientId: wPid || undefined,
+                    hospitalNumber: wHn || undefined,
+                    patientName: wName || undefined,
+                  });
+                  if (!verif.valid || !verif.patient) {
+                    const errMsg = verif.error || 'Verify patient name or hospital number before depositing.';
+                    setWalletError(errMsg);
+                    setMsg(errMsg);
+                    return;
+                  }
+                  const verified = verif.patient;
                   const r = depositWallet({
                     facilityId,
-                    patientId: wPid || wHn,
-                    hospitalNumber: wHn || wPid,
-                    patientName: wName || 'Patient',
+                    patientId: verified.id,
+                    hospitalNumber: verified.hospitalNumber || verified.id,
+                    patientName: formatFullPatientName(verified),
                     amountNgn: wAmt,
                     channel: ch,
                     actorName: session?.name,

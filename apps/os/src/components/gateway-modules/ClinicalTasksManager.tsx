@@ -3,6 +3,9 @@
 import React, { useState, useMemo } from 'react';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { HospitalTaskItem, INITIAL_TASKS } from '../../data/hospitalData';
+import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { formatFullPatientName } from '../../lib/patientVerification';
 import {
   ClipboardList, CheckCircle2, Clock, Plus,
   AlertTriangle, Check, X, Filter
@@ -14,6 +17,7 @@ interface ClinicalTasksManagerProps {
 }
 
 export const ClinicalTasksManager: React.FC<ClinicalTasksManagerProps> = ({ userRole, onNavigate }) => {
+  const facilityId = (typeof window !== 'undefined' && getActiveFacilityId()) || 'IGH-EKT';
   const [tasks, setTasks] = useState<HospitalTaskItem[]>(INITIAL_TASKS);
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'urgent' | 'completed'>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
@@ -299,16 +303,16 @@ export const ClinicalTasksManager: React.FC<ClinicalTasksManagerProps> = ({ user
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#94A8BE', marginBottom: 4 }}>PATIENT (OPTIONAL)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Mrs. Amaka Okafor (FMW-12)"
-                  value={taskPatient}
-                  onChange={e => setTaskPatient(e.target.value)}
-                  style={{ width: '100%', padding: '10px 12px', background: '#0A1929', border: '1px solid #1E446B', borderRadius: 8, color: '#0A2540', outline: 'none' }}
-                />
-              </div>
+              <VerifiedPatientField
+                facilityId={facilityId}
+                optional
+                dark
+                label="Verified Patient"
+                placeholder="Search patient name or hospital no. (optional)…"
+                onSelect={(p) => {
+                  setTaskPatient(p ? `${formatFullPatientName(p)} (${p.hospitalNumber})` : '');
+                }}
+              />
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>

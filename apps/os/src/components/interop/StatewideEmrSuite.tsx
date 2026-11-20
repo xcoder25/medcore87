@@ -48,6 +48,8 @@ import { listOrders } from '../../lib/clinicalEventBus';
 import { listVisits } from '../../lib/receptionOpsStore';
 import { exportFacilityFhirBundle } from '../../lib/fhirStub';
 import { exportPatientBundle, listEndpoints, saveEndpoints, type HieEndpoint } from '../../lib/hieGateway';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 import {
   MessageSquare,
   Video,
@@ -100,6 +102,7 @@ export function StatewideEmrSuite({ session }: { session: UserSession }) {
   const facilityId = session.hospitalId || 'DEFAULT';
   const badge = session.badgeId || session.id || 'ADMIN';
   const [tab, setTab] = useState<Tab>('coverage');
+  const [msg, setMsg] = useState<string | null>(null);
   const [, setTick] = useState(0);
   const refresh = () => setTick((x) => x + 1);
 
@@ -187,7 +190,7 @@ export function StatewideEmrSuite({ session }: { session: UserSession }) {
             <button
               key={t.id}
               type="button"
-              onClick={() => setTab(t.id)}
+              onClick={() => { setTab(t.id); setMsg(null); }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -207,6 +210,34 @@ export function StatewideEmrSuite({ session }: { session: UserSession }) {
           );
         })}
       </div>
+
+      {msg && (
+        <div
+          style={{
+            marginBottom: 14,
+            padding: '10px 14px',
+            borderRadius: 10,
+            background: /does not exist|verify|invalid|mismatch|multiple|error/i.test(msg) ? '#FEF2F2' : '#ECFDF5',
+            border: `1px solid ${/does not exist|verify|invalid|mismatch|multiple|error/i.test(msg) ? '#FECACA' : '#A7F3D0'}`,
+            color: /does not exist|verify|invalid|mismatch|multiple|error/i.test(msg) ? '#991B1B' : '#065F46',
+            fontSize: 13,
+            fontWeight: 600,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <span>{msg}</span>
+          <button
+            type="button"
+            onClick={() => setMsg(null)}
+            style={{ background: 'none', border: 'none', color: 'inherit', fontWeight: 800, cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {tab === 'coverage' && (
         <div style={{ display: 'grid', gap: 8 }}>
@@ -347,25 +378,36 @@ export function StatewideEmrSuite({ session }: { session: UserSession }) {
 
       {tab === 'telehealth' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 10 }}>
-            <input style={inp} placeholder="Patient name" value={tvPatient} onChange={(e) => setTvPatient(e.target.value)} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr auto', gap: 10, alignItems: 'start' }}>
+            <VerifiedPatientField
+              facilityId={facilityId}
+              compact
+              required
+              placeholder="Verified patient name or Hospital No…"
+              onSelect={(p) => setTvPatient(p ? (p.hospitalNumber || formatFullPatientName(p)) : '')}
+            />
             <input style={inp} placeholder="Reason" value={tvReason} onChange={(e) => setTvReason(e.target.value)} />
             <input style={inp} type="datetime-local" value={tvWhen} onChange={(e) => setTvWhen(e.target.value)} />
             <button
               type="button"
               className="os-primary-btn"
               onClick={() => {
-                if (!tvPatient.trim()) return;
+                const verif = verifyPatientExists(facilityId, { query: tvPatient });
+                if (!verif.valid || !verif.patient) {
+                  setMsg(verif.error || 'Verify patient name or Hospital No. before scheduling telehealth.');
+                  return;
+                }
                 scheduleTeleVisit({
                   facilityId,
-                  patientId: `tele-${Date.now()}`,
-                  patientName: tvPatient.trim(),
+                  patientId: verif.patient.id,
+                  patientName: formatFullPatientName(verif.patient),
                   clinicianBadge: badge,
                   clinicianName: session.name || badge,
                   scheduledAt: new Date(tvWhen).toISOString(),
                   reason: tvReason,
                 });
                 setTvPatient('');
+                setMsg('Telehealth session scheduled.');
                 refresh();
               }}
             >
@@ -410,20 +452,35 @@ export function StatewideEmrSuite({ session }: { session: UserSession }) {
 
       {tab === 'coding' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px auto', gap: 8 }}>
-            <input style={inp} placeholder="Patient name" value={codePatient} onChange={(e) => setCodePatient(e.target.value)} />
-            <input style={inp} placeholder="Hospital number" value={codeHn} onChange={(e) => setCodeHn(e.target.value)} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 120px auto', gap: 8, alignItems: 'start' }}>
+            <VerifiedPatientField
+              facilityId={facilityId}
+              compact
+              required
+              placeholder="Verified patient name or Hospital No…"
+              onSelect={(p) => {
+                setCodePatient(p ? formatFullPatientName(p) : '');
+                setCodeHn(p ? (p.hospitalNumber || p.id) : '');
+              }}
+            />
             <input style={inp} type="number" value={codeAmt} onChange={(e) => setCodeAmt(Number(e.target.value) || 0)} />
             <button
               type="button"
               className="os-primary-btn"
               onClick={() => {
-                if (!codePatient.trim()) return;
+                const verif = verifyPatientExists(facilityId, {
+                  hospitalNumber: codeHn || undefined,
+                  patientName: codePatient || undefined,
+                });
+                if (!verif.valid || !verif.patient) {
+                  setMsg(verif.error || 'Verify patient name or Hospital No. before adding coded claim.');
+                  return;
+                }
                 const row: ClaimCodingCase = {
                   id: `CLM-${Date.now().toString(36).toUpperCase()}`,
                   facilityId,
-                  patientName: codePatient.trim(),
-                  hospitalNumber: codeHn || '—',
+                  patientName: formatFullPatientName(verif.patient),
+                  hospitalNumber: verif.patient.hospitalNumber || verif.patient.id,
                   visitDate: new Date().toISOString().slice(0, 10),
                   codes: [
                     { system: 'ICD-10', code: COMMON_ICD10[0].code, display: COMMON_ICD10[0].display },
@@ -437,6 +494,8 @@ export function StatewideEmrSuite({ session }: { session: UserSession }) {
                 };
                 upsertCodingCase(row);
                 setCodePatient('');
+                setCodeHn('');
+                setMsg('Coded claim added.');
                 refresh();
               }}
             >

@@ -16,6 +16,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
+import SearchablePatientSelect from '../common/SearchablePatientSelect';
 import type { UserSession } from '../auth/AuthScreen';
 import {
   FlaskConical, Activity, AlertTriangle, CheckCircle2, Clock, Search, Filter,
@@ -2367,21 +2368,15 @@ export const LabDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
             <form onSubmit={handleCreateDirectOrder} style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#334155', marginBottom: 4 }}>
-                  PATIENT
+                  PATIENT (VERIFIED BY NAME OR HOSPITAL NO.) *
                 </label>
-                <select
+                <SearchablePatientSelect
+                  facilityId={facilityId}
                   value={orderPatientId}
-                  onChange={(e) => setOrderPatientId(e.target.value)}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.82rem' }}
+                  onChange={(p) => setOrderPatientId(p?.id || '')}
+                  placeholder="Type patient name or hospital number to verify…"
                   required
-                >
-                  <option value="">Select registered patient…</option>
-                  {patients.slice(0, 50).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.firstName} {p.lastName} · {p.hospitalNumber}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               <div>

@@ -29,6 +29,8 @@ import {
   type BedRecord,
 } from '../../lib/bedBoardStore';
 import { listPatients, subscribePatients, type FacilityPatient } from '../../lib/patientRegistryStore';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 import { updateVisitStatus } from '../../lib/receptionOpsStore';
 import { broadcastOpdStage } from '../../hooks/useOpdSync';
 import { placeOrder } from '../../lib/clinicalEventBus';
@@ -122,10 +124,14 @@ export const AdmitToBedModal: React.FC<AdmitModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const cleanName = patientName.trim();
     const cleanDx = diagnosis.trim();
-    if (!cleanName) {
-      setError('Select or enter the patient name.');
+    const verif = verifyPatientExists(facilityId, {
+      patientId: selectedPatientId || undefined,
+      hospitalNumber: hospitalNumber.trim() || undefined,
+      patientName: patientName.trim() || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setError(verif.error || 'Select or verify a registered patient before admitting.');
       return;
     }
     if (!selectedBedId) {
@@ -137,12 +143,10 @@ export const AdmitToBedModal: React.FC<AdmitModalProps> = ({
       return;
     }
 
-    const chosenPatient = selectedPatientId
-      ? patients.find((p) => p.id === selectedPatientId || p.hospitalNumber === selectedPatientId)
-      : undefined;
-    const resolvedHospNo =
-      hospitalNumber.trim() || chosenPatient?.hospitalNumber || chosenPatient?.id || undefined;
-    const resolvedPid = selectedPatientId || chosenPatient?.id || undefined;
+    const verified = verif.patient;
+    const cleanName = formatFullPatientName(verified);
+    const resolvedHospNo = verified.hospitalNumber || verified.id;
+    const resolvedPid = verified.id;
 
     admitToBed(selectedBedId, {
       patient: cleanName,
@@ -324,53 +328,26 @@ export const AdmitToBedModal: React.FC<AdmitModalProps> = ({
 
         {/* Body */}
         <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {!initialPatient?.name && (
-            <label style={labelStyle}>
-              Select Registered Patient
-              <select
-                value={selectedPatientId}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedPatientId(val);
-                  const hit = patients.find((p) => p.id === val || p.hospitalNumber === val);
-                  if (hit) {
-                    setPatientName(`${hit.firstName} ${hit.lastName}`.trim());
-                    setHospitalNumber(hit.hospitalNumber || hit.id);
-                  }
-                }}
-                style={inputStyle}
-              >
-                <option value="">Choose from facility registry (or type below)…</option>
-                {patients.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.firstName} {p.lastName} · {p.hospitalNumber}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 10 }}>
-            <label style={labelStyle}>
-              Patient Full Name *
-              <input
-                value={patientName}
-                onChange={(e) => setPatientName(e.target.value)}
-                required
-                placeholder="e.g. Ubong Akpan"
-                style={inputStyle}
-              />
-            </label>
-            <label style={labelStyle}>
-              Hospital No. (MRN)
-              <input
-                value={hospitalNumber}
-                onChange={(e) => setHospitalNumber(e.target.value)}
-                placeholder="IGH-PT-..."
-                style={inputStyle}
-              />
-            </label>
-          </div>
+          <VerifiedPatientField
+            facilityId={facilityId}
+            selectedPatientId={selectedPatientId}
+            initialName={initialPatient?.name}
+            initialHospitalNumber={initialPatient?.hospitalNumber}
+            required
+            label="Patient Name or Hospital No."
+            onSelect={(p) => {
+              if (p) {
+                setSelectedPatientId(p.id);
+                setPatientName(formatFullPatientName(p));
+                setHospitalNumber(p.hospitalNumber || p.id);
+                setError('');
+              } else {
+                setSelectedPatientId('');
+                setPatientName('');
+                setHospitalNumber('');
+              }
+            }}
+          />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <label style={labelStyle}>

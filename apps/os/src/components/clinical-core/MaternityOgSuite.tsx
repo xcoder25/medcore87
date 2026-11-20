@@ -24,6 +24,8 @@ import {
 } from '../../lib/maternityStore';
 import { buildAncPlan, computeEddFromLmp, gaWeeksFromLmp } from '../../lib/ancNpiSms';
 import { AncDueSmsPanel } from '../maternity/AncDueSmsPanel';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 
 type MatPage =
   | 'grease' | 'anc' | 'triage' | 'labour' | 'delivery' | 'postnatal' | 'beds' | 'emergency' | 'register';
@@ -78,6 +80,8 @@ export const MaternityOgSuite: React.FC = () => {
   const [showAncModal, setShowAncModal] = useState(false);
   const [showTriageModal, setShowTriageModal] = useState(false);
   const [showLabourAdmit, setShowLabourAdmit] = useState(false);
+  const [matPatientId, setMatPatientId] = useState('');
+  const [matVerifyError, setMatVerifyError] = useState<string | null>(null);
   const [showPartograph, setShowPartograph] = useState(false);
   const [showDelivery, setShowDelivery] = useState(false);
 
@@ -186,44 +190,69 @@ export const MaternityOgSuite: React.FC = () => {
 
   const handleAncBook = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ancName.trim()) return;
+    setMatVerifyError(null);
+    const verif = verifyPatientExists(facilityId, {
+      patientId: matPatientId || undefined,
+      patientName: ancName || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setMatVerifyError(verif.error || 'Verify registered patient before booking prenatal chart.');
+      return;
+    }
+    const verifiedName = formatFullPatientName(verif.patient);
     const lmp = ancLmp || new Date(Date.now() - 20 * 7 * 864e5).toISOString().slice(0, 10);
     const edd = computeEddFromLmp(lmp);
     const ga = gaWeeksFromLmp(lmp);
     const rec: MaternityRecord = {
-      id: newMaternityId(), facilityId, patientName: ancName.trim(), phone: ancPhone || undefined,
+      id: newMaternityId(), facilityId, patientName: verifiedName, phone: ancPhone || verif.patient.phone || undefined,
       age: parseInt(ancAge) || undefined, gravidaPara: ancGp, lmp, edd, gaWeeks: ga,
       bloodGroup: ancBg, gbs: ancGbs, risk: ga < 28 && Math.random() > 0.85 ? 'moderate' : 'low',
       stage: 'anc', partograph: [], midwifeOnDuty: 'ANC Midwife', pphRisk: 'low',
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
     upsertMaternity(rec);
-    try { buildAncPlan({ facilityId, patientId: rec.id, patientName: rec.patientName, lmp, gaWeeks: ga, phone: rec.phone, smsOptIn: true, smsLang: 'en' }); } catch { /* */ }
-    setShowAncModal(false); setAncName(''); setSelectedId(rec.id); refresh();
+    try { buildAncPlan({ facilityId, patientId: verif.patient.id, patientName: rec.patientName, lmp, gaWeeks: ga, phone: rec.phone, smsOptIn: true, smsLang: 'en' }); } catch { /* */ }
+    setShowAncModal(false); setAncName(''); setMatPatientId(''); setMatVerifyError(null); setSelectedId(rec.id); refresh();
     toast(`Prenatal chart · ${rec.patientName} · EDD ${edd}`);
   };
 
   const handleTriage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!triName.trim()) return;
+    setMatVerifyError(null);
+    const verif = verifyPatientExists(facilityId, {
+      patientId: matPatientId || undefined,
+      patientName: triName || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setMatVerifyError(verif.error || 'Verify registered patient before triage.');
+      return;
+    }
     const risk: MatRisk = triMfti <= 2 ? 'critical' : triMfti === 3 ? 'high' : triMfti === 4 ? 'moderate' : 'low';
     const rec: MaternityRecord = {
-      id: newMaternityId(), facilityId, patientName: triName.trim(), gravidaPara: triGp,
+      id: newMaternityId(), facilityId, patientName: formatFullPatientName(verif.patient), gravidaPara: triGp,
       gaWeeks: parseInt(triGa) || 39, mfti: triMfti, risk, stage: 'triage', notes: triChief,
       partograph: [], midwifeOnDuty: 'Triage Midwife',
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
-    upsertMaternity(rec); setShowTriageModal(false); setTriName(''); setSelectedId(rec.id); setPage('triage'); refresh();
+    upsertMaternity(rec); setShowTriageModal(false); setTriName(''); setMatPatientId(''); setMatVerifyError(null); setSelectedId(rec.id); setPage('triage'); refresh();
     toast(`OB triage · MFTI ${triMfti} · ${rec.patientName}`);
   };
 
   const handleLabourAdmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!labName.trim()) return;
+    setMatVerifyError(null);
+    const verif = verifyPatientExists(facilityId, {
+      patientId: matPatientId || undefined,
+      patientName: labName || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setMatVerifyError(verif.error || 'Verify registered patient before L&D admission.');
+      return;
+    }
     const fhr = parseInt(labFhr) || 140;
     const dil = parseFloat(labDil) || 3;
     const rec: MaternityRecord = {
-      id: newMaternityId(), facilityId, patientName: labName.trim(), gravidaPara: labGp,
+      id: newMaternityId(), facilityId, patientName: formatFullPatientName(verif.patient), gravidaPara: labGp,
       cervicalDilationCm: dil, effacementPct: parseInt(labEff) || 50, station: parseInt(labSta) || -2,
       fetalHeartRateBpm: fhr, contractionsPer10Min: parseInt(labCtx) || 3, romStatus: labRom,
       romAt: labRom !== 'intact' ? new Date().toISOString() : undefined, bedNo: labBed,
@@ -232,7 +261,7 @@ export const MaternityOgSuite: React.FC = () => {
       midwifeOnDuty: 'Labour Midwife on duty', pphRisk: 'medium',
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
-    upsertMaternity(rec); setShowLabourAdmit(false); setLabName(''); setSelectedId(rec.id); setPage('labour'); refresh();
+    upsertMaternity(rec); setShowLabourAdmit(false); setLabName(''); setMatPatientId(''); setMatVerifyError(null); setSelectedId(rec.id); setPage('labour'); refresh();
     toast(`L&D admit · ${rec.patientName} · Bed ${labBed}`);
   };
 
@@ -711,9 +740,26 @@ export const MaternityOgSuite: React.FC = () => {
       )}
 
       {showAncModal && (
-        <Modal title="Open prenatal chart (ANC)" onClose={() => setShowAncModal(false)}>
+        <Modal title="Open prenatal chart (ANC)" onClose={() => { setShowAncModal(false); setMatVerifyError(null); }}>
           <form onSubmit={handleAncBook} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Field label="Mother's full name *"><input style={inputStyle} required value={ancName} onChange={(e) => setAncName(e.target.value)} /></Field>
+            <VerifiedPatientField
+              facilityId={facilityId}
+              selectedPatientId={matPatientId}
+              required
+              label="Mother's Registered Name or Hospital No."
+              error={matVerifyError}
+              onSelect={(p) => {
+                setMatVerifyError(null);
+                setMatPatientId(p?.id || '');
+                setAncName(p ? formatFullPatientName(p) : '');
+                if (p?.phone) setAncPhone(p.phone);
+                if (p?.dob) {
+                  const yrs = Math.max(12, new Date().getFullYear() - new Date(p.dob).getFullYear());
+                  if (Number.isFinite(yrs)) setAncAge(String(yrs));
+                }
+                if (p?.bloodGroup) setAncBg(p.bloodGroup);
+              }}
+            />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <Field label="Age"><input style={inputStyle} value={ancAge} onChange={(e) => setAncAge(e.target.value)} /></Field>
               <Field label="Phone"><input style={inputStyle} value={ancPhone} onChange={(e) => setAncPhone(e.target.value)} /></Field>
@@ -727,9 +773,20 @@ export const MaternityOgSuite: React.FC = () => {
         </Modal>
       )}
       {showTriageModal && (
-        <Modal title="OB Triage · MFTI" onClose={() => setShowTriageModal(false)}>
+        <Modal title="OB Triage · MFTI" onClose={() => { setShowTriageModal(false); setMatVerifyError(null); }}>
           <form onSubmit={handleTriage} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Field label="Mother's name *"><input style={inputStyle} required value={triName} onChange={(e) => setTriName(e.target.value)} /></Field>
+            <VerifiedPatientField
+              facilityId={facilityId}
+              selectedPatientId={matPatientId}
+              required
+              label="Mother's Registered Name or Hospital No."
+              error={matVerifyError}
+              onSelect={(p) => {
+                setMatVerifyError(null);
+                setMatPatientId(p?.id || '');
+                setTriName(p ? formatFullPatientName(p) : '');
+              }}
+            />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <Field label="G/P"><input style={inputStyle} value={triGp} onChange={(e) => setTriGp(e.target.value)} /></Field>
               <Field label="GA (weeks)"><input style={inputStyle} value={triGa} onChange={(e) => setTriGa(e.target.value)} /></Field>
@@ -741,9 +798,20 @@ export const MaternityOgSuite: React.FC = () => {
         </Modal>
       )}
       {showLabourAdmit && (
-        <Modal title="Admit to Labour & Delivery" onClose={() => setShowLabourAdmit(false)}>
+        <Modal title="Admit to Labour & Delivery" onClose={() => { setShowLabourAdmit(false); setMatVerifyError(null); }}>
           <form onSubmit={handleLabourAdmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Field label="Mother's name *"><input style={inputStyle} required value={labName} onChange={(e) => setLabName(e.target.value)} /></Field>
+            <VerifiedPatientField
+              facilityId={facilityId}
+              selectedPatientId={matPatientId}
+              required
+              label="Mother's Registered Name or Hospital No."
+              error={matVerifyError}
+              onSelect={(p) => {
+                setMatVerifyError(null);
+                setMatPatientId(p?.id || '');
+                setLabName(p ? formatFullPatientName(p) : '');
+              }}
+            />
             <Field label="G/P / GA"><input style={inputStyle} value={labGp} onChange={(e) => setLabGp(e.target.value)} /></Field>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
               <Field label="Dilation (cm)"><input style={inputStyle} value={labDil} onChange={(e) => setLabDil(e.target.value)} /></Field>

@@ -33,6 +33,8 @@ import { listPatients } from '../../lib/patientRegistryStore';
 import { Dhis2TrackerBedBoardSuite } from '../interop/Dhis2TrackerBedBoardSuite';
 import { calculateInpatientIndicators } from '../../lib/dhis2Export';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
+import { VerifiedPatientField } from '../common/VerifiedPatientField';
+import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 
 const BED_STATUS_META: Record<BedStatus, { label: string; color: string }> = {
   occupied: { label: 'Occupied', color: '#EA580C' },
@@ -72,6 +74,7 @@ export const BedManagement: React.FC<{
   const [showAudit, setShowAudit] = useState(false);
   const [admitPatientName, setAdmitPatientName] = useState('');
   const [admitPatientId, setAdmitPatientId] = useState('');
+  const [admitError, setAdmitError] = useState<string | null>(null);
   const [admitDoctor, setAdmitDoctor] = useState('');
   const [admitDiagnosis, setAdmitDiagnosis] = useState('');
   const [admitEdd, setAdmitEdd] = useState('');
@@ -166,19 +169,26 @@ export const BedManagement: React.FC<{
 
   const handleAdmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isAdminView || !selected || !admitPatientName.trim()) return;
-    // Explicit named fields — never positional; avoid name/doctor/dx swap
-    const patientName = admitPatientName.trim();
+    if (isAdminView || !selected) return;
+    setAdmitError(null);
+    const verif = verifyPatientExists(facilityId, {
+      patientId: admitPatientId || undefined,
+      patientName: admitPatientName || undefined,
+    });
+    if (!verif.valid || !verif.patient) {
+      setAdmitError(
+        verif.error || 'Select a registered patient from the facility registry before admitting.'
+      );
+      return;
+    }
+    const verified = verif.patient;
+    const patientName = formatFullPatientName(verified);
     const doctorName = admitDoctor.trim();
     const diagnosisText = admitDiagnosis.trim();
-    const fromReg = admitPatientId ? patients.find((x) => x.id === admitPatientId) : undefined;
-    const hospitalNumber =
-      fromReg?.hospitalNumber ||
-      fromReg?.id ||
-      undefined;
+    const hospitalNumber = verified.hospitalNumber || verified.id;
     admitToBed(selected.id, {
       patient: patientName,
-      patientId: admitPatientId || fromReg?.id || undefined,
+      patientId: verified.id,
       hospitalNumber,
       doctor: doctorName || undefined,
       diagnosis: diagnosisText || undefined,
@@ -190,6 +200,7 @@ export const BedManagement: React.FC<{
     setShowAdmitModal(false);
     setAdmitPatientId('');
     setAdmitPatientName('');
+    setAdmitError(null);
     setAdmitDoctor('');
     setAdmitDiagnosis('');
     setAdmitEdd('');
@@ -809,37 +820,18 @@ export const BedManagement: React.FC<{
         <div style={modalBg}>
           <form style={modalBox} onSubmit={handleAdmit}>
             <div style={{ fontWeight: 800, marginBottom: 12 }}>Admit to {selected.bedNo}</div>
-            <label style={label}>
-              Patient from registry (optional)
-              <select
-                value={admitPatientId}
-                onChange={(e) => {
-                  const p = patients.find((x) => x.id === e.target.value);
-                  setAdmitPatientId(e.target.value);
-                  if (p) setAdmitPatientName(`${p.firstName} ${p.lastName}`);
-                }}
-                style={input}
-              >
-                <option value="">Manual name…</option>
-                {patients.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.firstName} {p.lastName} · {p.hospitalNumber}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={label}>
-              Patient name
-              <input
-                name="admit_patient_name"
-                autoComplete="off"
-                value={admitPatientName}
-                onChange={(e) => setAdmitPatientName(e.target.value)}
-                style={input}
-                required
-                placeholder="Full patient name"
-              />
-            </label>
+            <VerifiedPatientField
+              facilityId={facilityId}
+              selectedPatientId={admitPatientId}
+              required
+              label="Verified Patient (Name or Hospital No.)"
+              error={admitError}
+              onSelect={(p) => {
+                setAdmitError(null);
+                setAdmitPatientId(p?.id || '');
+                setAdmitPatientName(p ? formatFullPatientName(p) : '');
+              }}
+            />
             <label style={label}>
               Attending doctor
               <input
