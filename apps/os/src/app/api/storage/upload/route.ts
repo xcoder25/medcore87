@@ -15,6 +15,7 @@ const ALLOWED_MIME_TYPES = new Set([
   'image/webp',
   'image/gif',
   'image/svg+xml',
+  'application/pdf', // Official HMB/AKSPHCDA circulars & CMD letterhead approvals
   'application/octet-stream', // DICOM binary images
   'application/dicom',
 ]);
@@ -29,6 +30,8 @@ function getExtensionFromMime(mime: string): string {
       return 'gif';
     case 'image/svg+xml':
       return 'svg';
+    case 'application/pdf':
+      return 'pdf';
     case 'application/dicom':
     case 'application/octet-stream':
       return 'dcm';

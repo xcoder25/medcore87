@@ -9,6 +9,7 @@
 import { publishFacilityData } from './roleSyncBus';
 import { getReceptionSettings } from './receptionSettingsStore';
 import { getAdminSettings } from './adminSettingsStore';
+import { isPublicOwnership } from './publicHospitalCompliance';
 
 export const PAYMENT_RECEIPTS_KEY = 'medcore_os_payment_receipts_v1';
 export const PAYMENT_RECEIPTS_EVENT = 'medcore-payment-receipts';
@@ -56,6 +57,7 @@ export type PaymentReceiptRecord = {
   remittedBy?: string;
   header?: string;
   footer?: string;
+  hfrCode?: string;
   taxId?: string;
   logoUrl?: string;
 };
@@ -200,7 +202,12 @@ export function issuePaymentReceipt(
     category: inferCategory(input.method, input.channel),
     header: settings?.receiptHeader || `${resolvedFacilityName} — Official Receipt`,
     footer: adminSettings?.receiptFooterText || settings?.receiptFooter,
-    taxId: settings?.receiptTaxId || adminSettings?.registrationNo,
+    hfrCode: isPublicOwnership(adminSettings?.ownership)
+      ? adminSettings?.hfrCode || adminSettings?.registrationNo || undefined
+      : undefined,
+    taxId: isPublicOwnership(adminSettings?.ownership)
+      ? undefined
+      : settings?.receiptTaxId || adminSettings?.taxId || adminSettings?.registrationNo,
     logoUrl: adminSettings?.logoUrl || undefined,
   };
 
@@ -296,7 +303,7 @@ export function buildReceiptHtml(r: PaymentReceiptRecord): string {
   </div>
   <h1 style="text-align:center;font-size:15px;margin:0 0 4px">${escapeHtml(header)}</h1>
   <div class="muted" style="text-align:center">${escapeHtml(r.facilityName)}</div>
-  ${r.taxId ? `<div class="muted" style="text-align:center">Tax / TIN: ${escapeHtml(r.taxId)}</div>` : ''}
+  ${r.hfrCode ? `<div class="muted" style="text-align:center">HFR Code: ${escapeHtml(r.hfrCode)}</div>` : r.taxId ? `<div class="muted" style="text-align:center">Tax / TIN: ${escapeHtml(r.taxId)}</div>` : ''}
   <div class="box" style="margin-top:14px">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
       <div>

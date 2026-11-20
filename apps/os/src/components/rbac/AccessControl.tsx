@@ -51,6 +51,15 @@ import { HOSPITALS } from '../auth/AuthScreen';
 import { getCustomRoles } from '../../lib/rolePermissionsStore';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import {
+  EMPLOYMENT_SCHEMES,
+  REGULATORY_COUNCILS,
+  getRequiredCouncilForRole,
+  validateStaffCredentials,
+  extractStaffCredentials,
+  type EmploymentSchemeKey,
+  type RegulatoryCouncilCode,
+} from '../../lib/publicHospitalCompliance';
+import {
   Shield, Plus, Search, CheckCircle2, XCircle, Lock, UserPlus, IdCard, Trash2, Sliders,
   Layers, Pencil, Save, X as XIcon, Users, Printer, Copy, Check, Sparkles,
   Filter, ChevronRight, RefreshCw, Key, ShieldCheck, AlertTriangle, Eye,
@@ -135,6 +144,8 @@ function getInitialStaffAccessRecords(facilityId: string): AccessRecord[] {
           lastLogin: 'Never',
           permissions: (c as { permissions?: string[] }).permissions || defaultPermissionsForRole(c.roleKey || 'staff'),
           email: (c as { email?: string }).email,
+          roleKey: c.roleKey,
+          ...extractStaffCredentials(c),
         });
       }
     }
@@ -163,6 +174,8 @@ function getInitialStaffAccessRecords(facilityId: string): AccessRecord[] {
               lastLogin: s.lastLogin || 'Never',
               permissions: s.permissions || defaultPermissionsForRole(s.roleKey || 'staff'),
               email: s.email,
+              roleKey: s.roleKey,
+              ...extractStaffCredentials(s),
             });
           }
         }
@@ -208,6 +221,13 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [pin, setPin] = useState('123456');
   const [email, setEmail] = useState('');
+  const [employmentScheme, setEmploymentScheme] = useState<EmploymentSchemeKey>('aks_civil_service');
+  const [civilServiceId, setCivilServiceId] = useState('');
+  const [regulatoryBody, setRegulatoryBody] = useState<RegulatoryCouncilCode>(() =>
+    getRequiredCouncilForRole(ROLE_OPTIONS[0]?.roleKey || 'doctor').council
+  );
+  const [practicingLicenseNo, setPracticingLicenseNo] = useState('');
+  const [licenseExpiry, setLicenseExpiry] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string>('');
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoMeta, setPhotoMeta] = useState<string>('');
@@ -244,6 +264,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
   const [editPhotoBusy, setEditPhotoBusy] = useState(false);
   const [editPhotoMeta, setEditPhotoMeta] = useState('');
   const [editPhotoChanged, setEditPhotoChanged] = useState(false);
+  const [editScheme, setEditScheme] = useState<EmploymentSchemeKey>('aks_civil_service');
+  const [editCivilServiceId, setEditCivilServiceId] = useState('');
+  const [editRegBody, setEditRegBody] = useState<RegulatoryCouncilCode>('NONE');
+  const [editLicenseNo, setEditLicenseNo] = useState('');
+  const [editLicenseExpiry, setEditLicenseExpiry] = useState('');
   const [photoTick, setPhotoTick] = useState(0);
   const [editError, setEditError] = useState('');
   const [editBusy, setEditBusy] = useState(false);
@@ -277,6 +302,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     [availableRoles, roleKey]
   );
 
+  const councilInfo = useMemo(
+    () => getRequiredCouncilForRole(roleMeta?.roleKey),
+    [roleMeta?.roleKey]
+  );
+
   // Live Card Preview for the Enrolment studio
   const livePreviewCard: StaffCardRecord = useMemo(() => {
     const short = roleMeta?.shortRole || 'Staff';
@@ -306,10 +336,26 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       issuedAt: new Date().toISOString(),
       expiresAt,
       photoUrl: photoUrl || undefined,
+      employmentScheme,
+      civilServiceId: civilServiceId.trim().toUpperCase() || undefined,
+      regulatoryBody,
+      practicingLicenseNo: practicingLicenseNo.trim().toUpperCase() || undefined,
+      licenseExpiry: licenseExpiry || undefined,
       initials,
       qrPayload: JSON.stringify({ v: 1, iss: 'medcore', badgeId: previewBadge, facilityId, clr: cl }),
     };
-  }, [fullName, roleMeta, facilityId, facilityName, photoUrl]);
+  }, [
+    fullName,
+    roleMeta,
+    facilityId,
+    facilityName,
+    photoUrl,
+    employmentScheme,
+    civilServiceId,
+    regulatoryBody,
+    practicingLicenseNo,
+    licenseExpiry,
+  ]);
 
   // Read-only refresh from local memory (cloud fetch happens once on mount / explicit action)
   const loadRecords = useCallback(() => {
@@ -359,6 +405,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
               lastLogin: 'Never',
               permissions: (c as { permissions?: string[] }).permissions || defaultPermissionsForRole(c.roleKey || 'staff'),
               email: (c as { email?: string }).email,
+              roleKey: c.roleKey,
+              ...extractStaffCredentials(c),
             });
           }
         }
@@ -388,6 +436,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                   lastLogin: s.lastLogin || 'Never',
                   permissions: s.permissions || defaultPermissionsForRole(s.roleKey || 'staff'),
                   email: s.email,
+                  roleKey: s.roleKey,
+                  ...extractStaffCredentials(s),
                 });
               }
             }
@@ -411,6 +461,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
             ? (s.permissions as string[])
             : defaultPermissionsForRole(String(s.roleKey || s.role || 'staff')),
           email: s.email || s.workEmail ? String(s.email || s.workEmail) : undefined,
+          roleKey: s.roleKey ? String(s.roleKey) : (s.role_key ? String(s.role_key) : undefined),
+          ...extractStaffCredentials(s),
         });
       }
 
@@ -445,6 +497,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
               issuedAt: String(s.issuedAt || s.createdAt || new Date().toISOString()),
               expiresAt: String(s.expiresAt || new Date(Date.now() + 2 * 365 * 864e5).toISOString()),
               photoUrl: s.photoUrl ? String(s.photoUrl) : undefined,
+              ...extractStaffCredentials(s),
               initials: String(s.initials || fName.slice(0, 2).toUpperCase()),
               qrPayload: typeof s.qrPayload === 'string' ? s.qrPayload : undefined,
             };
@@ -630,10 +683,15 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     const existingPhoto = String(
       existingCard?.photoUrl || (row as unknown as Record<string, unknown>).photoUrl || ''
     );
+    const creds = {
+      ...extractStaffCredentials(existingCard),
+      ...extractStaffCredentials(row),
+    };
+    const rk = (row as unknown as Record<string, string>).roleKey || existingCard?.roleKey || '';
     setSelectedId(row.id);
     setEditId(row.id);
     setEditName(row.name);
-    setEditRoleKey((row as unknown as Record<string, string>).roleKey || '');
+    setEditRoleKey(rk);
     setEditDept(row.department || '');
     setEditPhone((row as unknown as Record<string, string>).phone || '');
     setEditEmail(row.email || '');
@@ -641,6 +699,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     setEditPhotoUrl(existingPhoto);
     setEditPhotoMeta('');
     setEditPhotoChanged(false);
+    setEditScheme((creds.employmentScheme as EmploymentSchemeKey) || 'aks_civil_service');
+    setEditCivilServiceId(creds.civilServiceId || '');
+    setEditRegBody((creds.regulatoryBody as RegulatoryCouncilCode) || getRequiredCouncilForRole(rk).council);
+    setEditLicenseNo(creds.practicingLicenseNo || '');
+    setEditLicenseExpiry(creds.licenseExpiry || '');
     setEditError('');
   };
 
@@ -716,6 +779,22 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       setError('Enter an exact 6-digit numeric sign-in PIN (used for both Staff ID and Email login).');
       return;
     }
+    const credCheck = validateStaffCredentials({
+      roleKey: roleMeta.roleKey,
+      civilServiceId,
+      requireCivilServiceId: true,
+      regulatoryBody,
+      practicingLicenseNo,
+      licenseExpiry,
+    });
+    if (!credCheck.ok) {
+      setError(credCheck.error || 'Verify government civil service ID and professional practicing license.');
+      return;
+    }
+    if (practicingLicenseNo.trim() && !licenseExpiry.trim()) {
+      setError('Enter the annual practicing license expiry date.');
+      return;
+    }
 
     if (roleMeta.roleKey === 'hospital_admin') {
       const existing = listStaffCards().filter(
@@ -737,6 +816,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     const pinNorm = normalizeStaffPin(pin);
     const nameSnap = fullName.trim();
     const mail = (email || '').trim().toLowerCase();
+    const schemeSnap = employmentScheme;
+    const civilIdSnap = civilServiceId.trim().toUpperCase();
+    const regBodySnap = regulatoryBody;
+    const licenseNoSnap = practicingLicenseNo.trim().toUpperCase() || undefined;
+    const licenseExpSnap = licenseExpiry.trim() || undefined;
     // Never pass undefined to Firestore — use null or omit the field
     const photoSnap = photoUrl || null;
 
@@ -756,6 +840,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
         permissions: defaultPermissionsForRole(roleMeta.roleKey),
         photoUrl: photoSnap || undefined,
         email: mail || undefined,
+        employmentScheme: schemeSnap,
+        civilServiceId: civilIdSnap,
+        regulatoryBody: regBodySnap,
+        practicingLicenseNo: licenseNoSnap,
+        licenseExpiry: licenseExpSnap,
       });
 
       let card = prepared.card;
@@ -797,6 +886,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
         lastLogin: 'Never',
         permissions: defaultPermissionsForRole(roleMeta.roleKey),
         email: mail || undefined,
+        employmentScheme: schemeSnap,
+        civilServiceId: civilIdSnap,
+        regulatoryBody: regBodySnap,
+        practicingLicenseNo: licenseNoSnap,
+        licenseExpiry: licenseExpSnap,
       };
 
       // 1) Commit local first
@@ -816,9 +910,24 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
           permissions: accessRow.permissions,
           photoUrl: finalPhoto || undefined,
           email: mail || undefined,
+          employmentScheme: schemeSnap,
+          civilServiceId: civilIdSnap,
+          regulatoryBody: regBodySnap,
+          practicingLicenseNo: licenseNoSnap,
+          licenseExpiry: licenseExpSnap,
         },
         card,
-        { ...prepared.entry, pin: pinNorm, email: mail || undefined, photoUrl: finalPhoto || undefined }
+        {
+          ...prepared.entry,
+          pin: pinNorm,
+          email: mail || undefined,
+          photoUrl: finalPhoto || undefined,
+          employmentScheme: schemeSnap,
+          civilServiceId: civilIdSnap,
+          regulatoryBody: regBodySnap,
+          practicingLicenseNo: licenseNoSnap,
+          licenseExpiry: licenseExpSnap,
+        }
       );
 
       const nextAccess = [accessRow, ...getAccessRecords().filter((r) => r.id !== accessRow.id)];
@@ -863,6 +972,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
         authEmail: badgeAuthEmail(badgeId),
         status: 'active',
         photoUrl: finalPhoto || undefined,
+        employmentScheme: schemeSnap,
+        civilServiceId: civilIdSnap,
+        regulatoryBody: regBodySnap,
+        practicingLicenseNo: licenseNoSnap,
+        licenseExpiry: licenseExpSnap,
       };
 
       try {
@@ -883,6 +997,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
           clearanceLabel: roleMeta.clearanceLabel,
           templateKey: card.templateKey || 'TPL_CLINICAL',
           photoUrl: finalPhoto || undefined,
+          employmentScheme: schemeSnap,
+          civilServiceId: civilIdSnap,
+          regulatoryBody: regBodySnap,
+          practicingLicenseNo: licenseNoSnap,
+          licenseExpiry: licenseExpSnap,
         });
 
         if (!cloudRes || !cloudRes.success) {
@@ -912,6 +1031,9 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
 
       setFullName('');
       setEmail('');
+      setCivilServiceId('');
+      setPracticingLicenseNo('');
+      setLicenseExpiry('');
       setPhotoUrl('');
       setPhotoMeta('');
       setBusy(false);
@@ -1556,6 +1678,25 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                       setEditError('A valid work email is required so this staff member can receive 2FA OTPs.');
                       return;
                     }
+                    const cleanCivilId = editCivilServiceId.trim().toUpperCase();
+                    const cleanLicNo = editLicenseNo.trim().toUpperCase();
+                    const cleanLicExp = editLicenseExpiry.trim();
+                    if (cleanCivilId && cleanCivilId.length < 4) {
+                      setEditError('Civil Service / IPPIS Staff ID must be at least 4 characters.');
+                      return;
+                    }
+                    if (cleanLicNo && cleanLicNo.length < 4) {
+                      setEditError('Practicing license number must be at least 4 characters.');
+                      return;
+                    }
+                    if (cleanLicNo && !cleanLicExp) {
+                      setEditError('Enter the practicing license expiry date.');
+                      return;
+                    }
+                    if (cleanLicExp && !/^\d{4}-\d{2}-\d{2}$/.test(cleanLicExp)) {
+                      setEditError('License expiry date must use YYYY-MM-DD format.');
+                      return;
+                    }
                     if (editPhotoBusy) {
                       setEditError('Please wait for the ID photo upload to AWS S3 to complete.');
                       return;
@@ -1591,6 +1732,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                           email: mail,
                           department: dept,
                           status: editStatus,
+                          employmentScheme: editScheme,
+                          civilServiceId: cleanCivilId,
+                          regulatoryBody: editRegBody,
+                          practicingLicenseNo: cleanLicNo,
+                          licenseExpiry: cleanLicExp,
                           ...(editPhotoChanged ? { photoUrl: finalPhoto } : {}),
                         }),
                       });
@@ -1618,6 +1764,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                               department: dept || row.department,
                               status: editStatus,
                               email: mail,
+                              employmentScheme: editScheme,
+                              civilServiceId: cleanCivilId || undefined,
+                              regulatoryBody: editRegBody,
+                              practicingLicenseNo: cleanLicNo || undefined,
+                              licenseExpiry: cleanLicExp || undefined,
                               ...(editPhotoChanged ? { photoUrl: finalPhoto || undefined } : {}),
                             }
                           : row
@@ -1641,6 +1792,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                               workEmail: mail || r.workEmail,
                               department: dept || r.department,
                               status: editStatus || r.status,
+                              employmentScheme: editScheme,
+                              civilServiceId: cleanCivilId || undefined,
+                              regulatoryBody: editRegBody,
+                              practicingLicenseNo: cleanLicNo || undefined,
+                              licenseExpiry: cleanLicExp || undefined,
                               ...(editPhotoChanged ? { photoUrl: finalPhoto || null } : {}),
                             };
                           });
@@ -1658,6 +1814,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                                   fullName: name,
                                   department: dept || c.department,
                                   email: mail,
+                                  employmentScheme: editScheme,
+                                  civilServiceId: cleanCivilId || undefined,
+                                  regulatoryBody: editRegBody,
+                                  practicingLicenseNo: cleanLicNo || undefined,
+                                  licenseExpiry: cleanLicExp || undefined,
                                   ...(editPhotoChanged ? { photoUrl: finalPhoto || null } : {}),
                                 }
                               : c
@@ -1742,6 +1903,66 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                       <option value="suspended">Suspended (Blocked)</option>
                       <option value="pending">Pending Approval</option>
                     </select>
+                  </label>
+
+                  {/* Civil Service & Professional Practicing Credentials */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
+                      Employment Scheme
+                      <select
+                        className="os-form-select"
+                        style={{ width: '100%', marginTop: 4, padding: '8px 10px' }}
+                        value={editScheme}
+                        onChange={(e) => setEditScheme(e.target.value as EmploymentSchemeKey)}
+                      >
+                        {EMPLOYMENT_SCHEMES.map((s) => (
+                          <option key={s.key} value={s.key}>{s.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
+                      Civil Service / IPPIS ID
+                      <input
+                        className="os-search-input"
+                        style={{ width: '100%', marginTop: 4, padding: '8px 10px' }}
+                        value={editCivilServiceId}
+                        onChange={(e) => setEditCivilServiceId(e.target.value)}
+                        placeholder="AKS/HMB/… or IPPIS-…"
+                      />
+                    </label>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
+                      Regulatory Council
+                      <select
+                        className="os-form-select"
+                        style={{ width: '100%', marginTop: 4, padding: '8px 10px' }}
+                        value={editRegBody}
+                        onChange={(e) => setEditRegBody(e.target.value as RegulatoryCouncilCode)}
+                      >
+                        {Object.values(REGULATORY_COUNCILS).map((c) => (
+                          <option key={c.code} value={c.code}>{c.shortName}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
+                      Practicing License No.
+                      <input
+                        className="os-search-input"
+                        style={{ width: '100%', marginTop: 4, padding: '8px 10px' }}
+                        value={editLicenseNo}
+                        onChange={(e) => setEditLicenseNo(e.target.value)}
+                        placeholder={REGULATORY_COUNCILS[editRegBody]?.placeholder || 'License No.'}
+                      />
+                    </label>
+                  </div>
+                  <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
+                    License Expiry Date
+                    <input
+                      type="date"
+                      className="os-search-input"
+                      style={{ width: '100%', marginTop: 4, padding: '8px 10px' }}
+                      value={editLicenseExpiry}
+                      onChange={(e) => setEditLicenseExpiry(e.target.value)}
+                    />
                   </label>
 
                   {/* Replace / Remove ID Badge Headshot (AWS S3) */}
@@ -1854,6 +2075,32 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                       <span style={{ color: '#64748B', display: 'block', fontSize: '0.7rem' }}>CLEARANCE</span>
                       <strong>{CLEARANCE_LABELS[selected.clearance]?.label || 'L2 Support'}</strong>
                     </div>
+                    {(() => {
+                      const c = {
+                        ...extractStaffCredentials(selected),
+                        ...extractStaffCredentials(selectedCard),
+                      };
+                      if (!c.civilServiceId && !c.practicingLicenseNo) return null;
+                      return (
+                        <>
+                          <div>
+                            <span style={{ color: '#64748B', display: 'block', fontSize: '0.7rem' }}>CIVIL SERVICE / IPPIS</span>
+                            <strong style={{ fontFamily: 'var(--os-font-mono)', color: '#0F172A' }}>
+                              {c.civilServiceId || '—'}
+                            </strong>
+                          </div>
+                          <div>
+                            <span style={{ color: '#64748B', display: 'block', fontSize: '0.7rem' }}>
+                              {c.regulatoryBody && c.regulatoryBody !== 'NONE' ? `${c.regulatoryBody} LICENSE` : 'PRACTICING LICENSE'}
+                            </span>
+                            <strong style={{ fontFamily: 'var(--os-font-mono)', color: '#0369A1' }}>
+                              {c.practicingLicenseNo || '—'}
+                              {c.licenseExpiry ? ` (${c.licenseExpiry})` : ''}
+                            </strong>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* Vertical ID Card Display */}
@@ -2013,6 +2260,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                                 type="button"
                                 onClick={() => {
                                   setRoleKey(r.roleKey);
+                                  setRegulatoryBody(getRequiredCouncilForRole(r.roleKey).council);
                                   setRoleMenuOpen(false);
                                 }}
                                 style={{
@@ -2087,6 +2335,102 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                     </div>
                   )}
                 </label>
+              </div>
+
+              {/* Public Civil Service & Professional Practicing Credentials */}
+              <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Public Civil Service &amp; Professional Practicing Credentials
+                  </span>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#E0F2FE', color: '#0369A1' }}>
+                    {councilInfo.required ? `${councilInfo.council} Required` : 'Admin / Non-Licensed Cadre'}
+                  </span>
+                </div>
+
+                {councilInfo.governanceNote && (
+                  <div style={{ fontSize: '0.74rem', color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '7px 10px', fontWeight: 600 }}>
+                    {councilInfo.governanceNote}
+                  </div>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
+                    Employment Scheme *
+                    <select
+                      className="os-form-select"
+                      style={{ width: '100%', marginTop: 6, padding: '9px 10px', fontSize: '0.84rem' }}
+                      value={employmentScheme}
+                      onChange={(e) => setEmploymentScheme(e.target.value as EmploymentSchemeKey)}
+                    >
+                      {EMPLOYMENT_SCHEMES.map((s) => (
+                        <option key={s.key} value={s.key}>{s.label}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
+                    {EMPLOYMENT_SCHEMES.find((s) => s.key === employmentScheme)?.idLabel || 'Civil Service / IPPIS Staff ID'} *
+                    <input
+                      className="os-search-input"
+                      style={{ width: '100%', marginTop: 6, padding: '9px 12px', fontSize: '0.86rem', fontFamily: 'var(--os-font-mono)' }}
+                      value={civilServiceId}
+                      onChange={(e) => setCivilServiceId(e.target.value)}
+                      placeholder={EMPLOYMENT_SCHEMES.find((s) => s.key === employmentScheme)?.placeholder || 'e.g. AKS/HMB/14829'}
+                      minLength={4}
+                      required
+                    />
+                    {civilServiceId.trim().length > 0 && civilServiceId.trim().length < 4 && (
+                      <div style={{ fontSize: '0.7rem', color: '#DC2626', marginTop: 3 }}>Minimum 4 characters</div>
+                    )}
+                  </label>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                  <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
+                    Regulatory Council
+                    <select
+                      className="os-form-select"
+                      style={{ width: '100%', marginTop: 6, padding: '9px 10px', fontSize: '0.84rem' }}
+                      value={regulatoryBody}
+                      onChange={(e) => setRegulatoryBody(e.target.value as RegulatoryCouncilCode)}
+                    >
+                      {Object.values(REGULATORY_COUNCILS).map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.shortName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
+                    Practicing License No. {councilInfo.required ? '*' : '(Optional)'}
+                    <input
+                      className="os-search-input"
+                      style={{ width: '100%', marginTop: 6, padding: '9px 12px', fontSize: '0.86rem', fontFamily: 'var(--os-font-mono)' }}
+                      value={practicingLicenseNo}
+                      onChange={(e) => setPracticingLicenseNo(e.target.value)}
+                      placeholder={councilInfo.placeholder}
+                      minLength={councilInfo.required ? 4 : undefined}
+                      required={councilInfo.required}
+                    />
+                    {practicingLicenseNo.trim().length > 0 && practicingLicenseNo.trim().length < 4 && (
+                      <div style={{ fontSize: '0.7rem', color: '#DC2626', marginTop: 3 }}>Minimum 4 characters</div>
+                    )}
+                  </label>
+
+                  <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
+                    License Expiry {practicingLicenseNo.trim() ? '*' : '(Optional)'}
+                    <input
+                      type="date"
+                      className="os-search-input"
+                      style={{ width: '100%', marginTop: 6, padding: '9px 10px', fontSize: '0.84rem' }}
+                      value={licenseExpiry}
+                      onChange={(e) => setLicenseExpiry(e.target.value)}
+                      required={Boolean(practicingLicenseNo.trim())}
+                    />
+                  </label>
+                </div>
               </div>
 
               {/* Headshot Photo Upload */}
@@ -2165,7 +2509,10 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                   photoBusy ||
                   fullName.trim().length < 3 ||
                   !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
-                  !/^\d{6}$/.test(pin)
+                  !/^\d{6}$/.test(pin) ||
+                  civilServiceId.trim().length < 4 ||
+                  (councilInfo.required && practicingLicenseNo.trim().length < 4) ||
+                  (Boolean(practicingLicenseNo.trim()) && !licenseExpiry.trim())
                 }
                 className="os-primary-btn"
                 style={{ padding: '12px 18px', fontSize: '0.94rem', fontWeight: 800, justifyContent: 'center', marginTop: 4, background: '#0052D4' }}

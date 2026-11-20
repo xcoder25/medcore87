@@ -7,6 +7,11 @@
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 import { getAdminSettings } from './adminSettingsStore';
 import { firestoreSubscribeFacility } from './firebase';
+import type {
+  EmploymentSchemeKey,
+  RegulatoryCouncilCode,
+  SupervisoryBoardKey,
+} from './publicHospitalCompliance';
 
 export const FACILITY_ONBOARD_KEY = 'medcore_admin_onboarding_done';
 export const STAFF_ONBOARD_PREFIX = 'medcore_os_staff_onboard_';
@@ -29,16 +34,20 @@ export type SpecialtyKey =
   | 'radiology'
   | 'laboratory'
   | 'pharmacy'
+  | 'nhis_akshia_desk'
+  | 'health_records_him'
+  | 'immunization_epi'
+  | 'tb_dots_hiv'
   | 'dialysis'
   | 'icu'
   | 'neonatal';
 
 export const SPECIALTY_OPTIONS: { key: SpecialtyKey; label: string }[] = [
-  { key: 'primary_care', label: 'Primary / General OPD' },
+  { key: 'primary_care', label: 'GOPD / Primary Care' },
   { key: 'internal_medicine', label: 'Internal Medicine' },
   { key: 'surgery', label: 'Surgery' },
   { key: 'paediatrics', label: 'Paediatrics' },
-  { key: 'obstetrics', label: 'Obstetrics & Gynaecology' },
+  { key: 'obstetrics', label: 'Maternity & Obstetrics (ANC/Labour)' },
   { key: 'cardiology', label: 'Cardiology' },
   { key: 'emergency', label: 'Accident & Emergency' },
   { key: 'orthopaedics', label: 'Orthopaedics' },
@@ -49,6 +58,10 @@ export const SPECIALTY_OPTIONS: { key: SpecialtyKey; label: string }[] = [
   { key: 'radiology', label: 'Radiology / Imaging' },
   { key: 'laboratory', label: 'Laboratory / Pathology' },
   { key: 'pharmacy', label: 'Pharmacy' },
+  { key: 'nhis_akshia_desk', label: 'NHIS / AKSHIA Desk' },
+  { key: 'health_records_him', label: 'Health Records (HIM)' },
+  { key: 'immunization_epi', label: 'Immunization / EPI' },
+  { key: 'tb_dots_hiv', label: 'HIV / ART & TB DOTS' },
   { key: 'dialysis', label: 'Dialysis' },
   { key: 'icu', label: 'ICU / Critical Care' },
   { key: 'neonatal', label: 'Neonatal / NICU' },
@@ -58,14 +71,33 @@ export type StorageRegion = 'ng-lagos' | 'af-south' | 'eu-west' | 'us-east' | 'l
 export type AppointmentType = 'in_person' | 'telehealth' | 'home_visit' | 'outreach';
 
 export interface FacilityOnboardDraft {
-  // Step 1 — Organization profile
+  // Step 1 — Organization profile & Public Hospital Statutory Setup
   facilityName: string;
+  ownership: 'public_state' | 'public_federal' | 'mission' | 'private' | 'ppp';
+  hospitalTier: 'district_general' | 'secondary_specialist' | 'tertiary_teaching' | 'primary_health_centre';
+  hfrCode: string;
+  supervisoryBoard: SupervisoryBoardKey;
+  boardAuthCircularRef: string;
+  boardAuthDate: string;
+  boardAuthDocUrl?: string;
+  akshiaProviderId: string;
+  bhcpfCode: string;
+  medicalDirector: string;
+  cmdApprovalRef: string;
+  cmdApprovalDate: string;
+  cmdApprovalDocUrl?: string;
+  emrFocalPersonName: string;
+  emrFocalPersonPhone: string;
+  emrFocalPersonEmail: string;
   primaryContact: string;
   contactPhone: string;
   contactEmail: string;
   physicalAddress: string;
   state: string;
   lga: string;
+  ward: string;
+  gpsLatitude: string;
+  gpsLongitude: string;
   licenceNumber: string;
   nhiaFacilityCode: string;
   taxId: string;
@@ -102,7 +134,12 @@ export interface FacilityOnboardDraft {
 export interface StaffOnboardDraft {
   badgeId: string;
   facilityId: string;
-  // Step 1 — Identity
+  // Step 1 — Identity & Statutory Credentials
+  employmentScheme?: EmploymentSchemeKey;
+  civilServiceId?: string;
+  regulatoryBody?: RegulatoryCouncilCode;
+  practicingLicenseNo?: string;
+  licenseExpiry?: string;
   medicalLicence?: string;
   npiOrMdcn?: string;
   specialty?: string;
@@ -121,16 +158,44 @@ export interface StaffOnboardDraft {
 
 const DEFAULT_FACILITY = (facilityId: string, name?: string): FacilityOnboardDraft => ({
   facilityName: name || '',
+  ownership: 'public_state',
+  hospitalTier: 'district_general',
+  hfrCode: '',
+  supervisoryBoard: 'AKSHMB',
+  boardAuthCircularRef: '',
+  boardAuthDate: '',
+  boardAuthDocUrl: '',
+  akshiaProviderId: '',
+  bhcpfCode: '',
+  medicalDirector: '',
+  cmdApprovalRef: '',
+  cmdApprovalDate: '',
+  cmdApprovalDocUrl: '',
+  emrFocalPersonName: '',
+  emrFocalPersonPhone: '',
+  emrFocalPersonEmail: '',
   primaryContact: '',
   contactPhone: '',
   contactEmail: '',
   physicalAddress: '',
   state: 'Akwa Ibom',
   lga: '',
+  ward: '',
+  gpsLatitude: '',
+  gpsLongitude: '',
   licenceNumber: '',
   nhiaFacilityCode: '',
   taxId: '',
-  specialties: ['primary_care', 'emergency', 'obstetrics', 'paediatrics', 'laboratory', 'pharmacy'],
+  specialties: [
+    'primary_care',
+    'obstetrics',
+    'pharmacy',
+    'laboratory',
+    'nhis_akshia_desk',
+    'health_records_him',
+    'emergency',
+    'paediatrics',
+  ],
   operatingHoursStart: '08:00',
   operatingHoursEnd: '18:00',
   defaultConsultMins: 15,
@@ -308,17 +373,48 @@ export function loadFacilityDraft(facilityId: string, facilityName?: string): Fa
   let fromSettings: Partial<FacilityOnboardDraft> = {};
   try {
     const s = getAdminSettings(facilityId);
-    if (s && (s.displayName || s.address || s.phone || s.nhiaProviderCode)) {
+    if (
+      s &&
+      (s.displayName ||
+        s.address ||
+        s.phone ||
+        s.nhiaProviderCode ||
+        s.hfrCode ||
+        s.boardAuthCircularRef ||
+        s.medicalDirector)
+    ) {
       fromSettings = {
         facilityName: s.displayName || facilityName || '',
+        ownership: s.ownership || base.ownership,
+        hospitalTier: s.hospitalTier || base.hospitalTier,
+        hfrCode: s.hfrCode || s.registrationNo || '',
+        supervisoryBoard: s.supervisoryBoard || base.supervisoryBoard,
+        boardAuthCircularRef: s.boardAuthCircularRef || '',
+        boardAuthDate: s.boardAuthDate || '',
+        boardAuthDocUrl: s.boardAuthDocUrl || '',
+        akshiaProviderId: s.akshiaProviderId || '',
+        bhcpfCode: s.bhcpfCode || '',
+        medicalDirector: s.medicalDirector || '',
+        cmdApprovalRef: s.cmdApprovalRef || '',
+        cmdApprovalDate: s.cmdApprovalDate || '',
+        cmdApprovalDocUrl: s.cmdApprovalDocUrl || '',
+        emrFocalPersonName: s.emrFocalPersonName || '',
+        emrFocalPersonPhone: s.emrFocalPersonPhone || '',
+        emrFocalPersonEmail: s.emrFocalPersonEmail || '',
+        primaryContact: s.emrFocalPersonName || s.medicalDirector || '',
         physicalAddress: s.address || '',
         contactPhone: s.phone || '',
         contactEmail: s.email || '',
         state: s.state || base.state,
         lga: s.lga || '',
+        ward: s.ward || '',
+        gpsLatitude: s.gpsLatitude || '',
+        gpsLongitude: s.gpsLongitude || '',
+        licenceNumber: s.licenseNo || '',
         operatingHoursStart: s.workingHoursStart || base.operatingHoursStart,
         operatingHoursEnd: s.workingHoursEnd || base.operatingHoursEnd,
         nhiaFacilityCode: s.nhiaProviderCode || '',
+        taxId: s.taxId || '',
         enableNhisBilling: Boolean(s.autoVerifyInsuranceOnCheckin),
         enableAkwaRemit: Boolean(s.akwaremitEnabled) || base.enableAkwaRemit,
       };

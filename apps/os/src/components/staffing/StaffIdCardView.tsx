@@ -367,6 +367,31 @@ export const StaffIdCardView: React.FC<Props> = ({
               >
                 ID: {card.badgeId}
               </div>
+
+              {(card.practicingLicenseNo || card.civilServiceId) && (
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontSize: compact ? 9.5 : 10.5,
+                    fontWeight: 700,
+                    color: '#0369A1',
+                    background: '#F0F9FF',
+                    border: '1px solid #BAE6FD',
+                    borderRadius: 6,
+                    padding: '2px 8px',
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  }}
+                >
+                  {[
+                    card.regulatoryBody && card.regulatoryBody !== 'NONE' && card.practicingLicenseNo
+                      ? `${card.regulatoryBody}: ${card.practicingLicenseNo}`
+                      : card.practicingLicenseNo || '',
+                    card.civilServiceId ? `GOV: ${card.civilServiceId}` : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+              )}
             </div>
 
             {/* Access bar */}

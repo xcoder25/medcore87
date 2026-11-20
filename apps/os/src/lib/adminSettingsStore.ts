@@ -5,6 +5,7 @@
 import { enqueueFacilitySync } from './durableOutbox';
 import { getActiveFacilityId } from './adminRealtimeStore';
 import { publishFacilityData } from './roleSyncBus';
+import type { SupervisoryBoardKey } from './publicHospitalCompliance';
 
 export const ADMIN_SETTINGS_KEY = 'medcore_os_admin_settings_v1';
 
@@ -38,7 +39,23 @@ export interface AdminFacilitySettings {
   licenseNo: string;
   licenseExpiry: string;
   registrationNo: string;
+  hfrCode: string;
+  supervisoryBoard: SupervisoryBoardKey;
+  boardAuthCircularRef: string;
+  boardAuthDate: string;
+  boardAuthDocUrl?: string;
   medicalDirector: string;
+  cmdApprovalRef: string;
+  cmdApprovalDate: string;
+  cmdApprovalDocUrl?: string;
+  emrFocalPersonName: string;
+  emrFocalPersonTitle: string;
+  emrFocalPersonPhone: string;
+  emrFocalPersonEmail: string;
+  ward: string;
+  gpsLatitude: string;
+  gpsLongitude: string;
+  taxId?: string;
   receiptFooterText: string;
 
   /** Hospital LAN hub base URL e.g. http://192.168.1.10:4000 */
@@ -70,9 +87,12 @@ export interface AdminFacilitySettings {
   requireBillingClearanceBeforeDischarge: boolean;
   allowEmergencyUnpaidOverride?: boolean;
 
-  /** Insurance & NHIA / AKSHIA / HMO */
+  /** Insurance & NHIA / AKSHIA / BHCPF / HMO */
   nhiaProviderCode: string;
   akshiaProviderId: string;
+  bhcpfCode: string;
+  acceptsAkshia: boolean;
+  participatesInBhcpf: boolean;
   insuranceCopayPercent: number;
   preAuthThresholdNgn: number;
   autoVerifyInsuranceOnCheckin: boolean;
@@ -116,7 +136,23 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   licenseNo: '',
   licenseExpiry: '',
   registrationNo: '',
+  hfrCode: '',
+  supervisoryBoard: 'AKSHMB',
+  boardAuthCircularRef: '',
+  boardAuthDate: '',
+  boardAuthDocUrl: '',
   medicalDirector: '',
+  cmdApprovalRef: '',
+  cmdApprovalDate: '',
+  cmdApprovalDocUrl: '',
+  emrFocalPersonName: '',
+  emrFocalPersonTitle: 'EMR Focal Person / IT Administrator',
+  emrFocalPersonPhone: '',
+  emrFocalPersonEmail: '',
+  ward: '',
+  gpsLatitude: '',
+  gpsLongitude: '',
+  taxId: '',
   receiptFooterText: 'Official State Revenue Receipt. Thank you for your service.',
 
   lanApiUrl: '',
@@ -143,8 +179,11 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   unattendedQueueAlertMins: 45,
   requireBillingClearanceBeforeDischarge: true,
 
-  nhiaProviderCode: 'NHIA-AKS-0042',
-  akshiaProviderId: 'AKSHIA-SEC-019',
+  nhiaProviderCode: '',
+  akshiaProviderId: '',
+  bhcpfCode: '',
+  acceptsAkshia: true,
+  participatesInBhcpf: false,
   insuranceCopayPercent: 10,
   preAuthThresholdNgn: 50000,
   autoVerifyInsuranceOnCheckin: true,
@@ -243,7 +282,13 @@ export function getAdminSettings(facilityId?: string): AdminFacilitySettings {
     }
   }
   if (existing) {
-    return { ...DEFAULTS, ...existing, facilityId: fid };
+    const merged = { ...DEFAULTS, ...existing, facilityId: fid };
+    const hfr = (merged.hfrCode || merged.registrationNo || '').trim();
+    return {
+      ...merged,
+      hfrCode: hfr,
+      registrationNo: hfr,
+    };
   }
   return {
     ...DEFAULTS,
@@ -264,6 +309,15 @@ export function saveAdminSettings(
     updatedAt: new Date().toISOString(),
     updatedBy: updatedBy || current.updatedBy,
   };
+  const resolvedHfr = (
+    partial.hfrCode !== undefined
+      ? partial.hfrCode
+      : partial.registrationNo !== undefined
+        ? partial.registrationNo
+        : next.hfrCode || next.registrationNo || ''
+  ).trim();
+  next.hfrCode = resolvedHfr;
+  next.registrationNo = resolvedHfr;
   writeRaw(next);
   // Apply LAN URL immediately for hospital sync if provided
   if (typeof window !== 'undefined' && next.lanApiUrl) {
@@ -300,7 +354,18 @@ export function saveAdminSettings(
         licenseNo: next.licenseNo || existingCat.licenseNo || '',
         licenseExpiry: next.licenseExpiry || existingCat.licenseExpiry || '',
         registrationNo: next.registrationNo || existingCat.registrationNo || '',
+        hfrCode: next.hfrCode || next.registrationNo || existingCat.hfrCode || '',
+        supervisoryBoard: next.supervisoryBoard || existingCat.supervisoryBoard || 'AKSHMB',
+        boardAuthCircularRef: next.boardAuthCircularRef || existingCat.boardAuthCircularRef || '',
+        akshiaProviderId: next.akshiaProviderId || existingCat.akshiaProviderId || '',
+        nhiaProviderCode: next.nhiaProviderCode || existingCat.nhiaProviderCode || '',
+        bhcpfCode: next.bhcpfCode || existingCat.bhcpfCode || '',
         medicalDirector: next.medicalDirector || existingCat.medicalDirector || '',
+        cmdApprovalRef: next.cmdApprovalRef || existingCat.cmdApprovalRef || '',
+        emrFocalPersonName: next.emrFocalPersonName || existingCat.emrFocalPersonName || '',
+        ward: next.ward || existingCat.ward || '',
+        gpsLatitude: next.gpsLatitude || existingCat.gpsLatitude || '',
+        gpsLongitude: next.gpsLongitude || existingCat.gpsLongitude || '',
         workingHoursStart: next.workingHoursStart || existingCat.workingHoursStart || '08:00',
         workingHoursEnd: next.workingHoursEnd || existingCat.workingHoursEnd || '18:00',
         operates24x7: next.operates24x7 ?? existingCat.operates24x7 ?? true,

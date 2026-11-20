@@ -3,6 +3,7 @@ import { getAdminAuth } from '../../../../lib/firebaseAdmin';
 import { isPostgresConfigured } from '../../../../lib/db/postgres';
 import { upsertStaff } from '../../../../lib/db/staffRepo';
 import { uploadDataUrlToS3IfNeeded } from '../../../../lib/s3Server';
+import { extractStaffCredentials } from '../../../../lib/publicHospitalCompliance';
 import type { StaffCardRecord, StaffCardTemplate } from '@medcore/types';
 
 export const runtime = 'nodejs';
@@ -35,6 +36,11 @@ export async function POST(request: NextRequest) {
       clearanceLabel = 'Level 1 Personnel',
       templateKey = 'TPL_CLINICAL',
       photoUrl,
+      employmentScheme,
+      civilServiceId,
+      regulatoryBody,
+      practicingLicenseNo,
+      licenseExpiry,
     } = body;
 
     const bId = String(badgeId || '').trim().toUpperCase();
@@ -67,6 +73,39 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const cleanScheme = employmentScheme ? String(employmentScheme).trim() : undefined;
+    const cleanCivilId = civilServiceId ? String(civilServiceId).trim().toUpperCase() : undefined;
+    const cleanRegBody = regulatoryBody ? String(regulatoryBody).trim().toUpperCase() : undefined;
+    const cleanLicenseNo = practicingLicenseNo ? String(practicingLicenseNo).trim().toUpperCase() : undefined;
+    const cleanLicenseExpiry = licenseExpiry ? String(licenseExpiry).trim() : undefined;
+
+    if (cleanCivilId && cleanCivilId.length < 4) {
+      return NextResponse.json(
+        { success: false, error: 'Civil Service / IPPIS Staff ID must be at least 4 characters.' },
+        { status: 400 }
+      );
+    }
+    if (cleanLicenseNo && cleanLicenseNo.length < 4) {
+      return NextResponse.json(
+        { success: false, error: 'Practicing license number must be at least 4 characters.' },
+        { status: 400 }
+      );
+    }
+    if (cleanLicenseExpiry && !/^\d{4}-\d{2}-\d{2}$/.test(cleanLicenseExpiry)) {
+      return NextResponse.json(
+        { success: false, error: 'License expiry date must use YYYY-MM-DD format.' },
+        { status: 400 }
+      );
+    }
+
+    const credMeta: Record<string, unknown> = {
+      ...(cleanScheme ? { employmentScheme: cleanScheme } : {}),
+      ...(cleanCivilId ? { civilServiceId: cleanCivilId } : {}),
+      ...(cleanRegBody ? { regulatoryBody: cleanRegBody } : {}),
+      ...(cleanLicenseNo ? { practicingLicenseNo: cleanLicenseNo } : {}),
+      ...(cleanLicenseExpiry ? { licenseExpiry: cleanLicenseExpiry } : {}),
+    };
 
     let resolvedPhotoUrl: string | undefined;
     try {
@@ -228,6 +267,11 @@ export async function POST(request: NextRequest) {
       issuedAt,
       expiresAt,
       photoUrl: resolvedPhotoUrl || undefined,
+      ...(cleanScheme ? { employmentScheme: cleanScheme } : {}),
+      ...(cleanCivilId ? { civilServiceId: cleanCivilId } : {}),
+      ...(cleanRegBody ? { regulatoryBody: cleanRegBody } : {}),
+      ...(cleanLicenseNo ? { practicingLicenseNo: cleanLicenseNo } : {}),
+      ...(cleanLicenseExpiry ? { licenseExpiry: cleanLicenseExpiry } : {}),
       initials,
       qrPayload: JSON.stringify({
         badgeId: bId,
@@ -254,6 +298,7 @@ export async function POST(request: NextRequest) {
           photoUrl: resolvedPhotoUrl,
           authEmail: badgeEmail,
           pin: rawPin,
+          meta: Object.keys(credMeta).length > 0 ? credMeta : undefined,
           facilityName: String(facilityName),
         });
       } catch (pgErr) {
@@ -280,7 +325,7 @@ export async function POST(request: NextRequest) {
         success: true,
         uid: primaryUid,
         badgeId: bId,
-        staff: staffRecord,
+        staff: { ...staffRecord, ...extractStaffCredentials({ ...staffRecord, meta: credMeta }) },
       },
       { status: 200 }
     );

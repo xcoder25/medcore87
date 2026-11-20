@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Building2, Shield, Plug, Users, CheckCircle2, ChevronRight, ChevronLeft,
   SkipForward, KeyRound, Stethoscope, Sparkles, AlertTriangle, Hospital, Radio,
+  Upload, MapPin, Landmark, UserCheck, FileText,
 } from 'lucide-react';
 import type { UserSession } from '../auth/AuthScreen';
 import {
@@ -31,6 +32,22 @@ import {
 } from '../../lib/onboardingStore';
 import { bindFacilityOnboardingToAdmin, isClinicalRole } from '../../lib/staffCardStore';
 import { getAdminSettings, saveAdminSettings } from '../../lib/adminSettingsStore';
+import { loadFacilityCatalog, saveFacilityCatalog } from '../../lib/facilityCatalogStore';
+import { AKWA_IBOM_LGAS, NIGERIA_STATE_LGAS } from '../../lib/receptionConstants';
+import { uploadImageToS3 } from '../../lib/storageClient';
+import {
+  SUPERVISORY_BOARDS,
+  EMPLOYMENT_SCHEMES,
+  REGULATORY_COUNCILS,
+  isPublicOwnership,
+  defaultSupervisoryBoard,
+  validateHfrCode,
+  validateGpsCoord,
+  getRequiredCouncilForRole,
+  type SupervisoryBoardKey,
+  type EmploymentSchemeKey,
+  type RegulatoryCouncilCode,
+} from '../../lib/publicHospitalCompliance';
 
 interface Props {
   session: UserSession;
@@ -218,6 +235,10 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
   );
   const [error, setError] = useState<string | null>(null);
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
+  const [boardDocBusy, setBoardDocBusy] = useState(false);
+  const [cmdDocBusy, setCmdDocBusy] = useState(false);
+  const [gpsBusy, setGpsBusy] = useState(false);
+  const [docNote, setDocNote] = useState<string | null>(null);
 
   useEffect(() => {
     const unsub = subscribeFacilityDraft(session.hospitalId, (remote) => {
@@ -234,6 +255,61 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
     });
   }, []);
 
+  const uploadGovernanceDoc = useCallback(
+    async (file: File | null, target: 'board' | 'cmd') => {
+      if (!file) return;
+      if (file.size > 15 * 1024 * 1024) {
+        setDocNote('Authorization document must be under 15 MB.');
+        return;
+      }
+      setDocNote(null);
+      if (target === 'board') setBoardDocBusy(true);
+      else setCmdDocBusy(true);
+      try {
+        const res = await uploadImageToS3(file, {
+          folder: 'general',
+          facilityId: session.hospitalId,
+          filename: `${session.hospitalId.toLowerCase()}-${target}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`,
+        });
+        if (!res.ok || !res.url) {
+          setDocNote(res.error || 'S3 upload failed — check storage configuration.');
+          return;
+        }
+        if (target === 'board') patch({ boardAuthDocUrl: res.url });
+        else patch({ cmdApprovalDocUrl: res.url });
+      } catch (err: any) {
+        setDocNote(err?.message || 'Could not upload document.');
+      } finally {
+        if (target === 'board') setBoardDocBusy(false);
+        else setCmdDocBusy(false);
+      }
+    },
+    [patch, session.hospitalId]
+  );
+
+  const captureGps = useCallback(() => {
+    setDocNote(null);
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setDocNote('Browser geolocation unavailable — type Latitude & Longitude manually.');
+      return;
+    }
+    setGpsBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        patch({
+          gpsLatitude: pos.coords.latitude.toFixed(6),
+          gpsLongitude: pos.coords.longitude.toFixed(6),
+        });
+        setGpsBusy(false);
+      },
+      () => {
+        setDocNote('Unable to capture GPS fix — enter coordinates manually.');
+        setGpsBusy(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, [patch]);
+
   const toggleSpecialty = (key: SpecialtyKey) => {
     const has = draft.specialties.includes(key);
     patch({ specialties: has ? draft.specialties.filter((s) => s !== key) : [...draft.specialties, key] });
@@ -248,9 +324,33 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
 
   const validateStep = (s: number): string | null => {
     if (s === 1) {
-      if (!draft.facilityName.trim()) return 'Facility name is required';
-      if (!draft.primaryContact.trim()) return 'Primary contact is required';
-      if (draft.specialties.length === 0) return 'Select at least one specialty';
+      if (draft.facilityName.trim().length < 3) return 'Official facility name is required (at least 3 characters).';
+      if (isPublicOwnership(draft.ownership)) {
+        const hfr = validateHfrCode(draft.hfrCode);
+        if (!hfr.ok) return hfr.error!;
+        if (!draft.supervisoryBoard || draft.supervisoryBoard === 'PRIVATE_REG') {
+          return 'Select the supervising government board (AKSHMB, AKSPHCDA, AKS MoH, or FMOH).';
+        }
+        if (draft.boardAuthCircularRef.trim().length < 4) {
+          return 'State Supervisory Board authorization letter / circular ref is required (min 4 characters).';
+        }
+        if (draft.medicalDirector.trim().length < 3) {
+          return 'Chief Medical Director (CMD) / Medical Superintendent name is required.';
+        }
+        const focal = (draft.emrFocalPersonName || draft.primaryContact || '').trim();
+        if (focal.length < 3) {
+          return 'Designated EMR Focal Person / IT Administrator name is required.';
+        }
+        if (!draft.lga.trim()) return 'Local Government Area (LGA) is required.';
+        if (draft.ward.trim().length < 2) return 'Administrative / Political Ward is required for state registry metadata.';
+      } else {
+        const contact = (draft.primaryContact || draft.medicalDirector || '').trim();
+        if (contact.length < 3) return 'Primary contact or Medical Director is required.';
+        if (!draft.lga.trim()) return 'Local Government Area (LGA) is required.';
+      }
+      const gpsCheck = validateGpsCoord(draft.gpsLatitude, draft.gpsLongitude);
+      if (!gpsCheck.ok) return gpsCheck.error!;
+      if (draft.specialties.length === 0) return 'Select at least one active clinical unit / service.';
     }
     if (s === 2) {
       if (!draft.ndprAccepted) return 'Accept NDPR / data protection terms to continue';
@@ -268,8 +368,13 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
   };
 
   const finish = () => {
+    const focalName = (draft.emrFocalPersonName || draft.primaryContact || '').trim();
+    const resolvedHfr = draft.hfrCode.trim().toUpperCase();
     const final: FacilityOnboardDraft = {
       ...draft,
+      hfrCode: resolvedHfr,
+      primaryContact: focalName || draft.medicalDirector.trim(),
+      emrFocalPersonName: focalName,
       baaSignedAt: draft.baaAccepted ? new Date().toISOString() : draft.baaSignedAt,
       completedAt: new Date().toISOString(),
       completedBy: session.badgeId || session.name,
@@ -277,26 +382,92 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
     saveFacilityDraft(final);
     try {
       const settings = getAdminSettings(session.hospitalId);
+      const tierTypeMap: Record<FacilityOnboardDraft['hospitalTier'], string> = {
+        primary_health_centre: 'Primary Health Centre',
+        district_general: 'General Hospital',
+        secondary_specialist: 'Specialist Hospital',
+        tertiary_teaching: 'Federal Tertiary Hospital',
+      };
       saveAdminSettings({
         ...settings,
         facilityId: session.hospitalId,
         displayName: final.facilityName || settings.displayName,
+        ownership: final.ownership,
+        hospitalTier: final.hospitalTier,
+        facilityType: tierTypeMap[final.hospitalTier] || settings.facilityType,
+        hfrCode: resolvedHfr || settings.hfrCode,
+        registrationNo: resolvedHfr || settings.registrationNo,
+        supervisoryBoard: final.supervisoryBoard || settings.supervisoryBoard,
+        boardAuthCircularRef: final.boardAuthCircularRef || settings.boardAuthCircularRef,
+        boardAuthDate: final.boardAuthDate || settings.boardAuthDate,
+        boardAuthDocUrl: final.boardAuthDocUrl || settings.boardAuthDocUrl,
+        akshiaProviderId: final.akshiaProviderId || settings.akshiaProviderId,
+        nhiaProviderCode: final.nhiaFacilityCode || settings.nhiaProviderCode,
+        bhcpfCode: final.bhcpfCode || settings.bhcpfCode,
+        medicalDirector: final.medicalDirector || settings.medicalDirector,
+        cmdApprovalRef: final.cmdApprovalRef || settings.cmdApprovalRef,
+        cmdApprovalDate: final.cmdApprovalDate || settings.cmdApprovalDate,
+        cmdApprovalDocUrl: final.cmdApprovalDocUrl || settings.cmdApprovalDocUrl,
+        emrFocalPersonName: final.emrFocalPersonName || settings.emrFocalPersonName,
+        emrFocalPersonPhone: final.emrFocalPersonPhone || final.contactPhone || settings.emrFocalPersonPhone,
+        emrFocalPersonEmail: final.emrFocalPersonEmail || final.contactEmail || settings.emrFocalPersonEmail,
+        licenseNo: final.licenceNumber || settings.licenseNo,
+        taxId: final.taxId || settings.taxId,
         address: final.physicalAddress || settings.address,
-        phone: final.contactPhone || settings.phone,
-        email: final.contactEmail || settings.email,
+        phone: final.contactPhone || final.emrFocalPersonPhone || settings.phone,
+        email: final.contactEmail || final.emrFocalPersonEmail || settings.email,
         state: final.state || settings.state,
         lga: final.lga || settings.lga,
+        ward: final.ward || settings.ward,
+        gpsLatitude: final.gpsLatitude || settings.gpsLatitude,
+        gpsLongitude: final.gpsLongitude || settings.gpsLongitude,
         workingHoursStart: final.operatingHoursStart,
         workingHoursEnd: final.operatingHoursEnd,
-        nhiaProviderCode: final.nhiaFacilityCode || settings.nhiaProviderCode,
         akwaremitEnabled: final.enableAkwaRemit ?? settings.akwaremitEnabled,
         autoVerifyInsuranceOnCheckin: final.enableNhisBilling,
-        // Clinical governance defaults used by triage / OPD in this app
         requireVitalsBeforeConsult: settings.requireVitalsBeforeConsult,
         requireBillingClearanceBeforeDischarge: settings.requireBillingClearanceBeforeDischarge,
         updatedAt: new Date().toISOString(),
         updatedBy: session.badgeId || session.name,
       });
+
+      const cat = loadFacilityCatalog(session.hospitalId, final.facilityName);
+      saveFacilityCatalog({
+        ...cat,
+        name: final.facilityName || cat.name,
+        ownership: final.ownership,
+        type: tierTypeMap[final.hospitalTier] || cat.type,
+        hfrCode: resolvedHfr || cat.hfrCode,
+        registrationNo: resolvedHfr || cat.registrationNo,
+        supervisoryBoard: final.supervisoryBoard || cat.supervisoryBoard,
+        boardAuthCircularRef: final.boardAuthCircularRef || cat.boardAuthCircularRef,
+        akshiaProviderId: final.akshiaProviderId || cat.akshiaProviderId,
+        nhiaProviderCode: final.nhiaFacilityCode || cat.nhiaProviderCode,
+        bhcpfCode: final.bhcpfCode || cat.bhcpfCode,
+        medicalDirector: final.medicalDirector || cat.medicalDirector,
+        cmdApprovalRef: final.cmdApprovalRef || cat.cmdApprovalRef,
+        emrFocalPersonName: final.emrFocalPersonName || cat.emrFocalPersonName,
+        lga: final.lga || cat.lga,
+        ward: final.ward || cat.ward,
+        gpsLatitude: final.gpsLatitude || cat.gpsLatitude,
+        gpsLongitude: final.gpsLongitude || cat.gpsLongitude,
+        address: final.physicalAddress || cat.address,
+        phone: final.contactPhone || final.emrFocalPersonPhone || cat.phone,
+        email: final.contactEmail || final.emrFocalPersonEmail || cat.email,
+        services: {
+          ...cat.services,
+          family_medicine: final.specialties.includes('primary_care') || cat.services.family_medicine,
+          general_medicine: final.specialties.includes('internal_medicine') || cat.services.general_medicine,
+          surgery: final.specialties.includes('surgery') || cat.services.surgery,
+          paediatrics: final.specialties.includes('paediatrics') || cat.services.paediatrics,
+          obstetrics_gynaecology: final.specialties.includes('obstetrics') || cat.services.obstetrics_gynaecology,
+          anc_pnc: final.specialties.includes('obstetrics') || cat.services.anc_pnc,
+          emergency: final.specialties.includes('emergency') || cat.services.emergency,
+          nhis_akshia_desk: final.specialties.includes('nhis_akshia_desk') || cat.services.nhis_akshia_desk,
+          health_records_him: final.specialties.includes('health_records_him') || cat.services.health_records_him,
+          immunization: final.specialties.includes('immunization_epi') || cat.services.immunization,
+        },
+      }, session.badgeId || session.name);
     } catch { /* optional */ }
     // Bind onboarding details to THIS admin account + facility (name, email, phone)
     try {
@@ -304,9 +475,9 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
         facilityId: session.hospitalId,
         facilityName: final.facilityName,
         adminBadgeId: session.badgeId,
-        primaryContact: final.primaryContact || session.name,
-        contactEmail: final.contactEmail || undefined,
-        contactPhone: final.contactPhone,
+        primaryContact: final.emrFocalPersonName || final.primaryContact || session.name,
+        contactEmail: final.emrFocalPersonEmail || final.contactEmail || undefined,
+        contactPhone: final.emrFocalPersonPhone || final.contactPhone,
         physicalAddress: final.physicalAddress,
         state: final.state,
         lga: final.lga,
@@ -330,36 +501,195 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
       )}
 
       {step === 1 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <SectionTitle>Organization profile & practice details</SectionTitle>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Field label="Hospital / clinic name *">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <SectionTitle>Facility Classification &amp; Ownership</SectionTitle>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
+            <Field label="Official Facility Name (State Registry) *">
               <input style={inputStyle} value={draft.facilityName} onChange={(e) => patch({ facilityName: e.target.value })} placeholder="e.g. Immanuel General Hospital, Eket" />
             </Field>
-            <Field label="Primary contact *">
-              <input style={inputStyle} value={draft.primaryContact} onChange={(e) => patch({ primaryContact: e.target.value })} placeholder="Medical Director / Admin name" />
+            <Field label="Ownership *">
+              <select
+                style={inputStyle}
+                value={draft.ownership}
+                onChange={(e) => {
+                  const nextOwn = e.target.value as FacilityOnboardDraft['ownership'];
+                  patch({
+                    ownership: nextOwn,
+                    supervisoryBoard: defaultSupervisoryBoard(nextOwn, draft.hospitalTier),
+                  });
+                }}
+              >
+                <option value="public_state">Public (Akwa Ibom State Govt)</option>
+                <option value="public_federal">Public (Federal Tertiary)</option>
+                <option value="mission">Mission / Faith-Based</option>
+                <option value="private">Private Specialist</option>
+                <option value="ppp">Public-Private (PPP)</option>
+              </select>
             </Field>
-            <Field label="Phone"><input style={inputStyle} value={draft.contactPhone} onChange={(e) => patch({ contactPhone: e.target.value })} placeholder="+234 …" /></Field>
-            <Field label="Email"><input style={inputStyle} type="email" value={draft.contactEmail} onChange={(e) => patch({ contactEmail: e.target.value })} /></Field>
-            <Field label="Physical address"><input style={inputStyle} value={draft.physicalAddress} onChange={(e) => patch({ physicalAddress: e.target.value })} /></Field>
-            <Field label="State / LGA">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <input style={inputStyle} value={draft.state} onChange={(e) => patch({ state: e.target.value })} placeholder="State" />
-                <input style={inputStyle} value={draft.lga} onChange={(e) => patch({ lga: e.target.value })} placeholder="LGA" />
+            <Field label="Facility Tier *">
+              <select
+                style={inputStyle}
+                value={draft.hospitalTier}
+                onChange={(e) => {
+                  const nextTier = e.target.value as FacilityOnboardDraft['hospitalTier'];
+                  patch({
+                    hospitalTier: nextTier,
+                    supervisoryBoard: defaultSupervisoryBoard(draft.ownership, nextTier),
+                  });
+                }}
+              >
+                <option value="primary_health_centre">Primary Health Centre (PHC)</option>
+                <option value="district_general">General / Cottage Hospital</option>
+                <option value="secondary_specialist">Specialist Hospital (e.g. Ibom Specialist)</option>
+                <option value="tertiary_teaching">Federal Tertiary Hospital (e.g. UUTH)</option>
+              </select>
+            </Field>
+          </div>
+
+          {isPublicOwnership(draft.ownership) ? (
+            <>
+              <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 12, padding: '10px 14px', fontSize: '0.78rem', color: '#0C4A6E', lineHeight: 1.45 }}>
+                <strong>Akwa Ibom Public Hospital Onboarding:</strong> Commercial business documents (CAC, TIN, and private operating licences) are bypassed. Setup requires Government HFR Identifier, State Supervisory Board Authorization, and CMD Approval.
+              </div>
+
+              <SectionTitle>1. Government &amp; Regulatory Facility Identifiers</SectionTitle>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <Field label="Nigeria Health Facility Registry (HFR) Code *" hint="Mandatory for FMOH HFR, DHIS2 & NHMIS reporting">
+                  <input style={inputStyle} value={draft.hfrCode} onChange={(e) => patch({ hfrCode: e.target.value })} placeholder="e.g. 03/06/1/2/1/0001" />
+                </Field>
+                <Field label="State / Federal Supervisory Board *" hint="Secondary: AKSHMB | Primary: AKSPHCDA | Ministerial: AKS MoH">
+                  <select
+                    style={inputStyle}
+                    value={draft.supervisoryBoard}
+                    onChange={(e) => patch({ supervisoryBoard: e.target.value as SupervisoryBoardKey })}
+                  >
+                    {SUPERVISORY_BOARDS.filter((b) => b.key !== 'PRIVATE_REG').map((b) => (
+                      <option key={b.key} value={b.key}>{b.fullName}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Supervisory Board Authorization Letter / Circular Ref *" hint="MoH, HMB, or AKSPHCDA circular approving EMR deployment">
+                  <input style={inputStyle} value={draft.boardAuthCircularRef} onChange={(e) => patch({ boardAuthCircularRef: e.target.value })} placeholder="e.g. HMB/AKS/EMR/2026/014" />
+                </Field>
+                <Field label="Circular Date &amp; Document Upload (PDF / Scan)">
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input type="date" style={{ ...inputStyle, flex: 1 }} value={draft.boardAuthDate} onChange={(e) => patch({ boardAuthDate: e.target.value })} />
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '9px 12px', borderRadius: 10, background: '#0369A1', color: '#FFF', fontSize: '0.76rem', fontWeight: 700, cursor: boardDocBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                      <Upload size={13} />
+                      <span>{boardDocBusy ? 'Uploading…' : draft.boardAuthDocUrl ? '✓ Uploaded' : 'Upload PDF/Img'}</span>
+                      <input type="file" accept=".pdf,application/pdf,image/*" disabled={boardDocBusy} style={{ display: 'none' }} onChange={(e) => { void uploadGovernanceDoc(e.target.files?.[0] || null, 'board'); e.target.value = ''; }} />
+                    </label>
+                  </div>
+                </Field>
+                <Field label="AKSHIA Public Provider Code" hint="For Akwa Ibom State Health Insurance (akshealth.org) claims">
+                  <input style={inputStyle} value={draft.akshiaProviderId} onChange={(e) => patch({ akshiaProviderId: e.target.value })} placeholder="Assigned AKSHIA code" />
+                </Field>
+                <Field label="NHIA / BHCPF Provider Codes">
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <input style={inputStyle} value={draft.nhiaFacilityCode} onChange={(e) => patch({ nhiaFacilityCode: e.target.value })} placeholder="NHIA Code" />
+                    <input style={inputStyle} value={draft.bhcpfCode} onChange={(e) => patch({ bhcpfCode: e.target.value })} placeholder="BHCPF Code" />
+                  </div>
+                </Field>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Field label="State MoH Operating Licence No." hint="Private / Mission facility operating licence">
+                <input style={inputStyle} value={draft.licenceNumber} onChange={(e) => patch({ licenceNumber: e.target.value })} />
+              </Field>
+              <Field label="HFR Code / NHIA / Tax ID (TIN)">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  <input style={inputStyle} value={draft.hfrCode} onChange={(e) => patch({ hfrCode: e.target.value })} placeholder="HFR Code" />
+                  <input style={inputStyle} value={draft.nhiaFacilityCode} onChange={(e) => patch({ nhiaFacilityCode: e.target.value })} placeholder="NHIA code" />
+                  <input style={inputStyle} value={draft.taxId} onChange={(e) => patch({ taxId: e.target.value })} placeholder="TIN" />
+                </div>
+              </Field>
+            </div>
+          )}
+
+          <SectionTitle>2. Facility Leadership &amp; Administrative Sign-Off</SectionTitle>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Chief Medical Director (CMD) / Medical Superintendent *">
+              <input style={inputStyle} value={draft.medicalDirector} onChange={(e) => patch({ medicalDirector: e.target.value })} placeholder="e.g. Dr. Iniobong Udoh" />
+            </Field>
+            <Field label="CMD Letterhead Approval Ref &amp; Document">
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input style={{ ...inputStyle, flex: 1 }} value={draft.cmdApprovalRef} onChange={(e) => patch({ cmdApprovalRef: e.target.value })} placeholder="e.g. IGH/CMD/EMR/2026/002" />
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '9px 12px', borderRadius: 10, background: '#0F172A', color: '#FFF', fontSize: '0.76rem', fontWeight: 700, cursor: cmdDocBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                  <Upload size={13} />
+                  <span>{cmdDocBusy ? 'Uploading…' : draft.cmdApprovalDocUrl ? '✓ Signed Letter' : 'Upload Letter'}</span>
+                  <input type="file" accept=".pdf,application/pdf,image/*" disabled={cmdDocBusy} style={{ display: 'none' }} onChange={(e) => { void uploadGovernanceDoc(e.target.files?.[0] || null, 'cmd'); e.target.value = ''; }} />
+                </label>
               </div>
             </Field>
-            <Field label="Facility licence / registration" hint="State MoH or corporate licence number">
-              <input style={inputStyle} value={draft.licenceNumber} onChange={(e) => patch({ licenceNumber: e.target.value })} />
+            <Field label="Designated EMR Focal Person / IT Administrator *" hint="Internal officer named in CMD letterhead">
+              <input
+                style={inputStyle}
+                value={draft.emrFocalPersonName || draft.primaryContact}
+                onChange={(e) => patch({ emrFocalPersonName: e.target.value, primaryContact: e.target.value })}
+                placeholder="EMR Focal Person / IT Admin full name"
+              />
             </Field>
-            <Field label="NHIA facility code / Tax ID">
+            <Field label="Focal Person Phone &amp; Official Email">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <input style={inputStyle} value={draft.nhiaFacilityCode} onChange={(e) => patch({ nhiaFacilityCode: e.target.value })} placeholder="NHIA code" />
-                <input style={inputStyle} value={draft.taxId} onChange={(e) => patch({ taxId: e.target.value })} placeholder="TIN" />
+                <input
+                  style={inputStyle}
+                  value={draft.contactPhone}
+                  onChange={(e) => patch({ contactPhone: e.target.value, emrFocalPersonPhone: e.target.value })}
+                  placeholder="+234 …"
+                />
+                <input
+                  style={inputStyle}
+                  type="email"
+                  value={draft.contactEmail}
+                  onChange={(e) => patch({ contactEmail: e.target.value, emrFocalPersonEmail: e.target.value })}
+                  placeholder="focal@hospital.gov.ng"
+                />
               </div>
             </Field>
           </div>
-          <SectionTitle>Specialty configuration</SectionTitle>
-          <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>Select services this facility runs — unlocks matching desks in MedCore (OPD, theatre, lab, pharmacy, maternity, etc.).</p>
+
+          {docNote && (
+            <div style={{ fontSize: '0.76rem', fontWeight: 600, color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '6px 10px' }}>
+              {docNote}
+            </div>
+          )}
+
+          <SectionTitle>3. Facility Metadata (State, LGA, Ward, GPS)</SectionTitle>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="State / Local Government Area (LGA) *">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <input style={inputStyle} value={draft.state} onChange={(e) => patch({ state: e.target.value })} placeholder="State" />
+                {NIGERIA_STATE_LGAS[draft.state] || draft.state.toLowerCase().includes('akwa ibom') ? (
+                  <select style={inputStyle} value={draft.lga} onChange={(e) => patch({ lga: e.target.value })}>
+                    <option value="">Select LGA *</option>
+                    {(NIGERIA_STATE_LGAS[draft.state] || AKWA_IBOM_LGAS).map((l) => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input style={inputStyle} value={draft.lga} onChange={(e) => patch({ lga: e.target.value })} placeholder="LGA *" />
+                )}
+              </div>
+            </Field>
+            <Field label="Ward (Administrative / Political Ward) *">
+              <input style={inputStyle} value={draft.ward} onChange={(e) => patch({ ward: e.target.value })} placeholder="e.g. Idua Ward I" />
+            </Field>
+            <Field label="Physical / Registry Address">
+              <input style={inputStyle} value={draft.physicalAddress} onChange={(e) => patch({ physicalAddress: e.target.value })} placeholder="Hospital Road, …" />
+            </Field>
+            <Field label="Facility GPS Coordinates (Lat / Lng)">
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input style={{ ...inputStyle, flex: 1 }} value={draft.gpsLatitude} onChange={(e) => patch({ gpsLatitude: e.target.value })} placeholder="Lat" />
+                <input style={{ ...inputStyle, flex: 1 }} value={draft.gpsLongitude} onChange={(e) => patch({ gpsLongitude: e.target.value })} placeholder="Lng" />
+                <button type="button" onClick={captureGps} disabled={gpsBusy} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #BAE6FD', background: '#EFF6FF', color: '#0369A1', borderRadius: 10, padding: '0 10px', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  <MapPin size={13} /> {gpsBusy ? '…' : 'GPS'}
+                </button>
+              </div>
+            </Field>
+          </div>
+          <SectionTitle>Active Clinical Units Inventory</SectionTitle>
+          <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>Select active clinical and records units (GOPD, Maternity, Pharmacy, Lab, NHIS/AKSHIA Desk, Health Records/HIM) — unlocks matching desks in MedCore.</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {SPECIALTY_OPTIONS.map((s) => (
               <Chip key={s.key} active={draft.specialties.includes(s.key)} onClick={() => toggleSpecialty(s.key)}>{s.label}</Chip>
@@ -490,9 +820,9 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
           <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12, padding: 14, fontSize: '0.82rem', color: '#065F46', lineHeight: 1.5 }}>
             <strong>This completes facility configuration.</strong>
             <ol style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-              <li>Open <strong>Staff Access</strong> and enrol real staff (badge + PIN).</li>
-              <li>Reception starts the patient queue; each role uses its own desk.</li>
-              <li>Admin Settings: Paystack keys, NHIA codes, onsite hub URL if used.</li>
+              <li>Open <strong>Staff Access</strong> and enrol civil-service clinical &amp; HIM staff with Staff ID/IPPIS + practicing licences (MDCN, NMCN, PCN, MLSCN, HRORBN).</li>
+              <li>Health Records (HIM) &amp; Reception initiate patient folders and visits; each clinical desk operates in its own module.</li>
+              <li>Admin Settings: review HFR / AKSHIA / NHIA / BHCPF codes, AkwaRemit TSA, and onsite LAN hub URL if used.</li>
             </ol>
           </div>
         </div>
@@ -625,16 +955,66 @@ function StaffWizard({ session, onComplete }: { session: UserSession; onComplete
     <WizardShell title="Clinical workspace setup" subtitle={`${session.name} · ${session.role} · First login`} steps={STAFF_STEPS} step={step} session={session}>
       {step === 1 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <SectionTitle>Security & identity</SectionTitle>
+          <SectionTitle>Civil Service Identity &amp; Practicing License</SectionTitle>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Field label="Medical licence number" hint="MDCN / state nursing / pharmacy council">
-              <input style={inputStyle} value={draft.medicalLicence || ''} onChange={(e) => patch({ medicalLicence: e.target.value })} />
+            <Field label="Employment Scheme">
+              <select
+                style={inputStyle}
+                value={draft.employmentScheme || 'aks_civil_service'}
+                onChange={(e) => patch({ employmentScheme: e.target.value as EmploymentSchemeKey })}
+              >
+                {EMPLOYMENT_SCHEMES.map((s) => (
+                  <option key={s.key} value={s.key}>{s.label}</option>
+                ))}
+              </select>
             </Field>
-            <Field label="NPI / professional ID">
-              <input style={inputStyle} value={draft.npiOrMdcn || ''} onChange={(e) => patch({ npiOrMdcn: e.target.value })} />
+            <Field label="Civil Service / IPPIS / AKSPHCDA ID" hint="Verifies active posting at this hospital">
+              <input
+                style={inputStyle}
+                value={draft.civilServiceId || ''}
+                onChange={(e) => patch({ civilServiceId: e.target.value })}
+                placeholder="e.g. AKS/HMB/14829 or IPPIS-…"
+              />
             </Field>
-            <Field label="Clinical specialty">
-              <input style={inputStyle} value={draft.specialty || ''} onChange={(e) => patch({ specialty: e.target.value })} placeholder="e.g. Obstetrics, General practice" />
+            <Field label="Regulatory Council">
+              <select
+                style={inputStyle}
+                value={draft.regulatoryBody || getRequiredCouncilForRole(session.roleKey).council}
+                onChange={(e) => patch({ regulatoryBody: e.target.value as RegulatoryCouncilCode })}
+              >
+                {Object.values(REGULATORY_COUNCILS).map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.shortName} — {c.fullName}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field
+              label="Annual Practicing License / Registration No."
+              hint={getRequiredCouncilForRole(session.roleKey).councilName}
+            >
+              <input
+                style={inputStyle}
+                value={draft.practicingLicenseNo || draft.medicalLicence || draft.npiOrMdcn || ''}
+                onChange={(e) =>
+                  patch({
+                    practicingLicenseNo: e.target.value,
+                    medicalLicence: e.target.value,
+                  })
+                }
+                placeholder={getRequiredCouncilForRole(session.roleKey).placeholder}
+              />
+            </Field>
+            <Field label="License Expiry Date">
+              <input
+                type="date"
+                style={inputStyle}
+                value={draft.licenseExpiry || ''}
+                onChange={(e) => patch({ licenseExpiry: e.target.value })}
+              />
+            </Field>
+            <Field label="Clinical specialty / unit">
+              <input style={inputStyle} value={draft.specialty || ''} onChange={(e) => patch({ specialty: e.target.value })} placeholder="e.g. Obstetrics, GOPD, HIM" />
             </Field>
           </div>
           <Toggle

@@ -99,6 +99,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       status: 'ACTIVE',
       issuedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 2 * 365 * 864e5).toISOString().slice(0, 10),
+      photoUrl: session.photoUrl || undefined,
       initials,
       qrPayload: JSON.stringify({ v: 1, badgeId: session.badgeId, facilityId: session.hospitalId }),
     };
@@ -417,6 +418,44 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   </div>
                 </div>
               </div>
+
+              {(card?.civilServiceId || card?.practicingLicenseNo) && (
+                <div
+                  style={{
+                    background: '#F0F9FF',
+                    border: '1px solid #BAE6FD',
+                    borderRadius: 12,
+                    padding: '12px 14px',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: 10,
+                  }}
+                >
+                  {card?.civilServiceId && (
+                    <div>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#0369A1', textTransform: 'uppercase' }}>
+                        Civil Service / IPPIS ID
+                      </div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0F172A', marginTop: 2, fontFamily: 'monospace' }}>
+                        {card.civilServiceId}
+                      </div>
+                    </div>
+                  )}
+                  {card?.practicingLicenseNo && (
+                    <div>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#0369A1', textTransform: 'uppercase' }}>
+                        {card.regulatoryBody && card.regulatoryBody !== 'NONE'
+                          ? `${card.regulatoryBody} Practicing License`
+                          : 'Practicing License'}
+                      </div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0F172A', marginTop: 2, fontFamily: 'monospace' }}>
+                        {card.practicingLicenseNo}
+                        {card.licenseExpiry ? ` · Exp ${card.licenseExpiry}` : ''}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Granted Permissions List */}
               <div

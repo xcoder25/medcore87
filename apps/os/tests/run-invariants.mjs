@@ -519,3 +519,149 @@ test('authVerifyClient: distinguishes timeouts/network drops/503s from invalid P
   assert.equal(badPin.status, 'invalid_pin');
   assert.equal(av.formatVerifyFailureMessage(badPin, { mode: 'badge', isAdmin: false }), 'Incorrect Staff ID or PIN.');
 });
+
+test('publicHospitalCompliance: enforces public boards, HFR codes, and statutory regulatory councils', () => {
+  const phc = loadTsModule('src/lib/publicHospitalCompliance.ts');
+
+  assert.equal(phc.isPublicOwnership('public_state'), true);
+  assert.equal(phc.isPublicOwnership('public_federal'), true);
+  assert.equal(phc.isPublicOwnership('private'), false);
+  assert.equal(phc.isPublicOwnership('mission'), false);
+
+  assert.equal(phc.defaultSupervisoryBoard('public_state', 'primary_health_centre'), 'AKSPHCDA');
+  assert.equal(phc.defaultSupervisoryBoard('public_state', 'district_general'), 'AKSHMB');
+  assert.equal(phc.defaultSupervisoryBoard('public_federal', 'tertiary_teaching'), 'FMOH');
+  assert.equal(phc.defaultSupervisoryBoard('private', 'secondary_specialist'), 'PRIVATE_REG');
+
+  assert.equal(phc.validateHfrCode('123').ok, false);
+  assert.equal(phc.validateHfrCode('03/06/1/2/1/0001').ok, true);
+
+  assert.equal(phc.getRequiredCouncilForRole('doctor').council, 'MDCN');
+  assert.equal(phc.getRequiredCouncilForRole('doctor').required, true);
+  assert.equal(phc.getRequiredCouncilForRole('nurse').council, 'NMCN');
+  assert.equal(phc.getRequiredCouncilForRole('midwife').council, 'NMCN');
+  assert.equal(phc.getRequiredCouncilForRole('pharmacist').council, 'PCN');
+  assert.equal(phc.getRequiredCouncilForRole('lab').council, 'MLSCN');
+  assert.equal(phc.getRequiredCouncilForRole('records').council, 'HRORBN');
+  assert.equal(phc.getRequiredCouncilForRole('records').required, true);
+  assert.equal(phc.getRequiredCouncilForRole('reception').council, 'NONE');
+  assert.equal(phc.getRequiredCouncilForRole('reception').required, false);
+});
+
+test('facilityCatalogStore: completeness checks HFR, supervisory board, ward & CMD for public hospitals', () => {
+  const fc = loadTsModule('src/lib/facilityCatalogStore.ts', {
+    './bedBoardStore': { createBeds: () => [], listBeds: () => [], listWards: () => [] },
+    './liveActions': { emitLiveAction: () => {} },
+    './roleSyncBus': { publishFacilityData: () => {}, FACILITY_KEYS: { facilityCatalog: 'medcore_facility_catalog_v1' } },
+    './firebase': { firestoreSubscribeFacility: () => () => {}, firestoreReadFacility: async () => null },
+  });
+
+  const blankPublic = fc.defaultCatalog('IGH-EKT', 'Immanuel General Hospital');
+  const comp1 = fc.catalogCompleteness(blankPublic);
+  assert.equal(comp1.missing.includes('HFR Code'), true);
+  assert.equal(comp1.missing.includes('Supervisory Board Circular Ref'), true);
+  assert.equal(comp1.missing.includes('Ward'), true);
+  assert.equal(comp1.missing.includes('License number'), false);
+
+  const populatedPublic = {
+    ...blankPublic,
+    lga: 'Eket',
+    ward: 'Idua Ward I',
+    hfrCode: '03/06/1/2/1/0001',
+    boardAuthCircularRef: 'HMB/AKS/EMR/2026/014',
+    medicalDirector: 'Dr. Iniobong Udoh',
+    targetTotalBeds: 80,
+  };
+  const comp2 = fc.catalogCompleteness(populatedPublic);
+  assert.equal(comp2.missing.length, 0);
+  assert.equal(comp2.score, 100);
+});
+
+test('postgres: projects public hospital settings into facilities.config cleanly', async () => {
+  const pg = loadTsModule('src/lib/db/postgres.ts', {
+    pg: { Pool: class MockPool {} },
+    '@aws-sdk/rds-signer': { Signer: class MockSigner {} },
+    '@vercel/functions': { attachDatabasePool: () => {} },
+    '@vercel/functions/oidc': { awsCredentialsProvider: () => async () => ({}) },
+  });
+
+  const queries = [];
+  const mockClient = {
+    query: async (sql, params) => {
+      queries.push({ sql: String(sql), params });
+      return { rows: [], rowCount: 1, command: 'INSERT', oid: 0, fields: [] };
+    },
+    release: () => {},
+  };
+
+  await pg.projectKeyToRelationalTables(mockClient, 'IGH-EKT', 'medcore_os_admin_settings_v1', {
+    facilityId: 'IGH-EKT',
+    displayName: 'Immanuel General Hospital, Eket',
+    ownership: 'public_state',
+    hfrCode: '03/06/1/2/1/0001',
+    supervisoryBoard: 'AKSHMB',
+    boardAuthCircularRef: 'HMB/AKS/EMR/2026/014',
+    akshiaProviderId: 'AKSHIA-PUB-104',
+    medicalDirector: 'Dr. Iniobong Udoh',
+    state: 'Akwa Ibom',
+    lga: 'Eket',
+    ward: 'Idua Ward I',
+    gpsLatitude: '4.6423',
+    gpsLongitude: '7.9265',
+  });
+
+  const facQ = queries.find((q) => q.sql.includes('INSERT INTO facilities') && q.sql.includes('config'));
+  assert.ok(facQ);
+  assert.equal(facQ.params[0], 'IGH-EKT');
+  assert.equal(facQ.params[1], 'Immanuel General Hospital, Eket');
+  assert.equal(facQ.params[2], 'Akwa Ibom');
+  const cfg = JSON.parse(facQ.params[3]);
+  assert.equal(cfg.hfrCode, '03/06/1/2/1/0001');
+  assert.equal(cfg.supervisoryBoard, 'AKSHMB');
+  assert.equal(cfg.akshiaProviderId, 'AKSHIA-PUB-104');
+  assert.equal(cfg.ward, 'Idua Ward I');
+  assert.equal(cfg.gpsLatitude, '4.6423');
+  assert.equal(cfg.gpsLongitude, '7.9265');
+});
+
+test('dhis2Export: uses configured HFR code as orgUnit and includes Akwa Ibom facility metadata', () => {
+  const lsMap = new Map([
+    [
+      'medcore_os_admin_settings_v1:IGH-EKT',
+      JSON.stringify({
+        facilityId: 'IGH-EKT',
+        displayName: 'Immanuel General Hospital, Eket',
+        hfrCode: '03/06/1/2/1/0001',
+        supervisoryBoard: 'AKSHMB',
+        state: 'Akwa Ibom',
+        lga: 'Eket',
+        ward: 'Idua Ward I',
+        gpsLatitude: '4.6423',
+        gpsLongitude: '7.9265',
+      }),
+    ],
+  ]);
+  globalThis.window = { dispatchEvent: () => {} };
+  globalThis.localStorage = {
+    getItem: (k) => lsMap.get(k) ?? null,
+    setItem: (k, v) => lsMap.set(k, String(v)),
+    removeItem: (k) => lsMap.delete(k),
+  };
+
+  const dhis2 = loadTsModule('src/lib/dhis2Export.ts', {
+    './receptionOpsStore': { todayVisits: () => [], dayStats: () => ({ checkIns: 0, waiting: 0, appointments: 0, collected: 0 }) },
+    './patientRegistryStore': { listPatients: () => [] },
+    './clinicalEventBus': { listOrders: () => [] },
+    './bedBoardStore': { listBeds: () => [], listBedAudit: () => [] },
+    './dhis2TrackerBedBridge': { readTrackerStore: () => [] },
+    './durableOutbox': { enqueueFacilitySync: () => {} },
+    './adminRealtimeStore': { getActiveFacilityId: () => 'IGH-EKT' },
+    './roleSyncBus': { publishFacilityData: () => {} },
+  });
+
+  const payload = dhis2.buildDhis2Aggregate('IGH-EKT');
+  assert.equal(payload.orgUnit, '03/06/1/2/1/0001');
+  assert.equal(payload.meta.hfrCode, '03/06/1/2/1/0001');
+  assert.equal(payload.meta.supervisoryBoard, 'AKSHMB');
+  assert.equal(payload.meta.ward, 'Idua Ward I');
+});

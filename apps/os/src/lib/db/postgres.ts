@@ -1127,4 +1127,78 @@ export async function projectKeyToRelationalTables(
       );
     }
   }
+
+  // 10) Facility Institutional Metadata & Governance Config -> relational facilities table
+  if (
+    (key === 'medcore_os_admin_settings_v1' ||
+      key === 'adminSettings' ||
+      key === 'medcore_facility_catalog_v1' ||
+      key === 'medcore_os_onboarding') &&
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value)
+  ) {
+    const bag = value as Record<string, any>;
+    const rawObj: Record<string, any> | null =
+      key === 'medcore_os_onboarding'
+        ? (bag[facilityId] || bag[facilityId.toUpperCase()] || Object.values(bag)[0] || null)
+        : bag;
+
+    if (rawObj && typeof rawObj === 'object') {
+      const displayName = String(
+        rawObj.displayName || rawObj.facilityName || rawObj.name || ''
+      ).trim();
+      const stateName = String(rawObj.state || 'Akwa Ibom').trim();
+      const hfr = String(rawObj.hfrCode || rawObj.registrationNo || '').trim();
+      const cfgEntries: Record<string, unknown> = {
+        ...(displayName ? { displayName } : {}),
+        ...(rawObj.ownership ? { ownership: rawObj.ownership } : {}),
+        ...(rawObj.hospitalTier ? { hospitalTier: rawObj.hospitalTier } : {}),
+        ...(rawObj.facilityType || rawObj.type ? { facilityType: rawObj.facilityType || rawObj.type } : {}),
+        ...(hfr ? { hfrCode: hfr, registrationNo: hfr } : {}),
+        ...(rawObj.supervisoryBoard ? { supervisoryBoard: rawObj.supervisoryBoard } : {}),
+        ...(rawObj.boardAuthCircularRef ? { boardAuthCircularRef: rawObj.boardAuthCircularRef } : {}),
+        ...(rawObj.boardAuthDate ? { boardAuthDate: rawObj.boardAuthDate } : {}),
+        ...(rawObj.boardAuthDocUrl ? { boardAuthDocUrl: rawObj.boardAuthDocUrl } : {}),
+        ...(rawObj.akshiaProviderId ? { akshiaProviderId: rawObj.akshiaProviderId } : {}),
+        ...(rawObj.nhiaProviderCode || rawObj.nhiaFacilityCode
+          ? { nhiaProviderCode: rawObj.nhiaProviderCode || rawObj.nhiaFacilityCode }
+          : {}),
+        ...(rawObj.bhcpfCode ? { bhcpfCode: rawObj.bhcpfCode } : {}),
+        ...(typeof rawObj.acceptsAkshia === 'boolean' ? { acceptsAkshia: rawObj.acceptsAkshia } : {}),
+        ...(typeof rawObj.participatesInBhcpf === 'boolean'
+          ? { participatesInBhcpf: rawObj.participatesInBhcpf }
+          : {}),
+        ...(typeof rawObj.acceptsNhis === 'boolean' ? { acceptsNhis: rawObj.acceptsNhis } : {}),
+        ...(rawObj.medicalDirector ? { medicalDirector: rawObj.medicalDirector } : {}),
+        ...(rawObj.cmdApprovalRef ? { cmdApprovalRef: rawObj.cmdApprovalRef } : {}),
+        ...(rawObj.cmdApprovalDate ? { cmdApprovalDate: rawObj.cmdApprovalDate } : {}),
+        ...(rawObj.cmdApprovalDocUrl ? { cmdApprovalDocUrl: rawObj.cmdApprovalDocUrl } : {}),
+        ...(rawObj.emrFocalPersonName ? { emrFocalPersonName: rawObj.emrFocalPersonName } : {}),
+        ...(rawObj.emrFocalPersonTitle ? { emrFocalPersonTitle: rawObj.emrFocalPersonTitle } : {}),
+        ...(rawObj.emrFocalPersonPhone ? { emrFocalPersonPhone: rawObj.emrFocalPersonPhone } : {}),
+        ...(rawObj.emrFocalPersonEmail ? { emrFocalPersonEmail: rawObj.emrFocalPersonEmail } : {}),
+        ...(rawObj.lga ? { lga: rawObj.lga } : {}),
+        ...(rawObj.ward ? { ward: rawObj.ward } : {}),
+        ...(rawObj.address || rawObj.physicalAddress
+          ? { address: rawObj.address || rawObj.physicalAddress }
+          : {}),
+        ...(rawObj.gpsLatitude ? { gpsLatitude: rawObj.gpsLatitude } : {}),
+        ...(rawObj.gpsLongitude ? { gpsLongitude: rawObj.gpsLongitude } : {}),
+        ...(rawObj.phone || rawObj.contactPhone ? { phone: rawObj.phone || rawObj.contactPhone } : {}),
+        ...(rawObj.email || rawObj.contactEmail ? { email: rawObj.email || rawObj.contactEmail } : {}),
+      };
+
+      await c.query(
+        `INSERT INTO facilities (id, name, state, config, updated_at)
+         VALUES ($1, COALESCE(NULLIF($2, ''), $1), COALESCE(NULLIF($3, ''), 'Akwa Ibom'), $4::jsonb, NOW())
+         ON CONFLICT (id) DO UPDATE SET
+           name = COALESCE(NULLIF(EXCLUDED.name, $1), NULLIF(facilities.name, $1), EXCLUDED.name),
+           state = COALESCE(NULLIF(EXCLUDED.state, ''), facilities.state),
+           config = COALESCE(facilities.config, '{}'::jsonb) || EXCLUDED.config,
+           updated_at = NOW()`,
+        [facilityId, displayName, stateName, JSON.stringify(cfgEntries)]
+      );
+    }
+  }
 }

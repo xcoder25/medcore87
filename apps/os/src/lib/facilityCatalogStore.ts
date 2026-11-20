@@ -6,6 +6,7 @@ import { createBeds, listBeds, listWards } from './bedBoardStore';
 import { emitLiveAction } from './liveActions';
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 import { firestoreSubscribeFacility, firestoreReadFacility } from './firebase';
+import { isPublicOwnership, type SupervisoryBoardKey } from './publicHospitalCompliance';
 
 export const FACILITY_CATALOG_KEY = 'medcore_facility_catalog_v1';
 export const FACILITY_CATALOG_EVT = 'medcore-facility-catalog';
@@ -34,7 +35,9 @@ export type ClinicalServiceKey =
   | 'immunization'
   | 'hiv_art'
   | 'tb_dots'
-  | 'nutrition';
+  | 'nutrition'
+  | 'nhis_akshia_desk'
+  | 'health_records_him';
 
 export type LabCapabilityKey =
   | 'haematology'
@@ -106,6 +109,17 @@ export interface FacilityCatalog {
   licenseExpiry: string;
   medicalDirector: string;
   registrationNo?: string;
+  hfrCode?: string;
+  supervisoryBoard?: SupervisoryBoardKey;
+  boardAuthCircularRef?: string;
+  akshiaProviderId?: string;
+  nhiaProviderCode?: string;
+  bhcpfCode?: string;
+  cmdApprovalRef?: string;
+  emrFocalPersonName?: string;
+  ward?: string;
+  gpsLatitude?: string;
+  gpsLongitude?: string;
   ownership: 'public_state' | 'public_federal' | 'mission' | 'private' | 'ppp';
 
   /** Operating model */
@@ -175,6 +189,8 @@ export const CLINICAL_SERVICE_LABELS: Record<ClinicalServiceKey, string> = {
   hiv_art: 'HIV / ART Clinic',
   tb_dots: 'TB / DOTS',
   nutrition: 'Nutrition / Therapeutic Feeding',
+  nhis_akshia_desk: 'NHIS / AKSHIA Desk',
+  health_records_him: 'Health Records / HIM',
 };
 
 export const LAB_LABELS: Record<LabCapabilityKey, string> = {
@@ -227,6 +243,17 @@ export function defaultCatalog(facilityId: string, name?: string): FacilityCatal
     licenseNo: '',
     licenseExpiry: '',
     medicalDirector: '',
+    hfrCode: '',
+    supervisoryBoard: 'AKSHMB',
+    boardAuthCircularRef: '',
+    akshiaProviderId: '',
+    nhiaProviderCode: '',
+    bhcpfCode: '',
+    cmdApprovalRef: '',
+    emrFocalPersonName: '',
+    ward: '',
+    gpsLatitude: '',
+    gpsLongitude: '',
     ownership: 'public_state',
     operates24x7: true,
     emergency24x7: true,
@@ -256,6 +283,8 @@ export function defaultCatalog(facilityId: string, name?: string): FacilityCatal
       family_medicine: true,
       anc_pnc: true,
       immunization: true,
+      nhis_akshia_desk: true,
+      health_records_him: true,
     },
     labCapabilities: {
       haematology: true,
@@ -314,7 +343,18 @@ export function loadFacilityCatalog(facilityId: string, name?: string): Facility
           licenseNo: adm.licenseNo || parsed.licenseNo || blank.licenseNo,
           licenseExpiry: adm.licenseExpiry || parsed.licenseExpiry || blank.licenseExpiry,
           registrationNo: adm.registrationNo || parsed.registrationNo || blank.registrationNo,
+          hfrCode: adm.hfrCode || adm.registrationNo || parsed.hfrCode || parsed.registrationNo || blank.hfrCode,
+          supervisoryBoard: adm.supervisoryBoard || parsed.supervisoryBoard || blank.supervisoryBoard,
+          boardAuthCircularRef: adm.boardAuthCircularRef || parsed.boardAuthCircularRef || blank.boardAuthCircularRef,
+          akshiaProviderId: adm.akshiaProviderId || parsed.akshiaProviderId || blank.akshiaProviderId,
+          nhiaProviderCode: adm.nhiaProviderCode || parsed.nhiaProviderCode || blank.nhiaProviderCode,
+          bhcpfCode: adm.bhcpfCode || parsed.bhcpfCode || blank.bhcpfCode,
           medicalDirector: adm.medicalDirector || parsed.medicalDirector || blank.medicalDirector,
+          cmdApprovalRef: adm.cmdApprovalRef || parsed.cmdApprovalRef || blank.cmdApprovalRef,
+          emrFocalPersonName: adm.emrFocalPersonName || parsed.emrFocalPersonName || blank.emrFocalPersonName,
+          ward: adm.ward || parsed.ward || blank.ward,
+          gpsLatitude: adm.gpsLatitude || parsed.gpsLatitude || blank.gpsLatitude,
+          gpsLongitude: adm.gpsLongitude || parsed.gpsLongitude || blank.gpsLongitude,
           ownership: adm.ownership || parsed.ownership || blank.ownership,
           workingHoursStart: adm.workingHoursStart || parsed.workingHoursStart || blank.workingHoursStart,
           workingHoursEnd: adm.workingHoursEnd || parsed.workingHoursEnd || blank.workingHoursEnd,
@@ -398,8 +438,19 @@ export function saveFacilityCatalog(catalog: FacilityCatalog, actor?: string): F
           email: next.email || adm.email || '',
           licenseNo: next.licenseNo || adm.licenseNo || '',
           licenseExpiry: next.licenseExpiry || adm.licenseExpiry || '',
-          registrationNo: next.registrationNo || adm.registrationNo || '',
+          registrationNo: next.hfrCode || next.registrationNo || adm.hfrCode || adm.registrationNo || '',
+          hfrCode: next.hfrCode || next.registrationNo || adm.hfrCode || adm.registrationNo || '',
+          supervisoryBoard: next.supervisoryBoard || adm.supervisoryBoard || 'AKSHMB',
+          boardAuthCircularRef: next.boardAuthCircularRef || adm.boardAuthCircularRef || '',
+          akshiaProviderId: next.akshiaProviderId || adm.akshiaProviderId || '',
+          nhiaProviderCode: next.nhiaProviderCode || adm.nhiaProviderCode || '',
+          bhcpfCode: next.bhcpfCode || adm.bhcpfCode || '',
           medicalDirector: next.medicalDirector || adm.medicalDirector || '',
+          cmdApprovalRef: next.cmdApprovalRef || adm.cmdApprovalRef || '',
+          emrFocalPersonName: next.emrFocalPersonName || adm.emrFocalPersonName || '',
+          ward: next.ward || adm.ward || '',
+          gpsLatitude: next.gpsLatitude || adm.gpsLatitude || '',
+          gpsLongitude: next.gpsLongitude || adm.gpsLongitude || '',
           workingHoursStart: next.workingHoursStart || adm.workingHoursStart || '08:00',
           workingHoursEnd: next.workingHoursEnd || adm.workingHoursEnd || '18:00',
           operates24x7: next.operates24x7 ?? adm.operates24x7 ?? true,
@@ -511,16 +562,24 @@ export function subscribeFacilityCatalog(
 
 export function catalogCompleteness(c: FacilityCatalog): { score: number; missing: string[] } {
   const missing: string[] = [];
+  const publicFacility = isPublicOwnership(c.ownership || 'public_state');
   if (!c.name?.trim()) missing.push('Hospital name');
   if (!c.lga?.trim()) missing.push('LGA');
-  if (!c.licenseNo?.trim()) missing.push('License number');
-  if (!c.medicalDirector?.trim()) missing.push('Medical Director');
+  if (publicFacility) {
+    if (!(c.hfrCode || c.registrationNo || '').trim()) missing.push('HFR Code');
+    if (!c.boardAuthCircularRef?.trim()) missing.push('Supervisory Board Circular Ref');
+    if (!c.ward?.trim()) missing.push('Ward');
+  } else {
+    if (!c.licenseNo?.trim()) missing.push('License number');
+  }
+  if (!c.medicalDirector?.trim()) missing.push(publicFacility ? 'CMD / Medical Superintendent' : 'Medical Director');
   if (!(c.targetTotalBeds > 0) && listBeds(c.facilityId).length === 0) missing.push('Bed capacity / wards');
   if (!Object.values(c.services || {}).some(Boolean)) missing.push('Clinical services');
   if (!Object.values(c.labCapabilities || {}).some(Boolean)) missing.push('Laboratory capabilities');
   if (!Object.values(c.pharmacyCapabilities || {}).some(Boolean)) missing.push('Pharmacy capabilities');
   if (c.emergency24x7 === undefined) missing.push('Emergency hours');
-  const score = Math.max(0, Math.round(((8 - missing.length) / 8) * 100));
+  const totalChecks = publicFacility ? 10 : 8;
+  const score = Math.max(0, Math.round(((totalChecks - missing.length) / totalChecks) * 100));
   return { score, missing };
 }
 

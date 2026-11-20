@@ -3,6 +3,7 @@ import { isPostgresConfigured } from '../../../lib/db/postgres';
 import { deleteStaff, listStaff, upsertStaff } from '../../../lib/db/staffRepo';
 import { getAdminAuth } from '../../../lib/firebaseAdmin';
 import { uploadDataUrlToS3IfNeeded } from '../../../lib/s3Server';
+import { extractStaffCredentials } from '../../../lib/publicHospitalCompliance';
 
 export const runtime = 'nodejs';
 
@@ -17,7 +18,11 @@ export async function GET(req: NextRequest) {
     try {
       const staff = await listStaff(facilityId);
       if (staff && staff.length > 0) {
-        return NextResponse.json({ ok: true, configured: true, staff: staff || [] });
+        const enriched = staff.map((row) => ({
+          ...row,
+          ...extractStaffCredentials(row),
+        }));
+        return NextResponse.json({ ok: true, configured: true, staff: enriched });
       }
     } catch (e) {
       console.warn('[api/staff GET] Postgres error:', e);
@@ -135,6 +140,46 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const credMeta: Record<string, unknown> = {};
+  if (body.employmentScheme !== undefined) {
+    const es = String(body.employmentScheme || '').trim();
+    credMeta.employmentScheme = es || null;
+  }
+  if (body.civilServiceId !== undefined) {
+    const csId = String(body.civilServiceId || '').trim().toUpperCase();
+    if (csId && csId.length < 4) {
+      return NextResponse.json(
+        { ok: false, error: 'Civil Service / IPPIS Staff ID must be at least 4 characters.' },
+        { status: 400 }
+      );
+    }
+    credMeta.civilServiceId = csId || null;
+  }
+  if (body.regulatoryBody !== undefined) {
+    const rb = String(body.regulatoryBody || '').trim().toUpperCase();
+    credMeta.regulatoryBody = rb || null;
+  }
+  if (body.practicingLicenseNo !== undefined) {
+    const lic = String(body.practicingLicenseNo || '').trim().toUpperCase();
+    if (lic && lic.length < 4) {
+      return NextResponse.json(
+        { ok: false, error: 'Practicing license number must be at least 4 characters.' },
+        { status: 400 }
+      );
+    }
+    credMeta.practicingLicenseNo = lic || null;
+  }
+  if (body.licenseExpiry !== undefined) {
+    const exp = String(body.licenseExpiry || '').trim();
+    if (exp && !/^\d{4}-\d{2}-\d{2}$/.test(exp)) {
+      return NextResponse.json(
+        { ok: false, error: 'License expiry date must use YYYY-MM-DD format.' },
+        { status: 400 }
+      );
+    }
+    credMeta.licenseExpiry = exp || null;
+  }
+
   let resolvedPhotoUrl: string | undefined = undefined;
   if (typeof body.photoUrl === 'string') {
     if (body.photoUrl.trim() === '') {
@@ -212,9 +257,13 @@ export async function POST(req: NextRequest) {
       photoUrl: resolvedPhotoUrl,
       pin: rawPin || undefined,
       authEmail: body.authEmail ? String(body.authEmail) : undefined,
+      meta: Object.keys(credMeta).length > 0 ? credMeta : undefined,
       facilityName: body.facilityName ? String(body.facilityName) : undefined,
     });
-    return NextResponse.json({ ok: true, staff: row });
+    return NextResponse.json({
+      ok: true,
+      staff: { ...row, ...extractStaffCredentials(row) },
+    });
   } catch (e) {
     console.error('[api/staff POST]', e);
     return NextResponse.json(

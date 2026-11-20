@@ -12,6 +12,15 @@ import { listPatients } from './patientRegistryStore';
 import { listOrders } from './clinicalEventBus';
 import { listBeds, listBedAudit } from './bedBoardStore';
 import { readTrackerStore } from './dhis2TrackerBedBridge';
+import { getAdminSettings } from './adminSettingsStore';
+
+function safeFacilitySettings(facilityId: string) {
+  try {
+    return getAdminSettings(facilityId);
+  } catch {
+    return null;
+  }
+}
 
 export interface InpatientHospitalIndicators {
   periodDays: number;
@@ -150,12 +159,14 @@ export function buildDhis2Aggregate(facilityId: string, orgUnit?: string) {
 
   // Inpatient & Bed indicators
   const bedKpis = calculateInpatientIndicators(facilityId, 30);
+  const settings = safeFacilitySettings(facilityId);
+  const hfrCode = (settings?.hfrCode || settings?.registrationNo || '').trim();
 
   return {
     dataSet: 'MedCore_HMIS_Routine_Aggregate',
     completeDate: day,
     period: day.replace(/-/g, ''),
-    orgUnit: orgUnit || facilityId,
+    orgUnit: orgUnit || hfrCode || facilityId,
     dataValues: [
       // OPD & Routine
       { dataElement: 'OPD_ATTENDANCES', value: stats.checkIns },
@@ -186,6 +197,15 @@ export function buildDhis2Aggregate(facilityId: string, orgUnit?: string) {
     meta: {
       source: 'MedCore Hospital OS',
       facilityId,
+      hfrCode: hfrCode || null,
+      supervisoryBoard: settings?.supervisoryBoard || null,
+      state: settings?.state || 'Akwa Ibom',
+      lga: settings?.lga || null,
+      ward: settings?.ward || null,
+      gpsCoordinates:
+        settings?.gpsLatitude && settings?.gpsLongitude
+          ? { lat: settings.gpsLatitude, lng: settings.gpsLongitude }
+          : null,
       generatedAt: new Date().toISOString(),
       indicators: {
         borPct: `${bedKpis.bedOccupancyRate}%`,
@@ -206,11 +226,21 @@ export function buildNhmisMonthly(facilityId: string, yearMonth?: string) {
   const inMonth = (iso: string) => iso.startsWith(ym);
   const labs = orders.filter((o) => o.type === 'lab' && inMonth(o.createdAt));
   const bedKpis = calculateInpatientIndicators(facilityId, 30);
+  const settings = safeFacilitySettings(facilityId);
+  const hfrCode = (settings?.hfrCode || settings?.registrationNo || '').trim();
 
   return {
     form: 'NHMIS_Monthly_Summary_v2026',
     period: ym.replace('-', ''),
     facilityId,
+    hfrCode: hfrCode || null,
+    facilityMetadata: {
+      displayName: settings?.displayName || null,
+      supervisoryBoard: settings?.supervisoryBoard || null,
+      state: settings?.state || 'Akwa Ibom',
+      lga: settings?.lga || null,
+      ward: settings?.ward || null,
+    },
     indicators: {
       // Section 1: Outpatient & Ancillary
       total_registered_patients: patients.length,

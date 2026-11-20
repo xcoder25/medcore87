@@ -662,8 +662,16 @@ export const FacilityOnboarding: React.FC<Props> = ({ session, onNavigate, embed
             )}
           </div>
           <div style={{ fontSize: '0.76rem', color: '#64748B', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-            <span><strong>Licence:</strong> {catalog.licenseNo || 'Pending in Settings'}</span>
-            <span><strong>CMD:</strong> {catalog.medicalDirector || 'Pending in Settings'}</span>
+            {catalog.ownership === 'public_state' || catalog.ownership === 'public_federal' ? (
+              <>
+                <span><strong>HFR Code:</strong> {catalog.hfrCode || catalog.registrationNo || 'Pending in Settings'}</span>
+                <span><strong>Supervisory Board:</strong> {catalog.supervisoryBoard || 'AKSHMB'}</span>
+                {catalog.ward && <span><strong>Ward:</strong> {catalog.ward}</span>}
+              </>
+            ) : (
+              <span><strong>Licence:</strong> {catalog.licenseNo || 'Pending in Settings'}</span>
+            )}
+            <span><strong>CMD / MS:</strong> {catalog.medicalDirector || 'Pending in Settings'}</span>
             <span><strong>OPD Hours:</strong> {catalog.workingHoursStart}–{catalog.workingHoursEnd}</span>
             <span><strong>OPD Tariff:</strong> ₦{(catalog.defaultOpdFeeNgn || 5000).toLocaleString()}</span>
             <span><strong>Payers:</strong> {[catalog.acceptsNhis && 'NHIA/AKSHIA', catalog.acceptsHmo && 'Private HMO'].filter(Boolean).join(' + ') || 'Cash'}</span>

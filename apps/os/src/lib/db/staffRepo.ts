@@ -16,6 +16,7 @@ export type StaffRow = {
   permissions: unknown;
   photo_url: string | null;
   auth_email: string | null;
+  meta?: Record<string, unknown> | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -47,6 +48,7 @@ export async function upsertStaff(input: {
   photoUrl?: string;
   pin?: string;
   authEmail?: string;
+  meta?: Record<string, unknown>;
   facilityName?: string;
 }): Promise<StaffRow> {
   if (!isPostgresConfigured()) {
@@ -55,15 +57,19 @@ export async function upsertStaff(input: {
   await upsertFacility(input.facilityId, input.facilityName || input.facilityId);
   const pinHash = input.pin ? hashPin(input.pin) : null;
   const photoParam = input.photoUrl === undefined ? null : input.photoUrl;
+  const metaParam =
+    input.meta && Object.keys(input.meta).length > 0
+      ? JSON.stringify(input.meta)
+      : null;
 
   return withTenantClient(input.facilityId, async (client) => {
     const res = await client.query<StaffRow>(
       `INSERT INTO staff (
         badge_id, facility_id, full_name, role, role_key, title, department,
         email, phone, status, clearance_level, clearance_label, permissions,
-        photo_url, pin_hash, auth_email, updated_at
+        photo_url, pin_hash, auth_email, meta, updated_at
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,NULLIF($14::text, ''),$15,$16,NOW()
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,NULLIF($14::text, ''),$15,$16,COALESCE($17::jsonb, '{}'::jsonb),NOW()
       )
       ON CONFLICT (facility_id, badge_id) DO UPDATE SET
         full_name = CASE
@@ -91,6 +97,7 @@ export async function upsertStaff(input: {
         END,
         pin_hash = COALESCE(EXCLUDED.pin_hash, staff.pin_hash),
         auth_email = COALESCE(EXCLUDED.auth_email, staff.auth_email),
+        meta = COALESCE(staff.meta, '{}'::jsonb) || COALESCE($17::jsonb, '{}'::jsonb),
         updated_at = NOW()
       RETURNING *`,
       [
@@ -110,6 +117,7 @@ export async function upsertStaff(input: {
         photoParam,
         pinHash,
         input.authEmail || null,
+        metaParam,
       ]
     );
     return res.rows[0]!;
@@ -122,7 +130,7 @@ export async function listStaff(facilityId: string): Promise<StaffRow[]> {
     const res = await client.query<StaffRow>(
       `SELECT badge_id, facility_id, full_name, role, role_key, title, department,
               email, phone, status, clearance_level, clearance_label, permissions,
-              photo_url, auth_email, created_at::text, updated_at::text
+              photo_url, auth_email, meta, created_at::text, updated_at::text
        FROM staff
        WHERE facility_id = $1
        ORDER BY updated_at DESC

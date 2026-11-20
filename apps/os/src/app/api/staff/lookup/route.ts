@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured } from '../../../../lib/db/postgres';
 import { getStaff, findStaffAnyFacility, upsertStaff } from '../../../../lib/db/staffRepo';
 import { getAdminAuth } from '../../../../lib/firebaseAdmin';
+import { extractStaffCredentials } from '../../../../lib/publicHospitalCompliance';
 
 export const runtime = 'nodejs';
 
@@ -132,7 +133,14 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        return NextResponse.json({ ok: true, configured: true, staff: safeRow });
+        return NextResponse.json({
+          ok: true,
+          configured: true,
+          staff: {
+            ...safeRow,
+            ...extractStaffCredentials(safeRow),
+          },
+        });
       }
     } catch (e) {
       console.warn('[api/staff/lookup] Postgres lookup fallback:', e);
@@ -215,6 +223,7 @@ export async function GET(req: NextRequest) {
               configured: true,
               staff: {
                 ...safePg,
+                ...extractStaffCredentials(safePg),
                 email: safePg.email || (isEmailTarget ? lookupEmail : null),
               },
             });

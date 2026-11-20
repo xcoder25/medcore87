@@ -19,6 +19,7 @@ import {
 import { enableEdgeCloudOnlyRuntime, withRemoteHydration } from './edgeCloudOnly';
 import { hydrateFacilityFromCloudAndPrem } from './cloudStore';
 import { MedCoreAppSyncSyncManager, type AppSyncRealtimeMessage } from './aws/appsyncRealtime';
+import { extractStaffCredentials } from './publicHospitalCompliance';
 
 /** Map storage keys → CustomEvents so existing subscribe*() hooks refresh live */
 const KEY_EVENTS: Record<string, string[]> = {
@@ -207,6 +208,7 @@ export function startHospitalCloudSync(facilityId: string): () => void {
             clearanceLabel: s.clearance_label || 'Level 1',
             status: (s.status || 'ACTIVE').toUpperCase() === 'ACTIVE' ? 'ACTIVE' : 'SUSPENDED',
             photoUrl: s.photo_url || s.photoUrl || null,
+            ...extractStaffCredentials(s),
           }));
           applyCloudStaffDirectory({
             staffCards: cloudCards,

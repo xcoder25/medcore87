@@ -32,6 +32,12 @@ export interface StaffCardRecord {
   initials: string;
   /** Legacy badge ID if staff was transferred from another hospital */
   legacyBadgeId?: string;
+  /** Government employment scheme & professional practicing credentials */
+  employmentScheme?: string;
+  civilServiceId?: string;
+  regulatoryBody?: string;
+  practicingLicenseNo?: string;
+  licenseExpiry?: string;
   /** QR payload string (JSON) — verified by auth later */
   qrPayload: string;
 }
@@ -53,6 +59,12 @@ export interface StaffEnrolmentInput {
   photoUrl?: string;
   /** Work email — optional second login method (same PIN) */
   email?: string;
+  /** Government civil service / IPPIS & statutory council practicing license */
+  employmentScheme?: string;
+  civilServiceId?: string;
+  regulatoryBody?: string;
+  practicingLicenseNo?: string;
+  licenseExpiry?: string;
 }
 
 /** Pick visual template from role / clearance */
@@ -130,6 +142,11 @@ export function issueStaffCardFromEnrolment(
     expiresAt,
     initials,
     photoUrl: input.photoUrl || undefined,
+    employmentScheme: input.employmentScheme || undefined,
+    civilServiceId: input.civilServiceId || undefined,
+    regulatoryBody: input.regulatoryBody || undefined,
+    practicingLicenseNo: input.practicingLicenseNo || undefined,
+    licenseExpiry: input.licenseExpiry || undefined,
   };
 
   return {

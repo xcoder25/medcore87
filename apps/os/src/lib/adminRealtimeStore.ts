@@ -46,6 +46,11 @@ export type AccessRecord = {
   permissions: string[];
   email?: string;
   roleKey?: string;
+  employmentScheme?: string;
+  civilServiceId?: string;
+  regulatoryBody?: string;
+  practicingLicenseNo?: string;
+  licenseExpiry?: string;
 };
 
 export type ComplianceItem = {

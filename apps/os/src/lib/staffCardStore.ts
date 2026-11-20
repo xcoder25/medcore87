@@ -18,6 +18,7 @@ import {
 } from './firebase';
 import { removeStaffPresence, markStaffRevokedLocal } from './staffPresenceStore';
 import { publishFacilityData } from './roleSyncBus';
+import { extractStaffCredentials } from './publicHospitalCompliance';
 
 let _migrationRan = false;
 
@@ -303,9 +304,11 @@ export function syncAccessRosterFromSources(facilityId: string): {
     // Skip other facilities when we know the row's facility; allow legacy empty
     if (fid && rowFid && rowFid.toUpperCase() !== fid.toUpperCase()) return;
     const prev = byId.get(id) || {};
+    const creds = extractStaffCredentials(raw);
     byId.set(id, {
       ...prev,
       ...raw,
+      ...creds,
       badgeId: id,
       id,
       name: raw.name || raw.fullName || prev.name || id,
@@ -345,6 +348,11 @@ export function syncAccessRosterFromSources(facilityId: string): {
         permissions: (c as { permissions?: string[] }).permissions,
         facilityId: c.facilityId || fid,
         hospitalId: c.facilityId || fid,
+        employmentScheme: c.employmentScheme,
+        civilServiceId: c.civilServiceId,
+        regulatoryBody: c.regulatoryBody,
+        practicingLicenseNo: c.practicingLicenseNo,
+        licenseExpiry: c.licenseExpiry,
       });
     }
   } catch {
@@ -391,6 +399,11 @@ export function syncAccessRosterFromSources(facilityId: string): {
     lastLogin: String(s.lastLogin || '—'),
     permissions: Array.isArray(s.permissions) ? (s.permissions as string[]) : [],
     email: s.email ? String(s.email) : undefined,
+    employmentScheme: s.employmentScheme ? String(s.employmentScheme) : undefined,
+    civilServiceId: s.civilServiceId ? String(s.civilServiceId) : undefined,
+    regulatoryBody: s.regulatoryBody ? String(s.regulatoryBody) : undefined,
+    practicingLicenseNo: s.practicingLicenseNo ? String(s.practicingLicenseNo) : undefined,
+    licenseExpiry: s.licenseExpiry ? String(s.licenseExpiry) : undefined,
   }));
 
   try {
@@ -740,6 +753,10 @@ export function getHospitalAbbreviation(facilityId?: string, facilityName?: stri
     'CH-IKA': 'IKA',  // Ika
     'CHC-NTE': 'NTE',  // Nto Edino
     'CHC-MBU': 'MBU',  // Mbiaya Uruan
+    'ISH-UYO': 'ISH',  // Ibom Specialist Hospital, Uyo
+    'UUTH-UYO': 'UUT', // University of Uyo Teaching Hospital
+    'PHC-UYO': 'PHU',  // Primary Health Centre, Uyo
+    'PHC-EKT': 'PHE',  // Primary Health Centre, Eket
   };
 
   if (KNOWN_CODES[fid]) return KNOWN_CODES[fid];
@@ -888,6 +905,11 @@ export type StaffRegistryEntry = {
   status: string;
   email?: string;
   photoUrl?: string;
+  employmentScheme?: string;
+  civilServiceId?: string;
+  regulatoryBody?: string;
+  practicingLicenseNo?: string;
+  licenseExpiry?: string;
 };
 
 /** Build card + registry entry in memory — does NOT write local or cloud (no ID consumed until commit). */
@@ -917,6 +939,11 @@ export function prepareStaffEnrolment(
     status: 'active',
     email: (input.email || '').trim().toLowerCase() || undefined,
     photoUrl: input.photoUrl || card.photoUrl || undefined,
+    employmentScheme: input.employmentScheme || undefined,
+    civilServiceId: input.civilServiceId || undefined,
+    regulatoryBody: input.regulatoryBody || undefined,
+    practicingLicenseNo: input.practicingLicenseNo || undefined,
+    licenseExpiry: input.licenseExpiry || undefined,
   };
   return { card, badgeId: id, entry };
 }
@@ -1107,6 +1134,7 @@ export function findStaffByEmail(email: string, facilityId?: string) {
         const rk = hit.roleKey || inferRoleKey(hit.role || hit.title, bid);
         return {
           ...hit,
+          ...extractStaffCredentials(hit),
           roleKey: rk,
           permissions: (hit.permissions && hit.permissions.length > 0)
             ? hit.permissions
@@ -1146,6 +1174,8 @@ export function findStaffByEmail(email: string, facilityId?: string) {
         hospitalId: cardHit.facilityId,
         hospitalName: cardHit.facilityName,
         email: (cardHit as any).email,
+        photoUrl: cardHit.photoUrl || undefined,
+        ...extractStaffCredentials(cardHit),
       };
     }
   } catch {
@@ -1207,7 +1237,8 @@ export function applyCloudStaffDirectory(payload: {
         }
         for (const [id, incomingCard] of incomingMap) {
           const prev = mergedById.get(id);
-          mergedById.set(id, prev ? { ...prev, ...incomingCard } : incomingCard);
+          const creds = extractStaffCredentials(incomingCard);
+          mergedById.set(id, prev ? { ...prev, ...incomingCard, ...creds } : { ...incomingCard, ...creds });
         }
         writeCards(Array.from(mergedById.values()));
       }
@@ -1263,7 +1294,8 @@ export function applyCloudStaffDirectory(payload: {
           const id = String(s.badgeId || s.id || '').toUpperCase();
           if (!id) continue;
           const prev = mergedReg.get(id);
-          mergedReg.set(id, prev ? { ...prev, ...s } : s);
+          const creds = extractStaffCredentials(s);
+          mergedReg.set(id, prev ? { ...prev, ...s, ...creds } : { ...s, ...creds });
         }
         const nextReg = Array.from(mergedReg.values());
         const regJson = JSON.stringify(nextReg);
@@ -1763,6 +1795,11 @@ export function resolveStaffByBadge(badgeId: string): {
   hospitalId: string;
   hospitalName: string;
   photoUrl?: string;
+  employmentScheme?: string;
+  civilServiceId?: string;
+  regulatoryBody?: string;
+  practicingLicenseNo?: string;
+  licenseExpiry?: string;
 } | null {
   const q = normalizeBadgeId(badgeId);
   if (!q || typeof window === 'undefined') return null;
@@ -1794,6 +1831,7 @@ export function resolveStaffByBadge(badgeId: string): {
           hospitalId: hit.hospitalId || hit.facilityId || '',
           hospitalName: hit.hospitalName || hit.facilityName || '',
           photoUrl: hit.photoUrl || hit.photo_url || undefined,
+          ...extractStaffCredentials(hit),
         };
       }
     }
@@ -1828,6 +1866,7 @@ export function resolveStaffByBadge(badgeId: string): {
         hospitalId: card.facilityId,
         hospitalName: card.facilityName,
         photoUrl: card.photoUrl || undefined,
+        ...extractStaffCredentials(card),
       };
     }
   } catch { /* ignore */ }

@@ -50,7 +50,14 @@ import {
   type SyncPreference,
   type PosTerminalConfig,
 } from '../../lib/adminSettingsStore';
-import { AKWA_IBOM_LGAS } from '../../lib/receptionConstants';
+import { AKWA_IBOM_LGAS, NIGERIA_STATE_LGAS } from '../../lib/receptionConstants';
+import {
+  SUPERVISORY_BOARDS,
+  isPublicOwnership,
+  defaultSupervisoryBoard,
+  validateGpsCoord,
+  type SupervisoryBoardKey,
+} from '../../lib/publicHospitalCompliance';
 import { compressStaffPhotoFile } from '../../lib/staffPhoto';
 import { uploadImageToS3 } from '../../lib/storageClient';
 import { Image as ImageIcon, Upload } from 'lucide-react';
@@ -114,6 +121,10 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
 
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoError, setLogoError] = useState('');
+  const [boardDocBusy, setBoardDocBusy] = useState(false);
+  const [cmdDocBusy, setCmdDocBusy] = useState(false);
+  const [docUploadError, setDocUploadError] = useState('');
+  const [gpsStatus, setGpsStatus] = useState('');
 
   // AkwaRemit Server Vault Gateway State (Keys strictly remain on server)
   const [akwaremitServerStatus, setAkwaremitServerStatus] = useState<{
@@ -343,7 +354,71 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
     [facilityId, patch, session.name]
   );
 
+  const handleGovernanceDocUpload = useCallback(
+    async (file: File | null, target: 'board' | 'cmd') => {
+      if (!file) return;
+      if (file.size > 15 * 1024 * 1024) {
+        setDocUploadError('Authorization document must be under 15 MB.');
+        return;
+      }
+      setDocUploadError('');
+      if (target === 'board') setBoardDocBusy(true);
+      else setCmdDocBusy(true);
+      try {
+        const res = await uploadImageToS3(file, {
+          folder: 'general',
+          facilityId,
+          filename: `${facilityId.toLowerCase()}-${target}-auth-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`,
+        });
+        if (!res.ok || !res.url) {
+          setDocUploadError(res.error || 'Could not upload document to AWS S3.');
+          return;
+        }
+        if (target === 'board') {
+          patch({ boardAuthDocUrl: res.url });
+          pushActivity(`Supervisory Board authorization letter uploaded · ${session.name || 'Admin'}`);
+        } else {
+          patch({ cmdApprovalDocUrl: res.url });
+          pushActivity(`CMD letterhead approval document uploaded · ${session.name || 'Admin'}`);
+        }
+      } catch (err: any) {
+        setDocUploadError(err?.message || 'Document upload failed.');
+      } finally {
+        if (target === 'board') setBoardDocBusy(false);
+        else setCmdDocBusy(false);
+      }
+    },
+    [facilityId, patch, session.name]
+  );
+
+  const handleCaptureGps = useCallback(() => {
+    setGpsStatus('');
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGpsStatus('Geolocation unavailable in this browser — enter Latitude & Longitude manually.');
+      return;
+    }
+    setGpsStatus('Capturing GPS coordinates…');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude.toFixed(6);
+        const lng = pos.coords.longitude.toFixed(6);
+        patch({ gpsLatitude: lat, gpsLongitude: lng });
+        setGpsStatus(`Captured (${lat}, ${lng})`);
+      },
+      () => {
+        setGpsStatus('Could not acquire GPS fix — enter coordinates manually.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, [patch]);
+
   const save = () => {
+    const gpsCheck = validateGpsCoord(draft.gpsLatitude, draft.gpsLongitude);
+    if (!gpsCheck.ok) {
+      setDocUploadError(gpsCheck.error || 'Invalid GPS coordinates.');
+      return;
+    }
+    setDocUploadError('');
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     persistSettings(draft);
     try {
@@ -870,7 +945,7 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
               </div>
 
               <div style={{ gridColumn: 'span 8' }}>
-                <label style={labelStyle}>Official Hospital Display Name</label>
+                <label style={labelStyle}>Official Facility Name (State Registry)</label>
                 <input
                   style={inputStyle}
                   value={draft.displayName}
@@ -889,34 +964,62 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
                 />
               </div>
 
-              <div style={{ gridColumn: 'span 4' }}>
+              <div style={{ gridColumn: 'span 3' }}>
                 <label style={labelStyle}>Facility System ID (Read-only)</label>
                 <input style={{ ...inputStyle, background: '#F8FAFC', color: '#64748B' }} value={facilityId} readOnly />
               </div>
 
-              <div style={{ gridColumn: 'span 4' }}>
-                <label style={labelStyle}>Accreditation & Tier</label>
+              <div style={{ gridColumn: 'span 3' }}>
+                <label style={labelStyle}>Facility Ownership</label>
                 <select
                   style={inputStyle}
-                  value={draft.hospitalTier || 'district_general'}
-                  onChange={(e) => patch({ hospitalTier: e.target.value as any })}
+                  value={draft.ownership || 'public_state'}
+                  onChange={(e) => {
+                    const nextOwn = e.target.value as AdminFacilitySettings['ownership'];
+                    patch({
+                      ownership: nextOwn,
+                      supervisoryBoard: defaultSupervisoryBoard(nextOwn, draft.hospitalTier),
+                    });
+                  }}
                 >
-                  <option value="primary_health_centre">Primary Health Centre (PHC)</option>
-                  <option value="district_general">District General Hospital</option>
-                  <option value="secondary_specialist">Secondary Specialist Hospital</option>
-                  <option value="tertiary_teaching">Tertiary / University Teaching Hospital</option>
+                  <option value="public_state">Public (Akwa Ibom State Govt)</option>
+                  <option value="public_federal">Public (Federal Tertiary / UUTH)</option>
+                  <option value="mission">Mission / Faith-Based</option>
+                  <option value="private">Private Specialist</option>
+                  <option value="ppp">Public-Private Partnership (PPP)</option>
                 </select>
               </div>
 
-              <div style={{ gridColumn: 'span 4' }}>
+              <div style={{ gridColumn: 'span 3' }}>
+                <label style={labelStyle}>Facility Classification & Tier</label>
+                <select
+                  style={inputStyle}
+                  value={draft.hospitalTier || 'district_general'}
+                  onChange={(e) => {
+                    const nextTier = e.target.value as AdminFacilitySettings['hospitalTier'];
+                    patch({
+                      hospitalTier: nextTier,
+                      supervisoryBoard: defaultSupervisoryBoard(draft.ownership, nextTier),
+                    });
+                  }}
+                >
+                  <option value="primary_health_centre">Primary Health Centre (PHC)</option>
+                  <option value="district_general">General / Cottage Hospital (Secondary)</option>
+                  <option value="secondary_specialist">State Specialist Hospital (e.g. Ibom Specialist)</option>
+                  <option value="tertiary_teaching">Federal Tertiary / Teaching Hospital</option>
+                </select>
+              </div>
+
+              <div style={{ gridColumn: 'span 3' }}>
                 <label style={labelStyle}>State</label>
                 <input style={inputStyle} value={draft.state} onChange={(e) => patch({ state: e.target.value })} />
               </div>
 
-              <div style={{ gridColumn: 'span 4' }}>
+              <div style={{ gridColumn: 'span 3' }}>
                 <label style={labelStyle}>Local Government Area (LGA)</label>
                 <select style={inputStyle} value={draft.lga} onChange={(e) => patch({ lga: e.target.value })}>
-                  {AKWA_IBOM_LGAS.map((l) => (
+                  <option value="">Select LGA…</option>
+                  {(NIGERIA_STATE_LGAS[draft.state] || AKWA_IBOM_LGAS).map((l) => (
                     <option key={l} value={l}>
                       {l}
                     </option>
@@ -924,12 +1027,22 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
                 </select>
               </div>
 
-              <div style={{ gridColumn: 'span 4' }}>
+              <div style={{ gridColumn: 'span 3' }}>
+                <label style={labelStyle}>Ward (Administrative / Political)</label>
+                <input
+                  style={inputStyle}
+                  value={draft.ward || ''}
+                  onChange={(e) => patch({ ward: e.target.value })}
+                  placeholder="e.g. Idua Ward I"
+                />
+              </div>
+
+              <div style={{ gridColumn: 'span 3' }}>
                 <label style={labelStyle}>Main Phone / Helpline</label>
                 <input style={inputStyle} value={draft.phone} onChange={(e) => patch({ phone: e.target.value })} />
               </div>
 
-              <div style={{ gridColumn: 'span 4' }}>
+              <div style={{ gridColumn: 'span 3' }}>
                 <label style={labelStyle}>24/7 Emergency Dispatch Line</label>
                 <input
                   style={inputStyle}
@@ -939,70 +1052,340 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
                 />
               </div>
 
-              <div style={{ gridColumn: 'span 6' }}>
+              <div style={{ gridColumn: 'span 4' }}>
                 <label style={labelStyle}>Official Contact Email</label>
                 <input style={inputStyle} value={draft.email} onChange={(e) => patch({ email: e.target.value })} />
               </div>
 
-              <div style={{ gridColumn: 'span 6' }}>
+              <div style={{ gridColumn: 'span 4' }}>
                 <label style={labelStyle}>Physical Address</label>
                 <input style={inputStyle} value={draft.address} onChange={(e) => patch({ address: e.target.value })} />
               </div>
 
-              {/* Consolidated Licensing, Leadership & Operating Hours (De-duplicated from Facility Setup) */}
-              <div style={{ gridColumn: 'span 3' }}>
-                <label style={labelStyle}>Facility Ownership</label>
-                <select
-                  style={inputStyle}
-                  value={draft.ownership || 'public_state'}
-                  onChange={(e) => patch({ ownership: e.target.value as any })}
+              <div style={{ gridColumn: 'span 4' }}>
+                <label style={labelStyle}>
+                  Facility GPS Coordinates (Lat / Lng)
+                </label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    style={{ ...inputStyle, flex: 1 }}
+                    value={draft.gpsLatitude || ''}
+                    onChange={(e) => patch({ gpsLatitude: e.target.value })}
+                    placeholder="Lat e.g. 4.6423"
+                  />
+                  <input
+                    style={{ ...inputStyle, flex: 1 }}
+                    value={draft.gpsLongitude || ''}
+                    onChange={(e) => patch({ gpsLongitude: e.target.value })}
+                    placeholder="Lng e.g. 7.9265"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCaptureGps}
+                    style={{
+                      padding: '0 10px',
+                      borderRadius: 8,
+                      border: `1px solid ${C.border}`,
+                      background: '#EFF6FF',
+                      color: C.blue,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Capture GPS
+                  </button>
+                </div>
+                {gpsStatus && (
+                  <div style={{ fontSize: 11, color: '#0369A1', marginTop: 4 }}>{gpsStatus}</div>
+                )}
+              </div>
+
+              {isPublicOwnership(draft.ownership) ? (
+                <div
+                  style={{
+                    gridColumn: 'span 12',
+                    background: '#F0F9FF',
+                    border: '1px solid #BAE6FD',
+                    borderRadius: 12,
+                    padding: 16,
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(12, 1fr)',
+                    gap: 14,
+                  }}
                 >
-                  <option value="public_state">Public (State Government)</option>
-                  <option value="public_federal">Public (Federal Government)</option>
-                  <option value="mission">Mission / Faith-Based</option>
-                  <option value="private">Private Specialist</option>
-                  <option value="ppp">Public-Private Partnership (PPP)</option>
-                </select>
-              </div>
+                  <div style={{ gridColumn: 'span 12', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: '#0C4A6E' }}>
+                        1. Government &amp; Regulatory Facility Identifiers (Public Facility Mode)
+                      </div>
+                      <div style={{ fontSize: 11.5, color: '#0369A1', marginTop: 2 }}>
+                        Commercial CAC, Tax ID (TIN), and private operating licences are bypassed for government hospitals. Required for DHIS2 &amp; NHMIS sync.
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 999, background: '#DCFCE7', color: '#166534' }}>
+                      Public Hospital Mode
+                    </span>
+                  </div>
 
-              <div style={{ gridColumn: 'span 3' }}>
-                <label style={labelStyle}>MoH / HEFAMAA Licence No.</label>
-                <input
-                  style={inputStyle}
-                  value={draft.licenseNo || ''}
-                  onChange={(e) => patch({ licenseNo: e.target.value })}
-                  placeholder="e.g. AKS-MOH-LIC-2026-041"
-                />
-              </div>
+                  <div style={{ gridColumn: 'span 4' }}>
+                    <label style={labelStyle}>Nigeria Health Facility Registry (HFR) Code *</label>
+                    <input
+                      style={inputStyle}
+                      value={draft.hfrCode || draft.registrationNo || ''}
+                      onChange={(e) => patch({ hfrCode: e.target.value, registrationNo: e.target.value })}
+                      placeholder="e.g. 03/06/1/2/1/0001"
+                    />
+                  </div>
 
-              <div style={{ gridColumn: 'span 3' }}>
-                <label style={labelStyle}>Licence Expiry Date</label>
-                <input
-                  type="date"
-                  style={inputStyle}
-                  value={draft.licenseExpiry || ''}
-                  onChange={(e) => patch({ licenseExpiry: e.target.value })}
-                />
-              </div>
+                  <div style={{ gridColumn: 'span 4' }}>
+                    <label style={labelStyle}>State / Federal Supervisory Board *</label>
+                    <select
+                      style={inputStyle}
+                      value={draft.supervisoryBoard || defaultSupervisoryBoard(draft.ownership, draft.hospitalTier)}
+                      onChange={(e) => patch({ supervisoryBoard: e.target.value as SupervisoryBoardKey })}
+                    >
+                      {SUPERVISORY_BOARDS.filter((b) => b.key !== 'PRIVATE_REG').map((b) => (
+                        <option key={b.key} value={b.key}>
+                          {b.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div style={{ gridColumn: 'span 3' }}>
-                <label style={labelStyle}>National HFR Registration No.</label>
-                <input
-                  style={inputStyle}
-                  value={draft.registrationNo || ''}
-                  onChange={(e) => patch({ registrationNo: e.target.value })}
-                  placeholder="e.g. 03/06/1/2/1/0001"
-                />
-              </div>
+                  <div style={{ gridColumn: 'span 4' }}>
+                    <label style={labelStyle}>Authorization Letter / Circular Ref *</label>
+                    <input
+                      style={inputStyle}
+                      value={draft.boardAuthCircularRef || ''}
+                      onChange={(e) => patch({ boardAuthCircularRef: e.target.value })}
+                      placeholder="e.g. HMB/AKS/EMR/2026/014"
+                    />
+                  </div>
 
-              <div style={{ gridColumn: 'span 6' }}>
-                <label style={labelStyle}>Chief Medical Director / Medical Superintendent</label>
-                <input
-                  style={inputStyle}
-                  value={draft.medicalDirector || ''}
-                  onChange={(e) => patch({ medicalDirector: e.target.value })}
-                  placeholder="e.g. Dr. Iniobong Udoh, MBBS, FWACP"
-                />
+                  <div style={{ gridColumn: 'span 4' }}>
+                    <label style={labelStyle}>Board Circular / Approval Date</label>
+                    <input
+                      type="date"
+                      style={inputStyle}
+                      value={draft.boardAuthDate || ''}
+                      onChange={(e) => patch({ boardAuthDate: e.target.value })}
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: 'span 8' }}>
+                    <label style={labelStyle}>Supervisory Board Circular (PDF / Scan in S3)</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <label
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '8px 14px',
+                          borderRadius: 8,
+                          background: '#0369A1',
+                          color: '#FFFFFF',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: boardDocBusy ? 'wait' : 'pointer',
+                        }}
+                      >
+                        <Upload size={14} />
+                        <span>{boardDocBusy ? 'Uploading…' : draft.boardAuthDocUrl ? 'Replace Circular' : 'Upload HMB / AKSPHCDA Circular'}</span>
+                        <input
+                          type="file"
+                          accept=".pdf,application/pdf,image/*"
+                          disabled={boardDocBusy}
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            void handleGovernanceDocUpload(e.target.files?.[0] || null, 'board');
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      {draft.boardAuthDocUrl && (
+                        <a
+                          href={draft.boardAuthDocUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}
+                        >
+                          ✓ Circular on file (Open)
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ gridColumn: 'span 3' }}>
+                    <label style={labelStyle}>State MoH Facility Operating Licence No.</label>
+                    <input
+                      style={inputStyle}
+                      value={draft.licenseNo || ''}
+                      onChange={(e) => patch({ licenseNo: e.target.value })}
+                      placeholder="e.g. AKS-MOH-LIC-2026-041"
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: 'span 3' }}>
+                    <label style={labelStyle}>Licence Expiry Date</label>
+                    <input
+                      type="date"
+                      style={inputStyle}
+                      value={draft.licenseExpiry || ''}
+                      onChange={(e) => patch({ licenseExpiry: e.target.value })}
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: 'span 3' }}>
+                    <label style={labelStyle}>Nigeria HFR Code</label>
+                    <input
+                      style={inputStyle}
+                      value={draft.hfrCode || draft.registrationNo || ''}
+                      onChange={(e) => patch({ hfrCode: e.target.value, registrationNo: e.target.value })}
+                      placeholder="e.g. 03/06/1/2/1/0001"
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: 'span 3' }}>
+                    <label style={labelStyle}>Tax ID (TIN) / CAC</label>
+                    <input
+                      style={inputStyle}
+                      value={draft.taxId || ''}
+                      onChange={(e) => patch({ taxId: e.target.value })}
+                      placeholder="Corporate TIN / RC"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* 2. Facility Leadership & Administrative Sign-Off */}
+              <div
+                style={{
+                  gridColumn: 'span 12',
+                  background: '#F8FAFC',
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 12,
+                  padding: 16,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(12, 1fr)',
+                  gap: 14,
+                }}
+              >
+                <div style={{ gridColumn: 'span 12' }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.navy }}>
+                    2. Facility Leadership &amp; Administrative Sign-Off
+                  </div>
+                  <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>
+                    Formal CMD / Medical Superintendent letterhead sign-off designating the internal EMR Focal Person / IT Administrator.
+                  </div>
+                </div>
+
+                <div style={{ gridColumn: 'span 4' }}>
+                  <label style={labelStyle}>Chief Medical Director (CMD) / Medical Superintendent *</label>
+                  <input
+                    style={inputStyle}
+                    value={draft.medicalDirector || ''}
+                    onChange={(e) => patch({ medicalDirector: e.target.value })}
+                    placeholder="e.g. Dr. Iniobong Udoh, MBBS, FWACP"
+                  />
+                </div>
+
+                <div style={{ gridColumn: 'span 4' }}>
+                  <label style={labelStyle}>CMD Letterhead Sign-Off Memo Ref</label>
+                  <input
+                    style={inputStyle}
+                    value={draft.cmdApprovalRef || ''}
+                    onChange={(e) => patch({ cmdApprovalRef: e.target.value })}
+                    placeholder="e.g. IGH/CMD/EMR/2026/002"
+                  />
+                </div>
+
+                <div style={{ gridColumn: 'span 4' }}>
+                  <label style={labelStyle}>CMD Sign-Off Date</label>
+                  <input
+                    type="date"
+                    style={inputStyle}
+                    value={draft.cmdApprovalDate || ''}
+                    onChange={(e) => patch({ cmdApprovalDate: e.target.value })}
+                  />
+                </div>
+
+                <div style={{ gridColumn: 'span 4' }}>
+                  <label style={labelStyle}>Designated EMR Focal Person / IT Admin *</label>
+                  <input
+                    style={inputStyle}
+                    value={draft.emrFocalPersonName || ''}
+                    onChange={(e) => patch({ emrFocalPersonName: e.target.value })}
+                    placeholder="e.g. Ekaette Bassey (HIM / ICT Lead)"
+                  />
+                </div>
+
+                <div style={{ gridColumn: 'span 4' }}>
+                  <label style={labelStyle}>EMR Focal Person Phone</label>
+                  <input
+                    style={inputStyle}
+                    value={draft.emrFocalPersonPhone || ''}
+                    onChange={(e) => patch({ emrFocalPersonPhone: e.target.value })}
+                    placeholder="+234 803 …"
+                  />
+                </div>
+
+                <div style={{ gridColumn: 'span 4' }}>
+                  <label style={labelStyle}>EMR Focal Person Email</label>
+                  <input
+                    type="email"
+                    style={inputStyle}
+                    value={draft.emrFocalPersonEmail || ''}
+                    onChange={(e) => patch({ emrFocalPersonEmail: e.target.value })}
+                    placeholder="focal@hospital.ak.gov.ng"
+                  />
+                </div>
+
+                <div style={{ gridColumn: 'span 12', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <label
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '8px 14px',
+                      borderRadius: 8,
+                      background: '#0F172A',
+                      color: '#FFFFFF',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: cmdDocBusy ? 'wait' : 'pointer',
+                    }}
+                  >
+                    <Upload size={14} />
+                    <span>{cmdDocBusy ? 'Uploading…' : draft.cmdApprovalDocUrl ? 'Replace CMD Letter' : 'Upload Signed CMD Letterhead Approval (PDF/Img)'}</span>
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf,image/*"
+                      disabled={cmdDocBusy}
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        void handleGovernanceDocUpload(e.target.files?.[0] || null, 'cmd');
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                  {draft.cmdApprovalDocUrl && (
+                    <a
+                      href={draft.cmdApprovalDocUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}
+                    >
+                      ✓ Signed CMD Approval uploaded (Open)
+                    </a>
+                  )}
+                  {docUploadError && (
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#DC2626' }}>{docUploadError}</span>
+                  )}
+                </div>
               </div>
 
               <div style={{ gridColumn: 'span 3' }}>
@@ -1692,36 +2075,56 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
               padding: 24,
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-              <ShieldCheck size={20} color="#0284C7" />
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: C.navy }}>
-                  National & State Health Insurance Interoperability
-                </div>
-                <div style={{ fontSize: 12, color: C.muted }}>
-                  Provider credentials and co-payment percentages for NHIA and AKSHIA claims
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <ShieldCheck size={20} color="#0284C7" />
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: C.navy }}>
+                    AKSHIA / NHIA &amp; BHCPF Public Provider Configuration
+                  </div>
+                  <div style={{ fontSize: 12, color: C.muted }}>
+                    Akwa Ibom State Health Insurance Agency (AKSHIA), BHCPF &amp; NHIA facility provider codes for electronic claims &amp; capitation
+                  </div>
                 </div>
               </div>
+              <a
+                href="https://www.akshealth.org/"
+                target="_blank"
+                rel="noreferrer"
+                style={{ fontSize: 12, fontWeight: 700, color: '#0284C7', textDecoration: 'underline' }}
+              >
+                AKSHIA Portal (akshealth.org) ↗
+              </a>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16 }}>
-              <div style={{ gridColumn: 'span 6' }}>
-                <label style={labelStyle}>NHIA National Facility Accreditation Code</label>
-                <input
-                  style={inputStyle}
-                  value={draft.nhiaProviderCode}
-                  onChange={(e) => patch({ nhiaProviderCode: e.target.value })}
-                  placeholder="e.g. NHIA-AKS-0042"
-                />
-              </div>
-
-              <div style={{ gridColumn: 'span 6' }}>
-                <label style={labelStyle}>AKSHIA State Provider ID</label>
+              <div style={{ gridColumn: 'span 4' }}>
+                <label style={labelStyle}>AKSHIA Public Provider Code</label>
                 <input
                   style={inputStyle}
                   value={draft.akshiaProviderId}
                   onChange={(e) => patch({ akshiaProviderId: e.target.value })}
-                  placeholder="e.g. AKSHIA-SEC-019"
+                  placeholder="Assigned AKSHIA code"
+                />
+              </div>
+
+              <div style={{ gridColumn: 'span 4' }}>
+                <label style={labelStyle}>NHIA National Facility Provider Code</label>
+                <input
+                  style={inputStyle}
+                  value={draft.nhiaProviderCode}
+                  onChange={(e) => patch({ nhiaProviderCode: e.target.value })}
+                  placeholder="Assigned NHIA facility code"
+                />
+              </div>
+
+              <div style={{ gridColumn: 'span 4' }}>
+                <label style={labelStyle}>BHCPF Facility Provider Code</label>
+                <input
+                  style={inputStyle}
+                  value={draft.bhcpfCode || ''}
+                  onChange={(e) => patch({ bhcpfCode: e.target.value })}
+                  placeholder="Basic Health Care Provision Fund code"
                 />
               </div>
 
@@ -1749,6 +2152,20 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
             </div>
 
             <div style={{ marginTop: 14 }}>
+              <Toggle
+                label="Accepts AKSHIA (Akwa Ibom State Health Insurance Agency)"
+                desc="Process AKSHIA state social health insurance enrollee encounters, electronic claims, and monthly capitation records"
+                checked={draft.acceptsAkshia ?? true}
+                onChange={(v) => patch({ acceptsAkshia: v })}
+              />
+
+              <Toggle
+                label="Participates in Basic Health Care Provision Fund (BHCPF)"
+                desc="Enable BHCPF vulnerable/maternal/child free-care tracking and NHMIS gateway utilization summaries"
+                checked={draft.participatesInBhcpf ?? false}
+                onChange={(v) => patch({ participatesInBhcpf: v })}
+              />
+
               <Toggle
                 label="Accepts NHIA / NHIS Federal Capitation & Fee-for-Service"
                 desc="Enable federal National Health Insurance Authority enrolment verification and claims processing"

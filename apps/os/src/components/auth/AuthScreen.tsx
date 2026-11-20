@@ -70,10 +70,15 @@ export const HOSPITALS: Hospital[] = [
   { id: 'GH-MB2', name: 'General Hospital, Mbioto 2', location: 'Mbioto, Akwa Ibom', type: 'General Hospital', domain: 'gh-mbioto2.medcore.ng' },
   { id: 'MSG-ITU', name: 'Mary Slessor General Hospital, Itu', location: 'Itu, Akwa Ibom', type: 'Mission Hospital', domain: 'msg-itu.medcore.ng' },
   { id: 'GH-UAI', name: 'General Hospital, Uruk Ata Ikot Ekpor', location: 'Ikot Ekpor, Akwa Ibom', type: 'General Hospital', domain: 'gh-urukataekpor.medcore.ng' },
-  // Specialist Hospitals
+  // Specialist & Federal Tertiary Hospitals
+  { id: 'ISH-UYO', name: 'Ibom Specialist Hospital, Uyo', location: 'Uyo, Akwa Ibom', type: 'Specialist Hospital', domain: 'ish-uyo.medcore.ng' },
+  { id: 'UUTH-UYO', name: 'University of Uyo Teaching Hospital (UUTH)', location: 'Uyo, Akwa Ibom', type: 'Federal Tertiary Hospital', domain: 'uuth-uyo.medcore.ng' },
   { id: 'QIC-EPO', name: 'QIC Leprosy Hospital, Ekpene Obom', location: 'Ekpene Obom, Akwa Ibom', type: 'Specialist Hospital', domain: 'qic-ekpeneobom.medcore.ng' },
   { id: 'IDH-IKE', name: 'Infectious Disease Hospital, Ikot Ekpene', location: 'Ikot Ekpene, Akwa Ibom', type: 'Specialist Hospital', domain: 'idh-ikotekpene.medcore.ng' },
   { id: 'PSY-EKT', name: 'Psychiatric Hospital, Eket', location: 'Eket, Akwa Ibom', type: 'Specialist Hospital', domain: 'psy-eket.medcore.ng' },
+  // Primary Health Centres (AKSPHCDA)
+  { id: 'PHC-UYO', name: 'Primary Health Centre, Uyo (AKSPHCDA)', location: 'Uyo, Akwa Ibom', type: 'Primary Health Centre', domain: 'phc-uyo.medcore.ng' },
+  { id: 'PHC-EKT', name: 'Primary Health Centre, Eket (AKSPHCDA)', location: 'Eket, Akwa Ibom', type: 'Primary Health Centre', domain: 'phc-eket.medcore.ng' },
   // Cottage Hospitals
   { id: 'CH-UKA', name: 'Cottage Hospital, Ukana', location: 'Ukana, Akwa Ibom', type: 'Cottage Hospital', domain: 'ch-ukana.medcore.ng' },
   { id: 'CH-IBN', name: 'Cottage Hospital, Ibeno', location: 'Ibeno, Akwa Ibom', type: 'Cottage Hospital', domain: 'ch-ibeno.medcore.ng' },
