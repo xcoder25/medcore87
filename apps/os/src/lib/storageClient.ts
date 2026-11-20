@@ -52,10 +52,14 @@ export async function streamDirectToS3Presigned(
 
     const presignData = await presignRes.json().catch(() => ({}));
     if (!presignRes.ok || !presignData?.uploadUrl) {
-      throw new Error(presignData?.message || presignData?.error || 'Failed to acquire S3 pre-signed URL');
+      throw new Error(
+        presignData?.error === 'S3_NOT_CONFIGURED'
+          ? 'S3_NOT_CONFIGURED'
+          : presignData?.message || presignData?.error || 'Could not initialize file upload'
+      );
     }
 
-    // 2. Stream payload directly from browser to Amazon S3
+    // 2. Stream payload directly from browser to cloud object storage
     const s3PutRes = await fetch(presignData.uploadUrl, {
       method: 'PUT',
       headers: {
@@ -65,7 +69,7 @@ export async function streamDirectToS3Presigned(
     });
 
     if (!s3PutRes.ok) {
-      throw new Error(`S3 direct upload rejected with HTTP status ${s3PutRes.status}`);
+      throw new Error(`File upload rejected (HTTP ${s3PutRes.status})`);
     }
 
     return {
@@ -81,7 +85,7 @@ export async function streamDirectToS3Presigned(
     return {
       ok: false,
       url: '',
-      error: err?.message || 'Direct S3 upload failed',
+      error: err?.message || 'File upload failed',
       isS3: false,
     };
   }
@@ -119,7 +123,10 @@ async function uploadViaServerRelay(
     return {
       ok: false,
       url: '',
-      error: data?.message || data?.error || `Upload failed with HTTP ${res.status}`,
+      error:
+        data?.error === 'S3_NOT_CONFIGURED'
+          ? 'S3_NOT_CONFIGURED'
+          : data?.message || data?.error || `Upload failed (HTTP ${res.status})`,
       isS3: false,
     };
   }
@@ -155,7 +162,10 @@ async function uploadViaServerRelay(
   return {
     ok: false,
     url: dataUrl,
-    error: data?.message || data?.error || 'S3 upload failed',
+    error:
+      data?.error === 'S3_NOT_CONFIGURED'
+        ? 'S3_NOT_CONFIGURED'
+        : data?.message || data?.error || 'File upload failed',
     isS3: false,
   };
 }

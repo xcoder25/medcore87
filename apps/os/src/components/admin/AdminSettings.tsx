@@ -371,7 +371,7 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
           filename: `${facilityId.toLowerCase()}-${target}-auth-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`,
         });
         if (!res.ok || !res.url) {
-          setDocUploadError(res.error || 'Could not upload document to AWS S3.');
+          setDocUploadError(res.error && res.error !== 'S3_NOT_CONFIGURED' ? res.error : 'Could not upload document. Please try again.');
           return;
         }
         if (target === 'board') {
@@ -1175,7 +1175,7 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
                   </div>
 
                   <div style={{ gridColumn: 'span 8' }}>
-                    <label style={labelStyle}>Supervisory Board Circular (PDF / Scan in S3)</label>
+                    <label style={labelStyle}>Supervisory Board Circular (PDF / Scan)</label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <label
                         style={{
@@ -2484,7 +2484,7 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
 
             <Toggle
               label="BAA & HIPAA Staff Training Attestation Signed"
-              desc="Confirm that Business Associate Agreements (AWS/Postgres, Vercel, Email provider) and staff privacy training are on file for this facility"
+              desc="Confirm that Business Associate Agreements (cloud hosting, database, and email services) and staff privacy training are on file for this facility"
               checked={Boolean(draft.hipaaBaaAttested)}
               onChange={(v) => patch({ hipaaBaaAttested: v })}
             />

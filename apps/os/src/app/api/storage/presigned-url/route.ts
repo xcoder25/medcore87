@@ -3,7 +3,6 @@ import {
   isS3Configured,
   generateS3PresignedUploadUrl,
   generateS3ImageKey,
-  getS3Config,
 } from '../../../../lib/s3Server';
 
 export const runtime = 'nodejs';
@@ -51,13 +50,11 @@ function getExtensionFromMime(mime: string): string {
  */
 export async function POST(req: NextRequest) {
   if (!isS3Configured()) {
-    const config = getS3Config();
     return NextResponse.json(
       {
         ok: false,
         error: 'S3_NOT_CONFIGURED',
-        message: 'AWS S3 object storage is not configured. Set AWS_ROLE_ARN or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY with S3_BUCKET_NAME.',
-        region: config.region,
+        message: 'Cloud file storage is not configured on the server.',
       },
       { status: 503 }
     );
@@ -111,7 +108,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error('[api/storage/presigned-url error]', err);
     return NextResponse.json(
-      { ok: false, error: err?.message || 'Failed to generate S3 pre-signed upload URL' },
+      { ok: false, error: 'Failed to initialize file upload.' },
       { status: 500 }
     );
   }

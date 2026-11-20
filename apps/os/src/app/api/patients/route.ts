@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 export async function GET(req: NextRequest) {
   if (!isPostgresConfigured()) {
     return NextResponse.json(
-      { ok: false, configured: false, patients: [], error: 'Postgres not configured' },
+      { ok: false, configured: false, patients: [], error: 'Cloud database is not configured' },
       { status: 503 }
     );
   }
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   if (!isPostgresConfigured()) {
-    return NextResponse.json({ ok: false, error: 'Postgres not configured' }, { status: 503 });
+    return NextResponse.json({ ok: false, error: 'Cloud database is not configured' }, { status: 503 });
   }
   let body: Record<string, unknown> = {};
   try {
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   if (!isPostgresConfigured()) {
-    return NextResponse.json({ ok: false, error: 'Postgres not configured' }, { status: 503 });
+    return NextResponse.json({ ok: false, error: 'Cloud database is not configured' }, { status: 503 });
   }
   const facilityId = (req.nextUrl.searchParams.get('facilityId') || '').trim();
   const id = (req.nextUrl.searchParams.get('id') || '').trim();

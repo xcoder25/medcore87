@@ -1996,7 +1996,7 @@ export function provisionFacilityAdmin(
       return {
         ok: false,
         error:
-          'This facility is already onboarded. Sign in with the existing hospital admin credentials. A new admin is only created after Firebase Auth accounts for this facility are deleted.',
+          'This facility is already onboarded. Sign in with the existing hospital admin credentials. A new admin can only be created after existing administrator accounts for this facility are reset.',
       };
     }
   } catch {

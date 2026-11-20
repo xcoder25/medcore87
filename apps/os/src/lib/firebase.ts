@@ -116,7 +116,7 @@ export function classifyAuthError(
     rawMsg.includes('auth/invalid-api-key') ||
     rawMsg.includes('api-key-not-valid')
   ) {
-    return 'Firebase client API key is missing or invalid. Set NEXT_PUBLIC_FIREBASE_API_KEY in Vercel Environment Variables and redeploy.';
+    return 'Authentication service configuration is incomplete. Please contact your system administrator.';
   }
   const msg = rawMsg;
   if (msg && !msg.includes('Firebase')) return msg;

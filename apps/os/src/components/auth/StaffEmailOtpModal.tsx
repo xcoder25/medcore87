@@ -491,7 +491,6 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                   )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 11.5, color: '#475569' }}>
                     <Clock size={12} /> Expires in <strong>{formatTimer(secondsLeft)}</strong>
-                    {deliveryChannel === 'resend' && ' · Delivered via Resend'}
                   </div>
                 </div>
               </div>
@@ -512,7 +511,7 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                   }}
                 >
                   <span>
-                    Email provider (`RESEND_API_KEY`) not configured on server. Pilot OTP:
+                    Email delivery service is not yet configured. Temporary OTP:
                   </span>
                   <code style={{ fontSize: 15, fontWeight: 900, letterSpacing: '0.16em' }}>{devPreviewCode}</code>
                 </div>

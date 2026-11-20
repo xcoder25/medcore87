@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
 
     if (!adminAuth) {
       return NextResponse.json(
-        { success: false, error: 'Firebase Admin Auth is not initialized' },
+        { success: false, error: 'Authentication service is not initialized.' },
         { status: 503 }
       );
     }

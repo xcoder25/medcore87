@@ -18,7 +18,7 @@ const CONFIRM_PHRASE = 'DELETE_ALL_AUTH_USERS';
 export async function GET(req: NextRequest) {
   if (!isFirebaseAdminConfigured()) {
     return NextResponse.json(
-      { ok: false, error: 'FIREBASE_SERVICE_ACCOUNT_JSON not configured on server' },
+      { ok: false, error: 'Authentication administration is not configured on the server.' },
       { status: 503 }
     );
   }
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
   const who = token ? await adminVerifyIdToken(token) : null;
   if (!who) {
     return NextResponse.json(
-      { ok: false, error: 'Valid Firebase ID token required (Authorization: Bearer …)' },
+      { ok: false, error: 'Valid administrator authorization token required.' },
       { status: 401 }
     );
   }
@@ -67,8 +67,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          'FIREBASE_SERVICE_ACCOUNT_JSON (or FIREBASE_SERVICE_ACCOUNT_BASE64) not set on the server. Add the service account in Vercel env.',
+        error: 'Authentication administration is not configured on the server.',
       },
       { status: 503 }
     );
@@ -86,8 +85,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          'Sign in required. Pass your Firebase ID token as Authorization: Bearer <token>.',
+        error: 'Sign in required. Provide a valid administrator authorization token.',
       },
       { status: 401 }
     );

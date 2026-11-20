@@ -71,30 +71,12 @@ export async function GET(req: NextRequest) {
     req.headers.get('x-facility-id') ||
     '';
   const resolved = await resolveGeminiKey(facilityId || undefined);
-  const env = process.env as Record<string, string | undefined>;
-  const present: Record<string, { set: boolean; length: number }> = {};
-  for (const name of GEMINI_ENV_NAMES) {
-    const k = cleanKey(env[name]);
-    present[name] = { set: Boolean(k), length: k.length };
-  }
-  const publicMistaken = Boolean(
-    cleanKey(env.NEXT_PUBLIC_GEMINI_API_KEY) ||
-      cleanKey(env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY)
-  );
   return NextResponse.json({
     configured: Boolean(resolved.key),
-    keyLength: resolved.key ? resolved.key.length : 0,
-    keySource: resolved.source,
-    vercelEnv: process.env.VERCEL_ENV || null,
-    nodeEnv: process.env.NODE_ENV || null,
-    present,
-    publicKeyMistakenlySet: publicMistaken,
     facilityIdTried: facilityId || null,
     hint: resolved.key
-      ? `Gemini key loaded from ${resolved.source}.`
-      : publicMistaken
-        ? 'NEXT_PUBLIC_GEMINI_API_KEY is set but ignored. Use server GEMINI_API_KEY, or save key in Admin Settings (synced to Firestore).'
-        : 'No key on Vercel env. Either: (1) Fix Vercel GEMINI_API_KEY for Production, or (2) Admin → Settings → paste Gemini API key → Save (uses Firestore fallback).',
+      ? 'Clinical AI service is configured.'
+      : 'Clinical AI service is not configured. Configure an AI key in Admin → Settings or server environment.',
   });
 }
 
@@ -158,9 +140,8 @@ export async function POST(req: NextRequest) {
         ok: false,
         usedGemini: false,
         configured: false,
-        keySource: 'none',
         text:
-          'No Gemini API key on the server. Add GEMINI_API_KEY in Vercel (Production), OR open Admin → Settings, paste your Google AI Studio key into Gemini API key, Save, then retry chat.',
+          'Clinical AI service is not configured on this server. Contact your system administrator or configure it in Admin → Settings.',
       },
       { status: 503 }
     );
@@ -215,30 +196,32 @@ export async function POST(req: NextRequest) {
             usedGemini: true,
             configured: true,
             keySource: resolved.source,
-            text: `Gemini rejected the API key (${result.status}). Create a new key at https://aistudio.google.com/apikey and update Vercel or Admin Settings.`,
+            text: 'Clinical AI credentials were rejected. Update the AI key in Admin → Settings or server configuration.',
           },
           { status: 502 }
         );
       }
     }
+    console.error('[api/gemini] all models failed:', errors.slice(0, 3).join(' | '));
     return NextResponse.json(
       {
         ok: false,
         usedGemini: true,
         configured: true,
         keySource: resolved.source,
-        text: `Gemini models failed.\n${errors.slice(0, 3).join('\n')}`,
+        text: 'Clinical AI service is temporarily unavailable. Please try again shortly.',
       },
       { status: 502 }
     );
   } catch (e) {
+    console.error('[api/gemini] error:', e);
     return NextResponse.json(
       {
         ok: false,
         usedGemini: false,
         configured: true,
         keySource: resolved.source,
-        text: `Gemini network error: ${(e as Error)?.message || 'unknown'}`,
+        text: `Clinical AI network error: ${(e as Error)?.message || 'unknown'}`,
       },
       { status: 502 }
     );

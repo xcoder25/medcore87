@@ -275,7 +275,7 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   if (!isPostgresConfigured()) {
-    return NextResponse.json({ ok: false, error: 'Postgres not configured' }, { status: 503 });
+    return NextResponse.json({ ok: false, error: 'Cloud database is not configured' }, { status: 503 });
   }
   const facilityId = (req.nextUrl.searchParams.get('facilityId') || '').trim();
   const badgeId = (req.nextUrl.searchParams.get('badgeId') || '').trim().toUpperCase();

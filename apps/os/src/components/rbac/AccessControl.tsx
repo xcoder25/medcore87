@@ -642,9 +642,9 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       // Step 1: Compress client-side (canvas), then stream to AWS S3 before unlocking save.
       const result = await compressStaffPhotoFile(file);
 
-      // Show compressed preview immediately while AWS S3 upload runs
+      // Show compressed preview immediately while upload runs
       setPhotoUrl(result.dataUrl);
-      setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · uploading to AWS S3…`);
+      setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · uploading…`);
 
       let uploadBlob: Blob | null = null;
       try {
@@ -661,12 +661,12 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
 
       if (s3Res && s3Res.ok && s3Res.url && s3Res.isS3) {
         setPhotoUrl(s3Res.url);
-        setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · Stored in AWS S3`);
+        setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · Uploaded`);
       } else {
-        const errMsg = s3Res?.error || 'AWS S3 upload timed out — image kept compressed locally';
+        const errMsg = s3Res?.error || 'Upload timed out — image kept compressed locally';
         setPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · fallback`);
         if (s3Res && s3Res.error && !String(s3Res.error).includes('S3_NOT_CONFIGURED')) {
-          setError(`Headshot S3 upload warning: ${errMsg}`);
+          setError(`Headshot upload warning: ${errMsg}`);
         }
       }
     } catch (err) {
@@ -715,7 +715,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       const result = await compressStaffPhotoFile(file);
       setEditPhotoUrl(result.dataUrl);
       setEditPhotoChanged(true);
-      setEditPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · uploading to AWS S3…`);
+      setEditPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · uploading…`);
 
       let uploadBlob: Blob | null = null;
       try {
@@ -733,11 +733,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
 
       if (s3Res && s3Res.ok && s3Res.url && s3Res.isS3) {
         setEditPhotoUrl(s3Res.url);
-        setEditPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · Stored in AWS S3`);
+        setEditPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · Uploaded`);
       } else {
         setEditPhotoMeta(`${result.width}×${result.height} · ~${Math.round(result.bytesApprox / 1024)} KB · local fallback`);
         if (s3Res && s3Res.error && !String(s3Res.error).includes('S3_NOT_CONFIGURED')) {
-          setEditError(`Headshot S3 upload warning: ${s3Res.error}`);
+          setEditError(`Headshot upload warning: ${s3Res.error}`);
         }
       }
     } catch (err) {
@@ -768,7 +768,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       return;
     }
     if (photoBusy) {
-      setError('Wait for headshot upload to AWS S3 to finish.');
+      setError('Wait for headshot upload to finish.');
       return;
     }
     if (!roleKey || !roleMeta) {
@@ -1698,7 +1698,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                       return;
                     }
                     if (editPhotoBusy) {
-                      setEditError('Please wait for the ID photo upload to AWS S3 to complete.');
+                      setEditError('Please wait for the ID photo upload to complete.');
                       return;
                     }
                     setEditBusy(true);
@@ -1965,10 +1965,10 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                     />
                   </label>
 
-                  {/* Replace / Remove ID Badge Headshot (AWS S3) */}
+                  {/* Replace / Remove ID Badge Headshot */}
                   <div>
                     <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
-                      ID Badge Headshot (Stored in AWS S3)
+                      ID Badge Headshot
                     </label>
                     <div
                       style={{
@@ -2015,7 +2015,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                         />
                         <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: 4 }}>
                           {editPhotoBusy
-                            ? 'Uploading replacement photo to AWS S3…'
+                            ? 'Uploading replacement photo…'
                             : editPhotoMeta || (editPhotoUrl ? 'Choose image to replace ID badge photo' : 'Upload portrait photo for ID badge')}
                         </div>
                         {editPhotoUrl && (
@@ -2517,7 +2517,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                 className="os-primary-btn"
                 style={{ padding: '12px 18px', fontSize: '0.94rem', fontWeight: 800, justifyContent: 'center', marginTop: 4, background: '#0052D4' }}
               >
-                <Plus size={18} /> {busy ? 'Enrolling & Issuing ID Card…' : photoBusy ? 'Uploading Headshot to AWS S3…' : 'Complete Enrolment & Issue Staff ID'}
+                <Plus size={18} /> {busy ? 'Enrolling & Issuing ID Card…' : photoBusy ? 'Uploading Headshot…' : 'Complete Enrolment & Issue Staff ID'}
               </button>
 
               <LogoProgressBar active={busy} label="Generating tamper-evident ID card & synchronizing access..." />

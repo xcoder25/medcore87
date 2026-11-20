@@ -770,7 +770,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     void uploadImageToS3(url, { folder: 'patients' }).then((res) => {
       if (res.ok && res.url) {
         setReg((r) => ({ ...r, photoDataUrl: res.url }));
-        flash('Photo stored to AWS S3');
+        flash('Photo uploaded');
       }
     });
   };
@@ -784,7 +784,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       void uploadImageToS3(file, { folder: 'patients' }).then((res) => {
         if (res.ok && res.url) {
           setReg((r) => ({ ...r, photoDataUrl: res.url }));
-          flash('Photo uploaded to AWS S3');
+          flash('Photo uploaded');
         }
       });
     };

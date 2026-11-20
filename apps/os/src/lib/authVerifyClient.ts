@@ -229,7 +229,7 @@ export function formatVerifyFailureMessage(
         ? 'No staff account was found for this email. Check the email address or ask your administrator to enrol you.'
         : 'No staff account was found for this Staff Badge ID.';
     case 'needs_server_key':
-      return 'This legacy account is not yet synced to Aurora Postgres. Add server-only FIREBASE_WEB_API_KEY in Vercel (not NEXT_PUBLIC_) or reset PIN once via Forgot PIN.';
+      return 'This legacy account needs a one-time sync. Please reset your PIN via Forgot PIN or contact your system administrator.';
     case 'invalid_pin':
     default:
       if (result.httpStatus === 400 && result.error) return result.error;

@@ -665,3 +665,52 @@ test('dhis2Export: uses configured HFR code as orgUnit and includes Akwa Ibom fa
   assert.equal(payload.meta.supervisoryBoard, 'AKSHMB');
   assert.equal(payload.meta.ward, 'Idua Ward I');
 });
+
+test('ui-copy: hides backend infrastructure vendor names from user-facing components and client messages', () => {
+  const filesToCheck = [
+    'src/components/rbac/AccessControl.tsx',
+    'src/components/admin/AdminSettings.tsx',
+    'src/components/dashboards/ReceptionWorkspace.tsx',
+    'src/components/onboarding/HospitalOnboardingWizard.tsx',
+    'src/components/auth/StaffEmailOtpModal.tsx',
+    'src/components/compliance/ComplianceAuditLogs.tsx',
+    'src/components/records/EditPatientModal.tsx',
+    'src/components/interop/DeviceGatewaySettings.tsx',
+    'src/lib/authVerifyClient.ts',
+    'src/lib/storageClient.ts',
+    'src/lib/disasterRecoveryStore.ts',
+    'src/lib/geminiClient.ts',
+  ];
+
+  const forbidden = [
+    'Stored in AWS S3',
+    'to AWS S3',
+    'in S3)',
+    'S3 upload failed',
+    'Headshot S3 upload',
+    'Aurora PostgreSQL',
+    'Aurora Postgres',
+    'Postgres RLS',
+    'Delivered via Resend',
+    'RESEND_API_KEY',
+    'FIREBASE_WEB_API_KEY',
+    'NEXT_PUBLIC_FIREBASE_API_KEY',
+    'GEMINI_API_KEY is not set',
+    'not Vercel directly',
+    'AWS/Postgres, Vercel',
+    'confirm Firestore catches up',
+  ];
+
+  for (const rel of filesToCheck) {
+    const raw = fs.readFileSync(path.join(OS_ROOT, rel), 'utf8');
+    // Ignore JS/TS/JSX comments since comments are never rendered to end users
+    const content = raw.replace(/^\s*(?:\/\/.*|\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\/)/gm, '');
+    for (const phrase of forbidden) {
+      assert.equal(
+        content.includes(phrase),
+        false,
+        `${rel} must not expose backend phrase "${phrase}" to users`
+      );
+    }
+  }
+});

@@ -16,7 +16,7 @@ export const runtime = 'nodejs';
 export async function POST(req: NextRequest) {
   if (!isFirebaseAdminConfigured()) {
     return NextResponse.json(
-      { ok: false, error: 'FIREBASE_SERVICE_ACCOUNT_JSON not configured' },
+      { ok: false, error: 'Authentication administration is not configured on the server.' },
       { status: 503 }
     );
   }

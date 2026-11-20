@@ -126,5 +126,5 @@ export const DR_RUNBOOK = [
   { id: '3', title: 'Promote onsite hub', body: 'Point LAN hub URL in Admin Settings; verify HUB pill is green.' },
   { id: '4', title: 'Take manual snapshot', body: 'Run Create backup — store offline vault copy on encrypted drive.' },
   { id: '5', title: 'Validate integrity', body: 'Spot-check 5 patients, open orders, and last receipts.' },
-  { id: '6', title: 'Resume cloud sync', body: 'When ISP returns, flush outbox; confirm Firestore catches up.' },
+  { id: '6', title: 'Resume cloud sync', body: 'When ISP returns, flush outbox and confirm cloud sync catches up.' },
 ];

@@ -289,7 +289,7 @@ async function dispatchOtpEmail(opts: {
       } catch {
         /* use raw snippet */
       }
-      const deliveryErr = `Resend HTTP ${res.status}: ${parsedMsg || 'rejected by gateway'}`;
+      const deliveryErr = `Email delivery failed (HTTP ${res.status})`;
       console.error('[api/auth/mfa] Resend error:', { status: res.status, fromConfigured, message: parsedMsg });
       return { delivered: false, channel: 'resend', fromConfigured, error: deliveryErr };
     } catch (e) {

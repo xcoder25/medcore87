@@ -60,15 +60,15 @@ export async function geminiGenerate(
       text:
         text ||
         (res.status === 503
-          ? 'GEMINI_API_KEY is not set on the server. Add it in Vercel Environment Variables and redeploy.'
-          : `Gemini request failed (HTTP ${res.status}).`),
+          ? 'Clinical AI assistant is not configured on this server. Contact your system administrator.'
+          : `Clinical AI request failed (HTTP ${res.status}).`),
     };
   } catch (e) {
     return {
       ok: false,
       usedGemini: false,
       configured: false,
-      text: `Celestia could not reach /api/gemini: ${(e as Error)?.message || 'network error'}`,
+      text: `Celestia could not reach the AI service: ${(e as Error)?.message || 'network error'}`,
     };
   }
 }

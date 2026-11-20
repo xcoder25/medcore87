@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: 'FIREBASE_SERVICE_ACCOUNT_JSON not configured on server',
+        error: 'Authentication administration is not configured on the server.',
       },
       { status: 503 }
     );

@@ -139,7 +139,7 @@ export const DeviceGatewaySettings: React.FC<Props> = ({ session }) => {
           How devices reach MedCore
         </div>
         <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: C.text, lineHeight: 1.6 }}>
-          <li>Device → hospital hub (HL7 / DICOM / MQTT) — not Vercel directly</li>
+          <li>Device → hospital hub (HL7 / DICOM / MQTT) — not cloud directly</li>
           <li>Hub gateway translates → clinical bus (orders / vitals / reports)</li>
           <li>All open workstations update in realtime</li>
         </ol>

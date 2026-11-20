@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   FileText,
@@ -160,7 +160,7 @@ export const ComplianceAuditLogs: React.FC<Props> = ({ session }) => {
             Tamper-Evident Ledger Entries
           </span>
           <span className="metric-val">{events.length}</span>
-          <span className="metric-sub">Hash-chained in Postgres RLS</span>
+          <span className="metric-sub">Tamper-evident encrypted ledger</span>
         </div>
         <div className="metric-box alert-red">
           <span className="metric-label">

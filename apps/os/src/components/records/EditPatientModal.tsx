@@ -251,7 +251,7 @@ export const EditPatientModal: React.FC<Props> = ({
                 gap: 8,
               }}
             >
-              <CheckCircle2 size={16} /> Demographics updated and saved to Aurora PostgreSQL.
+              <CheckCircle2 size={16} /> Demographics updated and saved.
             </div>
           )}
 

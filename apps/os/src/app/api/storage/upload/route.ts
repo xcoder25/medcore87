@@ -3,7 +3,6 @@ import {
   isS3Configured,
   uploadBufferToS3,
   generateS3ImageKey,
-  getS3Config,
 } from '../../../../lib/s3Server';
 
 export const runtime = 'nodejs';
@@ -43,13 +42,11 @@ function getExtensionFromMime(mime: string): string {
 
 export async function POST(req: NextRequest) {
   if (!isS3Configured()) {
-    const config = getS3Config();
     return NextResponse.json(
       {
         ok: false,
         error: 'S3_NOT_CONFIGURED',
-        message: 'AWS S3 object storage is not configured. Set MEDCORE_S3_* (bucket, region, OIDC role or IAM keys) in environment variables.',
-        region: config.region,
+        message: 'Cloud file storage is not configured on the server.',
       },
       { status: 503 }
     );
@@ -145,15 +142,14 @@ export async function POST(req: NextRequest) {
       ok: true,
       url: result.url,
       key: result.key,
-      bucket: result.bucket,
       size: result.size,
       mimeType,
-      message: 'Image uploaded successfully to AWS S3 object storage.',
+      message: 'File uploaded successfully.',
     });
   } catch (err: any) {
     console.error('[api/storage/upload error]', err);
     return NextResponse.json(
-      { ok: false, error: err?.message || 'Failed to upload image to AWS S3' },
+      { ok: false, error: 'Failed to upload file. Please try again.' },
       { status: 500 }
     );
   }

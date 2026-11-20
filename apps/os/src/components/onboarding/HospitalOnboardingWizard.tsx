@@ -272,7 +272,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
           filename: `${session.hospitalId.toLowerCase()}-${target}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`,
         });
         if (!res.ok || !res.url) {
-          setDocNote(res.error || 'S3 upload failed — check storage configuration.');
+          setDocNote(res.error && res.error !== 'S3_NOT_CONFIGURED' ? res.error : 'Document upload failed — please try again.');
           return;
         }
         if (target === 'board') patch({ boardAuthDocUrl: res.url });
