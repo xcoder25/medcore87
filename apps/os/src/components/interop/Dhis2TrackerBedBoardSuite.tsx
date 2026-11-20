@@ -53,12 +53,14 @@ import {
 interface Props {
   facilityId?: string;
   facilityName?: string;
+  readOnlyAdmin?: boolean;
   onNavigatePatient?: (patientId: string) => void;
 }
 
 export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
   facilityId = 'IGH-EKT',
   facilityName = 'General Hospital',
+  readOnlyAdmin = false,
   onNavigatePatient,
 }) => {
   const [selectedWard, setSelectedWard] = useState<string>('all');
@@ -589,7 +591,9 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
             Hospital Ward Bed Matrix (Standard WARD-ROOM-BED)
           </div>
           <div style={{ fontSize: 12, color: '#64748B' }}>
-            Click an available bed to admit via Tracker, or an occupied bed to view stages, record daily vitals, transfer, or discharge
+            {readOnlyAdmin
+              ? 'Read-only capacity overview · Patient admissions, transfers & vitals are restricted to Doctors and Nurses'
+              : 'Click an available bed to admit via Tracker, or an occupied bed to view stages, record daily vitals, transfer, or discharge'}
           </div>
         </div>
 
@@ -608,7 +612,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
                 key={bed.bedKey}
                 onClick={() => {
                   setSelectedBed(bed);
-                  if (isAvail) setShowAdmitModal(true);
+                  if (isAvail && !readOnlyAdmin) setShowAdmitModal(true);
                 }}
                 style={{
                   border: `2px solid ${isOcc ? '#DC2626' : isClean ? '#EAB308' : '#16A34A'}`,
@@ -719,13 +723,13 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
                       marginTop: 8,
                       padding: '8px 0',
                       fontSize: 11,
-                      color: '#16A34A',
+                      color: readOnlyAdmin ? '#64748B' : '#16A34A',
                       fontWeight: 700,
                       display: 'flex',
                       alignItems: 'center',
                       gap: 4,
                     }}>
-                      <Plus size={13} /> Click to Admit Patient
+                      {readOnlyAdmin ? 'Available · Capacity Only' : <><Plus size={13} /> Click to Admit Patient</>}
                     </div>
                   )}
                 </div>
@@ -853,39 +857,45 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
               </div>
 
               {/* Action Buttons */}
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid #E2E8F0', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowVitalsModal(true)}
-                  style={{
-                    padding: '8px 14px', borderRadius: 8, border: '1px solid #BFDBFE',
-                    background: '#EFF6FF', color: '#1D4ED8', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  <Stethoscope size={14} /> Record Daily Vitals (Stage 2)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowTransferModal(true)}
-                  style={{
-                    padding: '8px 14px', borderRadius: 8, border: '1px solid #CBD5E1',
-                    background: '#FFF', color: '#0F172A', fontSize: 12, fontWeight: 700, cursor: 'pointer'
-                  }}
-                >
-                  🔄 Transfer Bed (Stage 3)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowDischargeModal(true)}
-                  style={{
-                    padding: '8px 14px', borderRadius: 8, border: 'none',
-                    background: '#DC2626', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer'
-                  }}
-                >
-                  🚪 Discharge & Free Bed (Stage 4)
-                </button>
-              </div>
+              {!readOnlyAdmin ? (
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid #E2E8F0', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowVitalsModal(true)}
+                    style={{
+                      padding: '8px 14px', borderRadius: 8, border: '1px solid #BFDBFE',
+                      background: '#EFF6FF', color: '#1D4ED8', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    <Stethoscope size={14} /> Record Daily Vitals (Stage 2)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowTransferModal(true)}
+                    style={{
+                      padding: '8px 14px', borderRadius: 8, border: '1px solid #CBD5E1',
+                      background: '#FFF', color: '#0F172A', fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                    }}
+                  >
+                    🔄 Transfer Bed (Stage 3)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDischargeModal(true)}
+                    style={{
+                      padding: '8px 14px', borderRadius: 8, border: 'none',
+                      background: '#DC2626', color: '#FFF', fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                    }}
+                  >
+                    🚪 Discharge & Free Bed (Stage 4)
+                  </button>
+                </div>
+              ) : (
+                <div style={{ paddingTop: 10, borderTop: '1px solid #E2E8F0', fontSize: 12, color: '#64748B', fontWeight: 600 }}>
+                  Admin Capacity View: Clinical vitals, bed transfers, and patient discharges are restricted to Doctors &amp; Nurses.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1014,7 +1024,7 @@ export const Dhis2TrackerBedBoardSuite: React.FC<Props> = ({
       )}
 
       {/* ── MODAL: ADMIT PATIENT TRACKER (STAGE 1) ─────────────────────────────────── */}
-      {showAdmitModal && selectedBed && (
+      {!readOnlyAdmin && showAdmitModal && selectedBed && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 99999,
           background: 'rgba(15,23,42,0.65)', backdropFilter: 'blur(4px)',

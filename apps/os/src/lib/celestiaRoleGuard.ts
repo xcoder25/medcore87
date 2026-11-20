@@ -63,8 +63,10 @@ export const ROLE_SCOPE_BLURB: Record<string, string> = {
   dialysis_nurse: 'Renal dialysis workstation: hemodialysis run parameters, dialyzer clearance, vascular access checks, ultrafiltration rates, 24hr fluid balance.',
   mortuary_attendant: 'Mortuary & pathology registry desk: deceased intake, refrigerated cold-bay allocation, autopsy notes, cause of death and death certificates.',
   cssd_technician: 'CSSD sterile supply desk: autoclave sterilization cycles, biological indicator validation, surgical instrument tray barcodes.',
-  cashier: 'Accounts collection: take payment on queued invoices, receipts. Do NOT clinical charting or staff RBAC.',
-  accountant: 'AR / finance desk: debtors, HMO claims, collections analytics. Do NOT clinical orders.',
+  cashier:
+    'Accounts & Cashier Desk: collect payments via POS (AkwaRemit POS, Cash, Virtual Bank Transfer, HMO/AKSHIA, Waiver), manage cashier shift float & dual-control close, track unremitted cash ARNs in till, run shift-close TSA batch cash settlement, inspect open hospital bills, reprint receipts, and reconcile accounts. Do NOT clinical charting or staff RBAC.',
+  accountant:
+    'Accountant & State Treasury Desk: oversee daily revenue reconciliation, separate Cash in Till from Direct AkwaRemit RRR, manage partner-bank TSA lodgments & automated batch ARN settlements, audit dual-control shift closes, track AKSHIA/NHIA/HMO claims and aged AR debtors, and check receipt TSA statuses. Do NOT place clinical orders.',
   hospital_admin: 'Hospital administrator: staff, access, occupancy, revenue overview. Full operational assist allowed.',
   admin: 'Administrator: staff, access, system settings. Full operational assist allowed.',
   medical_director: 'Medical director: clinical governance and oversight. Prefer clinical and quality topics.',
@@ -100,9 +102,9 @@ const INTENT_OWNERS: { test: RegExp; owners: string[]; label: string }[] = [
     label: 'pharmacy dispense / stock',
   },
   {
-    test: /\b(collect\s+payment|mark\s+paid|post\s+payment|record\s+payment|cashier)\b/i,
+    test: /\b(collect\s+payment|mark\s+paid|post\s+payment|record\s+payment|cashier|akwa\s*remit|rrr|arn|cash\s+at\s+till|reconcil|open\s+bills|today'?s?\s+receipts|shift\s+close|shift\s+summary)\b/i,
     owners: ['cashier', 'accountant'],
-    label: 'collecting / posting payments',
+    label: 'collecting payments / cashier / AkwaRemit treasury',
   },
   {
     test: /\b(check-?in|queue|walk-?in|register\s+patient|appointment)\b/i,
@@ -279,7 +281,10 @@ export function buildCelestiaSystemPrompt(session?: CelestiaSessionLike | null):
     customDef
       ? `CUSTOM ROLE ADAPTATION: You are assisting a staff member in a custom facility-defined role ("${customDef.label}"). You have full dynamic awareness of their scope and assigned workstation permissions (${allowedModulesBlurb(rk)}). Understand their role intent, use clinical/operational terminology suited to their department (${department}), and assist with any tasks, documentation, or queries belonging to their assigned modules.`
       : ``,
-    isAdmin ? `Special Admin Power: You can autonomously create new hospital roles (e.g. "Create role Dialysis Nurse with access to nursing, beds, icu, emr, clearance 3 in Inpatient Wards"), list custom roles, and configure module permissions.` : ``,
+    isAdmin ? `Special Admin Power: You can autonomously create new hospital roles (e.g. "Create role Dialysis Nurse with access to nursing, beds, icu, emr, clearance 3 in Inpatient Wards"), list custom roles, configure module permissions, and create hospital beds in any ward (e.g. "Create 8 beds in Male Medical Ward").` : ``,
+    (rk === 'cashier' || rk === 'accountant' || rk.includes('account') || rk.includes('billing'))
+      ? `Special Account-Desk Power: You have live read/operational tooling over Front Desk awaiting invoices, open patient hospital bills, today's receipts & POS/cash/AkwaRemit split, cash-in-till pending remittance vs TSA-remitted batches (ARNs & RRRs), HMO/AKSHIA claims, and end-of-shift reconciliation.`
+      : ``,
     ``,
     `CONVERSATION STYLE:`,
     `- Chat like a sharp hospital colleague — natural, warm, brief. Not a scripted bot.`,
@@ -295,5 +300,6 @@ export function buildCelestiaSystemPrompt(session?: CelestiaSessionLike | null):
     `4. Prefer pointing to the right MedCore screen for their role.`,
     `5. No medical diagnosis beyond "see the clinician" style guidance.`,
     `6. Front Desk / Records: the product can automate register, folder fee → Accounts, check-in, queue list, assign doctor, book appointment, patient lookup. Do not only give UI instructions when automation can run. Keep follow-ups grounded in the last patient discussed.`,
+    `7. Accounts & Finance: physical cash at the till NEVER counts as remitted under Direct AkwaRemit RRR until batched via partner bank deposit + TSA/webhook batch ARN settlement or Dual-Control AkwaRemit RRR posting. Help cashiers and accountants audit pending cash ARNs, open bills, receipts, and Automated Shift Settlement.`,
   ].filter(Boolean).join('\n');
 }

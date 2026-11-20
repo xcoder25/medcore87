@@ -27,6 +27,65 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 });
   }
 
+  const isBatchSettlement =
+    Array.isArray(body.arns) ||
+    String(body.event || '').toLowerCase() === 'batch_settlement';
+
+  if (isBatchSettlement) {
+    const arns: Array<{ arn: string; amountNgn?: number; receiptNo?: string }> = Array.isArray(body.arns)
+      ? body.arns
+      : [];
+    if (arns.length === 0) {
+      return NextResponse.json({ error: 'arns array required for batch_settlement' }, { status: 400 });
+    }
+    const batchTotalNgn = Number(
+      body.totalAmountNgn ||
+        arns.reduce((sum, item) => sum + Number(item?.amountNgn || 0), 0)
+    );
+    if (body.expectedTotalNgn && Math.abs(batchTotalNgn - Number(body.expectedTotalNgn)) > 0.01) {
+      return NextResponse.json(
+        {
+          error: 'EXACT_AMOUNT_MISMATCH',
+          message: `Batch total ₦${batchTotalNgn} does not match expected settlement amount ₦${body.expectedTotalNgn}.`,
+        },
+        { status: 422 }
+      );
+    }
+
+    const facilityId = String(body.facilityId || 'IGH-EKT').trim().toUpperCase();
+    const batchRrr = String(body.akwaRemitRrr || body.rrr || `RRR-AKW-${new Date().getFullYear()}-BATCH`).trim();
+    const settledArns = arns.map((a) => String(typeof a === 'string' ? a : a?.arn || '').trim()).filter(Boolean);
+
+    try {
+      publishFacilitySseEvent({
+        facilityId,
+        key: 'akwaremit-batch-settled',
+        value: {
+          batchRrr,
+          settledArns,
+          settledCount: settledArns.length,
+          totalAmountNgn: batchTotalNgn,
+          merchantId: config.merchantId,
+        },
+        actor: 'akwaremit-webhook',
+      });
+    } catch {
+      /* ignore SSE publish failures */
+    }
+
+    return NextResponse.json({
+      received: true,
+      mode: 'batch_settlement',
+      settledCount: settledArns.length,
+      settledArns,
+      batchRrr,
+      totalAmountNgn: batchTotalNgn,
+      status: 'remitted',
+      merchantId: config.merchantId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   const arn = String(body.arn || body.reference || '').trim();
   const amountReceivedNgn = Number(body.amountNgn || body.amount || 0);
   const channel = String(body.channel || body.paymentMethod || 'bank_transfer').toLowerCase();

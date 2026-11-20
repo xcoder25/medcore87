@@ -714,3 +714,269 @@ test('ui-copy: hides backend infrastructure vendor names from user-facing compon
     }
   }
 });
+
+function withBrowserShims(fn) {
+  const prevWin = globalThis.window;
+  const prevLs = globalThis.localStorage;
+  const prevCE = globalThis.CustomEvent;
+  const lsMap = new Map();
+  const listeners = new Map();
+
+  class ShimCustomEvent {
+    constructor(type, init) {
+      this.type = type;
+      this.detail = init?.detail;
+    }
+  }
+  const ls = {
+    getItem: (k) => (lsMap.has(k) ? lsMap.get(k) : null),
+    setItem: (k, v) => lsMap.set(k, String(v)),
+    removeItem: (k) => lsMap.delete(k),
+  };
+  const win = {
+    addEventListener: (t, cb) => {
+      const list = listeners.get(t) || [];
+      list.push(cb);
+      listeners.set(t, list);
+    },
+    removeEventListener: (t, cb) => {
+      const list = listeners.get(t) || [];
+      listeners.set(t, list.filter((x) => x !== cb));
+    },
+    dispatchEvent: (ev) => {
+      const list = listeners.get(ev?.type) || [];
+      for (const cb of list) {
+        try { cb(ev); } catch { /* ignore */ }
+      }
+      return true;
+    },
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+  };
+
+  globalThis.CustomEvent = ShimCustomEvent;
+  globalThis.localStorage = ls;
+  globalThis.window = win;
+  const cleanup = () => {
+    globalThis.window = prevWin;
+    globalThis.localStorage = prevLs;
+    globalThis.CustomEvent = prevCE;
+  };
+  try {
+    const out = fn();
+    if (out && typeof out.then === 'function') {
+      return out.finally(cleanup);
+    }
+    cleanup();
+    return out;
+  } catch (err) {
+    cleanup();
+    throw err;
+  }
+}
+
+test('bedAutomation: parses multi-ward bed requests and increments bed numbers without collision', () => {
+  withBrowserShims(() => {
+    const mocks = {
+      './roleSyncBus': { publishFacilityData: () => {}, FACILITY_KEYS: { beds: 'beds' } },
+      './idb': { idbGet: async () => null, idbSet: async () => {} },
+      './dhis2TrackerBedBridge': { syncTrackerFromBedRecord: () => {} },
+      './auditLogStore': { appendAudit: () => {} },
+      './liveActions': { emitLiveAction: () => {} },
+    };
+    const bedAuto = loadTsModule('src/lib/bedAutomation.ts', mocks);
+
+    assert.equal(bedAuto.canAutomateBeds('hospital_admin'), true);
+    assert.equal(bedAuto.canAutomateBeds('admin'), true);
+    assert.equal(bedAuto.canAutomateBeds('doctor'), false);
+
+    const parsed = bedAuto.parseBedAutomationIntent('Create 12 beds in Male Medical Ward and 4 beds in ICU');
+    assert.equal(parsed.handled, true);
+    assert.equal(parsed.action, 'create');
+    assert.equal(parsed.jobs.length, 2);
+
+    const res1 = bedAuto.executeCreateBedsAutomation(parsed.jobs, 'TEST-FAC', 'Admin Test');
+    assert.equal(res1.ok, true);
+    assert.equal(res1.totalCreated, 16);
+    assert.equal(res1.details[1].createdNos.join(','), 'ICU-01,ICU-02,ICU-03,ICU-04');
+
+    const more = bedAuto.parseBedAutomationIntent('Add 3 more beds to ICU');
+    assert.equal(more.handled, true);
+    assert.equal(more.action, 'create');
+    const res2 = bedAuto.executeCreateBedsAutomation(more.jobs, 'TEST-FAC', 'Admin Test');
+    assert.equal(res2.totalCreated, 3);
+    assert.equal(res2.details[0].createdNos.join(','), 'ICU-05,ICU-06,ICU-07');
+    assert.equal(res2.details[0].wardTotal, 7);
+  });
+});
+
+test('akwaRemit & paymentReceipts: cash stays pending until Accountant batch settlement, never Direct AkwaRemit', async () => {
+  await withBrowserShims(async () => {
+    const mocks = {
+      './roleSyncBus': { publishFacilityData: () => {} },
+      './adminSettingsStore': { getAdminSettings: () => ({}), isPublicOwnership: () => true },
+      './systemSettingsStore': { getSystemSettings: () => ({}) },
+      './receptionSettingsStore': { getReceptionSettings: () => null },
+    };
+    const pr = loadTsModule('src/lib/paymentReceiptModule.ts', mocks);
+    const ak = loadTsModule('src/lib/akwaRemitStore.ts', mocks);
+
+    const cashReceipt = pr.issuePaymentReceipt(
+      {
+        facilityId: 'IGH-EKT',
+        facilityName: 'Immanuel General Hospital',
+        patientId: 'PT-1',
+        patientName: 'Okon Udoh',
+        hospitalNumber: 'HOSP-001',
+        amountNgn: 5000,
+        method: 'cash',
+        channel: 'AkwaRemit TSA Gateway',
+        purpose: 'Consultation Fee',
+        reference: 'ARN-2026-1001-2001',
+        cashier: 'Cashier Mary',
+        skipAkwaRemitSync: true,
+      },
+      { print: false }
+    );
+    assert.equal(cashReceipt.remittanceStatus, 'pending');
+
+    // Even if a caller mistakenly passes direct_akwaremit for cash, cash must stay pending until batched
+    const rec = ak.recordAkwaRemitPayment({
+      arn: 'ARN-2026-1001-2001',
+      receiptNo: cashReceipt.receiptNo,
+      facilityId: 'IGH-EKT',
+      facilityName: 'Immanuel General Hospital',
+      patientId: 'PT-1',
+      patientName: 'Okon Udoh',
+      hospitalNumber: 'HOSP-001',
+      amountNgn: 5000,
+      method: 'cash',
+      serviceCategory: 'consultation',
+      description: 'Consultation Fee',
+      cashierName: 'Cashier Mary',
+      cashierBadge: 'RCP-01',
+      shiftId: 'SHIFT-1',
+      remittanceStatus: 'direct_akwaremit',
+    });
+    assert.equal(rec.remittanceStatus, 'pending');
+
+    const before = ak.getAkwaRemitDailySummary('IGH-EKT');
+    assert.equal(before.directAkwaRemitTotalNgn, 0);
+    assert.equal(before.pendingCashNgn, 5000);
+    assert.equal(before.remittedCashNgn, 0);
+
+    const batch = ak.executeAkwaRemitBatch({
+      facilityId: 'IGH-EKT',
+      facilityName: 'Immanuel General Hospital',
+      batchType: 'cash_bulk',
+      paymentIds: [rec.id],
+      akwaRemitRrr: 'RRR-2026-8844',
+      bankName: 'Zenith Bank TSA',
+      bankTellerRef: 'TELL-009',
+      remittedBy: 'Chief Accountant',
+      remittedByBadge: 'ACC-01',
+      witnessedBy: 'Internal Auditor',
+      witnessedByBadge: 'AUD-01',
+    });
+    assert.equal(batch.status, 'remitted');
+
+    // Allow dynamic import('./paymentReceiptModule') promise inside executeAkwaRemitBatch to settle
+    await new Promise((r) => setTimeout(r, 40));
+
+    const after = ak.getAkwaRemitDailySummary('IGH-EKT');
+    assert.equal(after.pendingCashNgn, 0);
+    assert.equal(after.remittedCashNgn, 5000);
+    assert.equal(after.alreadyInAkwaRemitNgn, 5000);
+    assert.equal(after.directAkwaRemitTotalNgn, 0);
+
+    const updatedReceipt = pr.getPaymentReceipt(cashReceipt.receiptNo);
+    assert.equal(updatedReceipt.remittanceStatus, 'remitted');
+    assert.equal(updatedReceipt.akwaRemitRrr, 'RRR-2026-8844');
+  });
+});
+
+test('accountsAutomation & inBasketTaxonomy: routes Akwa Remitta Mandate to Notices and resolves live treasury intents', () => {
+  withBrowserShims(() => {
+    const mocks = {
+      './roleSyncBus': { publishFacilityData: () => {} },
+      './adminSettingsStore': { getAdminSettings: () => ({}), isPublicOwnership: () => true },
+      './systemSettingsStore': { getSystemSettings: () => ({}) },
+      './frontDeskAccountsBridge': { listAccountsRequests: () => [] },
+      './receptionOpsStore': { dayStats: () => ({ collected: 0, appointments: 0 }), todayPayments: () => [] },
+      './patientBillingStore': { listBillLines: () => [], listPatientsWithOpenBills: () => [] },
+      './patientRegistryStore': { listPatients: () => [] },
+      'lucide-react': { Inbox: {}, AlertTriangle: {}, Megaphone: {}, HeartPulse: {}, Users: {}, Banknote: {}, Pill: {}, ShieldCheck: {}, FlaskConical: {} },
+    };
+    const tax = loadTsModule('src/lib/inBasketTaxonomy.ts', mocks);
+    const accAuto = loadTsModule('src/lib/accountsAutomation.ts', mocks);
+
+    const accFolders = tax.getRoleInBasketFolders('accountant');
+    const folder = tax.classifyNotificationForRole(
+      {
+        id: 'n1',
+        facilityId: 'IGH-EKT',
+        level: 'important',
+        title: 'Akwa Remitta Mandate · ₦5,000 Physical Cash Awaiting Remittance',
+        body: 'Batch remit to TSA.',
+        module: 'treasury-notice',
+        createdAt: new Date().toISOString(),
+        read: false,
+      },
+      accFolders
+    );
+    assert.equal(folder.id, 'system');
+    assert.equal(folder.epicLabel, 'Notices');
+    assert.ok(folder.label.includes('Notices'));
+
+    assert.equal(accAuto.canAutomateAccounts('cashier'), true);
+    assert.equal(accAuto.canAutomateAccounts('accountant'), true);
+    assert.equal(accAuto.canAutomateAccounts('doctor'), false);
+
+    const a1 = accAuto.resolveAccountsAction('Pending cash at till');
+    assert.equal(a1.type, 'pending_remittance');
+    const reply = accAuto.executeAccountsAction(a1, { facilityId: 'IGH-EKT', facilityName: 'IGH' });
+    assert.ok(reply.includes('Pending Cash') || reply.includes('Cash'));
+  });
+});
+
+test('ui-invariants: Mark paid removed beside Collect, Bed admin guard active, 10s mandate, AI minimize present', () => {
+  const accSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/dashboards/AccountingWorkspace.tsx'), 'utf8');
+  assert.equal(accSrc.includes('Mark paid'), false);
+  assert.equal(accSrc.includes('Quick Mark Paid'), false);
+  assert.ok(accSrc.includes('printPaymentReceiptDocument'));
+  assert.ok(accSrc.includes('Print Receipt'));
+
+  const bedSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/beds/BedManagement.tsx'), 'utf8');
+  assert.ok(bedSrc.includes('isAdminView'));
+  assert.ok(bedSrc.includes('readOnlyAdmin={isAdminView}'));
+
+  const dhisBedSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/interop/Dhis2TrackerBedBoardSuite.tsx'), 'utf8');
+  assert.ok(dhisBedSrc.includes('!readOnlyAdmin && showAdmitModal'));
+
+  const balSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/finance/AutoAccountBalancingCard.tsx'), 'utf8');
+  assert.ok(balSrc.includes('summary.pendingCashNgn'));
+  assert.ok(balSrc.includes('mandateSecondsLeft'));
+  assert.ok(balSrc.includes('upsertFacilityNotice'));
+
+  const aiSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/ai-insights/M87AICopilotSuite.tsx'), 'utf8');
+  assert.ok(aiSrc.includes('parseBedAutomationIntent'));
+  assert.ok(aiSrc.includes('resolveAccountsAction'));
+  assert.ok(aiSrc.includes('onMinimize'));
+  assert.ok(aiSrc.includes('<Minus'));
+
+  const newFiles = [
+    'src/components/beds/DoctorAdmissionSuite.tsx',
+    'src/components/notifications/NotificationDetailModal.tsx',
+    'src/app/api/akwaremit/batch-settle/route.ts',
+    'src/lib/bedAutomation.ts',
+    'src/lib/accountsAutomation.ts',
+  ];
+  for (const rel of newFiles) {
+    const content = fs.readFileSync(path.join(OS_ROOT, rel), 'utf8');
+    for (const phrase of ['Stored in AWS S3', 'Aurora Postgres', 'Vercel', 'Firebase']) {
+      assert.equal(content.includes(phrase), false, `${rel} must not expose "${phrase}"`);
+    }
+  }
+});

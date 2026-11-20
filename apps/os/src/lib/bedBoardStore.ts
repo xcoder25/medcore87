@@ -211,27 +211,111 @@ export function ensureDefaultBeds(facilityId: string): BedRecord[] {
   return beds;
 }
 
+const DEFAULT_WARD_PREFIX_MAP: Array<[RegExp, string]> = [
+  [/male\s+medical/i, 'MM'],
+  [/female\s+medical/i, 'FM'],
+  [/male\s+surgical/i, 'MS'],
+  [/female\s+surgical/i, 'FS'],
+  [/paediatric|pediatric/i, 'PD'],
+  [/maternity|obstetric|labour|labor|postnatal/i, 'MT'],
+  [/\bicu\b|intensive\s+care/i, 'ICU'],
+  [/\bpacu\b|recovery/i, 'PACU'],
+  [/\bnicu\b|neonatal/i, 'NICU'],
+  [/emergency|accident|a\s*&\s*e|trauma/i, 'ER'],
+  [/isolation|infectious/i, 'ISO'],
+  [/surgical|surgery/i, 'SG'],
+  [/orthop/i, 'ORT'],
+  [/gynaec|gynec/i, 'GYN'],
+  [/private|vip|amenity/i, 'PRV'],
+  [/medical/i, 'MD'],
+];
+
+/**
+ * Derive a short, deterministic uppercase bed prefix for a ward name.
+ * Reuses existing bed prefixes in the same ward when already present.
+ */
+export function generateWardPrefix(wardName: string, existingBeds?: BedRecord[]): string {
+  const cleanWard = wardName.trim();
+  if (existingBeds && existingBeds.length > 0 && cleanWard) {
+    const match = existingBeds.find(
+      (b) => b.ward.trim().toLowerCase() === cleanWard.toLowerCase() && b.bedNo.includes('-')
+    );
+    if (match) {
+      const existingPrefix = match.bedNo.split('-')[0].trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (existingPrefix) return existingPrefix;
+    }
+  }
+
+  for (const [rx, code] of DEFAULT_WARD_PREFIX_MAP) {
+    if (rx.test(cleanWard)) return code;
+  }
+
+  const words = cleanWard
+    .replace(/\bwards?\b/gi, '')
+    .trim()
+    .split(/[\s/&_-]+/)
+    .filter(Boolean);
+
+  if (words.length >= 2) {
+    return words
+      .slice(0, 3)
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '') || 'BD';
+  }
+  const single = (words[0] || cleanWard || 'BD').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  return single.slice(0, 4) || 'BD';
+}
+
 export function createBeds(input: {
   facilityId: string;
   ward: string;
-  prefix: string;
+  prefix?: string;
   count: number;
   startFrom?: number;
   actor?: string;
 }): BedRecord[] {
   const state = load();
-  const start = input.startFrom ?? 1;
+  const facilityBeds = state.beds.filter((b) => b.facilityId === input.facilityId);
+  const wardName = input.ward.trim();
+  const cleanPrefix =
+    String(input.prefix || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '') || generateWardPrefix(wardName, facilityBeds);
+
+  let start = input.startFrom;
+  if (start == null) {
+    let maxNum = 0;
+    const prefixEscaped = cleanPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`^${prefixEscaped}-(\\d+)$`, 'i');
+    for (const b of facilityBeds) {
+      const m = b.bedNo.match(re);
+      if (m) {
+        const val = parseInt(m[1], 10);
+        if (Number.isFinite(val) && val > maxNum) maxNum = val;
+      }
+    }
+    start = maxNum + 1;
+  }
+
+  const targetCount = Math.min(100, Math.max(1, Math.floor(Number(input.count) || 1)));
   const now = new Date().toISOString();
   const created: BedRecord[] = [];
-  for (let i = 0; i < input.count; i++) {
-    const n = start + i;
-    const bedNo = `${input.prefix}-${String(n).padStart(2, '0')}`;
+  let n = Math.max(1, start);
+  let guard = 0;
+
+  while (created.length < targetCount && guard < targetCount + 200) {
+    guard++;
+    const bedNo = `${cleanPrefix}-${String(n).padStart(2, '0')}`;
     const id = `${input.facilityId}-${bedNo}`;
+    n++;
     if (state.beds.some((b) => b.id === id)) continue;
     const bed: BedRecord = {
       id,
       facilityId: input.facilityId,
-      ward: input.ward.trim(),
+      ward: wardName,
       bedNo,
       status: 'available',
       updatedAt: now,
@@ -240,19 +324,57 @@ export function createBeds(input: {
     state.beds.push(bed);
     created.push(bed);
   }
+
   save(state);
   if (created.length) {
     pushAudit({
       facilityId: input.facilityId,
       bedId: created[0].id,
       bedNo: created.map((c) => c.bedNo).join(','),
-      ward: input.ward,
+      ward: wardName,
       action: 'create',
       actor: input.actor || 'Staff',
-      detail: `Created ${created.length} bed(s) in ${input.ward}`,
+      detail: `Created ${created.length} bed(s) in ${wardName}`,
     });
   }
   return created;
+}
+
+export interface WardCapacitySummary {
+  ward: string;
+  total: number;
+  occupied: number;
+  isolation: number;
+  available: number;
+  cleaning: number;
+  maintenance: number;
+  reserved: number;
+}
+
+export function wardCapacitySummary(facilityId: string): WardCapacitySummary[] {
+  const beds = listBeds(facilityId);
+  const byWard = new Map<string, WardCapacitySummary>();
+  for (const b of beds) {
+    const cur = byWard.get(b.ward) || {
+      ward: b.ward,
+      total: 0,
+      occupied: 0,
+      isolation: 0,
+      available: 0,
+      cleaning: 0,
+      maintenance: 0,
+      reserved: 0,
+    };
+    cur.total++;
+    if (b.status === 'occupied') cur.occupied++;
+    else if (b.status === 'isolation') cur.isolation++;
+    else if (b.status === 'available') cur.available++;
+    else if (b.status === 'cleaning') cur.cleaning++;
+    else if (b.status === 'maintenance') cur.maintenance++;
+    else if (b.status === 'reserved') cur.reserved++;
+    byWard.set(b.ward, cur);
+  }
+  return Array.from(byWard.values()).sort((a, b) => a.ward.localeCompare(b.ward));
 }
 
 export function updateBedMeta(
@@ -328,19 +450,19 @@ export function admitToBed(
   state.beds = state.beds.map((b) =>
     b.id === bedId
       ? {
-          ...b,
-          status: (input.isolation ? 'isolation' : 'occupied') as BedStatus,
-          patient: input.patient,
-          patientId: input.patientId,
-          hospitalNumber: input.hospitalNumber,
-          doctor: input.doctor,
-          diagnosis: input.diagnosis || 'Admitted',
-          admitDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          admitAt: now,
-          expectedDischarge: input.expectedDischarge,
-          updatedAt: now,
-          updatedBy: input.actor,
-        }
+        ...b,
+        status: (input.isolation ? 'isolation' : 'occupied') as BedStatus,
+        patient: input.patient,
+        patientId: input.patientId,
+        hospitalNumber: input.hospitalNumber,
+        doctor: input.doctor,
+        diagnosis: input.diagnosis || 'Admitted',
+        admitDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        admitAt: now,
+        expectedDischarge: input.expectedDischarge,
+        updatedAt: now,
+        updatedBy: input.actor,
+      }
       : b
   );
   save(state);
@@ -399,20 +521,20 @@ export function dischargeBed(bedId: string, actor?: string) {
   state.beds = state.beds.map((b) =>
     b.id === bedId
       ? {
-          ...b,
-          status: 'cleaning' as const,
-          patient: undefined,
-          patientId: undefined,
-          hospitalNumber: undefined,
-          doctor: undefined,
-          diagnosis: undefined,
-          admitDate: undefined,
-          admitAt: undefined,
-          expectedDischarge: undefined,
-          isolationType: undefined,
-          updatedAt: new Date().toISOString(),
-          updatedBy: actor,
-        }
+        ...b,
+        status: 'cleaning' as const,
+        patient: undefined,
+        patientId: undefined,
+        hospitalNumber: undefined,
+        doctor: undefined,
+        diagnosis: undefined,
+        admitDate: undefined,
+        admitAt: undefined,
+        expectedDischarge: undefined,
+        isolationType: undefined,
+        updatedAt: new Date().toISOString(),
+        updatedBy: actor,
+      }
       : b
   );
   save(state);
@@ -655,7 +777,7 @@ export function exportCensusCsv(facilityId: string): string {
 }
 
 export function subscribeBeds(cb: () => void): () => void {
-  if (typeof window === 'undefined') return () => {};
+  if (typeof window === 'undefined') return () => { };
   const fn = () => cb();
   window.addEventListener(EVT, fn);
   window.addEventListener('medcore-data-reset', fn);
@@ -700,20 +822,20 @@ if (typeof window !== 'undefined' && !_bridgeListenerRegistered) {
         state.beds = state.beds.map((b) =>
           b.id === match.id
             ? {
-                ...b,
-                status: 'occupied' as const,
-                patient: record.patientName,
-                hospitalNumber: record.hospitalNumber,
-                diagnosis: record.diagnosis,
-                doctor: record.doctor,
-                admitDate: new Date(record.admittedAt).toLocaleDateString('en-GB', {
-                  day: '2-digit',
-                  month: 'short',
-                  year: 'numeric',
-                }),
-                admitAt: record.admittedAt,
-                updatedAt: new Date().toISOString(),
-              }
+              ...b,
+              status: 'occupied' as const,
+              patient: record.patientName,
+              hospitalNumber: record.hospitalNumber,
+              diagnosis: record.diagnosis,
+              doctor: record.doctor,
+              admitDate: new Date(record.admittedAt).toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+              }),
+              admitAt: record.admittedAt,
+              updatedAt: new Date().toISOString(),
+            }
             : b
         );
         save(state);
@@ -728,15 +850,15 @@ if (typeof window !== 'undefined' && !_bridgeListenerRegistered) {
         state.beds = state.beds.map((b) =>
           b.id === match.id
             ? {
-                ...b,
-                status: 'cleaning' as const,
-                patient: undefined,
-                hospitalNumber: undefined,
-                diagnosis: undefined,
-                admitDate: undefined,
-                admitAt: undefined,
-                updatedAt: new Date().toISOString(),
-              }
+              ...b,
+              status: 'cleaning' as const,
+              patient: undefined,
+              hospitalNumber: undefined,
+              diagnosis: undefined,
+              admitDate: undefined,
+              admitAt: undefined,
+              updatedAt: new Date().toISOString(),
+            }
             : b
         );
         save(state);
@@ -749,10 +871,10 @@ if (typeof window !== 'undefined' && !_bridgeListenerRegistered) {
         state.beds = state.beds.map((b) =>
           b.id === match.id
             ? {
-                ...b,
-                status: 'available' as const,
-                updatedAt: new Date().toISOString(),
-              }
+              ...b,
+              status: 'available' as const,
+              updatedAt: new Date().toISOString(),
+            }
             : b
         );
         save(state);

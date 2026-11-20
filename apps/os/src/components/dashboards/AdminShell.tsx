@@ -140,6 +140,8 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
   const [search, setSearch] = useState('');
   const [showCredModal, setShowCredModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
+  const [aiMinimized, setAiMinimized] = useState(false);
 
   const goModule = useCallback((key: AdminModule) => {
     setModuleHistory((h) => [...h.slice(-19), module]);
@@ -380,7 +382,17 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
       case 'settings':
         return <AdminSettings session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
       case 'm87-ai':
-        return <M87AICopilotSuite session={session} onNavigate={(k: string) => goModule(k as AdminModule)} />;
+        return (
+          <M87AICopilotSuite
+            session={session}
+            onNavigate={(k: string) => goModule(k as AdminModule)}
+            onMinimize={() => {
+              setAiDrawerOpen(true);
+              setAiMinimized(true);
+              goBack();
+            }}
+          />
+        );
       default:
         return <AdminWorkspace session={session} onNavigate={(k) => goModule(k as AdminModule)} />;
     }
@@ -511,12 +523,20 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
                 aria-label="Search modules and settings"
               />
             </div>
-            <NotificationBell app="MEDCORE_OS_ADMIN" facilityId={session.facility} session={session} />
+            <NotificationBell
+              app="MEDCORE_OS_ADMIN"
+              facilityId={session.facility}
+              session={session}
+              onNavigate={(k) => goModule(k as AdminModule)}
+            />
             <button
               type="button"
               className="admin-shell-icon-btn"
-              onClick={() => goModule('m87-ai')}
-              title="Open Clinical Intelligence & CDS"
+              onClick={() => {
+                setAiDrawerOpen(true);
+                setAiMinimized(false);
+              }}
+              title="Open Clinical Intelligence & Admin AI"
               style={{ color: '#F59E0B' }}
             >
               <Sparkles size={16} />
@@ -598,6 +618,106 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
         <main className="admin-shell-content">
           {body}
         </main>
+
+        {aiDrawerOpen && (
+          <div
+            role="dialog"
+            aria-label="Clinical Intelligence Assistant"
+            aria-hidden={aiMinimized}
+            style={{
+              position: 'fixed',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: 'min(460px, 100vw)',
+              zIndex: 9600,
+              display: aiMinimized ? 'none' : 'flex',
+              flexDirection: 'column',
+              background: 'linear-gradient(165deg, #06061a 0%, #0c0a2e 50%, #12082a 100%)',
+              borderLeft: '1px solid rgba(167, 139, 250, 0.25)',
+              boxShadow: '-20px 0 60px rgba(0, 0, 0, 0.55)',
+            }}
+          >
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <M87AICopilotSuite
+                session={session}
+                inDrawer
+                onMinimize={() => setAiMinimized(true)}
+                onClose={() => {
+                  setAiDrawerOpen(false);
+                  setAiMinimized(false);
+                }}
+                onNavigate={(k: string) => goModule(k as AdminModule)}
+              />
+            </div>
+          </div>
+        )}
+
+        {aiDrawerOpen && aiMinimized && (
+          <div
+            style={{
+              position: 'fixed',
+              right: 22,
+              bottom: 22,
+              zIndex: 9650,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 10px 8px 14px',
+              borderRadius: 999,
+              background: 'linear-gradient(135deg, #0B1220 0%, #1E1B4B 100%)',
+              color: '#FFFFFF',
+              border: '1px solid rgba(167, 139, 250, 0.45)',
+              boxShadow: '0 14px 36px rgba(15, 23, 42, 0.38)',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setAiMinimized(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#FFFFFF',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: 'pointer',
+                fontWeight: 700,
+                fontSize: 12,
+                padding: 0,
+              }}
+              title="Restore Admin AI chat"
+            >
+              <Sparkles size={15} color="#F59E0B" />
+              <span>Admin AI · Minimized</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAiDrawerOpen(false);
+                setAiMinimized(false);
+              }}
+              title="Close Admin AI"
+              aria-label="Close minimized Admin AI"
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: '50%',
+                border: 'none',
+                background: 'rgba(255,255,255,0.14)',
+                color: '#E2E8F0',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 12,
+                fontWeight: 800,
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         <UserProfileModal
           session={session}

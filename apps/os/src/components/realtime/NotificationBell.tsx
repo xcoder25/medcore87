@@ -6,11 +6,13 @@ import type { UserSession } from '../auth/AuthScreen';
 import {
   listNotifications,
   markRead,
+  markUnread,
   markAllRead,
   subscribeNotifications,
   notificationSummary,
   type HospitalNotification,
 } from '../../lib/notificationEngine';
+import { NotificationDetailModal } from '../notifications/NotificationDetailModal';
 import {
   getRoleInBasketFolders,
   classifyNotificationForRole,
@@ -32,6 +34,7 @@ interface Props {
   compact?: boolean;
   session?: UserSession;
   onOpenInbox?: () => void;
+  onNavigate?: (moduleKey: string) => void;
 }
 
 export const NotificationBell: React.FC<Props> = ({
@@ -39,6 +42,7 @@ export const NotificationBell: React.FC<Props> = ({
   facilityId,
   session,
   onOpenInbox,
+  onNavigate,
 }) => {
   const fid = session?.hospitalId || facilityId || 'IGH-EKT';
   const roleKey = inferRoleKey(session?.roleKey || session?.role || session?.title, session?.badgeId);
@@ -50,6 +54,7 @@ export const NotificationBell: React.FC<Props> = ({
   const [sum, setSum] = useState({ critical: 0, important: 0, info: 0, total: 0 });
   const [open, setOpen] = useState(false);
   const [activeFolder, setActiveFolder] = useState<string>('all');
+  const [selectedNotif, setSelectedNotif] = useState<HospitalNotification | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   const reload = () => {
@@ -61,7 +66,7 @@ export const NotificationBell: React.FC<Props> = ({
   useEffect(() => {
     reload();
     return subscribeNotifications(reload);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fid, session?.roleKey, session?.name, roleKey]);
 
   useEffect(() => {
@@ -78,9 +83,9 @@ export const NotificationBell: React.FC<Props> = ({
     activeFolder === 'all'
       ? items.slice(0, 50)
       : items.filter((n) => {
-          const f = folders.find((x) => x.id === activeFolder);
-          return f ? f.matcher(n) : true;
-        }).slice(0, 50);
+        const f = folders.find((x) => x.id === activeFolder);
+        return f ? f.matcher(n) : true;
+      }).slice(0, 50);
 
   // Folder counts
   const folderCounts: Record<string, number> = { all: items.filter((n) => !n.read).length };
@@ -353,7 +358,12 @@ export const NotificationBell: React.FC<Props> = ({
                   <button
                     key={n.id}
                     type="button"
-                    onClick={() => { markRead(n.id); reload(); }}
+                    onClick={() => {
+                      markRead(n.id);
+                      setSelectedNotif({ ...n, read: true });
+                      setOpen(false);
+                      reload();
+                    }}
                     style={{
                       width: '100%',
                       textAlign: 'left',
@@ -517,6 +527,27 @@ export const NotificationBell: React.FC<Props> = ({
             )}
           </div>
         </div>
+      )}
+
+      {selectedNotif && (
+        <NotificationDetailModal
+          notification={selectedNotif}
+          onClose={() => setSelectedNotif(null)}
+          onToggleRead={(id, nextRead) => {
+            if (nextRead) markRead(id);
+            else markUnread(id);
+            setSelectedNotif((prev) => (prev ? { ...prev, read: nextRead } : null));
+            reload();
+          }}
+          onNavigate={
+            onNavigate
+              ? (mod) => {
+                const target = mod === 'treasury-notice' ? 'akwaremit' : mod;
+                onNavigate(target);
+              }
+              : undefined
+          }
+        />
       )}
     </div>
   );

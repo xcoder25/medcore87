@@ -381,6 +381,7 @@ export const PosPaymentDesk: React.FC<Props> = ({
       shiftId: activeShift?.id || `SHIFT-${new Date().toISOString().slice(0, 10)}`,
       exactAmountValidated: true,
       status: 'paid',
+      remittanceStatus: methodPaid === 'bank_transfer' ? 'direct_akwaremit' : 'pending',
       virtualAccount: methodPaid === 'bank_transfer' ? virtualAccount : undefined,
     });
 
@@ -421,7 +422,7 @@ export const PosPaymentDesk: React.FC<Props> = ({
       });
     } catch { /* ignore */ }
 
-    // 6. Print physical AkwaRemit receipt
+    // 6. Print physical AkwaRemit receipt (skipAkwaRemitSync: step 2 already logged the exact ARN record)
     try {
       printPaymentReceipt({
         reference: referenceArn,
@@ -429,14 +430,23 @@ export const PosPaymentDesk: React.FC<Props> = ({
         hospitalNumber: hospNo,
         amount: amt,
         method: methodPaid,
-        channel: 'AkwaRemit TSA Gateway',
+        channel:
+          methodPaid === 'cash'
+            ? 'Hospital Cash Till (Pending TSA Remittance)'
+            : methodPaid === 'akwaremit_pos'
+              ? 'AkwaRemit POS Terminal'
+              : methodPaid === 'bank_transfer'
+                ? 'AkwaRemit Virtual Bank Transfer'
+                : 'Hospital Billing',
         purpose: lines.map((l) => l.label).join(', ') || purpose,
         facilityName,
         facilityId,
         patientId: patient.id,
         cashier,
+        cashierBadge,
         paymentId: pay.id,
         visitId: open?.id,
+        skipAkwaRemitSync: true,
       });
     } catch (e) {
       console.warn('[pos] receipt print', e);

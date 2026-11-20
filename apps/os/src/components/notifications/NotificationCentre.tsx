@@ -5,6 +5,7 @@ import type { UserSession } from '../auth/AuthScreen';
 import {
   listNotifications,
   markRead,
+  markUnread,
   markAllRead,
   notificationSummary,
   subscribeNotifications,
@@ -12,6 +13,7 @@ import {
   type HospitalNotification,
   type NotifLevel,
 } from '../../lib/notificationEngine';
+import { NotificationDetailModal } from './NotificationDetailModal';
 import {
   getRoleInBasketFolders,
   classifyNotificationForRole,
@@ -64,6 +66,7 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
   const [activeFolder, setActiveFolder] = useState<string>('all');
   const [filterLevel, setFilterLevel] = useState<'all' | NotifLevel>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedNotif, setSelectedNotif] = useState<HospitalNotification | null>(null);
   const syncDoneRef = React.useRef(false);
 
   const reload = () => {
@@ -199,7 +202,7 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
 
     reload();
     return subscribeNotifications(reload);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facilityId, isReception, roleKey]);
 
   // Memoised folder counts
@@ -506,6 +509,20 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
           return (
             <div
               key={n.id}
+              onClick={() => {
+                markRead(n.id);
+                setSelectedNotif({ ...n, read: true });
+                reload();
+              }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  markRead(n.id);
+                  setSelectedNotif({ ...n, read: true });
+                  reload();
+                }
+              }}
               style={{
                 display: 'flex',
                 gap: 12,
@@ -514,6 +531,7 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
                 background: n.read ? '#fff' : folder.bg,
                 borderLeft: n.read ? '3px solid transparent' : `3px solid ${folder.color}`,
                 transition: 'background 0.15s',
+                cursor: 'pointer',
               }}
             >
               {/* Folder icon pill */}
@@ -563,7 +581,25 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
                     {n.level === 'critical' ? '🚨 STAT' : n.level === 'important' ? '⚠ URGENT' : 'INFO'}
                   </span>
                 </div>
-                <p style={{ margin: '4px 0', fontSize: 12.5, color: '#475569', lineHeight: 1.5 }}>{n.body}</p>
+                <p
+                  style={{
+                    margin: '4px 0',
+                    fontSize: 12.5,
+                    color: '#475569',
+                    lineHeight: 1.5,
+                    display: '-webkit-box',
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {n.body}
+                </p>
+                {n.body.length > 140 && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#2563EB', display: 'inline-block', marginBottom: 4 }}>
+                    Click to open full message →
+                  </span>
+                )}
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 10.5, color: '#94A3B8' }}>{timeAgo(n.createdAt)}</span>
                   {n.module && (
@@ -590,10 +626,31 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
 
               {/* Actions */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    markRead(n.id);
+                    setSelectedNotif({ ...n, read: true });
+                    reload();
+                  }}
+                  style={{
+                    border: '1px solid #CBD5E1',
+                    background: '#F8FAFC',
+                    borderRadius: 7,
+                    padding: '4px 9px',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    color: '#0F172A',
+                  }}
+                >
+                  Open
+                </button>
                 {!n.read && (
                   <button
                     type="button"
-                    onClick={() => { markRead(n.id); reload(); }}
+                    onClick={(e) => { e.stopPropagation(); markRead(n.id); reload(); }}
                     style={{
                       border: '1px solid #E2E8F0',
                       background: '#fff',
@@ -611,7 +668,11 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
                 {n.module && onNavigate && (
                   <button
                     type="button"
-                    onClick={() => onNavigate(n.module!)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const target = n.module === 'treasury-notice' ? 'akwaremit' : n.module!;
+                      onNavigate(target);
+                    }}
                     style={{
                       border: 'none',
                       background: '#EFF6FF',
@@ -681,6 +742,27 @@ export const NotificationCentre: React.FC<Props> = ({ session, onNavigate }) => 
           </button>
         )}
       </div>
+
+      {selectedNotif && (
+        <NotificationDetailModal
+          notification={selectedNotif}
+          onClose={() => setSelectedNotif(null)}
+          onToggleRead={(id, nextRead) => {
+            if (nextRead) markRead(id);
+            else markUnread(id);
+            setSelectedNotif((prev) => (prev ? { ...prev, read: nextRead } : null));
+            reload();
+          }}
+          onNavigate={
+            onNavigate
+              ? (mod) => {
+                const target = mod === 'treasury-notice' ? 'akwaremit' : mod;
+                onNavigate(target);
+              }
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 };

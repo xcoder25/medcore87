@@ -202,7 +202,8 @@ const ROLE_NOTIFICATION_MATRIX: Record<string, string[]> = {
   pharmacist: ['pharmacist', 'pharmacy', 'dispense', 'cpoe_rx', 'drug', 'stock', 'formulary', 'contraindication'],
   lab: ['lab', 'laboratory', 'lis', 'specimen', 'analyzer', 'blood_bank', 'test_order', 'panic_result'],
   radiologist: ['radiologist', 'radiology', 'ris', 'pacs', 'imaging', 'xray', 'mri', 'ct_scan'],
-  accountant: ['accountant', 'accounts', 'billing', 'cashier', 'pos', 'payment', 'claim', 'insurance', 'nhia', 'hmo', 'ar'],
+  accountant: ['accountant', 'accounts', 'billing', 'cashier', 'pos', 'payment', 'claim', 'insurance', 'nhia', 'hmo', 'ar', 'treasury', 'remittance', 'treasury-notice'],
+  cashier: ['cashier', 'accountant', 'accounts', 'billing', 'pos', 'payment', 'receipt', 'treasury', 'remittance', 'treasury-notice', 'ar'],
   reception: ['reception', 'front_desk', 'queue', 'arrival', 'registration', 'appointment', 'check_in', 'transit', 'mpi'],
   records: ['records', 'him', 'chart', 'deficiency', 'coding', 'roi', 'document', 'merge', 'mpi'],
   biomedical: ['biomedical', 'equipment', 'maintenance', 'asset', 'iot', 'analyzer_device', 'facilities', 'oxygen'],
@@ -290,8 +291,55 @@ export function markRead(id: string) {
   write(list);
 }
 
+export function markUnread(id: string) {
+  const list = read();
+  const i = list.findIndex((n) => n.id === id);
+  if (i < 0) return;
+  list[i] = { ...list[i], read: false };
+  write(list);
+}
+
 export function markAllRead(facilityId: string) {
   write(read().map((n) => (n.facilityId === facilityId ? { ...n, read: true } : n)));
+}
+
+/**
+ * Insert or update a single persistent facility notice keyed by day + title/dedupeKey
+ * so dashboard popout reminders persist cleanly under In-Basket Notices without duplicates.
+ */
+export function upsertFacilityNotice(
+  input: Omit<HospitalNotification, 'id' | 'read' | 'createdAt'> & { dedupeKey?: string }
+): HospitalNotification {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const current = read();
+  const matchIdx = current.findIndex(
+    (n) =>
+      n.facilityId === input.facilityId &&
+      (n.createdAt || '').slice(0, 10) === todayStr &&
+      n.title === input.title &&
+      n.module === input.module
+  );
+
+  if (matchIdx >= 0) {
+    const existing = current[matchIdx];
+    if (existing.body === input.body && existing.level === input.level) {
+      return existing;
+    }
+    const updated: HospitalNotification = {
+      ...existing,
+      body: input.body,
+      level: input.level,
+      read: false,
+      createdAt: new Date().toISOString(),
+    };
+    const next = [...current];
+    next[matchIdx] = updated;
+    write(next);
+    return updated;
+  }
+
+  const { dedupeKey: _ignored, ...rest } = input;
+  return pushNotification(rest);
 }
 
 export function notificationSummary(

@@ -95,6 +95,8 @@ export function printPaymentReceipt(input: {
   paymentId?: string;
   visitId?: string;
   print?: boolean;
+  skipAkwaRemitSync?: boolean;
+  akwaRemitRrr?: string;
 }) {
   return issuePaymentReceipt(
     {
@@ -113,6 +115,8 @@ export function printPaymentReceipt(input: {
       visitId: input.visitId,
       cashier: input.cashier,
       cashierBadge: input.cashierBadge,
+      skipAkwaRemitSync: input.skipAkwaRemitSync,
+      akwaRemitRrr: input.akwaRemitRrr,
     },
     { print: input.print !== false }
   );

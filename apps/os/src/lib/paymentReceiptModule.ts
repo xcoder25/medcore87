@@ -144,6 +144,8 @@ export type IssueReceiptInput = {
   cashier?: string;
   cashierBadge?: string;
   akwaRemitRrr?: string;
+  /** When caller already recorded to AkwaRemit store directly, skip duplicate sync */
+  skipAkwaRemitSync?: boolean;
 };
 
 /** Create + persist receipt, then optionally print */
@@ -167,9 +169,11 @@ export function issuePaymentReceipt(
     }
   })();
 
+  const mLower = (input.method || '').toLowerCase();
+  const cLower = (input.channel || '').toLowerCase();
+  const isCash = mLower === 'cash';
   const isDirectAkwaRemit =
-    input.method.toLowerCase().includes('akwaremit') ||
-    (input.channel || '').toLowerCase().includes('akwaremit');
+    !isCash && (mLower === 'direct_akwaremit' || (mLower === 'bank_transfer' && cLower.includes('akwaremit')));
 
   const remittanceStatus = isDirectAkwaRemit ? 'direct_akwaremit' : 'pending';
   const resolvedFacilityName = adminSettings?.displayName
@@ -213,49 +217,98 @@ export function issuePaymentReceipt(
 
   writeAll([receipt, ...readAll()]);
 
-  // AkwaRemit State Revenue Registry auto-record
-  try {
-    const isAkwaPos =
-      input.method.toLowerCase().includes('pos') ||
-      input.method.toLowerCase().includes('akwaremit') ||
-      input.method.toLowerCase().includes('card') ||
-      (input.channel || '').toLowerCase().includes('pos') ||
-      Boolean(input.paystackRef);
+  // AkwaRemit State Revenue Registry auto-record (skip if caller already recorded ARN)
+  if (!input.skipAkwaRemitSync) {
+    try {
+      const isAkwaPos =
+        !isCash &&
+        (mLower.includes('pos') ||
+          mLower === 'akwaremit_pos' ||
+          mLower.includes('card') ||
+          cLower.includes('pos') ||
+          Boolean(input.paystackRef));
 
-    const akwaMethod = isDirectAkwaRemit
-      ? 'direct_akwaremit'
-      : isAkwaPos
-      ? 'akwaremit_pos'
-      : 'cash';
+      const akwaMethod = isDirectAkwaRemit
+        ? 'direct_akwaremit'
+        : isAkwaPos
+          ? 'akwaremit_pos'
+          : isCash
+            ? 'cash'
+            : mLower.includes('transfer')
+              ? 'bank_transfer'
+              : 'cash';
 
-    // Lazy import akwaRemitStore to avoid circular dependencies
-    import('./akwaRemitStore').then(({ recordAkwaRemitPayment }) => {
-      recordAkwaRemitPayment({
-        receiptNo: receipt.receiptNo,
-        facilityId: receipt.facilityId,
-        facilityName: receipt.facilityName,
-        patientId: receipt.patientId || 'WALK-IN',
-        patientName: receipt.patientName,
-        hospitalNumber: receipt.hospitalNumber || 'N/A',
-        amountNgn: receipt.amountNgn,
-        method: akwaMethod,
-        serviceCategory: 'general',
-        description: receipt.purpose,
-        cashierName: receipt.cashier || 'Hospital Cashier',
-        cashierBadge: receipt.cashierBadge || 'CASHIER',
-        shiftId: `SHIFT-${new Date().toISOString().slice(0, 10)}`,
-        paystackRef: receipt.paystackRef,
-        akwaRemitRrr: receipt.akwaRemitRrr,
-      });
-    }).catch(() => {});
-  } catch {
-    /* ignore */
+      // Lazy import akwaRemitStore to avoid circular dependencies
+      import('./akwaRemitStore')
+        .then(({ recordAkwaRemitPayment }) => {
+          recordAkwaRemitPayment({
+            arn: receipt.reference?.startsWith('ARN-') ? receipt.reference : undefined,
+            receiptNo: receipt.receiptNo,
+            facilityId: receipt.facilityId,
+            facilityName: receipt.facilityName,
+            patientId: receipt.patientId || 'WALK-IN',
+            patientName: receipt.patientName,
+            hospitalNumber: receipt.hospitalNumber || 'N/A',
+            amountNgn: receipt.amountNgn,
+            method: akwaMethod,
+            serviceCategory: 'general',
+            description: receipt.purpose,
+            cashierName: receipt.cashier || 'Hospital Cashier',
+            cashierBadge: receipt.cashierBadge || 'CASHIER',
+            shiftId: `SHIFT-${new Date().toISOString().slice(0, 10)}`,
+            paystackRef: receipt.paystackRef,
+            akwaRemitRrr: receipt.akwaRemitRrr,
+            remittanceStatus: akwaMethod === 'direct_akwaremit' ? 'direct_akwaremit' : 'pending',
+          });
+        })
+        .catch(() => { });
+    } catch {
+      /* ignore */
+    }
   }
 
   if (opts?.print !== false) {
     printPaymentReceiptDocument(receipt);
   }
   return receipt;
+}
+
+/** Update matching receipts when a bulk cash/POS remittance batch settles */
+export function markReceiptsRemittedByRefs(
+  facilityId: string,
+  refs: string[],
+  meta: {
+    akwaRemitRrr: string;
+    remittanceBatchId: string;
+    remittedAt: string;
+    remittedBy: string;
+  }
+): number {
+  const refSet = new Set(refs.map((r) => String(r || '').trim().toUpperCase()).filter(Boolean));
+  if (refSet.size === 0) return 0;
+  let updatedCount = 0;
+  const list = readAll();
+  const next = list.map((r) => {
+    if (r.facilityId !== facilityId) return r;
+    const hit =
+      refSet.has(String(r.receiptNo || '').toUpperCase()) ||
+      refSet.has(String(r.reference || '').toUpperCase()) ||
+      refSet.has(String(r.paymentId || '').toUpperCase());
+    if (!hit) return r;
+    updatedCount++;
+    return {
+      ...r,
+      remittanceStatus: 'remitted' as const,
+      akwaRemitRrr: meta.akwaRemitRrr,
+      remittanceBatchId: meta.remittanceBatchId,
+      remittedAt: meta.remittedAt,
+      remittedBy: meta.remittedBy,
+    };
+  });
+  if (updatedCount > 0) {
+    writeAll(next);
+  }
+  return updatedCount;
 }
 
 export function voidPaymentReceipt(receiptNo: string, reason?: string): boolean {
@@ -322,6 +375,16 @@ export function buildReceiptHtml(r: PaymentReceiptRecord): string {
       <tr><td class="muted">Method</td><td style="text-align:right">${escapeHtml(methodDisplay(r))}</td></tr>
       <tr><td class="muted">Reference</td><td style="text-align:right;font-family:ui-monospace,monospace;font-size:12px">${escapeHtml(r.reference)}</td></tr>
       ${r.paystackRef ? `<tr><td class="muted">Gateway Ref</td><td style="text-align:right;font-family:ui-monospace,monospace;font-size:12px">${escapeHtml(r.paystackRef)}</td></tr>` : ''}
+      <tr><td class="muted">TSA Status</td><td style="text-align:right;font-weight:700;color:${r.remittanceStatus === 'remitted' || r.remittanceStatus === 'direct_akwaremit' ? '#059669' : '#B45309'
+    }">${escapeHtml(
+      r.remittanceStatus === 'remitted'
+        ? `Remitted to AkwaRemit${r.akwaRemitRrr ? ` (${r.akwaRemitRrr})` : ''}`
+        : r.remittanceStatus === 'direct_akwaremit'
+          ? `Direct AkwaRemit Portal${r.akwaRemitRrr ? ` (${r.akwaRemitRrr})` : ''}`
+          : r.method.toLowerCase() === 'cash'
+            ? 'Cash at Till · Pending TSA Bank Remittance'
+            : 'Pending TSA Settlement'
+    )}</td></tr>
       <tr><td class="muted">Cashier</td><td style="text-align:right">${escapeHtml(r.cashier || '—')}</td></tr>
       <tr><td class="muted">Date</td><td style="text-align:right">${escapeHtml(issued)}</td></tr>
     </table>
@@ -375,7 +438,7 @@ export function printPaymentReceiptDocument(r: PaymentReceiptRecord): void {
 }
 
 export function subscribePaymentReceipts(cb: () => void): () => void {
-  if (typeof window === 'undefined') return () => {};
+  if (typeof window === 'undefined') return () => { };
   const fn = () => cb();
   window.addEventListener(PAYMENT_RECEIPTS_EVENT, fn);
   window.addEventListener('storage', fn);

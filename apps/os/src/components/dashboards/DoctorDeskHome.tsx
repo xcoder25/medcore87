@@ -10,8 +10,9 @@ import {
   Stethoscope, Activity, FileText, FlaskConical, Pill, Users, Clock,
   Brain, ChevronRight, RefreshCw, TrendingUp, AlertTriangle, CheckCircle2,
   HeartPulse, Layers, Phone, Heart, UserCheck, User, ArrowRight, Zap,
-  Thermometer, Wind,
+  Thermometer, Wind, BedDouble,
 } from 'lucide-react';
+import { AdmitToBedModal, type AdmitPatientSeed } from '../beds/DoctorAdmissionSuite';
 import {
   visitsForDoctor,
   subscribeReceptionOps,
@@ -85,6 +86,7 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     patientName: string;
     queueNumber?: string;
   } | null>(null);
+  const [admitTarget, setAdmitTarget] = useState<AdmitPatientSeed | null>(null);
 
   // Unified real-time sync — reacts to nurse vitals, reception check-ins, BroadcastChannel
   const { tick } = useOpdSync({ heartbeatMs: 25_000 });
@@ -237,9 +239,9 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   const quick = [
     { label: 'Open EMR', desc: 'Records & notes', icon: FileText, go: 'emr', color: '#2563EB' },
     { label: 'Consultations', desc: 'See & treat', icon: Stethoscope, go: 'doctor-portal', color: '#0D9488' },
+    { label: 'Admit to Bed', desc: 'Ward allocation', icon: BedDouble, go: '__admit__', color: '#0284C7' },
     { label: 'Lab orders', desc: 'Order & track', icon: FlaskConical, go: 'laboratory', color: '#7C3AED' },
     { label: 'Prescribe', desc: 'e-Prescription', icon: Pill, go: 'pharmacy', color: '#EA580C' },
-    { label: 'Imaging', desc: 'Radiology / PACS', icon: Layers, go: 'radiology', color: '#0891B2' },
     { label: 'AI assistant', desc: 'Celestia clinical help', icon: Brain, go: 'm87-ai', color: '#DB2777' },
   ];
 
@@ -647,7 +649,18 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                 key={q.label}
                 type="button"
                 className="mc-btn-live"
-                onClick={() => onNavigate(q.go)}
+                onClick={() => {
+                  if (q.go === '__admit__') {
+                    setAdmitTarget({
+                      id: withMe[0]?.patientId,
+                      name: withMe[0]?.patientName || '',
+                      hospitalNumber: withMe[0]?.hospitalNumber,
+                      visitId: withMe[0]?.id,
+                    });
+                  } else {
+                    onNavigate(q.go);
+                  }
+                }}
                 style={{
                   border: `1px solid ${C.border}`,
                   borderRadius: 12,
@@ -922,6 +935,32 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                     >
                       {withMe[0].vitalsSummary || 'Triage vitals on file'}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAdmitTarget({
+                          id: withMe[0].patientId,
+                          name: withMe[0].patientName,
+                          hospitalNumber: withMe[0].hospitalNumber,
+                          visitId: withMe[0].id,
+                        })
+                      }
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: 10,
+                        border: '1px solid #0284C7',
+                        background: '#EFF6FF',
+                        color: '#0369A1',
+                        fontWeight: 800,
+                        fontSize: 13,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <BedDouble size={16} /> Admit to Ward / Bed
+                    </button>
                     <button
                       type="button"
                       onClick={() => completeVisit(withMe[0])}
@@ -1677,6 +1716,22 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
           )}
         </div>
       </div>
+
+      {admitTarget && (
+        <AdmitToBedModal
+          facilityId={facilityId}
+          facilityName={session.facility}
+          doctorName={session.name || 'Doctor'}
+          doctorBadge={session.badgeId}
+          initialPatient={admitTarget}
+          onClose={() => setAdmitTarget(null)}
+          onAdmitted={(bed) => {
+            setAdmitTarget(null);
+            emitLiveAction(`Admitted ${bed.patient || 'Patient'} to ${bed.bedNo} (${bed.ward})`, { module: 'beds' });
+            reload();
+          }}
+        />
+      )}
     </div>
   );
 };

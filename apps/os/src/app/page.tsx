@@ -214,6 +214,7 @@ export default function OSPage() {
   const [unlockLoading, setUnlockLoading] = useState(false);
   const [activeEmergencyCode, setActiveEmergencyCode] = useState<string | null>(null);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
+  const [aiMinimized, setAiMinimized] = useState(false);
   const [permTick, setPermTick] = useState(0);
   const [showFullDirectory, setShowFullDirectory] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
@@ -1491,11 +1492,12 @@ const handleLockScreen = () => {
         </div>
       )}
 
-      {/* ── Celestia Assistant panel ── */}
+      {/* ── Celestia Assistant panel (stays mounted while minimized so chat state is preserved) ── */}
       {aiDrawerOpen && (
         <div
           role="dialog"
           aria-label="Celestia Assistant"
+          aria-hidden={aiMinimized}
           style={{
             position: 'fixed',
             top: 0,
@@ -1503,7 +1505,7 @@ const handleLockScreen = () => {
             bottom: 0,
             width: 'min(460px, 100vw)',
             zIndex: 9600,
-            display: 'flex',
+            display: aiMinimized ? 'none' : 'flex',
             flexDirection: 'column',
             background: 'linear-gradient(165deg, #06061a 0%, #0c0a2e 50%, #12082a 100%)',
             backdropFilter: 'blur(20px)',
@@ -1516,9 +1518,80 @@ const handleLockScreen = () => {
             <M87AICopilotSuite
               session={userSession ?? undefined}
               inDrawer
-              onClose={() => setAiDrawerOpen(false)}
+              onMinimize={() => setAiMinimized(true)}
+              onClose={() => {
+                setAiDrawerOpen(false);
+                setAiMinimized(false);
+              }}
             />
           </div>
+        </div>
+      )}
+
+      {/* Minimized AI restore pill */}
+      {aiDrawerOpen && aiMinimized && (
+        <div
+          style={{
+            position: 'fixed',
+            right: 22,
+            bottom: 22,
+            zIndex: 9650,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 10px 8px 14px',
+            borderRadius: 999,
+            background: 'linear-gradient(135deg, #0B1220 0%, #1E1B4B 100%)',
+            color: '#FFFFFF',
+            border: '1px solid rgba(167, 139, 250, 0.45)',
+            boxShadow: '0 14px 36px rgba(15, 23, 42, 0.38)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setAiMinimized(false)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#FFFFFF',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: 12,
+              padding: 0,
+            }}
+            title="Restore Celestia chat"
+          >
+            <img src="/celestia-logo.png" alt="" style={{ width: 20, height: 20, borderRadius: 6 }} />
+            <span>Celestia AI · Minimized</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAiDrawerOpen(false);
+              setAiMinimized(false);
+            }}
+            title="Close Celestia"
+            aria-label="Close minimized Celestia"
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: '50%',
+              border: 'none',
+              background: 'rgba(255,255,255,0.14)',
+              color: '#E2E8F0',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 12,
+              fontWeight: 800,
+            }}
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -1527,7 +1600,10 @@ const handleLockScreen = () => {
         <button
           type="button"
           className="os-ai-fab"
-          onClick={() => setAiDrawerOpen(true)}
+          onClick={() => {
+            setAiDrawerOpen(true);
+            setAiMinimized(false);
+          }}
           title="Open Celestia Assistant"
           aria-label="Open Celestia Assistant"
         >
@@ -1820,13 +1896,21 @@ const handleLockScreen = () => {
               Live
             </span>
 
-            <NotificationBell app="MEDCORE_OS" facilityId={userSession?.facility} session={userSession ?? undefined} />
+            <NotificationBell
+              app="MEDCORE_OS"
+              facilityId={userSession?.facility}
+              session={userSession ?? undefined}
+              onNavigate={(k) => navigateModule(k)}
+            />
 
             <button
               type="button"
               className="os-top-hud-icon-btn"
               title="Help"
-              onClick={() => setAiDrawerOpen(true)}
+              onClick={() => {
+                setAiDrawerOpen(true);
+                setAiMinimized(false);
+              }}
             >
               <HelpCircle size={17} strokeWidth={2} />
             </button>

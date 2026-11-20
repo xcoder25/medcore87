@@ -23,6 +23,7 @@ import {
   exportCensusCsv,
   dailyCensus,
   availableBeds,
+  wardCapacitySummary,
   type BedRecord,
   type BedStatus,
 } from '../../lib/bedBoardStore';
@@ -42,14 +43,21 @@ const BED_STATUS_META: Record<BedStatus, { label: string; color: string }> = {
   cleaning: { label: 'Turnover', color: '#64748B' },
 };
 
-export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: string } }> = ({
-  session,
-}) => {
+export const BedManagement: React.FC<{
+  session?: { name?: string; hospitalId?: string; roleKey?: string; role?: string; badgeId?: string };
+}> = ({ session }) => {
   const facilityId =
     session?.hospitalId ||
     (typeof window !== 'undefined' && getActiveFacilityId()) ||
     'IGH-EKT';
   const actor = session?.name || 'Bed manager';
+  const rk = String(session?.roleKey || session?.role || '').toLowerCase().trim();
+  const isAdminView =
+    rk === 'hospital_admin' ||
+    rk === 'admin' ||
+    rk === 'sysadmin' ||
+    rk === 'hospital administrator' ||
+    rk === 'administrator';
 
   const [viewMode, setViewMode] = useState<'standard' | 'dhis2_tracker'>('standard');
   const [bedsList, setBedsList] = useState<BedRecord[]>([]);
@@ -139,6 +147,7 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
   const alerts = useMemo(() => bedOccupancyAlerts(facilityId), [bedsList, facilityId]);
   const audit = useMemo(() => listBedAudit(facilityId).slice(0, 40), [bedsList, facilityId, showAudit]);
   const census = useMemo(() => dailyCensus(facilityId), [bedsList, facilityId]);
+  const wardSummary = useMemo(() => wardCapacitySummary(facilityId), [bedsList, facilityId]);
   const patients = useMemo(() => listPatients(facilityId), [facilityId, showAdmitModal]);
   const hmis = useMemo(() => calculateInpatientIndicators(facilityId, 30), [bedsList, facilityId]);
 
@@ -157,7 +166,7 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
 
   const handleAdmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selected || !admitPatientName.trim()) return;
+    if (isAdminView || !selected || !admitPatientName.trim()) return;
     // Explicit named fields — never positional; avoid name/doctor/dx swap
     const patientName = admitPatientName.trim();
     const doctorName = admitDoctor.trim();
@@ -271,6 +280,54 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
         </div>
       </div>
 
+      {/* Admin vs Clinical Role Guard Notice + Ward Capacity Breakdown */}
+      {isAdminView && (
+        <div
+          style={{
+            background: '#EFF6FF',
+            border: '1px solid #BFDBFE',
+            color: '#1E3A8A',
+            borderRadius: 12,
+            padding: '10px 14px',
+            fontSize: 12,
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 8,
+          }}
+        >
+          <span>
+            <strong>Administrator View (Facility Bed Capacity Only):</strong> You can create wards/beds, track counts, set cleaning/maintenance status, and export census reports. Patient admission, bed transfer, and clinical discharge are restricted to Doctors &amp; Nurses.
+          </span>
+        </div>
+      )}
+
+      {wardSummary.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
+          {wardSummary.map((w) => (
+            <div
+              key={w.ward}
+              style={{
+                background: '#FFFFFF',
+                border: filterWard === w.ward ? '1px solid #2563EB' : '1px solid #E2E8F0',
+                borderRadius: 12,
+                padding: '8px 12px',
+                minWidth: 155,
+                cursor: 'pointer',
+              }}
+              onClick={() => setFilterWard(filterWard === w.ward ? 'All Wards' : w.ward)}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#0F172A' }}>{w.ward}</div>
+              <div style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>
+                <strong>{w.total}</strong> beds · <span style={{ color: '#16A34A', fontWeight: 700 }}>{w.available} free</span> · {w.occupied + w.isolation} in-use
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Mode Switcher: Standard Hospital Census vs DHIS2 Tracker Simulated Bed Board */}
       <div style={{ display: 'flex', gap: 6, background: '#FFFFFF', padding: '6px 10px', borderRadius: 12, border: '1px solid #E2E8F0', width: 'fit-content' }}>
         <button
@@ -312,7 +369,7 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
       </div>
 
       {viewMode === 'dhis2_tracker' ? (
-        <Dhis2TrackerBedBoardSuite facilityId={facilityId} />
+        <Dhis2TrackerBedBoardSuite facilityId={facilityId} readOnlyAdmin={isAdminView} />
       ) : (
         <>
           {/* KPIs */}
@@ -449,7 +506,11 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
 
         <div style={{ ...card, position: 'sticky', top: 12, alignSelf: 'start' }}>
           {!selected && (
-            <div style={{ color: '#64748B', fontSize: 13 }}>Select a bed for admit / transfer / discharge</div>
+            <div style={{ color: '#64748B', fontSize: 13 }}>
+              {isAdminView
+                ? 'Select a bed to inspect ward allocation, bed status, or maintenance state. Patient admission is restricted to Doctors & Nurses.'
+                : 'Select a bed for admit / transfer / discharge'}
+            </div>
           )}
           {selected && (
             <>
@@ -484,7 +545,7 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
                 </div>
               )}
 
-              {(selected.status === 'occupied' || selected.status === 'isolation') && (
+              {!isAdminView && (selected.status === 'occupied' || selected.status === 'isolation') && (
                 <label style={{ display: 'block', marginTop: 12, fontSize: 12, fontWeight: 600 }}>
                   Set expected discharge
                   <input
@@ -503,7 +564,7 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
               )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
-                {(selected.status === 'available' || selected.status === 'cleaning') && (
+                {!isAdminView && (selected.status === 'available' || selected.status === 'cleaning') && (
                   <button
                     type="button"
                     style={btnPrimary}
@@ -520,7 +581,7 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
                     <UserPlus size={14} /> Admit patient
                   </button>
                 )}
-                {(selected.status === 'occupied' || selected.status === 'isolation') && (
+                {!isAdminView && (selected.status === 'occupied' || selected.status === 'isolation') && (
                   <>
                     <select
                       value={transferTo}
@@ -578,20 +639,28 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
                     <CheckCircle2 size={14} /> Mark available
                   </button>
                 )}
-                <select
-                  value={selected.status}
-                  onChange={(e) => {
-                    setBedStatus(selected.id, e.target.value as BedStatus, actor);
-                    reload();
-                  }}
-                  style={input}
-                >
-                  {Object.entries(BED_STATUS_META).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      Status: {v.label}
-                    </option>
-                  ))}
-                </select>
+                {isAdminView && (selected.status === 'occupied' || selected.status === 'isolation') ? (
+                  <div style={{ fontSize: 12, color: '#64748B', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '8px 10px' }}>
+                    Bed is occupied by an admitted patient. Discharge or transfer must be done by Clinical Staff.
+                  </div>
+                ) : (
+                  <select
+                    value={selected.status}
+                    onChange={(e) => {
+                      setBedStatus(selected.id, e.target.value as BedStatus, actor);
+                      reload();
+                    }}
+                    style={input}
+                  >
+                    {Object.entries(BED_STATUS_META)
+                      .filter(([k]) => !isAdminView || (k !== 'occupied' && k !== 'isolation'))
+                      .map(([k, v]) => (
+                        <option key={k} value={k}>
+                          Status: {v.label}
+                        </option>
+                      ))}
+                  </select>
+                )}
                 {selected.status !== 'occupied' && selected.status !== 'isolation' && (
                   <button
                     type="button"
@@ -736,7 +805,7 @@ export const BedManagement: React.FC<{ session?: { name?: string; hospitalId?: s
         </div>
       )}
 
-      {showAdmitModal && selected && (
+      {!isAdminView && showAdmitModal && selected && (
         <div style={modalBg}>
           <form style={modalBox} onSubmit={handleAdmit}>
             <div style={{ fontWeight: 800, marginBottom: 12 }}>Admit to {selected.bedNo}</div>

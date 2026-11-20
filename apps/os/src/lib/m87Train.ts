@@ -21,6 +21,9 @@ import { listPatients, countPatients } from './patientRegistryStore';
 import { NIGERIAN_OPD_SUMMARY } from './nigerianOpdFlow';
 import { listBeds } from './bedBoardStore';
 import { getStaffRegistry } from './adminRealtimeStore';
+import { getAkwaRemitDailySummary } from './akwaRemitStore';
+import { listAccountsRequests } from './frontDeskAccountsBridge';
+import { listPatientsWithOpenBills } from './patientBillingStore';
 
 function tokenize(text: string): string[] {
   return text
@@ -73,6 +76,29 @@ export function harvestHospitalKnowledge(facilityId: string): M87TrainingExample
       tags: ['staff', 'admin'],
     },
   ];
+
+  try {
+    const akwa = getAkwaRemitDailySummary(facilityId);
+    const awaiting = listAccountsRequests(facilityId, { status: 'awaiting_payment' });
+    const openBills = listPatientsWithOpenBills(facilityId);
+    const awaitingTotal = awaiting.reduce((s, r) => s + (Number(r.amountNgn) || 0), 0);
+    const openTotal = openBills.reduce((s, b) => s + (Number(b.balanceNgn) || 0), 0);
+
+    pack.push(
+      {
+        input: 'Accounts & treasury summary today?',
+        output: `Today: ₦${akwa.totalCollectionsNgn.toLocaleString()} total (${akwa.receiptsCount} receipts). Cash in till awaiting TSA remittance: ₦${akwa.pendingCashNgn.toLocaleString()} (${akwa.pendingCashCount} ARN(s)). Remitted/Direct TSA: ₦${akwa.alreadyInAkwaRemitNgn.toLocaleString()} (${akwa.complianceRatePercent}%). Awaiting Front Desk invoices: ${awaiting.length} (₦${awaitingTotal.toLocaleString()}).`,
+        tags: ['accounts', 'cashier', 'akwaremit', 'treasury'],
+      },
+      {
+        input: 'Open hospital bills summary?',
+        output: `${openBills.length} patient(s) have unpaid balances totaling ₦${openTotal.toLocaleString()}. Route patients to POS Collect Payment rather than bypassing payment capture.`,
+        tags: ['accounts', 'bills', 'billing'],
+      }
+    );
+  } catch {
+    /* ignore */
+  }
 
   for (const p of pack) {
     created.push(
@@ -205,6 +231,23 @@ export function buildM87RagContext(query: string, facilityId: string): string {
     parts.push(
       `### Live facility registry\nCount: ${n}\n` +
         (sample.length ? `Patients: ${sample.join('; ')}` : 'Patients: (none)')
+    );
+  } catch {
+    /* ignore */
+  }
+  try {
+    const akwa = getAkwaRemitDailySummary(facilityId);
+    const awaiting = listAccountsRequests(facilityId, { status: 'awaiting_payment' });
+    const openBills = listPatientsWithOpenBills(facilityId);
+    const awaitingTotal = awaiting.reduce((s, r) => s + (Number(r.amountNgn) || 0), 0);
+    const openTotal = openBills.reduce((s, b) => s + (Number(b.balanceNgn) || 0), 0);
+    parts.push(
+      `### Live Accounts & AkwaRemit Treasury Snapshot\n` +
+        `Today's collections: ₦${akwa.totalCollectionsNgn.toLocaleString()} (${akwa.receiptsCount} receipts)\n` +
+        `Cash at till (pending TSA batch): ₦${akwa.pendingCashNgn.toLocaleString()} (${akwa.pendingCashCount} ARN(s))\n` +
+        `Remitted + Direct AkwaRemit TSA: ₦${akwa.alreadyInAkwaRemitNgn.toLocaleString()} (${akwa.complianceRatePercent}% compliance)\n` +
+        `Front Desk awaiting invoices: ${awaiting.length} (₦${awaitingTotal.toLocaleString()})\n` +
+        `Open unpaid patient bills: ${openBills.length} (₦${openTotal.toLocaleString()})`
     );
   } catch {
     /* ignore */

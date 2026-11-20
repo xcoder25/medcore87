@@ -20,11 +20,12 @@ import {
   X,
   AlertTriangle,
   Landmark,
+  Printer,
+  Eye,
 } from 'lucide-react';
 import {
   listAccountsRequests,
   subscribeAccountsRequests,
-  markAccountsRequestPaid,
   type FrontDeskAccountsRequest,
 } from '../../lib/frontDeskAccountsBridge';
 import {
@@ -32,7 +33,6 @@ import {
   listPatientsWithOpenBills,
   subscribeBills,
   listBillLines,
-  markLinePaid,
   type PatientBillLine,
 } from '../../lib/patientBillingStore';
 import { listPatients, type FacilityPatient } from '../../lib/patientRegistryStore';
@@ -42,7 +42,13 @@ import { AccountingArDesk } from '../finance/AccountingArDesk';
 import { InsuranceHmoClaimsSuite } from '../finance/InsuranceHmoClaimsSuite';
 import { AutoAccountBalancingCard } from '../finance/AutoAccountBalancingCard';
 import { AkwaRemitRevenueSuite } from '../finance/AkwaRemitRevenueSuite';
-import { getAkwaRemitDailySummary, AKWAREMIT_EVENT } from '../../lib/akwaRemitStore';
+import { getAkwaRemitDailySummary, listAkwaRemitPayments, AKWAREMIT_EVENT } from '../../lib/akwaRemitStore';
+import {
+  listPaymentReceipts,
+  getPaymentReceipt,
+  printPaymentReceiptDocument,
+  type PaymentReceiptRecord,
+} from '../../lib/paymentReceiptModule';
 import { emitLiveAction } from '../../lib/liveActions';
 
 type AccView = 'home' | 'payment' | 'billing' | 'receipts' | 'ar' | 'claims' | 'akwaremit';
@@ -73,8 +79,6 @@ const BillingOffice: React.FC<{ session: UserSession; onCollect: (patientId: str
   const [billLines, setBillLines] = useState<PatientBillLine[]>([]);
   const [allPatients, setAllPatients] = useState<FacilityPatient[]>([]);
   const [tick, setTick] = useState(0);
-  const [markingId, setMarkingId] = useState<string | null>(null);
-  const cashier = session.name || 'Billing Officer';
 
   useEffect(() => {
     setAllPatients(listPatients(facilityId));
@@ -123,13 +127,6 @@ const BillingOffice: React.FC<{ session: UserSession; onCollect: (patientId: str
   const paidLines = billLines.filter(l => l.status === 'paid' || l.status === 'hmo' || l.status === 'waived');
   const totalUnpaid = unpaidLines.reduce((s, l) => s + l.amountNgn, 0);
   const totalPaid = paidLines.reduce((s, l) => s + l.amountNgn, 0);
-
-  const markPaidLine = (line: PatientBillLine) => {
-    setMarkingId(line.id);
-    const ref = `BILL-${Date.now().toString(36).toUpperCase()}`;
-    markLinePaid(line.id, { via: 'cashier', status: 'paid', paidBy: cashier, paymentRef: ref });
-    setTimeout(() => { setMarkingId(null); refresh(); }, 400);
-  };
 
   const SOURCE_LABELS: Record<string, string> = {
     pharmacy: 'Pharmacy', lab: 'Laboratory', consult: 'Consultation',
@@ -298,17 +295,6 @@ const BillingOffice: React.FC<{ session: UserSession; onCollect: (patientId: str
                         >
                           Collect <ArrowRight size={12} />
                         </button>
-                        <button
-                          type="button"
-                          disabled={markingId === line.id}
-                          onClick={() => markPaidLine(line)}
-                          style={{
-                            padding: '6px 10px', borderRadius: 8, border: `1px solid ${C.border}`,
-                            background: '#fff', color: C.navy, fontWeight: 700, fontSize: 11, cursor: 'pointer',
-                          }}
-                        >
-                          {markingId === line.id ? '…' : 'Mark paid'}
-                        </button>
                       </div>
                     </div>
                   );
@@ -386,6 +372,7 @@ export const AccountingWorkspace: React.FC<Props> = ({
   const [view, setView] = useState<AccView>(initialView);
   const [tick, setTick] = useState(0);
   const [selectedReq, setSelectedReq] = useState<FrontDeskAccountsRequest | null>(null);
+  const [openReceipt, setOpenReceipt] = useState<PaymentReceiptRecord | null>(null);
 
   // For billing-office → POS handoff
   const [billingPatientId, setBillingPatientId] = useState<string | undefined>();
@@ -453,6 +440,69 @@ export const AccountingWorkspace: React.FC<Props> = ({
     }
   }, [facilityId, tick]);
 
+  const todayReceipts = useMemo(() => {
+    void tick;
+    const day = new Date().toISOString().slice(0, 10);
+    const stored = listPaymentReceipts(facilityId, { day });
+    const akwaByRef = new Map<string, ReturnType<typeof listAkwaRemitPayments>[number]>();
+    try {
+      for (const ap of listAkwaRemitPayments(facilityId)) {
+        if (ap.receiptNo) akwaByRef.set(ap.receiptNo.toUpperCase(), ap);
+        if (ap.arn) akwaByRef.set(ap.arn.toUpperCase(), ap);
+      }
+    } catch {
+      /* ignore */
+    }
+    const existingKeys = new Set<string>();
+    const enriched = stored.map((r) => {
+      existingKeys.add((r.reference || '').toUpperCase());
+      existingKeys.add((r.receiptNo || '').toUpperCase());
+      const ap =
+        akwaByRef.get((r.receiptNo || '').toUpperCase()) ||
+        akwaByRef.get((r.reference || '').toUpperCase());
+      return ap
+        ? {
+            ...r,
+            remittanceStatus:
+              ap.remittanceStatus === 'cancelled_to_credit'
+                ? r.remittanceStatus
+                : ap.remittanceStatus,
+            akwaRemitRrr: ap.akwaRemitRrr || r.akwaRemitRrr,
+            remittanceBatchId: ap.remittanceBatchId || r.remittanceBatchId,
+            remittedAt: ap.remittedAt || r.remittedAt,
+          }
+        : r;
+    });
+    const fallback: PaymentReceiptRecord[] = payments
+      .filter((p) => {
+        const ref = (p.reference || '').toUpperCase();
+        const pid = (p.id || '').toUpperCase();
+        return !existingKeys.has(ref) && !existingKeys.has(pid) && !getPaymentReceipt(p.reference || p.id);
+      })
+      .map((p) => ({
+        id: p.id,
+        receiptNo: p.reference?.startsWith('RCP-') || p.reference?.startsWith('ARN-') ? p.reference : `RCP-${p.id.slice(-6).toUpperCase()}`,
+        facilityId,
+        facilityName,
+        patientId: p.patientId,
+        patientName: p.patientName,
+        hospitalNumber: p.hospitalNumber || p.patientId || 'WALK-IN',
+        amountNgn: p.amount,
+        currency: 'NGN',
+        method: p.method || 'cash',
+        channel: p.method === 'cash' ? 'Cash Desk' : 'POS',
+        purpose: p.purpose || 'Hospital payment',
+        reference: p.reference || p.id,
+        paymentId: p.id,
+        cashier: p.cashier || session.name || 'Cashier',
+        status: 'issued',
+        issuedAt: p.createdAt || new Date().toISOString(),
+        category: 'hospital_desk',
+        remittanceStatus: p.method === 'cash' ? 'pending' : undefined,
+      }));
+    return [...enriched, ...fallback];
+  }, [facilityId, facilityName, payments, session.name, tick]);
+
   const nav: { id: AccView; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'home', label: 'Accounts home', icon: LayoutDashboard, badge: awaiting.length || undefined },
     { id: 'ar', label: 'AR desk', icon: Wallet, badge: awaiting.length || undefined },
@@ -472,17 +522,6 @@ export const AccountingWorkspace: React.FC<Props> = ({
     setSelectedReq(req);
     setView('payment');
     emitLiveAction(`Accounts open POS · ${req.hospitalNumber}`, { module: 'cashier' });
-  };
-
-  const quickMarkPaid = (req: FrontDeskAccountsRequest) => {
-    const ref = `CASH-${Date.now().toString(36).toUpperCase()}`;
-    markAccountsRequestPaid(req.id, {
-      reference: ref,
-      via: 'cashier',
-      paidBy: session.name,
-    });
-    emitLiveAction(`Accounts paid · ${req.hospitalNumber} · ${ref}`, { module: 'cashier' });
-    bump();
   };
 
   const handleBillingCollect = (patientId: string, amount: number, purpose: string) => {
@@ -663,9 +702,6 @@ export const AccountingWorkspace: React.FC<Props> = ({
                         <button type="button" className="mc-btn-live" onClick={() => openInPos(r)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 14px', borderRadius: 12, border: 'none', background: 'linear-gradient(90deg,#D97706,#F59E0B)', color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer', boxShadow: '0 8px 18px rgba(217,119,6,0.3)' }}>
                           Collect <ArrowRight size={14} />
                         </button>
-                        <button type="button" onClick={() => quickMarkPaid(r)} title="Mark paid if already collected offline" style={{ padding: '10px 12px', borderRadius: 12, border: `1px solid ${C.border}`, background: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', color: C.navy }}>
-                          Mark paid
-                        </button>
                       </div>
                     </div>
                   ))
@@ -722,9 +758,6 @@ export const AccountingWorkspace: React.FC<Props> = ({
               <span style={{ fontWeight: 800, color: '#B45309' }}>₦{selectedReq.amountNgn.toLocaleString()}</span>
               <span style={{ color: C.muted }}>{selectedReq.purpose}</span>
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button type="button" onClick={() => { quickMarkPaid(selectedReq); setSelectedReq(null); }} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#059669', color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, boxShadow: '0 2px 6px rgba(5,150,105,0.3)' }}>
-                  <CheckCircle2 size={14} /> Quick Mark Paid &amp; Move to Triage
-                </button>
                 <button type="button" onClick={() => setSelectedReq(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontWeight: 700, color: C.muted, fontSize: 12 }}>Clear</button>
               </div>
             </div>
@@ -766,21 +799,90 @@ export const AccountingWorkspace: React.FC<Props> = ({
 
       {view === 'receipts' && (
         <div style={{ background: '#fff', borderRadius: 20, border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 12px 36px rgba(15,23,42,0.05)' }}>
-          <div style={{ padding: '16px 18px', borderBottom: `1px solid ${C.border}`, fontWeight: 800, background: 'linear-gradient(180deg,#EFF6FF,#fff)', color: C.navy }}>
-            Today&apos;s payments
+          <div style={{ padding: '16px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg,#EFF6FF,#fff)' }}>
+            <div>
+              <div style={{ fontWeight: 800, color: C.navy }}>Today&apos;s receipts ({todayReceipts.length})</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Click any receipt row to open full details, check TSA settlement status, or print</div>
+            </div>
           </div>
-          {payments.length === 0 ? (
-            <div style={{ padding: 36, textAlign: 'center', color: C.muted }}>No payments recorded today</div>
+          {todayReceipts.length === 0 ? (
+            <div style={{ padding: 36, textAlign: 'center', color: C.muted }}>No receipts issued today</div>
           ) : (
-            payments.slice(0, 40).map((p) => (
-              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '14px 18px', borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
-                <div>
-                  <div style={{ fontWeight: 700, color: C.navy }}>{p.patientName}</div>
-                  <div style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>{p.method} · {p.reference}</div>
+            todayReceipts.slice(0, 60).map((r) => {
+              const remitted = r.remittanceStatus === 'remitted' || r.remittanceStatus === 'direct_akwaremit';
+              return (
+                <div
+                  key={r.id}
+                  onClick={() => setOpenReceipt(r)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setOpenReceipt(r); }}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '14px 18px',
+                    borderBottom: `1px solid ${C.border}`,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 800, color: C.navy }}>{r.patientName}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'monospace', color: '#0369A1', background: '#EFF6FF', padding: '2px 7px', borderRadius: 6 }}>
+                        {r.receiptNo}
+                      </span>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                        background: remitted ? '#DCFCE7' : '#FEF3C7',
+                        color: remitted ? '#15803D' : '#B45309',
+                      }}>
+                        {r.remittanceStatus === 'direct_akwaremit'
+                          ? 'Direct AkwaRemit'
+                          : r.remittanceStatus === 'remitted'
+                            ? 'Remitted'
+                            : r.method.toLowerCase() === 'cash'
+                              ? 'Cash · Pending Remit'
+                              : 'Pending TSA'}
+                      </span>
+                    </div>
+                    <div style={{ color: C.muted, fontSize: 12, marginTop: 3 }}>
+                      {r.purpose} · {r.method.toUpperCase()} · Ref: <span style={{ fontFamily: 'monospace' }}>{r.reference}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ fontWeight: 800, color: C.teal, fontSize: 15, fontVariantNumeric: 'tabular-nums' }}>
+                      ₦{Number(r.amountNgn || 0).toLocaleString()}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setOpenReceipt(r); }}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: '7px 11px', borderRadius: 9, border: `1px solid ${C.border}`,
+                        background: '#F8FAFC', color: C.navy, fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                      }}
+                    >
+                      <Eye size={13} /> Open
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); printPaymentReceiptDocument(r); }}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: '7px 12px', borderRadius: 9, border: 'none',
+                        background: '#0F172A', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                      }}
+                    >
+                      <Printer size={13} /> Print
+                    </button>
+                  </div>
                 </div>
-                <div style={{ fontWeight: 800, color: C.teal, fontSize: 15 }}>₦{p.amount.toLocaleString()}</div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
@@ -788,6 +890,79 @@ export const AccountingWorkspace: React.FC<Props> = ({
       {view === 'akwaremit' && (
         <div style={{ background: '#fff', borderRadius: 20, border: `1px solid ${C.border}`, overflow: 'hidden', padding: 8 }}>
           <AkwaRemitRevenueSuite session={session} />
+        </div>
+      )}
+
+      {openReceipt && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 100000,
+            background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+          onClick={() => setOpenReceipt(null)}
+        >
+          <div
+            style={{
+              background: '#fff', borderRadius: 18, width: '100%', maxWidth: 480,
+              boxShadow: '0 24px 60px rgba(15,23,42,0.32)', overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ background: '#0F172A', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>Official Payment Receipt</div>
+                <div style={{ fontSize: 12, color: '#94A3B8', fontFamily: 'monospace', marginTop: 2 }}>{openReceipt.receiptNo}</div>
+              </div>
+              <button type="button" onClick={() => setOpenReceipt(null)} style={{ background: 'rgba(255,255,255,0.12)', border: 'none', color: '#fff', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
+              <div style={{ textAlign: 'center', background: '#F8FAFC', borderRadius: 12, padding: 14, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>Amount Paid</div>
+                <div style={{ fontSize: 28, fontWeight: 900, color: '#059669', marginTop: 4 }}>₦{Number(openReceipt.amountNgn || 0).toLocaleString()}</div>
+              </div>
+              {[
+                ['Facility', openReceipt.facilityName || facilityName],
+                ['Patient', openReceipt.patientName],
+                ['Hospital No.', openReceipt.hospitalNumber || '—'],
+                ['Purpose', openReceipt.purpose],
+                ['Method', `${openReceipt.method.toUpperCase()}${openReceipt.channel ? ` · ${openReceipt.channel}` : ''}`],
+                ['Reference / ARN', openReceipt.reference],
+                ['TSA Status', openReceipt.remittanceStatus === 'remitted'
+                  ? `Remitted${openReceipt.akwaRemitRrr ? ` (${openReceipt.akwaRemitRrr})` : ''}`
+                  : openReceipt.remittanceStatus === 'direct_akwaremit'
+                    ? `Direct AkwaRemit${openReceipt.akwaRemitRrr ? ` (${openReceipt.akwaRemitRrr})` : ''}`
+                    : openReceipt.method.toLowerCase() === 'cash'
+                      ? 'Cash in Till · Pending Remittance'
+                      : 'Pending TSA Settlement'],
+                ['Cashier', openReceipt.cashier || '—'],
+                ['Issued At', openReceipt.issuedAt ? new Date(openReceipt.issuedAt).toLocaleString() : '—'],
+              ].map(([k, v]) => (
+                <div key={String(k)} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingBottom: 7, borderBottom: '1px solid #F1F5F9' }}>
+                  <span style={{ color: C.muted, fontWeight: 600 }}>{k}</span>
+                  <span style={{ color: C.navy, fontWeight: 700, textAlign: 'right' }}>{v}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setOpenReceipt(null)}
+                  style={{ padding: '9px 16px', borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', color: C.navy, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => printPaymentReceiptDocument(openReceipt)}
+                  style={{ padding: '9px 18px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#0052D4,#0D9488)', color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  <Printer size={15} /> Print Receipt
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

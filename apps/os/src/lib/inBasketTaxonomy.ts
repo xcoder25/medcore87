@@ -415,6 +415,15 @@ const DEFAULT_FOLDERS: InBasketFolderDef[] = [
   },
 ];
 
+function isTreasuryNotice(n: HospitalNotification): boolean {
+  const t = (n.title || '').toLowerCase();
+  return (
+    n.module === 'treasury-notice' ||
+    t.includes('akwa remitta mandate') ||
+    t.includes('state treasury lodgement')
+  );
+}
+
 /** Accounting / Cashier / Billing Folders */
 const ACCOUNTS_FOLDERS: InBasketFolderDef[] = [
   {
@@ -426,9 +435,10 @@ const ACCOUNTS_FOLDERS: InBasketFolderDef[] = [
     bg: '#FFFBEB',
     borderColor: '#FDE68A',
     matcher: (n) =>
-      ['pending payment', 'incoming', 'awaiting', 'invoice', 'folder fee', 'registration fee', 'bill'].some((kw) =>
+      !isTreasuryNotice(n) &&
+      (['pending payment', 'incoming', 'awaiting', 'invoice', 'folder fee', 'registration fee', 'bill'].some((kw) =>
         (n.title + ' ' + n.body).toLowerCase().includes(kw)
-      ) || n.module === 'cashier' || n.module === 'billing',
+      ) || n.module === 'cashier' || n.module === 'billing'),
   },
   {
     id: 'cleared_receipts',
@@ -439,6 +449,7 @@ const ACCOUNTS_FOLDERS: InBasketFolderDef[] = [
     bg: '#ECFDF5',
     borderColor: '#A7F3D0',
     matcher: (n) =>
+      !isTreasuryNotice(n) &&
       ['cleared', 'paid', 'receipt', 'akwaremit', 'arn', 'pos', 'settlement'].some((kw) =>
         (n.title + ' ' + n.body).toLowerCase().includes(kw)
       ),

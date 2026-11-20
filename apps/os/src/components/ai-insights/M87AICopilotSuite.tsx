@@ -47,9 +47,22 @@ import {
   executeListRolesAutomation,
   executeDeleteRoleAutomation,
 } from '../../lib/roleAutomation';
+import {
+  parseBedAutomationIntent,
+  executeCreateBedsAutomation,
+  executeBedCapacitySummary,
+  canAutomateBeds,
+  bedAutomationRefusal,
+} from '../../lib/bedAutomation';
+import {
+  resolveAccountsAction,
+  executeAccountsAction,
+  canAutomateAccounts,
+  accountsAutomationRefusal,
+} from '../../lib/accountsAutomation';
 import { emitLiveAction } from '../../lib/liveActions';
 import {
-  Brain, Send, Sparkles, Plus, Activity, Users, Wallet, Stethoscope, RotateCcw, Copy, Check, X, BedDouble,
+  Brain, Send, Sparkles, Plus, Activity, Users, Wallet, Stethoscope, RotateCcw, Copy, Check, X, BedDouble, Minus,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -69,6 +82,7 @@ interface Props {
   session?: UserSession;
   inDrawer?: boolean;
   onClose?: () => void;
+  onMinimize?: () => void;
   onNavigate?: (moduleKey: string) => void;
 }
 
@@ -162,7 +176,7 @@ function StreamingText({ text, animate }: { text: string; animate: boolean }) {
   );
 }
 
-export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose }) => {
+export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose, onMinimize }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputPrompt, setInputPrompt] = useState('');
   const [isThinking, setIsThinking] = useState(false);
@@ -353,9 +367,11 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
       const tips =
         rk === 'reception' || rk === 'records'
           ? 'What are we doing — register, check-in, or queue?'
-          : rk === 'hospital_admin' || rk === 'admin'
-            ? 'What do you need — staff, beds, or the desk?'
-            : 'What do you need on the desk?';
+          : rk === 'cashier' || rk === 'accountant' || rk.includes('account') || rk.includes('billing')
+            ? 'What should we check — awaiting invoices, cash at till, batch TSA remittance, or receipts?'
+            : rk === 'hospital_admin' || rk === 'admin'
+              ? 'What do you need — staff, ward beds, roles, or treasury overview?'
+              : 'What do you need on the desk?';
       return `Hey ${first}. ${tips}`;
     }
     if (/^(ok|okay|k|alright|cool|fine|sure|got it|noted)[!., ]*$/i.test(q)) {
@@ -432,6 +448,158 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
 
 
 
+
+    // Admin AI: Ward Bed Provisioning & Capacity Summary
+    const bedIntent = parseBedAutomationIntent(query);
+    if (bedIntent.handled) {
+      if (bedIntent.action === 'error') {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: bedIntent.error,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+        setIsThinking(false);
+        return;
+      }
+
+      if (bedIntent.action === 'summary') {
+        const reply = executeBedCapacitySummary(facilityId);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: reply,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+        setIsThinking(false);
+        return;
+      }
+
+      if (!canAutomateBeds(actorRole)) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: bedAutomationRefusal(actorRole),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'operational',
+          },
+        ]);
+        setIsThinking(false);
+        return;
+      }
+
+      const totalReq = bedIntent.jobs.reduce((s, j) => s + j.count, 0);
+      const wardLabels = bedIntent.jobs.map((j) => j.ward).join(', ');
+      const steps: TaskStep[] = [
+        { id: 'b1', label: `Parsing ${totalReq} bed(s) across ${wardLabels}…`, status: 'pending' },
+        { id: 'b2', label: 'Sequencing non-colliding ward prefixes & numbers…', status: 'pending' },
+        { id: 'b3', label: 'Provisioning beds onto facility Bed & Ward Board…', status: 'pending' },
+        { id: 'b4', label: 'Recording audit entry & notifying clinicians…', status: 'pending' },
+      ];
+      setTaskRun({ title: 'Bed & Ward Capacity Provisioning', steps });
+      const markBed = (id: string, status: TaskStepStatus) => {
+        setTaskRun((prev) =>
+          prev ? { ...prev, steps: prev.steps.map((s) => (s.id === id ? { ...s, status } : s)) } : prev
+        );
+      };
+
+      markBed('b1', 'active');
+      await sleep(300);
+      markBed('b1', 'done');
+      markBed('b2', 'active');
+      await sleep(250);
+      markBed('b2', 'done');
+      markBed('b3', 'active');
+      const res = executeCreateBedsAutomation(bedIntent.jobs, facilityId, session?.name || 'Administrator');
+      await sleep(300);
+      markBed('b3', 'done');
+      markBed('b4', 'active');
+      await sleep(220);
+      markBed('b4', 'done');
+      await sleep(180);
+      setTaskRun(null);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-${Date.now()}-ai`,
+          sender: 'm87',
+          text: res.message,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          category: 'operational',
+        },
+      ]);
+      setIsThinking(false);
+      return;
+    }
+
+    // Account-Desk AI: Live Treasury, AkwaRemit TSA, Receipts, Open Bills & Shift Intelligence
+    const accountsAction = resolveAccountsAction(query);
+    if (accountsAction.type !== 'none') {
+      if (!canAutomateAccounts(actorRole)) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-ai`,
+            sender: 'm87',
+            text: accountsAutomationRefusal(actorRole),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            category: 'financial',
+          },
+        ]);
+        setIsThinking(false);
+        return;
+      }
+
+      const steps: TaskStep[] = [
+        { id: 'a1', label: 'Connecting to Accounts, Receipts & AkwaRemit TSA ledger…', status: 'pending' },
+        { id: 'a2', label: 'Computing live balances, ARNs & shift reconciliation…', status: 'pending' },
+        { id: 'a3', label: 'Done', status: 'pending' },
+      ];
+      setTaskRun({ title: 'Accounts & AkwaRemit Treasury Intelligence', steps });
+      const markAcc = (id: string, status: TaskStepStatus) => {
+        setTaskRun((prev) =>
+          prev ? { ...prev, steps: prev.steps.map((s) => (s.id === id ? { ...s, status } : s)) } : prev
+        );
+      };
+      markAcc('a1', 'active');
+      await sleep(240);
+      markAcc('a1', 'done');
+      markAcc('a2', 'active');
+      const reply = executeAccountsAction(accountsAction, {
+        facilityId,
+        facilityName,
+        cashierName: session?.name,
+        cashierBadge: session?.badgeId,
+      });
+      await sleep(200);
+      markAcc('a2', 'done');
+      markAcc('a3', 'done');
+      window.setTimeout(() => setTaskRun(null), 900);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-${Date.now()}-ai`,
+          sender: 'm87',
+          text: reply,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          category: 'financial',
+        },
+      ]);
+      setIsThinking(false);
+      return;
+    }
 
     // Front desk automation (full desk) — uses recent chat so follow-ups keep memory
     if (canAutomateReception(actorRole) || true) {
@@ -1258,20 +1426,20 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
         sub: 'Your radiology copilot. Open studies, report drafts, and critical findings for the clinical team.',
       },
       cashier: {
-        title: 'Ready for Accounts?',
-        sub: 'Your accounts copilot. Awaiting payment from Front Desk, collections today, and open hospital bills.',
+        title: 'Ready for Accounts & Treasury?',
+        sub: 'Your trained Accounts copilot. Track awaiting Front Desk bills, till cash vs Direct AkwaRemit, batch ARN settlements, receipts, and shift reconciliation.',
       },
       accountant: {
-        title: 'Ready for the AR desk?',
-        sub: 'Your finance copilot. Debtors, HMO claims, daily collections, and what needs follow-up now.',
+        title: 'Ready for Treasury & AR?',
+        sub: 'Your trained Finance copilot. Audit cash-at-till vs TSA remittances, prepare batch settlements, inspect HMO/AKSHIA claims, open bills, and shift variances.',
       },
       hospital_admin: {
         title: 'Clinical Intelligence & Admin',
-        sub: 'Hospital administration assistant. I can help you configure RBAC permissions, manage staff roles, audit access logs, and monitor hospital operations.',
+        sub: 'Hospital administration assistant. Create ward beds ("Create 10 beds in Male Medical"), configure roles & RBAC, enrol staff, and monitor hospital operations.',
       },
       admin: {
         title: 'Clinical Intelligence & Admin',
-        sub: 'Hospital administration assistant. I can help you configure RBAC permissions, manage staff roles, audit access logs, and monitor hospital operations.',
+        sub: 'Hospital administration assistant. Create ward beds ("Create 10 beds in Male Medical"), configure roles & RBAC, enrol staff, and monitor hospital operations.',
       },
       sysadmin: {
         title: 'Clinical Intelligence & ICT',
@@ -1319,28 +1487,28 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
         { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
       ],
       cashier: [
+        { label: 'Pending cash at till', icon: Wallet, tag: 'Till' },
+        { label: 'Prepare batch settlement', icon: Wallet, tag: 'TSA' },
         { label: 'Awaiting payment queue', icon: Wallet, tag: 'Pay' },
-        { label: 'Collected today', icon: Wallet, tag: 'Cash' },
-        { label: 'Open hospital bills', icon: Wallet, tag: 'AR' },
-        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+        { label: 'Today’s receipts', icon: Activity, tag: 'Receipts' },
       ],
       accountant: [
-        { label: 'Awaiting payment queue', icon: Wallet, tag: 'Pay' },
-        { label: 'HMO claims status', icon: Wallet, tag: 'HMO' },
-        { label: 'Aged debtors', icon: Wallet, tag: 'AR' },
-        { label: 'What needs attention?', icon: Activity, tag: 'Desk' },
+        { label: 'Pending cash at till', icon: Wallet, tag: 'TSA' },
+        { label: 'Prepare batch settlement', icon: Wallet, tag: 'Batch' },
+        { label: 'Reconciliation audit', icon: Activity, tag: 'Audit' },
+        { label: 'HMO claims status', icon: Wallet, tag: 'Claims' },
       ],
       hospital_admin: [
+        { label: 'Create 8 beds in Male Medical Ward', icon: BedDouble, tag: 'Beds' },
+        { label: 'Bed capacity per ward', icon: BedDouble, tag: 'Census' },
         { label: 'Create role Dialysis Nurse', icon: Users, tag: 'New Role' },
         { label: 'List all custom roles', icon: Activity, tag: 'RBAC' },
-        { label: 'Staff logged in now', icon: Users, tag: 'Staff' },
-        { label: 'Bed occupancy & ICU status', icon: BedDouble, tag: 'Census' },
       ],
       admin: [
+        { label: 'Create 8 beds in Male Medical Ward', icon: BedDouble, tag: 'Beds' },
+        { label: 'Bed capacity per ward', icon: BedDouble, tag: 'Census' },
         { label: 'Create role Triage Specialist', icon: Users, tag: 'New Role' },
-        { label: 'List all custom roles', icon: Activity, tag: 'RBAC' },
         { label: 'Staff logged in now', icon: Users, tag: 'Staff' },
-        { label: 'Bed occupancy & ICU status', icon: BedDouble, tag: 'Census' },
       ],
       sysadmin: [
         { label: 'Create a new hospital role', icon: Users, tag: 'New Role' },
@@ -1439,6 +1607,17 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose 
             >
               <RotateCcw size={13} />
               <span>New Chat</span>
+            </button>
+          )}
+          {onMinimize && (
+            <button
+              type="button"
+              className="celestia-hdr-action-btn"
+              onClick={onMinimize}
+              title="Minimize Celestia (keep conversation)"
+              aria-label="Minimize"
+            >
+              <Minus size={15} />
             </button>
           )}
           {onClose && (

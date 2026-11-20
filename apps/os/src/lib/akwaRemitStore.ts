@@ -126,6 +126,8 @@ export interface AkwaRemitBatchRecord {
   witnessedBy: string; // Second officer / Auditor who verified count
   witnessedByBadge: string;
   status: 'draft' | 'remitted';
+  tsaAccountNumber?: string;
+  settlementMode?: 'live_api' | 'tsa_verified_batch' | 'manual';
   evidenceDocRef?: string;
   notes?: string;
   createdAt: string;
@@ -172,9 +174,13 @@ export interface AkwaRemitDailySummary {
   // Remittance Status Breakdown
   alreadyInAkwaRemitNgn: number; // Remitted + Direct AkwaRemit
   pendingRemittanceNgn: number; // Cash and AkwaRemit POS awaiting bulk remittance
+  pendingCashNgn: number; // Physical cash in drawer not yet remitted to TSA
+  remittedCashNgn: number; // Physical cash already settled via batch remittance
   complianceRatePercent: number; // alreadyInAkwaRemit / totalCollections * 100
   receiptsCount: number;
   pendingReceiptsCount: number;
+  pendingCashCount: number;
+  remittedCashCount: number;
   remittedReceiptsCount: number;
   directReceiptsCount: number;
 }
@@ -392,7 +398,13 @@ function readPayments(): AkwaRemitPaymentRecord[] {
       return [];
     }
     const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
+    if (!Array.isArray(arr)) return [];
+    // Legacy guard: physical cash collected at a desk must stay 'pending' until batch-remitted by an accountant
+    return arr.map((r: AkwaRemitPaymentRecord) =>
+      r && r.method === 'cash' && r.remittanceStatus === 'direct_akwaremit' && !r.remittanceBatchId
+        ? { ...r, remittanceStatus: 'pending' as const }
+        : r,
+    );
   } catch {
     return [];
   }
@@ -519,11 +531,25 @@ export function recordAkwaRemitPayment(
   }
 ): AkwaRemitPaymentRecord {
   const list = readPayments();
+  const targetArn = input.arn || generateArn(input.facilityId);
+
+  // Deduplicate if caller already logged this ARN or receiptNo
+  const existing = list.find(
+    (p) =>
+      p.facilityId === input.facilityId &&
+      ((input.arn && p.arn === input.arn) || (input.receiptNo && p.receiptNo === input.receiptNo))
+  );
+  if (existing) {
+    return existing;
+  }
+
   const id = `AKW-PAY-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
-  // If method is direct_akwaremit, status is already direct_akwaremit
+  // Cash at till is NEVER directly in AkwaRemit RRR at collection time; it stays pending until bulk TSA remittance.
   let remittanceStatus: AkwaRemitRemittanceStatus = 'pending';
-  if (input.method === 'direct_akwaremit') {
+  if (input.method === 'cash') {
+    remittanceStatus = input.remittanceStatus === 'remitted' ? 'remitted' : 'pending';
+  } else if (input.method === 'direct_akwaremit') {
     remittanceStatus = 'direct_akwaremit';
   } else if (input.remittanceStatus) {
     remittanceStatus = input.remittanceStatus;
@@ -532,7 +558,7 @@ export function recordAkwaRemitPayment(
   const record: AkwaRemitPaymentRecord = {
     ...input,
     id,
-    arn: input.arn || generateArn(input.facilityId),
+    arn: targetArn,
     status: input.status || 'paid',
     remittanceStatus,
     createdAt: new Date().toISOString(),
@@ -557,24 +583,45 @@ export function getAkwaRemitDailySummary(facilityId: string, dateStr?: string): 
 
   let alreadyInAkwaRemit = 0;
   let pendingRemittance = 0;
+  let pendingCashNgn = 0;
+  let remittedCashNgn = 0;
 
   let pendingCount = 0;
+  let pendingCashCount = 0;
+  let remittedCashCount = 0;
   let remittedCount = 0;
   let directCount = 0;
 
   for (const p of payments) {
     totalCollections += p.amountNgn;
-    if (p.method === 'cash') cashTotal += p.amountNgn;
-    else if (p.method === 'akwaremit_pos') posTotal += p.amountNgn;
-    else if (p.method === 'direct_akwaremit') directTotal += p.amountNgn;
+    if (p.method === 'cash') {
+      cashTotal += p.amountNgn;
+    } else if (p.method === 'akwaremit_pos') {
+      posTotal += p.amountNgn;
+    } else if (
+      p.method === 'direct_akwaremit' ||
+      (p.method === 'bank_transfer' && p.remittanceStatus === 'direct_akwaremit')
+    ) {
+      directTotal += p.amountNgn;
+    }
 
-    if (p.remittanceStatus === 'remitted' || p.remittanceStatus === 'direct_akwaremit') {
+    if (p.remittanceStatus === 'remitted') {
       alreadyInAkwaRemit += p.amountNgn;
-      if (p.remittanceStatus === 'remitted') remittedCount++;
-      else directCount++;
+      remittedCount++;
+      if (p.method === 'cash') {
+        remittedCashNgn += p.amountNgn;
+        remittedCashCount++;
+      }
+    } else if (p.remittanceStatus === 'direct_akwaremit' && p.method !== 'cash') {
+      alreadyInAkwaRemit += p.amountNgn;
+      directCount++;
     } else {
       pendingRemittance += p.amountNgn;
       pendingCount++;
+      if (p.method === 'cash') {
+        pendingCashNgn += p.amountNgn;
+        pendingCashCount++;
+      }
     }
   }
 
@@ -589,9 +636,13 @@ export function getAkwaRemitDailySummary(facilityId: string, dateStr?: string): 
     directAkwaRemitTotalNgn: directTotal,
     alreadyInAkwaRemitNgn: alreadyInAkwaRemit,
     pendingRemittanceNgn: pendingRemittance,
+    pendingCashNgn,
+    remittedCashNgn,
     complianceRatePercent: Math.round(complianceRate * 10) / 10,
     receiptsCount: payments.length,
     pendingReceiptsCount: pendingCount,
+    pendingCashCount,
+    remittedCashCount,
     remittedReceiptsCount: remittedCount,
     directReceiptsCount: directCount,
   };
@@ -607,11 +658,13 @@ export function executeAkwaRemitBatch(params: {
   paymentIds: string[];
   akwaRemitRrr: string;
   bankName?: string;
+  tsaAccountNumber?: string;
   bankTellerRef?: string;
   remittedBy: string;
   remittedByBadge: string;
   witnessedBy: string;
   witnessedByBadge: string;
+  settlementMode?: 'live_api' | 'tsa_verified_batch' | 'manual';
   notes?: string;
 }): AkwaRemitBatchRecord {
   const allPayments = readPayments();
@@ -643,6 +696,23 @@ export function executeAkwaRemitBatch(params: {
 
   writePayments(updatedPayments);
 
+  // Synchronize receipt records so every patient receipt updates to 'remitted'
+  try {
+    const refs = selectedPayments.flatMap((p) => [p.arn, p.receiptNo]).filter(Boolean);
+    import('./paymentReceiptModule')
+      .then(({ markReceiptsRemittedByRefs }) => {
+        markReceiptsRemittedByRefs(params.facilityId, refs, {
+          akwaRemitRrr: params.akwaRemitRrr,
+          remittanceBatchId: batchId,
+          remittedAt: now,
+          remittedBy: params.remittedBy,
+        });
+      })
+      .catch(() => { });
+  } catch {
+    /* ignore */
+  }
+
   const batch: AkwaRemitBatchRecord = {
     id: batchId,
     batchNumber,
@@ -656,11 +726,13 @@ export function executeAkwaRemitBatch(params: {
     itemCount: selectedPayments.length,
     akwaRemitRrr: params.akwaRemitRrr,
     bankName: params.bankName || 'Akwa Ibom State Revenue Account',
+    tsaAccountNumber: params.tsaAccountNumber,
     bankTellerRef: params.bankTellerRef,
     remittedBy: params.remittedBy,
     remittedByBadge: params.remittedByBadge,
     witnessedBy: params.witnessedBy,
     witnessedByBadge: params.witnessedByBadge,
+    settlementMode: params.settlementMode || 'manual',
     status: 'remitted',
     notes: params.notes,
     createdAt: now,
@@ -672,6 +744,90 @@ export function executeAkwaRemitBatch(params: {
   writeBatches(batches);
 
   return batch;
+}
+
+/**
+ * Automated API Shift-Close Cash Batch Settlement:
+ * Sends selected unpaid cash ARNs + TSA bank deposit teller reference to `/api/akwaremit/batch-settle`
+ * and settles them programmatically in the facility ledger + receipts registry.
+ */
+export async function submitAutomatedCashBatchSettlement(params: {
+  facilityId: string;
+  facilityName: string;
+  paymentIds: string[];
+  bankName?: string;
+  tsaAccountNumber?: string;
+  bankTellerRef?: string;
+  akwaRemitRrr?: string;
+  remittedBy: string;
+  remittedByBadge: string;
+  witnessedBy: string;
+  witnessedByBadge: string;
+  notes?: string;
+}): Promise<{ batch: AkwaRemitBatchRecord; settlementMode: string; message: string }> {
+  const selected = readPayments().filter((p) => params.paymentIds.includes(p.id));
+  if (selected.length === 0) {
+    throw new Error('Select at least one pending cash/POS collection to settle.');
+  }
+
+  let resolvedRrr = (params.akwaRemitRrr || '').trim();
+  let settlementMode: 'live_api' | 'tsa_verified_batch' = 'tsa_verified_batch';
+
+  if (typeof window !== 'undefined') {
+    const res = await fetch('/api/akwaremit/batch-settle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        facilityId: params.facilityId,
+        facilityName: params.facilityName,
+        bankName: params.bankName,
+        tsaAccountNumber: params.tsaAccountNumber,
+        bankTellerRef: params.bankTellerRef,
+        akwaRemitRrr: resolvedRrr || undefined,
+        remittedBy: params.remittedBy,
+        witnessedBy: params.witnessedBy,
+        arns: selected.map((p) => ({
+          arn: p.arn,
+          receiptNo: p.receiptNo,
+          amountNgn: p.amountNgn,
+          patientName: p.patientName,
+          hospitalNumber: p.hospitalNumber,
+        })),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.ok === false) {
+      throw new Error(data?.error || data?.message || 'Batch settlement API request failed.');
+    }
+    if (data?.akwaRemitRrr) resolvedRrr = String(data.akwaRemitRrr);
+    if (data?.settlementMode === 'live_api') settlementMode = 'live_api';
+  } else {
+    resolvedRrr = resolvedRrr || `RRR-AKW-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  }
+
+  const batch = executeAkwaRemitBatch({
+    facilityId: params.facilityId,
+    facilityName: params.facilityName,
+    batchType: 'cash_bulk',
+    paymentIds: params.paymentIds,
+    akwaRemitRrr: resolvedRrr,
+    bankName: params.bankName,
+    tsaAccountNumber: params.tsaAccountNumber,
+    bankTellerRef: params.bankTellerRef,
+    remittedBy: params.remittedBy,
+    remittedByBadge: params.remittedByBadge,
+    witnessedBy: params.witnessedBy,
+    witnessedByBadge: params.witnessedByBadge,
+    settlementMode,
+    notes: params.notes,
+  });
+
+  const message =
+    settlementMode === 'live_api'
+      ? `API-settled ${batch.itemCount} ARN(s) totaling ₦${batch.totalAmountNgn.toLocaleString()} to AkwaRemit (RRR: ${batch.akwaRemitRrr}).`
+      : `Batch-settled ${batch.itemCount} ARN(s) totaling ₦${batch.totalAmountNgn.toLocaleString()} against TSA teller deposit (RRR: ${batch.akwaRemitRrr}).`;
+
+  return { batch, settlementMode, message };
 }
 
 /**

@@ -228,4 +228,40 @@ export const M87_SEED_CARDS: M87DomainCard[] = [
     body: 'Admin enrols staff → badge ID + PIN → ID card. Staff sign in with badge + PIN. Delete only via admin access control.',
     tags: ['staff', 'rbac', 'admin'],
   },
+  {
+    id: 'seed-cash-vs-direct-akwaremit',
+    title: 'Cash Till vs Direct AkwaRemit RRR Separation',
+    body: 'Physical cash collected at the cashier counter stays strictly under Cash in Till (Pending Remittance) with its individual ARN and does NOT reflect under Direct AkwaRemit RRR until the accountant lodges cash into the partner TSA bank and runs Batch Remittance.',
+    tags: ['accounts', 'cashier', 'akwaremit', 'cash', 'remittance', 'rrr'],
+  },
+  {
+    id: 'seed-akwaremit-batch-api',
+    title: 'Automated API Shift-Close Cash Batch Settlement',
+    body: 'Cashiers collect cash and issue individual ARNs at the till. At end of shift/day, the head cashier deposits physical cash into the hospital TSA Collection/Transit Account at a partner bank and triggers /api/akwaremit/batch-settle with the list of unpaid cash ARNs, settling all ARNs and updating patient receipt statuses.',
+    tags: ['accounts', 'akwaremit', 'batch', 'settlement', 'tsa', 'arn', 'shift'],
+  },
+  {
+    id: 'seed-dual-control-shift',
+    title: 'Dual-Control Cashier Shift Close',
+    body: 'Every cashier opens a shift with starting float. At shift close, two officers (Cashier + Witness Supervisor) verify cash denominations (₦1000/₦500/₦200) against system totals to lock cash custody with zero unlogged variance.',
+    tags: ['accounts', 'cashier', 'shift', 'dual-control', 'audit'],
+  },
+  {
+    id: 'seed-cash-ceiling',
+    title: 'Cash Holding Ceiling & Treasury Lodgement',
+    body: 'When cash in till hits or exceeds the facility Cash Holding Limit, excess physical cash must be deposited into the State Treasury Single Account (TSA) and cleared via AkwaRemit Central Hub. The dashboard Mandate popout remains under In-Basket Notices.',
+    tags: ['accounts', 'treasury', 'cash', 'ceiling', 'lodgment'],
+  },
+  {
+    id: 'seed-akshia-nhia-claims',
+    title: 'AKSHIA, NHIA & BHCPF Facility Provider Billing',
+    body: 'Public hospitals in Akwa Ibom process insured encounters using their configured AKSHIA/NHIA provider codes. Cleared insurance lines are tracked under HMO / NHIA Claims separate from cash drawer collections.',
+    tags: ['accounts', 'akshia', 'nhia', 'bhcpf', 'claims', 'hmo'],
+  },
+  {
+    id: 'seed-receipt-open-bills',
+    title: 'Open Hospital Bills, Receipts & POS Flow',
+    body: 'Accounts collects payments only through the Collect / POS flow (no offline bypass next to Collect). Every settled bill issues a printable official receipt (RCP-...) showing ARN and AkwaRemit TSA status, viewable in Today receipts.',
+    tags: ['accounts', 'receipts', 'billing', 'pos', 'open bills'],
+  },
 ];

@@ -10,6 +10,7 @@ import {
   getAkwaRemitDailySummary,
   recordAkwaRemitPayment,
   executeAkwaRemitBatch,
+  submitAutomatedCashBatchSettlement,
   closeCashierShiftDualControl,
   AKWAREMIT_EVENT,
   type AkwaRemitPaymentRecord,
@@ -63,11 +64,13 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
   const [showRemitModal, setShowRemitModal] = useState(false);
   const [batchRrr, setBatchRrr] = useState('');
   const [bankTellerRef, setBankTellerRef] = useState('');
+  const [tsaAccount, setTsaAccount] = useState('TSA-AKW-001928374');
   const [bankName, setBankName] = useState('Zenith Bank (Akwa Ibom State Revenue Acct)');
   const [witnessName, setWitnessName] = useState('');
   const [witnessBadge, setWitnessBadge] = useState('');
   const [batchNotes, setBatchNotes] = useState('');
   const [remitSuccessMsg, setRemitSuccessMsg] = useState<string | null>(null);
+  const [remitting, setRemitting] = useState(false);
 
   // Dual-control shift close state
   const [showShiftModal, setShowShiftModal] = useState(false);
@@ -163,27 +166,24 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
     }
   };
 
-  const handleExecuteRemit = (e: React.FormEvent) => {
+  const handleExecuteRemit = async (e: React.FormEvent) => {
     e.preventDefault();
     setRemitError(null);
-    if (!batchRrr.trim()) {
-      setRemitError('Official AkwaRemit RRR is required for state remittance.');
-      return;
-    }
     if (!witnessName.trim()) {
       setRemitError('Dual-control second witness name is required for compliance sign-off.');
       return;
     }
 
+    setRemitting(true);
     try {
-      const batch = executeAkwaRemitBatch({
+      const res = await submitAutomatedCashBatchSettlement({
         facilityId,
         facilityName,
-        batchType: 'cash_bulk',
         paymentIds: selectedPaymentIds,
-        akwaRemitRrr: batchRrr.trim(),
         bankName: bankName.trim(),
+        tsaAccountNumber: tsaAccount.trim() || undefined,
         bankTellerRef: bankTellerRef.trim() || undefined,
+        akwaRemitRrr: batchRrr.trim() || undefined,
         remittedBy: session.name || 'Head of Accounts',
         remittedByBadge: session.badgeId || 'ADM-00001',
         witnessedBy: witnessName.trim(),
@@ -191,18 +191,18 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
         notes: batchNotes.trim(),
       });
 
-      setRemitSuccessMsg(
-        `Successfully remitted ₦${batch.totalAmountNgn.toLocaleString()} into AkwaRemit under RRR ${batch.akwaRemitRrr} (Batch ${batch.batchNumber}).`
-      );
+      setRemitSuccessMsg(res.message);
       setSelectedPaymentIds([]);
       setBatchRrr('');
       setBankTellerRef('');
       setWitnessName('');
       setShowRemitModal(false);
       reloadData();
-      setTimeout(() => setRemitSuccessMsg(null), 5000);
+      setTimeout(() => setRemitSuccessMsg(null), 6000);
     } catch (err: any) {
       setRemitError(err.message || 'Remittance execution failed. Please check your inputs and try again.');
+    } finally {
+      setRemitting(false);
     }
   };
 
@@ -767,7 +767,12 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                           ) : p.method === 'direct_akwaremit' ? (
                             <div style={{ color: '#047857', fontWeight: 700 }}>RRR: {p.akwaRemitRrr}</div>
                           ) : (
-                            <div style={{ color: '#64748B' }}>Physical Cash Desk</div>
+                            <div>
+                              <div style={{ color: '#0F172A', fontWeight: 700 }}>ARN: {p.arn || 'N/A'}</div>
+                              <div style={{ color: '#64748B', fontSize: '0.68rem' }}>
+                                {isRemitted ? 'Settled via Batch TSA' : 'Physical Cash Till'}
+                              </div>
+                            </div>
                           )}
                         </td>
                         <td style={{ padding: '10px 12px', fontWeight: 800, color: '#0F172A' }}>
@@ -916,12 +921,34 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
               </div>
             )}
 
+            <div style={{
+              background: '#F0FDFA',
+              border: '1px solid #99F6E4',
+              borderRadius: 12,
+              padding: '10px 14px',
+              marginBottom: 14,
+              fontSize: '0.78rem',
+              color: '#0F766E',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 12,
+              alignItems: 'center',
+            }}>
+              <span style={{ fontWeight: 800 }}>Automated Shift-Close Settlement Flow:</span>
+              <span><strong>1.</strong> Cashiers collect cash &amp; issue individual ARNs</span>
+              <span>→</span>
+              <span><strong>2.</strong> Daily cash lodgment to Partner Bank TSA Transit Acct</span>
+              <span>→</span>
+              <span><strong>3.</strong> Batch ARN payload settles ARNs &amp; updates receipts to Remitted</span>
+            </div>
+
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
                   <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0', textAlign: 'left' }}>
                     <th style={{ padding: '10px 12px', width: 40 }}>Select</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800, color: '#475569' }}>Receipt No</th>
+                    <th style={{ padding: '10px 12px', fontWeight: 800, color: '#475569' }}>ARN Reference</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800, color: '#475569' }}>Patient</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800, color: '#475569' }}>Method</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800, color: '#475569' }}>Amount</th>
@@ -932,7 +959,7 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                 <tbody>
                   {pendingPaymentsForRemit.length === 0 ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: 36, color: '#10B981', fontWeight: 700 }}>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: 36, color: '#10B981', fontWeight: 700 }}>
                         All collections have reached AkwaRemit! No pending remittances.
                       </td>
                     </tr>
@@ -958,6 +985,7 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                             />
                           </td>
                           <td style={{ padding: '10px 12px', fontWeight: 700 }}>{p.receiptNo}</td>
+                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#0369A1', fontWeight: 700 }}>{p.arn || 'N/A'}</td>
                           <td style={{ padding: '10px 12px' }}>{p.patientName}</td>
                           <td style={{ padding: '10px 12px' }}>
                             {p.method === 'cash' ? 'Cash' : p.method === 'akwaremit_pos' ? 'AkwaRemit POS' : 'Direct AkwaRemit'}
@@ -1143,12 +1171,11 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
             <form onSubmit={handleExecuteRemit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
                 <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: 4 }}>
-                  Official AkwaRemit RRR (Remita / Retrieval Ref) *
+                  Official AkwaRemit RRR (Leave blank to settle automatically via API batch)
                 </label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. RRR-2401-9984-2103"
+                  placeholder="Optional — auto-generated via API batch if left blank"
                   value={batchRrr}
                   onChange={(e) => setBatchRrr(e.target.value)}
                   style={{
@@ -1162,16 +1189,30 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                 />
               </div>
 
-              <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: 4 }}>
-                  Bank / Destination Account
-                </label>
-                <input
-                  type="text"
-                  value={bankName}
-                  onChange={(e) => setBankName(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.85rem' }}
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: 4 }}>
+                    Partner Bank Name
+                  </label>
+                  <input
+                    type="text"
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.85rem' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: 4 }}>
+                    TSA Collection / Transit Account
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. TSA-AKW-001928374"
+                    value={tsaAccount}
+                    onChange={(e) => setTsaAccount(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.85rem', fontFamily: 'monospace' }}
+                  />
+                </div>
               </div>
 
               <div>
@@ -1245,18 +1286,19 @@ export const AkwaRemitRevenueSuite: React.FC<Props> = ({ session }) => {
                 </button>
                 <button
                   type="submit"
+                  disabled={remitting}
                   style={{
                     flex: 2,
                     padding: '10px 16px',
                     borderRadius: 8,
                     border: 'none',
-                    background: 'linear-gradient(135deg, #0052D4 0%, #00BFA5 100%)',
+                    background: remitting ? '#94A3B8' : 'linear-gradient(135deg, #0052D4 0%, #00BFA5 100%)',
                     color: '#fff',
                     fontWeight: 800,
-                    cursor: 'pointer',
+                    cursor: remitting ? 'wait' : 'pointer',
                   }}
                 >
-                  Confirm & Post to AkwaRemit
+                  {remitting ? 'Settling Batch ARNs…' : 'Settle Batch ARNs to AkwaRemit'}
                 </button>
               </div>
             </form>

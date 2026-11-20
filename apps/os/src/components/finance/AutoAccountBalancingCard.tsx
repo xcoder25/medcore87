@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { UserSession } from '../auth/AuthScreen';
 import {
   Landmark,
@@ -17,12 +17,15 @@ import {
   Scale,
   Receipt,
   Users,
+  X,
 } from 'lucide-react';
 import {
   getAkwaRemitDailySummary,
   listAkwaRemitPayments,
+  AKWAREMIT_EVENT,
   type AkwaRemitDailySummary,
 } from '../../lib/akwaRemitStore';
+import { upsertFacilityNotice } from '../../lib/notificationEngine';
 
 interface Props {
   session: UserSession;
@@ -49,8 +52,20 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
 }) => {
   const facilityId = session.hospitalId || 'IGH-EKT';
   const facilityName = session.facility || 'Hospital';
+  const [syncTick, setSyncTick] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setSyncTick((t) => t + 1);
+    window.addEventListener(AKWAREMIT_EVENT, bump);
+    window.addEventListener('medcore-payment-receipts', bump);
+    return () => {
+      window.removeEventListener(AKWAREMIT_EVENT, bump);
+      window.removeEventListener('medcore-payment-receipts', bump);
+    };
+  }, []);
 
   const summary: AkwaRemitDailySummary = useMemo(() => {
+    void syncTick;
     try {
       return getAkwaRemitDailySummary(facilityId);
     } catch {
@@ -63,18 +78,64 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
         directAkwaRemitTotalNgn: 0,
         alreadyInAkwaRemitNgn: 0,
         pendingRemittanceNgn: 0,
+        pendingCashNgn: 0,
+        remittedCashNgn: 0,
         complianceRatePercent: 100,
         receiptsCount: 0,
         pendingReceiptsCount: 0,
+        pendingCashCount: 0,
+        remittedCashCount: 0,
         remittedReceiptsCount: 0,
         directReceiptsCount: 0,
       };
     }
-  }, [facilityId]);
+  }, [facilityId, syncTick]);
 
-  // Total cash collected vs remitted
-  const unremittedCash = summary.pendingRemittanceNgn || summary.cashTotalNgn;
+  // Only physical cash still held at till awaiting batch remittance counts as unremitted cash
+  const unremittedCash = summary.pendingCashNgn;
   const isPendingRemittance = unremittedCash > 0;
+
+  // Show Akwa Remitta Mandate popout on dashboard for 10 seconds, then keep it inside In-Basket Notices
+  const [mandateVisible, setMandateVisible] = useState(false);
+  const [mandateSecondsLeft, setMandateSecondsLeft] = useState(10);
+
+  useEffect(() => {
+    if (!isPendingRemittance) {
+      setMandateVisible(false);
+      return;
+    }
+    try {
+      upsertFacilityNotice({
+        facilityId,
+        dedupeKey: `akwaremit-mandate-${facilityId}-${summary.date}`,
+        level: 'important',
+        title: `Akwa Remitta Mandate · ₦${unremittedCash.toLocaleString()} Physical Cash Awaiting Remittance`,
+        body: [
+          `State Treasury Lodgement Mandate (${summary.pendingCashCount} cash ARN(s) totaling ₦${unremittedCash.toLocaleString()} at till):`,
+          `1. Cashiers issue individual ARNs at collection time.`,
+          `2. Deposit physical cash into the hospital TSA Collection / Transit Account at a partner bank and keep the teller/deposit reference.`,
+          `3. Open AkwaRemit Central Hub → Remit to AkwaRemit to submit the Batch Settlement payload (automated API or dual-control RRR) so receipts and ARNs update to Remitted.`,
+        ].join('\n'),
+        module: 'treasury-notice',
+        roleHint: 'accountant',
+      });
+    } catch {
+      /* ignore */
+    }
+    setMandateVisible(true);
+    setMandateSecondsLeft(10);
+    const intervalId = window.setInterval(() => {
+      setMandateSecondsLeft((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(intervalId);
+          setMandateVisible(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [facilityId, isPendingRemittance, unremittedCash, summary.pendingCashCount, summary.date]);
 
   // Total collections
   const totalCollections = summary.totalCollectionsNgn || paidTodayAmount;
@@ -216,8 +277,8 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* ── 1. Akwa Remitta Cash Remittance Reminder Alert Banner ── */}
-      {isPendingRemittance ? (
+      {/* ── 1. Akwa Remitta Cash Remittance Reminder Alert Banner (shown 10s on dashboard, stored in Notices) ── */}
+      {isPendingRemittance && mandateVisible ? (
         <div
           style={{
             background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 50%, #FDE68A 100%)',
@@ -250,11 +311,13 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
               <Landmark size={24} strokeWidth={2} />
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5, color: '#92400E', background: '#FDE68A', padding: '2px 8px', borderRadius: 6 }}>
                   Akwa Remitta Mandate · State Treasury Lodgement
                 </span>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#F59E0B', display: 'inline-block' }} />
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#92400E', background: 'rgba(255,255,255,0.65)', padding: '2px 7px', borderRadius: 999 }}>
+                  Hides in {mandateSecondsLeft}s · Saved under Notices
+                </span>
               </div>
               <div style={{ fontSize: 16, fontWeight: 800, color: '#78350F', marginTop: 3 }}>
                 Collected Physical Cash: ₦{unremittedCash.toLocaleString()} awaiting remittance
@@ -309,9 +372,29 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
               <Printer size={15} />
               Statement
             </button>
+            <button
+              type="button"
+              onClick={() => setMandateVisible(false)}
+              title="Dismiss from dashboard (remains in Notifications → Notices)"
+              aria-label="Dismiss Akwa Remitta Mandate banner"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                border: '1px solid rgba(180,83,9,0.28)',
+                background: 'rgba(255,255,255,0.7)',
+                color: '#78350F',
+                cursor: 'pointer',
+              }}
+            >
+              <X size={16} />
+            </button>
           </div>
         </div>
-      ) : (
+      ) : !isPendingRemittance ? (
         <div
           style={{
             background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
@@ -348,7 +431,7 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
             </button>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* ── 2. Auto Account Balancing Intelligence Panel ── */}
       <div

@@ -39,6 +39,8 @@ import {
   ChevronsRight, LifeBuoy, UserCheck, ExternalLink
 } from 'lucide-react';
 import { AmbientSoapPanel } from '../clinical-core/AmbientSoapPanel';
+import { DoctorAdmissionSuite, AdmitToBedModal } from '../beds/DoctorAdmissionSuite';
+import { occupiedBeds, subscribeBeds } from '../../lib/bedBoardStore';
 
 interface DoctorPortalProps {
   session: UserSession;
@@ -676,11 +678,12 @@ const PatientsView: React.FC = () => {
 
 // -- CONSULTATION (SOAP) -------------------------------------------------------
 
-const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
+const ConsultationView: React.FC<{ session?: UserSession; onQuickNav?: (mod: SubModule) => void }> = ({ session, onQuickNav }) => {
   const facilityId = session?.hospitalId || 'IGH-EKT';
   const adminSettings = getAdminSettings(facilityId);
   const [step, setStep] = useState<'select' | 'consult'>('select');
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [showAdmitModal, setShowAdmitModal] = useState(false);
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [hpi, setHpi] = useState('');
   const [pmh, setPmh] = useState('');
@@ -877,11 +880,41 @@ const ConsultationView: React.FC<{ session?: UserSession }> = ({ session }) => {
         )}
         <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
           <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem', marginBottom: 10 }}>Clinical Shortcuts</div>
-          {[{ l: '+ Order Lab Test', c: '#D97706' }, { l: '+ Order Radiology', c: '#DB2777' }, { l: '+ Prescribe Drug', c: '#7C3AED' }, { l: '+ Refer Patient', c: '#059669' }, { l: '+ Request Admission', c: '#0284C7' }].map(a => (
-            <button key={a.l} type="button" style={{ width: '100%', marginBottom: 6, background: '#F8FAFC', border: '1px solid #E2E8F0', color: a.c, padding: '8px 11px', borderRadius: 7, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', textAlign: 'left' }}>{a.l}</button>
+          {[
+            { l: '+ Order Lab Test', c: '#D97706', fn: () => onQuickNav?.('lab-orders') },
+            { l: '+ Order Radiology', c: '#DB2777', fn: () => onQuickNav?.('radiology-orders') },
+            { l: '+ Prescribe Drug', c: '#7C3AED', fn: () => onQuickNav?.('prescriptions') },
+            { l: '+ Refer Patient', c: '#059669', fn: () => onQuickNav?.('referrals') },
+            { l: '+ Request Admission', c: '#0284C7', fn: () => setShowAdmitModal(true) },
+          ].map(a => (
+            <button key={a.l} type="button" onClick={a.fn} style={{ width: '100%', marginBottom: 6, background: '#F8FAFC', border: '1px solid #E2E8F0', color: a.c, padding: '8px 11px', borderRadius: 7, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', textAlign: 'left' }}>{a.l}</button>
           ))}
         </div>
       </div>
+
+      {showAdmitModal && (
+        <AdmitToBedModal
+          facilityId={facilityId}
+          facilityName={session?.facility}
+          doctorName={session?.name || 'Doctor'}
+          doctorBadge={session?.badgeId}
+          initialPatient={
+            patient
+              ? {
+                  id: patient.id,
+                  name: patient.name,
+                  hospitalNumber: patient.id,
+                  diagnosis: assessment.trim() || chiefComplaint.trim() || patient.diagnosis,
+                }
+              : undefined
+          }
+          onClose={() => setShowAdmitModal(false)}
+          onAdmitted={(bed) => {
+            setShowAdmitModal(false);
+            emitLiveAction(`Admitted ${bed.patient || 'Patient'} to ${bed.bedNo} (${bed.ward})`, { module: 'beds' });
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -2234,9 +2267,40 @@ const RadiologyOrdersView: React.FC<{ session: UserSession }> = ({ session }) =>
 
 // -- WARD ROUND ----------------------------------------------------------------
 
-const WardRoundView: React.FC = () => {
-  const [expanded, setExpanded] = useState<string | null>(PATIENTS[0]?.id || null);
-  const inpatients = PATIENTS.filter(p => p.status !== 'outpatient' && p.status !== 'discharged');
+const WardRoundView: React.FC<{ session?: UserSession }> = ({ session }) => {
+  const facilityId = session?.hospitalId || 'IGH-EKT';
+  const [bedTick, setBedTick] = useState(0);
+
+  useEffect(() => subscribeBeds(() => setBedTick((t) => t + 1)), []);
+
+  const inpatients = useMemo(() => {
+    void bedTick;
+    const base = PATIENTS.filter((p) => p.status !== 'outpatient' && p.status !== 'discharged');
+    const liveBeds = occupiedBeds(facilityId);
+    const seen = new Set(base.map((p) => p.id.toLowerCase()));
+    const mapped: Patient[] = liveBeds
+      .filter((b) => {
+        const pid = (b.patientId || b.hospitalNumber || b.id).toLowerCase();
+        return !seen.has(pid);
+      })
+      .map((b) => ({
+        id: b.hospitalNumber || b.patientId || b.id,
+        name: b.patient || 'Admitted Patient',
+        age: 0,
+        gender: 'M' as const,
+        ward: b.ward,
+        bed: b.bedNo,
+        diagnosis: b.diagnosis || 'Admitted inpatient care',
+        status: b.status === 'isolation' ? ('critical' as const) : ('inpatient' as const),
+        nextAction: `Ward Round · Bed ${b.bedNo}`,
+        vitals: { bp: '120/80', hr: 78, temp: 36.8, spo2: 98, rr: 18 },
+        admitDate: b.admitDate || 'Today',
+        flags: b.status === 'isolation' ? ['ISOLATION', 'LIVE BED'] : ['LIVE BED'],
+      }));
+    return [...mapped, ...base];
+  }, [facilityId, bedTick]);
+
+  const [expanded, setExpanded] = useState<string | null>(inpatients[0]?.id || null);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
@@ -2492,10 +2556,10 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate,
           />
         );
       case 'patients': return <PatientsViewLive session={session} onNavigate={onNavigate} />;
-      case 'consultation': return <ConsultationView session={session} />;
+      case 'consultation': return <ConsultationView session={session} onQuickNav={setActiveModule} />;
       case 'prescriptions': return <PrescriptionsView session={session} />;
       case 'lab-orders': return <LabOrdersView session={session} />;
-      case 'ward-round': return <WardRoundView />;
+      case 'ward-round': return <WardRoundView session={session} />;
       case 'appointments': return <AppointmentsView />;
       case 'tasks': return <TasksView />;
       case 'analytics': return <AnalyticsView />;
@@ -2503,7 +2567,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate,
       case 'radiology-orders': return <RadiologyOrdersView session={session} />;
       case 'referrals': return <Placeholder icon={Send} label="Referral Management" description="Internal and external referrals, specialist consultations, inter-hospital transfers with clinical summaries and acceptance tracking." color="#10B981" />;
       case 'messages': return <Placeholder icon={MessageSquare} label="Clinical Messaging" description="Secure clinician-to-clinician messaging, nurse escalations, department broadcasts, and ward-level notifications." color="#60A5FA" />;
-      case 'admission': return <Placeholder icon={UserPlus} label="Admissions & Discharge Planning" description="Patient admission requests, ward/bed allocation, transfer orders, and structured discharge planning with after-care instructions." color="#38BDF8" />;
+      case 'admission': return <DoctorAdmissionSuite session={session} onNavigate={(k) => { if (k === 'ward-round') setActiveModule('ward-round'); else onNavigate(k); }} />;
       case 'settings': return <Placeholder icon={Settings} label="Doctor Preferences" description="Notification settings, signature setup, prescription defaults, preferred investigation labs, portal shortcuts, and display configuration." color="#94A3B8" />;
       default:
         return (
