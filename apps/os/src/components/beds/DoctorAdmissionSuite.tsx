@@ -31,7 +31,7 @@ import {
 import { listPatients, subscribePatients, type FacilityPatient } from '../../lib/patientRegistryStore';
 import { VerifiedPatientField } from '../common/VerifiedPatientField';
 import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
-import { updateVisitStatus } from '../../lib/receptionOpsStore';
+import { updateVisitStatus, autoAdvancePatientVisitStage } from '../../lib/receptionOpsStore';
 import { broadcastOpdStage } from '../../hooks/useOpdSync';
 import { placeOrder } from '../../lib/clinicalEventBus';
 import { pushNotification } from '../../lib/notificationEngine';
@@ -161,20 +161,31 @@ export const AdmitToBedModal: React.FC<AdmitModalProps> = ({
 
     const updatedBed = listBeds(facilityId).find((b) => b.id === selectedBedId);
 
-    // 1. Transition active OPD consultation visit out of clinic queue
-    if (initialPatient?.visitId) {
-      try {
-        updateVisitStatus(initialPatient.visitId, 'completed');
-        broadcastOpdStage('medcore_reception', {
-          facilityId,
-          patientId: resolvedPid || '',
-          visitId: initialPatient.visitId,
-          stage: 'completed',
-          patientName: cleanName,
-        });
-      } catch {
-        /* ignore */
+    // 1. Automatically transition active OPD consultation visit to Admitted (Ward/Bed)
+    try {
+      const advanced = autoAdvancePatientVisitStage(
+        facilityId,
+        resolvedPid || resolvedHospNo || cleanName,
+        'admitted',
+        {
+          visitId: initialPatient?.visitId,
+          ward: selectedWard,
+          bed: updatedBed?.bedNo || '',
+          doctor: doctorName,
+        }
+      );
+      if (!advanced && initialPatient?.visitId) {
+        updateVisitStatus(initialPatient.visitId, 'admitted');
       }
+      broadcastOpdStage('medcore_reception', {
+        facilityId,
+        patientId: resolvedPid || '',
+        visitId: initialPatient?.visitId || '',
+        stage: 'admitted',
+        patientName: cleanName,
+      });
+    } catch {
+      /* ignore */
     }
 
     // 2. Place admission nursing / clinical protocol order when specified

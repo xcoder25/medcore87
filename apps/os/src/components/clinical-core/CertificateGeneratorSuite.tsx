@@ -16,6 +16,8 @@ import type { UserSession } from '../auth/AuthScreen';
 import { listPatients, type RegisteredPatient } from '../../lib/patientRegistryStore';
 import { geminiGenerate } from '../../lib/geminiClient';
 import { getAdminSettings } from '../../lib/adminSettingsStore';
+import { ScannableQrCode } from '../common/ScannableQrCode';
+import { buildVerifyUrl } from '../../lib/qrPayload';
 
 export type CertificateType = 'birth' | 'fitness' | 'sick_leave' | 'death';
 
@@ -1159,9 +1161,32 @@ For death: { deceasedName, age, sex, hospitalNumber, immediateCause, antecedentC
                 <div>
                   <div style={{ fontSize: '0.72rem', color: '#64748B', marginBottom: 4 }}>Official Verification Serial & QR</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {/* Simulated Encrypted QR Block */}
-                    <div style={{ width: 56, height: 56, background: '#0F172A', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF', fontSize: '0.55rem', textAlign: 'center', padding: 4, fontWeight: 800 }}>
-                      [QR-SEAL]<br />{currentCertificateData.verificationHash.slice(0, 10)}
+                    <div
+                      style={{
+                        background: '#FFFFFF',
+                        padding: 4,
+                        borderRadius: 8,
+                        border: '1px solid #CBD5E1',
+                        display: 'inline-flex',
+                      }}
+                    >
+                      <ScannableQrCode
+                        value={buildVerifyUrl({
+                          k: 'cert',
+                          id: currentCertificateData.serialNumber || currentCertificateData.id,
+                          f: currentCertificateData.facilityId,
+                          fn: currentCertificateData.facilityName,
+                          sub: `${currentCertificateData.certificateType.toUpperCase()} CERTIFICATE`,
+                          iss: currentCertificateData.issuedAt?.slice(0, 10),
+                          sig: currentCertificateData.verificationHash?.slice(0, 12),
+                        })}
+                        size={72}
+                        level="M"
+                        fgColor="#0F172A"
+                        bgColor="#FFFFFF"
+                        quietZone={4}
+                        ariaLabel={`Verification QR for certificate ${currentCertificateData.serialNumber}`}
+                      />
                     </div>
                     <div style={{ fontSize: '0.68rem', color: '#475569' }}>
                       <div><strong>Serial:</strong> {currentCertificateData.serialNumber}</div>

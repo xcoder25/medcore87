@@ -6,6 +6,8 @@ import {
   Sparkles, CheckCircle2, Lock, Eye, Zap, Radio, Phone, Activity
 } from 'lucide-react';
 import type { StatewideHealthCard } from '../../lib/stateHealthCardService';
+import { ScannableQrCode, drawQrToCanvas } from '../common/ScannableQrCode';
+import { buildVerifyUrl } from '../../lib/qrPayload';
 
 interface Props {
   card: StatewideHealthCard;
@@ -23,6 +25,83 @@ export const StatewideHealthCardRenderer: React.FC<Props> = ({
   const [flipped, setFlipped] = useState(showBackDefault);
   const [isExporting, setIsExporting] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const qrUrl =
+    card.hieGatewayUrl && card.hieGatewayUrl.includes('/verify?t=')
+      ? card.hieGatewayUrl
+      : buildVerifyUrl({
+          k: 'card',
+          id: card.shid,
+          mrn: card.patientId,
+          fn: card.issuingAuthority || 'Akwa Ibom State Ministry of Health',
+          iss: card.issueDate,
+          exp: card.expiryDate,
+          st: card.cardStatus,
+          sig: card.secureToken?.slice(0, 10),
+        });
+
+  const handleExportCr80Back = () => {
+    setIsExporting(true);
+    const canvas = document.createElement('canvas');
+    canvas.width = 1013;
+    canvas.height = 638;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      setIsExporting(false);
+      return;
+    }
+
+    const bgGrad = ctx.createLinearGradient(0, 0, 1013, 638);
+    bgGrad.addColorStop(0, '#04231B');
+    bgGrad.addColorStop(0.5, '#07362A');
+    bgGrad.addColorStop(1, '#02120E');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, 1013, 638);
+
+    ctx.fillStyle = '#0F172A';
+    ctx.fillRect(0, 46, 1013, 76);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '800 22px system-ui, sans-serif';
+    ctx.fillText(`${card.fullName} · ${card.shid}`, 45, 170);
+
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = '700 14px system-ui, sans-serif';
+    ctx.fillText('ISSUING AUTHORITY', 45, 225);
+    ctx.fillStyle = '#E2E8F0';
+    ctx.font = '700 20px system-ui, sans-serif';
+    ctx.fillText(card.issuingAuthority || 'Akwa Ibom State Ministry of Health', 45, 255);
+    ctx.fillStyle = '#CBD5E1';
+    ctx.font = '16px system-ui, sans-serif';
+    ctx.fillText(card.stateMinistry || 'Idongesit Nkanga Secretariat, Uyo, Akwa Ibom', 45, 285);
+    ctx.fillStyle = '#38BDF8';
+    ctx.fillText('Emergency HIE Desk: +234 (0) 800-AKS-EMR', 45, 315);
+
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillText('Scan QR on any phone or EMR terminal to verify credential', 45, 395);
+    ctx.fillText('authenticity (zero unauthenticated PHI exposed).', 45, 417);
+
+    // Rounded white backing behind scannable QR
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(674, 194, 284, 284);
+    drawQrToCanvas(ctx, qrUrl, 686, 206, 260, {
+      level: 'M',
+      fgColor: '#031A14',
+      bgColor: '#FFFFFF',
+      quietZone: 4,
+    });
+
+    ctx.fillStyle = '#F59E0B';
+    ctx.font = '800 18px system-ui, sans-serif';
+    ctx.fillText('ARISE HEALTH INITIATIVE · AKWA IBOM STATE', 45, 585);
+
+    const link = document.createElement('a');
+    link.download = `CR80-HealthCard-Back-${card.shid}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    setIsExporting(false);
+  };
 
   const toggleFlip = () => {
     setFlipped(!flipped);
@@ -645,20 +724,24 @@ export const StatewideHealthCardRenderer: React.FC<Props> = ({
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {/* Facility Contact Info */}
                 <div style={{ fontSize: 10, lineHeight: 1.45, color: '#E2E8F0' }}>
-                  <div style={{ fontWeight: 800, color: '#FFFFFF', marginBottom: 2 }}>Facility Contact Info:</div>
-                  <div style={{ fontWeight: 700 }}>ARISE Medical Network</div>
-                  <div style={{ color: '#CBD5E1' }}>1250 Health Avenue, Suite 400</div>
-                  <div style={{ color: '#CBD5E1' }}>Phone: +1 (800) 555-ARISE</div>
-                  <div style={{ color: '#38BDF8', fontWeight: 600 }}>www.arisemedical.com</div>
+                  <div style={{ fontWeight: 800, color: '#FFFFFF', marginBottom: 2 }}>Issuing Authority:</div>
+                  <div style={{ fontWeight: 700 }}>
+                    {card.issuingAuthority || 'Akwa Ibom State Ministry of Health'}
+                  </div>
+                  <div style={{ color: '#CBD5E1' }}>
+                    {card.stateMinistry || 'Idongesit Nkanga Secretariat, Uyo, Akwa Ibom'}
+                  </div>
+                  <div style={{ color: '#CBD5E1' }}>Emergency HIE Desk: +234 (0) 800-AKS-EMR</div>
+                  <div style={{ color: '#38BDF8', fontWeight: 600 }}>medcore.ng/verify</div>
                 </div>
 
                 {/* Privacy & Legal Notice */}
                 <div style={{ fontSize: 8.5, color: '#94A3B8', lineHeight: 1.4, maxWidth: 280, marginTop: 2 }}>
-                  This card is non-transferable and contains no medical information. Authorized emergency personnel only may scan the QR code to access a restricted Emergency Summary. If found, please return to any ARISE facility or call the number above.
+                  This card is non-transferable and contains no medical information. Scanning this QR code opens zero-PHI credential verification on public devices and authorized emergency lookup inside Akwa Ibom MedCore EMR.
                 </div>
               </div>
 
-              {/* Right Column: Crisp White Patch with High-Density QR Code */}
+              {/* Right Column: Crisp White Patch with Real Scannable QR Code */}
               <div
                 style={{
                   padding: 8,
@@ -671,50 +754,15 @@ export const StatewideHealthCardRenderer: React.FC<Props> = ({
                   flexShrink: 0,
                 }}
               >
-                <svg width="114" height="114" viewBox="0 0 114 114" fill="#031A14">
-                  {/* Outer corner finder patterns */}
-                  <rect x="6" y="6" width="32" height="32" rx="4" fill="#031A14" />
-                  <rect x="11" y="11" width="22" height="22" rx="2" fill="#FFFFFF" />
-                  <rect x="16" y="16" width="12" height="12" rx="1" fill="#031A14" />
-
-                  <rect x="76" y="6" width="32" height="32" rx="4" fill="#031A14" />
-                  <rect x="81" y="11" width="22" height="22" rx="2" fill="#FFFFFF" />
-                  <rect x="86" y="16" width="12" height="12" rx="1" fill="#031A14" />
-
-                  <rect x="6" y="76" width="32" height="32" rx="4" fill="#031A14" />
-                  <rect x="11" y="81" width="22" height="22" rx="2" fill="#FFFFFF" />
-                  <rect x="16" y="86" width="12" height="12" rx="1" fill="#031A14" />
-
-                  {/* High-density micro-data matrix dots */}
-                  <rect x="44" y="10" width="6" height="6" />
-                  <rect x="54" y="14" width="6" height="6" />
-                  <rect x="64" y="8" width="6" height="6" />
-                  <rect x="44" y="24" width="6" height="6" />
-                  <rect x="56" y="28" width="6" height="6" />
-                  <rect x="64" y="22" width="6" height="6" />
-
-                  <rect x="10" y="44" width="6" height="6" />
-                  <rect x="22" y="52" width="6" height="6" />
-                  <rect x="32" y="46" width="6" height="6" />
-                  <rect x="44" y="46" width="6" height="6" />
-                  <rect x="54" y="52" width="6" height="6" />
-                  <rect x="64" y="44" width="6" height="6" />
-                  <rect x="76" y="48" width="6" height="6" />
-                  <rect x="88" y="44" width="6" height="6" />
-                  <rect x="98" y="52" width="6" height="6" />
-
-                  <rect x="44" y="64" width="6" height="6" />
-                  <rect x="54" y="70" width="6" height="6" />
-                  <rect x="66" y="62" width="6" height="6" />
-                  <rect x="44" y="82" width="6" height="6" />
-                  <rect x="56" y="88" width="6" height="6" />
-                  <rect x="66" y="80" width="6" height="6" />
-                  <rect x="78" y="72" width="6" height="6" />
-                  <rect x="90" y="80" width="6" height="6" />
-                  <rect x="98" y="92" width="6" height="6" />
-                  <rect x="76" y="94" width="6" height="6" />
-                  <rect x="86" y="102" width="6" height="6" />
-                </svg>
+                <ScannableQrCode
+                  value={qrUrl}
+                  size={114}
+                  level="M"
+                  fgColor="#031A14"
+                  bgColor="#FFFFFF"
+                  quietZone={4}
+                  ariaLabel={`Statewide Health Card QR for ${card.shid}`}
+                />
               </div>
             </div>
 
@@ -788,7 +836,7 @@ export const StatewideHealthCardRenderer: React.FC<Props> = ({
           <RefreshCw size={14} /> Flip {flipped ? 'to Front' : 'to Back (QR / Security)'}
         </button>
 
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={handleExportCr80}
@@ -806,7 +854,23 @@ export const StatewideHealthCardRenderer: React.FC<Props> = ({
               boxShadow: '0 4px 12px rgba(5, 150, 105, 0.3)',
             }}
           >
-            <Download size={14} /> {isExporting ? 'Generating CR80…' : 'Export CR80 (300 DPI)'}
+            <Download size={14} /> {isExporting ? 'Generating CR80…' : 'Export Front (300 DPI)'}
+          </button>
+          <button
+            type="button"
+            onClick={handleExportCr80Back}
+            disabled={isExporting}
+            className="os-ghost-btn"
+            style={{
+              fontSize: 12,
+              padding: '7px 12px',
+              borderRadius: 10,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <QrCode size={14} /> Export Back (QR PNG)
           </button>
         </div>
       </div>

@@ -44,6 +44,8 @@ import {
   type ReceptionAppointment,
   type ReceptionPayment,
 } from '../../lib/receptionOpsStore';
+import { parseScannedEmrQr } from '../../lib/qrPayload';
+import { PhysicalFormScannerModal, type ScannedRegistrationFields } from '../reception/PhysicalFormScannerModal';
 import { listStaffCards } from '../../lib/staffCardStore';
 import { listActiveStaff, type StaffPresence } from '../../lib/staffPresenceStore';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
@@ -351,6 +353,11 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
       next === 'payment' || (next as string) === 'cashier' || (next as string) === 'send-accounts'
         ? 'home'
         : next;
+    if (mapped === 'scan') {
+      setScanMatchedPatient(null);
+      setScanCode('');
+      setScanError(null);
+    }
     withViewTransition(() => {
       setView((prev) => {
         if (prev !== mapped) {
@@ -396,10 +403,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
   const [scanCode, setScanCode] = useState('');
   const [scanBusy, setScanBusy] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [scanMatchedPatient, setScanMatchedPatient] = useState<FacilityPatient | null>(null);
   const [walkStep, setWalkStep] = useState<1 | 2 | 3>(1);
   const [selected, setSelected] = useState<FacilityPatient | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [regStep, setRegStep] = useState<RegStep>(1);
+  const [scanFormOpen, setScanFormOpen] = useState(false);
   const [reg, setReg] = useState(emptyReg);
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
   const [regTouched, setRegTouched] = useState<Record<string, boolean>>({});
@@ -731,33 +740,45 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     [p.firstName, p.middleName, p.lastName].filter(Boolean).join(' ');
 
   const findLocalScanHit = (raw: string, pool: FacilityPatient[]): FacilityPatient | undefined => {
-    const q = raw.trim().toLowerCase();
-    if (!q) return undefined;
-    const qDigits = q.replace(/\D/g, '');
-    return (
-      pool.find(
-        (p) =>
-          p.hospitalNumber.toLowerCase() === q ||
-          (p.shid || '').toLowerCase() === q ||
-          p.id.toLowerCase() === q ||
-          (qDigits.length >= 6 && (p.nin || '').replace(/\D/g, '') === qDigits) ||
-          (p.nhiaNumber || '').toLowerCase() === q ||
-          (p.shid && q.includes(p.shid.toLowerCase()))
-      ) ||
-      pool.find(
-        (p) =>
-          p.hospitalNumber.toLowerCase().includes(q) ||
-          (p.shid || '').toLowerCase().includes(q) ||
-          (p.nhiaNumber || '').toLowerCase().includes(q)
+    const decoded = parseScannedEmrQr(raw);
+    const candidates = Array.from(
+      new Set(
+        [raw.trim(), decoded.hospitalNo || '', decoded.id || '']
+          .map((v) => v.trim().toLowerCase())
+          .filter(Boolean)
       )
+    );
+    if (candidates.length === 0) return undefined;
+    const rawDigits = raw.replace(/\D/g, '');
+    return (
+      pool.find((p) => {
+        const hn = p.hospitalNumber.toLowerCase();
+        const shid = (p.shid || '').toLowerCase();
+        const pid = p.id.toLowerCase();
+        const nhia = (p.nhiaNumber || '').toLowerCase();
+        const ninDigits = (p.nin || '').replace(/\D/g, '');
+        return (
+          candidates.some(
+            (c) => hn === c || (shid && shid === c) || pid === c || (nhia && nhia === c) || (shid && c.includes(shid))
+          ) || (rawDigits.length >= 6 && ninDigits === rawDigits)
+        );
+      }) ||
+      pool.find((p) => {
+        const hn = p.hospitalNumber.toLowerCase();
+        const shid = (p.shid || '').toLowerCase();
+        const nhia = (p.nhiaNumber || '').toLowerCase();
+        return candidates.some((c) => hn.includes(c) || (shid && shid.includes(c)) || (nhia && nhia.includes(c)));
+      })
     );
   };
 
   const runScanLookup = async () => {
     const raw = scanCode.trim();
-    const q = raw.toLowerCase();
+    const decoded = parseScannedEmrQr(raw);
+    const lookupTerm = decoded.hospitalNo || decoded.id || raw;
+    const q = lookupTerm.toLowerCase();
     if (!raw) {
-      setScanError('Enter or scan a hospital number, card ID, or NIN first.');
+      setScanError('Enter or scan a hospital number, card ID, QR link, or NIN first.');
       flash('Enter or scan a code first');
       return;
     }
@@ -766,7 +787,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     if (!hit) {
       setScanBusy(true);
       try {
-        await hydratePatientsFromPostgres(facilityId, raw);
+        await hydratePatientsFromPostgres(facilityId, lookupTerm);
         hit = findLocalScanHit(raw, listPatients(facilityId));
       } catch {
         /* offline fallback */
@@ -776,6 +797,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
     }
     if (hit) {
       setSelected(hit);
+      setScanMatchedPatient(hit);
       setScanCode('');
       setScanError(null);
       const fromWalkIn = viewHistory[viewHistory.length - 1] === 'walkin';
@@ -2417,7 +2439,27 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setScanFormOpen(true)}
+                style={{
+                  padding: '9px 15px',
+                  borderRadius: 10,
+                  border: '1px solid #7C3AED',
+                  background: '#F5F3FF',
+                  color: '#5B21B6',
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                }}
+              >
+                <Sparkles size={16} color="#7C3AED" />
+                <span>AI Scan Paper Form</span>
+              </button>
               <button
                 type="button"
                 onClick={() => goView('existing')}
@@ -4514,7 +4556,12 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                               <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: '#E0F2FE', color: '#0369A1' }}>Called · auto in-room when doctor starts</span>
                             )}
                             {v.status === 'with_provider' && (
-                              <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: '#EDE9FE', color: '#5B21B6' }}>With doctor · closes on Rx / lab order</span>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: '#EDE9FE', color: '#5B21B6' }}>With doctor · auto-updates on admission or orders</span>
+                            )}
+                            {v.status === 'admitted' && (
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: '#F3E8FF', color: '#7E22CE' }}>
+                                Admitted · {v.admittedWard || 'Ward'}{v.admittedBed ? ` (${v.admittedBed})` : ''}
+                              </span>
                             )}
                             {v.status === 'completed' && (
                               <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: '#D1FAE5', color: '#047857' }}>Consult complete</span>
@@ -4705,12 +4752,36 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
               <li>POS if balance due</li>
               <li>Book appointment if needed</li>
             </ul>
-            {selected && (() => {
-              const scanGate = getPaymentGate(facilityId, selected.id, selected.hospitalNumber);
+            {scanMatchedPatient ? (() => {
+              const scanGate = getPaymentGate(facilityId, scanMatchedPatient.id, scanMatchedPatient.hospitalNumber);
               return (
-                <div style={{ marginTop: 16, padding: 12, borderRadius: 12, background: scanGate.cleared ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${scanGate.cleared ? '#BBF7D0' : '#FECACA'}` }}>
-                  <div style={{ fontWeight: 800, color: scanGate.cleared ? '#166534' : '#991B1B' }}>{fullName(selected)}</div>
-                  <div style={{ fontSize: 12, color: C.muted }}>{selected.hospitalNumber}</div>
+                <div style={{ marginTop: 16, padding: 14, borderRadius: 12, background: scanGate.cleared ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${scanGate.cleared ? '#BBF7D0' : '#FECACA'}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 800, color: scanGate.cleared ? '#166534' : '#991B1B' }}>{fullName(scanMatchedPatient)}</div>
+                      <div style={{ fontSize: 12, color: C.muted }}>{scanMatchedPatient.hospitalNumber}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScanMatchedPatient(null);
+                        setScanCode('');
+                        setScanError(null);
+                      }}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: 8,
+                        border: `1px solid ${C.border}`,
+                        background: '#fff',
+                        color: C.navy,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Clear Scan
+                    </button>
+                  </div>
                   {!scanGate.cleared ? (
                     <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: '#B91C1C' }}>
                       🚫 {scanGate.label}
@@ -4721,7 +4792,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                         type="button"
                         onClick={() => {
                           setCiType('walkin');
-                          doCheckIn(selected);
+                          doCheckIn(scanMatchedPatient);
                           setScanCode('');
                           goView('queue');
                         }}
@@ -4733,7 +4804,7 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                         type="button"
                         onClick={() => {
                           setCiType('appointment');
-                          doCheckIn(selected);
+                          doCheckIn(scanMatchedPatient);
                           setScanCode('');
                           goView('queue');
                         }}
@@ -4745,7 +4816,11 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                   )}
                 </div>
               );
-            })()}
+            })() : (
+              <div style={{ marginTop: 16, padding: 16, borderRadius: 12, background: '#F8FAFC', border: `1px dashed ${C.border}`, color: C.muted, fontSize: 12, textAlign: 'center' }}>
+                No card scanned yet — scan a patient’s Digital Health Card QR code or enter their Hospital Number / SHID to display match results here.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -5553,6 +5628,39 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
           </div>
         </div>
       )}
+      <PhysicalFormScannerModal
+        open={scanFormOpen}
+        onClose={() => setScanFormOpen(false)}
+        onApplyFields={(f: ScannedRegistrationFields) => {
+          const normSex =
+            f.sex === 'F' ? 'Female' : f.sex === 'M' ? 'Male' : undefined;
+          setReg((prev) => ({
+            ...prev,
+            firstName: f.firstName || prev.firstName,
+            middleName: f.middleName || prev.middleName,
+            lastName: f.lastName || prev.lastName,
+            dob: f.dob || prev.dob,
+            sex: normSex || prev.sex,
+            phone: f.phone || prev.phone,
+            altPhone: f.altPhone || prev.altPhone,
+            email: f.email || prev.email,
+            nin: f.nin || prev.nin,
+            lga: f.lga || prev.lga,
+            address: f.address || prev.address,
+            bloodGroup: f.bloodGroup || prev.bloodGroup,
+            genotype: f.genotype || prev.genotype,
+            maritalStatus: f.maritalStatus || prev.maritalStatus,
+            occupation: f.occupation || prev.occupation,
+            emergencyContact: f.nextOfKinName || prev.emergencyContact,
+            emergencyRelation: f.nextOfKinRel || prev.emergencyRelation,
+            emergencyPhone: f.nextOfKinPhone || prev.emergencyPhone,
+            insuranceProvider: f.insuranceProvider || prev.insuranceProvider,
+            nhiaNumber: f.nhiaNumber || prev.nhiaNumber,
+          }));
+          setRegStep(1);
+          flash('Paper form extracted & autofilled by Celestia Vision AI — review and continue.');
+        }}
+      />
     </div>
   );
 };

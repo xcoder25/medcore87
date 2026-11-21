@@ -1141,3 +1141,92 @@ test('ui-invariants: patient verification enforced across clinical, financial, b
     );
   }
 });
+
+test('phase-a-to-f-invariants: QR, HIM cards, Nurse e-MAR/ICU, Pharmacy isolation/deferral, Reception auto OPD, Persistent Lock, AI & Biometrics', () => {
+  // 1. Scannable QR & HIM Card issuance (no fake hardcoded patient)
+  for (const rel of [
+    'src/lib/qrPayload.ts',
+    'src/components/common/ScannableQrCode.tsx',
+    'src/app/verify/page.tsx',
+    'src/components/him/HimIssueCardModal.tsx',
+  ]) {
+    assert.ok(fs.existsSync(path.join(OS_ROOT, rel)), `Missing QR/HIM file: ${rel}`);
+  }
+  const dpc = fs.readFileSync(path.join(OS_ROOT, 'src/components/patient-card/DigitalPatientCard.tsx'), 'utf8');
+  assert.ok(!dpc.includes('Alex Rivera'), 'DigitalPatientCard must not fall back to fake Alex Rivera patient');
+  assert.ok(dpc.includes('PhysicalFormScannerModal'), 'DigitalPatientCard must wire AI Paper Form Scanner');
+
+  // 2. Nurse e-MAR, Ward Med Requests, ICU Step-Down & cloud sync keys
+  for (const rel of [
+    'src/lib/wardMedRequestStore.ts',
+    'src/components/clinical-core/WardMedRequestsSuite.tsx',
+    'src/lib/icuStepDownStore.ts',
+  ]) {
+    assert.ok(fs.existsSync(path.join(OS_ROOT, rel)), `Missing Phase A file: ${rel}`);
+  }
+  const fcs = fs.readFileSync(path.join(OS_ROOT, 'src/lib/facilityCloudSync.ts'), 'utf8');
+  assert.ok(!fcs.includes('AWS S3'), 'facilityCloudSync must not expose AWS S3 in UI/sync metadata');
+  assert.ok(fcs.includes('WARD_MED_REQUESTS_KEY') && fcs.includes('ICU_STEPDOWN_KEY'));
+
+  // 3. Universal Red Validation with Skip exemption
+  assert.ok(fs.existsSync(path.join(OS_ROOT, 'src/lib/formValidation.ts')));
+  assert.ok(fs.existsSync(path.join(OS_ROOT, 'src/components/common/GlobalFormValidator.tsx')));
+  const css = fs.readFileSync(path.join(OS_ROOT, 'src/styles/os.css'), 'utf8');
+  assert.ok(css.includes('.mc-field-invalid'), 'os.css must style .mc-field-invalid red');
+  const gfv = fs.readFileSync(path.join(OS_ROOT, 'src/components/common/GlobalFormValidator.tsx'), 'utf8');
+  assert.ok(gfv.includes('data-skip-btn'), 'GlobalFormValidator must exempt skip buttons');
+
+  // 4. Pharmacy Overhaul: Isolation, pay-gate .cleared fix, Hold/Defer, Dedicated POS & Rx Records
+  const ceb = fs.readFileSync(path.join(OS_ROOT, 'src/lib/clinicalEventBus.ts'), 'utf8');
+  assert.ok(ceb.includes('isOrderBillCleared(orderId).cleared'), 'clinicalEventBus must inspect .cleared boolean');
+  assert.ok(ceb.includes('autoAdvancePatientVisitStage'), 'clinicalEventBus must call autoAdvancePatientVisitStage');
+  const pbs = fs.readFileSync(path.join(OS_ROOT, 'src/lib/patientBillingStore.ts'), 'utf8');
+  assert.ok(pbs.includes('deferPharmacyBillLine') && pbs.includes('restoreDeferredPharmacyBillLine'));
+  assert.ok(pbs.includes("l.status === 'unpaid' || l.status === 'partial'"));
+  for (const rel of [
+    'src/components/dashboards/PharmacyDeskHome.tsx',
+    'src/components/pharmacy/PrescriptionRecordsSuite.tsx',
+    'src/components/pharmacy/PharmacyPaymentDesk.tsx',
+  ]) {
+    assert.ok(fs.existsSync(path.join(OS_ROOT, rel)), `Missing Pharmacy Overhaul file: ${rel}`);
+  }
+  const pds = fs.readFileSync(path.join(OS_ROOT, 'src/components/clinical-core/PharmacyDispensingSuite.tsx'), 'utf8');
+  assert.ok(!pds.includes('localhost:4000'), 'PharmacyDispensingSuite must not call localhost:4000');
+  assert.ok(pds.includes('parseScannedEmrQr') && pds.includes('ward-requests'));
+
+  // 5. Reception: No duplicate In-Basket card, no manual Send/Done, Auto admitted stage, Clear Scan, Persistent Lock
+  const rdh = fs.readFileSync(path.join(OS_ROOT, 'src/components/dashboards/ReceptionDeskHome.tsx'), 'utf8');
+  assert.ok(!rdh.includes("label: 'In Basket'"), 'Duplicate In Basket quick-action tile must be removed');
+  assert.ok(!rdh.includes("liveUpdate(v.id, 'with_provider')"), 'Manual Send button must be removed from All Active OPD');
+  assert.ok(!rdh.includes("liveUpdate(v.id, 'completed')"), 'Manual Done button must be removed from All Active OPD');
+  const rw = fs.readFileSync(path.join(OS_ROOT, 'src/components/dashboards/ReceptionWorkspace.tsx'), 'utf8');
+  assert.ok(rw.includes('scanMatchedPatient') && rw.includes('Clear Scan'), 'Reception scan must isolate scanMatchedPatient and support Clear Scan');
+  assert.ok(rw.includes('PhysicalFormScannerModal'), 'ReceptionWorkspace must wire AI Paper Form Scanner');
+  const pageSrc = fs.readFileSync(path.join(OS_ROOT, 'src/app/page.tsx'), 'utf8');
+  assert.ok(pageSrc.includes('TERMINAL_LOCK_KEY') && pageSrc.includes('medcore_os_terminal_locked_v1'));
+
+  // 6. Staff Presence Date/Time + AI, Voice-to-Text, Biometrics 2FA, Celestia Supertools & Novice Manual
+  const so = fs.readFileSync(path.join(OS_ROOT, 'src/components/staffing/StaffingOverview.tsx'), 'utf8');
+  assert.ok(!so.includes('formatSince(0)'), 'Off-duty staff must read real presence timestamp instead of formatSince(0)');
+  assert.ok(so.includes('formatExactLastSeen') && so.includes('analyzeStaffRosterIntelligence'));
+  for (const rel of [
+    'src/lib/staffPresenceIntelligence.ts',
+    'src/app/api/ai/scan-form/route.ts',
+    'src/components/reception/PhysicalFormScannerModal.tsx',
+    'src/app/api/ai/transcribe/route.ts',
+    'src/lib/voiceTranscription.ts',
+    'src/lib/celestiaSuperTools.ts',
+    'src/app/api/auth/biometric/route.ts',
+    'src/lib/biometricAuth.ts',
+  ]) {
+    const full = path.join(OS_ROOT, rel);
+    assert.ok(fs.existsSync(full), `Missing Phase E/F file: ${rel}`);
+    const content = fs.readFileSync(full, 'utf8');
+    assert.ok(!/AWS S3|Aurora Postgres/i.test(content), `${rel} must not expose infrastructure vendor names`);
+  }
+  assert.ok(
+    fs.existsSync(path.resolve(OS_ROOT, '..', '..', 'docs', 'MEDCORE_NOVICE_USER_MANUAL.md')),
+    'Novice EMR user manual must exist in docs/MEDCORE_NOVICE_USER_MANUAL.md'
+  );
+});
+

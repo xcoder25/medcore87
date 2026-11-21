@@ -258,6 +258,10 @@ export function buildM87RagContext(query: string, facilityId: string): string {
   for (const c of cards) {
     parts.push(`Policy — ${c.title}: ${c.body}`);
   }
+  parts.push(
+    '### Live Capabilities (Celestia Supertools)\n' +
+      'You can verify live MPI patients, inspect live clinical bed occupancy, inspect formulary stock & low-stock alerts, audit staff presence & roster coverage, inspect AkwaRemit TSA/cash remittance status, and guide direct navigation across hospital suites. Always ground answers strictly in the live telemetry above.'
+  );
   if (parts.length === 1) {
     parts.push('(No strong local matches — answer carefully from general hospital practice.)');
   }

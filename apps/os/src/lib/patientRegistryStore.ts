@@ -65,6 +65,9 @@ export interface FacilityPatient {
   emergencyFlag?: boolean;
   cardIssueDate?: string;
   cardExpiryDate?: string;
+  cardIssuedBy?: string;
+  cardIssuedAt?: string;
+  cardStatus?: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' | 'REVOKED';
   /** Optional cross-module compatibility aliases */
   mrn?: string;
   name?: string;

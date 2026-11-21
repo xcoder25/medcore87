@@ -103,6 +103,7 @@ export const PharmacyFormularyWorkspace: React.FC = () => {
     supplier: 'CMS Nigeria',
   });
 
+  const [lastSyncAt, setLastSyncAt] = useState<string>(() => new Date().toLocaleTimeString());
   const reload = useCallback(() => {
     seedDefaultFormulary(facilityId);
     const list = listFormulary(facilityId);
@@ -112,7 +113,7 @@ export const PharmacyFormularyWorkspace: React.FC = () => {
 
   useEffect(() => {
     reload();
-    return subscribeFormulary(() => {
+    return subscribeFormulary(() => { setLastSyncAt(new Date().toLocaleTimeString());
       seedDefaultFormulary(facilityId);
       setDrugs(listFormulary(facilityId));
     });
@@ -288,7 +289,7 @@ export const PharmacyFormularyWorkspace: React.FC = () => {
               </div>
             </div>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}><span style={{ background: 'rgba(16,185,129,0.24)', border: '1px solid rgba(110,231,183,0.5)', color: '#A7F3D0', padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>Realtime Sync · {lastSyncAt}</span>
             <HdrBtn onClick={() => { seedDefaultFormulary(facilityId); setDrugs(listFormulary(facilityId)); }}>
               <RefreshCw size={13} /> Sync
             </HdrBtn>

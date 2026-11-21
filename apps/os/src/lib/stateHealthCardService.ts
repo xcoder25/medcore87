@@ -15,7 +15,9 @@
  * 7. HL7 FHIR R4 Interoperability: Native FHIR Bundle generation (Patient, AllergyIntolerance, Condition, Coverage).
  */
 
-import type { FacilityPatient } from './patientRegistryStore';
+import { upsertPatient, type FacilityPatient } from './patientRegistryStore';
+import { buildVerifyUrl } from './qrPayload';
+import { appendAudit } from './auditLogStore';
 
 export interface StatewideHealthCard {
   shid: string;
@@ -161,13 +163,25 @@ export function checkEmergencyFlag(patient: Partial<FacilityPatient>): {
   };
 }
 
+function formatCardDate(d: Date): string {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${day} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 // Issue / resolve standardized Statewide Health Card
 export function getOrCreateStateHealthCard(patient: FacilityPatient): StatewideHealthCard {
-  const shid = patient.shid || patient.hospitalNumber || generateSHID();
+  const shid = patient.shid || patient.hospitalNumber || generateSHID('SHID-AKS');
   const emergencyInfo = checkEmergencyFlag(patient);
 
-  const issueDate = patient.cardIssueDate || '01 Jan 2026';
-  const expiryDate = patient.cardExpiryDate || '31 Dec 2028';
+  const issuedAtDate = patient.cardIssuedAt ? new Date(patient.cardIssuedAt) : new Date();
+  const safeIssued = Number.isNaN(issuedAtDate.getTime()) ? new Date() : issuedAtDate;
+  const expDateObj = new Date(safeIssued.getFullYear() + 3, safeIssued.getMonth(), safeIssued.getDate());
+
+  const issueDate = patient.cardIssueDate || formatCardDate(safeIssued);
+  const expiryDate = patient.cardExpiryDate || formatCardDate(expDateObj);
+  const cardStatus: StatewideHealthCard['cardStatus'] =
+    patient.cardStatus || (patient.status === 'inactive' ? 'SUSPENDED' : 'ACTIVE');
 
   // Secure Cryptographic Pointer Token (Zero-PHI token)
   const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).replace(/=/g, '');
@@ -182,17 +196,27 @@ export function getOrCreateStateHealthCard(patient: FacilityPatient): StatewideH
   const sig = btoa(`sig_${shid}_${claims.slice(0, 8)}`).replace(/=/g, '');
   const secureToken = `${header}.${claims}.${sig}`;
 
-  const hieGatewayUrl = `https://hie.akwaibom.gov.ng/gateway/v1/card/resolve?token=${secureToken}`;
+  const hieGatewayUrl = buildVerifyUrl({
+    k: 'card',
+    id: shid,
+    mrn: patient.hospitalNumber || patient.id,
+    f: patient.facilityId,
+    fn: patient.facilityName || 'Akwa Ibom State Ministry of Health',
+    iss: issueDate,
+    exp: expiryDate,
+    st: cardStatus,
+    sig: sig.slice(0, 10),
+  });
 
-  // Encrypted Offline Paramedic Payload Simulation (AES-256 Mock Container)
+  // Encrypted Offline Paramedic Payload Simulation (AES-256 Container)
   const offlinePlaintext = JSON.stringify({
     shid,
-    bloodType: patient.bloodGroup || 'O+',
-    genotype: patient.genotype || 'AA',
-    criticalAllergies: patient.allergies || ['Penicillin (Severe)'],
-    criticalConditions: patient.chronicConditions || ['Severe Asthma'],
+    bloodType: patient.bloodGroup || 'Unknown',
+    genotype: patient.genotype || 'Unknown',
+    criticalAllergies: patient.allergies && patient.allergies.length > 0 ? patient.allergies : ['None recorded'],
+    criticalConditions: patient.chronicConditions && patient.chronicConditions.length > 0 ? patient.chronicConditions : ['None recorded'],
     codeStatus: 'FULL CODE',
-    emergencyContact: `${patient.emergencyContact || 'Next of Kin'} (${patient.phone})`,
+    emergencyContact: `${patient.emergencyContact || 'Next of Kin'} (${patient.phone || '—'})`,
   });
   const offlineEncryptedPayload = `AES256-GCM::${btoa(encodeURIComponent(offlinePlaintext))}::TAG_${Math.random().toString(16).slice(2, 10)}`;
 
@@ -200,8 +224,8 @@ export function getOrCreateStateHealthCard(patient: FacilityPatient): StatewideH
     shid,
     patientId: patient.id,
     fullName: [patient.firstName, patient.middleName, patient.lastName].filter(Boolean).join(' '),
-    dob: patient.dob || '15 Mar 1992',
-    gender: patient.sex || 'Male',
+    dob: patient.dob || '—',
+    gender: patient.sex || 'Other',
     issueDate,
     expiryDate,
     emergencyFlag: emergencyInfo.hasEmergency,
@@ -209,10 +233,45 @@ export function getOrCreateStateHealthCard(patient: FacilityPatient): StatewideH
     secureToken,
     hieGatewayUrl,
     offlineEncryptedPayload,
-    cardStatus: patient.status === 'inactive' ? 'SUSPENDED' : 'ACTIVE',
-    issuingAuthority: 'ARISE State Health Information Exchange',
+    cardStatus,
+    issuingAuthority: patient.facilityName || 'ARISE State Health Information Exchange',
     stateMinistry: 'Akwa Ibom State Ministry of Health',
     nin: patient.nin,
+  };
+}
+
+/** Formally issues or re-issues a Digital Health Card for a patient from HIM/Records. */
+export function issueDigitalHealthCardForPatient(
+  patient: FacilityPatient,
+  issuerName = 'HIM Officer',
+  facilityName?: string
+): { patient: FacilityPatient; card: StatewideHealthCard } {
+  const now = new Date();
+  const exp = new Date(now.getFullYear() + 3, now.getMonth(), now.getDate());
+  const shid = patient.shid || generateSHID('SHID-AKS');
+  const updated: FacilityPatient = {
+    ...patient,
+    shid,
+    facilityName: facilityName || patient.facilityName,
+    cardIssueDate: formatCardDate(now),
+    cardExpiryDate: formatCardDate(exp),
+    cardIssuedBy: issuerName,
+    cardIssuedAt: now.toISOString(),
+    cardStatus: 'ACTIVE',
+  };
+  upsertPatient(updated);
+  appendAudit({
+    facilityId: updated.facilityId,
+    actor: issuerName,
+    category: 'records',
+    action: 'Issued Digital Health Card',
+    entity: 'patient',
+    entityId: updated.id,
+    detail: `Issued SHID ${shid} for ${updated.firstName} ${updated.lastName} (${updated.hospitalNumber})`,
+  });
+  return {
+    patient: updated,
+    card: getOrCreateStateHealthCard(updated),
   };
 }
 

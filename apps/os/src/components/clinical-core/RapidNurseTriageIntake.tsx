@@ -40,6 +40,8 @@ import { pushNotification } from '../../lib/notificationEngine';
 import { listStaffCards } from '../../lib/staffCardStore';
 import { findMatchingPreAlert, matchAndImportAlert, type EpcrPreArrivalAlert } from '../../lib/epcrBridgeStore';
 import { listPatients } from '../../lib/patientRegistryStore';
+import { ScannableQrCode } from '../common/ScannableQrCode';
+import { buildVerifyUrl } from '../../lib/qrPayload';
 
 /**
  * RapidNurseTriageIntake — 60-Second Nurse Triage Intake Interface.
@@ -1432,10 +1434,24 @@ export const RapidNurseTriageIntake: React.FC<RapidTriageProps> = ({
                   </div>
                 </div>
 
-                {/* Simulated Barcode / QR */}
-                <div style={{ textAlign: 'center', padding: '6px 12px', background: '#FFFFFF', borderRadius: 8, border: '1px solid #E2E8F0' }}>
-                  <QrCode size={48} color="#0F172A" />
-                  <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.05em', marginTop: 2 }}>
+                <div style={{ textAlign: 'center', padding: '6px 10px', background: '#FFFFFF', borderRadius: 8, border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <ScannableQrCode
+                    value={buildVerifyUrl({
+                      k: 'triage',
+                      id: `TRG-${patient.hospitalNumber}`,
+                      mrn: patient.hospitalNumber,
+                      f: facilityId,
+                      sub: `Triage Dest: ${targetDestination}`,
+                      iss: new Date().toISOString().slice(0, 10),
+                    })}
+                    size={64}
+                    level="M"
+                    fgColor="#0F172A"
+                    bgColor="#FFFFFF"
+                    quietZone={4}
+                    ariaLabel={`Triage wristband QR for ${patient.hospitalNumber}`}
+                  />
+                  <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.05em', marginTop: 3 }}>
                     {patient.hospitalNumber}
                   </div>
                 </div>

@@ -161,6 +161,28 @@ export function canChangeRoleVisibility(roleKey: string): boolean {
   return isPrivilegedAdmin(roleKey);
 }
 
+export function getAllowedCelestiaTools(roleKey: string): string[] {
+  const rk = normalizeRoleKey({ roleKey });
+  const tools = new Set<string>(['navigate_module', 'send_role_notification']);
+  if (isPrivilegedAdmin(rk) || rk === 'reception' || rk === 'records' || rk === 'doctor' || rk === 'nurse' || rk === 'pharmacist') {
+    tools.add('verify_patient_lookup');
+  }
+  if (isPrivilegedAdmin(rk) || rk === 'doctor' || rk === 'nurse' || rk === 'midwife' || rk === 'records') {
+    tools.add('check_bed_availability');
+  }
+  if (isPrivilegedAdmin(rk) || rk === 'pharmacist' || rk === 'doctor' || rk === 'nurse') {
+    tools.add('check_formulary_stock');
+  }
+  if (isPrivilegedAdmin(rk)) {
+    tools.add('analyze_roster_coverage');
+    tools.add('create_ward_beds');
+  }
+  if (isPrivilegedAdmin(rk) || rk === 'accountant' || rk === 'cashier' || rk === 'pharmacist') {
+    tools.add('check_revenue_remittance');
+  }
+  return Array.from(tools);
+}
+
 export function allowedModulesBlurb(roleKey: string): string {
   if (roleKey === 'hospital_admin' || roleKey === 'admin') return 'all hospital modules (admin)';
   try {

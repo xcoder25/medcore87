@@ -11,6 +11,8 @@ import { inferRoleKey } from '../../lib/staffCardStore';
 import { useFormDraft } from '../../lib/formDraftStore';
 import { FormDraftBanner } from '../common/FormDraftBanner';
 import { appendAudit } from '../../lib/auditLogStore';
+import { ScannableQrCode } from '../common/ScannableQrCode';
+import { buildVerifyUrl } from '../../lib/qrPayload';
 import {
   FileText, User, HeartPulse, Pill, FlaskConical, Layers,
   AlertTriangle, Stethoscope, Calendar, ShieldCheck, Printer,
@@ -2564,13 +2566,27 @@ export const EMRManager: React.FC<EMRManagerProps> = ({ initialPatientId, onNavi
 
             <div style={{ display: 'flex', gap: 16, background: '#070D18', borderRadius: 12, padding: 16, border: '1px solid #1E293B' }}>
               <div style={{
-                width: 110, height: 110, background: '#FFF', borderRadius: 8,
-                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                background: '#FFF', borderRadius: 10, padding: 6,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0
               }}>
-                {/* Simulated QR Code */}
-                <div style={{ textAlign: 'center', color: '#000', fontSize: '0.62rem', fontWeight: 800 }}>
-                  <QrCode size={80} color="#000" />
-                  <div>SCAN PHR</div>
+                <ScannableQrCode
+                  value={buildVerifyUrl({
+                    k: 'passport',
+                    id: `PHR-${selectedPatient.mrn}`,
+                    mrn: selectedPatient.mrn,
+                    f: session?.hospitalId || 'IGH-EKT',
+                    sub: 'FHIR R4 Digital Health Passport',
+                    iss: new Date().toISOString().slice(0, 10),
+                  })}
+                  size={104}
+                  level="M"
+                  fgColor="#0F172A"
+                  bgColor="#FFFFFF"
+                  quietZone={4}
+                  ariaLabel={`FHIR Passport QR for ${selectedPatient.mrn}`}
+                />
+                <div style={{ fontSize: '0.58rem', fontWeight: 800, color: '#0F172A', marginTop: 3, letterSpacing: '0.04em' }}>
+                  SCAN PHR
                 </div>
               </div>
 

@@ -6,7 +6,19 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
-import { Users, Clock, Search, Phone, RefreshCw } from 'lucide-react';
+import { Users, Clock, Search, Phone, RefreshCw, Sparkles, Brain, AlertTriangle } from 'lucide-react';
+import {
+  formatExactLastSeen,
+  analyzeStaffRosterIntelligence,
+  generateAiRosterBriefing,
+} from '../../lib/staffPresenceIntelligence';
+
+function offDutyLastSeen(storedTs?: number, lastLogin?: unknown) {
+  const parsed = lastLogin && lastLogin !== 'Never' ? Date.parse(String(lastLogin)) : 0;
+  const raw = storedTs || (Number.isFinite(parsed) ? parsed : 0) || 0;
+  const fmt = formatExactLastSeen(raw);
+  return { raw, ...fmt };
+}
 import { getStaffRegistry, getAccessRecords, subscribeAdminSync } from '../../lib/adminRealtimeStore';
 import { listStaffCards, syncAccessRosterFromSources } from '../../lib/staffCardStore';
 import {
@@ -32,6 +44,9 @@ interface StaffRow {
   status: 'on-duty' | 'off-duty' | 'on-call' | 'leave';
   since: string;
   phone: string;
+  exactLastSeen: string;
+  relativeLastSeen: string;
+  lastSeenMs: number;
   fromPresence: boolean;
 }
 
@@ -87,6 +102,13 @@ function sameFacility(rowFid: string, facilityId: string): boolean {
 function buildRows(facilityId: string): StaffRow[] {
   const fid = facilityId || 'IGH-EKT';
   const online = listActiveStaff(fid);
+  const presenceById = new Map<string, StaffPresence>();
+  for (const pr of listFacilityPresence(fid)) {
+    const pid = String(pr.badgeId || '').toUpperCase().replace(/\s+/g, '');
+    if (!pid) continue;
+    const prev = presenceById.get(pid);
+    if (!prev || (pr.lastSeen || 0) > (prev.lastSeen || 0)) presenceById.set(pid, pr);
+  }
   const onlineIds = new Set(online.map((p) => String(p.badgeId || '').toUpperCase()));
 
   const reg = (getStaffRegistry() as any[]) || [];
@@ -153,7 +175,10 @@ function buildRows(facilityId: string): StaffRow[] {
       ward: meta?.ward || meta?.department || '—',
       shift: meta?.shift || 'Live shift',
       status: 'on-duty',
-      since: formatSince(p.lastSeen),
+      since: formatExactLastSeen(p.lastSeen).exactDateTime,
+      exactLastSeen: formatExactLastSeen(p.lastSeen).exactDateTime,
+      relativeLastSeen: formatExactLastSeen(p.lastSeen).relative,
+      lastSeenMs: p.lastSeen || 0,
       phone: meta?.phone || '—',
       fromPresence: true,
     });
@@ -174,7 +199,10 @@ function buildRows(facilityId: string): StaffRow[] {
       ward: meta.ward || meta.department || '—',
       shift: meta.shift || '—',
       status: leave ? 'leave' : 'off-duty',
-      since: formatSince(0),
+      since: offDutyLastSeen(presenceById.get(id)?.lastSeen, meta.lastLogin).exactDateTime,
+      exactLastSeen: offDutyLastSeen(presenceById.get(id)?.lastSeen, meta.lastLogin).exactDateTime,
+      relativeLastSeen: offDutyLastSeen(presenceById.get(id)?.lastSeen, meta.lastLogin).relative,
+      lastSeenMs: offDutyLastSeen(presenceById.get(id)?.lastSeen, meta.lastLogin).raw,
       phone: meta.phone || '—',
       fromPresence: false,
     });
@@ -197,6 +225,35 @@ export const StaffingOverview: React.FC<Props> = ({ session }) => {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'on-duty' | 'off-duty' | 'leave'>('all');
+  const [aiBriefing, setAiBriefing] = useState<string>('');
+  const [aiBusy, setAiBusy] = useState(false);
+
+  const rosterIntelligence = useMemo(
+    () =>
+      analyzeStaffRosterIntelligence(
+        staff.map((s) => ({
+          id: s.id,
+          name: s.name,
+          role: s.role,
+          specialty: s.specialty,
+          ward: s.ward,
+          status: s.status === 'on-call' ? 'off-duty' : s.status,
+          lastSeenMs: s.lastSeenMs,
+        })),
+        listFacilityPresence(facilityId)
+      ),
+    [staff, facilityId]
+  );
+
+  const runAiBriefing = async () => {
+    setAiBusy(true);
+    try {
+      const text = await generateAiRosterBriefing(rosterIntelligence, session?.facility || facilityId);
+      setAiBriefing(text);
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   // reload is READ-ONLY — never writes to localStorage to avoid triggering its own listeners
   const reload = useCallback(() => {
@@ -353,6 +410,80 @@ export const StaffingOverview: React.FC<Props> = ({ session }) => {
         </div>
       </div>
 
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #F5F3FF 0%, #EFF6FF 100%)',
+          border: '1px solid #C4B5FD',
+          borderRadius: 16,
+          padding: '16px 18px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: '#4F46E5', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Brain size={18} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 14, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 8 }}>
+                Celestia AI Shift & Presence Intelligence
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    background: rosterIntelligence.statusSeverity === 'optimal' ? '#DCFCE7' : rosterIntelligence.statusSeverity === 'watch' ? '#FEF3C7' : '#FEE2E2',
+                    color: rosterIntelligence.statusSeverity === 'optimal' ? '#15803D' : rosterIntelligence.statusSeverity === 'watch' ? '#B45309' : '#B91C1C',
+                  }}
+                >
+                  {rosterIntelligence.coveragePct}% LIVE COVERAGE
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: '#475569' }}>
+                {rosterIntelligence.onlineCount}/{rosterIntelligence.totalRoster} active · {rosterIntelligence.neverLoggedInCount} never logged in
+                {rosterIntelligence.uncoveredCriticalRoles.length > 0 ? ` · ${rosterIntelligence.uncoveredCriticalRoles.length} uncovered core desk(s)` : ''}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={aiBusy}
+            onClick={() => void runAiBriefing()}
+            style={{
+              padding: '8px 14px',
+              borderRadius: 10,
+              border: 'none',
+              background: '#4F46E5',
+              color: '#FFFFFF',
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: aiBusy ? 'wait' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Sparkles size={14} /> {aiBusy ? 'Analyzing Shift Telemetry…' : 'Run AI Roster Analysis'}
+          </button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {rosterIntelligence.recommendedActions.map((rec, idx) => (
+            <div key={idx} style={{ fontSize: 12, color: '#1E293B', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <AlertTriangle size={12} color={rosterIntelligence.statusSeverity === 'optimal' ? '#059669' : '#D97706'} />
+              <span>{rec}</span>
+            </div>
+          ))}
+        </div>
+        {aiBriefing && (
+          <div style={{ background: '#FFFFFF', border: '1px solid #DDD6FE', borderRadius: 10, padding: '10px 12px', fontSize: 12.5, color: '#0F172A', lineHeight: 1.5 }}>
+            <strong>AI Workforce Briefing:</strong> {aiBriefing}
+          </div>
+        )}
+      </div>
+
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
         <div style={{ flex: '1 1 240px' }}>
           <InteractiveSearchBar
@@ -456,7 +587,14 @@ export const StaffingOverview: React.FC<Props> = ({ session }) => {
                   <td>
                     <span style={{ color: st.color, fontWeight: 700, fontSize: '0.78rem' }}>{st.label}</span>
                   </td>
-                  <td>{s.since}</td>
+                  <td>
+                    <div style={{ fontWeight: 700, fontSize: '0.78rem', color: s.exactLastSeen === 'Never logged in' ? '#94A3B8' : '#0F172A' }}>
+                      {s.exactLastSeen}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: s.status === 'on-duty' ? '#16A34A' : '#64748B' }}>
+                      {s.status === 'on-duty' ? `Active · ${s.relativeLastSeen}` : s.relativeLastSeen}
+                    </div>
+                  </td>
                   <td>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                       <Phone size={12} /> {s.phone}

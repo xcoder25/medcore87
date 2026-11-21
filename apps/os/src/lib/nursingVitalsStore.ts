@@ -181,6 +181,7 @@ export function saveVitals(input: {
         title: `${urgency === 'critical' ? 'Critical' : 'Urgent'} vitals`,
         body: `${input.patientName} · ${input.hospitalNumber} — triage ${urgency}`,
         module: 'doctor-portal',
+        roleHint: 'doctor',
         patientId: input.patientId,
       });
     } catch {

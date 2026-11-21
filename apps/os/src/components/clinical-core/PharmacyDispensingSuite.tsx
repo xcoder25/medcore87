@@ -1,15 +1,67 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Pill, AlertTriangle, CheckCircle2, Search, Package,
-  Clock, Barcode, UserSearch, RefreshCw, ChevronDown, ChevronUp,
-  Stethoscope, Building2, X,
+  Pill,
+  AlertTriangle,
+  CheckCircle2,
+  Package,
+  Clock,
+  Barcode,
+  UserSearch,
+  ChevronDown,
+  ChevronUp,
+  Stethoscope,
+  Building2,
+  X,
+  PauseCircle,
+  RotateCcw,
+  ClipboardList,
 } from 'lucide-react';
-import type { PrescriptionOrder, FormularyItem } from '@medcore/types';
+import type { PrescriptionOrder } from '@medcore/types';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
+import {
+  listOrders,
+  updateOrderStatus,
+  subscribeOrders,
+  dispenseOrder,
+  canReleaseOrder,
+  setOrderDeferredForPayment,
+  type ClinicalOrder,
+} from '../../lib/clinicalEventBus';
+import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
+import { emitLiveAction } from '../../lib/liveActions';
+import { liveAlert } from '../../lib/manualActions';
+import {
+  canDispenseOrder,
+  markOrderPaid,
+  markLinePaid,
+  getLineForOrder,
+  deferPharmacyBillLine,
+  restoreDeferredPharmacyBillLine,
+  subscribeBills,
+} from '../../lib/patientBillingStore';
+import { AksEmlFormularyPanel } from '../pharmacy/AksEmlFormularyPanel';
+import {
+  depleteStockDetailed,
+  seedDefaultFormulary,
+  stockQty,
+  listFormulary,
+  subscribeFormulary,
+  formularyStats,
+  type FormularyDrug,
+} from '../../lib/formularyInventory';
+import { appendAudit } from '../../lib/auditLogStore';
+import { parseRxNotes } from '../../lib/rxSigParse';
+import { listPatients, subscribePatients } from '../../lib/patientRegistryStore';
+import { parseScannedEmrQr } from '../../lib/qrPayload';
+import {
+  listWardMedRequests,
+  subscribeWardMedRequests,
+  updateWardMedRequestStatus,
+  type WardMedRequest,
+} from '../../lib/wardMedRequestStore';
 
-// --- Types --------------------------------------------------------------------
 interface LiveDrug {
   id: string;
   name: string;
@@ -27,106 +79,79 @@ interface LiveDrug {
 interface LivePrescription {
   id: string;
   patientId: string;
+  hospitalNumber: string;
   patientName: string;
   doctorName: string;
   facilityId: string;
   diagnosis: string;
   drugs: LiveDrug[];
-  status: 'ACTIVE' | 'DISPENSED' | 'PARTIAL' | 'CANCELLED';
+  status: 'ACTIVE' | 'DISPENSED' | 'DEFERRED';
   routedToPharmacyName?: string;
   notes?: string;
   createdAt: string;
 }
 
-// --- Legacy Mock Prescriptions Queue -----------------------------------------
-const INITIAL_PRESCRIPTIONS: PrescriptionOrder[] = [];
+interface StableRxRow extends PrescriptionOrder {
+  hospitalNumber: string;
+  deferredForPayment?: boolean;
+}
 
-const INITIAL_FORMULARY: FormularyItem[] = [];
-
-const API = 'http://localhost:4000/api/v1/clinical';
-
-// --- Status badge style helper ------------------------------------------------
 const statusStyle = (status: string) => {
   const map: Record<string, { bg: string; color: string }> = {
-    ACTIVE: { bg: 'rgba(234,88,12,0.15)', color: 'var(--ak-orange-light)' },
-    PARTIAL: { bg: 'rgba(250,204,21,0.15)', color: '#FDE047' },
-    DISPENSED: { bg: 'rgba(5,150,105,0.1)', color: '#34D399' },
-    CANCELLED: { bg: 'rgba(239,68,68,0.15)', color: '#F87171' },
+    ACTIVE: { bg: 'rgba(234,88,12,0.14)', color: '#C2410C' },
+    DEFERRED: { bg: '#F3E8FF', color: '#7E22CE' },
+    DISPENSED: { bg: '#DCFCE7', color: '#15803D' },
   };
   return map[status] || map.ACTIVE;
 };
 
-import {
-  listOrders,
-  updateOrderStatus,
-  subscribeOrders,
-  dispenseOrder,
-  canReleaseOrder,
-} from '../../lib/clinicalEventBus';
-import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
-import { emitLiveAction } from '../../lib/liveActions';
-import { liveAlert } from '../../lib/manualActions';
-import {
-  canDispenseOrder,
-  markOrderPaid,
-  markLinePaid,
-  getLineForOrder,
-  listBillLines,
-  subscribeBills,
-  type PatientBillLine,
-} from '../../lib/patientBillingStore';
-import { AksEmlFormularyPanel } from '../pharmacy/AksEmlFormularyPanel';
-import { depleteStockDetailed, seedDefaultFormulary, stockQty, listFormulary, subscribeFormulary, formularyStats, listControlledDispenses, type FormularyDrug } from '../../lib/formularyInventory';
-import { appendAudit } from '../../lib/auditLogStore';
-import { parseRxNotes } from '../../lib/rxSigParse';
-import { listPatients } from '../../lib/patientRegistryStore';
+function orderToStableRow(o: ClinicalOrder): StableRxRow {
+  const sig = parseRxNotes(o.notes, o.name);
+  const line = getLineForOrder(o.id);
+  const deferred = line?.status === 'deferred' || Boolean(o.deferredForPayment);
+  const isDispensed = o.status === 'resulted' || Boolean(o.dispensedAt);
+  const status: PrescriptionOrder['status'] = isDispensed
+    ? 'dispensed'
+    : o.status === 'accepted'
+      ? 'verified'
+      : 'pending';
+  return {
+    id: o.id,
+    patientName: o.patientName,
+    patientId: o.patientId || o.hospitalNumber,
+    hospitalNumber: o.hospitalNumber || o.patientId,
+    medication: o.name,
+    dosage: sig.dose,
+    frequency: sig.frequency,
+    route: sig.route,
+    duration: sig.duration,
+    prescribingDoctor: o.orderedBy || 'Clinician',
+    status,
+    orderedAt: o.createdAt,
+    deferredForPayment: deferred,
+  };
+}
 
 export const PharmacyDispensingSuite: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'scan' | 'queue' | 'formulary'>('scan');
-  const [prescriptions, setPrescriptions] = useState<PrescriptionOrder[]>(INITIAL_PRESCRIPTIONS);
-  const [formulary] = useState<FormularyItem[]>(INITIAL_FORMULARY);
-  const [search, setSearch] = useState('');
-
-  const pharmacySuggestions: SearchSuggestion[] = React.useMemo(() => {
-    const list: SearchSuggestion[] = [];
-    if (activeTab === 'queue') {
-      prescriptions.slice(0, 25).forEach((q) => {
-        list.push({
-          id: q.id,
-          label: q.patientName,
-          sub: q.patientId + ' · ' + q.medication + ' (' + q.dosage + ')',
-          category: 'QUEUE',
-          icon: Pill,
-          onClick: () => setSearch(q.patientName),
-        });
-      });
-    } else {
-      formulary.slice(0, 25).forEach((f) => {
-        list.push({
-          id: f.id,
-          label: f.name,
-          sub: f.code + ' · ' + f.category + ' · Stock: ' + f.stockOnHand + ' ' + f.unit,
-          category: 'FORMULARY',
-          icon: Package,
-          onClick: () => setSearch(f.name),
-        });
-      });
-    }
-    return list;
-  }, [activeTab, prescriptions, formulary]);
-  const [lookupId, setLookupId] = useState('');
-
-  // Patient scanner state
-  const [scanInput, setScanInput] = useState('');
-  const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<LivePrescription[] | null>(null);
-  const [scanError, setScanError] = useState('');
-  const [dispensingId, setDispensingId] = useState<string | null>(null);
-  const [expandedRx, setExpandedRx] = useState<string | null>(null);
-
   const facilityId = (typeof window !== 'undefined' && getActiveFacilityId()) || 'IGH-EKT';
+  const [tick, setTick] = useState(0);
+  const [activeTab, setActiveTab] = useState<'scan' | 'queue' | 'ward-requests' | 'formulary'>('scan');
+  const [search, setSearch] = useState('');
+  const [lookupId, setLookupId] = useState('');
+  const [scanInput, setScanInput] = useState('');
+  const [scanQueryTerm, setScanQueryTerm] = useState<string>('');
+  const [scanError, setScanError] = useState('');
+  const [expandedRx, setExpandedRx] = useState<string | null>(null);
   const [invDrugs, setInvDrugs] = useState<FormularyDrug[]>([]);
-  const [invStats, setInvStats] = useState({ items: 0, lowStock: 0, expiringBatches: 0, controlled: 0, totalUnits: 0 });
+  const [invStats, setInvStats] = useState({
+    items: 0,
+    lowStock: 0,
+    expiringBatches: 0,
+    controlled: 0,
+    totalUnits: 0,
+  });
+
+  const reload = () => setTick((t) => t + 1);
 
   useEffect(() => {
     seedDefaultFormulary(facilityId);
@@ -135,67 +160,93 @@ export const PharmacyDispensingSuite: React.FC = () => {
       setInvStats(formularyStats(facilityId));
     };
     pullInv();
-    return subscribeFormulary(pullInv);
+    const u1 = subscribeFormulary(() => {
+      pullInv();
+      reload();
+    });
+    const u2 = subscribeOrders(reload);
+    const u3 = subscribeBills(reload);
+    const u4 = subscribePatients(reload);
+    const u5 = subscribeWardMedRequests(reload);
+    return () => {
+      u1();
+      u2();
+      u3();
+      u4();
+      u5();
+    };
   }, [facilityId]);
 
-  useEffect(() => {
-    seedDefaultFormulary(facilityId);
-    const pull = () => {
-      const rx = listOrders(facilityId).filter((o) => o.type === 'rx');
-      setPrescriptions((prev) => {
-        const ids = new Set(prev.map((p) => p.id));
-        const extra: PrescriptionOrder[] = rx
-          .filter((o) => !ids.has(o.id))
-          .map((o) => {
-            const sig = parseRxNotes(o.notes, o.name);
-            return {
-              id: o.id,
-              patientName: o.patientName,
-              patientId: o.patientId || o.hospitalNumber,
-              medication: o.name,
-              dosage: sig.dose,
-              frequency: sig.frequency,
-              route: sig.route,
-              duration: sig.duration,
-              prescribingDoctor: o.orderedBy || 'Clinician',
-              status: (o.status === 'resulted' || o.status === 'accepted' ? 'dispensed' : 'pending') as PrescriptionOrder['status'],
-              orderedAt: o.createdAt,
-            };
-          });
-        // Prefer bus truth: refresh statuses for known ids
-        const byBus = new Map(rx.map((o) => [o.id, o]));
-        const merged: PrescriptionOrder[] = prev.map((p) => {
-          const o = byBus.get(p.id);
-          if (!o) return p;
-          const sig = parseRxNotes(o.notes, o.name);
-          const status: PrescriptionOrder['status'] =
-            o.status === 'resulted' || o.status === 'accepted'
-              ? 'dispensed'
-              : p.status === 'dispensed'
-                ? 'dispensed'
-                : 'pending';
-          return {
-            ...p,
-            medication: o.name,
-            dosage: sig.dose,
-            frequency: sig.frequency,
-            route: sig.route,
-            duration: sig.duration,
-            status,
-          };
-        });
-        return extra.length ? [...extra, ...merged] : merged;
-      });
-    };
-    pull();
-    return subscribeOrders(pull);
-  }, [facilityId]);
+  const rawOrders = useMemo(
+    () =>
+      listOrders(facilityId)
+        .filter((o) => o.type === 'rx')
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
+    [facilityId, tick]
+  );
+
+  const prescriptions = useMemo<StableRxRow[]>(
+    () => rawOrders.map(orderToStableRow),
+    [rawOrders]
+  );
+
+  const wardRequests = useMemo<WardMedRequest[]>(
+    () => listWardMedRequests(facilityId),
+    [facilityId, tick]
+  );
+
+  // Full facility KPIs — never read from filteredPrescriptions so search never destabilizes readings
+  const kpiCounts = useMemo(() => {
+    let pending = 0;
+    let deferred = 0;
+    let dispensed = 0;
+    for (const rx of prescriptions) {
+      if (rx.status === 'dispensed') dispensed += 1;
+      else if (rx.deferredForPayment) deferred += 1;
+      else pending += 1;
+    }
+    const pendingWard = wardRequests.filter((w) => w.status === 'pending' || w.status === 'approved').length;
+    return { pending, deferred, dispensed, pendingWard, totalRx: prescriptions.length };
+  }, [prescriptions, wardRequests]);
+
+  const pharmacySuggestions: SearchSuggestion[] = useMemo(() => {
+    if (activeTab === 'queue') {
+      return prescriptions.slice(0, 25).map((q) => ({
+        id: q.id,
+        label: q.patientName,
+        sub: `${q.hospitalNumber} · ${q.medication} (${q.dosage})`,
+        category: 'QUEUE',
+        icon: Pill,
+        onClick: () => setSearch(q.patientName),
+      }));
+    }
+    return invDrugs.slice(0, 25).map((d) => ({
+      id: d.id,
+      label: d.name,
+      sub: `${d.genericName} · ${d.category} · Stock: ${stockQty(facilityId, d.id)}`,
+      category: 'FORMULARY',
+      icon: Package,
+      onClick: () => setSearch(d.name),
+    }));
+  }, [activeTab, prescriptions, invDrugs, facilityId]);
 
   const handleLegacyDispense = (id: string, opts?: { emergency?: boolean }) => {
-    const payGate = canReleaseOrder(id);
     const gate = canDispenseOrder(id);
+    if (gate.line?.status === 'deferred' && !opts?.emergency) {
+      liveAlert(
+        'This medication is Held for Later Payment. Restore it to bill or pay at Pharmacy Payment Desk first.',
+        'pharmacy',
+        facilityId
+      );
+      return;
+    }
+    const payGate = canReleaseOrder(id);
     if (!payGate.ok && !opts?.emergency) {
-      liveAlert((payGate.reason || 'Awaiting Accounts payment') + ' · Or Emergency override', 'pharmacy', facilityId);
+      liveAlert(
+        (payGate.reason || 'Awaiting payment') + ' · Or Emergency override',
+        'pharmacy',
+        facilityId
+      );
       return;
     }
     if (!gate.ok && !opts?.emergency) {
@@ -203,18 +254,23 @@ export const PharmacyDispensingSuite: React.FC = () => {
       return;
     }
     if (opts?.emergency && gate.line) {
-      markLinePaid(gate.line.id, { via: 'waiver', status: 'waived', paidBy: 'Emergency override', paymentRef: 'EMERG' });
+      markLinePaid(gate.line.id, {
+        via: 'waiver',
+        status: 'waived',
+        paidBy: 'Emergency override',
+        paymentRef: 'EMERG',
+      });
     }
     const rx = prescriptions.find((p) => p.id === id);
     const drugName = rx?.medication || '';
     const dep = drugName
       ? depleteStockDetailed(facilityId, drugName, 1, {
           actor: 'Pharmacist',
-          patientRef: rx?.patientId || rx?.patientName,
+          patientRef: rx?.hospitalNumber || rx?.patientId || rx?.patientName,
           rxId: id,
         })
       : { ok: false, depleted: [], remaining: 0, lowStock: false, controlled: false, reason: 'No drug name' };
-    setPrescriptions(prev => prev.map(p => p.id === id ? { ...p, status: 'dispensed' } : p));
+
     const d = dispenseOrder(id, 'Pharmacist');
     if (!d) {
       updateOrderStatus(id, 'resulted', {
@@ -235,7 +291,7 @@ export const PharmacyDispensingSuite: React.FC = () => {
       });
     }
     emitLiveAction(
-      `Dispensed ${id}${dep.ok ? ` · stock −1 (FEFO)` : ` · ${dep.reason || 'no stock'}`}${dep.controlled ? ' · CONTROLLED' : ''}${dep.lowStock ? ' · LOW' : ''}`,
+      `Dispensed ${id}${dep.ok ? ' · stock −1 (FEFO)' : ` · ${dep.reason || 'no stock'}`}${dep.controlled ? ' · CONTROLLED' : ''}${dep.lowStock ? ' · LOW' : ''}`,
       { module: 'pharmacy' }
     );
     liveAlert(
@@ -245,31 +301,43 @@ export const PharmacyDispensingSuite: React.FC = () => {
       'pharmacy',
       facilityId
     );
+    reload();
   };
 
-  const runPatientLookup = () => {
-    const q = (scanInput || lookupId || search).trim();
-    if (!q) {
-      liveAlert('Enter hospital number or patient name', 'pharmacy', facilityId);
-      return;
+  const handleToggleDefer = (rx: StableRxRow) => {
+    const nextDefer = !rx.deferredForPayment;
+    if (nextDefer) {
+      deferPharmacyBillLine(rx.id, {
+        actor: 'Pharmacist',
+        reason: 'Patient requested hold — will pay later',
+      });
+      setOrderDeferredForPayment(rx.id, facilityId, true, 'Patient requested hold at Dispensary');
+      liveAlert(`Held “${rx.medication}” — excluded from immediate payable total`, 'pharmacy', facilityId);
+    } else {
+      restoreDeferredPharmacyBillLine(rx.id);
+      setOrderDeferredForPayment(rx.id, facilityId, false);
+      liveAlert(`Restored “${rx.medication}” to active bill & dispense queue`, 'pharmacy', facilityId);
     }
-    setLookupId(q);
-    setSearch(q);
-    const hits = listOrders(facilityId).filter(
-      (o) =>
-        o.type === 'rx' &&
-        (o.hospitalNumber.toLowerCase().includes(q.toLowerCase()) ||
-          o.patientName.toLowerCase().includes(q.toLowerCase()) ||
-          o.patientId.toLowerCase().includes(q.toLowerCase()))
-    );
-    liveAlert(
-      hits.length
-        ? `Found ${hits.length} Rx for “${q}” on clinical bus`
-        : `No Rx on bus for “${q}” — confirm doctor sent prescription`,
-      'pharmacy',
-      facilityId
-    );
-    setActiveTab('queue');
+    reload();
+  };
+
+  const handleWardReqAction = (req: WardMedRequest, nextStatus: 'approved' | 'dispensed' | 'rejected') => {
+    if (nextStatus === 'dispensed') {
+      const dep = depleteStockDetailed(facilityId, req.drugName, Math.max(1, req.quantity), {
+        actor: 'Pharmacist',
+        patientRef: req.hospitalNumber || req.ward,
+        rxId: req.id,
+      });
+      const note = dep.ok
+        ? `Dispensed FEFO ${dep.depleted.map((b) => `${b.batchNo}×${b.qty}`).join(', ')}`
+        : `Dispensed (${dep.reason || 'manual floor stock'})`;
+      updateWardMedRequestStatus(req.id, facilityId, 'dispensed', 'Pharmacist', note);
+      liveAlert(`Ward Med Request dispensed to ${req.ward}: ${req.drugName}`, 'pharmacy', facilityId);
+    } else {
+      updateWardMedRequestStatus(req.id, facilityId, nextStatus, 'Pharmacist');
+      liveAlert(`Ward Med Request ${nextStatus}: ${req.drugName}`, 'pharmacy', facilityId);
+    }
+    reload();
   };
 
   const payAtPharmacy = (orderId: string) => {
@@ -284,165 +352,182 @@ export const PharmacyDispensingSuite: React.FC = () => {
       paymentRef: `PHARM-${Date.now().toString(36).toUpperCase()}`,
       status: 'paid',
     });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('medcore-order-paid', { detail: { orderId } }));
+    }
     liveAlert(`Paid at pharmacy ₦${line.amountNgn.toLocaleString()} — ready to dispense`, 'pharmacy', facilityId);
-    emitLiveAction(`Pharmacy payment ${orderId}`, { module: 'cashier' });
+    emitLiveAction(`Pharmacy payment ${orderId}`, { module: 'pharmacy-pos' });
+    reload();
   };
 
   const q = (lookupId || search || scanInput).trim().toLowerCase();
-  const filteredPrescriptions = q
-    ? prescriptions.filter(
-        (p) =>
-          p.patientName.toLowerCase().includes(q) ||
-          String(p.patientId || '').toLowerCase().includes(q) ||
-          p.medication.toLowerCase().includes(q) ||
-          p.id.toLowerCase().includes(q)
-      )
-    : prescriptions;
+  const filteredPrescriptions = useMemo(() => {
+    if (!q) return prescriptions;
+    return prescriptions.filter(
+      (p) =>
+        p.patientName.toLowerCase().includes(q) ||
+        String(p.patientId || '').toLowerCase().includes(q) ||
+        String(p.hospitalNumber || '').toLowerCase().includes(q) ||
+        p.medication.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q)
+    );
+  }, [prescriptions, q]);
+
   const registryHint = q
-    ? listPatients(facilityId).filter(
-        (p) =>
-          p.hospitalNumber.toLowerCase().includes(q) ||
-          `${p.firstName} ${p.lastName}`.toLowerCase().includes(q)
-      ).slice(0, 5)
+    ? listPatients(facilityId)
+        .filter(
+          (p) =>
+            p.hospitalNumber.toLowerCase().includes(q) ||
+            `${p.firstName} ${p.lastName}`.toLowerCase().includes(q)
+        )
+        .slice(0, 5)
     : [];
-  const pendingCount = filteredPrescriptions.filter((p) => p.status === 'pending').length;
-  const lowStockCount = invStats.lowStock;
 
-  // --- Live Patient Scan ----------------------------------------------------
-  const handleScan = async () => {
-    const query = scanInput.trim();
-    if (!query) return;
-    setLookupId(query);
-    setSearch(query);
-    setScanning(true);
+  const handleScan = () => {
+    const raw = scanInput.trim();
+    if (!raw) return;
+    const parsedQr = parseScannedEmrQr(raw);
+    const resolvedQuery =
+      parsedQr?.id ||
+      parsedQr?.hospitalNo ||
+      parsedQr?.payload?.sub ||
+      raw;
+
     setScanError('');
-    setScanResult(null);
-    try {
-      const res = await fetch(`${API}/prescriptions/patient/${encodeURIComponent(query)}`);
-      const json = await res.json();
-      if (json.success) {
-        setScanResult(json.data);
-        if (json.data.length > 0) setExpandedRx(json.data[0].id);
-      } else {
-        setScanError(json.error || 'No prescriptions found');
-      }
-    } catch {
-      // Offline / no API — use clinical Rx orders bus
-      const rx = listOrders(facilityId).filter(
-        (o) =>
-          o.type === 'rx' &&
-          (o.patientName.toLowerCase().includes(query.toLowerCase()) ||
-            o.hospitalNumber.toLowerCase().includes(query.toLowerCase()) ||
-            o.patientId.toLowerCase().includes(query.toLowerCase()))
-      );
-      if (rx.length) {
-        setScanResult(
-          rx.map((o) => ({
-            id: o.id,
-            patientName: o.patientName,
-            status: o.status === 'resulted' ? 'DISPENSED' : 'ACTIVE',
-            drugs: [
-              {
-                id: o.id + '-d',
-                name: o.name,
-                dispensed: o.status === 'resulted',
-              },
-            ],
-          })) as any
-        );
-        setExpandedRx(rx[0].id);
-        liveAlert(`Loaded ${rx.length} Rx from clinical bus (offline)`, 'pharmacy', facilityId);
-      } else {
-        setScanError('No prescriptions on clinical bus for this patient. Orders appear when a doctor places Rx.');
-      }
-    } finally {
-      setScanning(false);
+    setLookupId(resolvedQuery);
+    setSearch(resolvedQuery);
+    setScanQueryTerm(resolvedQuery);
+
+    const lower = resolvedQuery.toLowerCase();
+    const hits = rawOrders.filter(
+      (o) =>
+        o.patientName.toLowerCase().includes(lower) ||
+        o.hospitalNumber.toLowerCase().includes(lower) ||
+        o.patientId.toLowerCase().includes(lower) ||
+        o.id.toLowerCase().includes(lower)
+    );
+
+    if (hits.length === 0) {
+      setScanError(`No prescriptions on clinical bus for “${resolvedQuery}”. Confirm prescriber sent Rx.`);
+    } else {
+      setExpandedRx(hits[0].id);
+      liveAlert(`Loaded ${hits.length} Rx from clinical bus for ${hits[0].patientName}`, 'pharmacy', facilityId);
     }
   };
 
-  const handleDispenseDrug = async (rxId: string, drugId: string) => {
-    setDispensingId(`${rxId}:${drugId}`);
-    try {
-      const res = await fetch(`${API}/prescriptions/${rxId}/dispense`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ drugId, dispensedBy: 'Pharmacist on Duty' }),
+  const scanResult = useMemo<LivePrescription[] | null>(() => {
+    if (!scanQueryTerm) return null;
+    const lower = scanQueryTerm.toLowerCase();
+    return rawOrders
+      .filter(
+        (o) =>
+          o.patientName.toLowerCase().includes(lower) ||
+          o.hospitalNumber.toLowerCase().includes(lower) ||
+          o.patientId.toLowerCase().includes(lower) ||
+          o.id.toLowerCase().includes(lower)
+      )
+      .map((o) => {
+        const sig = parseRxNotes(o.notes, o.name);
+        const line = getLineForOrder(o.id);
+        const deferred = line?.status === 'deferred' || Boolean(o.deferredForPayment);
+        const isDisp = o.status === 'resulted' || Boolean(o.dispensedAt);
+        return {
+          id: o.id,
+          patientId: o.patientId,
+          hospitalNumber: o.hospitalNumber,
+          patientName: o.patientName,
+          doctorName: o.orderedBy || 'Clinician',
+          facilityId: o.facilityId,
+          diagnosis: o.notes || 'Active outpatient / inpatient order',
+          status: isDisp ? 'DISPENSED' : deferred ? 'DEFERRED' : 'ACTIVE',
+          createdAt: o.createdAt,
+          drugs: [
+            {
+              id: `${o.id}-d`,
+              name: o.name,
+              dosage: sig.dose,
+              frequency: sig.frequency,
+              duration: sig.duration,
+              route: sig.route,
+              quantity: 1,
+              instructions: o.notes || '',
+              dispensed: isDisp,
+              dispensedAt: o.dispensedAt,
+              dispensedBy: o.dispensedBy,
+            },
+          ],
+        };
       });
-      const json = await res.json();
-      if (json.success) {
-        setScanResult(prev => prev ? prev.map(rx => rx.id === rxId ? json.data : rx) : prev);
-      }
-    } catch {
-      handleLegacyDispense(rxId);
-    } finally {
-      setDispensingId(null);
-    }
-  };
+  }, [rawOrders, scanQueryTerm]);
 
   const clearScan = () => {
     setScanInput('');
-    setScanResult(null);
+    setLookupId('');
+    setSearch('');
+    setScanQueryTerm('');
     setScanError('');
   };
 
-  // --- Metrics -------------------------------------------------------------
-  const pendingRx = scanResult?.filter(r => r.status === 'ACTIVE' || r.status === 'PARTIAL').length ?? 0;
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif", margin: '-8px -4px 0' }}>
-      <div style={{ background: 'linear-gradient(135deg, #1B4F72 0%, #0E3A5C 50%, #0E7490 130%)', color: '#fff', padding: '16px 20px 14px' }}>
+      <div style={{ background: 'linear-gradient(135deg, #064E3B 0%, #0E3A5C 55%, #047857 130%)', color: '#fff', padding: '16px 20px 14px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Pill size={20} />
             </div>
             <div>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', opacity: 0.75, textTransform: 'uppercase' }}>Pharmacy · Dispensing</div>
-              <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em' }}>Verify · Dispense · Stock</div>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>Clinical bus realtime · pay-before-service gate</div>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', opacity: 0.78, textTransform: 'uppercase' }}>Pharmacy · Dispensing</div>
+              <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em' }}>Verify · Dispense · Ward Meds · Stock</div>
+              <div style={{ fontSize: 12, opacity: 0.82 }}>Clinical bus realtime · pay-before-service & deferred hold control</div>
             </div>
           </div>
           <div style={{ fontSize: 11, fontWeight: 700, background: 'rgba(52,211,153,0.2)', border: '1px solid rgba(52,211,153,0.35)', padding: '6px 10px', borderRadius: 6 }}>
-            ● LIVE AUDIT
+            ● LIVE FACILITY SYNC ({kpiCounts.totalRx} RX)
           </div>
         </div>
+
+        {/* Stabilized Full-Dataset MPI KPI Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginTop: 14 }}>
           {[
-            { l: 'Pending Rx', v: pendingCount, s: 'Awaiting verification' },
-            { l: 'Low stock', v: lowStockCount, s: 'Below reorder' },
-            { l: 'Formulary items', v: invStats.items, s: 'Facility catalogue' },
-            { l: 'Units on hand', v: invStats.totalUnits, s: 'All batches' },
+            { l: 'Pending Rx', v: kpiCounts.pending, s: 'Active in queue' },
+            { l: 'Held / Deferred', v: kpiCounts.deferred, s: 'Patient return later' },
+            { l: 'Ward Med Reqs', v: kpiCounts.pendingWard, s: 'Inpatient / Labour' },
+            { l: 'Low Stock', v: invStats.lowStock, s: 'Below reorder' },
+            { l: 'Units on Hand', v: invStats.totalUnits, s: `${invStats.items} items in catalogue` },
           ].map((k) => (
             <div key={k.l} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, padding: '10px 12px' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', opacity: 0.7 }}>{k.l}</div>
-              <div style={{ fontSize: 22, fontWeight: 700, marginTop: 2 }}>{k.v}</div>
-              <div style={{ fontSize: 10, opacity: 0.65 }}>{k.s}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', opacity: 0.75 }}>{k.l}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, marginTop: 2 }}>{k.v}</div>
+              <div style={{ fontSize: 10, opacity: 0.72 }}>{k.s}</div>
             </div>
           ))}
         </div>
       </div>
 
+      {/* Navigation Tabs */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#fff', borderBottom: '1px solid #E2E8F0', padding: '0 12px', boxShadow: '0 1px 3px rgba(26,35,50,0.05)' }}>
-        <div style={{ display: 'flex', gap: 0 }}>
+        <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap' }}>
           {[
-            { id: 'scan', label: 'Patient lookup', Icon: UserSearch },
-            { id: 'queue', label: `Dispense queue (${filteredPrescriptions.length})`, Icon: Clock },
+            { id: 'scan', label: 'Patient lookup / QR', Icon: UserSearch },
+            { id: 'queue', label: `Dispense queue (${kpiCounts.totalRx})`, Icon: Clock },
+            { id: 'ward-requests', label: `Ward Med Requests (${kpiCounts.pendingWard})`, Icon: ClipboardList },
             { id: 'formulary', label: 'Stock snapshot', Icon: Package },
           ].map(({ id, label, Icon }) => (
             <button
               key={id}
               type="button"
-              onClick={() => setActiveTab(id as any)}
+              onClick={() => setActiveTab(id as typeof activeTab)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 7,
                 padding: '12px 14px',
                 border: 'none',
-                borderBottom: activeTab === id ? '2px solid #1B4F72' : '2px solid transparent',
+                borderBottom: activeTab === id ? '2px solid #047857' : '2px solid transparent',
                 background: 'transparent',
-                color: activeTab === id ? '#1B4F72' : '#718096',
-                fontWeight: 650,
+                color: activeTab === id ? '#047857' : '#718096',
+                fontWeight: 700,
                 fontSize: 13,
                 cursor: 'pointer',
                 fontFamily: 'inherit',
@@ -452,13 +537,19 @@ export const PharmacyDispensingSuite: React.FC = () => {
             </button>
           ))}
         </div>
-        {activeTab !== 'scan' && (
+        {activeTab === 'queue' && (
           <div style={{ minWidth: 260, margin: '4px 0' }}>
             <InteractiveSearchBar
               value={search}
-              onChange={setSearch}
-              onClear={() => setSearch('')}
-              placeholder={activeTab === 'queue' ? 'Search patient, doctor, drug…' : 'Search medicine…'}
+              onChange={(val) => {
+                setSearch(val);
+                if (!val.trim()) setLookupId('');
+              }}
+              onClear={() => {
+                setSearch('');
+                setLookupId('');
+              }}
+              placeholder="Search patient, doctor, drug…"
               suggestions={pharmacySuggestions}
               resultsCount={filteredPrescriptions.length}
               size="sm"
@@ -469,355 +560,420 @@ export const PharmacyDispensingSuite: React.FC = () => {
       </div>
 
       <div style={{ padding: '16px 14px 24px', background: '#F0F4F8', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* -- SCAN TAB -- */}
-      {activeTab === 'scan' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Scanner Input */}
-          <div className="os-card" style={{ padding: '24px 24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-              <div style={{
-                width: 40, height: 40, borderRadius: '50%',
-                background: 'rgba(234,88,12,0.12)', border: '1px solid rgba(234,88,12,0.3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <UserSearch size={18} style={{ color: 'var(--ak-orange-light)' }} />
-              </div>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0A2540' }}>Patient Prescription Lookup</div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--os-text-muted)' }}>
-                  Enter or scan patient ID number to view all active prescriptions
+        {/* -- SCAN / QR TAB -- */}
+        {activeTab === 'scan' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="os-card" style={{ padding: '24px 24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(5,150,105,0.12)', border: '1px solid rgba(5,150,105,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <UserSearch size={18} style={{ color: '#059669' }} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0A2540' }}>Patient Prescription & QR Lookup</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--os-text-muted)' }}>
+                    Scan Digital Health Card QR, enter Hospital Number, SHID, or Patient Name
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div style={{ display: 'flex', gap: 10 }}>
-              <div style={{ position: 'relative', flex: 1 }}>
-                <Barcode size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--os-text-dim)' }} />
-                <input
-                  className="os-form-input"
-                  style={{ paddingLeft: 42, fontSize: '1rem', fontWeight: 700, letterSpacing: '0.05em' }}
-                  placeholder="e.g. PAT-849201"
-                  value={scanInput}
-                  onChange={e => setScanInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleScan()}
-                  autoFocus
-                />
-              </div>
-              <button
-                type="button"
-                className="os-action-btn-primary"
-                onClick={handleScan}
-                disabled={scanning || !scanInput.trim()}
-                style={{ minWidth: 130 }}
-              >
-                {scanning ? <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <UserSearch size={14} />}
-                {scanning ? 'Scanning...' : 'Lookup Patient'}
-              </button>
-              {scanResult && (
-                <button type="button" className="os-ghost-btn" onClick={clearScan}>
-                  <X size={14} /> Clear
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
+                  <Barcode size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--os-text-dim)' }} />
+                  <input
+                    className="os-form-input"
+                    style={{ paddingLeft: 42, fontSize: '0.96rem', fontWeight: 700 }}
+                    placeholder="Scan QR link, HN (IGH-PT-...), SHID or Name"
+                    value={scanInput}
+                    onChange={(e) => setScanInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleScan()}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="os-action-btn-primary"
+                  onClick={handleScan}
+                  disabled={!scanInput.trim()}
+                  style={{ minWidth: 130, background: '#059669' }}
+                >
+                  <UserSearch size={14} /> Lookup Patient
                 </button>
+                {(scanResult || scanError) && (
+                  <button type="button" className="os-ghost-btn" onClick={clearScan}>
+                    <X size={14} /> Clear
+                  </button>
+                )}
+              </div>
+
+              {registryHint.length > 0 && !scanResult?.length && (
+                <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {registryHint.map((pt) => (
+                    <button
+                      key={pt.id}
+                      type="button"
+                      onClick={() => {
+                        setScanInput(pt.hospitalNumber);
+                        setScanQueryTerm(pt.hospitalNumber);
+                      }}
+                      style={{ fontSize: 11, fontWeight: 700, padding: '4px 9px', borderRadius: 999, border: '1px solid #CBD5E1', background: '#F8FAFC', cursor: 'pointer' }}
+                    >
+                      {pt.firstName} {pt.lastName} ({pt.hospitalNumber})
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
-          </div>
 
-          {/* Error */}
-          {scanError && (
-            <div style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, display: 'flex', gap: 10, alignItems: 'center', color: '#FCA5A5', fontSize: '0.85rem' }}>
-              <AlertTriangle size={16} style={{ color: '#EF4444', flexShrink: 0 }} />
-              {scanError}
-            </div>
-          )}
-
-          {/* Results */}
-          {scanResult !== null && (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                <CheckCircle2 size={18} style={{ color: '#34D399' }} />
-                <span style={{ fontWeight: 700, color: '#0A2540' }}>
-                  {scanResult.length === 0
-                    ? 'No prescriptions on record for this patient.'
-                    : `${scanResult.length} prescription(s) found for ${scanResult[0]?.patientName}`}
-                </span>
+            {scanError && (
+              <div style={{ padding: '12px 16px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, display: 'flex', gap: 10, alignItems: 'center', color: '#991B1B', fontSize: '0.85rem', fontWeight: 600 }}>
+                <AlertTriangle size={16} style={{ color: '#EF4444', flexShrink: 0 }} />
+                {scanError}
               </div>
+            )}
 
-              {scanResult.map(rx => {
-                const st = statusStyle(rx.status);
-                const isExpanded = expandedRx === rx.id;
-                const pendingDrugs = rx.drugs.filter(d => !d.dispensed);
-                return (
-                  <div key={rx.id} className="os-card" style={{ marginBottom: 12, padding: 0, overflow: 'hidden' }}>
-                    {/* Prescription Header */}
-                    <div
-                      style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: 'rgba(255,255,255,0.02)' }}
-                      onClick={() => setExpandedRx(isExpanded ? null : rx.id)}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '3px 10px', borderRadius: 6, background: st.bg, color: st.color }}>
-                          {rx.status}
-                        </span>
-                        <div>
-                          <div style={{ fontWeight: 800, color: '#0A2540', fontSize: '0.95rem' }}>
-                            {rx.id}
-                          </div>
-                          <div style={{ fontSize: '0.76rem', color: 'var(--os-text-muted)', marginTop: 2 }}>
-                            <Stethoscope size={11} style={{ display: 'inline', marginRight: 4 }} />
-                            {rx.doctorName} • {rx.diagnosis}
+            {scanResult !== null && scanResult.length > 0 && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <CheckCircle2 size={18} style={{ color: '#059669' }} />
+                  <span style={{ fontWeight: 700, color: '#0A2540' }}>
+                    {scanResult.length} prescription(s) found for {scanResult[0]?.patientName}
+                  </span>
+                </div>
+
+                {scanResult.map((rx) => {
+                  const st = statusStyle(rx.status);
+                  const isExpanded = expandedRx === rx.id;
+                  return (
+                    <div key={rx.id} className="os-card" style={{ marginBottom: 12, padding: 0, overflow: 'hidden' }}>
+                      <div
+                        style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                        onClick={() => setExpandedRx(isExpanded ? null : rx.id)}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '3px 10px', borderRadius: 6, background: st.bg, color: st.color }}>
+                            {rx.status}
+                          </span>
+                          <div>
+                            <div style={{ fontWeight: 800, color: '#0A2540', fontSize: '0.95rem' }}>{rx.id} · {rx.drugs[0]?.name}</div>
+                            <div style={{ fontSize: '0.76rem', color: 'var(--os-text-muted)', marginTop: 2 }}>
+                              <Stethoscope size={11} style={{ display: 'inline', marginRight: 4 }} />
+                              {rx.doctorName} · HN: {rx.hospitalNumber}
+                            </div>
                           </div>
                         </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          {rx.routedToPharmacyName && (
+                            <span style={{ fontSize: 11, color: '#0284C7', background: '#E0F2FE', padding: '2px 8px', borderRadius: 6 }}>
+                              <Building2 size={11} style={{ display: 'inline', marginRight: 3 }} /> {rx.routedToPharmacyName}
+                            </span>
+                          )}
+                          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                        {rx.routedToPharmacyName && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#60A5FA', background: 'rgba(96,165,250,0.1)', padding: '3px 8px', borderRadius: 6 }}>
-                            <Building2 size={11} /> Routed: {rx.routedToPharmacyName}
-                          </div>
-                        )}
-                        <span style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)' }}>
-                          {rx.drugs.length} drug(s) • {pendingDrugs.length} pending
-                        </span>
-                        {isExpanded ? <ChevronUp size={16} style={{ color: 'var(--os-text-dim)' }} /> : <ChevronDown size={16} style={{ color: 'var(--os-text-dim)' }} />}
-                      </div>
-                    </div>
 
-                    {/* Expanded Drug List */}
-                    {isExpanded && (
-                      <div style={{ borderTop: '1px solid var(--os-border)', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {rx.notes && (
-                          <div style={{ fontSize: '0.78rem', color: '#FDE047', background: 'rgba(250,204,21,0.08)', borderRadius: 8, padding: '8px 12px', marginBottom: 4 }}>
-                            ?? Clinical note: {rx.notes}
-                          </div>
-                        )}
-                        {rx.drugs.map(drug => (
-                          <div key={drug.id} style={{
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            padding: '12px 16px', borderRadius: 10,
-                            background: drug.dispensed ? 'rgba(34,197,94,0.06)' : '#FFFFFF',
-                            border: `1px solid ${drug.dispensed ? 'rgba(5,150,105,0.12)' : 'var(--os-border)'}`,
-                          }}>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                                <Pill size={13} style={{ color: drug.dispensed ? '#34D399' : 'var(--ak-orange-light)' }} />
-                                <span style={{ fontWeight: 800, color: '#0A2540', fontSize: '0.92rem' }}>
-                                  {drug.name} {drug.dosage}
-                                </span>
-                                <span style={{ fontSize: '0.68rem', color: 'var(--os-text-dim)', background: '#FFFFFF', borderRadius: 4, padding: '1px 6px' }}>
-                                  {drug.route}
-                                </span>
+                      {isExpanded && (
+                        <div style={{ borderTop: '1px solid #E2E8F0', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {rx.drugs.map((drug) => (
+                            <div key={drug.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderRadius: 10, background: drug.dispensed ? '#F0FDF4' : '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                              <div>
+                                <div style={{ fontWeight: 800, color: '#0A2540', fontSize: '0.92rem' }}>{drug.name} · {drug.dosage}</div>
+                                <div style={{ fontSize: '0.76rem', color: '#475569' }}>{drug.frequency} · {drug.route} · {drug.duration}</div>
                               </div>
-                              <div style={{ fontSize: '0.76rem', color: 'var(--os-text-muted)' }}>
-                                {drug.frequency} • {drug.duration} • Qty: {drug.quantity}
+                              <div>
+                                {drug.dispensed ? (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: '#15803D', fontWeight: 700 }}>
+                                    <CheckCircle2 size={16} /> Dispensed
+                                  </span>
+                                ) : (
+                                  <button type="button" className="os-action-btn-primary" onClick={() => handleLegacyDispense(rx.id)} style={{ fontSize: '0.8rem', padding: '7px 14px' }}>
+                                    <Barcode size={12} /> Dispense
+                                  </button>
+                                )}
                               </div>
-                              {drug.instructions && (
-                                <div style={{ fontSize: '0.72rem', color: 'var(--os-text-dim)', marginTop: 3 }}>
-                                  Instructions: {drug.instructions}
-                                </div>
-                              )}
-                              {drug.dispensed && drug.dispensedAt && (
-                                <div style={{ fontSize: '0.7rem', color: '#34D399', marginTop: 4, fontWeight: 600 }}>
-                                  ? Dispensed {new Date(drug.dispensedAt).toLocaleString()} by {drug.dispensedBy}
-                                </div>
-                              )}
                             </div>
-                            <div style={{ marginLeft: 16, flexShrink: 0 }}>
-                              {drug.dispensed ? (
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: '#34D399', fontWeight: 700 }}>
-                                  <CheckCircle2 size={16} /> Dispensed
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="os-action-btn-primary"
-                                  disabled={dispensingId === `${rx.id}:${drug.id}`}
-                                  onClick={() => handleDispenseDrug(rx.id, drug.id)}
-                                  style={{ fontSize: '0.8rem', padding: '7px 14px' }}
-                                >
-                                  {dispensingId === `${rx.id}:${drug.id}` ? (
-                                    <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} />
-                                  ) : (
-                                    <Barcode size={12} />
-                                  )}
-                                  Dispense
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* -- QUEUE TAB -- */}
-      {activeTab === 'queue' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {filteredPrescriptions.map(rx => (
-              <div key={rx.id} className="os-card" style={{ padding: '16px 20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                      <span style={{
-                        fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: 4,
-                        background: rx.status === 'dispensed' ? 'rgba(5,150,105,0.1)' : rx.status === 'verified' ? 'rgba(59,130,246,0.15)' : 'rgba(234,88,12,0.15)',
-                        color: rx.status === 'dispensed' ? '#34D399' : rx.status === 'verified' ? '#60A5FA' : 'var(--ak-orange-light)',
-                      }}>
-                        {rx.status.toUpperCase()}
-                      </span>
-                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0A2540' }}>{rx.patientName}</span>
-                      <span style={{ fontSize: '0.74rem', color: 'var(--os-text-dim)' }}>({rx.patientId})</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--ak-orange-light)', marginTop: 4 }}>
-                      {rx.medication} • {rx.dosage}
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--os-text-muted)', marginTop: 2 }}>
-                      Regimen: <strong>{rx.frequency}</strong> via <strong>{rx.route}</strong> for <strong>{rx.duration}</strong>
-                    </div>
-                    <div style={{ fontSize: '0.74rem', color: 'var(--os-text-dim)', marginTop: 4 }}>
-                      {rx.prescribingDoctor} • {rx.orderedAt}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-                    <span style={{ fontSize: '0.74rem', color: 'var(--os-text-dim)' }}>Rx ID: {rx.id}</span>
-                    {rx.status !== 'dispensed' ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-                        {(() => {
-                          const gate = canDispenseOrder(rx.id);
-                          const line = gate.line;
-                          return (
-                            <>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: gate.ok ? '#059669' : '#D97706' }}>
-                                {line
-                                  ? `${line.status.toUpperCase()} · ₦${line.amountNgn.toLocaleString()}`
-                                  : 'No bill line'}
-                              </span>
-                              {!gate.ok && (
-                                <button
-                                  type="button"
-                                  className="mc-btn-live"
-                                  onClick={() => payAtPharmacy(rx.id)}
-                                  style={{
-                                    padding: '6px 10px',
-                                    borderRadius: 8,
-                                    border: 'none',
-                                    background: '#2563EB',
-                                    color: '#fff',
-                                    fontWeight: 700,
-                                    fontSize: 12,
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Pay at pharmacy
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                className="os-action-btn-primary"
-                                onClick={() => handleLegacyDispense(rx.id)}
-                                style={{ opacity: gate.ok ? 1 : 0.55 }}
-                              >
-                                <Barcode size={14} /> {gate.ok ? 'Dispense drug' : 'Dispense (needs payment)'}
-                              </button>
-                              {!gate.ok && (
-                                <button
-                                  type="button"
-                                  className="mc-btn-live"
-                                  onClick={() => handleLegacyDispense(rx.id, { emergency: true })}
-                                  style={{
-                                    padding: '4px 8px',
-                                    borderRadius: 6,
-                                    border: '1px solid #FECACA',
-                                    background: '#FEF2F2',
-                                    color: '#B91C1C',
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Emergency override
-                                </button>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
-                    ) : (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: '#34D399', fontWeight: 700 }}>
-                        <CheckCircle2 size={16} /> Dispensed & Label Printed
-                      </span>
-                    )}
-                  </div>
-                </div>
-                {rx.interactionAlert && (
-                  <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: '#FCA5A5' }}>
-                    <AlertTriangle size={14} style={{ color: '#EF4444', flexShrink: 0 }} />
-                    <span><strong>Clinical Precaution:</strong> {rx.interactionAlert}</span>
-                  </div>
-                )}
-              </div>
-            ))}
-        </div>
-      )}
-
-      {/* -- FORMULARY TAB -- */}
-      {/* -- FORMULARY / AKS EML TAB -- */}
-      {activeTab === 'formulary' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10 }}>
-            {[
-              { l: 'Formulary items', v: invStats.items },
-              { l: 'Units on hand', v: invStats.totalUnits },
-              { l: 'Low stock', v: invStats.lowStock },
-              { l: 'Expiring ≤90d', v: invStats.expiringBatches },
-            ].map((x) => (
-              <div key={x.l} style={{ background: 'rgba(15,23,42,0.04)', borderRadius: 12, padding: '12px 14px', border: '1px solid rgba(148,163,184,0.25)' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8' }}>{x.l}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{x.v}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ fontSize: 13, color: '#94A3B8' }}>
-            Live facility stock (realtime). Open <strong>Formulary & stock</strong> in the sidebar for full inventory, receive stock, and AKS EML reference.
-          </div>
-          <div style={{ maxHeight: 360, overflow: 'auto', borderRadius: 12, border: '1px solid rgba(148,163,184,0.2)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: 'rgba(15,23,42,0.5)' }}>
-                  <th style={{ textAlign: 'left', padding: 10 }}>Medicine</th>
-                  <th style={{ textAlign: 'left', padding: 10 }}>Stock</th>
-                  <th style={{ textAlign: 'left', padding: 10 }}>Reorder</th>
-                  <th style={{ textAlign: 'left', padding: 10 }}>₦</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invDrugs.map((d) => {
-                  const q = stockQty(facilityId, d.id);
-                  const low = q <= d.reorderLevel;
-                  return (
-                    <tr key={d.id} style={{ borderTop: '1px solid rgba(148,163,184,0.15)' }}>
-                      <td style={{ padding: 10 }}>
-                        <div style={{ fontWeight: 700 }}>{d.name}</div>
-                        <div style={{ fontSize: 11, color: '#94A3B8' }}>{d.genericName}</div>
-                      </td>
-                      <td style={{ padding: 10, fontWeight: 800, color: low ? '#FBBF24' : '#34D399' }}>{q}</td>
-                      <td style={{ padding: 10 }}>{d.reorderLevel}</td>
-                      <td style={{ padding: 10 }}>{d.unitPriceNgn.toLocaleString()}</td>
-                    </tr>
                   );
                 })}
-                {invDrugs.length === 0 && (
-                  <tr><td colSpan={4} style={{ padding: 20, color: '#94A3B8' }}>No formulary items yet</td></tr>
-                )}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
-          <AksEmlFormularyPanel />
-        </div>
-      )}
+        )}
 
+        {/* -- DISPENSE QUEUE TAB -- */}
+        {activeTab === 'queue' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filteredPrescriptions.length === 0 ? (
+              <div className="os-card" style={{ padding: 36, textAlign: 'center', color: '#64748B' }}>
+                No prescriptions match this filter right now.
+              </div>
+            ) : (
+              filteredPrescriptions.map((rx) => (
+                <div key={rx.id} className="os-card" style={{ padding: '16px 20px', borderLeft: rx.deferredForPayment ? '4px solid #9333EA' : undefined }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+                        <span
+                          style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            padding: '2px 8px',
+                            borderRadius: 4,
+                            background: rx.status === 'dispensed' ? '#DCFCE7' : rx.deferredForPayment ? '#F3E8FF' : '#FEF3C7',
+                            color: rx.status === 'dispensed' ? '#15803D' : rx.deferredForPayment ? '#7E22CE' : '#B45309',
+                          }}
+                        >
+                          {rx.status === 'dispensed' ? 'DISPENSED' : rx.deferredForPayment ? 'HELD FOR LATER' : rx.status.toUpperCase()}
+                        </span>
+                        <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0A2540' }}>{rx.patientName}</span>
+                        <span style={{ fontSize: '0.74rem', color: '#64748B' }}>({rx.hospitalNumber || rx.patientId})</span>
+                      </div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#065F46', marginTop: 4 }}>
+                        {rx.medication} · {rx.dosage}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: 2 }}>
+                        Regimen: <strong>{rx.frequency}</strong> via <strong>{rx.route}</strong> for <strong>{rx.duration}</strong>
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: 4 }}>
+                        Prescriber: {rx.prescribingDoctor} · {new Date(rx.orderedAt).toLocaleString()}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                      <span style={{ fontSize: '0.74rem', color: '#64748B' }}>Rx ID: {rx.id}</span>
+                      {rx.status !== 'dispensed' ? (
+                        <>
+                          {(() => {
+                            const gate = canDispenseOrder(rx.id);
+                            const line = gate.line;
+                            return (
+                              <>
+                                <span style={{ fontSize: 11, fontWeight: 700, color: gate.ok ? '#059669' : rx.deferredForPayment ? '#7E22CE' : '#D97706' }}>
+                                  {line ? `${line.status.toUpperCase()} · ₦${line.amountNgn.toLocaleString()}` : 'No bill line'}
+                                </span>
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleDefer(rx)}
+                                    style={{
+                                      padding: '6px 10px',
+                                      borderRadius: 8,
+                                      border: rx.deferredForPayment ? '1px solid #A7F3D0' : '1px solid #DDD6FE',
+                                      background: rx.deferredForPayment ? '#ECFDF5' : '#FAF5FF',
+                                      color: rx.deferredForPayment ? '#065F46' : '#7E22CE',
+                                      fontWeight: 700,
+                                      fontSize: 11,
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 4,
+                                    }}
+                                  >
+                                    {rx.deferredForPayment ? <RotateCcw size={12} /> : <PauseCircle size={12} />}
+                                    {rx.deferredForPayment ? 'Restore to Bill' : 'Hold for Later'}
+                                  </button>
+
+                                  {!gate.ok && !rx.deferredForPayment && (
+                                    <button
+                                      type="button"
+                                      onClick={() => payAtPharmacy(rx.id)}
+                                      style={{
+                                        padding: '6px 10px',
+                                        borderRadius: 8,
+                                        border: 'none',
+                                        background: '#059669',
+                                        color: '#fff',
+                                        fontWeight: 700,
+                                        fontSize: 12,
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      Pay at Pharmacy
+                                    </button>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    className="os-action-btn-primary"
+                                    onClick={() => handleLegacyDispense(rx.id)}
+                                    style={{ opacity: gate.ok ? 1 : 0.55 }}
+                                  >
+                                    <Barcode size={14} /> {gate.ok ? 'Dispense drug' : 'Dispense (needs payment)'}
+                                  </button>
+
+                                  {!gate.ok && !rx.deferredForPayment && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleLegacyDispense(rx.id, { emergency: true })}
+                                      style={{
+                                        padding: '4px 8px',
+                                        borderRadius: 6,
+                                        border: '1px solid #FECACA',
+                                        background: '#FEF2F2',
+                                        color: '#B91C1C',
+                                        fontSize: 11,
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      Emergency override
+                                    </button>
+                                  )}
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </>
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#15803D', fontWeight: 700 }}>
+                          <CheckCircle2 size={16} /> Dispensed & FEFO Logged
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* -- WARD MED REQUESTS TAB -- */}
+        {activeTab === 'ward-requests' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {wardRequests.length === 0 ? (
+              <div className="os-card" style={{ padding: 36, textAlign: 'center', color: '#64748B' }}>
+                No ward medication requests from Nursing / Maternity yet.
+              </div>
+            ) : (
+              wardRequests.map((req) => (
+                <div
+                  key={req.id}
+                  className="os-card"
+                  style={{
+                    padding: '14px 18px',
+                    borderLeft: req.priority === 'stat' ? '4px solid #DC2626' : '4px solid #059669',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: '2px 7px',
+                          borderRadius: 4,
+                          background: req.priority === 'stat' ? '#FEE2E2' : req.priority === 'urgent' ? '#FEF3C7' : '#E0F2FE',
+                          color: req.priority === 'stat' ? '#991B1B' : req.priority === 'urgent' ? '#92400E' : '#075985',
+                        }}
+                      >
+                        {req.priority.toUpperCase()}
+                      </span>
+                      <strong style={{ fontSize: 14, color: '#0F172A' }}>{req.drugName} ({req.dosage}) × {req.quantity}</strong>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>[{req.status.toUpperCase()}]</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>
+                      {req.ward} · Bed {req.bedNumber || 'Ward Store'} · {req.patientName ? `${req.patientName} (${req.hospitalNumber || ''})` : 'Ward Stock Replenishment'}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                      Requested by {req.requestedBy} · {new Date(req.requestedAt).toLocaleString()}
+                      {req.pharmacyNotes ? ` · Note: ${req.pharmacyNotes}` : ''}
+                    </div>
+                  </div>
+                  {(req.status === 'pending' || req.status === 'approved') && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {req.status === 'pending' && (
+                        <button
+                          type="button"
+                          onClick={() => handleWardReqAction(req, 'approved')}
+                          style={{ padding: '7px 11px', borderRadius: 8, border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                        >
+                          Approve
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleWardReqAction(req, 'dispensed')}
+                        style={{ padding: '7px 12px', borderRadius: 8, border: 'none', background: '#059669', color: '#FFFFFF', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}
+                      >
+                        Dispense to Ward (FEFO)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleWardReqAction(req, 'rejected')}
+                        style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* -- FORMULARY TAB -- */}
+        {activeTab === 'formulary' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10 }}>
+              {[
+                { l: 'Formulary items', v: invStats.items },
+                { l: 'Units on hand', v: invStats.totalUnits },
+                { l: 'Low stock', v: invStats.lowStock },
+                { l: 'Expiring ≤90d', v: invStats.expiringBatches },
+              ].map((x) => (
+                <div key={x.l} style={{ background: '#FFFFFF', borderRadius: 12, padding: '12px 14px', border: '1px solid #E2E8F0' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>{x.l}</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: '#0F172A', marginTop: 4 }}>{x.v}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 13, color: '#475569' }}>
+              Live facility stock (realtime). Open <strong>Formulary & stock</strong> in the sidebar for full inventory, receive stock, and AKS EML reference.
+            </div>
+            <div style={{ maxHeight: 360, overflow: 'auto', borderRadius: 12, border: '1px solid #E2E8F0', background: '#FFFFFF' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                    <th style={{ textAlign: 'left', padding: 10 }}>Medicine</th>
+                    <th style={{ textAlign: 'left', padding: 10 }}>Stock</th>
+                    <th style={{ textAlign: 'left', padding: 10 }}>Reorder</th>
+                    <th style={{ textAlign: 'left', padding: 10 }}>₦</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invDrugs.map((d) => {
+                    const qty = stockQty(facilityId, d.id);
+                    const low = qty <= d.reorderLevel;
+                    return (
+                      <tr key={d.id} style={{ borderTop: '1px solid #F1F5F9' }}>
+                        <td style={{ padding: 10 }}>
+                          <div style={{ fontWeight: 700, color: '#0F172A' }}>{d.name}</div>
+                          <div style={{ fontSize: 11, color: '#64748B' }}>{d.genericName}</div>
+                        </td>
+                        <td style={{ padding: 10, fontWeight: 800, color: low ? '#D97706' : '#059669' }}>{qty}</td>
+                        <td style={{ padding: 10 }}>{d.reorderLevel}</td>
+                        <td style={{ padding: 10 }}>{d.unitPriceNgn.toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
+                  {invDrugs.length === 0 && (
+                    <tr>
+                      <td colSpan={4} style={{ padding: 20, color: '#64748B' }}>No formulary items yet</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <AksEmlFormularyPanel />
+          </div>
+        )}
       </div>
     </div>
   );

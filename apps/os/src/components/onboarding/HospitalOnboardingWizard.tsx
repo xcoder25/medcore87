@@ -152,7 +152,7 @@ function WizardShell({ title, subtitle, steps, step, session, children }: {
 }) {
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(160deg, #0C4A6E 0%, #0369A1 40%, #F0F9FF 40%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ width: '100%', maxWidth: 820, background: '#FFF', borderRadius: 20, boxShadow: '0 24px 64px rgba(12, 74, 110, 0.25)', overflow: 'hidden', border: '1px solid #E0F2FE' }}>
+      <div data-validation-scope="true" style={{ width: '100%', maxWidth: 820, background: '#FFF', borderRadius: 20, boxShadow: '0 24px 64px rgba(12, 74, 110, 0.25)', overflow: 'hidden', border: '1px solid #E0F2FE' }}>
         <div style={{ background: 'linear-gradient(135deg, #0C4A6E, #0369A1)', color: '#FFF', padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -210,17 +210,17 @@ function WizardFooter({ step, total, onBack, onNext, onFinish, onSkip, skipLabel
           </button>
         )}
         {onSkip && skipLabel && (
-          <button type="button" onClick={onSkip} style={{ display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'transparent', color: '#64748B', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer', padding: '10px 8px' }}>
+          <button type="button" data-skip-btn="true" onClick={onSkip} style={{ display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'transparent', color: '#64748B', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer', padding: '10px 8px' }}>
             <SkipForward size={14} /> {skipLabel}
           </button>
         )}
       </div>
       {!isLast ? (
-        <button type="button" onClick={onNext} style={{ display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'linear-gradient(135deg, #0369A1, #0EA5E9)', color: '#FFF', borderRadius: 10, padding: '11px 18px', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' }}>
+        <button type="button" data-validate-step="true" onClick={onNext} style={{ display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'linear-gradient(135deg, #0369A1, #0EA5E9)', color: '#FFF', borderRadius: 10, padding: '11px 18px', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' }}>
           Continue <ChevronRight size={16} />
         </button>
       ) : (
-        <button type="button" onClick={onFinish} style={{ display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'linear-gradient(135deg, #059669, #10B981)', color: '#FFF', borderRadius: 10, padding: '11px 18px', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' }}>
+        <button type="button" data-validate-step="true" onClick={onFinish} style={{ display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'linear-gradient(135deg, #059669, #10B981)', color: '#FFF', borderRadius: 10, padding: '11px 18px', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer' }}>
           <CheckCircle2 size={16} /> {finishLabel}
         </button>
       )}
@@ -505,7 +505,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
           <SectionTitle>Facility Classification &amp; Ownership</SectionTitle>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
             <Field label="Official Facility Name (State Registry) *">
-              <input style={inputStyle} value={draft.facilityName} onChange={(e) => patch({ facilityName: e.target.value })} placeholder="e.g. Immanuel General Hospital, Eket" />
+              <input required style={inputStyle} value={draft.facilityName} onChange={(e) => patch({ facilityName: e.target.value })} placeholder="e.g. Immanuel General Hospital, Eket" />
             </Field>
             <Field label="Ownership *">
               <select
@@ -555,10 +555,11 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
               <SectionTitle>1. Government &amp; Regulatory Facility Identifiers</SectionTitle>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <Field label="Nigeria Health Facility Registry (HFR) Code *" hint="Mandatory for FMOH HFR, DHIS2 & NHMIS reporting">
-                  <input style={inputStyle} value={draft.hfrCode} onChange={(e) => patch({ hfrCode: e.target.value })} placeholder="e.g. 03/06/1/2/1/0001" />
+                  <input required style={inputStyle} value={draft.hfrCode} onChange={(e) => patch({ hfrCode: e.target.value })} placeholder="e.g. 03/06/1/2/1/0001" />
                 </Field>
                 <Field label="State / Federal Supervisory Board *" hint="Secondary: AKSHMB | Primary: AKSPHCDA | Ministerial: AKS MoH">
                   <select
+                    required
                     style={inputStyle}
                     value={draft.supervisoryBoard}
                     onChange={(e) => patch({ supervisoryBoard: e.target.value as SupervisoryBoardKey })}
@@ -569,7 +570,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
                   </select>
                 </Field>
                 <Field label="Supervisory Board Authorization Letter / Circular Ref *" hint="MoH, HMB, or AKSPHCDA circular approving EMR deployment">
-                  <input style={inputStyle} value={draft.boardAuthCircularRef} onChange={(e) => patch({ boardAuthCircularRef: e.target.value })} placeholder="e.g. HMB/AKS/EMR/2026/014" />
+                  <input required style={inputStyle} value={draft.boardAuthCircularRef} onChange={(e) => patch({ boardAuthCircularRef: e.target.value })} placeholder="e.g. HMB/AKS/EMR/2026/014" />
                 </Field>
                 <Field label="Circular Date &amp; Document Upload (PDF / Scan)">
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -610,7 +611,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
           <SectionTitle>2. Facility Leadership &amp; Administrative Sign-Off</SectionTitle>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Field label="Chief Medical Director (CMD) / Medical Superintendent *">
-              <input style={inputStyle} value={draft.medicalDirector} onChange={(e) => patch({ medicalDirector: e.target.value })} placeholder="e.g. Dr. Iniobong Udoh" />
+              <input required style={inputStyle} value={draft.medicalDirector} onChange={(e) => patch({ medicalDirector: e.target.value })} placeholder="e.g. Dr. Iniobong Udoh" />
             </Field>
             <Field label="CMD Letterhead Approval Ref &amp; Document">
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -624,6 +625,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
             </Field>
             <Field label="Designated EMR Focal Person / IT Administrator *" hint="Internal officer named in CMD letterhead">
               <input
+                required
                 style={inputStyle}
                 value={draft.emrFocalPersonName || draft.primaryContact}
                 onChange={(e) => patch({ emrFocalPersonName: e.target.value, primaryContact: e.target.value })}
@@ -659,21 +661,21 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Field label="State / Local Government Area (LGA) *">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <input style={inputStyle} value={draft.state} onChange={(e) => patch({ state: e.target.value })} placeholder="State" />
+                <input required style={inputStyle} value={draft.state} onChange={(e) => patch({ state: e.target.value })} placeholder="State" />
                 {NIGERIA_STATE_LGAS[draft.state] || draft.state.toLowerCase().includes('akwa ibom') ? (
-                  <select style={inputStyle} value={draft.lga} onChange={(e) => patch({ lga: e.target.value })}>
+                  <select required style={inputStyle} value={draft.lga} onChange={(e) => patch({ lga: e.target.value })}>
                     <option value="">Select LGA *</option>
                     {(NIGERIA_STATE_LGAS[draft.state] || AKWA_IBOM_LGAS).map((l) => (
                       <option key={l} value={l}>{l}</option>
                     ))}
                   </select>
                 ) : (
-                  <input style={inputStyle} value={draft.lga} onChange={(e) => patch({ lga: e.target.value })} placeholder="LGA *" />
+                  <input required style={inputStyle} value={draft.lga} onChange={(e) => patch({ lga: e.target.value })} placeholder="LGA *" />
                 )}
               </div>
             </Field>
             <Field label="Ward (Administrative / Political Ward) *">
-              <input style={inputStyle} value={draft.ward} onChange={(e) => patch({ ward: e.target.value })} placeholder="e.g. Idua Ward I" />
+              <input required style={inputStyle} value={draft.ward} onChange={(e) => patch({ ward: e.target.value })} placeholder="e.g. Idua Ward I" />
             </Field>
             <Field label="Physical / Registry Address">
               <input style={inputStyle} value={draft.physicalAddress} onChange={(e) => patch({ physicalAddress: e.target.value })} placeholder="Hospital Road, …" />
@@ -712,9 +714,13 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
       {step === 2 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <SectionTitle>Regulatory & compliance verification</SectionTitle>
-          <Toggle checked={draft.ndprAccepted} onChange={(v) => patch({ ndprAccepted: v })} label="Nigeria Data Protection Regulation (NDPR)" desc="I confirm this facility will process patient data in line with NDPR and applicable privacy law." />
-          <Toggle checked={draft.baaAccepted} onChange={(v) => patch({ baaAccepted: v })} label="Business Associate / Data Processing Agreement" desc="Accept MedCore data processing terms for this facility (NDPR-aligned storage and audit)." />
-          <Field label="Signatory full name *"><input style={inputStyle} value={draft.baaSignedBy} onChange={(e) => patch({ baaSignedBy: e.target.value })} placeholder="Name of authorised officer" /></Field>
+          <div style={{ borderRadius: 12, border: error && !draft.ndprAccepted ? '2px solid #DC2626' : '2px solid transparent', background: error && !draft.ndprAccepted ? '#FEF2F2' : 'transparent', padding: error && !draft.ndprAccepted ? 4 : 0 }}>
+            <Toggle checked={draft.ndprAccepted} onChange={(v) => patch({ ndprAccepted: v })} label="Nigeria Data Protection Regulation (NDPR) *" desc="I confirm this facility will process patient data in line with NDPR and applicable privacy law." />
+          </div>
+          <div style={{ borderRadius: 12, border: error && !draft.baaAccepted ? '2px solid #DC2626' : '2px solid transparent', background: error && !draft.baaAccepted ? '#FEF2F2' : 'transparent', padding: error && !draft.baaAccepted ? 4 : 0 }}>
+            <Toggle checked={draft.baaAccepted} onChange={(v) => patch({ baaAccepted: v })} label="Business Associate / Data Processing Agreement *" desc="Accept MedCore data processing terms for this facility (NDPR-aligned storage and audit)." />
+          </div>
+          <Field label="Signatory full name *"><input required style={inputStyle} value={draft.baaSignedBy} onChange={(e) => patch({ baaSignedBy: e.target.value })} placeholder="Name of authorised officer" /></Field>
           <Field label="Data storage region" hint="Choose residency for clinical data">
             <select style={inputStyle} value={draft.storageRegion} onChange={(e) => patch({ storageRegion: e.target.value as StorageRegion })}>
               <option value="ng-lagos">Nigeria cloud (recommended)</option>

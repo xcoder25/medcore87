@@ -31,6 +31,7 @@ import { listAccountsRequests, subscribeAccountsRequests } from '../../lib/front
 import { setPatientContext } from '../../lib/patientContextStore';
 import { getPatient } from '../../lib/patientRegistryStore';
 import { listNotifications, subscribeNotifications } from '../../lib/notificationEngine';
+import { listWardMedRequests, subscribeWardMedRequests } from '../../lib/wardMedRequestStore';
 
 export type BasketItem = {
   id: string;
@@ -73,6 +74,7 @@ export const InBasketPanel: React.FC<Props> = ({
     const u4 = subscribeReceptionOps(reload);
     const u5 = subscribeNotifications(reload);
     const u6 = subscribeAccountsRequests(reload);
+    const u7 = subscribeWardMedRequests(reload);
     return () => {
       u1();
       u2();
@@ -80,6 +82,7 @@ export const InBasketPanel: React.FC<Props> = ({
       u4();
       u5();
       u6();
+      u7();
     };
   }, []);
 
@@ -93,9 +96,9 @@ export const InBasketPanel: React.FC<Props> = ({
     const isPharmacy = role.includes('pharm');
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // 1. CLINICAL MEDICAL ALERTS (Physicians & Ward Nurses ONLY)
+    // 1. CLINICAL MEDICAL ALERTS (Physicians & Ward Nurses ONLY — never Pharmacy)
     // ─────────────────────────────────────────────────────────────────────────────
-    if (!isReception && !isAccounts) {
+    if (!isReception && !isAccounts && !isPharmacy) {
       for (const a of listPendingCriticalAcks(facilityId)) {
         out.push({
           id: `crit-${a.orderId}`,
@@ -128,20 +131,40 @@ export const InBasketPanel: React.FC<Props> = ({
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // 2. PHARMACY DISPENSING ORDERS (Pharmacy Staff ONLY)
+    // 2. PHARMACY DISPENSING ORDERS & WARD MED REQUESTS (Pharmacy Staff ONLY)
     // ─────────────────────────────────────────────────────────────────────────────
     if (isPharmacy || (!isReception && !isAccounts && !isDoctor && role.includes('admin'))) {
-      for (const o of listOrders(facilityId).filter((x) => x.type === 'rx' && x.status === 'ordered')) {
+      for (const o of listOrders(facilityId).filter(
+        (x) => x.type === 'rx' && (x.status === 'ordered' || x.status === 'accepted')
+      )) {
         out.push({
           id: `rx-${o.id}`,
           kind: 'rx',
-          title: 'Prescription to dispense',
-          detail: o.name,
+          title: o.deferredForPayment ? 'Rx on hold (patient deferred)' : 'Prescription to dispense',
+          detail: `${o.patientName} · ${o.name}`,
           patientId: o.patientId,
           patientName: o.patientName,
           at: o.createdAt,
           module: 'pharmacy',
         });
+      }
+      try {
+        for (const w of listWardMedRequests(facilityId).filter(
+          (x) => x.status === 'pending' || x.status === 'approved'
+        )) {
+          out.push({
+            id: `ward-rx-${w.id}`,
+            kind: 'rx',
+            title: `Ward Med Request · ${w.ward} (${w.priority.toUpperCase()})`,
+            detail: `${w.drugName} (${w.dosage}) × ${w.quantity} · Requested by ${w.requestedBy}`,
+            patientId: w.patientId,
+            patientName: w.patientName,
+            at: w.requestedAt,
+            module: 'pharmacy',
+          });
+        }
+      } catch {
+        /* ignore */
       }
     }
 
@@ -293,8 +316,8 @@ export const InBasketPanel: React.FC<Props> = ({
           module: 'reception',
         });
       }
-    } else {
-      // Generic queue visits for non-reception roles (e.g. Doctors)
+    } else if (!isPharmacy) {
+      // Generic queue visits for non-reception clinical roles (excludes Pharmacy & Accounts)
       const queueVisits = todayVisits(facilityId).filter((x) => {
         if (x.status !== 'waiting' && x.status !== 'called') return false;
         if (isDoctor && staffName) return visitAssignedToDoctor(x, staffName);

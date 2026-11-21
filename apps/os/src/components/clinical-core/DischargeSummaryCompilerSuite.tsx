@@ -23,6 +23,8 @@ import { appendAudit } from '../../lib/auditLogStore';
 import { getAdminSettings } from '../../lib/adminSettingsStore';
 import { patientBalance } from '../../lib/patientBillingStore';
 import type { UserSession } from '../auth/AuthScreen';
+import { ScannableQrCode } from '../common/ScannableQrCode';
+import { buildVerifyUrl } from '../../lib/qrPayload';
 
 interface DischargeRecord {
   patientId: string;
@@ -617,8 +619,22 @@ export function DischargeSummaryCompilerSuite({ session }: { session?: UserSessi
 
             <div className="flex items-center gap-4">
               <div className="p-2 border border-slate-300 rounded-lg bg-white shadow-sm flex flex-col items-center">
-                <QrCode className="w-16 h-16 text-slate-800" />
-                <span className="text-[9px] font-mono font-bold text-slate-500 mt-1">VERIFY: MED-{formData.patientId.slice(0, 8)}</span>
+                <ScannableQrCode
+                  value={buildVerifyUrl({
+                    k: 'discharge',
+                    id: `MED-${formData.hospitalNumber || formData.patientId.slice(0, 8)}`,
+                    mrn: formData.hospitalNumber || formData.patientId,
+                    sub: `Discharge Summary (${formData.ward || 'Ward'})`,
+                    iss: formData.dischargeDate || new Date().toISOString().slice(0, 10),
+                  })}
+                  size={74}
+                  level="M"
+                  fgColor="#0F172A"
+                  bgColor="#FFFFFF"
+                  quietZone={4}
+                  ariaLabel={`Verification QR for discharge ${formData.hospitalNumber || formData.patientId}`}
+                />
+                <span className="text-[9px] font-mono font-bold text-slate-500 mt-1">VERIFY: MED-{(formData.hospitalNumber || formData.patientId).slice(0, 10)}</span>
               </div>
               <div className="text-center w-40">
                 <div className="h-12 border-b border-slate-400 flex items-end justify-center font-serif italic text-sm text-slate-600 pb-1">

@@ -36,6 +36,7 @@ import { emitLiveAction } from '../../lib/liveActions';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import {
   getOrCreateStateHealthCard,
+  issueDigitalHealthCardForPatient,
   generateSHID,
   checkEmergencyFlag,
   simulateScanResolution,
@@ -47,6 +48,7 @@ import {
 } from '../../lib/stateHealthCardService';
 import { StatewideHealthCardRenderer } from './StatewideHealthCardRenderer';
 import { EditPatientModal } from '../records/EditPatientModal';
+import { PhysicalFormScannerModal, type ScannedRegistrationFields } from '../reception/PhysicalFormScannerModal';
 
 interface Props {
   session?: {
@@ -115,6 +117,7 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
 
   // Form state
   const [form, setForm] = useState(emptyForm);
+  const [scanFormOpen, setScanFormOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -196,70 +199,40 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
     return null;
   }, [patients, selectedId]);
 
-  // Current patient's statewide health card
-  const activeCard: StatewideHealthCard = useMemo(() => {
+  // Current patient's statewide health card (no hardcoded demo patient fallback)
+  const activeCard: StatewideHealthCard | null = useMemo(() => {
     if (selectedPatient) {
       return getOrCreateStateHealthCard(selectedPatient);
     }
-    // Fallback standard demo card matching Alex Rivera from user brief
-    return {
-      shid: 'ARISE-PMC-78421',
-      patientId: 'P-DEMO-01',
-      fullName: 'Alex Rivera',
-      dob: '15 March 1992',
-      gender: 'Male',
-      issueDate: '01 Jan 2026',
-      expiryDate: '31 Dec 2028',
-      emergencyFlag: true,
-      emergencyReasons: ['Critical Allergy: Penicillin', 'Chronic Alert: Severe Asthma'],
-      secureToken: 'eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL2hpZS5ha3dhaWJvbS5nb3YubmciLCJzdWIiOiJBUklTRS1QTUMtNzg0MjEifQ.sig_arise',
-      hieGatewayUrl: 'https://hie.akwaibom.gov.ng/gateway/v1/card/resolve?token=eyJhbGciOiJIUzI1NiJ9...',
-      offlineEncryptedPayload: 'AES256-GCM::eyJzaGlkIjoiQVJJU0UtUE1DLTc4NDIxIiwiYmxvb2RUeXBlIjoiTysiLCJnZW5vdHlwZSI6IkFBIiwiY3JpdGljYWxBbGxlcmdpZXMiOlsiUGVuaWNpbGxpbiJdfQ==::TAG_9981',
-      cardStatus: 'ACTIVE',
-      issuingAuthority: 'ARISE State Health Information Exchange',
-      stateMinistry: 'Akwa Ibom State Ministry of Health',
-    };
+    return null;
   }, [selectedPatient]);
 
-  // Execute Mock RBAC Scan
+  // Execute RBAC Scan against active patient card
   const handleTriggerScan = (mode: ScanRoleMode) => {
+    if (!activeCard || !selectedPatient) {
+      flash('Select or enroll a facility patient first.');
+      return;
+    }
     setScanMode(mode);
     setIsScanning(true);
     setScanResult(null);
 
     setTimeout(() => {
-      const patient = selectedPatient || {
-        id: 'P-DEMO-01',
-        hospitalNumber: 'IGH-2026-00412',
-        firstName: 'Alex',
-        lastName: 'Rivera',
-        dob: '1992-03-15',
-        sex: 'Male',
-        phone: '+234 802 000 7842',
-        bloodGroup: 'O+',
-        genotype: 'AA',
-        allergies: ['Penicillin (Anaphylaxis risk)', 'Latex'],
-        chronicConditions: ['Severe Asthma (Inhaler dependent)'],
-        currentMedications: ['Salbutamol 100mcg Inhaler', 'EpiPen Auto-Injector'],
-        emergencyContact: 'Dr. Elena Rivera',
-        emergencyRelation: 'Spouse',
-        facilityId,
-        facilityName,
-        status: 'active',
-        registeredAt: new Date().toISOString(),
-      } as FacilityPatient;
-
-      const res = simulateScanResolution(activeCard, patient, mode);
+      const res = simulateScanResolution(activeCard, selectedPatient, mode);
       setScanResult(res);
       setIsScanning(false);
       flash(`Scanned successfully under ${mode.toUpperCase()} mode`);
-    }, 600);
+    }, 350);
   };
 
   // Execute Offline Paramedic Decryption
   const handleDecryptOffline = () => {
     setOfflineError(null);
     setOfflineDecrypted(null);
+    if (!activeCard) {
+      setOfflineError('Select or enroll a facility patient first.');
+      return;
+    }
 
     const res = decryptOfflinePayload(activeCard.offlineEncryptedPayload, paramedicKeyInput);
     if (res.success) {
@@ -272,6 +245,10 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
 
   // Download Apple Wallet pass.json
   const handleDownloadWalletPass = () => {
+    if (!activeCard) {
+      flash('Select a facility patient first.');
+      return;
+    }
     const passObj = generateAppleWalletPassJson(activeCard);
     const blob = new Blob([JSON.stringify(passObj, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -285,8 +262,11 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
 
   // Download FHIR R4 Bundle
   const handleDownloadFhir = () => {
-    const patient = selectedPatient || ({} as FacilityPatient);
-    const bundle = generateFhirR4Bundle(activeCard, patient);
+    if (!activeCard || !selectedPatient) {
+      flash('Select a facility patient first.');
+      return;
+    }
+    const bundle = generateFhirR4Bundle(activeCard, selectedPatient);
     const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -318,7 +298,7 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
     setBusy(true);
     try {
       const hospitalNumber = generateHospitalNumber(facilityId);
-      const shid = generateSHID();
+      const shid = generateSHID('SHID-AKS');
       const allergiesList = form.criticalAllergies
         .split(',')
         .map((s) => s.trim())
@@ -371,17 +351,19 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
         chronicConditions: conditionsList,
         currentMedications: medsList,
         emergencyFlag: hasEmergency,
-        cardIssueDate: '01 Jan 2026',
-        cardExpiryDate: '31 Dec 2028',
       };
 
-      upsertPatient(newPatient);
-      setSelectedId(newPatient.id);
+      const issued = issueDigitalHealthCardForPatient(
+        newPatient,
+        session?.name || 'HIM Officer',
+        facilityName
+      );
+      setSelectedId(issued.patient.id);
       setActiveTab('card');
       setForm(emptyForm);
       reload();
-      emitLiveAction(`Issued Statewide Health Card · ${shid}`, { module: 'patient-card' });
-      flash(`Issued Card for ${newPatient.firstName} ${newPatient.lastName} (${shid})`);
+      emitLiveAction(`Issued Statewide Health Card · ${issued.card.shid}`, { module: 'patient-card' });
+      flash(`Issued Card for ${issued.patient.firstName} ${issued.patient.lastName} (${issued.card.shid})`);
     } finally {
       setBusy(false);
     }
@@ -443,7 +425,7 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
               <span>•</span>
               <span>Enrolled Registry: <strong style={{ color: '#34D399' }}>{patients.length} patients</strong></span>
               <span>•</span>
-              <span>Current SHID: <strong style={{ color: '#F97316', fontFamily: 'monospace' }}>{activeCard.shid}</strong></span>
+              <span>Current SHID: <strong style={{ color: '#F97316', fontFamily: 'monospace' }}>{activeCard?.shid || 'Not yet issued'}</strong></span>
             </div>
           </div>
 
@@ -731,7 +713,35 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
                 </span>
               </div>
 
-              <StatewideHealthCardRenderer card={activeCard} />
+              {activeCard ? (
+                <StatewideHealthCardRenderer card={activeCard} />
+              ) : (
+                <div style={{ padding: '48px 24px', textAlign: 'center', color: '#94A3B8', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: 16 }}>
+                  <CreditCard size={36} style={{ margin: '0 auto 12px', color: '#34D399' }} />
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#E2E8F0', marginBottom: 6 }}>
+                    No Patient Selected
+                  </div>
+                  <div style={{ fontSize: 12.5, maxWidth: 340, margin: '0 auto 16px' }}>
+                    Select a registered patient from the Facility Patients list on the left or enroll a new patient to issue their Digital Health Card.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('register')}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 10,
+                      border: 'none',
+                      background: '#059669',
+                      color: '#fff',
+                      fontWeight: 700,
+                      fontSize: 12.5,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    + Enroll New Patient
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Card Metadata & Security Specifications */}
@@ -748,30 +758,59 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
 
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {selectedPatient && (
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingDemographics(true)}
-                      className="os-ghost-btn"
-                      style={{
-                        fontSize: 12,
-                        padding: '7px 12px',
-                        borderRadius: 9,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        color: '#047857',
-                        border: '1px solid #047857',
-                        background: '#ECFDF5',
-                        fontWeight: 700,
-                      }}
-                      title="Edit patient demographic and contact information"
-                    >
-                      <Edit size={14} /> Edit Demographics
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const issued = issueDigitalHealthCardForPatient(
+                            selectedPatient,
+                            session?.name || 'HIM Officer',
+                            facilityName
+                          );
+                          reload();
+                          flash(`Digital Health Card synced · ${issued.card.shid}`);
+                        }}
+                        className="os-primary-btn"
+                        style={{
+                          fontSize: 12,
+                          padding: '7px 12px',
+                          borderRadius: 9,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          background: '#059669',
+                          border: 'none',
+                          fontWeight: 700,
+                        }}
+                      >
+                        <ShieldCheck size={14} /> {selectedPatient.shid ? 'Issue / Sync Card' : 'Issue Official Card'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingDemographics(true)}
+                        className="os-ghost-btn"
+                        style={{
+                          fontSize: 12,
+                          padding: '7px 12px',
+                          borderRadius: 9,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          color: '#047857',
+                          border: '1px solid #047857',
+                          background: '#ECFDF5',
+                          fontWeight: 700,
+                        }}
+                        title="Edit patient demographic and contact information"
+                      >
+                        <Edit size={14} /> Edit Demographics
+                      </button>
+                    </>
                   )}
                   <button
                     type="button"
                     onClick={handleDownloadWalletPass}
+                    disabled={!activeCard}
                     className="os-ghost-btn"
                     style={{ fontSize: 12, padding: '7px 12px', borderRadius: 9, display: 'flex', alignItems: 'center', gap: 6 }}
                     title="Export Apple Wallet / Google Wallet pass file"
@@ -804,14 +843,14 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
                 <div>
                   <div style={{ color: '#64748B', fontWeight: 600 }}>Standardized SHID</div>
                   <div style={{ fontWeight: 800, color: '#047857', fontFamily: 'monospace', fontSize: 13.5, marginTop: 2 }}>
-                    {activeCard.shid}
+                    {activeCard?.shid || '—'}
                   </div>
                 </div>
 
                 <div>
                   <div style={{ color: '#64748B', fontWeight: 600 }}>Emergency Visual Anchor</div>
-                  <div style={{ fontWeight: 800, color: activeCard.emergencyFlag ? '#DC2626' : '#047857', marginTop: 2 }}>
-                    {activeCard.emergencyFlag ? 'Active (Medical Shield Flagged)' : 'Standard (Clear)'}
+                  <div style={{ fontWeight: 800, color: activeCard?.emergencyFlag ? '#DC2626' : '#047857', marginTop: 2 }}>
+                    {activeCard?.emergencyFlag ? 'Active (Medical Shield Flagged)' : 'Standard (Clear)'}
                   </div>
                 </div>
 
@@ -825,14 +864,14 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
                 <div>
                   <div style={{ color: '#64748B', fontWeight: 600 }}>Card Status</div>
                   <div style={{ fontWeight: 800, color: '#059669', marginTop: 2 }}>
-                    {activeCard.cardStatus} · Rotatable Token
+                    {activeCard ? `${activeCard.cardStatus} · Rotatable Token` : 'Pending Selection'}
                   </div>
                 </div>
 
                 <div>
                   <div style={{ color: '#64748B', fontWeight: 600 }}>National Identity (NIN)</div>
-                  <div style={{ fontWeight: 800, color: activeCard.nin ? '#047857' : '#64748B', marginTop: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
-                    {activeCard.nin ? (
+                  <div style={{ fontWeight: 800, color: activeCard?.nin ? '#047857' : '#64748B', marginTop: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    {activeCard?.nin ? (
                       <>
                         <ShieldCheck size={14} color="#047857" />
                         <span>Bound ({activeCard.nin.slice(0, 4)}••••{activeCard.nin.slice(-3)})</span>
@@ -845,7 +884,7 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
               </div>
 
               {/* Emergency Alert Reasons if any */}
-              {activeCard.emergencyReasons && activeCard.emergencyReasons.length > 0 && (
+              {activeCard?.emergencyReasons && activeCard.emergencyReasons.length > 0 && (
                 <div
                   style={{
                     marginTop: 16,
@@ -1107,7 +1146,7 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
                 Raw Encrypted Container (AES-256-GCM)
               </div>
               <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#0F172A', wordBreak: 'break-all', marginTop: 4 }}>
-                {activeCard.offlineEncryptedPayload}
+                {activeCard?.offlineEncryptedPayload || 'Select a facility patient first.'}
               </div>
             </div>
 
@@ -1268,7 +1307,9 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
             }}
           >
             <pre style={{ margin: 0 }}>
-              {JSON.stringify(generateFhirR4Bundle(activeCard, selectedPatient || ({} as FacilityPatient)), null, 2)}
+              {activeCard && selectedPatient
+                ? JSON.stringify(generateFhirR4Bundle(activeCard, selectedPatient), null, 2)
+                : '// Select or enroll a patient from Card Studio to inspect HL7 FHIR R4 Bundle'}
             </pre>
           </div>
         </div>
@@ -1277,13 +1318,34 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
       {/* ── TAB 5: Enroll Patient & Issue SHID ── */}
       {activeTab === 'register' && (
         <div className="os-card" style={{ padding: 26, borderRadius: 20, maxWidth: 840, margin: '0 auto' }}>
-          <div style={{ borderBottom: '1px solid #E2E8F0', paddingBottom: 14, marginBottom: 20 }}>
-            <h3 style={{ fontSize: 18, fontWeight: 800, margin: '0 0 4px', color: '#0F172A' }}>
-              Enroll Patient &amp; Generate State Health Card
-            </h3>
-            <p style={{ fontSize: 12.5, color: '#64748B', margin: 0 }}>
-              Generates a standardized SHID (non-sequential format) and links to the Statewide Health Information Exchange.
-            </p>
+          <div style={{ borderBottom: '1px solid #E2E8F0', paddingBottom: 14, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            <div>
+              <h3 style={{ fontSize: 18, fontWeight: 800, margin: '0 0 4px', color: '#0F172A' }}>
+                Enroll Patient &amp; Generate State Health Card
+              </h3>
+              <p style={{ fontSize: 12.5, color: '#64748B', margin: 0 }}>
+                Generates a standardized SHID (non-sequential format) and links to the Statewide Health Information Exchange.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setScanFormOpen(true)}
+              style={{
+                padding: '8px 14px',
+                borderRadius: 10,
+                border: '1px solid #7C3AED',
+                background: '#F5F3FF',
+                color: '#5B21B6',
+                fontWeight: 800,
+                fontSize: 12.5,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Sparkles size={15} color="#7C3AED" /> AI Scan Paper Form
+            </button>
           </div>
 
           <form onSubmit={handleRegisterPatient} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1487,6 +1549,38 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
         onSaved={(updated) => {
           reload();
           flash(`Updated demographics for ${updated.firstName} ${updated.lastName}`);
+        }}
+      />
+      <PhysicalFormScannerModal
+        open={scanFormOpen}
+        onClose={() => setScanFormOpen(false)}
+        onApplyFields={(f: ScannedRegistrationFields) => {
+          const normSex =
+            f.sex === 'F' ? 'Female' : f.sex === 'M' ? 'Male' : undefined;
+          setForm((prev) => ({
+            ...prev,
+            firstName: f.firstName || prev.firstName,
+            middleName: f.middleName || prev.middleName,
+            lastName: f.lastName || prev.lastName,
+            dob: f.dob || prev.dob,
+            sex: normSex || prev.sex,
+            phone: f.phone || prev.phone,
+            email: f.email || prev.email,
+            address: f.address || prev.address,
+            lga: f.lga || prev.lga,
+            bloodGroup: f.bloodGroup || prev.bloodGroup,
+            genotype: f.genotype || prev.genotype,
+            emergencyContact: f.nextOfKinName || prev.emergencyContact,
+            emergencyRelation: f.nextOfKinRel || prev.emergencyRelation,
+            occupation: f.occupation || prev.occupation,
+            nhiaNumber: f.nhiaNumber || prev.nhiaNumber,
+            nin: f.nin || prev.nin,
+            insuranceProvider: f.insuranceProvider || prev.insuranceProvider,
+            criticalAllergies: f.allergies || prev.criticalAllergies,
+            chronicConditions: f.chronicConditions || prev.chronicConditions,
+            currentMedications: f.currentMedications || prev.currentMedications,
+          }));
+          flash('Paper form extracted & autofilled into SHID enrollment form.');
         }}
       />
     </div>

@@ -61,6 +61,7 @@ export const MODULE_CATALOG: { key: string; label: string; group: string }[] = [
 
   // Finance
   { key: 'cashier', label: 'Cashier / POS', group: 'Finance' },
+  { key: 'pharmacy-pos', label: 'Pharmacy Payment Desk', group: 'Finance' },
   { key: 'billing', label: 'Billing office', group: 'Finance' },
   { key: 'akwaremit', label: 'AkwaRemit central state revenue', group: 'Finance' },
   { key: 'claims', label: 'Insurance / HMO claims', group: 'Finance' },
@@ -329,9 +330,9 @@ const DEFAULTS: Record<string, string[]> = {
     'patient.allergies', 'patient.problems', 'patient.notes', 'patient.meds',
     'patient.labs',
   ],
-  // Pharmacists — dispense & formulary only (not theatre / ICU control)
+  // Pharmacists — dispense & formulary & isolated Pharmacy Payment Desk
   pharmacist: [
-    'dashboard', 'pharmacy', 'formulary', 'notifications',
+    'dashboard', 'pharmacy', 'pharmacy-pos', 'formulary', 'notifications',
     'cashier', 'emr', 'patient-flow', 'inventory', 'pharmacovigilance', 'oncology', 'incident-safety',
     'm87-ai', 'ai', 'patient-card', 'my-card',
     'patient.identity', 'patient.allergies', 'patient.meds', 'patient.problems',

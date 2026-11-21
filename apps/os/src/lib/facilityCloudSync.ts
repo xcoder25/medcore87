@@ -20,6 +20,9 @@ import { enableEdgeCloudOnlyRuntime, withRemoteHydration } from './edgeCloudOnly
 import { hydrateFacilityFromCloudAndPrem } from './cloudStore';
 import { MedCoreAppSyncSyncManager, type AppSyncRealtimeMessage } from './aws/appsyncRealtime';
 import { extractStaffCredentials } from './publicHospitalCompliance';
+import { applyRemoteKardex, applyRemoteSbar, KARDEX_KEY, SBAR_KEY } from './nursingKardexStore';
+import { applyRemoteWardMedRequests, WARD_MED_REQUESTS_KEY } from './wardMedRequestStore';
+import { applyRemoteIcuStepDown, ICU_STEPDOWN_KEY } from './icuStepDownStore';
 
 /** Map storage keys → CustomEvents so existing subscribe*() hooks refresh live */
 const KEY_EVENTS: Record<string, string[]> = {
@@ -52,6 +55,10 @@ const KEY_EVENTS: Record<string, string[]> = {
   [FACILITY_KEYS.theatre]: ['medcore-theatre-cases', 'medcore-admin-sync'],
   [FACILITY_KEYS.vitals]: ['medcore-vitals', 'medcore-admin-sync'],
   clinical_vitals: ['medcore-vitals', 'medcore-admin-sync'],
+  [KARDEX_KEY]: ['medcore-nursing-kardex', 'medcore-admin-sync'],
+  [SBAR_KEY]: ['medcore-nursing-sbar', 'medcore-admin-sync'],
+  [WARD_MED_REQUESTS_KEY]: ['medcore-ward-med-requests', 'medcore-admin-sync'],
+  [ICU_STEPDOWN_KEY]: ['medcore-icu-stepdown', 'medcore-admin-sync'],
   [FACILITY_KEYS.customRoles]: ['medcore-custom-roles-updated', 'medcore-admin-sync'],
   [FACILITY_KEYS.rolePermissions]: ['medcore-role-permissions', 'medcore-admin-sync'],
 };
@@ -142,6 +149,30 @@ export function applyFacilityRemoteKey(key: string, value: unknown): void {
       }
       if (canonicalKey === HIM_STORAGE_KEY) {
         applyHimRemote(value);
+        emitForKey(canonicalKey, value);
+        return;
+      }
+      if (canonicalKey === KARDEX_KEY && value) {
+        const fid = Array.isArray(value) ? String((value as Array<{ facilityId?: string }>)[0]?.facilityId || 'IGH-EKT') : 'IGH-EKT';
+        applyRemoteKardex(fid, value);
+        emitForKey(canonicalKey, value);
+        return;
+      }
+      if (canonicalKey === SBAR_KEY && value) {
+        const fid = Array.isArray(value) ? String((value as Array<{ facilityId?: string }>)[0]?.facilityId || 'IGH-EKT') : 'IGH-EKT';
+        applyRemoteSbar(fid, value);
+        emitForKey(canonicalKey, value);
+        return;
+      }
+      if (canonicalKey === WARD_MED_REQUESTS_KEY && value) {
+        const fid = Array.isArray(value) ? String((value as Array<{ facilityId?: string }>)[0]?.facilityId || 'IGH-EKT') : 'IGH-EKT';
+        applyRemoteWardMedRequests(fid, value);
+        emitForKey(canonicalKey, value);
+        return;
+      }
+      if (canonicalKey === ICU_STEPDOWN_KEY && value) {
+        const fid = Array.isArray(value) ? String((value as Array<{ facilityId?: string }>)[0]?.facilityId || 'IGH-EKT') : 'IGH-EKT';
+        applyRemoteIcuStepDown(fid, value);
         emitForKey(canonicalKey, value);
         return;
       }

@@ -26,7 +26,7 @@ export const InpatientNursingSuite: React.FC<Props> = ({ session, onNavigate }) 
     badgeId: 'NUR-01',
   };
 
-  return <NurseDeskHome session={activeSession} onNavigate={onNavigate || (() => {})} />;
+  return <NurseDeskHome session={activeSession} onNavigate={onNavigate || (() => {})} initialTool="emar" />;
 };
 
 export default InpatientNursingSuite;

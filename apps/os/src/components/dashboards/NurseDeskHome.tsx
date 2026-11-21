@@ -45,11 +45,15 @@ import {
   listNursingCareItems,
   addNursingCareItem,
   signMedicationAdministration,
+  updateCareItemStatus,
+  computeEffectiveKardexStatus,
+  syncRxOrderToKardex,
   subscribeNursingKardex,
   listSbarHandoffs,
   addSbarHandoff,
   subscribeSbar,
   type NursingCareItem,
+  type KardexItemStatus,
   type NursingSbarHandoff,
 } from '../../lib/nursingKardexStore';
 import { listPatients } from '../../lib/patientRegistryStore';
@@ -58,9 +62,12 @@ import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVer
 import { emitLiveAction } from '../../lib/liveActions';
 import { useOpdSync, broadcastOpdStage } from '../../hooks/useOpdSync';
 
+export type NurseDeskTool = 'queue' | 'emar' | 'beds' | 'orders' | 'sbar' | 'triage_station';
+
 interface Props {
   session: UserSession;
   onNavigate: (moduleKey: string) => void;
+  initialTool?: NurseDeskTool;
 }
 
 const C = {
@@ -116,14 +123,14 @@ function calculateNews2(sys: number, hr: number, rr: number, temp: number, spo2:
   return { score, risk: 'Low', color: '#10B981' };
 }
 
-export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
+export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate, initialTool = 'queue' }) => {
   const facilityId = session.hospitalId || 'IGH-EKT';
   const nurseName = session.name || 'Duty Nurse';
   const nurseBadge = session.badgeId || 'NUR-01';
 
   // Active workspace tool tab
-  const [activeTool, setActiveTool] = useState<'queue' | 'emar' | 'beds' | 'orders' | 'sbar' | 'triage_station'>('queue');
-  const [kardexFilter, setKardexFilter] = useState<'all' | 'pending' | 'overdue' | 'completed'>('all');
+  const [activeTool, setActiveTool] = useState<NurseDeskTool>(initialTool);
+  const [kardexFilter, setKardexFilter] = useState<'all' | 'pending' | 'overdue' | 'held' | 'refused' | 'completed'>('all');
   const [selectedWard, setSelectedWard] = useState<string>('all');
   const [notice, setNotice] = useState<string | null>(null);
   const [taskPatientId, setTaskPatientId] = useState('');
@@ -204,7 +211,7 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   }, [careItems]);
 
   const overdueCareItems = useMemo(() => {
-    return careItems.filter((i) => i.status === 'overdue');
+    return careItems.filter((i) => computeEffectiveKardexStatus(i) === 'overdue');
   }, [careItems]);
 
   const activeDoctorOrders = useMemo(() => {
@@ -386,6 +393,33 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     flash(`Signed & verified: ${item.careActivity} administered to ${item.patientName}.`);
   };
 
+  const handleHoldOrRefuseAdministration = (
+    item: NursingCareItem,
+    nextStatus: 'held' | 'refused'
+  ) => {
+    const label = nextStatus === 'held' ? 'Hold reason' : 'Refusal reason';
+    const defaultReason =
+      nextStatus === 'held' ? 'Clinical parameter hold / NPO' : 'Patient declined dose';
+    const reason =
+      typeof window !== 'undefined'
+        ? window.prompt(`${label} for ${item.careActivity} (${item.patientName}):`, defaultReason)
+        : defaultReason;
+    if (reason === null) return;
+    updateCareItemStatus(
+      item.id,
+      facilityId,
+      nextStatus,
+      `${nurseName} (${nurseBadge})`,
+      reason.trim() || defaultReason
+    );
+    reload();
+    emitLiveAction(
+      `e-MAR ${nextStatus.toUpperCase()}: ${item.careActivity} for ${item.patientName}`,
+      { module: 'nursing' }
+    );
+    flash(`Marked ${item.careActivity} as ${nextStatus.toUpperCase()}.`);
+  };
+
   const handleCreateCareTask = (e: React.FormEvent) => {
     e.preventDefault();
     setTaskPatientError(null);
@@ -409,6 +443,7 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
       bedNumber: newTask.bedNumber,
       ward: newTask.ward,
       patientName: formatFullPatientName(verified),
+      patientId: verified.id,
       hospitalNumber: verified.hospitalNumber || verified.id,
       careActivity: newTask.careActivity.trim(),
       dose: newTask.dose.trim() || undefined,
@@ -421,6 +456,7 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     });
 
     setShowAddTaskModal(false);
+    setTaskPatientId('');
     setNewTask({
       bedNumber: 'Bed 08',
       ward: 'Male Medical',
@@ -467,12 +503,19 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     flash(`SBAR Shift Handoff recorded.`);
   };
 
+  const effectiveCareItems = useMemo(() => {
+    return careItems.map((item) => ({
+      ...item,
+      effectiveStatus: computeEffectiveKardexStatus(item),
+    }));
+  }, [careItems]);
+
   const filteredKardex = useMemo(() => {
-    return careItems.filter((item) => {
+    return effectiveCareItems.filter((item) => {
       if (kardexFilter === 'all') return true;
-      return item.status === kardexFilter;
+      return item.effectiveStatus === kardexFilter;
     });
-  }, [careItems, kardexFilter]);
+  }, [effectiveCareItems, kardexFilter]);
 
   const filteredBeds = useMemo(() => {
     if (selectedWard === 'all') return beds;
@@ -587,7 +630,7 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ textAlign: 'right', display: 'none', md: 'block' } as any}>
+          <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 11, color: C.muted }}>Last Bus Pulse</div>
             <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>
               {lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -1391,9 +1434,9 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <div style={{ display: 'flex', gap: 4, background: '#F1F5F9', padding: 3, borderRadius: 8 }}>
-                {(['all', 'pending', 'overdue', 'completed'] as const).map((filter) => (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 4, background: '#F1F5F9', padding: 3, borderRadius: 8, flexWrap: 'wrap' }}>
+                {(['all', 'pending', 'overdue', 'held', 'refused', 'completed'] as const).map((filter) => (
                   <button
                     key={filter}
                     type="button"
@@ -1454,86 +1497,141 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                 </tr>
               </thead>
               <tbody>
-                {filteredKardex.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <div style={{ fontWeight: 800, color: '#D97706' }}>{item.bedNumber}</div>
-                      <div style={{ fontSize: 10, color: C.muted }}>{item.ward || 'Inpatient'}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 700, color: C.text }}>{item.patientName}</div>
-                      <div style={{ fontSize: 11, color: C.muted }}>{item.hospitalNumber}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 600, color: '#1E293B' }}>{item.careActivity}</div>
-                      {item.notes && <div style={{ fontSize: 11, color: '#64748B' }}>{item.notes}</div>}
-                    </td>
-                    <td style={{ fontSize: 12, color: '#334155' }}>
-                      {item.dose || '—'} {item.route ? `(${item.route})` : ''}
-                    </td>
-                    <td style={{ color: C.muted, fontSize: 12, fontWeight: 600 }}>{item.frequency}</td>
-                    <td>
-                      <span style={{
-                        fontWeight: 800,
-                        fontSize: 12,
-                        color: item.status === 'overdue' ? '#DC2626' : C.text,
-                      }}>
-                        {item.nextScheduledTime}
-                      </span>
-                    </td>
-                    <td>
-                      <span style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: '3px 8px',
-                        borderRadius: 6,
-                        background:
-                          item.status === 'completed'
-                            ? '#ECFDF5'
-                            : item.status === 'overdue'
-                              ? '#FEE2E2'
-                              : '#EFF6FF',
-                        color:
-                          item.status === 'completed'
-                            ? '#047857'
-                            : item.status === 'overdue'
-                              ? '#DC2626'
-                              : '#1D4ED8',
-                      }}>
-                        {item.status.toUpperCase()}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      {item.status !== 'completed' ? (
-                        <button
-                          type="button"
-                          className="mc-btn-live"
-                          onClick={() => handleSignAdministration(item)}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: 8,
-                            border: 'none',
-                            background: '#10B981',
-                            color: '#FFF',
-                            fontSize: 11,
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                          }}
-                        >
-                          <CheckCircle2 size={13} /> Sign Administered
-                        </button>
-                      ) : (
-                        <div style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>
-                          <CheckCircle2 size={13} style={{ display: 'inline', verticalAlign: -2, marginRight: 4 }} />
-                          Verified by {item.administeredBy || 'Duty Nurse'}
-                        </div>
-                      )}
+                {filteredKardex.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: 32, color: C.muted, fontSize: 13 }}>
+                      No e-MAR medication rounds or care tasks in this filter yet. Click <strong>Add Task</strong> or acknowledge a physician order.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredKardex.map((item) => {
+                    const eff = item.effectiveStatus;
+                    const badgeBg =
+                      eff === 'completed'
+                        ? '#ECFDF5'
+                        : eff === 'overdue'
+                          ? '#FEE2E2'
+                          : eff === 'held'
+                            ? '#FEF3C7'
+                            : eff === 'refused'
+                              ? '#FCE7F3'
+                              : '#EFF6FF';
+                    const badgeCol =
+                      eff === 'completed'
+                        ? '#047857'
+                        : eff === 'overdue'
+                          ? '#DC2626'
+                          : eff === 'held'
+                            ? '#B45309'
+                            : eff === 'refused'
+                              ? '#BE185D'
+                              : '#1D4ED8';
+                    return (
+                      <tr key={item.id}>
+                        <td>
+                          <div style={{ fontWeight: 800, color: '#D97706' }}>{item.bedNumber}</div>
+                          <div style={{ fontSize: 10, color: C.muted }}>{item.ward || 'Inpatient'}</div>
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 700, color: C.text }}>{item.patientName}</div>
+                          <div style={{ fontSize: 11, color: C.muted }}>{item.hospitalNumber}</div>
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 600, color: '#1E293B' }}>{item.careActivity}</div>
+                          {item.notes && <div style={{ fontSize: 11, color: '#64748B' }}>{item.notes}</div>}
+                        </td>
+                        <td style={{ fontSize: 12, color: '#334155' }}>
+                          {item.dose || '—'} {item.route ? `(${item.route})` : ''}
+                        </td>
+                        <td style={{ color: C.muted, fontSize: 12, fontWeight: 600 }}>{item.frequency}</td>
+                        <td>
+                          <span style={{
+                            fontWeight: 800,
+                            fontSize: 12,
+                            color: eff === 'overdue' ? '#DC2626' : C.text,
+                          }}>
+                            {item.nextScheduledTime}
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            background: badgeBg,
+                            color: badgeCol,
+                          }}>
+                            {eff.toUpperCase()}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {eff !== 'completed' ? (
+                            <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                              <button
+                                type="button"
+                                className="mc-btn-live"
+                                onClick={() => handleSignAdministration(item)}
+                                style={{
+                                  padding: '6px 11px',
+                                  borderRadius: 8,
+                                  border: 'none',
+                                  background: '#10B981',
+                                  color: '#FFF',
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                }}
+                              >
+                                <CheckCircle2 size={13} /> Give / Sign
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleHoldOrRefuseAdministration(item, 'held')}
+                                style={{
+                                  padding: '6px 9px',
+                                  borderRadius: 8,
+                                  border: '1px solid #FCD34D',
+                                  background: '#FFFBEB',
+                                  color: '#B45309',
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Hold
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleHoldOrRefuseAdministration(item, 'refused')}
+                                style={{
+                                  padding: '6px 9px',
+                                  borderRadius: 8,
+                                  border: '1px solid #F9A8D4',
+                                  background: '#FDF2F8',
+                                  color: '#BE185D',
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Refused
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>
+                              <CheckCircle2 size={13} style={{ display: 'inline', verticalAlign: -2, marginRight: 4 }} />
+                              Verified by {item.administeredBy || 'Duty Nurse'}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -1670,9 +1768,12 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                         type="button"
                         onClick={() => {
                           if (isOccupied) {
-                            flash(`Bed ${bed.bedNo}: ${bed.patient} chart opened.`);
+                            setKardexFilter('all');
+                            setActiveTool('emar');
+                            flash(`Opened e-MAR for ${bed.patient} (${bed.bedNo}).`);
                           } else {
-                            flash(`Bed ${bed.bedNo} ready for patient transfer.`);
+                            setNewTask((prev) => ({ ...prev, ward: bed.ward, bedNumber: bed.bedNo }));
+                            setShowAddTaskModal(true);
                           }
                         }}
                         style={{
@@ -1684,7 +1785,7 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                           cursor: 'pointer',
                         }}
                       >
-                        {isOccupied ? 'View Chart' : 'Assign'} →
+                        {isOccupied ? 'Open e-MAR' : 'Schedule Task'} →
                       </button>
                     </div>
                   </div>
@@ -1800,8 +1901,26 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                           className="mc-btn-live"
                           onClick={() => {
                             updateOrderStatus(o.id, 'in_progress');
+                            if (o.type === 'rx') {
+                              const patientBed = occBeds.find(
+                                (b) =>
+                                  (o.patientId && b.patientId === o.patientId) ||
+                                  (o.hospitalNumber && b.hospitalNumber === o.hospitalNumber)
+                              );
+                              syncRxOrderToKardex({
+                                facilityId,
+                                orderId: o.id,
+                                patientName: o.patientName,
+                                patientId: o.patientId,
+                                hospitalNumber: o.hospitalNumber,
+                                bedNumber: patientBed?.bedNo || 'Ward Bed',
+                                ward: patientBed?.ward || 'Inpatient',
+                                summary: o.name,
+                                assignedNurse: `${nurseName} (${nurseBadge})`,
+                              });
+                            }
                             reload();
-                            flash(`Order ${o.name} acknowledged for ${o.patientName}.`);
+                            flash(`Order ${o.name} acknowledged${o.type === 'rx' ? ' & added to e-MAR' : ''} for ${o.patientName}.`);
                           }}
                           style={{
                             padding: '5px 12px',
@@ -1814,7 +1933,7 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                             cursor: 'pointer',
                           }}
                         >
-                          Acknowledge & Act
+                          Acknowledge &amp; Act
                         </button>
                       </td>
                     </tr>
@@ -2366,10 +2485,11 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
 
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#D97706', display: 'block', marginBottom: 2 }}>
-                  B - Background
+                  B - Background *
                 </label>
                 <textarea
                   rows={2}
+                  required
                   placeholder="Key diagnoses, surgeries done today, antibiotic courses..."
                   value={sbarForm.background}
                   onChange={(e) => setSbarForm({ ...sbarForm, background: e.target.value })}
@@ -2379,10 +2499,11 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
 
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#2563EB', display: 'block', marginBottom: 2 }}>
-                  A - Assessment
+                  A - Assessment *
                 </label>
                 <textarea
                   rows={2}
+                  required
                   placeholder="Vitals stability, high NEWS2 alerts, drain outputs, IV lines..."
                   value={sbarForm.assessment}
                   onChange={(e) => setSbarForm({ ...sbarForm, assessment: e.target.value })}
@@ -2392,10 +2513,11 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
 
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#16A34A', display: 'block', marginBottom: 2 }}>
-                  R - Recommendation
+                  R - Recommendation *
                 </label>
                 <textarea
                   rows={2}
+                  required
                   placeholder="Tasks due for incoming shift, stat meds, lab follow-ups..."
                   value={sbarForm.recommendation}
                   onChange={(e) => setSbarForm({ ...sbarForm, recommendation: e.target.value })}

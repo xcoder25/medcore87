@@ -17,6 +17,10 @@ import {
   type AccessRecord,
 } from '../../lib/adminRealtimeStore';
 import {
+  getStaffBiometricStatus,
+  revokeStaffBiometric,
+} from '../../lib/biometricAuth';
+import {
   prepareStaffEnrolment,
   commitStaffEnrolment,
   listStaffCards,
@@ -232,7 +236,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoMeta, setPhotoMeta] = useState<string>('');
   const [busy, setBusy] = useState(false);
+  const [enrolSubmitAttempted, setEnrolSubmitAttempted] = useState(false);
   const [error, setError] = useState('');
+  const [selectedBioEnrolled, setSelectedBioEnrolled] = useState<boolean>(false);
+  const [selectedBioDevice, setSelectedBioDevice] = useState<string>('');
+  const [bioResetBusy, setBioResetBusy] = useState(false);
   const [createFail, setCreateFail] = useState<string | null>(null);
   const [issued, setIssued] = useState<StaffCardRecord | null>(null);
   const [confirmInfo, setConfirmInfo] = useState<{
@@ -596,6 +604,24 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     return getStaffCard(selected.id);
   }, [selected, photoTick]);
 
+  useEffect(() => {
+    const bid = selected?.id;
+    if (!bid) {
+      setSelectedBioEnrolled(false);
+      setSelectedBioDevice('');
+      return;
+    }
+    let alive = true;
+    void getStaffBiometricStatus(bid, facilityId).then((st) => {
+      if (!alive) return;
+      setSelectedBioEnrolled(st.enrolled);
+      setSelectedBioDevice(st.deviceLabel || '');
+    });
+    return () => {
+      alive = false;
+    };
+  }, [selected?.id, facilityId]);
+
   // All facility cards for Gallery tab
   const allCards = useMemo(() => {
     try {
@@ -755,6 +781,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
   // Submit Enrolment
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    setEnrolSubmitAttempted(true);
     setError('');
     setCreateFail(null);
 
@@ -2116,6 +2143,58 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                   </div>
 
                   {/* Actions */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        padding: '8px 10px',
+                        borderRadius: 10,
+                        background: selectedBioEnrolled ? '#ECFDF5' : '#F8FAFC',
+                        border: selectedBioEnrolled ? '1px solid #A7F3D0' : '1px solid #E2E8F0',
+                        fontSize: '0.74rem',
+                      }}
+                    >
+                      <div>
+                        <span style={{ color: '#64748B', fontWeight: 700, display: 'block', fontSize: '0.68rem' }}>BIOMETRIC 2FA</span>
+                        <strong style={{ color: selectedBioEnrolled ? '#065F46' : '#475569' }}>
+                          {selectedBioEnrolled ? `Enrolled (${selectedBioDevice || 'Passkey'})` : 'Not enrolled'}
+                        </strong>
+                      </div>
+                      {selectedBioEnrolled && (
+                        <button
+                          type="button"
+                          disabled={bioResetBusy}
+                          onClick={async () => {
+                            setBioResetBusy(true);
+                            try {
+                              const ok = await revokeStaffBiometric(selected.id, facilityId);
+                              if (ok) {
+                                setSelectedBioEnrolled(false);
+                                setSelectedBioDevice('');
+                              }
+                            } finally {
+                              setBioResetBusy(false);
+                            }
+                          }}
+                          style={{
+                            padding: '4px 9px',
+                            borderRadius: 7,
+                            border: '1px solid #FECACA',
+                            background: '#FEF2F2',
+                            color: '#DC2626',
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {bioResetBusy ? 'Resetting…' : 'Reset Biometrics'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       type="button"
@@ -2149,7 +2228,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       {activeTab === 'enrol' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) minmax(360px, 420px)', gap: 24, alignItems: 'start' }}>
           {/* Left Column: The Enrolment Form */}
-          <form className="os-panel" onSubmit={handleCreate} style={{ padding: 24, background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 16 }}>
+          <form noValidate className="os-panel" onSubmit={handleCreate} style={{ padding: 24, background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 16, borderBottom: '1px solid #F1F5F9', marginBottom: 20 }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: '#EFF6FF', color: '#0052D4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <UserPlus size={18} />
@@ -2170,8 +2249,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                 <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
                   Full Name *
                   <input
-                    className="os-search-input"
-                    style={{ width: '100%', marginTop: 6, padding: '10px 12px', fontSize: '0.88rem' }}
+                    className={`os-search-input${enrolSubmitAttempted && fullName.trim().length < 3 ? ' mc-field-invalid' : ''}`}
+                    style={{ width: '100%', marginTop: 6, padding: '10px 12px', fontSize: '0.88rem', ...(enrolSubmitAttempted && fullName.trim().length < 3 ? { borderColor: '#DC2626', background: '#FEF2F2' } : {}) }}
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="e.g. Dr. Ngozi Eze"
@@ -2183,8 +2262,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                 <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
                   Work Email (Required for 2FA OTP) *
                   <input
-                    className="os-search-input"
-                    style={{ width: '100%', marginTop: 6, padding: '10px 12px', fontSize: '0.88rem' }}
+                    className={`os-search-input${enrolSubmitAttempted && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? ' mc-field-invalid' : ''}`}
+                    style={{ width: '100%', marginTop: 6, padding: '10px 12px', fontSize: '0.88rem', ...(enrolSubmitAttempted && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? { borderColor: '#DC2626', background: '#FEF2F2' } : {}) }}
                     type="email"
                     required
                     value={email}
@@ -2318,8 +2397,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                     </button>
                   </div>
                   <input
-                    className="os-search-input"
-                    style={{ width: '100%', marginTop: 6, padding: '10px 12px', fontSize: '0.88rem', fontFamily: 'var(--os-font-mono)' }}
+                    className={`os-search-input${enrolSubmitAttempted && !/^\d{6}$/.test(pin) ? ' mc-field-invalid' : ''}`}
+                    style={{ width: '100%', marginTop: 6, padding: '10px 12px', fontSize: '0.88rem', fontFamily: 'var(--os-font-mono)', ...(enrolSubmitAttempted && !/^\d{6}$/.test(pin) ? { borderColor: '#DC2626', background: '#FEF2F2' } : {}) }}
                     inputMode="numeric"
                     pattern="\d{6}"
                     placeholder="e.g. 482910"
@@ -2372,8 +2451,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                   <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
                     {EMPLOYMENT_SCHEMES.find((s) => s.key === employmentScheme)?.idLabel || 'Civil Service / IPPIS Staff ID'} *
                     <input
-                      className="os-search-input"
-                      style={{ width: '100%', marginTop: 6, padding: '9px 12px', fontSize: '0.86rem', fontFamily: 'var(--os-font-mono)' }}
+                      className={`os-search-input${enrolSubmitAttempted && civilServiceId.trim().length < 4 ? ' mc-field-invalid' : ''}`}
+                      style={{ width: '100%', marginTop: 6, padding: '9px 12px', fontSize: '0.86rem', fontFamily: 'var(--os-font-mono)', ...(enrolSubmitAttempted && civilServiceId.trim().length < 4 ? { borderColor: '#DC2626', background: '#FEF2F2' } : {}) }}
                       value={civilServiceId}
                       onChange={(e) => setCivilServiceId(e.target.value)}
                       placeholder={EMPLOYMENT_SCHEMES.find((s) => s.key === employmentScheme)?.placeholder || 'e.g. AKS/HMB/14829'}
@@ -2406,8 +2485,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                   <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
                     Practicing License No. {councilInfo.required ? '*' : '(Optional)'}
                     <input
-                      className="os-search-input"
-                      style={{ width: '100%', marginTop: 6, padding: '9px 12px', fontSize: '0.86rem', fontFamily: 'var(--os-font-mono)' }}
+                      className={`os-search-input${enrolSubmitAttempted && councilInfo.required && practicingLicenseNo.trim().length < 4 ? ' mc-field-invalid' : ''}`}
+                      style={{ width: '100%', marginTop: 6, padding: '9px 12px', fontSize: '0.86rem', fontFamily: 'var(--os-font-mono)', ...(enrolSubmitAttempted && councilInfo.required && practicingLicenseNo.trim().length < 4 ? { borderColor: '#DC2626', background: '#FEF2F2' } : {}) }}
                       value={practicingLicenseNo}
                       onChange={(e) => setPracticingLicenseNo(e.target.value)}
                       placeholder={councilInfo.placeholder}
@@ -2504,16 +2583,7 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
 
               <button
                 type="submit"
-                disabled={
-                  busy ||
-                  photoBusy ||
-                  fullName.trim().length < 3 ||
-                  !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
-                  !/^\d{6}$/.test(pin) ||
-                  civilServiceId.trim().length < 4 ||
-                  (councilInfo.required && practicingLicenseNo.trim().length < 4) ||
-                  (Boolean(practicingLicenseNo.trim()) && !licenseExpiry.trim())
-                }
+                disabled={busy || photoBusy}
                 className="os-primary-btn"
                 style={{ padding: '12px 18px', fontSize: '0.94rem', fontWeight: 800, justifyContent: 'center', marginTop: 4, background: '#0052D4' }}
               >

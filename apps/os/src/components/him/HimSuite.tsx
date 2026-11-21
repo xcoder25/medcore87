@@ -15,10 +15,13 @@ import {
   Plus,
   RefreshCw,
   Shield,
+  CreditCard,
 } from 'lucide-react';
 import type { UserSession } from '../auth/AuthScreen';
-import { listPatients } from '../../lib/patientRegistryStore';
+import { listPatients, subscribePatients, type FacilityPatient } from '../../lib/patientRegistryStore';
 import { SearchablePatientSelect } from '../common/SearchablePatientSelect';
+import { HimIssueCardModal } from './HimIssueCardModal';
+import { issueDigitalHealthCardForPatient } from '../../lib/stateHealthCardService';
 import {
   subscribeHim,
   himSummary,
@@ -42,7 +45,7 @@ import {
   type HimDocType,
 } from '../../lib/himStore';
 
-type Tab = 'deficiency' | 'coding' | 'roi' | 'chart' | 'merge' | 'docs';
+type Tab = 'deficiency' | 'coding' | 'roi' | 'chart' | 'merge' | 'docs' | 'cards';
 
 interface Props {
   session?: UserSession;
@@ -75,7 +78,14 @@ export const HimSuite: React.FC<Props> = ({ session, initialTab }) => {
   const [tick, setTick] = useState(0);
   const reload = useCallback(() => setTick((t) => t + 1), []);
 
-  useEffect(() => subscribeHim(reload), [reload]);
+  useEffect(() => {
+    const u1 = subscribeHim(reload);
+    const u2 = subscribePatients(reload);
+    return () => {
+      u1();
+      u2();
+    };
+  }, [reload]);
 
   const summary = useMemo(() => himSummary(facilityId), [facilityId, tick]);
   const patients = useMemo(() => listPatients(facilityId), [facilityId, tick]);
@@ -87,6 +97,8 @@ export const HimSuite: React.FC<Props> = ({ session, initialTab }) => {
   const docs = useMemo(() => listDocuments(facilityId), [facilityId, tick]);
 
   const [patientId, setPatientId] = useState('');
+  const [cardModalOpen, setCardModalOpen] = useState(false);
+  const [cardModalPatient, setCardModalPatient] = useState<FacilityPatient | null>(null);
   const [defType, setDefType] = useState<HimDeficiencyType>('unsigned_note');
   const [defDetail, setDefDetail] = useState('');
   const [icd, setIcd] = useState('');
@@ -99,6 +111,7 @@ export const HimSuite: React.FC<Props> = ({ session, initialTab }) => {
   const [mergeReason, setMergeReason] = useState('Possible duplicate MPI');
   const [docTitle, setDocTitle] = useState('');
   const [docType, setDocType] = useState<HimDocType>('external_scan');
+  const [himSubmitErr, setHimSubmitErr] = useState<'deficiency' | 'coding' | 'roi' | 'docs' | null>(null);
 
   const patientOpts = patients.map((p) => ({
     id: p.id,
@@ -116,6 +129,7 @@ export const HimSuite: React.FC<Props> = ({ session, initialTab }) => {
     { key: 'chart', label: 'Chart complete', count: summary.chartHold, icon: <CheckCircle2 size={14} /> },
     { key: 'merge', label: 'MPI merge', count: summary.mergeOpen, icon: <GitMerge size={14} /> },
     { key: 'docs', label: 'Documents', count: summary.docs, icon: <FolderOpen size={14} /> },
+    { key: 'cards', label: 'Digital Health Cards', count: patients.filter((p) => p.shid).length, icon: <CreditCard size={14} /> },
   ];
 
   return (
@@ -251,17 +265,19 @@ export const HimSuite: React.FC<Props> = ({ session, initialTab }) => {
               ))}
             </select>
             <input
-              placeholder="Detail (e.g. unsigned progress note 10 Oct)"
+              placeholder="Detail (e.g. unsigned progress note 10 Oct) *"
               value={defDetail}
-              onChange={(e) => setDefDetail(e.target.value)}
-              style={inp}
+              onChange={(e) => { setDefDetail(e.target.value); if (himSubmitErr === 'deficiency') setHimSubmitErr(null); }}
+              className={himSubmitErr === 'deficiency' && !defDetail.trim() ? 'mc-field-invalid' : undefined}
+              style={{ ...inp, ...(himSubmitErr === 'deficiency' && !defDetail.trim() ? { borderColor: '#DC2626', background: '#FEF2F2' } : {}) }}
             />
             <button
               type="button"
               style={btn}
               onClick={() => {
                 const p = pickPatient(patientId);
-                if (!p || !defDetail.trim()) return;
+                if (!p || !defDetail.trim()) { setHimSubmitErr('deficiency'); return; }
+                setHimSubmitErr(null);
                 addDeficiency({
                   facilityId,
                   patientId: p.id,
@@ -391,10 +407,11 @@ export const HimSuite: React.FC<Props> = ({ session, initialTab }) => {
         <Panel title="Release of information (ROI)">
           <Row>
             <input
-              placeholder="Requestor name / org"
+              placeholder="Requestor name / org *"
               value={roiRequestor}
-              onChange={(e) => setRoiRequestor(e.target.value)}
-              style={inp}
+              onChange={(e) => { setRoiRequestor(e.target.value); if (himSubmitErr === 'roi') setHimSubmitErr(null); }}
+              className={himSubmitErr === 'roi' && !roiRequestor.trim() ? 'mc-field-invalid' : undefined}
+              style={{ ...inp, ...(himSubmitErr === 'roi' && !roiRequestor.trim() ? { borderColor: '#DC2626', background: '#FEF2F2' } : {}) }}
             />
             <input
               placeholder="Purpose (treatment, legal, insurance…)"
@@ -413,7 +430,8 @@ export const HimSuite: React.FC<Props> = ({ session, initialTab }) => {
               style={btn}
               onClick={() => {
                 const p = pickPatient(patientId);
-                if (!p || !roiRequestor.trim()) return;
+                if (!p || !roiRequestor.trim()) { setHimSubmitErr('roi'); return; }
+                setHimSubmitErr(null);
                 addRoiRequest({
                   facilityId,
                   patientId: p.id,
@@ -650,17 +668,19 @@ export const HimSuite: React.FC<Props> = ({ session, initialTab }) => {
               ))}
             </select>
             <input
-              placeholder="Document title"
+              placeholder="Document title *"
               value={docTitle}
-              onChange={(e) => setDocTitle(e.target.value)}
-              style={inp}
+              onChange={(e) => { setDocTitle(e.target.value); if (himSubmitErr === 'docs') setHimSubmitErr(null); }}
+              className={himSubmitErr === 'docs' && !docTitle.trim() ? 'mc-field-invalid' : undefined}
+              style={{ ...inp, ...(himSubmitErr === 'docs' && !docTitle.trim() ? { borderColor: '#DC2626', background: '#FEF2F2' } : {}) }}
             />
             <button
               type="button"
               style={btn}
               onClick={() => {
                 const p = pickPatient(patientId);
-                if (!p || !docTitle.trim()) return;
+                if (!p || !docTitle.trim()) { setHimSubmitErr('docs'); return; }
+                setHimSubmitErr(null);
                 indexDocument({
                   facilityId,
                   patientId: p.id,
@@ -690,6 +710,85 @@ export const HimSuite: React.FC<Props> = ({ session, initialTab }) => {
           ))}
         </Panel>
       )}
+
+      {tab === 'cards' && (
+        <Panel title="Digital Health Card Registry & Issuance (SHID + Scannable QR)">
+          <Row>
+            <button
+              type="button"
+              style={btn}
+              onClick={() => {
+                const chosen = patients.find((pt) => pt.id === patientId) || null;
+                setCardModalPatient(chosen);
+                setCardModalOpen(true);
+              }}
+            >
+              <CreditCard size={14} />{' '}
+              {patientId ? 'Issue / Preview Card for Selected Patient' : 'Issue Digital Health Card'}
+            </button>
+            {patientId && (
+              <button
+                type="button"
+                style={{ ...btn, background: '#0369A1' }}
+                onClick={() => {
+                  const chosen = patients.find((pt) => pt.id === patientId);
+                  if (!chosen) return;
+                  issueDigitalHealthCardForPatient(chosen, actor, session?.facility);
+                  reload();
+                }}
+              >
+                <RefreshCw size={14} /> Quick-Issue SHID &amp; Sync
+              </button>
+            )}
+          </Row>
+          {patients.length === 0 ? (
+            <Empty>No registered patients in facility MPI yet.</Empty>
+          ) : (
+            patients.slice(0, 40).map((p) => (
+              <Card key={p.id}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <div>
+                    <strong>
+                      {p.firstName} {p.middleName ? `${p.middleName} ` : ''}
+                      {p.lastName}
+                    </strong>{' '}
+                    · <span style={{ fontFamily: 'monospace' }}>{p.hospitalNumber}</span>
+                    <div style={muted}>
+                      {p.shid ? `SHID: ${p.shid}` : 'No Digital Health Card issued yet'} ·{' '}
+                      {p.cardIssueDate ? `Issued: ${p.cardIssueDate}` : 'Pending issuance'}
+                      {p.cardExpiryDate ? ` · Expires: ${p.cardExpiryDate}` : ''}
+                      {p.cardIssuedBy ? ` · By: ${p.cardIssuedBy}` : ''}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    style={btn}
+                    onClick={() => {
+                      setCardModalPatient(p);
+                      setCardModalOpen(true);
+                    }}
+                  >
+                    <CreditCard size={13} /> {p.shid ? 'View / Re-Issue Card' : 'Issue Card'}
+                  </button>
+                </div>
+              </Card>
+            ))
+          )}
+        </Panel>
+      )}
+
+      <HimIssueCardModal
+        isOpen={cardModalOpen}
+        patient={cardModalPatient}
+        facilityId={facilityId}
+        facilityName={session?.facility}
+        issuedBy={actor}
+        onClose={() => {
+          setCardModalOpen(false);
+          setCardModalPatient(null);
+        }}
+        onIssued={() => reload()}
+      />
     </div>
   );
 };

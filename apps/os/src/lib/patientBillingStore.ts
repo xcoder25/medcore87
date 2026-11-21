@@ -6,7 +6,14 @@ import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 import { tryAutoDeduct, creditCancelledServiceToWallet } from './patientWalletStore';
 import { getAdminSettings } from './adminSettingsStore';
 
-export type BillLineStatus = 'unpaid' | 'paid' | 'hmo' | 'waived' | 'partial' | 'cancelled_to_credit';
+export type BillLineStatus =
+  | 'unpaid'
+  | 'paid'
+  | 'hmo'
+  | 'waived'
+  | 'partial'
+  | 'deferred'
+  | 'cancelled_to_credit';
 export type BillLineSource = 'pharmacy' | 'lab' | 'consult' | 'other' | 'opd' | 'billing' | 'imaging';
 
 export interface PatientBillLine {
@@ -24,6 +31,9 @@ export interface PatientBillLine {
   paidVia?: 'cashier' | 'pharmacy' | 'hmo' | 'waiver' | 'paystack' | 'akwaremit';
   paidBy?: string;
   paymentRef?: string;
+  deferredAt?: string;
+  deferredBy?: string;
+  deferredReason?: string;
   cancelledAt?: string;
   cancelReason?: string;
   createdAt: string;
@@ -331,6 +341,9 @@ export function canDispenseOrder(orderId: string): {
   if (line.status === 'paid' || line.status === 'hmo' || line.status === 'waived') {
     return { ok: true, reason: `Bill ${line.status}`, line };
   }
+  if (line.status === 'deferred') {
+    return { ok: false, reason: 'Held for later payment by patient — restore to pharmacy bill before dispensing', line };
+  }
   if (line.status === 'partial') {
     return { ok: false, reason: 'Partial payment — settle balance at cashier or pharmacy', line };
   }
@@ -345,6 +358,82 @@ export function patientBalance(facilityId: string, patientId: string): number {
   return listBillLines(facilityId, { patientId })
     .filter((l) => l.status === 'unpaid' || l.status === 'partial')
     .reduce((s, l) => s + l.amountNgn, 0);
+}
+
+/**
+ * Defer (hold for later) or restore a pharmacy bill line when a patient asks
+ * the pharmacist to remove a drug they cannot afford right now so they can return later.
+ */
+export function deferPharmacyBillLine(
+  lineIdOrOrderId: string,
+  meta: { actor?: string; reason?: string }
+): PatientBillLine | undefined {
+  const list = read();
+  const idx = list.findIndex((l) => l.id === lineIdOrOrderId || l.orderId === lineIdOrOrderId);
+  if (idx < 0) return undefined;
+  const cur = list[idx];
+  if (cur.status === 'paid' || cur.status === 'hmo' || cur.status === 'waived') return cur;
+  const now = new Date().toISOString();
+  const next: PatientBillLine = {
+    ...cur,
+    status: 'deferred',
+    deferredAt: now,
+    deferredBy: meta.actor || 'Pharmacist',
+    deferredReason: meta.reason || 'Patient deferred drug for later purchase',
+    updatedAt: now,
+  };
+  list[idx] = next;
+  write(list);
+  return next;
+}
+
+export function restoreDeferredPharmacyBillLine(lineIdOrOrderId: string): PatientBillLine | undefined {
+  const list = read();
+  const idx = list.findIndex((l) => l.id === lineIdOrOrderId || l.orderId === lineIdOrOrderId);
+  if (idx < 0) return undefined;
+  const cur = list[idx];
+  if (cur.status !== 'deferred') return cur;
+  const now = new Date().toISOString();
+  const next: PatientBillLine = {
+    ...cur,
+    status: cur.amountNgn > 0 ? 'unpaid' : 'paid',
+    deferredAt: undefined,
+    deferredBy: undefined,
+    deferredReason: undefined,
+    updatedAt: now,
+  };
+  list[idx] = next;
+  write(list);
+  return next;
+}
+
+export function listPharmacyBillLines(facilityId: string): PatientBillLine[] {
+  return listBillLines(facilityId).filter((l) => l.source === 'pharmacy');
+}
+
+export function createPharmacyCounterBillLine(input: {
+  facilityId: string;
+  patientId: string;
+  hospitalNumber?: string;
+  patientName: string;
+  description: string;
+  amountNgn: number;
+  orderId?: string;
+  actor?: string;
+}): PatientBillLine {
+  const amt = Math.max(0, Number(input.amountNgn) || 0);
+  return addBillLine({
+    facilityId: input.facilityId,
+    patientId: input.patientId,
+    hospitalNumber: input.hospitalNumber || input.patientId,
+    patientName: input.patientName,
+    source: 'pharmacy',
+    description: input.description,
+    amountNgn: amt,
+    orderId: input.orderId || `RX-POS-${Date.now().toString(36).toUpperCase()}`,
+    status: amt > 0 ? 'unpaid' : 'paid',
+    paidBy: input.actor,
+  });
 }
 
 export function subscribeBills(cb: () => void): () => void {

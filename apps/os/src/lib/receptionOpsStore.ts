@@ -16,6 +16,7 @@ export type EncounterStatus =
   | 'TRIAGE_COMPLETED'
   | 'WAITING_FOR_DOCTOR'
   | 'IN_CONSULTATION'
+  | 'ADMITTED'
   | 'COMPLETED'
   | 'CANCELLED'
   | 'NO_SHOW';
@@ -24,6 +25,7 @@ export type QueueStatus =
   | 'waiting'
   | 'called'
   | 'with_provider'
+  | 'admitted'
   | 'completed'
   | 'no_show'
   | 'cancelled'
@@ -72,6 +74,10 @@ export interface ReceptionVisit {
   triagedBy?: string;
   presentingComplaints?: string;
   initialNursingAssessment?: string;
+  admittedWard?: string;
+  admittedBed?: string;
+  admittedAt?: string;
+  completedAt?: string;
 }
 
 export interface ReceptionAppointment {
@@ -315,6 +321,71 @@ export function markPatientWithProvider(
   return updated;
 }
 
+/**
+ * Automated OPD encounter progression:
+ * waiting -> in triage -> waiting doctor -> with doctor -> admitted / completed.
+ * Never regresses a visit once admitted or completed.
+ */
+export function autoAdvancePatientVisitStage(
+  facilityId: string,
+  patientRef: string,
+  targetStatus: 'in_consultation' | 'with_provider' | 'admitted' | 'completed',
+  meta?: {
+    visitId?: string;
+    ward?: string;
+    bed?: string;
+    doctor?: string;
+  }
+): ReceptionVisit | null {
+  const state = load();
+  const ref = String(patientRef || '').trim().toLowerCase();
+  const vid = String(meta?.visitId || '').trim();
+  if (!ref && !vid) return null;
+
+  const now = new Date().toISOString();
+  const todayStr = now.slice(0, 10);
+  let updated: ReceptionVisit | null = null;
+
+  state.visits = state.visits.map((v) => {
+    if (v.facilityId !== facilityId) return v;
+    const isToday = (v.checkedInAt || '').slice(0, 10) === todayStr;
+    const matchById = Boolean(vid && (v.id === vid || v.encounterId === vid));
+    const matchByPatient =
+      Boolean(ref) &&
+      isToday &&
+      (v.patientId.toLowerCase() === ref ||
+        v.hospitalNumber.toLowerCase() === ref ||
+        v.patientName.toLowerCase() === ref);
+
+    if (!matchById && !matchByPatient) return v;
+
+    const curLower = String(v.status || '').toLowerCase();
+    // Terminal / ward admission guard: never regress completed/cancelled/no_show, and never downgrade admitted -> with_provider
+    if (curLower === 'completed' || curLower === 'cancelled' || curLower === 'no_show') return v;
+    if (curLower === 'admitted' && targetStatus !== 'admitted' && targetStatus !== 'completed') return v;
+
+    updated = {
+      ...v,
+      status: targetStatus,
+      encounterStatus:
+        targetStatus === 'admitted'
+          ? 'ADMITTED'
+          : targetStatus === 'completed'
+            ? 'COMPLETED'
+            : 'IN_CONSULTATION',
+      doctor: meta?.doctor?.trim() || v.doctor,
+      admittedWard: targetStatus === 'admitted' ? (meta?.ward || v.admittedWard) : v.admittedWard,
+      admittedBed: targetStatus === 'admitted' ? (meta?.bed || v.admittedBed) : v.admittedBed,
+      admittedAt: targetStatus === 'admitted' ? (v.admittedAt || now) : v.admittedAt,
+      completedAt: targetStatus === 'completed' ? now : v.completedAt,
+    };
+    return updated;
+  });
+
+  if (updated) save(state);
+  return updated;
+}
+
 /** After consult / prescription — complete active visit for patient */
 export function markPatientConsultComplete(
   facilityId: string,
@@ -325,13 +396,13 @@ export function markPatientConsultComplete(
   let updated: ReceptionVisit | null = null;
   state.visits = state.visits.map((v) => {
     if (v.facilityId !== facilityId) return v;
-    if (v.status === 'completed' || v.status === 'cancelled' || v.status === 'no_show') return v;
+    if (v.status === 'completed' || v.status === 'admitted' || v.status === 'cancelled' || v.status === 'no_show') return v;
     const match =
       v.patientId.toLowerCase() === ref ||
       v.hospitalNumber.toLowerCase() === ref;
     if (!match) return v;
     if (v.status === 'with_provider' || v.status === 'called' || v.status === 'waiting') {
-      updated = { ...v, status: 'completed' };
+      updated = { ...v, status: 'completed', completedAt: new Date().toISOString() };
       return updated;
     }
     return v;

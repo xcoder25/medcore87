@@ -28,6 +28,7 @@ export interface StockBatch {
 const DRUG_KEY = 'medcore_os_formulary_v1';
 const STOCK_KEY = 'medcore_os_drug_stock_v1';
 const EVT = 'medcore-formulary';
+const BC_NAME = 'medcore_formulary_realtime';
 
 function read<T>(key: string): T[] {
   if (typeof window === 'undefined') return [];
@@ -41,6 +42,13 @@ function write(key: string, list: unknown[]) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(key, JSON.stringify(list.slice(0, 5000)));
   window.dispatchEvent(new CustomEvent(EVT));
+  try {
+    const bc = new BroadcastChannel(BC_NAME);
+    bc.postMessage({ type: 'formulary', key, at: Date.now() });
+    bc.close();
+  } catch {
+    /* ignore */
+  }
   try {
     const fid =
       (list[0] as { facilityId?: string } | undefined)?.facilityId ||
@@ -243,13 +251,17 @@ export function seedDefaultFormulary(facilityId: string) {
   seedFromAksEml(facilityId, 'adult');
 }
 
-/** Load official AKS EML into facility formulary + starter batches (CMS) */
+/** Load official AKS EML into facility formulary + starter batches (CMS) in one batch write */
 export function seedFromAksEml(facilityId: string, audience: 'adult' | 'children' = 'adult') {
   const rows = emlAsSeedRows(audience);
   const stamp = Date.now().toString(36);
+  const drugs = read<FormularyDrug>(DRUG_KEY);
+  const batches = read<StockBatch>(STOCK_KEY);
+  const now = new Date().toISOString();
+
   rows.forEach((row, i) => {
     const id = `DRG-AKS-${audience === 'adult' ? 'A' : 'C'}-${i.toString(36).toUpperCase()}-${stamp}`;
-    upsertDrug({
+    const nextDrug: FormularyDrug = {
       id,
       facilityId,
       name: row.name,
@@ -260,8 +272,13 @@ export function seedFromAksEml(facilityId: string, audience: 'adult' | 'children
       unitPriceNgn: row.unitPriceNgn,
       reorderLevel: row.reorderLevel,
       controlled: row.controlled,
-    });
-    addBatch({
+    };
+    const existingIdx = drugs.findIndex((d) => d.id === id);
+    if (existingIdx >= 0) drugs[existingIdx] = nextDrug;
+    else drugs.unshift(nextDrug);
+
+    batches.unshift({
+      id: `BAT-${id}-${i}`,
       drugId: id,
       facilityId,
       batchNo: `CMS-${1000 + (i % 9000)}`,
@@ -270,6 +287,27 @@ export function seedFromAksEml(facilityId: string, audience: 'adult' | 'children
       supplier: 'CMS Nigeria / AKS EML',
     });
   });
+
+  write(DRUG_KEY, drugs);
+  write(STOCK_KEY, batches);
+}
+
+/** Look up unit price from live facility formulary by drug name / generic name. */
+export function findFormularyPrice(facilityId: string, drugName: string, fallback = 2500): number {
+  const q = String(drugName || '').trim().toLowerCase();
+  if (!q) return fallback;
+  const drugs = listFormulary(facilityId);
+  const exact = drugs.find(
+    (d) => d.name.toLowerCase() === q || d.genericName.toLowerCase() === q
+  );
+  if (exact) return Number(exact.unitPriceNgn) || fallback;
+  const partial = drugs.find(
+    (d) =>
+      q.includes(d.name.toLowerCase()) ||
+      q.includes(d.genericName.toLowerCase()) ||
+      d.name.toLowerCase().includes(q)
+  );
+  return partial ? Number(partial.unitPriceNgn) || fallback : fallback;
 }
 
 /** Force re-seed from EML (admin action) — replaces facility formulary */
@@ -354,9 +392,23 @@ export function subscribeFormulary(cb: () => void) {
   const fn = () => cb();
   window.addEventListener(EVT, fn);
   window.addEventListener('medcore-admin-sync', fn);
+  window.addEventListener('storage', fn);
+  let bc: BroadcastChannel | null = null;
+  try {
+    bc = new BroadcastChannel(BC_NAME);
+    bc.onmessage = () => cb();
+  } catch {
+    /* ignore */
+  }
   return () => {
     window.removeEventListener(EVT, fn);
     window.removeEventListener('medcore-admin-sync', fn);
+    window.removeEventListener('storage', fn);
+    try {
+      bc?.close();
+    } catch {
+      /* ignore */
+    }
   };
 }
 

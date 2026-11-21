@@ -489,7 +489,7 @@ export async function firestoreRecordLogin(..._args: any[]): Promise<void> { }
 
 export function subscribeFirebaseAuth(cb: (user: User | null) => void): AuthUnsubscribe {
   if (!isFirebaseClientConfigured()) {
-    return () => {};
+    return () => { };
   }
   return onAuthStateChanged(getFirebaseAuth(), cb);
 }

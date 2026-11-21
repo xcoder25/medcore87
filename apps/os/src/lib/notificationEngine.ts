@@ -13,10 +13,16 @@ export interface HospitalNotification {
   body: string;
   module?: string;
   patientId?: string;
+  patientName?: string;
+  hospitalNumber?: string;
   read: boolean;
   createdAt: string;
-  /** Role key hint e.g. doctor | reception | pharmacy */
+  /** Role key hint e.g. doctor | reception | pharmacist */
   roleHint?: string;
+  /** Category tag e.g. pharmacy | clinical | bed */
+  category?: string;
+  /** Source subsystem identifier */
+  source?: string;
   /** When set, notification is primarily for this staff member (full name) */
   targetStaff?: string;
   /** Visit / queue id when related to an assignment */
@@ -199,7 +205,8 @@ const ROLE_NOTIFICATION_MATRIX: Record<string, string[]> = {
   surgeon: ['surgeon', 'doctor', 'theatre', 'surgery', 'icu', 'pacu', 'blood_bank', 'trauma', 'emergency'],
   nurse: ['nurse', 'nursing', 'ward', 'triage', 'bed', 'emar', 'medication_pass', 'vital', 'doctor_order', 'emergency'],
   midwife: ['midwife', 'maternity', 'labour', 'delivery', 'paediatrics', 'newborn', 'nicu', 'obstetric'],
-  pharmacist: ['pharmacist', 'pharmacy', 'dispense', 'cpoe_rx', 'drug', 'stock', 'formulary', 'contraindication'],
+  pharmacist: ['pharmacist', 'pharmacy', 'dispense', 'cpoe_rx', 'drug', 'stock', 'formulary', 'contraindication', 'ward-med-request'],
+  pharmacy: ['pharmacist', 'pharmacy', 'dispense', 'cpoe_rx', 'drug', 'stock', 'formulary', 'contraindication', 'ward-med-request'],
   lab: ['lab', 'laboratory', 'lis', 'specimen', 'analyzer', 'blood_bank', 'test_order', 'panic_result'],
   radiologist: ['radiologist', 'radiology', 'ris', 'pacs', 'imaging', 'xray', 'mri', 'ct_scan'],
   accountant: ['accountant', 'accounts', 'billing', 'cashier', 'pos', 'payment', 'claim', 'insurance', 'nhia', 'hmo', 'ar', 'treasury', 'remittance', 'treasury-notice'],
@@ -231,6 +238,8 @@ export function notificationVisibleTo(
     return true;
   }
 
+  const isPharmacy = role === 'pharmacist' || role === 'pharmacy' || role.includes('pharm');
+
   // Front desk / reception role guard: strictly filter out clinical NEWS2, panic values, operative alerts
   const isReception = role === 'reception' || role.includes('front');
   if (isReception) {
@@ -246,12 +255,41 @@ export function notificationVisibleTo(
     }
   }
 
-  // If notification has a specific roleHint:
   const hint = (n.roleHint || '').toLowerCase().trim();
+  const mod = (n.module || '').toLowerCase().trim();
+  const cat = (n.category || '').toLowerCase().trim();
+  const src = (n.source || '').toLowerCase().trim();
+
+  // Strict Pharmacy isolation: never show nurse vitals, triage, OPD waiting, or ward bed census notices
+  if (isPharmacy) {
+    if (hint) {
+      const pharmHints = ROLE_NOTIFICATION_MATRIX.pharmacist;
+      return pharmHints.some((h) => hint.includes(h) || h.includes(hint));
+    }
+    if (
+      cat === 'pharmacy' ||
+      mod === 'pharmacy' ||
+      mod === 'formulary' ||
+      src === 'ward-med-request'
+    ) {
+      return true;
+    }
+    const text = `${n.title || ''} ${n.body || ''}`.toLowerCase();
+    if (
+      /\b(rx|prescription|dispens|formulary|drug|medication|pharmacy|ward\s+med|narcotic|controlled)\b/.test(
+        text
+      ) &&
+      !/\b(vitals|triage|news2|spo2|admitted\s+to\s+bed|bed\s+board)\b/.test(text)
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  // If notification has no roleHint:
   if (!hint) {
     // When no roleHint is set, guard against clinical module notifications leaking to non-clinical staff
     if (isReception) {
-      const mod = (n.module || '').toLowerCase().trim();
       const CLINICAL_MODULES = ['doctor-portal', 'laboratory', 'theatre', 'icu', 'radiology', 'emr', 'nursing', 'triage'];
       if (CLINICAL_MODULES.includes(mod)) return false;
     }

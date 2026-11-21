@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { SpeedInsights } from '../components/common/SpeedInsights';
 import { PwaManager } from '../components/pwa/PwaManager';
 import { OfflineBanner } from '../components/common/OfflineBanner';
+import { GlobalFormValidator } from '../components/common/GlobalFormValidator';
 import '../styles/os.css';
 
 export const metadata: Metadata = {
@@ -69,6 +70,7 @@ export default function RootLayout({
         <PwaManager />
         <SpeedInsights />
         <OfflineBanner />
+        <GlobalFormValidator />
         {children}
       </body>
     </html>

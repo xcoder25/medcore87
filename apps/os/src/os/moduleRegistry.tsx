@@ -53,6 +53,8 @@ export const DeviceGatewaySettings = dynamic(() => import('../components/interop
 
 export const EmergencyTriageSuite = dynamic(() => import('../components/clinical-core/EmergencyTriageSuite').then(m => m.EmergencyTriageSuite), { loading: () => <ModulePageLoader label="Opening Emergency Triage…" /> });
 export const PharmacyDispensingSuite = dynamic(() => import('../components/clinical-core/PharmacyDispensingSuite').then(m => m.PharmacyDispensingSuite), { loading: () => <ModulePageLoader label="Opening Pharmacy Dispensary…" /> });
+export const PharmacyPaymentDesk = dynamic(() => import('../components/pharmacy/PharmacyPaymentDesk').then(m => m.PharmacyPaymentDesk), { loading: () => <ModulePageLoader label="Opening Pharmacy Payment Desk…" /> });
+export const PrescriptionRecordsSuite = dynamic(() => import('../components/pharmacy/PrescriptionRecordsSuite').then(m => m.PrescriptionRecordsSuite), { loading: () => <ModulePageLoader label="Opening Prescription Records…" /> });
 export const HimSuite = dynamic(() => import('../components/him/HimSuite').then(m => m.HimSuite), { loading: () => <ModulePageLoader label="Opening HIM Health Records…" /> });
 export const PharmacyFormularyWorkspace = dynamic(() => import('../components/pharmacy/PharmacyFormularyWorkspace').then(m => m.PharmacyFormularyWorkspace), { loading: () => <ModulePageLoader label="Opening Formulary…" /> });
 export const LaboratorySuite = dynamic(() => import('../components/clinical-core/LaboratorySuite').then(m => m.LaboratorySuite), { loading: () => <ModulePageLoader label="Opening Laboratory LIS…" /> });
@@ -123,7 +125,7 @@ export type ModuleKey =
   | 'command' | 'beds' | 'patient-flow' | 'universal-queue' | 'appointments' | 'staffing' | 'notifications'
   | 'inventory' | 'biomedical' | 'facilities' | 'environmental'
   // Pillar 4: Finance
-  | 'billing' | 'cashier' | 'claims' | 'revenue-cycle' | 'procurement' | 'akwaremit'
+  | 'billing' | 'cashier' | 'pharmacy-pos' | 'claims' | 'revenue-cycle' | 'procurement' | 'akwaremit'
   // Pillar 5: Data & Interop
   | 'aks-state' | 'lamis' | 'data-hub' | 'fhir' | 'analytics' | 'offline-sync' | 'satellite-mesh' | 'ambient-soap' | 'lis' | 'formulary' | 'mfa-sso' | 'knowledge-graph' | 'predictive-staffing' | 'infection' | 'hie' | 'pacs-advanced' | 'statewide-emr'
   // Pillar 6: Connected IoT
@@ -206,6 +208,7 @@ export const MODULE_COMPONENTS: Record<ModuleKey, React.ComponentType<any>> = {
   environmental: EnvironmentalSafetySuite,
   billing: BillingInvoicingSuite,
   cashier: PosPaymentDesk as any,
+  'pharmacy-pos': PharmacyPaymentDesk as any,
   akwaremit: AkwaRemitRevenueSuite as any,
   claims: InsuranceHmoClaimsSuite,
   'aks-state': AkwaIbomStateSuite,
@@ -309,6 +312,7 @@ export const MODULE_CLEARANCE: Record<ModuleKey, { level: number; label: string;
   environmental: { level: 2, label: 'L2 Support', roleDesc: 'Environmental Health & Infection Control' },
   billing: { level: 2, label: 'L2 Finance', roleDesc: 'Hospital Billing Accountants' },
   cashier: { level: 2, label: 'L2 Finance', roleDesc: 'Revenue Collectors & Cashiers' },
+  'pharmacy-pos': { level: 2, label: 'L2 Pharmacy POS', roleDesc: 'Pharmacists & Dispensary Cash Till' },
   akwaremit: { level: 2, label: 'L2 Finance', roleDesc: 'AkwaRemit State Revenue Officers & Accountants' },
   claims: { level: 2, label: 'L2 Finance', roleDesc: 'AKSHIA & HMO Adjudicators' },
   'aks-state': { level: 3, label: 'L3 Operations', roleDesc: 'State readiness · AKSHIA · UPI · DHIS2' },

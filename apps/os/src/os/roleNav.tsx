@@ -322,6 +322,7 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
           items: [
             { key: 'dashboard', icon: LayoutDashboard, label: 'Dispensary desk', badge: 'Live' },
             { key: 'pharmacy', icon: Pill, label: 'Dispense queue', badge: 'Rx' },
+            { key: 'pharmacy-pos', icon: CreditCard, label: 'Pharmacy payment desk', badge: 'POS' },
             { key: 'formulary', icon: Pill, label: 'Formulary & stock', badge: 'EML' },
             { key: 'notifications', icon: Bell, label: 'In Basket', badge: 'Rx' },
           ],

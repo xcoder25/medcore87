@@ -811,7 +811,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         const badgeQuery = u.trim().toUpperCase().replace(/\s+/g, '');
         const pinQuery = pass.trim();
         if (!badgeQuery) {
-          setError('Enter your staff badge / ID number.');
+          setError('Enter your staff badge / ID number and 6-digit PIN.');
           setLoading(false);
           return;
         }
@@ -1719,7 +1719,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
           {/* Sign-In Form */}
           <div style={{ position: 'relative' }}>
-            <form onSubmit={handleSignIn} style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'relative' }}>
+            <form noValidate onSubmit={handleSignIn} style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'relative' }}>
               {/* Hospital Facility Selector */}
               <div>
                 <div style={{
@@ -1775,22 +1775,24 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   </div>
                   <input
                     type="text"
+                    required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Staff ID / Badge number (e.g. AKS-2025-1234)"
+                    aria-invalid={Boolean(error && !username.trim())}
                     style={{
                       width: '100%',
                       padding: '12px 14px 12px 42px',
                       fontSize: '0.88rem',
                       color: '#0A2540',
-                      background: '#FFFFFF',
-                      border: '1px solid #E2E8F0',
+                      background: error && !username.trim() ? '#FEF2F2' : '#FFFFFF',
+                      border: error && !username.trim() ? '2px solid #DC2626' : '1px solid #E2E8F0',
                       borderRadius: 10,
                       outline: 'none',
                       transition: 'all 0.15s ease',
                     }}
                     onFocus={(e) => (e.target.style.borderColor = '#0052D4')}
-                    onBlur={(e) => (e.target.style.borderColor = '#E2E8F0')}
+                    onBlur={(e) => (e.target.style.borderColor = error && !username.trim() ? '#DC2626' : '#E2E8F0')}
                   />
                 </div>
                 {detectedStaff && (
@@ -1854,19 +1856,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   placeholder="6-Digit Staff PIN / Password (min 6 chars)"
                   minLength={6}
                   required
+                  aria-invalid={Boolean(error && password.trim().length < 6)}
                   style={{
                     width: '100%',
                     padding: '12px 42px 12px 42px',
                     fontSize: '0.88rem',
                     color: '#0A2540',
-                    background: '#FFFFFF',
-                    border: '1px solid #E2E8F0',
+                    background: error && password.trim().length < 6 ? '#FEF2F2' : '#FFFFFF',
+                    border: error && password.trim().length < 6 ? '2px solid #DC2626' : '1px solid #E2E8F0',
                     borderRadius: 10,
                     outline: 'none',
                     transition: 'all 0.15s ease',
                   }}
                   onFocus={(e) => (e.target.style.borderColor = '#0052D4')}
-                  onBlur={(e) => (e.target.style.borderColor = '#E2E8F0')}
+                  onBlur={(e) => (e.target.style.borderColor = error && password.trim().length < 6 ? '#DC2626' : '#E2E8F0')}
                 />
                 <button
                   type="button"

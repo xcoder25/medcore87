@@ -249,6 +249,7 @@ export default function RegPage() {
   const [badgeId, setBadgeId] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [serverError, setServerError] = useState('');
   const [adminExists, setAdminExists] = useState(false);
   const [checkingAdmin, setCheckingAdmin] = useState(false);
@@ -302,6 +303,7 @@ export default function RegPage() {
   /* ── Submit ────────────────────────────────────────────────────────────── */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setSubmitAttempted(true);
     setServerError('');
     const cleanEmail = email.trim().toLowerCase();
     if (!facilityId) { setServerError('Please select your hospital / facility.'); return; }
@@ -644,7 +646,9 @@ export default function RegPage() {
                       <Building2 size={18} color="#00A3BF" />
                     </div>
                     <select
-                      className="reg-select"
+                      required
+                      aria-invalid={submitAttempted && !facilityId ? 'true' : undefined}
+                      className={`reg-select${submitAttempted && !facilityId ? ' mc-field-invalid' : ''}`}
                       value={facilityId}
                       onChange={(e) => setFacilityId(e.target.value)}
                       onFocus={onFocus}
@@ -706,7 +710,8 @@ export default function RegPage() {
                     </div>
                     <input
                       type="text"
-                      className="reg-input"
+                      aria-invalid={submitAttempted && fullName.trim().length < 3 ? 'true' : undefined}
+                      className={`reg-input${submitAttempted && fullName.trim().length < 3 ? ' mc-field-invalid' : ''}`}
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
                       placeholder="e.g. Dr. Ini Akpan"
@@ -731,7 +736,8 @@ export default function RegPage() {
                     </div>
                     <input
                       type="email"
-                      className="reg-input"
+                      aria-invalid={submitAttempted && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? 'true' : undefined}
+                      className={`reg-input${submitAttempted && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? ' mc-field-invalid' : ''}`}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="admin@hospital.medcore.ng"
@@ -763,7 +769,8 @@ export default function RegPage() {
                       maxLength={6}
                       pattern="\d{6}"
                       required
-                      className="reg-input"
+                      aria-invalid={submitAttempted && !/^\d{6}$/.test(pin) ? 'true' : undefined}
+                      className={`reg-input${submitAttempted && !/^\d{6}$/.test(pin) ? ' mc-field-invalid' : ''}`}
                       style={{ paddingRight: 42 }}
                       value={pin}
                       onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -814,9 +821,10 @@ export default function RegPage() {
                 <button
                   type="submit"
                   className="reg-btn-primary"
-                  disabled={submitting || adminExists || !isValid}
+                  disabled={submitting || adminExists}
                   style={{ marginTop: 2 }}
                   onClick={(e) => {
+                    setSubmitAttempted(true);
                     if (!submitting && !adminExists && isValid) {
                       const btn = e.currentTarget;
                       const circle = document.createElement('span');

@@ -19,6 +19,7 @@ const DoctorDeskHome     = lazy(() => import('./DoctorDeskHome').then(m => ({ de
 const LabDeskHome        = lazy(() => import('./LabDeskHome').then(m => ({ default: m.LabDeskHome })));
 const RecordsDeskHome    = lazy(() => import('./RecordsDeskHome').then(m => ({ default: m.RecordsDeskHome })));
 const NurseDeskHome      = lazy(() => import('./NurseDeskHome').then(m => ({ default: m.NurseDeskHome })));
+const PharmacyDeskHome   = lazy(() => import('./PharmacyDeskHome').then(m => ({ default: m.PharmacyDeskHome })));
 const RoleDeskHome       = lazy(() => import('./RoleDeskHome').then(m => ({ default: m.RoleDeskHome })));
 import type { RoleDeskConfig } from './RoleDeskHome';
 
@@ -91,6 +92,11 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({ session, onNavigat
   // Nurse clinical office desk — dedicated real-time workspace (no hero, quick actions first, realtime tools)
   if (roleKey === 'nurse') {
     return <Suspense fallback={<WorkspaceSkeleton />}><NurseDeskHome session={session} onNavigate={(k) => onNavigate(k)} /></Suspense>;
+  }
+
+  // Pharmacist dispensary home — isolated from nurse/vitals/OPD clinical notices
+  if (roleKey === 'pharmacist') {
+    return <Suspense fallback={<WorkspaceSkeleton />}><PharmacyDeskHome session={session} onNavigate={(k) => onNavigate(k)} /></Suspense>;
   }
 
   const deskForRole = (key: string): RoleDeskConfig | null => {

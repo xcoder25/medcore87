@@ -4,6 +4,7 @@
  */
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 import { idbGet, idbSet } from './idb';
+import { autoAdvancePatientVisitStage } from './receptionOpsStore';
 import {
   syncTrackerFromBedRecord,
   clearBedTurnover,
@@ -489,6 +490,20 @@ export function admitToBed(
     diagnosis: input.diagnosis,
     admitAt: now,
   });
+
+  // Automatically transition any matching active OPD visit for today to 'admitted'
+  try {
+    const ref = input.patientId || input.hospitalNumber || input.patient;
+    if (ref) {
+      autoAdvancePatientVisitStage(bed.facilityId, ref, 'admitted', {
+        ward: bed.ward,
+        bed: bed.bedNo,
+        doctor: input.doctor,
+      });
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function setExpectedDischarge(bedId: string, date: string, actor?: string) {

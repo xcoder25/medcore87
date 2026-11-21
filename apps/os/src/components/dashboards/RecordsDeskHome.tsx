@@ -35,6 +35,7 @@ import {
 import { InBasketPanel } from '../clinical-core/InBasketPanel';
 import { himSummary, subscribeHim } from '../../lib/himStore';
 import { EditPatientModal } from '../records/EditPatientModal';
+import { HimIssueCardModal } from '../him/HimIssueCardModal';
 
 interface Props {
   session: UserSession;
@@ -68,6 +69,8 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   const [tick, setTick] = useState(0);
   const reload = useCallback(() => setTick((t) => t + 1), []);
   const [editingPatient, setEditingPatient] = useState<FacilityPatient | null>(null);
+  const [issueCardOpen, setIssueCardOpen] = useState(false);
+  const [issueCardTarget, setIssueCardTarget] = useState<FacilityPatient | null>(null);
   const [mpiSearch, setMpiSearch] = useState('');
 
   useEffect(() => {
@@ -245,7 +248,8 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
   ];
 
   const actions = [
-    { label: 'MPI / Health card', desc: 'Register & FHIR', go: 'patient-card', primary: true, icon: CreditCard },
+    { label: 'Issue Health Card', desc: 'SHID & scannable QR', go: '__issue_card__', primary: true, icon: CreditCard },
+    { label: 'MPI / Health card', desc: 'Register & FHIR', go: 'patient-card', icon: UserCheck },
     { label: 'Chart retrieval', desc: 'View only EMR', go: 'emr', icon: FileText },
     { label: 'Patient transit', desc: 'Admissions flow', go: 'patient-flow', icon: RefreshCw },
     { label: 'Bed board', desc: 'Occupancy', go: 'beds', icon: BedDouble },
@@ -271,7 +275,7 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div>
             <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A' }}>Health Records Quick Actions</div>
-            <div style={{ fontSize: 12, color: '#64748B' }}>MPI, chart retrieval, transit &amp; bed census tools</div>
+            <div style={{ fontSize: 12, color: '#64748B' }}>MPI, Digital Health Card issuance, chart retrieval &amp; census tools</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span
@@ -306,7 +310,14 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
               <button
                 key={a.go}
                 type="button"
-                onClick={() => onNavigate(a.go)}
+                onClick={() => {
+                  if (a.go === '__issue_card__') {
+                    setIssueCardTarget(null);
+                    setIssueCardOpen(true);
+                  } else {
+                    onNavigate(a.go);
+                  }
+                }}
                 style={{
                   textAlign: 'left',
                   padding: 12,
@@ -492,27 +503,53 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                       Folder: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{p.hospitalNumber}</span> · {p.sex || '—'} · DOB: {p.dob || '—'} · Tel: {p.phone || '—'}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setEditingPatient(p)}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 5,
-                      background: '#F0FDF4',
-                      color: '#047857',
-                      border: '1px solid #A7F3D0',
-                      borderRadius: 8,
-                      padding: '6px 12px',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <Edit size={13} />
-                    Edit Demographics
-                  </button>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIssueCardTarget(p);
+                        setIssueCardOpen(true);
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        background: '#ECFDF5',
+                        color: '#065F46',
+                        border: '1px solid #6EE7B7',
+                        borderRadius: 8,
+                        padding: '6px 11px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <CreditCard size={13} />
+                      {p.shid ? 'Health Card' : 'Issue Card'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingPatient(p)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        background: '#F0FDF4',
+                        color: '#047857',
+                        border: '1px solid #A7F3D0',
+                        borderRadius: 8,
+                        padding: '6px 12px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <Edit size={13} />
+                      Edit Demographics
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -657,27 +694,53 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
                   </strong>
                   <div style={{ fontSize: 11, color: '#64748B' }}>{p.hospitalNumber}</div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setEditingPatient(p)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    background: '#F0FDFA',
-                    color: '#0D9488',
-                    border: '1px solid #99F6E4',
-                    borderRadius: 7,
-                    padding: '4px 10px',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  <Edit size={12} />
-                  Edit
-                </button>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIssueCardTarget(p);
+                      setIssueCardOpen(true);
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      background: '#ECFDF5',
+                      color: '#065F46',
+                      border: '1px solid #6EE7B7',
+                      borderRadius: 7,
+                      padding: '4px 9px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <CreditCard size={12} />
+                    {p.shid ? 'Card' : 'Issue Card'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingPatient(p)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      background: '#F0FDFA',
+                      color: '#0D9488',
+                      border: '1px solid #99F6E4',
+                      borderRadius: 7,
+                      padding: '4px 10px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Edit size={12} />
+                    Edit
+                  </button>
+                </div>
               </div>
             ))
           )}
@@ -729,6 +792,20 @@ export const RecordsDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
         isOpen={Boolean(editingPatient)}
         onClose={() => setEditingPatient(null)}
         onSaved={() => reload()}
+      />
+
+      {/* HIM Digital Health Card Issuance Modal */}
+      <HimIssueCardModal
+        isOpen={issueCardOpen}
+        patient={issueCardTarget}
+        facilityId={facilityId}
+        facilityName={session.facility}
+        issuedBy={session.name || 'HIM Officer'}
+        onClose={() => {
+          setIssueCardOpen(false);
+          setIssueCardTarget(null);
+        }}
+        onIssued={() => reload()}
       />
     </div>
   );

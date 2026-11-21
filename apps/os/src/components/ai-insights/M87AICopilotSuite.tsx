@@ -62,8 +62,10 @@ import {
 } from '../../lib/accountsAutomation';
 import { emitLiveAction } from '../../lib/liveActions';
 import {
-  Brain, Send, Sparkles, Plus, Activity, Users, Wallet, Stethoscope, RotateCcw, Copy, Check, X, BedDouble, Minus,
+  Brain, Send, Sparkles, Plus, Activity, Users, Wallet, Stethoscope, RotateCcw, Copy, Check, X, BedDouble, Minus, Mic, MicOff, Loader2,
 } from 'lucide-react';
+import { useAccurateVoiceInput } from '../../lib/voiceTranscription';
+import { buildLiveHospitalSnapshot, executeCelestiaSuperTool } from '../../lib/celestiaSuperTools';
 
 interface ChatMessage {
   id: string;
@@ -176,9 +178,16 @@ function StreamingText({ text, animate }: { text: string; animate: boolean }) {
   );
 }
 
-export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose, onMinimize }) => {
+export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose, onMinimize, onNavigate }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [inputPrompt, setInputPrompt] = useState('');
+  const voice = useAccurateVoiceInput({
+    roleHint: session?.role || 'clinician',
+    onTranscript: (spoken) => {
+      setInputPrompt((prev) => (prev.trim() ? `${prev.trim()} ${spoken}` : spoken));
+      window.setTimeout(() => inputRef.current?.focus(), 40);
+    },
+  });
   const [isThinking, setIsThinking] = useState(false);
   const [taskRun, setTaskRun] = useState<{ title: string; steps: TaskStep[] } | null>(null);
   const [pendingReceptionJob, setPendingReceptionJob] = useState<ReceptionRegJob | null>(null);
@@ -444,6 +453,93 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose,
       ]);
       setIsThinking(false);
       return;
+    }
+
+    // Celestia Supertools: Direct Navigation, Formulary Check, Roster Coverage, Patient Verification, AkwaRemit Check
+    const ql = query.toLowerCase();
+    const replyTool = (title: string, summary: string, category: ChatMessage['category'] = 'operational') => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-${Date.now()}-ai`,
+          sender: 'm87',
+          text: `**${title}**\n${summary}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          category,
+        },
+      ]);
+      setIsThinking(false);
+    };
+
+    if (/^(open|go to|navigate to|switch to)\s+(pharmacy payment|pharmacy pos|dispense|pharmacy|formulary|emr|beds|staffing|cashier|billing|akwaremit|nursing|triage|lab|laboratory|radiology|patient flow)/i.test(query)) {
+      const targetMap: Array<[RegExp, string, string]> = [
+        [/pharmacy payment|pharmacy pos/i, 'pharmacy-pos', 'Pharmacy Payment Desk'],
+        [/formulary/i, 'formulary', 'Formulary & Stock Control'],
+        [/pharmacy|dispense/i, 'pharmacy', 'Pharmacy Dispensary'],
+        [/akwaremit/i, 'akwaremit', 'AkwaRemit State Revenue Hub'],
+        [/cashier/i, 'cashier', 'Cashier / POS'],
+        [/billing/i, 'billing', 'Billing Invoicing'],
+        [/beds/i, 'beds', 'Bed & Ward Occupancy'],
+        [/staffing/i, 'staffing', 'Staff Presence & Rosters'],
+        [/nursing/i, 'nursing', 'Inpatient Nursing & e-MAR'],
+        [/triage/i, 'triage', 'Nursing Triage & Vitals'],
+        [/lab/i, 'laboratory', 'Laboratory LIS'],
+        [/radiology/i, 'radiology', 'Radiology PACS'],
+        [/patient flow/i, 'patient-flow', 'Patient Flow & Queue'],
+        [/emr/i, 'emr', 'EMR & Records'],
+      ];
+      const hit = targetMap.find(([re]) => re.test(query));
+      if (hit) {
+        const res = executeCelestiaSuperTool({
+          tool: 'navigate_module',
+          args: { moduleKey: hit[1], label: hit[2] },
+          facilityId,
+          roleKey: actorRole,
+          actorName: session?.name,
+          onNavigate,
+        });
+        replyTool(res.title, res.summary, 'operational');
+        return;
+      }
+    }
+
+    if (/^(verify patient|check patient exist|find patient id|check hn)\b/i.test(query)) {
+      const qTerm = query.replace(/^(verify patient|check patient exist|find patient id|check hn)\s*/i, '').trim();
+      if (qTerm) {
+        const res = executeCelestiaSuperTool({
+          tool: 'verify_patient_lookup',
+          args: { query: qTerm },
+          facilityId,
+          roleKey: actorRole,
+          actorName: session?.name,
+        });
+        replyTool(res.title, res.summary, 'operational');
+        return;
+      }
+    }
+
+    if (/(low stock|formulary stock|drug stock)/i.test(ql) && (actorRole === 'pharmacist' || actorRole === 'hospital_admin' || actorRole === 'doctor')) {
+      const res = executeCelestiaSuperTool({
+        tool: 'check_formulary_stock',
+        facilityId,
+        roleKey: actorRole,
+        actorName: session?.name,
+      });
+      replyTool(res.title, res.summary, 'clinical');
+      return;
+    }
+
+    if (/(roster coverage|who is online|staff logged in now|presence audit)/i.test(ql)) {
+      const res = executeCelestiaSuperTool({
+        tool: 'analyze_roster_coverage',
+        facilityId,
+        roleKey: actorRole,
+        actorName: session?.name,
+      });
+      if (res.ok) {
+        replyTool(res.title, res.summary, 'operational');
+        return;
+      }
     }
 
 
@@ -1283,7 +1379,10 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose,
     let offlineMode = false;
 
     const fid = session?.hospitalId || 'IGH-EKT';
-    const rag = buildM87RagContext(query, fid);
+    const rag = [
+      buildLiveHospitalSnapshot(fid, session?.roleKey || session?.role),
+      buildM87RagContext(query, fid),
+    ].join('\n\n');
     const localHits = retrieveRelevantExamples(query, fid, 1);
     const gemini = await geminiGenerate(query, buildCelestiaSystemPrompt(session), rag, fid);
     setGeminiOnline(Boolean(gemini.ok && gemini.usedGemini));
@@ -1768,6 +1867,19 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose,
           void handleSend(e);
         }}
       >
+        {(voice.listening || voice.transcribing || voice.interimText || voice.error) && (
+          <div style={{ maxWidth: 820, margin: '0 auto 6px', padding: '6px 12px', borderRadius: 10, background: voice.error ? 'rgba(239,68,68,0.16)' : 'rgba(139,92,246,0.18)', border: voice.error ? '1px solid rgba(248,113,113,0.4)' : '1px solid rgba(167,139,250,0.4)', color: voice.error ? '#FCA5A5' : '#EDE9FE', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span>
+              {voice.error
+                ? voice.error
+                : voice.transcribing
+                  ? 'Refining medical speech with Celestia Voice AI…'
+                  : voice.interimText
+                    ? `Hearing: "${voice.interimText}"`
+                    : 'Listening… speak naturally (Nigerian medical terms, names, drugs supported). Click mic again to finish.'}
+            </span>
+          </div>
+        )}
         <div className="celestia-composer-container">
           <div className="m87-composer-inner">
             <button
@@ -1783,7 +1895,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose,
               ref={inputRef}
               className="m87-input"
               rows={1}
-              placeholder="Message Celestia…"
+              placeholder="Message Celestia or tap mic to speak…"
               value={inputPrompt}
               onChange={(e) => handleInputChange(e.target.value)}
               onKeyDown={(e) => {
@@ -1794,6 +1906,36 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose,
               }}
               disabled={isThinking}
             />
+            {voice.supported && (
+              <button
+                type="button"
+                onClick={voice.toggleListening}
+                disabled={isThinking || voice.transcribing}
+                aria-label={voice.listening ? 'Stop voice recording' : 'Start voice dictation'}
+                title={voice.listening ? 'Stop & transcribe speech' : 'Dictate with High-Accuracy Clinical Voice AI'}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  border: voice.listening ? '1px solid #F87171' : '1px solid rgba(167,139,250,0.35)',
+                  background: voice.listening ? 'rgba(239,68,68,0.25)' : 'rgba(139,92,246,0.16)',
+                  color: voice.listening ? '#FCA5A5' : '#DDD6FE',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                {voice.transcribing ? (
+                  <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
+                ) : voice.listening ? (
+                  <MicOff size={15} />
+                ) : (
+                  <Mic size={15} />
+                )}
+              </button>
+            )}
             <button
               type="submit"
               className={`m87-send mc-btn-live${isThinking ? ' is-busy' : ''}`}

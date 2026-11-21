@@ -77,9 +77,9 @@ export function hasGeminiKey(): boolean {
   if (typeof window === 'undefined') {
     return Boolean(
       (process.env.GEMINI_API_KEY || '').trim() ||
-        (process.env.GOOGLE_GEMINI_API_KEY || '').trim() ||
-        (process.env.GOOGLE_GENERATIVE_AI_API_KEY || '').trim() ||
-        (process.env.GOOGLE_API_KEY || '').trim()
+      (process.env.GOOGLE_GEMINI_API_KEY || '').trim() ||
+      (process.env.GOOGLE_GENERATIVE_AI_API_KEY || '').trim() ||
+      (process.env.GOOGLE_API_KEY || '').trim()
     );
   }
   return (window as unknown as { __celestiaGeminiConfigured?: boolean }).__celestiaGeminiConfigured === true;

@@ -1,4 +1,4 @@
-import { markPatientWithProvider, markPatientConsultComplete } from './receptionOpsStore';
+import { markPatientWithProvider, markPatientConsultComplete, autoAdvancePatientVisitStage } from './receptionOpsStore';
 import { billPharmacyRx, billLabOrder, billImagingOrder, isOrderBillCleared } from './patientBillingStore';
 import { sendPaymentRequestToAccounts } from './frontDeskAccountsBridge';
 import { enqueue } from './universalQueue';
@@ -7,9 +7,11 @@ import { checkPrescriptionSafety } from './pharmacySafety';
 import { getPatient } from './patientRegistryStore';
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 import { evaluateOrderBpa, evaluateResultForCritical } from './clinicalIntelligenceEngine';
+import { findFormularyPrice } from './formularyInventory';
 /**
  * Closed clinical loop bus: Order → Lab/Rx → Result → Doctor screen
  * Local-first + broadcast; optional Firestore facility mirror.
+ * Local-first + broadcast; optional facility mirror.
  */
 export type ClinicalOrderType = 'lab' | 'rx' | 'imaging' | 'procedure';
 export type ClinicalOrderStatus =
@@ -39,7 +41,11 @@ export interface ClinicalOrder {
   resultAt?: string;
   resultedBy?: string;
   /** Nigerian pay-before-service: false until Accounts PAID */
+  /** Pay-before-service: false until paid */
   paymentCleared?: boolean;
+  /** Set when patient asks pharmacy to hold a drug until they can pay later */
+  deferredForPayment?: boolean;
+  deferredReason?: string;
   releasedAt?: string;
   dispensedAt?: string;
   dispensedBy?: string;
@@ -93,9 +99,9 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
   write([order, ...read()]);
   // OPD auto-flow: order means doctor has seen patient — complete queue ticket
   try {
-    markPatientWithProvider(order.facilityId, order.patientId, order.orderedBy);
+    autoAdvancePatientVisitStage(order.facilityId, order.patientId, 'with_provider', { doctor: order.orderedBy });
     if (order.type === 'rx' || order.type === 'lab' || order.type === 'imaging' || order.type === 'procedure') {
-      markPatientConsultComplete(order.facilityId, order.patientId);
+      autoAdvancePatientVisitStage(order.facilityId, order.patientId, 'completed', { doctor: order.orderedBy });
     }
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
@@ -115,6 +121,7 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
   }
   if (order.type === 'rx') {
     try {
+      const formularyPrice = findFormularyPrice(order.facilityId, order.name);
       billPharmacyRx({
         facilityId: order.facilityId,
         patientId: order.patientId,
@@ -122,6 +129,7 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
         patientName: order.patientName,
         orderId: order.id,
         drugName: order.name,
+        amountNgn: formularyPrice,
       });
     } catch { /* ignore */ }
   }
@@ -150,10 +158,15 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
     } catch { /* ignore */ }
   }
   // Financial handoff → Accounts (same pipeline as Front Desk folder fee)
+  // Financial handoff → Accounts (for Lab/Imaging; Pharmacy also accepts payment at Pharmacy Payment Desk)
   if (order.type === 'lab' || order.type === 'rx' || order.type === 'imaging') {
     try {
       const fee =
-        order.type === 'lab' ? 3500 : order.type === 'rx' ? 2500 : 8000;
+        order.type === 'lab'
+          ? 3500
+          : order.type === 'rx'
+            ? findFormularyPrice(order.facilityId, order.name)
+            : 8000;
       sendPaymentRequestToAccounts({
         facilityId: order.facilityId,
         facilityName: order.facilityId,
@@ -165,7 +178,10 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
         source: 'billing_office',
         sentBy: order.orderedBy || 'Clinical',
         sentByBadge: order.orderedByBadge,
-        note: `Order ${order.id} — pay at Accounts before result/dispense release`,
+        note:
+          order.type === 'rx'
+            ? `Order ${order.id} — payable at Pharmacy Payment Desk or Accounts`
+            : `Order ${order.id} — pay at Accounts before result release`,
       });
       pushNotification({
         facilityId: order.facilityId,
@@ -197,6 +213,8 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
         title: `STAT ${order.type.toUpperCase()}`,
         body: `${order.patientName}: ${order.name}`,
         module: order.type === 'lab' ? 'laboratory' : order.type === 'rx' ? 'pharmacy' : 'radiology',
+        roleHint: order.type === 'rx' ? 'pharmacist' : order.type === 'lab' ? 'lab' : 'radiologist',
+        category: order.type === 'rx' ? 'pharmacy' : 'clinical',
         patientId: order.patientId,
       });
     }
@@ -215,6 +233,8 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
           title: 'Pharmacy safety',
           body: f.message,
           module: 'pharmacy',
+          roleHint: 'pharmacist',
+          category: 'pharmacy',
           patientId: order.patientId,
         });
       }
@@ -236,6 +256,7 @@ export function placeOrder(input: Omit<ClinicalOrder, 'id' | 'status' | 'created
           title: b.title,
           body: b.detail,
           module: 'doctor-portal',
+          roleHint: 'doctor',
           patientId: order.patientId,
         });
       }
@@ -258,10 +279,10 @@ export function updateOrderStatus(
     updatedAt: new Date().toISOString(),
     ...(status === 'resulted'
       ? {
-          resultAt: new Date().toISOString(),
-          resultSummary: extra?.resultSummary || list[idx].resultSummary,
-          resultedBy: extra?.resultedBy,
-        }
+        resultAt: new Date().toISOString(),
+        resultSummary: extra?.resultSummary || list[idx].resultSummary,
+        resultedBy: extra?.resultedBy,
+      }
       : {}),
     ...extra,
   };
@@ -293,6 +314,7 @@ export function postLabResult(
         title: 'Lab result ready',
         body: `${order.patientName} · ${order.name} · ${summary.slice(0, 80)}`,
         module: 'doctor-portal',
+        roleHint: 'doctor',
       });
     } catch { /* ignore */ }
   }
@@ -304,8 +326,15 @@ export function canReleaseOrder(orderId: string): { ok: boolean; reason?: string
   const order = read().find((o) => o.id === orderId);
   if (!order) return { ok: false, reason: 'Order not found' };
   if (order.paymentCleared) return { ok: true };
+  if (order.paymentCleared || order.deferredForPayment) return { ok: true };
   try {
     if (isOrderBillCleared(orderId)) return { ok: true };
+    const check = isOrderBillCleared(orderId);
+    if (check.cleared) return { ok: true };
+    return {
+      ok: false,
+      reason: `Awaiting Accounts payment · ₦${Number(check.amountNgn || 0).toLocaleString()} (${check.status || 'unpaid'})`,
+    };
   } catch {
     /* ignore */
   }
@@ -359,6 +388,7 @@ export function releaseOrdersForPatient(
         title: 'Orders released',
         body: `${released.length} order(s) cleared for service (lab / Rx / imaging)`,
         module: 'laboratory',
+        roleHint: 'lab',
       });
     } catch {
       /* ignore */
@@ -377,7 +407,7 @@ export function dispenseOrder(
   if (idx < 0) return undefined;
   const o = list[idx];
   if (o.type !== 'rx') return undefined;
-  if (!o.paymentCleared && !isOrderBillCleared(orderId)) {
+  if (!o.paymentCleared && !o.deferredForPayment && !isOrderBillCleared(orderId).cleared) {
     return undefined;
   }
   const next: ClinicalOrder = {
@@ -396,80 +426,103 @@ export function dispenseOrder(
   return next;
 }
 
-/** Pre-order BPA (Epic-style) — call before placeOrder; non-blocking unless hard_stop handled by UI */
-export function previewOrderBpa(input: {
-  facilityId: string;
-  patientId: string;
-  type: ClinicalOrderType;
-  code: string;
-  name: string;
-  priority?: string;
-}) {
-  return evaluateOrderBpa(input);
-}
+  /** Pre-order BPA (Epic-style) — call before placeOrder; non-blocking unless hard_stop handled by UI */
+  export function previewOrderBpa(input: {
+    facilityId: string;
+    patientId: string;
+    type: ClinicalOrderType;
+    code: string;
+    name: string;
+    priority?: string;
+  }) {
+    return evaluateOrderBpa(input);
+  }
 
-export function subscribeOrders(cb: () => void): () => void {
-  if (typeof window === 'undefined') return () => {};
-  const fn = () => cb();
-  window.addEventListener('medcore-clinical-orders', fn);
-  window.addEventListener('storage', fn);
-  window.addEventListener('medcore-admin-sync', fn);
-  let bc: BroadcastChannel | null = null;
-  try {
-    bc = new BroadcastChannel('medcore_clinical');
-    bc.onmessage = () => cb();
-  } catch { /* ignore */ }
-  return () => {
-    window.removeEventListener('medcore-clinical-orders', fn);
-    window.removeEventListener('storage', fn);
-    window.removeEventListener('medcore-admin-sync', fn);
-    try { bc?.close(); } catch { /* ignore */ }
-  };
-}
-
-
-/** Wire pay-before-service: Accounts PAID → release patient orders */
-export function startClinicalPaymentListeners(): () => void {
-  if (typeof window === 'undefined') return () => {};
-  const onAccountsPaid = (ev: Event) => {
-    const d = (ev as CustomEvent).detail as {
-      facilityId?: string;
-      patientId?: string;
-      hospitalNumber?: string;
-    } | null;
-    if (!d?.facilityId) return;
+  export function subscribeOrders(cb: () => void): () => void {
+    if (typeof window === 'undefined') return () => { };
+    const fn = () => cb();
+    window.addEventListener('medcore-clinical-orders', fn);
+    window.addEventListener('storage', fn);
+    window.addEventListener('medcore-admin-sync', fn);
+    let bc: BroadcastChannel | null = null;
     try {
-      if (d.patientId) releaseOrdersForPatient(d.facilityId, d.patientId);
-      if (d.hospitalNumber) releaseOrdersForPatient(d.facilityId, d.hospitalNumber);
-    } catch {
-      /* ignore */
-    }
-  };
-  const onOrderPaid = (ev: Event) => {
-    const d = (ev as CustomEvent).detail as { orderId?: string } | null;
-    if (!d?.orderId) return;
-    try {
-      const list = read();
-      const idx = list.findIndex((o) => o.id === d.orderId);
-      if (idx < 0) return;
-      const o = list[idx];
-      if (o.paymentCleared) return;
-      list[idx] = {
-        ...o,
-        paymentCleared: true,
-        releasedAt: new Date().toISOString(),
-        status: o.status === 'ordered' ? 'accepted' : o.status,
-        updatedAt: new Date().toISOString(),
-      };
-      write(list);
-    } catch {
-      /* ignore */
-    }
-  };
-  window.addEventListener('medcore-accounts-paid', onAccountsPaid as EventListener);
-  window.addEventListener('medcore-order-paid', onOrderPaid as EventListener);
-  return () => {
-    window.removeEventListener('medcore-accounts-paid', onAccountsPaid as EventListener);
-    window.removeEventListener('medcore-order-paid', onOrderPaid as EventListener);
-  };
-}
+      bc = new BroadcastChannel('medcore_clinical');
+      bc.onmessage = () => cb();
+    } catch { /* ignore */ }
+    return () => {
+      window.removeEventListener('medcore-clinical-orders', fn);
+      window.removeEventListener('storage', fn);
+      window.removeEventListener('medcore-admin-sync', fn);
+      try { bc?.close(); } catch { /* ignore */ }
+    };
+  }
+
+
+  /** Wire pay-before-service: Accounts PAID → release patient orders */
+  export function startClinicalPaymentListeners(): () => void {
+    if (typeof window === 'undefined') return () => { };
+    const onAccountsPaid = (ev: Event) => {
+      const d = (ev as CustomEvent).detail as {
+        facilityId?: string;
+        patientId?: string;
+        hospitalNumber?: string;
+      } | null;
+      if (!d?.facilityId) return;
+      try {
+        if (d.patientId) releaseOrdersForPatient(d.facilityId, d.patientId);
+        if (d.hospitalNumber) releaseOrdersForPatient(d.facilityId, d.hospitalNumber);
+      } catch {
+        /* ignore */
+      }
+    };
+    const onOrderPaid = (ev: Event) => {
+      const d = (ev as CustomEvent).detail as { orderId?: string } | null;
+      if (!d?.orderId) return;
+      try {
+        const list = read();
+        const idx = list.findIndex((o) => o.id === d.orderId);
+        if (idx < 0) return;
+        const o = list[idx];
+        if (o.paymentCleared) return;
+        list[idx] = {
+          ...o,
+          paymentCleared: true,
+          releasedAt: new Date().toISOString(),
+          status: o.status === 'ordered' ? 'accepted' : o.status,
+          updatedAt: new Date().toISOString(),
+        };
+        write(list);
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener('medcore-accounts-paid', onAccountsPaid as EventListener);
+    window.addEventListener('medcore-order-paid', onOrderPaid as EventListener);
+    return () => {
+      window.removeEventListener('medcore-accounts-paid', onAccountsPaid as EventListener);
+      window.removeEventListener('medcore-order-paid', onOrderPaid as EventListener);
+    };
+  }
+
+  /** Toggle patient-requested payment deferral ("hold for later") on a clinical Rx order */
+  export function setOrderDeferredForPayment(
+    orderId: string,
+    facilityId: string,
+    deferred: boolean,
+    reason?: string
+  ): ClinicalOrder | undefined {
+    const list = read();
+    const idx = list.findIndex((o) => o.id === orderId && o.facilityId === facilityId);
+    if (idx < 0) return undefined;
+    const now = new Date().toISOString();
+    const cur = list[idx];
+    const next: ClinicalOrder = {
+      ...cur,
+      deferredForPayment: deferred,
+      deferredReason: deferred ? reason || 'Patient asked to hold drug until funds are available' : undefined,
+      updatedAt: now,
+    };
+    list[idx] = next;
+    write(list);
+    return next;
+  }

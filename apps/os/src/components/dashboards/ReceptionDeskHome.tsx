@@ -71,14 +71,21 @@ function waitMins(iso: string): number {
 function statusStyle(s: string): React.CSSProperties {
   if (s === 'waiting') return { background: '#EFF6FF', color: '#1D4ED8' };
   if (s === 'called') return { background: '#ECFDF5', color: '#047857' };
-  if (s === 'with_provider') return { background: '#F5F3FF', color: '#6D28D9' };
+  if (s === 'with_provider' || s === 'in_consultation') return { background: '#F5F3FF', color: '#6D28D9' };
+  if (s === 'admitted') return { background: '#F3E8FF', color: '#7E22CE' };
   if (s === 'completed') return { background: '#F0FDF4', color: '#15803D' };
   return { background: '#F1F5F9', color: '#475569' };
 }
 
-function statusLabel(s: string) {
-  if (s === 'with_provider') return 'With Provider';
-  return s.charAt(0).toUpperCase() + s.slice(1).replace('_', ' ');
+function statusLabel(s: string, v?: ReceptionVisit) {
+  if (s === 'admitted') {
+    const loc = [v?.admittedWard, v?.admittedBed].filter(Boolean).join(' · ');
+    return loc ? `Admitted (${loc})` : 'Admitted to Ward';
+  }
+  if (s === 'with_provider' || s === 'in_consultation') return 'With Doctor';
+  if (s === 'waiting' && v?.triagedAt) return 'Waiting Doctor';
+  if (s === 'waiting') return 'Waiting Triage';
+  return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ');
 }
 
 export const ReceptionDeskHome: React.FC<Props> = ({
@@ -340,9 +347,8 @@ export const ReceptionDeskHome: React.FC<Props> = ({
     { label: 'Existing Patient', desc: 'Verify record & create visit', icon: UserCheck, go: 'existing' as DeskNav },
     { label: 'Find Patient', desc: 'Search by name/ID', icon: Search, go: 'search' as DeskNav },
     { label: 'Scan ID / QR', desc: 'Card scan · badge lookup', icon: QrCode, go: 'scan' as DeskNav },
-    { label: 'Live Queue', desc: 'Call · Skip · Manage OPD', icon: Ticket, go: 'queue' as DeskNav },
+    { label: 'Live Queue', desc: 'Call · Automated OPD tracker', icon: Ticket, go: 'queue' as DeskNav },
     { label: 'Appointments', desc: 'Book · Confirm · Arrive', icon: Calendar, go: 'appointments' as DeskNav },
-    { label: 'In Basket', desc: 'Tasks & desk attention', icon: Inbox, go: 'inbasket' as DeskNav },
   ];
 
   return (
@@ -638,7 +644,7 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr style={{ textAlign: 'left', color: C.muted, fontSize: 11, fontWeight: 700 }}>
-                      {['#', 'Patient Name', 'ID', 'Department', 'Type', 'Wait Time', 'Status', 'Actions'].map(
+                      {['#', 'Patient Name', 'ID', 'Department', 'Type', 'Wait Time', 'Status', 'Auto Stage'].map(
                         (h) => (
                           <th key={h} style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>
                             {h}
@@ -697,11 +703,11 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                               background: 'currentColor',
                             }}
                           />
-                          {statusLabel(v.status)}
+                          {statusLabel(v.status, v)}
                         </span>
                       </td>
                       <td style={{ padding: '12px 10px' }}>
-                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                           {v.status === 'waiting' && (
                             <button
                               type="button"
@@ -721,42 +727,17 @@ export const ReceptionDeskHome: React.FC<Props> = ({
                               Call
                             </button>
                           )}
-                          {(v.status === 'waiting' || v.status === 'called') && (
-                            <button
-                              type="button"
-                              onClick={() => void liveUpdate(v.id, 'with_provider')}
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                padding: '4px 8px',
-                                borderRadius: 6,
-                                border: 'none',
-                                background: '#F5F3FF',
-                                color: '#6D28D9',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Send
-                            </button>
-                          )}
-                          {v.status !== 'completed' && (
-                            <button
-                              type="button"
-                              onClick={() => void liveUpdate(v.id, 'completed')}
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                padding: '4px 8px',
-                                borderRadius: 6,
-                                border: 'none',
-                                background: '#F1F5F9',
-                                color: '#475569',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Done
-                            </button>
-                          )}
+                          <span style={{ fontSize: 11, fontWeight: 600, color: v.status === 'admitted' ? '#7E22CE' : v.status === 'completed' ? '#15803D' : '#64748B' }}>
+                            {v.status === 'admitted'
+                              ? 'Admitted (Auto)'
+                              : v.status === 'completed'
+                                ? 'Done w/ Doctor (Auto)'
+                                : v.status === 'with_provider' || v.status === 'in_consultation'
+                                  ? 'In Consult · Auto'
+                                  : v.triagedAt
+                                    ? 'Triaged → Doctor'
+                                    : 'Triage → Doctor'}
+                          </span>
                         </div>
                       </td>
                     </tr>

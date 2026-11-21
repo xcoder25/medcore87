@@ -17,6 +17,8 @@ import {
   DoctorPortal,
   ReceptionWorkspace,
   PosPaymentDesk,
+  PharmacyPaymentDesk,
+  PrescriptionRecordsSuite,
   AkwaRemitRevenueSuite,
   resolveOnboardingMode,
 } from '../os/moduleRegistry';
@@ -32,6 +34,11 @@ import { getAdminSettings } from '../lib/adminSettingsStore';
 import dynamic from 'next/dynamic';
 import { ModuleErrorBoundary } from '../components/common/ModuleErrorBoundary';
 import { authLog } from '../lib/authLog';
+import {
+  getStaffBiometricStatus,
+  verifyStaffBiometric,
+  isBiometricSupported,
+} from '../lib/biometricAuth';
 
 const AdminShell = dynamic(
   () => import('../components/dashboards/AdminShell').then((m) => m.AdminShell),
@@ -77,9 +84,12 @@ import {
 import NotificationBell from '../components/realtime/NotificationBell';
 import AlertBanner from '../components/realtime/AlertBanner';
 import { useRealtimeEvents } from '../hooks/useRealtimeEvents';
+import { WardMedRequestsSuite } from '../components/clinical-core/WardMedRequestsSuite';
 
 // Cloud + in-memory only — no heavy localStorage / SW cache
 enableEdgeCloudOnlyRuntime();
+
+const TERMINAL_LOCK_KEY = 'medcore_os_terminal_locked_v1';
 
 import { ModulePageLoader } from '../components/layout/ModulePageLoader';
 
@@ -105,7 +115,7 @@ import {
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck, Landmark,
   Search, X, LayoutDashboard, MapPin, Ticket, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
-  Command, CornerDownLeft, IdCard, Key,
+  Command, CornerDownLeft, IdCard, Key, Fingerprint,
 } from 'lucide-react';
 
 const TopHudClock = React.memo(function TopHudClock() {
@@ -143,6 +153,10 @@ export default function OSPage() {
   const [userSession, setUserSession] = useState<UserSession | null>(null);
 
   const forceLogout = useCallback(() => {
+    try {
+      localStorage.removeItem(TERMINAL_LOCK_KEY);
+    } catch { /* ignore */ }
+    setIsLocked(false);
     setUserSession(null);
     setAppState('auth');
   }, []);
@@ -212,6 +226,32 @@ export default function OSPage() {
   const [unlockError, setUnlockError] = useState('');
   const [unlockShake, setUnlockShake] = useState(false);
   const [unlockLoading, setUnlockLoading] = useState(false);
+  const [bioUnlockAvailable, setBioUnlockAvailable] = useState(false);
+  const [bioUnlockBusy, setBioUnlockBusy] = useState(false);
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === TERMINAL_LOCK_KEY) {
+        setIsLocked(Boolean(e.newValue));
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  useEffect(() => {
+    if (!isLocked || !userSession?.badgeId || !isBiometricSupported()) {
+      setBioUnlockAvailable(false);
+      return;
+    }
+    let alive = true;
+    void getStaffBiometricStatus(userSession.badgeId, userSession.hospitalId || 'IGH-EKT').then((st) => {
+      if (alive) setBioUnlockAvailable(st.enrolled);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [isLocked, userSession?.badgeId, userSession?.hospitalId]);
   const [activeEmergencyCode, setActiveEmergencyCode] = useState<string | null>(null);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
   const [aiMinimized, setAiMinimized] = useState(false);
@@ -349,6 +389,12 @@ export default function OSPage() {
         const fixed = stripSecretsDeep({ ...restored, roleKey });
         setUserSession(fixed);
         setActiveModule('dashboard');
+        try {
+          if (localStorage.getItem(TERMINAL_LOCK_KEY)) {
+            setIsLocked(true);
+            setAppState('app');
+          }
+        } catch { /* ignore */ }
         void hydratePatientRegistry(fixed.hospitalId);
         void hydrateBedBoard();
         if (typeof window !== 'undefined' && sessionStorage.getItem('medcore_splash_done') === '1') {
@@ -557,24 +603,30 @@ export default function OSPage() {
     }
     try {
       localStorage.removeItem('medcore_os_session');
+      localStorage.removeItem(TERMINAL_LOCK_KEY);
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('medcore_session_pin');
       }
     } catch {
       // ignore
     }
+    setIsLocked(false);
     setUserSession(null);
     setAppState('auth');
   };
 
-  
-
-
-
-
-
-
 const handleLockScreen = () => {
+    try {
+      localStorage.setItem(
+        TERMINAL_LOCK_KEY,
+        JSON.stringify({
+          locked: true,
+          badgeId: userSession?.badgeId || '',
+          facilityId: userSession?.hospitalId || '',
+          lockedAt: new Date().toISOString(),
+        })
+      );
+    } catch { /* ignore */ }
     setIsLocked(true);
     setUnlockPin('');
     setUnlockError('');
@@ -628,6 +680,9 @@ const handleLockScreen = () => {
 
       // 3. Strict check: ONLY unlock if matched is strictly true. NEVER unlock on empty or wrong PIN!
       if (matched) {
+        try {
+          localStorage.removeItem(TERMINAL_LOCK_KEY);
+        } catch { /* ignore */ }
         setIsLocked(false);
         setUnlockPin('');
         setUnlockError('');
@@ -1483,6 +1538,55 @@ const handleLockScreen = () => {
                 <Unlock size={16} />
                 <span>{unlockLoading ? 'Verifying PIN...' : 'Unlock Terminal'}</span>
               </button>
+              {bioUnlockAvailable && (
+                <button
+                  type="button"
+                  disabled={bioUnlockBusy}
+                  onClick={async () => {
+                    if (!userSession?.badgeId) return;
+                    setBioUnlockBusy(true);
+                    setUnlockError('');
+                    try {
+                      const res = await verifyStaffBiometric({
+                        badgeId: userSession.badgeId,
+                        facilityId: userSession.hospitalId || 'IGH-EKT',
+                        staffName: userSession.name,
+                      });
+                      if (res.verified) {
+                        try {
+                          localStorage.removeItem(TERMINAL_LOCK_KEY);
+                        } catch { /* ignore */ }
+                        setIsLocked(false);
+                        setUnlockPin('');
+                        setUnlockError('');
+                      } else {
+                        setUnlockError(res.error || 'Biometric unlock cancelled or failed. Enter PIN above.');
+                      }
+                    } finally {
+                      setBioUnlockBusy(false);
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    marginTop: 10,
+                    padding: '10px 14px',
+                    borderRadius: 10,
+                    border: '1px solid #10B981',
+                    background: '#ECFDF5',
+                    color: '#065F46',
+                    fontWeight: 800,
+                    fontSize: '0.84rem',
+                    cursor: bioUnlockBusy ? 'wait' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <Fingerprint size={16} />
+                  <span>{bioUnlockBusy ? 'Waiting for Biometric…' : 'Unlock with Biometrics (Fingerprint / Face ID)'}</span>
+                </button>
+              )}
             </form>
             <div style={{ marginTop: 18, fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
               <span className="os-status-dot pulse-green" />
@@ -1518,6 +1622,7 @@ const handleLockScreen = () => {
             <M87AICopilotSuite
               session={userSession ?? undefined}
               inDrawer
+              onNavigate={(mod) => handleModuleChange(mod as ModuleKey)}
               onMinimize={() => setAiMinimized(true)}
               onClose={() => {
                 setAiDrawerOpen(false);
@@ -1949,8 +2054,8 @@ const handleLockScreen = () => {
             <button
               type="button"
               className="os-top-hud-icon-btn"
-              title="Lock"
-              onClick={() => setIsLocked(true)}
+              title="Lock Terminal (Persists across reload)"
+              onClick={handleLockScreen}
             >
               <Lock size={15} />
             </button>
@@ -2083,6 +2188,10 @@ const handleLockScreen = () => {
                 />
               ) : activeModule === 'akwaremit' && userSession ? (
                 <AkwaRemitRevenueSuite session={userSession} />
+              ) : (activeModule === 'pharmacy-pos' || (activeModule === 'cashier' && activeRoleKey === 'pharmacist')) && userSession ? (
+                <PharmacyPaymentDesk session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} />
+              ) : activeModule === 'emr' && activeRoleKey === 'pharmacist' && userSession ? (
+                <PrescriptionRecordsSuite session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} />
               ) : activeModule === 'cashier' && userSession ? (
                 <PosPaymentDesk session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} />
               ) : activeModule === 'dashboard' && userSession && isReceptionRole(userSession.roleKey, userSession.role, userSession.title, userSession.badgeId) ? (
@@ -2091,6 +2200,8 @@ const handleLockScreen = () => {
                 <RoleDashboard session={userSession} onNavigate={handleModuleChange} />
               ) : activeModule === 'doctor-portal' && userSession ? (
                 <DoctorPortal session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} initialModule="consultation" />
+              ) : activeModule === 'pharmacy' && userSession && (activeRoleKey === 'nurse' || activeRoleKey === 'midwife') ? (
+                <WardMedRequestsSuite session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} />
               ) : activeModule === 'pharmacy' && userSession && (activeRoleKey === 'doctor' || activeRoleKey === 'surgeon') ? (
                 <DoctorPortal session={userSession} onNavigate={(k) => handleModuleChange(k as ModuleKey)} initialModule="prescriptions" />
               ) : activeModule === 'laboratory' && userSession && (activeRoleKey === 'doctor' || activeRoleKey === 'surgeon') ? (

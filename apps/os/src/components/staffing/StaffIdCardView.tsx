@@ -7,6 +7,8 @@
  */
 import React, { useMemo, useState } from 'react';
 import type { StaffCardRecord, StaffCardTemplate } from '@medcore/types';
+import { ScannableQrCode } from '../common/ScannableQrCode';
+import { buildVerifyUrl } from '../../lib/qrPayload';
 
 const ACCESS_BAR: Record<
   StaffCardTemplate,
@@ -71,52 +73,6 @@ function AriseLogo({ size = 36 }: { size?: number }) {
   );
 }
 
-function QrMatrix({ payload, size = 120 }: { payload: string; size?: number }) {
-  const cells = useMemo(() => {
-    const n = 21;
-    const grid: boolean[][] = [];
-    let h = 0;
-    for (let i = 0; i < payload.length; i++) h = (h * 31 + payload.charCodeAt(i)) >>> 0;
-    for (let r = 0; r < n; r++) {
-      const row: boolean[] = [];
-      for (let c = 0; c < n; c++) {
-        const border = r < 1 || c < 1 || r > n - 2 || c > n - 2;
-        const finder =
-          (r < 6 && c < 6) || (r < 6 && c > n - 7) || (r > n - 7 && c < 6);
-        const timing = r === 6 || c === 6;
-        const bit = ((h >> ((r * c + r + c + r * 3) % 16)) & 1) === 1;
-        row.push(border || finder || timing || bit);
-      }
-      grid.push(row);
-    }
-    return grid;
-  }, [payload]);
-
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        background: '#fff',
-        padding: 8,
-        borderRadius: 12,
-        boxSizing: 'border-box',
-        border: '1.5px solid #E2E8F0',
-        boxShadow: '0 2px 8px rgba(15,23,42,0.06)',
-      }}
-      title={payload}
-    >
-      <svg width={size - 16} height={size - 16} viewBox={`0 0 ${cells.length} ${cells.length}`}>
-        {cells.map((row, r) =>
-          row.map((on, c) =>
-            on ? <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill="#0F172A" /> : null
-          )
-        )}
-      </svg>
-    </div>
-  );
-}
-
 function formatDisplayDate(iso: string | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -156,6 +112,21 @@ export const StaffIdCardView: React.FC<Props> = ({
     'ARISE MEDCORE HOSPITAL';
   const titleLine = card.title || card.role || 'Staff';
   const deptLine = card.department || 'Clinical Services';
+  const staffQrUrl = useMemo(() => {
+    if (card.qrPayload && card.qrPayload.includes('/verify?t=')) {
+      return card.qrPayload;
+    }
+    return buildVerifyUrl({
+      k: 'staff',
+      id: card.badgeId,
+      fn: card.facilityName || 'ARISE MedCore Hospital',
+      sub: card.title || card.role || 'Hospital Staff',
+      holder: card.fullName,
+      iss: card.issuedAt ? card.issuedAt.slice(0, 10) : undefined,
+      exp: card.expiresAt ? card.expiresAt.slice(0, 10) : undefined,
+      st: 'ACTIVE',
+    });
+  }, [card]);
   const displayName = card.fullName.startsWith('Dr') || card.fullName.startsWith('Prof')
     ? card.fullName
     : credentials
@@ -470,7 +441,25 @@ export const StaffIdCardView: React.FC<Props> = ({
                 padding: '8px 0 16px',
               }}
             >
-              <QrMatrix payload={card.qrPayload || card.badgeId} size={compact ? 108 : 132} />
+              <div
+                style={{
+                  background: '#fff',
+                  padding: 8,
+                  borderRadius: 12,
+                  border: '1.5px solid #E2E8F0',
+                  boxShadow: '0 2px 8px rgba(15,23,42,0.06)',
+                }}
+              >
+                <ScannableQrCode
+                  value={staffQrUrl}
+                  size={compact ? 92 : 116}
+                  level="M"
+                  fgColor="#0F172A"
+                  bgColor="#FFFFFF"
+                  quietZone={4}
+                  ariaLabel={`Staff verification QR for ${card.badgeId}`}
+                />
+              </div>
             </div>
 
             {/* Security notice */}

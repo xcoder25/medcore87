@@ -1,14 +1,20 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   X, User, Building2, ShieldCheck, Key, LogOut, Clock,
-  CreditCard, CheckCircle2, Copy, Check, Shield, Briefcase
+  CreditCard, CheckCircle2, Copy, Check, Shield, Briefcase, Fingerprint
 } from 'lucide-react';
 import type { UserSession } from './AuthScreen';
 import { StaffIdCardView } from '../staffing/StaffIdCardView';
 import { getStaffCard, listStaffCards } from '../../lib/staffCardStore';
 import type { StaffCardRecord } from '@medcore/types';
+import {
+  isBiometricSupported,
+  getStaffBiometricStatus,
+  enrollStaffBiometric,
+  revokeStaffBiometric,
+} from '../../lib/biometricAuth';
 
 interface UserProfileModalProps {
   session: UserSession;
@@ -66,6 +72,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'card'>('profile');
   const [copiedBadge, setCopiedBadge] = useState(false);
+  const [bioEnrolled, setBioEnrolled] = useState(false);
+  const [bioDevice, setBioDevice] = useState<string | null>(null);
+  const [bioBusy, setBioBusy] = useState(false);
+  const [bioMsg, setBioMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !session?.badgeId) return;
+    void getStaffBiometricStatus(session.badgeId, session.hospitalId || 'IGH-EKT').then((st) => {
+      setBioEnrolled(st.enrolled);
+      setBioDevice(st.deviceLabel || null);
+    });
+  }, [isOpen, session?.badgeId, session?.hospitalId]);
 
   // Compute staff card for ID Card tab
   const card = useMemo<StaffCardRecord | null>(() => {
@@ -551,6 +569,121 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     <Key size={13} />
                     <span>Security PIN</span>
                   </button>
+                )}
+              </div>
+
+              {/* Biometric 2FA Management Card */}
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, #EFF6FF 0%, #F5F3FF 100%)',
+                  border: '1px solid #C7D2FE',
+                  borderRadius: 12,
+                  padding: '12px 16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 10, background: bioEnrolled ? '#059669' : '#4F46E5', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Fingerprint size={18} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
+                        Biometric 2FA {bioEnrolled ? '· Active' : '· Not Enrolled'}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#475569' }}>
+                        {bioEnrolled
+                          ? `Enrolled passkey: ${bioDevice || 'Platform Biometric'}`
+                          : 'Use Fingerprint, Face ID, or Windows Hello for faster 2FA & terminal unlock.'}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {isBiometricSupported() && !bioEnrolled && (
+                      <button
+                        type="button"
+                        disabled={bioBusy}
+                        onClick={async () => {
+                          setBioBusy(true);
+                          setBioMsg(null);
+                          try {
+                            const res = await enrollStaffBiometric({
+                              badgeId: session.badgeId || session.id,
+                              facilityId: session.hospitalId || 'IGH-EKT',
+                              staffName: session.name,
+                            });
+                            if (res.ok) {
+                              setBioEnrolled(true);
+                              setBioDevice(res.deviceLabel || 'Platform Passkey');
+                              setBioMsg('Biometric 2FA enrolled successfully on this device.');
+                            } else {
+                              setBioMsg(res.error || 'Could not enroll biometrics.');
+                            }
+                          } finally {
+                            setBioBusy(false);
+                          }
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          background: '#4F46E5',
+                          color: '#FFFFFF',
+                          border: 'none',
+                          borderRadius: 8,
+                          padding: '8px 12px',
+                          fontSize: '0.76rem',
+                          fontWeight: 700,
+                          cursor: bioBusy ? 'wait' : 'pointer',
+                        }}
+                      >
+                        <Fingerprint size={14} />
+                        {bioBusy ? 'Registering…' : 'Enroll Fingerprint / Face ID'}
+                      </button>
+                    )}
+                    {bioEnrolled && (
+                      <button
+                        type="button"
+                        disabled={bioBusy}
+                        onClick={async () => {
+                          setBioBusy(true);
+                          setBioMsg(null);
+                          try {
+                            const ok = await revokeStaffBiometric(
+                              session.badgeId || session.id,
+                              session.hospitalId || 'IGH-EKT'
+                            );
+                            if (ok) {
+                              setBioEnrolled(false);
+                              setBioDevice(null);
+                              setBioMsg('Biometric passkey removed. Email OTP will be used at login.');
+                            }
+                          } finally {
+                            setBioBusy(false);
+                          }
+                        }}
+                        style={{
+                          background: '#FEF2F2',
+                          color: '#DC2626',
+                          border: '1px solid #FECACA',
+                          borderRadius: 8,
+                          padding: '7px 12px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {bioBusy ? 'Removing…' : 'Remove Biometric 2FA'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {bioMsg && (
+                  <div style={{ fontSize: '0.74rem', fontWeight: 700, color: bioMsg.includes('failed') || bioMsg.includes('not') ? '#B91C1C' : '#065F46' }}>
+                    {bioMsg}
+                  </div>
                 )}
               </div>
             </div>

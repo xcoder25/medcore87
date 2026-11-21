@@ -9,12 +9,18 @@ import {
   CheckCircle2,
   ShieldAlert,
   Clock,
+  Fingerprint,
   X,
 } from 'lucide-react';
 import type { UserSession } from './AuthScreen';
 import type { AdminFacilitySettings } from '../../lib/adminSettingsStore';
 import { listStaffCards } from '../../lib/staffCardStore';
 import { appendAudit } from '../../lib/auditLogStore';
+import {
+  getStaffBiometricStatus,
+  verifyStaffBiometric,
+  isBiometricSupported,
+} from '../../lib/biometricAuth';
 
 function normBadge(b: string): string {
   return String(b || '').trim().toUpperCase().replace(/\s+/g, '');
@@ -82,6 +88,54 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
   const [secondsLeft, setSecondsLeft] = useState(expiryMinutes * 60);
   const [resendCooldown, setResendCooldown] = useState(30);
   const [verifiedSuccess, setVerifiedSuccess] = useState(false);
+  const [bioEnrolled, setBioEnrolled] = useState(false);
+  const [bioDevice, setBioDevice] = useState<string | null>(null);
+  const [bioBusy, setBioBusy] = useState(false);
+
+  useEffect(() => {
+    if (!badge || !isBiometricSupported()) return;
+    void getStaffBiometricStatus(badge, facilityId).then((st) => {
+      setBioEnrolled(st.enrolled);
+      setBioDevice(st.deviceLabel || null);
+    });
+  }, [badge, facilityId]);
+
+  const handleBiometricVerify = async () => {
+    setErrorMsg(null);
+    setBioBusy(true);
+    try {
+      const res = await verifyStaffBiometric({
+        badgeId: badge,
+        facilityId,
+        staffName: session.name,
+      });
+      if (!res.verified) {
+        setErrorMsg(res.error || 'Biometric verification failed. Use Email OTP instead.');
+        return;
+      }
+      appendAudit({
+        facilityId,
+        actor: session.name,
+        actorBadge: badge,
+        category: 'access',
+        severity: 'normal',
+        action: 'STAFF_2FA_BIOMETRIC_VERIFIED',
+        entity: 'staff_auth',
+        entityId: badge,
+        detail: `Staff WebAuthn biometric 2FA verified (${bioDevice || 'Platform Passkey'})`,
+      });
+      setVerifiedSuccess(true);
+      window.setTimeout(() => {
+        onVerified({
+          ...session,
+          token: res.mfaToken || session.token,
+          authMethod: `${session.authMethod} + Biometric 2FA`,
+        });
+      }, 350);
+    } finally {
+      setBioBusy(false);
+    }
+  };
 
   const initialSentRef = useRef(false);
 
@@ -464,7 +518,55 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                 2FA Verified — Unlocking MedCore OS
               </div>
             </div>
-          ) : tab === 'email_otp' ? (
+          ) : (
+            <>
+              {bioEnrolled && isBiometricSupported() && (
+                <div
+                  style={{
+                    marginBottom: 14,
+                    padding: '12px 14px',
+                    borderRadius: 12,
+                    background: 'linear-gradient(135deg, #ECFDF5 0%, #EFF6FF 100%)',
+                    border: '1.5px solid #6EE7B7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: '#065F46' }}>
+                      Fast Biometric 2FA Ready
+                    </div>
+                    <div style={{ fontSize: 11.5, color: '#047857' }}>
+                      {bioDevice || 'Fingerprint / Face ID / Windows Hello Passkey'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={bioBusy}
+                    onClick={() => void handleBiometricVerify()}
+                    style={{
+                      padding: '9px 14px',
+                      borderRadius: 10,
+                      border: 'none',
+                      background: '#059669',
+                      color: '#FFFFFF',
+                      fontWeight: 800,
+                      fontSize: 12.5,
+                      cursor: bioBusy ? 'wait' : 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <Fingerprint size={16} />
+                    {bioBusy ? 'Verifying…' : 'Verify with Fingerprint / Face ID'}
+                  </button>
+                </div>
+              )}
+          {tab === 'email_otp' ? (
             <form onSubmit={handleVerifyEmailOtp} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div
                 style={{
@@ -689,6 +791,8 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                 Verify Offline Code
               </button>
             </form>
+          )}
+            </>
           )}
         </div>
       </div>

@@ -47,8 +47,9 @@ export type PaymentReceiptRecord = {
   issuedAt: string;
   voidedAt?: string;
   voidReason?: string;
-  /** DIGITAL vs HOSPITAL DESK */
-  category: 'digital' | 'hospital_desk';
+  /** DIGITAL vs HOSPITAL DESK vs PHARMACY DESK */
+  category: 'digital' | 'hospital_desk' | 'pharmacy_desk';
+  source?: 'pharmacy' | 'cashier' | 'billing' | 'reception' | 'general';
   /** AkwaRemit Central State Revenue Tracking */
   remittanceStatus?: 'pending' | 'remitted' | 'direct_akwaremit';
   akwaRemitRrr?: string;
@@ -136,6 +137,7 @@ export type IssueReceiptInput = {
   amountNgn: number;
   method: string;
   channel?: string;
+  source?: 'pharmacy' | 'cashier' | 'billing' | 'reception' | 'general';
   purpose: string;
   reference: string;
   paystackRef?: string;
@@ -203,7 +205,8 @@ export function issuePaymentReceipt(
     akwaRemitRrr: input.akwaRemitRrr || (isDirectAkwaRemit ? input.reference : undefined),
     status: 'issued',
     issuedAt: new Date().toISOString(),
-    category: inferCategory(input.method, input.channel),
+    source: input.source || 'general',
+    category: input.source === 'pharmacy' ? 'pharmacy_desk' : inferCategory(input.method, input.channel),
     header: settings?.receiptHeader || `${resolvedFacilityName} — Official Receipt`,
     footer: adminSettings?.receiptFooterText || settings?.receiptFooter,
     hfrCode: isPublicOwnership(adminSettings?.ownership)

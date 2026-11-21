@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Epic Cadence / Cerner front-desk workqueues:
+ * Epic Cadence / Cernervs     front-desk workqueues:
  * Provider schedule grid · No-show/recall · Referral intake · Estimates · Print pack
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
