@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   X, User, Building2, ShieldCheck, Key, LogOut, Clock,
-  CreditCard, CheckCircle2, Copy, Check, Shield, Briefcase, Fingerprint
+  CreditCard, CheckCircle2, Copy, Check, Shield, Briefcase, Fingerprint, Camera
 } from 'lucide-react';
 import type { UserSession } from './AuthScreen';
 import { StaffIdCardView } from '../staffing/StaffIdCardView';
@@ -11,10 +11,12 @@ import { getStaffCard, listStaffCards } from '../../lib/staffCardStore';
 import type { StaffCardRecord } from '@medcore/types';
 import {
   isBiometricSupported,
+  isCameraBiometricSupported,
   getStaffBiometricStatus,
   enrollStaffBiometric,
   revokeStaffBiometric,
 } from '../../lib/biometricAuth';
+import { FaceBiometricCaptureModal } from './FaceBiometricCaptureModal';
 
 interface UserProfileModalProps {
   session: UserSession;
@@ -73,14 +75,19 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [activeTab, setActiveTab] = useState<'profile' | 'card'>('profile');
   const [copiedBadge, setCopiedBadge] = useState(false);
   const [bioEnrolled, setBioEnrolled] = useState(false);
+  const [faceEnrolled, setFaceEnrolled] = useState(false);
+  const [faceServiceAvailable, setFaceServiceAvailable] = useState(false);
   const [bioDevice, setBioDevice] = useState<string | null>(null);
   const [bioBusy, setBioBusy] = useState(false);
   const [bioMsg, setBioMsg] = useState<string | null>(null);
+  const [faceModalOpen, setFaceModalOpen] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !session?.badgeId) return;
     void getStaffBiometricStatus(session.badgeId, session.hospitalId || 'IGH-EKT').then((st) => {
-      setBioEnrolled(st.enrolled);
+      setBioEnrolled(Boolean(st.passkeyEnrolled ?? st.enrolled));
+      setFaceEnrolled(Boolean(st.faceEnrolled));
+      setFaceServiceAvailable(Boolean(st.faceServiceAvailable));
       setBioDevice(st.deviceLabel || null);
     });
   }, [isOpen, session?.badgeId, session?.hospitalId]);
@@ -572,18 +579,105 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 )}
               </div>
 
-              {/* Biometric 2FA Management Card */}
+              {/* Biometric 2FA Management Card (Facial Recognition + Device Passkey) */}
               <div
                 style={{
                   background: 'linear-gradient(135deg, #EFF6FF 0%, #F5F3FF 100%)',
                   border: '1px solid #C7D2FE',
                   borderRadius: 12,
-                  padding: '12px 16px',
+                  padding: '14px 16px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 8,
+                  gap: 12,
                 }}
               >
+                {/* Facial Biometric (Hospital Camera) */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 10, background: faceEnrolled ? '#059669' : '#0F766E', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Camera size={18} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
+                        Facial Biometric 2FA {faceEnrolled ? '· Active' : '· Not Enrolled'}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#475569' }}>
+                        {faceEnrolled
+                          ? 'Camera face verification + liveness active on any hospital terminal.'
+                          : faceServiceAvailable
+                          ? 'Verify identity using any clinic webcam with active liveness detection.'
+                          : 'Facial recognition service is awaiting server activation.'}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {isCameraBiometricSupported() && faceServiceAvailable && (
+                      <button
+                        type="button"
+                        disabled={bioBusy}
+                        onClick={() => {
+                          setBioMsg(null);
+                          setFaceModalOpen(true);
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          background: '#0F766E',
+                          color: '#FFFFFF',
+                          border: 'none',
+                          borderRadius: 8,
+                          padding: '8px 12px',
+                          fontSize: '0.76rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Camera size={14} />
+                        {faceEnrolled ? 'Re-enroll Face' : 'Enroll Face Camera'}
+                      </button>
+                    )}
+                    {faceEnrolled && (
+                      <button
+                        type="button"
+                        disabled={bioBusy}
+                        onClick={async () => {
+                          setBioBusy(true);
+                          setBioMsg(null);
+                          try {
+                            const ok = await revokeStaffBiometric(
+                              session.badgeId || session.id,
+                              session.hospitalId || 'IGH-EKT',
+                              'face'
+                            );
+                            if (ok) {
+                              setFaceEnrolled(false);
+                              setBioMsg('Facial biometric profile removed.');
+                            }
+                          } finally {
+                            setBioBusy(false);
+                          }
+                        }}
+                        style={{
+                          background: '#FEF2F2',
+                          color: '#DC2626',
+                          border: '1px solid #FECACA',
+                          borderRadius: 8,
+                          padding: '7px 12px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {bioBusy ? 'Removing…' : 'Remove Face'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid rgba(199, 210, 254, 0.7)' }} />
+
+                {/* Platform Passkey (Fingerprint / Face ID / Windows Hello) */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div style={{ width: 34, height: 34, borderRadius: 10, background: bioEnrolled ? '#059669' : '#4F46E5', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -591,7 +685,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     </div>
                     <div>
                       <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
-                        Biometric 2FA {bioEnrolled ? '· Active' : '· Not Enrolled'}
+                        Device Passkey 2FA {bioEnrolled ? '· Active' : '· Not Enrolled'}
                       </div>
                       <div style={{ fontSize: '0.74rem', color: '#475569' }}>
                         {bioEnrolled
@@ -617,7 +711,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                             if (res.ok) {
                               setBioEnrolled(true);
                               setBioDevice(res.deviceLabel || 'Platform Passkey');
-                              setBioMsg('Biometric 2FA enrolled successfully on this device.');
+                              setBioMsg('Device Passkey 2FA enrolled successfully.');
                             } else {
                               setBioMsg(res.error || 'Could not enroll biometrics.');
                             }
@@ -653,12 +747,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                           try {
                             const ok = await revokeStaffBiometric(
                               session.badgeId || session.id,
-                              session.hospitalId || 'IGH-EKT'
+                              session.hospitalId || 'IGH-EKT',
+                              'passkey'
                             );
                             if (ok) {
                               setBioEnrolled(false);
                               setBioDevice(null);
-                              setBioMsg('Biometric passkey removed. Email OTP will be used at login.');
+                              setBioMsg('Device passkey removed.');
                             }
                           } finally {
                             setBioBusy(false);
@@ -675,17 +770,31 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                           cursor: 'pointer',
                         }}
                       >
-                        {bioBusy ? 'Removing…' : 'Remove Biometric 2FA'}
+                        {bioBusy ? 'Removing…' : 'Remove Passkey'}
                       </button>
                     )}
                   </div>
                 </div>
                 {bioMsg && (
-                  <div style={{ fontSize: '0.74rem', fontWeight: 700, color: bioMsg.includes('failed') || bioMsg.includes('not') ? '#B91C1C' : '#065F46' }}>
+                  <div style={{ fontSize: '0.74rem', fontWeight: 700, color: bioMsg.includes('failed') || bioMsg.includes('not') || bioMsg.includes('Could not') ? '#B91C1C' : '#065F46' }}>
                     {bioMsg}
                   </div>
                 )}
               </div>
+
+              <FaceBiometricCaptureModal
+                mode="enroll"
+                isOpen={faceModalOpen}
+                badgeId={session.badgeId || session.id}
+                facilityId={session.hospitalId || 'IGH-EKT'}
+                staffName={session.name || 'Staff Member'}
+                onClose={() => setFaceModalOpen(false)}
+                onEnrolled={() => {
+                  setFaceModalOpen(false);
+                  setFaceEnrolled(true);
+                  setBioMsg('Facial Biometric 2FA enrolled successfully.');
+                }}
+              />
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>

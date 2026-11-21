@@ -38,7 +38,9 @@ import {
   getStaffBiometricStatus,
   verifyStaffBiometric,
   isBiometricSupported,
+  isCameraBiometricSupported,
 } from '../lib/biometricAuth';
+import { FaceBiometricCaptureModal } from '../components/auth/FaceBiometricCaptureModal';
 
 const AdminShell = dynamic(
   () => import('../components/dashboards/AdminShell').then((m) => m.AdminShell),
@@ -115,7 +117,7 @@ import {
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck, Landmark,
   Search, X, LayoutDashboard, MapPin, Ticket, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
-  Command, CornerDownLeft, IdCard, Key, Fingerprint,
+  Command, CornerDownLeft, IdCard, Key, Fingerprint, Camera,
 } from 'lucide-react';
 
 const TopHudClock = React.memo(function TopHudClock() {
@@ -227,7 +229,9 @@ export default function OSPage() {
   const [unlockShake, setUnlockShake] = useState(false);
   const [unlockLoading, setUnlockLoading] = useState(false);
   const [bioUnlockAvailable, setBioUnlockAvailable] = useState(false);
+  const [faceUnlockAvailable, setFaceUnlockAvailable] = useState(false);
   const [bioUnlockBusy, setBioUnlockBusy] = useState(false);
+  const [faceUnlockModalOpen, setFaceUnlockModalOpen] = useState(false);
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
@@ -240,13 +244,17 @@ export default function OSPage() {
   }, []);
 
   useEffect(() => {
-    if (!isLocked || !userSession?.badgeId || !isBiometricSupported()) {
+    if (!isLocked || !userSession?.badgeId) {
       setBioUnlockAvailable(false);
+      setFaceUnlockAvailable(false);
+      setFaceUnlockModalOpen(false);
       return;
     }
     let alive = true;
     void getStaffBiometricStatus(userSession.badgeId, userSession.hospitalId || 'IGH-EKT').then((st) => {
-      if (alive) setBioUnlockAvailable(st.enrolled);
+      if (!alive) return;
+      setBioUnlockAvailable(Boolean((st.passkeyEnrolled ?? st.enrolled) && isBiometricSupported()));
+      setFaceUnlockAvailable(Boolean(st.faceEnrolled && isCameraBiometricSupported()));
     });
     return () => {
       alive = false;
@@ -1538,6 +1546,35 @@ const handleLockScreen = () => {
                 <Unlock size={16} />
                 <span>{unlockLoading ? 'Verifying PIN...' : 'Unlock Terminal'}</span>
               </button>
+              {faceUnlockAvailable && (
+                <button
+                  type="button"
+                  disabled={bioUnlockBusy}
+                  onClick={() => {
+                    setUnlockError('');
+                    setFaceUnlockModalOpen(true);
+                  }}
+                  style={{
+                    width: '100%',
+                    marginTop: 10,
+                    padding: '10px 14px',
+                    borderRadius: 10,
+                    border: '1px solid #0F766E',
+                    background: '#F0FDFA',
+                    color: '#115E59',
+                    fontWeight: 800,
+                    fontSize: '0.84rem',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <Camera size={16} />
+                  <span>Unlock with Face Camera</span>
+                </button>
+              )}
               {bioUnlockAvailable && (
                 <button
                   type="button"
@@ -1594,6 +1631,26 @@ const handleLockScreen = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {isLocked && userSession?.badgeId && (
+        <FaceBiometricCaptureModal
+          mode="verify"
+          isOpen={faceUnlockModalOpen}
+          badgeId={userSession.badgeId}
+          facilityId={userSession.hospitalId || 'IGH-EKT'}
+          staffName={userSession.name || 'Staff Member'}
+          onClose={() => setFaceUnlockModalOpen(false)}
+          onVerified={() => {
+            try {
+              localStorage.removeItem(TERMINAL_LOCK_KEY);
+            } catch { /* ignore */ }
+            setFaceUnlockModalOpen(false);
+            setIsLocked(false);
+            setUnlockPin('');
+            setUnlockError('');
+          }}
+        />
       )}
 
       {/* ── Celestia Assistant panel (stays mounted while minimized so chat state is preserved) ── */}

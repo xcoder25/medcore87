@@ -10,6 +10,7 @@ import {
   ShieldAlert,
   Clock,
   Fingerprint,
+  Camera,
   X,
 } from 'lucide-react';
 import type { UserSession } from './AuthScreen';
@@ -20,7 +21,9 @@ import {
   getStaffBiometricStatus,
   verifyStaffBiometric,
   isBiometricSupported,
+  isCameraBiometricSupported,
 } from '../../lib/biometricAuth';
+import { FaceBiometricCaptureModal } from './FaceBiometricCaptureModal';
 
 function normBadge(b: string): string {
   return String(b || '').trim().toUpperCase().replace(/\s+/g, '');
@@ -89,13 +92,16 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
   const [resendCooldown, setResendCooldown] = useState(30);
   const [verifiedSuccess, setVerifiedSuccess] = useState(false);
   const [bioEnrolled, setBioEnrolled] = useState(false);
+  const [faceEnrolled, setFaceEnrolled] = useState(false);
   const [bioDevice, setBioDevice] = useState<string | null>(null);
   const [bioBusy, setBioBusy] = useState(false);
+  const [faceModalOpen, setFaceModalOpen] = useState(false);
 
   useEffect(() => {
-    if (!badge || !isBiometricSupported()) return;
+    if (!badge) return;
     void getStaffBiometricStatus(badge, facilityId).then((st) => {
-      setBioEnrolled(st.enrolled);
+      setBioEnrolled(Boolean(st.passkeyEnrolled ?? st.enrolled));
+      setFaceEnrolled(Boolean(st.faceEnrolled));
       setBioDevice(st.deviceLabel || null);
     });
   }, [badge, facilityId]);
@@ -520,7 +526,7 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
             </div>
           ) : (
             <>
-              {bioEnrolled && isBiometricSupported() && (
+              {((bioEnrolled && isBiometricSupported()) || (faceEnrolled && isCameraBiometricSupported())) && (
                 <div
                   style={{
                     marginBottom: 14,
@@ -540,30 +546,64 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                       Fast Biometric 2FA Ready
                     </div>
                     <div style={{ fontSize: 11.5, color: '#047857' }}>
-                      {bioDevice || 'Fingerprint / Face ID / Windows Hello Passkey'}
+                      {faceEnrolled && bioEnrolled
+                        ? `Face Camera & ${bioDevice || 'Passkey'}`
+                        : faceEnrolled
+                        ? 'Facial Biometric Verification (Hospital Camera)'
+                        : bioDevice || 'Fingerprint / Face ID / Windows Hello Passkey'}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={bioBusy}
-                    onClick={() => void handleBiometricVerify()}
-                    style={{
-                      padding: '9px 14px',
-                      borderRadius: 10,
-                      border: 'none',
-                      background: '#059669',
-                      color: '#FFFFFF',
-                      fontWeight: 800,
-                      fontSize: 12.5,
-                      cursor: bioBusy ? 'wait' : 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                    }}
-                  >
-                    <Fingerprint size={16} />
-                    {bioBusy ? 'Verifying…' : 'Verify with Fingerprint / Face ID'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {faceEnrolled && isCameraBiometricSupported() && (
+                      <button
+                        type="button"
+                        disabled={bioBusy}
+                        onClick={() => {
+                          setErrorMsg(null);
+                          setFaceModalOpen(true);
+                        }}
+                        style={{
+                          padding: '9px 13px',
+                          borderRadius: 10,
+                          border: 'none',
+                          background: '#0F766E',
+                          color: '#FFFFFF',
+                          fontWeight: 800,
+                          fontSize: 12.5,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        <Camera size={15} />
+                        Verify with Face Camera
+                      </button>
+                    )}
+                    {bioEnrolled && isBiometricSupported() && (
+                      <button
+                        type="button"
+                        disabled={bioBusy}
+                        onClick={() => void handleBiometricVerify()}
+                        style={{
+                          padding: '9px 14px',
+                          borderRadius: 10,
+                          border: 'none',
+                          background: '#059669',
+                          color: '#FFFFFF',
+                          fontWeight: 800,
+                          fontSize: 12.5,
+                          cursor: bioBusy ? 'wait' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        <Fingerprint size={16} />
+                        {bioBusy ? 'Verifying…' : 'Verify with Fingerprint / Face ID'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
           {tab === 'email_otp' ? (
@@ -796,6 +836,37 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
           )}
         </div>
       </div>
+
+      <FaceBiometricCaptureModal
+        mode="verify"
+        isOpen={faceModalOpen}
+        badgeId={badge}
+        facilityId={facilityId}
+        staffName={session.name}
+        onClose={() => setFaceModalOpen(false)}
+        onVerified={(res) => {
+          setFaceModalOpen(false);
+          appendAudit({
+            facilityId,
+            actor: session.name,
+            actorBadge: badge,
+            category: 'access',
+            severity: 'normal',
+            action: 'STAFF_2FA_FACE_BIOMETRIC_VERIFIED',
+            entity: 'staff_auth',
+            entityId: badge,
+            detail: `Staff facial biometric 2FA verified${res.similarity ? ` (${res.similarity}% match)` : ''}`,
+          });
+          setVerifiedSuccess(true);
+          window.setTimeout(() => {
+            onVerified({
+              ...session,
+              token: res.mfaToken || session.token,
+              authMethod: `${session.authMethod} + Facial Biometric 2FA`,
+            });
+          }, 350);
+        }}
+      />
     </div>
   );
 };

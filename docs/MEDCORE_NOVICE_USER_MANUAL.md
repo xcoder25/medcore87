@@ -27,13 +27,13 @@ After signing in for the first time as Admin, complete the **4-Step Hospital Set
 2. Enter your **Staff Badge ID** (or Work Email) and **6-Digit PIN**, then click **Sign In**.
 3. Complete **2FA Verification**:
    - **Email OTP**: Enter the 6-digit code sent to your work email, **OR**
-   - **Biometric 2FA (Fingerprint / Face ID / Windows Hello)**: Once enrolled, tap **Verify with Fingerprint / Face ID** to sign in instantly without waiting for email.
-4. **How to Enroll Biometrics**:
+   - **Passkey Biometrics (Fingerprint / Face ID / Windows Hello)** or **Facial Biometric Camera**: Once enrolled, click **Verify with Face Camera** (follow the short 2-step front + smile/head-turn liveness prompt) or **Verify with Fingerprint / Face ID** to sign in without waiting for email.
+4. **How to Enroll Biometrics (Passkey & Face Camera)**:
    - Once inside MedCore OS, click your **Name / Avatar** at the top-right corner to open your **Staff Profile**.
-   - Scroll to **Biometric 2FA** and click **Enroll Fingerprint / Face ID**, then follow your phone or laptop prompt.
+   - Scroll to **Biometric 2FA** and click **Enroll Face Camera** (works on any hospital webcam) and/or **Enroll Fingerprint / Face ID** (uses your device passkey sensor).
 5. **Locking the Terminal**:
    - Stepping away? Click the **Lock** icon in the top bar.
-   - Even if someone reloads or refreshes the browser, the workstation stays locked until unlocked with your **PIN** or **Biometrics**.
+   - Even if someone reloads or refreshes the browser, the workstation stays locked until unlocked with your **PIN**, **Face Camera**, or **Fingerprint / Face ID**.
 
 ---
 

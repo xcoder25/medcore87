@@ -1230,3 +1230,320 @@ test('phase-a-to-f-invariants: QR, HIM cards, Nurse e-MAR/ICU, Pharmacy isolatio
   );
 });
 
+test('facialBiometrics: validates Rekognition config/quality/liveness/matching, unified passkey+face vault, and vendor-neutral UI', async () => {
+  const sdkCalls = [];
+  let mockCompareSimilarity = 96.4;
+  let mockChallengeSmile = true;
+  let mockChallengeYaw = 15;
+
+  class MockRekognitionClient {
+    constructor(opts) {
+      this.opts = opts;
+    }
+    async send(cmd) {
+      sdkCalls.push(cmd.type);
+      if (cmd.type === 'DetectFaces') {
+        const isChallenge = Buffer.from(cmd.input.Image.Bytes).toString('utf8').includes('challenge');
+        return {
+          FaceDetails: [
+            {
+              Confidence: 99.1,
+              EyesOpen: { Value: true, Confidence: 99 },
+              Sunglasses: { Value: false, Confidence: 99 },
+              Quality: { Brightness: 78, Sharpness: 82 },
+              Smile: { Value: isChallenge ? mockChallengeSmile : false, Confidence: isChallenge ? 92 : 10 },
+              Pose: { Yaw: isChallenge ? mockChallengeYaw : 1, Pitch: 2, Roll: 0 },
+            },
+          ],
+        };
+      }
+      if (cmd.type === 'CompareFaces') {
+        return {
+          FaceMatches: mockCompareSimilarity >= (cmd.input.SimilarityThreshold || 0)
+            ? [{ Similarity: mockCompareSimilarity }]
+            : [],
+        };
+      }
+      if (cmd.type === 'CreateFaceLivenessSession') {
+        return { SessionId: 'liveness-sess-123' };
+      }
+      if (cmd.type === 'GetFaceLivenessSessionResults') {
+        return { Status: 'SUCCEEDED', Confidence: 98.5 };
+      }
+      return {};
+    }
+  }
+
+  const rekMocks = {
+    '@aws-sdk/client-rekognition': {
+      RekognitionClient: MockRekognitionClient,
+      DetectFacesCommand: function (input) { this.type = 'DetectFaces'; this.input = input; },
+      CompareFacesCommand: function (input) { this.type = 'CompareFaces'; this.input = input; },
+      CreateFaceLivenessSessionCommand: function (input) { this.type = 'CreateFaceLivenessSession'; this.input = input; },
+      GetFaceLivenessSessionResultsCommand: function (input) { this.type = 'GetFaceLivenessSessionResults'; this.input = input; },
+    },
+    '@vercel/functions/oidc': {
+      awsCredentialsProvider: ({ roleArn }) => async () => ({ roleArn }),
+    },
+  };
+
+  const prevEnv = {
+    MEDCORE_REKOGNITION_ROLE_ARN: process.env.MEDCORE_REKOGNITION_ROLE_ARN,
+    MEDCORE_REKOGNITION_REGION: process.env.MEDCORE_REKOGNITION_REGION,
+    AWS_ROLE_ARN: process.env.AWS_ROLE_ARN,
+    AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+    MEDCORE_S3_ROLE_ARN: process.env.MEDCORE_S3_ROLE_ARN,
+    MEDCORE_S3_ACCESS_KEY_ID: process.env.MEDCORE_S3_ACCESS_KEY_ID,
+    MEDCORE_S3_SECRET_ACCESS_KEY: process.env.MEDCORE_S3_SECRET_ACCESS_KEY,
+    MEDCORE_AWS_ACCESS_KEY_ID: process.env.MEDCORE_AWS_ACCESS_KEY_ID,
+    MEDCORE_AWS_SECRET_ACCESS_KEY: process.env.MEDCORE_AWS_SECRET_ACCESS_KEY,
+  };
+
+  try {
+    delete process.env.MEDCORE_REKOGNITION_ROLE_ARN;
+    delete process.env.AWS_ROLE_ARN;
+    delete process.env.MEDCORE_S3_ROLE_ARN;
+    delete process.env.AWS_ACCESS_KEY_ID;
+    delete process.env.AWS_SECRET_ACCESS_KEY;
+    delete process.env.MEDCORE_S3_ACCESS_KEY_ID;
+    delete process.env.MEDCORE_S3_SECRET_ACCESS_KEY;
+    delete process.env.MEDCORE_AWS_ACCESS_KEY_ID;
+    delete process.env.MEDCORE_AWS_SECRET_ACCESS_KEY;
+
+    const rek = loadTsModule('src/lib/aws/rekognitionServer.ts', rekMocks);
+    assert.equal(rek.isRekognitionConfigured(), false);
+
+    process.env.MEDCORE_REKOGNITION_ROLE_ARN = 'arn:aws:iam::123456789012:role/medcore-oidc';
+    process.env.MEDCORE_REKOGNITION_REGION = 'eu-west-1';
+    rek.resetRekognitionClient();
+    const oidcCfg = rek.getRekognitionConfig();
+    assert.equal(oidcCfg.isConfigured, true);
+    assert.equal(oidcCfg.authMethod, 'oidc_role');
+    assert.equal(oidcCfg.region, 'eu-west-1');
+
+    // Pure face quality checks
+    assert.equal(rek.evaluateFaceQuality([]).ok, false);
+    assert.equal(rek.evaluateFaceQuality([{}, {}]).ok, false);
+    assert.equal(
+      rek.evaluateFaceQuality([{ Confidence: 99, EyesOpen: { Value: false, Confidence: 95 } }]).ok,
+      false
+    );
+    assert.equal(
+      rek.evaluateFaceQuality([{ Confidence: 99, Sunglasses: { Value: true, Confidence: 92 } }]).ok,
+      false
+    );
+    assert.equal(
+      rek.evaluateFaceQuality([{ Confidence: 99, Pose: { Yaw: 35, Pitch: 0, Roll: 0 } }]).ok,
+      false
+    );
+    const qOk = rek.evaluateFaceQuality([
+      {
+        Confidence: 99.4,
+        EyesOpen: { Value: true, Confidence: 99 },
+        Sunglasses: { Value: false, Confidence: 99 },
+        Pose: { Yaw: 3, Pitch: -2, Roll: 1 },
+        Quality: { Brightness: 72, Sharpness: 84 },
+      },
+    ]);
+    assert.equal(qOk.ok, true);
+
+    // Pure liveness checks
+    const neutralFace = { Smile: { Value: false, Confidence: 5 }, Pose: { Yaw: 0 } };
+    assert.equal(
+      rek.evaluateActiveLiveness(neutralFace, { Smile: { Value: true, Confidence: 91 }, Pose: { Yaw: 1 } }, 'smile').ok,
+      true
+    );
+    assert.equal(
+      rek.evaluateActiveLiveness(neutralFace, { Smile: { Value: false, Confidence: 95 }, Pose: { Yaw: 1 } }, 'smile').ok,
+      false
+    );
+    assert.equal(
+      rek.evaluateActiveLiveness(neutralFace, { Pose: { Yaw: 14 } }, 'turn_left').ok,
+      true
+    );
+    assert.equal(
+      rek.evaluateActiveLiveness(neutralFace, { Pose: { Yaw: 2 } }, 'turn_right').ok,
+      false
+    );
+
+    // Identical frames must be rejected as replay/spoof
+    const sameBuf = Buffer.alloc(2048, 1);
+    const replayRes = await rek.verifyActiveLiveness(sameBuf, sameBuf, 'smile');
+    assert.equal(replayRes.ok, false);
+
+    // Safe error messages never leak provider names
+    const safeMsg = rek.toSafeBiometricError({ name: 'AccessDeniedException', message: 'Amazon Rekognition IAM failed' });
+    assert.equal(/amazon|aws|rekognition/i.test(safeMsg), false);
+
+    // Unified vault backwards-compatibility + end-to-end API flow
+    const validImg = Buffer.concat([Buffer.from('neutral-'), Buffer.alloc(2048, 7)]).toString('base64');
+    const challengeImg = Buffer.concat([Buffer.from('challenge-'), Buffer.alloc(2048, 9)]).toString('base64');
+    let memVaultRow = null;
+
+    const routeMocks = {
+      'next/server': {
+        NextResponse: {
+          json: (data, init = {}) => ({ status: init.status || 200, data }),
+        },
+      },
+      '../../../../lib/db/postgres': {
+        ensureSchema: async () => {},
+        isPostgresConfigured: () => true,
+        withTenantClient: async (_fid, fn) =>
+          fn({
+            query: async (sql, params) => {
+              if (sql.includes('SELECT descriptor')) {
+                return { rows: memVaultRow ? [{ descriptor: memVaultRow }] : [] };
+              }
+              if (sql.includes('INSERT INTO staff_biometrics')) {
+                memVaultRow = JSON.parse(params[3]);
+              }
+              if (sql.includes('DELETE FROM staff_biometrics')) {
+                memVaultRow = null;
+              }
+              return { rows: [] };
+            },
+          }),
+      },
+      '../../../../lib/serverSession': {
+        signMfaToken: async (badgeId, facilityId, method) => `mfa.${badgeId}.${facilityId}.${method}`,
+      },
+      '../../../../lib/rateLimit': {
+        checkRateLimit: () => ({ allowed: true, retryAfterSeconds: 0 }),
+        getClientIp: () => '127.0.0.1',
+      },
+      '../../../../lib/s3Server': {
+        isS3Configured: () => false,
+        uploadBufferToS3: async () => { throw new Error('unused'); },
+        getS3ObjectBuffer: async () => { throw new Error('unused'); },
+      },
+      '../../../../lib/aws/rekognitionServer': rek,
+    };
+
+    const bioRoute = loadTsModule('src/app/api/auth/biometric/route.ts', routeMocks);
+    const legacy = bioRoute.normalizeBiometricVault({
+      credentialId: 'cred-legacy-1',
+      publicKeySpkiB64: 'c3BraQ==',
+      counter: 3,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    assert.equal(legacy.version, 2);
+    assert.equal(legacy.passkey.credentialId, 'cred-legacy-1');
+    memVaultRow = {
+      credentialId: 'cred-legacy-1',
+      publicKeySpkiB64: 'c3BraQ==',
+      deviceLabel: 'Windows Hello',
+      counter: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    const post = async (body) =>
+      bioRoute.POST({
+        headers: new Headers(),
+        json: async () => body,
+      });
+
+    // Enrolling face preserves existing legacy passkey
+    const enrollRes = await post({
+      action: 'face_enroll',
+      badgeId: 'DOC-FACE-1',
+      facilityId: 'TEST-FAC',
+      staffName: 'Dr. Iniobong',
+      imageBase64: `data:image/jpeg;base64,${validImg}`,
+    });
+    assert.equal(enrollRes.status, 200);
+    assert.equal(enrollRes.data.faceEnrolled, true);
+
+    const statusRes = await post({
+      action: 'status',
+      badgeId: 'DOC-FACE-1',
+      facilityId: 'TEST-FAC',
+    });
+    assert.equal(statusRes.data.passkeyEnrolled, true);
+    assert.equal(statusRes.data.faceEnrolled, true);
+    assert.equal(statusRes.data.faceServiceAvailable, true);
+
+    // Challenge -> Verify success
+    const chalRes = await post({
+      action: 'face_challenge',
+      badgeId: 'DOC-FACE-1',
+      facilityId: 'TEST-FAC',
+    });
+    assert.equal(chalRes.status, 200);
+    assert.ok(['smile', 'turn_left', 'turn_right'].includes(chalRes.data.prompt));
+
+    mockCompareSimilarity = 96.4;
+    mockChallengeSmile = true;
+    mockChallengeYaw = 15;
+    const verOk = await post({
+      action: 'face_verify',
+      badgeId: 'DOC-FACE-1',
+      facilityId: 'TEST-FAC',
+      challengeToken: chalRes.data.challengeToken,
+      neutralImageBase64: validImg,
+      challengeImageBase64: challengeImg,
+    });
+    assert.equal(verOk.status, 200);
+    assert.equal(verOk.data.verified, true);
+    assert.equal(verOk.data.mfaToken, 'mfa.DOC-FACE-1.TEST-FAC.biometric');
+
+    // Mismatched face fails cleanly without vendor exposure
+    mockCompareSimilarity = 42.0;
+    const chalRes2 = await post({
+      action: 'face_challenge',
+      badgeId: 'DOC-FACE-1',
+      facilityId: 'TEST-FAC',
+    });
+    const verFail = await post({
+      action: 'face_verify',
+      badgeId: 'DOC-FACE-1',
+      facilityId: 'TEST-FAC',
+      challengeToken: chalRes2.data.challengeToken,
+      neutralImageBase64: validImg,
+      challengeImageBase64: challengeImg,
+    });
+    assert.equal(verFail.status, 401);
+    assert.equal(verFail.data.verified, false);
+    assert.equal(/amazon|aws|rekognition/i.test(verFail.data.error), false);
+
+    // Selective revoke('face') leaves passkey intact
+    await post({
+      action: 'revoke',
+      badgeId: 'DOC-FACE-1',
+      facilityId: 'TEST-FAC',
+      target: 'face',
+    });
+    const afterRevoke = await post({
+      action: 'status',
+      badgeId: 'DOC-FACE-1',
+      facilityId: 'TEST-FAC',
+    });
+    assert.equal(afterRevoke.data.faceEnrolled, false);
+    assert.equal(afterRevoke.data.passkeyEnrolled, true);
+
+    assert.ok(sdkCalls.includes('DetectFaces') && sdkCalls.includes('CompareFaces'));
+
+    // UI + client vendor secrecy verification
+    for (const rel of [
+      'src/components/auth/FaceBiometricCaptureModal.tsx',
+      'src/components/auth/StaffEmailOtpModal.tsx',
+      'src/components/auth/UserProfileModal.tsx',
+      'src/lib/biometricAuth.ts',
+    ]) {
+      const raw = fs.readFileSync(path.join(OS_ROOT, rel), 'utf8');
+      const stripped = raw.replace(/^\s*(?:\/\/.*|\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\/)/gm, '');
+      assert.equal(
+        /\bAmazon\b|Rekognition|AWS S3|Aurora Postgres/i.test(stripped),
+        false,
+        `${rel} must remain strictly vendor-neutral`
+      );
+    }
+  } finally {
+    for (const [k, v] of Object.entries(prevEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+});
+

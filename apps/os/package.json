@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-eventbridge": "^3.1165.0",
+    "@aws-sdk/client-rekognition": "^3.1175.0",
     "@aws-sdk/client-s3": "^3.1165.0",
     "@aws-sdk/credential-provider-web-identity": "^3.972.89",
     "@aws-sdk/rds-signer": "^3.1172.0",

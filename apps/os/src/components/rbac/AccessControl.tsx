@@ -239,6 +239,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
   const [enrolSubmitAttempted, setEnrolSubmitAttempted] = useState(false);
   const [error, setError] = useState('');
   const [selectedBioEnrolled, setSelectedBioEnrolled] = useState<boolean>(false);
+  const [selectedPasskeyEnrolled, setSelectedPasskeyEnrolled] = useState<boolean>(false);
+  const [selectedFaceEnrolled, setSelectedFaceEnrolled] = useState<boolean>(false);
   const [selectedBioDevice, setSelectedBioDevice] = useState<string>('');
   const [bioResetBusy, setBioResetBusy] = useState(false);
   const [createFail, setCreateFail] = useState<string | null>(null);
@@ -608,6 +610,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     const bid = selected?.id;
     if (!bid) {
       setSelectedBioEnrolled(false);
+      setSelectedPasskeyEnrolled(false);
+      setSelectedFaceEnrolled(false);
       setSelectedBioDevice('');
       return;
     }
@@ -615,6 +619,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     void getStaffBiometricStatus(bid, facilityId).then((st) => {
       if (!alive) return;
       setSelectedBioEnrolled(st.enrolled);
+      setSelectedPasskeyEnrolled(Boolean(st.passkeyEnrolled ?? st.enrolled));
+      setSelectedFaceEnrolled(Boolean(st.faceEnrolled));
       setSelectedBioDevice(st.deviceLabel || '');
     });
     return () => {
@@ -2160,7 +2166,13 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                       <div>
                         <span style={{ color: '#64748B', fontWeight: 700, display: 'block', fontSize: '0.68rem' }}>BIOMETRIC 2FA</span>
                         <strong style={{ color: selectedBioEnrolled ? '#065F46' : '#475569' }}>
-                          {selectedBioEnrolled ? `Enrolled (${selectedBioDevice || 'Passkey'})` : 'Not enrolled'}
+                          {selectedFaceEnrolled && selectedPasskeyEnrolled
+                            ? `Face Camera + Passkey (${selectedBioDevice || 'Device'})`
+                            : selectedFaceEnrolled
+                            ? 'Face Camera Enrolled'
+                            : selectedPasskeyEnrolled
+                            ? `Enrolled (${selectedBioDevice || 'Passkey'})`
+                            : 'Not enrolled'}
                         </strong>
                       </div>
                       {selectedBioEnrolled && (
@@ -2170,9 +2182,11 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                           onClick={async () => {
                             setBioResetBusy(true);
                             try {
-                              const ok = await revokeStaffBiometric(selected.id, facilityId);
+                              const ok = await revokeStaffBiometric(selected.id, facilityId, 'all');
                               if (ok) {
                                 setSelectedBioEnrolled(false);
+                                setSelectedPasskeyEnrolled(false);
+                                setSelectedFaceEnrolled(false);
                                 setSelectedBioDevice('');
                               }
                             } finally {
