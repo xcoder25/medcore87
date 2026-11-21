@@ -1547,3 +1547,140 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
   }
 });
 
+test('ux-frontdesk-card-lock-pharmacy: printable reg form, health card AI auto-bind, badge redesign, persistent lock, anti-distraction cleanup & pharmacy role isolation', () => {
+  return withBrowserShims(() => {
+    // 1. Printable AI-Scannable Blank Registration Form
+    const prf = loadTsModule('src/lib/printableRegistrationForm.ts');
+    const html = prf.buildPrintablePatientRegFormHtml({
+      facilityName: 'Immanuel General Hospital',
+      facilityId: 'IGH-EKT',
+      hfrCode: '03/06/1/2/1/0001',
+      copies: 2,
+      includeConsentBlock: true,
+    });
+    assert.ok(html.includes('Immanuel General Hospital'));
+    assert.ok(html.includes('PATIENT REGISTRATION FORM'));
+    assert.ok(html.includes('National ID (NIN'));
+    assert.ok(html.includes('Next of Kin Full Name'));
+    assert.equal((html.match(/class="form-page"/g) || []).length, 2);
+
+    // 2. Persistent Terminal Lock survives reload & clears on sign-out
+    const eco = fs.readFileSync(path.join(OS_ROOT, 'src/lib/edgeCloudOnly.ts'), 'utf8');
+    assert.equal(eco.includes('ALLOWED_LOCALSTORAGE_KEYS'), true);
+    assert.equal(eco.includes("'medcore_os_terminal_locked_v1'"), true);
+    const hipaaSrc = fs.readFileSync(path.join(OS_ROOT, 'src/lib/hipaaPrivacy.ts'), 'utf8');
+    assert.ok(hipaaSrc.includes("localStorage.removeItem('medcore_os_terminal_locked_v1')"));
+
+    // 3. Health Card AI Auto-Bind for appointments & visits + confirmation
+    const patientsStore = [
+      {
+        id: 'PT-HB-1',
+        hospitalNumber: 'IGH-PT-7701',
+        firstName: 'Abasiama',
+        lastName: 'Udoh',
+        shid: 'SHID-AKS-7701A',
+        facilityId: 'IGH-EKT',
+        allergies: ['Penicillin'],
+        chronicConditions: ['Asthma'],
+      },
+    ];
+    const commonMocks = {
+      './roleSyncBus': { publishFacilityData: () => {}, FACILITY_KEYS: { reception: 'reception' } },
+      './adminRealtimeStore': { getActiveFacilityId: () => 'IGH-EKT' },
+      './patientRegistryStore': { listPatients: () => patientsStore },
+      './receptionSettingsStore': {
+        getReceptionSettings: () => ({
+          autoBindAppointmentsToHealthCard: true,
+          autoBindVisitsToHealthCard: true,
+          aiCareBriefOnCardScan: true,
+        }),
+      },
+    };
+    const recOps = loadTsModule('src/lib/receptionOpsStore.ts', commonMocks);
+    const hb = loadTsModule('src/lib/healthCardAiBinding.ts', commonMocks);
+
+    const appt = recOps.bookAppointment({
+      patientId: 'PT-HB-1',
+      hospitalNumber: 'IGH-PT-7701',
+      patientName: 'Abasiama Udoh',
+      facilityId: 'IGH-EKT',
+      department: 'General OPD',
+      doctor: 'Dr. Ekpo',
+      scheduledAt: `${new Date().toISOString().slice(0, 10)}T10:30:00`,
+      reason: 'Blood pressure review',
+    });
+    assert.equal(appt.status, 'booked');
+
+    const packet = hb.getHealthCardLivePacket('IGH-EKT', { patientId: 'PT-HB-1' });
+    assert.equal(packet.shid, 'SHID-AKS-7701A');
+    assert.equal(packet.upcomingAppointments.length, 1);
+    assert.equal(packet.aiBrief.recommendedAction, 'confirm_appointment');
+    assert.ok(packet.aiBrief.alerts.some((a) => a.includes('Penicillin')));
+
+    const confirmed = recOps.confirmAndCheckInBoundAppointment('IGH-EKT', appt.id);
+    assert.equal(confirmed.ok, true);
+    assert.equal(confirmed.appointment.status, 'arrived');
+    assert.equal(confirmed.visit.visitType, 'appointment');
+    const afterPacket = hb.getHealthCardLivePacket('IGH-EKT', { patientId: 'PT-HB-1' });
+    assert.equal(afterPacket.activeVisit?.queueNumber, confirmed.visit.queueNumber);
+
+    // 4. Pharmacy Role Isolation & Explicit Admin Grant Extension
+    const perms = loadTsModule('src/lib/rolePermissionsStore.ts', {
+      './facilityContext': { getActiveFacilityId: () => 'IGH-EKT' },
+      './roleSyncBus': { publishFacilityData: () => {} },
+    });
+    assert.equal(perms.roleCanAccessModule('pharmacist', 'patient-flow'), false);
+    assert.equal(perms.roleCanAccessModule('pharmacist', 'pharmacy'), true);
+    perms.applyRoleModules('pharmacist', ['dashboard', 'pharmacy', 'pharmacy-pos', 'patient-flow']);
+    assert.equal(perms.roleCanAccessModule('pharmacist', 'patient-flow'), true);
+
+    const roleNavSrc = fs.readFileSync(path.join(OS_ROOT, 'src/os/roleNav.tsx'), 'utf8');
+    assert.ok(!roleNavSrc.includes("label: 'Clinic & OPD queue'"), 'Clinic & OPD queue must be removed from Pharmacist sidebar');
+    assert.ok(roleNavSrc.includes('Assigned by Admin'), 'Admin-explicit modules must populate dynamically when ticked');
+
+    // 5. FrontDesk Settings, Staff Badge, Header Cleanup & Account Anti-Distraction Checks
+    const fdsSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/reception/FrontDeskSettings.tsx'), 'utf8');
+    assert.ok(!fdsSrc.includes("label: 'Billing & POS'"), 'Billing & POS must be removed from Front Desk Settings');
+    assert.ok(fdsSrc.includes('printBlankPatientRegForm'), 'Front Desk Settings must print AI-scannable registration form');
+
+    const cardSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/staffing/StaffIdCardView.tsx'), 'utf8');
+    assert.ok(cardSrc.includes('HOSPITAL') && cardSrc.includes('FULL ACCESS') && cardSrc.includes('Valid until:'));
+
+    const pageSrc = fs.readFileSync(path.join(OS_ROOT, 'src/app/page.tsx'), 'utf8');
+    assert.ok(!pageSrc.includes('Ask Patient File'), 'Ask Patient File button must be removed from top HUD header');
+    assert.ok(!pageSrc.includes('Jump to suite or ward...'), 'Duplicate sidebar search input must be removed');
+    assert.ok(!pageSrc.includes("hour: '2-digit', minute: '2-digit', second: '2-digit'"), 'TopHudClock must not tick seconds');
+    assert.ok(pageSrc.includes('renderLockModal()') && pageSrc.includes('sessionStorage.removeItem(TERMINAL_LOCK_KEY)'));
+
+    const accSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/dashboards/AccountingWorkspace.tsx'), 'utf8');
+    assert.ok(!accSrc.includes('Live sync'), 'AccountingWorkspace must not display duplicate Live sync badge');
+    assert.ok(!accSrc.includes("label: 'AkwaRemit Central Hub'"), 'Duplicate Accounting horizontal tab bar must be removed');
+
+    const balSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/finance/AutoAccountBalancingCard.tsx'), 'utf8');
+    assert.ok(!balSrc.includes('AI RECONCILIATION ACTIVE'));
+    assert.ok(!balSrc.includes('ALL ACCOUNTS BALANCED'));
+    assert.ok(!balSrc.includes('AkwaRemit Gateway: Realtime live sync active'));
+
+    const adminSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/dashboards/AdminShell.tsx'), 'utf8');
+    assert.ok(!adminSrc.includes("second: '2-digit'"), 'AdminShell clock must not display seconds');
+
+    // Vendor secrecy across touched UI modules
+    for (const rel of [
+      'src/components/reception/FrontDeskSettings.tsx',
+      'src/components/staffing/StaffIdCardView.tsx',
+      'src/components/dashboards/AccountingWorkspace.tsx',
+      'src/components/finance/AutoAccountBalancingCard.tsx',
+      'src/lib/printableRegistrationForm.ts',
+    ]) {
+      const stripped = fs
+        .readFileSync(path.join(OS_ROOT, rel), 'utf8')
+        .replace(/^\s*(?:\/\/.*|\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\/)/gm, '');
+      assert.equal(
+        /\bAmazon\b|Rekognition|AWS S3|Aurora Postgres/i.test(stripped),
+        false,
+        `${rel} must remain strictly vendor-neutral`
+      );
+    }
+  });
+});
+

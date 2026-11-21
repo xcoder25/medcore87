@@ -38,12 +38,17 @@ import {
   recordPayment,
   todayPayments,
   markAiReminder,
+  confirmAndCheckInBoundAppointment,
   type ReceptionVisit,
   type VisitType,
   type PaymentMethod,
   type ReceptionAppointment,
   type ReceptionPayment,
 } from '../../lib/receptionOpsStore';
+import {
+  getHealthCardLivePacket,
+  subscribeHealthCardBindings,
+} from '../../lib/healthCardAiBinding';
 import { parseScannedEmrQr } from '../../lib/qrPayload';
 import { PhysicalFormScannerModal, type ScannedRegistrationFields } from '../reception/PhysicalFormScannerModal';
 import { listStaffCards } from '../../lib/staffCardStore';
@@ -4754,12 +4759,20 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
             </ul>
             {scanMatchedPatient ? (() => {
               const scanGate = getPaymentGate(facilityId, scanMatchedPatient.id, scanMatchedPatient.hospitalNumber);
+              const cardPacket = getHealthCardLivePacket(facilityId, {
+                patientId: scanMatchedPatient.id,
+                hospitalNumber: scanMatchedPatient.hospitalNumber,
+                shid: scanMatchedPatient.shid,
+              });
+              const bookedAppointments = cardPacket.upcomingAppointments.filter((a) => a.status === 'booked');
               return (
                 <div style={{ marginTop: 16, padding: 14, borderRadius: 12, background: scanGate.cleared ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${scanGate.cleared ? '#BBF7D0' : '#FECACA'}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <div>
                       <div style={{ fontWeight: 800, color: scanGate.cleared ? '#166534' : '#991B1B' }}>{fullName(scanMatchedPatient)}</div>
-                      <div style={{ fontSize: 12, color: C.muted }}>{scanMatchedPatient.hospitalNumber}</div>
+                      <div style={{ fontSize: 12, color: C.muted }}>
+                        {scanMatchedPatient.hospitalNumber}{scanMatchedPatient.shid ? ` · ${scanMatchedPatient.shid}` : ''}
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -4782,6 +4795,81 @@ export const ReceptionWorkspace: React.FC<Props> = ({ session, initialView = 'ho
                       Clear Scan
                     </button>
                   </div>
+
+                  {/* AI Health Card Summary & Auto-Bound Appointments */}
+                  <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#FFFFFF', border: '1px solid #CBD5E1' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 4 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 800, color: '#0369A1' }}>
+                        <Sparkles size={13} /> AI Health Card Check-In Brief
+                      </span>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#047857' }}>
+                        {bookedAppointments.length} bound appt{bookedAppointments.length === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1E293B' }}>
+                      {cardPacket.aiBrief.headline}
+                    </div>
+                    {cardPacket.aiBrief.alerts.length > 0 && (
+                      <div style={{ marginTop: 4, fontSize: 11, fontWeight: 700, color: '#DC2626' }}>
+                        {cardPacket.aiBrief.alerts.join(' · ')}
+                      </div>
+                    )}
+                    {bookedAppointments.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                        {bookedAppointments.slice(0, 3).map((appt) => (
+                          <div
+                            key={appt.appointmentId}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 8,
+                              padding: '7px 9px',
+                              borderRadius: 8,
+                              background: '#EFF6FF',
+                              border: '1px solid #BAE6FD',
+                            }}
+                          >
+                            <div style={{ fontSize: 11.5 }}>
+                              <strong style={{ color: '#0F172A' }}>{appt.department}</strong> · {appt.doctor}
+                              <div style={{ fontSize: 10.5, color: '#475569' }}>
+                                {appt.scheduledAt.replace('T', ' ').slice(0, 16)}{appt.reason ? ` · ${appt.reason}` : ''}
+                              </div>
+                            </div>
+                            {scanGate.cleared && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const conf = confirmAndCheckInBoundAppointment(facilityId, appt.appointmentId);
+                                  if (conf.ok && conf.visit) {
+                                    flash(`✓ Confirmed ${appt.department} appointment · Queue #${conf.visit.queueNumber}`);
+                                    setScanCode('');
+                                    goView('queue');
+                                  } else {
+                                    flash(conf.error || 'Could not confirm appointment.');
+                                  }
+                                }}
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: 8,
+                                  border: 'none',
+                                  background: '#0284C7',
+                                  color: '#fff',
+                                  fontWeight: 800,
+                                  fontSize: 11,
+                                  cursor: 'pointer',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                Confirm &amp; Check-In
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {!scanGate.cleared ? (
                     <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: '#B91C1C' }}>
                       🚫 {scanGate.label}

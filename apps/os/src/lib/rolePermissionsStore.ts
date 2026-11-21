@@ -333,7 +333,7 @@ const DEFAULTS: Record<string, string[]> = {
   // Pharmacists — dispense & formulary & isolated Pharmacy Payment Desk
   pharmacist: [
     'dashboard', 'pharmacy', 'pharmacy-pos', 'formulary', 'notifications',
-    'cashier', 'emr', 'patient-flow', 'inventory', 'pharmacovigilance', 'oncology', 'incident-safety',
+    'cashier', 'emr', 'inventory', 'pharmacovigilance', 'oncology', 'incident-safety',
     'm87-ai', 'ai', 'patient-card', 'my-card',
     'patient.identity', 'patient.allergies', 'patient.meds', 'patient.problems',
   ],
@@ -487,10 +487,29 @@ const ROLE_MODULE_DENY: Record<string, string[]> = {
     'pharmacy', 'formulary', 'doctor-portal', 'theatre', 'icu', 'laboratory', 'lab',
     'radiology', 'nursing', 'rbac', 'sysadmin',
   ],
+  pharmacist: ['patient-flow'],
   radiologist: ['pharmacy', 'formulary', 'theatre', 'nursing', 'cashier', 'billing'],
   lab: ['pharmacy', 'formulary', 'theatre', 'doctor-portal', 'cashier', 'billing'],
   accountant: ['pharmacy', 'formulary', 'doctor-portal', 'theatre', 'icu', 'laboratory', 'lab'],
 };
+
+/**
+ * Returns the explicit module list saved by Hospital Admin for a role, if configured.
+ */
+export function getAdminExplicitModulesForRole(roleKey: string): string[] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(ROLE_PERMISSIONS_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as RolePermissionsMap;
+    if (Array.isArray(saved?.[roleKey])) {
+      return saved[roleKey];
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
 
 export function roleCanAccessModule(roleKey: string, moduleKey: string): boolean {
   if (roleKey === 'hospital_admin') return true;
@@ -498,20 +517,7 @@ export function roleCanAccessModule(roleKey: string, moduleKey: string): boolean
   if (moduleKey === 'dashboard' || moduleKey === 'my-card' || moduleKey === 'notifications') return true;
 
   // Check if Admin explicitly configured this role in RolePermissionsMatrix
-  let adminExplicitModules: string[] | null = null;
-  if (typeof window !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(ROLE_PERMISSIONS_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as RolePermissionsMap;
-        if (Array.isArray(saved?.[roleKey])) {
-          adminExplicitModules = saved[roleKey];
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  }
+  const adminExplicitModules = getAdminExplicitModulesForRole(roleKey);
 
   if (adminExplicitModules) {
     if (adminExplicitModules.includes('*') || adminExplicitModules.includes(moduleKey)) return true;

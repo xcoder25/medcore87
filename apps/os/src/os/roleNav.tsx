@@ -7,7 +7,7 @@ import React from 'react';
 import type { UserSession } from '../components/auth/AuthScreen';
 import type { ModuleKey, NavSection } from './moduleRegistry';
 import { inferRoleKey } from '../lib/staffCardStore';
-import { getModulesForRole } from '../lib/rolePermissionsStore';
+import { getAdminExplicitModulesForRole, getModulesForRole } from '../lib/rolePermissionsStore';
 import {
   Clock, Bell,
   Activity, Shield, Lock, Unlock, LogOut, ChevronLeft, ArrowLeft, ChevronRight,
@@ -129,6 +129,60 @@ const MASTER_PILLARS: NavSection[] = [
 // Dedicated RBAC Navigation Sections generator
 
 export function getRoleNavSections(session: UserSession | null, showFullDirectory: boolean): NavSection[] {
+  const baseSections = buildBaseRoleNavSections(session, showFullDirectory);
+
+  if (showFullDirectory || !session) {
+    return baseSections;
+  }
+
+  const roleKey = inferRoleKey(session.roleKey || session.role || session.title, session.badgeId);
+  const explicitModules = getAdminExplicitModulesForRole(roleKey);
+  const presentKeys = new Set<string>();
+  for (const sec of baseSections) {
+    for (const item of sec.items) {
+      presentKeys.add(item.key);
+    }
+  }
+
+  // Only add extra non-role modules if Hospital Admin explicitly ticked them for this role
+  if (explicitModules && explicitModules.length > 0 && !explicitModules.includes('*')) {
+    const extraItems: NavSection['items'] = [];
+    for (const pillar of MASTER_PILLARS) {
+      for (const item of pillar.items) {
+        if (
+          explicitModules.includes(item.key) &&
+          !presentKeys.has(item.key) &&
+          !extraItems.some((x) => x.key === item.key)
+        ) {
+          presentKeys.add(item.key);
+          extraItems.push({
+            key: item.key,
+            icon: item.icon,
+            label: item.label,
+          });
+        }
+      }
+    }
+    if (extraItems.length > 0) {
+      baseSections.push({
+        label: 'Assigned by Admin',
+        items: extraItems,
+      });
+    }
+  }
+
+  // Quiet header badges across sidebar dashboards
+  return baseSections.map((sec) => ({
+    ...sec,
+    items: sec.items.map((item) =>
+      item.key === 'dashboard' && item.badge === 'Live'
+        ? { ...item, badge: undefined }
+        : item
+    ),
+  }));
+}
+
+function buildBaseRoleNavSections(session: UserSession | null, showFullDirectory: boolean): NavSection[] {
   if (showFullDirectory || !session) {
     return [
       {
@@ -332,7 +386,6 @@ export function getRoleNavSections(session: UserSession | null, showFullDirector
           items: [
             { key: 'patient-360', icon: Users, label: 'Patient chart (Rx view)' },
             { key: 'emr', icon: FileText, label: 'Prescription records' },
-            { key: 'patient-flow', icon: RefreshCw, label: 'Clinic & OPD queue' },
             { key: 'inventory', icon: Package, label: 'Drug store & CMS' },
             { key: 'm87-ai', icon: Brain, label: 'Celestia Rx AI', badge: 'AI' },
             { key: 'my-card', icon: IdCard, label: 'My staff ID' },

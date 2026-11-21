@@ -513,21 +513,6 @@ export const AccountingWorkspace: React.FC<Props> = ({
     return [...enriched, ...fallback];
   }, [facilityId, facilityName, payments, session.name, tick]);
 
-  const nav: { id: AccView; label: string; icon: React.ElementType; badge?: number }[] = [
-    { id: 'home', label: 'Accounts home', icon: LayoutDashboard, badge: awaiting.length || undefined },
-    { id: 'ar', label: 'AR desk', icon: Wallet, badge: awaiting.length || undefined },
-    { id: 'payment', label: 'Collect payment', icon: CreditCard },
-    { id: 'billing', label: 'Billing office', icon: FileText },
-    { id: 'claims', label: 'HMO / NHIA claims', icon: FileText },
-    { id: 'receipts', label: 'Today receipts', icon: Wallet },
-    {
-      id: 'akwaremit',
-      label: 'AkwaRemit Central Hub',
-      icon: Landmark,
-      badge: akwaSummary.pendingReceiptsCount || undefined,
-    },
-  ];
-
   const openInPos = (req: FrontDeskAccountsRequest) => {
     setSelectedReq(req);
     setView('payment');
@@ -567,70 +552,59 @@ export const AccountingWorkspace: React.FC<Props> = ({
 
   return (
     <div className="mc-stagger-desk" style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: '70vh', paddingBottom: 28 }}>
-      {/* Compact top-bar (replaces full hero) */}
+      {/* Clean single-hierarchy top bar — sidebar handles suite switching; Collect payment is the sole primary gradient CTA */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px',
+        display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '14px 18px',
         background: '#fff', borderRadius: 18, border: `1px solid ${C.border}`,
         boxShadow: '0 2px 8px rgba(15,23,42,0.04)',
       }}>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontWeight: 800, fontSize: 16, color: C.navy }}>Accounting &amp; Cashier Desk</div>
           <div style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>{facilityName} · {session.name}</div>
         </div>
         {awaiting.length > 0 && (
-          <span style={{ padding: '4px 12px', borderRadius: 999, background: '#FEF3C7', color: '#B45309', fontWeight: 800, fontSize: 12 }}>
-            {awaiting.length} awaiting
+          <span style={{ padding: '4px 11px', borderRadius: 999, background: '#FEF3C7', color: '#B45309', fontWeight: 800, fontSize: 12 }}>
+            {awaiting.length} awaiting payment
           </span>
         )}
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: C.teal }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ADE80', boxShadow: '0 0 0 3px rgba(74,222,128,0.35)', display: 'inline-block' }} />
-          Live sync
-        </span>
+        {view !== 'home' && (
+          <button
+            type="button"
+            onClick={() => setView('home')}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '8px 13px', borderRadius: 10, border: `1px solid ${C.border}`,
+              background: '#F8FAFC', color: C.navy, fontWeight: 700, fontSize: 12.5, cursor: 'pointer',
+            }}
+          >
+            Accounts Home
+          </button>
+        )}
         <button
-          type="button" className="mc-btn-live" onClick={() => setView('payment')}
+          type="button"
+          onClick={() => setView('receipts')}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 7,
+            padding: '8px 13px', borderRadius: 10,
+            border: view === 'receipts' ? '1.5px solid #0284C7' : `1px solid ${C.border}`,
+            background: view === 'receipts' ? '#EFF6FF' : '#fff',
+            color: view === 'receipts' ? '#0284C7' : C.navy, fontWeight: 700, fontSize: 12.5, cursor: 'pointer',
+          }}
+        >
+          <Wallet size={14} /> Today&apos;s receipts ({todayReceipts.length})
+        </button>
+        <button
+          type="button" onClick={() => setView('payment')}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '9px 16px', borderRadius: 12, border: 'none',
+            padding: '9px 17px', borderRadius: 12, border: 'none',
             background: 'linear-gradient(135deg,#0052D4,#0D9488)',
             color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer',
+            boxShadow: '0 6px 16px rgba(2,132,199,0.22)',
           }}
         >
           Collect payment <ArrowRight size={15} />
         </button>
-      </div>
-
-      {/* Nav pills */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: 6, background: '#F1F5F9', borderRadius: 16, border: `1px solid ${C.border}` }}>
-        {nav.map((n) => {
-          const Icon = n.icon;
-          const on = view === n.id;
-          return (
-            <button
-              key={n.id} type="button" onClick={() => setView(n.id)}
-              className={on ? 'mc-btn-live' : undefined}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8,
-                padding: '10px 14px', borderRadius: 12,
-                border: on ? 'none' : '1px solid transparent',
-                background: on ? 'linear-gradient(135deg,#0052D4,#0D9488)' : 'transparent',
-                color: on ? '#fff' : C.navy, fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                boxShadow: on ? '0 8px 20px rgba(2,132,199,0.25)' : 'none',
-              }}
-            >
-              <Icon size={16} />
-              {n.label}
-              {n.badge != null && n.badge > 0 && (
-                <span style={{
-                  minWidth: 20, height: 20, borderRadius: 999,
-                  background: on ? 'rgba(255,255,255,0.25)' : '#F59E0B', color: '#fff',
-                  fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px',
-                }}>
-                  {n.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
       </div>
 
       {view === 'home' && (
@@ -738,7 +712,7 @@ export const AccountingWorkspace: React.FC<Props> = ({
                   )}
                 </div>
                 <div style={{ padding: 12 }}>
-                  <button type="button" onClick={() => setView('payment')} style={{ width: '100%', padding: '11px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#0052D4,#0D9488)', color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>
+                  <button type="button" onClick={() => setView('payment')} style={{ width: '100%', padding: '10px 12px', borderRadius: 12, border: `1px solid ${C.border}`, background: '#F8FAFC', color: C.navy, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
                     Open collect desk
                   </button>
                 </div>

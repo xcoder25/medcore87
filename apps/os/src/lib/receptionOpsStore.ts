@@ -3,7 +3,12 @@
  */
 import { publishFacilityData, FACILITY_KEYS } from './roleSyncBus';
 import { getActiveFacilityId } from './adminRealtimeStore';
-import type { FacilityPatient } from './patientRegistryStore';
+import { listPatients, type FacilityPatient } from './patientRegistryStore';
+import {
+  autoBindAppointmentToHealthCard,
+  autoBindVisitToHealthCard,
+  markBoundAppointmentConfirmed,
+} from './healthCardAiBinding';
 
 export const RECEPTION_OPS_KEY = 'medcore_os_reception_ops_v2';
 
@@ -260,6 +265,9 @@ export function createPatientEncounter(input: {
     );
   }
   save(state);
+  try {
+    autoBindVisitToHealthCard(visit);
+  } catch { /* ignore */ }
   return visit;
 }
 
@@ -282,8 +290,18 @@ export function checkInPatient(input: {
 
 export function updateVisitStatus(visitId: string, status: QueueStatus) {
   const state = load();
-  state.visits = state.visits.map((v) => (v.id === visitId ? { ...v, status } : v));
+  let changedVisit: ReceptionVisit | undefined;
+  state.visits = state.visits.map((v) => {
+    if (v.id !== visitId) return v;
+    changedVisit = { ...v, status };
+    return changedVisit;
+  });
   save(state);
+  if (changedVisit) {
+    try {
+      autoBindVisitToHealthCard(changedVisit);
+    } catch { /* ignore */ }
+  }
 }
 
 /**
@@ -317,7 +335,12 @@ export function markPatientWithProvider(
     }
     return v;
   });
-  if (updated) save(state);
+  if (updated) {
+    save(state);
+    try {
+      autoBindVisitToHealthCard(updated);
+    } catch { /* ignore */ }
+  }
   return updated;
 }
 
@@ -382,7 +405,12 @@ export function autoAdvancePatientVisitStage(
     return updated;
   });
 
-  if (updated) save(state);
+  if (updated) {
+    save(state);
+    try {
+      autoBindVisitToHealthCard(updated);
+    } catch { /* ignore */ }
+  }
   return updated;
 }
 
@@ -407,7 +435,12 @@ export function markPatientConsultComplete(
     }
     return v;
   });
-  if (updated) save(state);
+  if (updated) {
+    save(state);
+    try {
+      autoBindVisitToHealthCard(updated);
+    } catch { /* ignore */ }
+  }
   return updated;
 }
 
@@ -525,7 +558,115 @@ export function bookAppointment(input: Omit<ReceptionAppointment, 'id' | 'create
   };
   state.appointments = [appt, ...state.appointments];
   save(state);
+  try {
+    autoBindAppointmentToHealthCard(appt, {
+      source: input.doctor && input.doctor !== 'Any available' ? 'doctor' : 'reception',
+    });
+  } catch { /* ignore */ }
   return appt;
+}
+
+export function updateAppointmentStatus(
+  id: string,
+  status: ReceptionAppointment['status']
+): ReceptionAppointment | null {
+  const state = load();
+  let updated: ReceptionAppointment | null = null;
+  state.appointments = state.appointments.map((a) => {
+    if (a.id !== id) return a;
+    updated = { ...a, status };
+    return updated;
+  });
+  if (updated) {
+    save(state);
+    try {
+      autoBindAppointmentToHealthCard(updated);
+    } catch { /* ignore */ }
+  }
+  return updated;
+}
+
+export function listPatientAppointments(
+  facilityId: string,
+  ref: { patientId?: string; hospitalNumber?: string }
+): ReceptionAppointment[] {
+  const pid = (ref.patientId || '').trim().toUpperCase();
+  const hn = (ref.hospitalNumber || '').trim().toUpperCase();
+  return load()
+    .appointments.filter(
+      (a) =>
+        a.facilityId === facilityId &&
+        a.status !== 'cancelled' &&
+        ((pid && (a.patientId || '').toUpperCase() === pid) ||
+          (hn && (a.hospitalNumber || '').toUpperCase() === hn))
+    )
+    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+}
+
+/**
+ * Scan-to-confirm an AI-bound appointment right from Reception Scan ID/QR:
+ * marks the appointment arrived, checks patient into the OPD queue, and updates the Health Card binding.
+ */
+export function confirmAndCheckInBoundAppointment(
+  facilityId: string,
+  appointmentId: string
+): { ok: boolean; appointment?: ReceptionAppointment; visit?: ReceptionVisit; error?: string } {
+  const state = load();
+  const appt = state.appointments.find(
+    (a) => a.facilityId === facilityId && a.id === appointmentId
+  );
+  if (!appt) {
+    return { ok: false, error: 'Appointment not found for this facility.' };
+  }
+  if (appt.status === 'cancelled') {
+    return { ok: false, error: 'Cannot confirm a cancelled appointment.' };
+  }
+
+  const patients = listPatients(facilityId);
+  const pt =
+    patients.find(
+      (p) =>
+        p.id === appt.patientId ||
+        (appt.hospitalNumber && p.hospitalNumber.toUpperCase() === appt.hospitalNumber.toUpperCase())
+    ) ||
+    ({
+      id: appt.patientId || appt.hospitalNumber,
+      hospitalNumber: appt.hospitalNumber || appt.patientId,
+      firstName: appt.patientName.split(' ')[0] || appt.patientName,
+      lastName: appt.patientName.split(' ').slice(1).join(' '),
+      sex: 'Other',
+      dob: '',
+      phone: '',
+      address: '',
+      lga: '',
+      facilityId,
+      facilityName: facilityId,
+      status: 'active',
+      registeredAt: new Date().toISOString(),
+    } as FacilityPatient);
+
+  const arrivedAppt: ReceptionAppointment = { ...appt, status: 'arrived' };
+  state.appointments = state.appointments.map((a) => (a.id === appt.id ? arrivedAppt : a));
+  save(state);
+
+  const visit = createPatientEncounter({
+    patient: pt,
+    facilityId,
+    department: appt.department || 'General OPD',
+    doctor: appt.doctor || 'Any available',
+    visitType: 'appointment',
+    reason: appt.reason || 'Confirmed Appointment Check-In',
+    appointmentId: appt.id,
+    appointmentTime: appt.scheduledAt?.slice(11, 16) || '',
+    paymentStatus: 'pending',
+  });
+
+  try {
+    autoBindAppointmentToHealthCard(arrivedAppt);
+    markBoundAppointmentConfirmed(facilityId, appt.id, pt.id);
+  } catch { /* ignore */ }
+
+  return { ok: true, appointment: arrivedAppt, visit };
 }
 
 export function listAppointments(facilityId: string, day?: string): ReceptionAppointment[] {

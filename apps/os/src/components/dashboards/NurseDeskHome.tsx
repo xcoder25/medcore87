@@ -598,21 +598,6 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate, initialToo
                 Nursing Office Desk
               </span>
               <span style={{
-                background: '#ECFDF5',
-                color: '#065F46',
-                border: '1px solid #A7F3D0',
-                borderRadius: 999,
-                padding: '2px 10px',
-                fontSize: 11,
-                fontWeight: 700,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-              }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
-                Realtime Station Online
-              </span>
-              <span style={{
                 background: '#F1F5F9',
                 color: '#475569',
                 borderRadius: 6,
@@ -624,16 +609,16 @@ export const NurseDeskHome: React.FC<Props> = ({ session, onNavigate, initialToo
               </span>
             </div>
             <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-              Duty Nurse: <strong style={{ color: C.text }}>{nurseName}</strong> ({nurseBadge}) · Station Ward Roster Synchronized
+              Duty Nurse: <strong style={{ color: C.text }}>{nurseName}</strong> ({nurseBadge})
             </div>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 11, color: C.muted }}>Last Bus Pulse</div>
+            <div style={{ fontSize: 11, color: C.muted }}>Updated</div>
             <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>
-              {lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              {lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </div>
           </div>
           <button

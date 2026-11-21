@@ -397,39 +397,28 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
       ) : !isPendingRemittance ? (
         <div
           style={{
-            background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
-            border: '1.5px solid #10B981',
-            borderRadius: 18,
-            padding: '14px 18px',
+            background: '#F8FAFC',
+            border: '1px solid #E2E8F0',
+            borderRadius: 12,
+            padding: '8px 14px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
-            gap: 12,
+            gap: 10,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, background: '#059669', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ShieldCheck size={20} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 14, color: '#065F46' }}>
-                Akwa Remitta Remittance Compliant · Zero Pending Cash
-              </div>
-              <div style={{ fontSize: 12, color: '#047857', marginTop: 1 }}>
-                All collected hospital revenues have been successfully lodged into the State Treasury Account.
-              </div>
-            </div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#334155', fontWeight: 600 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} />
+            <span>Akwa Remitta compliant · Zero pending cash</span>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              type="button"
-              onClick={onNavigateToAkwaRemit}
-              style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #059669', background: '#fff', color: '#065F46', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
-            >
-              View Remittance Audit Batches
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onNavigateToAkwaRemit}
+            style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', fontWeight: 700, fontSize: 11.5, cursor: 'pointer' }}
+          >
+            Audit Batches
+          </button>
         </div>
       ) : null}
 
@@ -439,7 +428,7 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
           background: '#fff',
           borderRadius: 20,
           border: '1px solid #E2E8F0',
-          boxShadow: '0 12px 36px rgba(15, 23, 42, 0.05)',
+          boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
           overflow: 'hidden',
         }}
       >
@@ -448,7 +437,7 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
           style={{
             padding: '16px 20px',
             borderBottom: '1px solid #E2E8F0',
-            background: 'linear-gradient(180deg, #F8FAFC 0%, #fff 100%)',
+            background: '#FFFFFF',
             display: 'flex',
             flexWrap: 'wrap',
             alignItems: 'center',
@@ -459,39 +448,24 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div
               style={{
-                width: 36,
-                height: 36,
+                width: 34,
+                height: 34,
                 borderRadius: 10,
-                background: 'linear-gradient(135deg, #0052D4, #0D9488)',
-                color: '#fff',
+                background: '#EFF6FF',
+                color: '#0284C7',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Scale size={18} />
+              <Scale size={17} />
             </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 8 }}>
-                Auto Account Balancing Intelligence
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    padding: '2px 8px',
-                    borderRadius: 999,
-                    background: '#EFF6FF',
-                    color: '#0284C7',
-                    fontSize: 10,
-                    fontWeight: 800,
-                  }}
-                >
-                  <Sparkles size={11} /> AI RECONCILIATION ACTIVE
-                </span>
+              <div style={{ fontWeight: 800, fontSize: 15, color: '#0F172A' }}>
+                Account Balancing &amp; Ledger
               </div>
               <div style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>
-                Real-time multi-ledger reconciliation: Invoices vs Physical Cash vs AkwaRemit POS vs State TSA
+                Invoices vs Physical Cash vs AkwaRemit POS vs State TSA
               </div>
             </div>
           </div>
@@ -502,25 +476,24 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 6,
-                padding: '6px 12px',
+                padding: '5px 11px',
                 borderRadius: 999,
-                background: isBalanced ? '#ECFDF5' : '#FFFBEB',
-                color: isBalanced ? '#059669' : '#B45309',
-                border: `1px solid ${isBalanced ? '#A7F3D0' : '#FDE68A'}`,
-                fontWeight: 800,
-                fontSize: 12,
+                background: isBalanced ? '#F8FAFC' : '#FFFBEB',
+                color: isBalanced ? '#475569' : '#B45309',
+                border: `1px solid ${isBalanced ? '#E2E8F0' : '#FDE68A'}`,
+                fontWeight: 700,
+                fontSize: 11.5,
               }}
             >
               <span
                 style={{
-                  width: 7,
-                  height: 7,
+                  width: 6,
+                  height: 6,
                   borderRadius: '50%',
                   background: isBalanced ? '#10B981' : '#F59E0B',
-                  boxShadow: `0 0 0 3px ${isBalanced ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}`,
                 }}
               />
-              {isBalanced ? 'ALL ACCOUNTS BALANCED' : 'RECONCILIATION IN PROGRESS'}
+              {isBalanced ? 'Balanced' : 'Reconciliation pending'}
             </span>
             {onRefresh && (
               <button
@@ -605,10 +578,10 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Intelligence Insights & Audit Footer */}
+        {/* Quiet Audit Footer */}
         <div
           style={{
-            padding: '12px 20px',
+            padding: '10px 20px',
             background: '#F8FAFC',
             borderTop: '1px solid #E2E8F0',
             display: 'flex',
@@ -621,12 +594,8 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, color: '#475569' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <CheckCircle2 size={14} color="#10B981" />
-              AkwaRemit Gateway: Realtime live sync active
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Receipt size={14} color="#0284C7" />
-              Receipt tracking: {summary.receiptsCount} recorded today
+              Receipts recorded today: {summary.receiptsCount}
             </span>
           </div>
 
@@ -660,9 +629,9 @@ export const AutoAccountBalancingCard: React.FC<Props> = ({
                 gap: 5,
                 padding: '6px 12px',
                 borderRadius: 8,
-                border: 'none',
-                background: '#0F172A',
-                color: '#fff',
+                border: '1px solid #CBD5E1',
+                background: '#fff',
+                color: '#0F172A',
                 fontSize: 12,
                 fontWeight: 700,
                 cursor: 'pointer',

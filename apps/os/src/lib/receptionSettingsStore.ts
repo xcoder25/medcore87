@@ -73,6 +73,11 @@ export interface ReceptionSettings {
   allowStationSwitch: boolean;
   allowFacilitySwitch: boolean;
   defaultStation: string;
+  /** 8. Health Card AI auto-bind & printable intake form */
+  autoBindAppointmentsToHealthCard?: boolean;
+  autoBindVisitsToHealthCard?: boolean;
+  aiCareBriefOnCardScan?: boolean;
+  printableFormIncludeConsent?: boolean;
   updatedAt: string;
 }
 
@@ -130,6 +135,10 @@ export function defaultReceptionSettings(facilityId = 'DEFAULT'): ReceptionSetti
     allowStationSwitch: true,
     allowFacilitySwitch: false,
     defaultStation: 'Front Desk 1',
+    autoBindAppointmentsToHealthCard: true,
+    autoBindVisitsToHealthCard: true,
+    aiCareBriefOnCardScan: true,
+    printableFormIncludeConsent: true,
     updatedAt: new Date().toISOString(),
   };
 }

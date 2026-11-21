@@ -197,7 +197,7 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     {
       label: 'Waiting for clinic',
       value: waiting.length,
-      sub: 'Check-ins in queue · Live',
+      sub: 'Check-ins in queue',
       icon: Users,
       tint: '#EFF6FF',
       iconColor: C.blue,
@@ -205,7 +205,7 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     {
       label: 'With provider',
       value: withMe.length,
-      sub: 'Active consultations · Live',
+      sub: 'Active consultations',
       icon: Stethoscope,
       tint: '#F5F3FF',
       iconColor: C.violet,
@@ -213,7 +213,7 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     {
       label: 'Completed today',
       value: completed.length,
-      sub: 'Visits closed · Live',
+      sub: 'Visits closed',
       icon: CheckCircle2,
       tint: '#ECFDF5',
       iconColor: C.green,
@@ -221,7 +221,7 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     {
       label: 'Results ready',
       value: pendingResults.length,
-      sub: 'Review in EMR · Live',
+      sub: 'Review in EMR',
       icon: FlaskConical,
       tint: '#FEF3C7',
       iconColor: C.amber,
@@ -229,7 +229,7 @@ export const DoctorDeskHome: React.FC<Props> = ({ session, onNavigate }) => {
     {
       label: 'Open orders',
       value: openOrders.length,
-      sub: criticalOrders.length ? `${criticalOrders.length} urgent/stat · Live` : 'Lab · Rx · Imaging · Live',
+      sub: criticalOrders.length ? `${criticalOrders.length} urgent/stat` : 'Lab · Rx · Imaging',
       icon: Activity,
       tint: '#FEF2F2',
       iconColor: C.red,

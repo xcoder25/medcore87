@@ -49,6 +49,7 @@ import {
 import { StatewideHealthCardRenderer } from './StatewideHealthCardRenderer';
 import { EditPatientModal } from '../records/EditPatientModal';
 import { PhysicalFormScannerModal, type ScannedRegistrationFields } from '../reception/PhysicalFormScannerModal';
+import { getHealthCardLivePacket, subscribeHealthCardBindings } from '../../lib/healthCardAiBinding';
 
 interface Props {
   session?: {
@@ -159,9 +160,16 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
     }
   }, [facilityId, selectedId]);
 
+  const [bindingTick, setBindingTick] = useState(0);
+
   useEffect(() => {
     reload();
-    return subscribePatients(reload);
+    const u1 = subscribePatients(reload);
+    const u2 = subscribeHealthCardBindings(() => setBindingTick((n) => n + 1));
+    return () => {
+      u1();
+      u2();
+    };
   }, [reload]);
 
   const flash = (msg: string) => {
@@ -206,6 +214,16 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
     }
     return null;
   }, [selectedPatient]);
+
+  const cardPacket = useMemo(() => {
+    void bindingTick;
+    if (!selectedPatient) return null;
+    return getHealthCardLivePacket(facilityId, {
+      patientId: selectedPatient.id,
+      hospitalNumber: selectedPatient.hospitalNumber,
+      shid: selectedPatient.shid,
+    });
+  }, [selectedPatient, facilityId, bindingTick]);
 
   // Execute RBAC Scan against active patient card
   const handleTriggerScan = (mode: ScanRoleMode) => {
@@ -901,6 +919,70 @@ export const DigitalPatientCard: React.FC<Props> = ({ session }) => {
                   <div style={{ fontSize: 12, color: '#991B1B' }}>
                     <strong>Emergency Triggered:</strong> {activeCard.emergencyReasons.join(' • ')}
                   </div>
+                </div>
+              )}
+
+              {/* AI-Bound Appointments & Visit Activity synced automatically to Health Card */}
+              {cardPacket && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: '12px 14px',
+                    borderRadius: 12,
+                    background: '#F8FAFC',
+                    border: '1px solid #E2E8F0',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 800, color: '#0F172A' }}>
+                      <Sparkles size={14} color="#0D9488" />
+                      <span>AI-Bound Appointments &amp; Visit Status</span>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#047857', background: '#ECFDF5', padding: '2px 8px', borderRadius: 999 }}>
+                      Auto-Synced · Readiness {cardPacket.aiBrief.readinessScore}%
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#334155', fontWeight: 600 }}>
+                    {cardPacket.aiBrief.headline}
+                  </div>
+                  {cardPacket.upcomingAppointments.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
+                      {cardPacket.upcomingAppointments.slice(0, 3).map((appt) => (
+                        <div
+                          key={appt.appointmentId}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 8,
+                            padding: '7px 10px',
+                            borderRadius: 8,
+                            background: '#FFFFFF',
+                            border: '1px solid #CBD5E1',
+                            fontSize: 11.5,
+                          }}
+                        >
+                          <div>
+                            <strong style={{ color: '#0F172A' }}>{appt.department}</strong> · {appt.doctor}
+                            <div style={{ fontSize: 10.5, color: '#64748B' }}>
+                              {appt.scheduledAt.replace('T', ' ').slice(0, 16)}{appt.reason ? ` · ${appt.reason}` : ''}
+                            </div>
+                          </div>
+                          <span style={{ fontSize: 10.5, fontWeight: 800, color: appt.status === 'arrived' ? '#047857' : '#0284C7', background: appt.status === 'arrived' ? '#ECFDF5' : '#EFF6FF', padding: '2px 8px', borderRadius: 999 }}>
+                            {appt.status.toUpperCase()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {cardPacket.recentVisits.length > 0 && (
+                    <div style={{ fontSize: 11, color: '#475569' }}>
+                      Latest visit: <strong>{cardPacket.recentVisits[0].department}</strong> (#{cardPacket.recentVisits[0].queueNumber}) · {cardPacket.recentVisits[0].status.replace(/_/g, ' ')}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

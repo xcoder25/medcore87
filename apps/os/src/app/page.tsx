@@ -126,10 +126,10 @@ const TopHudClock = React.memo(function TopHudClock() {
     const update = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
       const now = new Date();
-      setTime(now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setTime(now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
     };
     update();
-    const timer = setInterval(update, 1000);
+    const timer = setInterval(update, 30000);
     return () => clearInterval(timer);
   }, []);
 
@@ -157,6 +157,7 @@ export default function OSPage() {
   const forceLogout = useCallback(() => {
     try {
       localStorage.removeItem(TERMINAL_LOCK_KEY);
+      sessionStorage.removeItem(TERMINAL_LOCK_KEY);
     } catch { /* ignore */ }
     setIsLocked(false);
     setUserSession(null);
@@ -223,7 +224,20 @@ export default function OSPage() {
   const [moduleKey, setModuleKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarSearch, setSidebarSearch] = useState('');
-  const [isLocked, setIsLocked] = useState(false);
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const hasSession = Boolean(
+        window.sessionStorage.getItem('medcore_os_session') || window.localStorage.getItem('medcore_os_session')
+      );
+      if (!hasSession) return false;
+      return Boolean(
+        window.localStorage.getItem(TERMINAL_LOCK_KEY) || window.sessionStorage.getItem(TERMINAL_LOCK_KEY)
+      );
+    } catch {
+      return false;
+    }
+  });
   const [unlockPin, setUnlockPin] = useState('');
   const [unlockError, setUnlockError] = useState('');
   const [unlockShake, setUnlockShake] = useState(false);
@@ -397,20 +411,30 @@ export default function OSPage() {
         const fixed = stripSecretsDeep({ ...restored, roleKey });
         setUserSession(fixed);
         setActiveModule('dashboard');
+        let persistedLock = false;
         try {
-          if (localStorage.getItem(TERMINAL_LOCK_KEY)) {
+          persistedLock = Boolean(
+            localStorage.getItem(TERMINAL_LOCK_KEY) || sessionStorage.getItem(TERMINAL_LOCK_KEY)
+          );
+          if (persistedLock) {
             setIsLocked(true);
             setAppState('app');
           }
         } catch { /* ignore */ }
         void hydratePatientRegistry(fixed.hospitalId);
         void hydrateBedBoard();
-        if (typeof window !== 'undefined' && sessionStorage.getItem('medcore_splash_done') === '1') {
+        if (!persistedLock && typeof window !== 'undefined' && sessionStorage.getItem('medcore_splash_done') === '1') {
           setAppState('app');
         }
         try {
           localStorage.setItem('medcore_os_session', JSON.stringify(fixed));
         } catch { /* ignore */ }
+      } else {
+        try {
+          localStorage.removeItem(TERMINAL_LOCK_KEY);
+          sessionStorage.removeItem(TERMINAL_LOCK_KEY);
+        } catch { /* ignore */ }
+        setIsLocked(false);
       }
     } catch {
       // ignore
@@ -545,7 +569,10 @@ export default function OSPage() {
     });
     try {
       localStorage.setItem('medcore_os_session', JSON.stringify(normalized));
+      localStorage.removeItem(TERMINAL_LOCK_KEY);
+      sessionStorage.removeItem(TERMINAL_LOCK_KEY);
     } catch { /* ignore */ }
+    setIsLocked(false);
     setUserSession(normalized);
     setActiveModule('dashboard');
     setAppState('app');
@@ -614,6 +641,7 @@ export default function OSPage() {
       localStorage.removeItem(TERMINAL_LOCK_KEY);
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('medcore_session_pin');
+        sessionStorage.removeItem(TERMINAL_LOCK_KEY);
       }
     } catch {
       // ignore
@@ -624,16 +652,15 @@ export default function OSPage() {
   };
 
 const handleLockScreen = () => {
+    const payload = JSON.stringify({
+      locked: true,
+      badgeId: userSession?.badgeId || '',
+      facilityId: userSession?.hospitalId || '',
+      lockedAt: new Date().toISOString(),
+    });
     try {
-      localStorage.setItem(
-        TERMINAL_LOCK_KEY,
-        JSON.stringify({
-          locked: true,
-          badgeId: userSession?.badgeId || '',
-          facilityId: userSession?.hospitalId || '',
-          lockedAt: new Date().toISOString(),
-        })
-      );
+      localStorage.setItem(TERMINAL_LOCK_KEY, payload);
+      sessionStorage.setItem(TERMINAL_LOCK_KEY, payload);
     } catch { /* ignore */ }
     setIsLocked(true);
     setUnlockPin('');
@@ -690,6 +717,7 @@ const handleLockScreen = () => {
       if (matched) {
         try {
           localStorage.removeItem(TERMINAL_LOCK_KEY);
+          sessionStorage.removeItem(TERMINAL_LOCK_KEY);
         } catch { /* ignore */ }
         setIsLocked(false);
         setUnlockPin('');
@@ -1093,13 +1121,192 @@ const handleLockScreen = () => {
   // Dynamically load tailored RBAC sidebar content
   const roleNavSections = getRoleNavSections(userSession, (receptionUser || isLabStaff) ? false : showFullDirectory);
 
+  const renderLockModal = () => {
+    if (!isLocked) return null;
+    return (
+      <>
+        <div className="os-lock-modal-backdrop">
+          <style>{'@keyframes osLockShake{0%,100%{transform:translateX(0)}15%{transform:translateX(-8px)}30%{transform:translateX(8px)}45%{transform:translateX(-6px)}60%{transform:translateX(6px)}75%{transform:translateX(-3px)}90%{transform:translateX(3px)}}'}</style>
+          <div
+            className="os-lock-card"
+            style={unlockShake ? { animation: 'osLockShake 0.55s ease' } : {}}
+          >
+            <div className="os-lock-icon-wrap">
+              <Lock size={30} />
+            </div>
+            <div style={{ marginBottom: 6, display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(234,88,12,0.1)', border: '1px solid rgba(234,88,12,0.25)', borderRadius: 9999, padding: '3px 12px', fontSize: '0.7rem', fontWeight: 700, color: '#FB923C', letterSpacing: '0.05em' }}>
+              IBOM HEALTH OS · TERMINAL SECURED
+            </div>
+            <h3 style={{ margin: '10px 0 6px 0', color: '#0A2540', fontFamily: 'var(--os-font-heading)', fontSize: '1.3rem' }}>Workstation Locked</h3>
+            <p style={{ margin: '0 0 18px 0', fontSize: '0.82rem', color: '#94A3B8', lineHeight: 1.5 }}>
+              Staff on Duty: <strong style={{ color: '#FB923C' }}>{userSession?.name}</strong><br />
+              <span style={{ color: '#64748B', fontSize: '0.75rem' }}>Enter your PIN to resume session.</span>
+            </p>
+            <form onSubmit={handleUnlock}>
+              <input
+                type="password"
+                className="os-form-input"
+                placeholder="Enter PIN"
+                value={unlockPin}
+                disabled={unlockLoading}
+                onChange={(e) => { setUnlockPin(e.target.value); if (unlockError) setUnlockError(''); }}
+                autoFocus
+                style={{
+                  textAlign: 'center',
+                  letterSpacing: '0.25em',
+                  fontSize: '1.1rem',
+                  marginBottom: unlockError ? 8 : 14,
+                  borderColor: unlockError ? '#EF4444' : undefined,
+                  outline: unlockError ? '2px solid rgba(239,68,68,0.25)' : undefined,
+                  opacity: unlockLoading ? 0.7 : 1,
+                }}
+              />
+              {unlockError && (
+                <div style={{
+                  marginBottom: 12,
+                  fontSize: '0.78rem',
+                  color: '#EF4444',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 5,
+                }}>
+                  <Key size={12} />
+                  {unlockError}
+                </div>
+              )}
+              <button
+                type="submit"
+                disabled={unlockLoading}
+                className="os-login-submit-btn"
+                style={{ margin: 0, opacity: unlockLoading ? 0.75 : 1 }}
+              >
+                <Unlock size={16} />
+                <span>{unlockLoading ? 'Verifying PIN...' : 'Unlock Terminal'}</span>
+              </button>
+              {faceUnlockAvailable && (
+                <button
+                  type="button"
+                  disabled={bioUnlockBusy}
+                  onClick={() => {
+                    setUnlockError('');
+                    setFaceUnlockModalOpen(true);
+                  }}
+                  style={{
+                    width: '100%',
+                    marginTop: 10,
+                    padding: '10px 14px',
+                    borderRadius: 10,
+                    border: '1px solid #0F766E',
+                    background: '#F0FDFA',
+                    color: '#115E59',
+                    fontWeight: 800,
+                    fontSize: '0.84rem',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <Camera size={16} />
+                  <span>Unlock with Face Camera</span>
+                </button>
+              )}
+              {bioUnlockAvailable && (
+                <button
+                  type="button"
+                  disabled={bioUnlockBusy}
+                  onClick={async () => {
+                    if (!userSession?.badgeId) return;
+                    setBioUnlockBusy(true);
+                    setUnlockError('');
+                    try {
+                      const res = await verifyStaffBiometric({
+                        badgeId: userSession.badgeId,
+                        facilityId: userSession.hospitalId || 'IGH-EKT',
+                        staffName: userSession.name,
+                      });
+                      if (res.verified) {
+                        try {
+                          localStorage.removeItem(TERMINAL_LOCK_KEY);
+                          sessionStorage.removeItem(TERMINAL_LOCK_KEY);
+                        } catch { /* ignore */ }
+                        setIsLocked(false);
+                        setUnlockPin('');
+                        setUnlockError('');
+                      } else {
+                        setUnlockError(res.error || 'Biometric unlock cancelled or failed. Enter PIN above.');
+                      }
+                    } finally {
+                      setBioUnlockBusy(false);
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    marginTop: 10,
+                    padding: '10px 14px',
+                    borderRadius: 10,
+                    border: '1px solid #10B981',
+                    background: '#ECFDF5',
+                    color: '#065F46',
+                    fontWeight: 800,
+                    fontSize: '0.84rem',
+                    cursor: bioUnlockBusy ? 'wait' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <Fingerprint size={16} />
+                  <span>{bioUnlockBusy ? 'Waiting for Biometric…' : 'Unlock with Biometrics (Fingerprint / Face ID)'}</span>
+                </button>
+              )}
+            </form>
+            <div style={{ marginTop: 18, fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <span className="os-status-dot pulse-green" />
+              <span>Session active · {userSession?.facility}</span>
+            </div>
+          </div>
+        </div>
+
+        {userSession?.badgeId && (
+          <FaceBiometricCaptureModal
+            mode="verify"
+            isOpen={faceUnlockModalOpen}
+            badgeId={userSession.badgeId}
+            facilityId={userSession.hospitalId || 'IGH-EKT'}
+            staffName={userSession.name || 'Staff Member'}
+            onClose={() => setFaceUnlockModalOpen(false)}
+            onVerified={() => {
+              try {
+                localStorage.removeItem(TERMINAL_LOCK_KEY);
+                sessionStorage.removeItem(TERMINAL_LOCK_KEY);
+              } catch { /* ignore */ }
+              setFaceUnlockModalOpen(false);
+              setIsLocked(false);
+              setUnlockPin('');
+              setUnlockError('');
+            }}
+          />
+        )}
+      </>
+    );
+  };
+
   // Full admin chrome replaces the clinical OS shell
   if (userSession && (activeRoleKey === 'hospital_admin' || userSession.roleKey === 'hospital_admin')) {
     return (
-      <AdminShell
-        session={userSession}
-        onLogout={handleLogout}
-      />
+      <>
+        <AdminShell
+          session={userSession}
+          onLogout={handleLogout}
+          onLock={handleLockScreen}
+        />
+        {renderLockModal()}
+      </>
     );
   }
 
@@ -1485,173 +1692,7 @@ const handleLockScreen = () => {
       )}
 
       {/* ── Lock Screen Modal ── */}
-      {isLocked && (
-        <div className="os-lock-modal-backdrop">
-          <style>{'@keyframes osLockShake{0%,100%{transform:translateX(0)}15%{transform:translateX(-8px)}30%{transform:translateX(8px)}45%{transform:translateX(-6px)}60%{transform:translateX(6px)}75%{transform:translateX(-3px)}90%{transform:translateX(3px)}}'}</style>
-          <div
-            className="os-lock-card"
-            style={unlockShake ? { animation: 'osLockShake 0.55s ease' } : {}}
-          >
-            <div className="os-lock-icon-wrap">
-              <Lock size={30} />
-            </div>
-            <div style={{ marginBottom: 6, display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(234,88,12,0.1)', border: '1px solid rgba(234,88,12,0.25)', borderRadius: 9999, padding: '3px 12px', fontSize: '0.7rem', fontWeight: 700, color: '#FB923C', letterSpacing: '0.05em' }}>
-              IBOM HEALTH OS · TERMINAL SECURED
-            </div>
-            <h3 style={{ margin: '10px 0 6px 0', color: '#0A2540', fontFamily: 'var(--os-font-heading)', fontSize: '1.3rem' }}>Workstation Locked</h3>
-            <p style={{ margin: '0 0 18px 0', fontSize: '0.82rem', color: '#94A3B8', lineHeight: 1.5 }}>
-              Staff on Duty: <strong style={{ color: '#FB923C' }}>{userSession?.name}</strong><br />
-              <span style={{ color: '#64748B', fontSize: '0.75rem' }}>Enter your PIN to resume session.</span>
-            </p>
-            <form onSubmit={handleUnlock}>
-              <input
-                type="password"
-                className="os-form-input"
-                placeholder="Enter PIN"
-                value={unlockPin}
-                disabled={unlockLoading}
-                onChange={(e) => { setUnlockPin(e.target.value); if (unlockError) setUnlockError(''); }}
-                autoFocus
-                style={{
-                  textAlign: 'center',
-                  letterSpacing: '0.25em',
-                  fontSize: '1.1rem',
-                  marginBottom: unlockError ? 8 : 14,
-                  borderColor: unlockError ? '#EF4444' : undefined,
-                  outline: unlockError ? '2px solid rgba(239,68,68,0.25)' : undefined,
-                  opacity: unlockLoading ? 0.7 : 1,
-                }}
-              />
-              {unlockError && (
-                <div style={{
-                  marginBottom: 12,
-                  fontSize: '0.78rem',
-                  color: '#EF4444',
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 5,
-                }}>
-                  <Key size={12} />
-                  {unlockError}
-                </div>
-              )}
-              <button
-                type="submit"
-                disabled={unlockLoading}
-                className="os-login-submit-btn"
-                style={{ margin: 0, opacity: unlockLoading ? 0.75 : 1 }}
-              >
-                <Unlock size={16} />
-                <span>{unlockLoading ? 'Verifying PIN...' : 'Unlock Terminal'}</span>
-              </button>
-              {faceUnlockAvailable && (
-                <button
-                  type="button"
-                  disabled={bioUnlockBusy}
-                  onClick={() => {
-                    setUnlockError('');
-                    setFaceUnlockModalOpen(true);
-                  }}
-                  style={{
-                    width: '100%',
-                    marginTop: 10,
-                    padding: '10px 14px',
-                    borderRadius: 10,
-                    border: '1px solid #0F766E',
-                    background: '#F0FDFA',
-                    color: '#115E59',
-                    fontWeight: 800,
-                    fontSize: '0.84rem',
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <Camera size={16} />
-                  <span>Unlock with Face Camera</span>
-                </button>
-              )}
-              {bioUnlockAvailable && (
-                <button
-                  type="button"
-                  disabled={bioUnlockBusy}
-                  onClick={async () => {
-                    if (!userSession?.badgeId) return;
-                    setBioUnlockBusy(true);
-                    setUnlockError('');
-                    try {
-                      const res = await verifyStaffBiometric({
-                        badgeId: userSession.badgeId,
-                        facilityId: userSession.hospitalId || 'IGH-EKT',
-                        staffName: userSession.name,
-                      });
-                      if (res.verified) {
-                        try {
-                          localStorage.removeItem(TERMINAL_LOCK_KEY);
-                        } catch { /* ignore */ }
-                        setIsLocked(false);
-                        setUnlockPin('');
-                        setUnlockError('');
-                      } else {
-                        setUnlockError(res.error || 'Biometric unlock cancelled or failed. Enter PIN above.');
-                      }
-                    } finally {
-                      setBioUnlockBusy(false);
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    marginTop: 10,
-                    padding: '10px 14px',
-                    borderRadius: 10,
-                    border: '1px solid #10B981',
-                    background: '#ECFDF5',
-                    color: '#065F46',
-                    fontWeight: 800,
-                    fontSize: '0.84rem',
-                    cursor: bioUnlockBusy ? 'wait' : 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <Fingerprint size={16} />
-                  <span>{bioUnlockBusy ? 'Waiting for Biometric…' : 'Unlock with Biometrics (Fingerprint / Face ID)'}</span>
-                </button>
-              )}
-            </form>
-            <div style={{ marginTop: 18, fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <span className="os-status-dot pulse-green" />
-              <span>Session active · {userSession?.facility}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isLocked && userSession?.badgeId && (
-        <FaceBiometricCaptureModal
-          mode="verify"
-          isOpen={faceUnlockModalOpen}
-          badgeId={userSession.badgeId}
-          facilityId={userSession.hospitalId || 'IGH-EKT'}
-          staffName={userSession.name || 'Staff Member'}
-          onClose={() => setFaceUnlockModalOpen(false)}
-          onVerified={() => {
-            try {
-              localStorage.removeItem(TERMINAL_LOCK_KEY);
-            } catch { /* ignore */ }
-            setFaceUnlockModalOpen(false);
-            setIsLocked(false);
-            setUnlockPin('');
-            setUnlockError('');
-          }}
-        />
-      )}
+      {renderLockModal()}
 
       {/* ── Celestia Assistant panel (stays mounted while minimized so chat state is preserved) ── */}
       {aiDrawerOpen && (
@@ -1831,22 +1872,6 @@ const handleLockScreen = () => {
           </button>
         </div>
 
-        {/* Quick Module Search Input — hidden for reception (short menu) */}
-        {sidebarOpen && userSession?.roleKey !== 'reception' && (
-          <div style={{ padding: '8px 12px', borderBottom: '1px solid #1A2F4C' }}>
-            <div className="os-search-wrap" style={{ minWidth: 'unset', width: '100%', padding: '6px 10px' }}>
-              <Search size={12} />
-              <input
-                className="os-search-input"
-                style={{ fontSize: '0.75rem' }}
-                placeholder="Jump to suite or ward..."
-                value={sidebarSearch}
-                onChange={e => setSidebarSearch(e.target.value)}
-              />
-            </div>
-          </div>
-        )}
-
         <nav className="os-sidebar-nav">
           {filteredSections.map((sec) => (
             <div key={sec.label} style={{ marginBottom: 14 }}>
@@ -1980,33 +2005,7 @@ const handleLockScreen = () => {
             <span className="os-top-hud-search-placeholder">
               Search patients, staff, ID, queue…
             </span>
-            <span className="os-top-hud-kbd">⌘K</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleModuleChange('clinical-search')}
-            title="Clinical Google — Ask Patient File (⌘J)"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 7,
-              padding: '6px 14px',
-              borderRadius: 10,
-              background: activeModule === 'clinical-search' ? '#0D9488' : 'linear-gradient(135deg, rgba(13, 148, 136, 0.12) 0%, rgba(20, 184, 166, 0.22) 100%)',
-              border: '1px solid rgba(13, 148, 136, 0.35)',
-              color: activeModule === 'clinical-search' ? '#FFFFFF' : '#0D9488',
-              fontWeight: 800,
-              fontSize: '0.78rem',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              boxShadow: '0 2px 8px rgba(13, 148, 136, 0.15)',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <Sparkles size={14} />
-            <span>Ask Patient File</span>
-            <span className="os-top-hud-ask-patient-kbd" style={{ opacity: 0.8, fontSize: '0.68rem', background: activeModule === 'clinical-search' ? 'rgba(255,255,255,0.2)' : 'rgba(13,148,136,0.15)', padding: '1px 5px', borderRadius: 4 }}>⌘J</span>
+          <span className="os-top-hud-kbd">⌘K</span>
           </button>
 
           {/* Module breadcrumb pill — shows active workspace name */}
@@ -2040,22 +2039,23 @@ const handleLockScreen = () => {
           <div className="os-top-hud-trail">
             <TopHudClock />
 
-            <button
-              type="button"
-              className="os-top-hud-icon-btn"
-              title="Back"
-              aria-label="Go back"
-              onClick={() => goModuleBack()}
-              disabled={moduleHistory.length === 0 && activeModule === 'dashboard'}
+            <span
               style={{
-                opacity: moduleHistory.length === 0 && activeModule === 'dashboard' ? 0.35 : 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                color: '#64748B',
+                padding: '4px 9px',
+                borderRadius: 999,
+                background: '#F8FAFC',
+                border: '1px solid #E2E8F0',
               }}
+              title="Real-time workstation synchronization active"
             >
-              <ArrowLeft size={17} strokeWidth={2.25} />
-            </button>
-<span className="os-top-hud-live">
-              <span className="os-top-hud-live-dot" />
-              Live
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981' }} />
+              Synced
             </span>
 
             <NotificationBell
@@ -2209,6 +2209,30 @@ const handleLockScreen = () => {
           )}
 
           <div key={moduleKey} className={`os-active-module-wrap${moduleLoading ? '' : ' is-entering'}`}>
+            {activeModule !== 'dashboard' && (
+              <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => goModuleBack()}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 12px',
+                    borderRadius: 9,
+                    border: '1px solid #CBD5E1',
+                    background: '#FFFFFF',
+                    color: '#0F172A',
+                    fontWeight: 700,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+                  }}
+                >
+                  <ArrowLeft size={14} /> Back
+                </button>
+              </div>
+            )}
             <ModuleErrorBoundary moduleName={String(activeModule)} key={`eb-${moduleKey}`}>
             {moduleLoading ? (
               <ModulePageLoader label="Opening workspace…" />

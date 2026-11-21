@@ -18,6 +18,7 @@
 import { upsertPatient, type FacilityPatient } from './patientRegistryStore';
 import { buildVerifyUrl } from './qrPayload';
 import { appendAudit } from './auditLogStore';
+import { getHealthCardLivePacket } from './healthCardAiBinding';
 
 export interface StatewideHealthCard {
   shid: string;
@@ -93,6 +94,8 @@ export interface ClinicEhrPayload {
     status: 'ACTIVE_VERIFIED' | 'SELF_PAY';
   };
   fhirBundleEndpoint: string;
+  boundAppointmentsCount?: number;
+  aiCardSummary?: string;
 }
 
 export interface PublicVerificationPayload {
@@ -322,6 +325,11 @@ export function simulateScanResolution(
   }
 
   if (mode === 'clinic') {
+    const packet = getHealthCardLivePacket(patient.facilityId || 'IGH-EKT', {
+      patientId: patient.id,
+      hospitalNumber: patient.hospitalNumber,
+      shid: card.shid,
+    });
     // Clinic EMR Mode: certified OAuth2 handshake unlocks full EHR
     return {
       status: '200_OK_OAUTH2_AUTHENTICATED_CLINIC_EMR',
@@ -359,6 +367,8 @@ export function simulateScanResolution(
         status: 'ACTIVE_VERIFIED',
       },
       fhirBundleEndpoint: `https://hie.akwaibom.gov.ng/fhir/r4/Patient/${card.shid}/$everything`,
+      boundAppointmentsCount: packet.upcomingAppointments.filter((a) => a.status === 'booked').length,
+      aiCardSummary: packet.aiBrief.headline,
     };
   }
 

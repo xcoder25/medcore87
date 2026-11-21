@@ -113,6 +113,7 @@ const NAV: NavSection[] = [
 interface Props {
   session: UserSession;
   onLogout: () => void;
+  onLock?: () => void;
 }
 
 function formatNow(): string {
@@ -124,7 +125,6 @@ function formatNow(): string {
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit',
       hour12: false,
     });
   } catch {
@@ -132,7 +132,7 @@ function formatNow(): string {
   }
 }
 
-export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
+export const AdminShell: React.FC<Props> = ({ session, onLogout, onLock }) => {
   const [module, setModule] = useState<AdminModule>('dashboard');
   const [moduleHistory, setModuleHistory] = useState<AdminModule[]>([]);
   const [collapsed, setCollapsed] = useState(false);
@@ -289,7 +289,7 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
     const onOff = () => setOnline(false);
     window.addEventListener('online', onOn);
     window.addEventListener('offline', onOff);
-    const id = setInterval(() => setClock(formatNow()), 1000);
+    const id = setInterval(() => setClock(formatNow()), 30000);
 
     // Same-hospital multi-user: unified cloud + SSE + LAN sync with remote hydration guard
     const stopCloudSync = startHospitalCloudSync(fid);
@@ -476,20 +476,6 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
           <div className="admin-shell-top-left">
             <button
               type="button"
-              className="admin-shell-icon-btn"
-              onClick={goBack}
-              title="Back"
-              aria-label="Go back"
-              disabled={moduleHistory.length === 0 && module === 'dashboard'}
-              style={{
-                opacity: moduleHistory.length === 0 && module === 'dashboard' ? 0.35 : 1,
-                marginRight: 4,
-              }}
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button
-              type="button"
               className="admin-shell-facility"
               onClick={() => goModule('settings')}
               title={`${facilityDisplayName} · Click to edit hospital settings`}
@@ -557,6 +543,17 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
               <span>Admin</span>
               <ChevronDown size={13} style={{ color: '#64748B', marginLeft: 2 }} />
             </div>
+            {onLock && (
+              <button
+                type="button"
+                className="admin-shell-icon-btn"
+                onClick={onLock}
+                title="Lock Terminal (Persists across reload)"
+                aria-label="Lock Terminal"
+              >
+                <Lock size={15} />
+              </button>
+            )}
             <button
               type="button"
               className="admin-shell-icon-btn"
@@ -616,6 +613,29 @@ export const AdminShell: React.FC<Props> = ({ session, onLogout }) => {
           </div>
         )}
         <main className="admin-shell-content">
+          {module !== 'dashboard' && (
+            <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <button
+                type="button"
+                onClick={goBack}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 12px',
+                  borderRadius: 9,
+                  border: '1px solid #E2E8F0',
+                  background: '#FFFFFF',
+                  color: '#0F172A',
+                  fontWeight: 700,
+                  fontSize: 12.5,
+                  cursor: 'pointer',
+                }}
+              >
+                <ChevronLeft size={15} /> Back
+              </button>
+            </div>
+          )}
           {body}
         </main>
 

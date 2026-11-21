@@ -130,6 +130,10 @@ export function scrubPhiOnLogout(opts?: {
     sessionStorage.removeItem('medcore_focus_patient');
     sessionStorage.removeItem('medcore_os_patient_context_v1');
     sessionStorage.removeItem('medcore_session_pin');
+    if (reason === 'manual_logout') {
+      localStorage.removeItem('medcore_os_terminal_locked_v1');
+      sessionStorage.removeItem('medcore_os_terminal_locked_v1');
+    }
   } catch {
     /* ignore */
   }

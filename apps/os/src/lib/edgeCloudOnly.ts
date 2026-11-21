@@ -25,11 +25,13 @@ const ALLOWED_LOCALSTORAGE_KEYS = new Set<string>([
   'medcore_remember_me',
   'medcore_ui_theme',
   'medcore_pilot_version',
+  'medcore_os_terminal_locked_v1',
 ]);
 
 /** Keys mirrored to tab-scoped `sessionStorage` so F5 reload in the same tab stays signed in without localStorage */
 const SESSION_TAB_PREFIXES = [
   'medcore_os_session',
+  'medcore_os_terminal_locked_v1',
   'medcore_pilot_version',
   'medcore_claimed_facility_id',
   'medcore_claimed_facility_name',
@@ -176,6 +178,7 @@ function queueCloudMirror(key: string, rawVal: string): void {
     BLOCKED_SECRET_STORAGE_KEYS.has(key) ||
     key.startsWith('medcore_os_sync_outbox') ||
     key === 'medcore_os_session' ||
+    key === 'medcore_os_terminal_locked_v1' ||
     key === 'medcore_os_admin_activity' ||
     key === 'medcore_os_staff_presence_v1' ||
     key.includes('secret')

@@ -1,6 +1,14 @@
 'use client';
 
-import { markPatientWithProvider } from '../../lib/receptionOpsStore';
+import {
+  markPatientWithProvider,
+  bookAppointment,
+  listAppointments,
+  updateAppointmentStatus,
+  subscribeReceptionOps,
+  type ReceptionAppointment,
+} from '../../lib/receptionOpsStore';
+import { getHealthCardLivePacket, subscribeHealthCardBindings } from '../../lib/healthCardAiBinding';
 import { useFormDraft } from '../../lib/formDraftStore';
 import { FormDraftBanner } from '../common/FormDraftBanner';
 import { appendAudit } from '../../lib/auditLogStore';
@@ -2356,44 +2364,190 @@ const WardRoundView: React.FC<{ session?: UserSession }> = ({ session }) => {
   );
 };
 
-// -- APPOINTMENTS --------------------------------------------------------------
+// -- APPOINTMENTS (Real-Time + AI Health Card Auto-Bind) ----------------------
 
-const AppointmentsView: React.FC = () => {
-  const sc: Record<Appointment['status'], string> = { scheduled: '#64748B', waiting: '#D97706', 'in-progress': '#0284C7', done: '#059669', 'no-show': '#DC2626' };
+const AppointmentsView: React.FC<{ session?: UserSession }> = ({ session }) => {
+  const facilityId = session?.hospitalId || 'IGH-EKT';
+  const doctorName = session?.name || 'Attending Doctor';
+  const [tick, setTick] = useState(0);
+  const [showNew, setShowNew] = useState(false);
+  const [pickedPatient, setPickedPatient] = useState<FacilityPatient | null>(null);
+  const [apptDate, setApptDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [apptTime, setApptTime] = useState('09:30');
+  const [dept, setDept] = useState(session?.department || 'General OPD');
+  const [reason, setReason] = useState('Follow-up consultation');
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    const u1 = subscribeReceptionOps(() => setTick((n) => n + 1));
+    const u2 = subscribeHealthCardBindings(() => setTick((n) => n + 1));
+    return () => {
+      u1();
+      u2();
+    };
+  }, []);
+
+  const appointments = useMemo<ReceptionAppointment[]>(() => {
+    void tick;
+    const allToday = listAppointments(facilityId, apptDate);
+    if (allToday.length > 0) return allToday;
+    return listAppointments(facilityId);
+  }, [facilityId, apptDate, tick]);
+
+  const handleSchedule = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pickedPatient) {
+      setFeedback('Select an existing patient first.');
+      return;
+    }
+    const iso = `${apptDate}T${apptTime}:00`;
+    const created = bookAppointment({
+      patientId: pickedPatient.id,
+      hospitalNumber: pickedPatient.hospitalNumber,
+      patientName: [pickedPatient.firstName, pickedPatient.lastName].filter(Boolean).join(' ') || pickedPatient.name || 'Patient',
+      facilityId,
+      department: dept.trim() || 'General OPD',
+      doctor: doctorName,
+      scheduledAt: iso,
+      reason: reason.trim() || 'Follow-up consultation',
+    });
+    const packet = getHealthCardLivePacket(facilityId, {
+      patientId: pickedPatient.id,
+      hospitalNumber: pickedPatient.hospitalNumber,
+      shid: pickedPatient.shid,
+    });
+    setFeedback(
+      `Scheduled ${created.patientName} & AI-bound to Health Card (${packet.shid || pickedPatient.hospitalNumber}).`
+    );
+    setPickedPatient(null);
+    setShowNew(false);
+    setTick((n) => n + 1);
+  };
+
+  const sc: Record<string, string> = {
+    booked: '#0284C7',
+    arrived: '#059669',
+    completed: '#16A34A',
+    cancelled: '#DC2626',
+    no_show: '#D97706',
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
-      <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
-        <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Calendar size={17} color="#7C3AED" /> Today's Appointment Schedule
-          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6D28D9', background: '#F5F3FF', border: '1px solid #DDD6FE', padding: '2px 9px', borderRadius: 999 }}>{APPOINTMENTS.length} Slots</span>
+      <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
+        <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <Calendar size={17} color="#0284C7" /> Clinic Appointment Schedule
+          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#0369A1', background: '#EFF6FF', border: '1px solid #BAE6FD', padding: '2px 9px', borderRadius: 999 }}>
+            {appointments.length} Slots · Auto-Bound to Health Card
+          </span>
         </div>
-        <button type="button" style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', color: '#6D28D9', padding: '7px 13px', borderRadius: 8, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>+ New Appointment</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            type="date"
+            value={apptDate}
+            onChange={(e) => setApptDate(e.target.value)}
+            style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.78rem', fontWeight: 600 }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setFeedback(null);
+              setShowNew((v) => !v);
+            }}
+            style={{ background: '#0284C7', border: 'none', color: '#FFFFFF', padding: '7px 14px', borderRadius: 8, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
+          >
+            {showNew ? 'Close' : '+ New Appointment'}
+          </button>
+        </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 11 }}>
-        {APPOINTMENTS.map(a => (
-          <div key={a.id} style={{ background: '#FFFFFF', border: `1px solid ${a.status === 'waiting' ? '#FDE68A' : a.status === 'done' ? '#A7F3D0' : '#E2E8F0'}`, borderRadius: 12, padding: '14px', opacity: a.status === 'done' ? 0.72 : 1, boxShadow: '0 2px 6px rgba(15, 23, 42, 0.03)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 10 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: a.status === 'waiting' ? '#FEF3C7' : '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.95rem', color: a.status === 'waiting' ? '#D97706' : '#0284C7' }}>
-                {a.patientName.split(' ').map(n => n[0]).join('')}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.88rem' }}>{a.patientName}</div>
-                <div style={{ fontSize: '0.71rem', color: '#64748B' }}>{a.patientId} • {a.type}</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontWeight: 800, color: '#6D28D9', fontSize: '0.98rem' }}>{a.time}</div>
-                <span style={{ fontSize: '0.63rem', fontWeight: 700, color: sc[a.status], background: `${sc[a.status]}13`, border: '1px solid currentColor', padding: '1px 6px', borderRadius: 999 }}>
-                  {a.status === 'done' ? '✓ Done' : a.status === 'waiting' ? '⏳ Waiting' : a.status === 'no-show' ? '✕ No-Show' : 'Upcoming'}
-                </span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {a.status !== 'done' && <button type="button" style={{ flex: 1, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#0052D4', padding: '7px', borderRadius: 7, fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>Begin Consult</button>}
-              <button type="button" style={{ flex: 1, background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569', padding: '7px', borderRadius: 7, fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>View Record</button>
-            </div>
+
+      {feedback && (
+        <div style={{ padding: '10px 14px', borderRadius: 10, background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', fontSize: '0.8rem', fontWeight: 700 }}>
+          {feedback}
+        </div>
+      )}
+
+      {showNew && (
+        <form onSubmit={handleSchedule} style={{ background: '#FFFFFF', border: '1px solid #BAE6FD', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ fontWeight: 800, color: '#0F172A', fontSize: '0.88rem' }}>
+            Book Patient Follow-Up (Auto-Binds to Digital Health Card &amp; QR Check-In)
           </div>
-        ))}
-      </div>
+          <SearchablePatientSelect
+            facilityId={facilityId}
+            selectedPatient={pickedPatient}
+            onChange={setPickedPatient}
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>
+              Date
+              <input type="date" value={apptDate} onChange={(e) => setApptDate(e.target.value)} required style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1' }} />
+            </label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>
+              Time
+              <input type="time" value={apptTime} onChange={(e) => setApptTime(e.target.value)} required style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1' }} />
+            </label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>
+              Clinic / Department
+              <input value={dept} onChange={(e) => setDept(e.target.value)} required style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1' }} />
+            </label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>
+              Reason / Note
+              <input value={reason} onChange={(e) => setReason(e.target.value)} required style={{ display: 'block', width: '100%', marginTop: 4, padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1' }} />
+            </label>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" onClick={() => setShowNew(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #CBD5E1', background: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+              Cancel
+            </button>
+            <button type="submit" style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#059669', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>
+              Schedule &amp; Bind to Health Card
+            </button>
+          </div>
+        </form>
+      )}
+
+      {appointments.length === 0 ? (
+        <div style={{ background: '#fff', border: '1px dashed #CBD5E1', borderRadius: 12, padding: 28, textAlign: 'center', color: '#64748B', fontSize: '0.84rem' }}>
+          No appointments scheduled for {apptDate}. Click <strong>+ New Appointment</strong> to book and automatically bind to the patient&apos;s Health Card.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 11 }}>
+          {appointments.map((a) => (
+            <div key={a.id} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, padding: 14, boxShadow: '0 2px 6px rgba(15, 23, 42, 0.03)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 10 }}>
+                <div style={{ width: 42, height: 42, borderRadius: 11, background: '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.9rem', color: '#0284C7' }}>
+                  {a.patientName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.88rem' }}>{a.patientName}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748B' }}>{a.hospitalNumber} · {a.department}</div>
+                  {a.reason && <div style={{ fontSize: '0.7rem', color: '#475569', marginTop: 2 }}>{a.reason}</div>}
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 800, color: '#0284C7', fontSize: '0.9rem' }}>{a.scheduledAt.slice(11, 16) || a.scheduledAt.slice(0, 10)}</div>
+                  <span style={{ fontSize: '0.64rem', fontWeight: 700, color: sc[a.status] || '#475569', background: '#F8FAFC', border: '1px solid currentColor', padding: '1px 7px', borderRadius: 999 }}>
+                    {a.status}
+                  </span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid #F1F5F9' }}>
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#047857', background: '#ECFDF5', padding: '2px 8px', borderRadius: 6 }}>
+                  AI-Bound to Health Card
+                </span>
+                {a.status === 'booked' && (
+                  <button
+                    type="button"
+                    onClick={() => updateAppointmentStatus(a.id, 'cancelled')}
+                    style={{ fontSize: '0.7rem', fontWeight: 700, color: '#DC2626', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 7, padding: '4px 9px', cursor: 'pointer' }}
+                  >
+                    Cancel Slot
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -2554,7 +2708,7 @@ export const DoctorPortal: React.FC<DoctorPortalProps> = ({ session, onNavigate,
       case 'prescriptions': return <PrescriptionsView session={session} />;
       case 'lab-orders': return <LabOrdersView session={session} />;
       case 'ward-round': return <WardRoundView session={session} />;
-      case 'appointments': return <AppointmentsView />;
+      case 'appointments': return <AppointmentsView session={session} />;
       case 'tasks': return <TasksView />;
       case 'analytics': return <AnalyticsView />;
       case 'emr': return <EMRManager onNavigate={(m) => onNavigate(m)} />;
