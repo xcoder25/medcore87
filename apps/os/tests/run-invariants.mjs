@@ -1421,22 +1421,25 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
       '../../../../lib/aws/rekognitionServer': rek,
     };
 
+    const bioVault = loadTsModule('src/lib/biometricVault.ts');
     const bioRoute = loadTsModule('src/app/api/auth/biometric/route.ts', routeMocks);
-    const legacy = bioRoute.normalizeBiometricVault({
+    assert.equal(bioRoute.normalizeBiometricVault, undefined, 'route.ts must not export non-Route helpers');
+    const legacyOnly = bioVault.normalizeBiometricVault({
       credentialId: 'cred-legacy-1',
       publicKeySpkiB64: 'c3BraQ==',
       counter: 3,
       createdAt: '2026-01-01T00:00:00.000Z',
     });
-    assert.equal(legacy.version, 2);
-    assert.equal(legacy.passkey.credentialId, 'cred-legacy-1');
-    memVaultRow = {
-      credentialId: 'cred-legacy-1',
-      publicKeySpkiB64: 'c3BraQ==',
-      deviceLabel: 'Windows Hello',
-      counter: 1,
-      createdAt: '2026-01-01T00:00:00.000Z',
-    };
+    assert.equal(legacyOnly, null, 'Legacy passkey-only entries must normalize to null');
+    const faceNormalized = bioVault.normalizeBiometricVault({
+      version: 2,
+      passkey: { credentialId: 'cred-legacy-1', publicKeySpkiB64: 'c3BraQ==', counter: 1, createdAt: '2026-01-01T00:00:00.000Z' },
+      face: { storageMode: 'inline_vault', referenceImageB64: 'dGVzdA==', enrolledAt: '2026-11-21T00:00:00.000Z', qualityScore: 95 },
+    });
+    assert.equal(faceNormalized.version, 2);
+    assert.equal(faceNormalized.passkey, undefined);
+    assert.equal(faceNormalized.face.storageMode, 'inline_vault');
+    memVaultRow = null;
 
     const post = async (body) =>
       bioRoute.POST({
@@ -1444,7 +1447,7 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
         json: async () => body,
       });
 
-    // Enrolling face preserves existing legacy passkey
+    // Enroll face
     const enrollRes = await post({
       action: 'face_enroll',
       badgeId: 'DOC-FACE-1',
@@ -1460,9 +1463,10 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
       badgeId: 'DOC-FACE-1',
       facilityId: 'TEST-FAC',
     });
-    assert.equal(statusRes.data.passkeyEnrolled, true);
+    assert.equal(statusRes.data.enrolled, true);
     assert.equal(statusRes.data.faceEnrolled, true);
     assert.equal(statusRes.data.faceServiceAvailable, true);
+    assert.equal(statusRes.data.passkeyEnrolled, undefined);
 
     // Challenge -> Verify success
     const chalRes = await post({
@@ -1507,7 +1511,7 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
     assert.equal(verFail.data.verified, false);
     assert.equal(/amazon|aws|rekognition/i.test(verFail.data.error), false);
 
-    // Selective revoke('face') leaves passkey intact
+    // Revoke removes facial biometric cleanly
     await post({
       action: 'revoke',
       badgeId: 'DOC-FACE-1',
@@ -1519,16 +1523,18 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
       badgeId: 'DOC-FACE-1',
       facilityId: 'TEST-FAC',
     });
+    assert.equal(afterRevoke.data.enrolled, false);
     assert.equal(afterRevoke.data.faceEnrolled, false);
-    assert.equal(afterRevoke.data.passkeyEnrolled, true);
 
     assert.ok(sdkCalls.includes('DetectFaces') && sdkCalls.includes('CompareFaces'));
 
-    // UI + client vendor secrecy verification
+    // UI + client vendor secrecy & Fingerprint/Passkey removal verification
     for (const rel of [
       'src/components/auth/FaceBiometricCaptureModal.tsx',
       'src/components/auth/StaffEmailOtpModal.tsx',
       'src/components/auth/UserProfileModal.tsx',
+      'src/components/rbac/AccessControl.tsx',
+      'src/app/page.tsx',
       'src/lib/biometricAuth.ts',
     ]) {
       const raw = fs.readFileSync(path.join(OS_ROOT, rel), 'utf8');
@@ -1538,6 +1544,35 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
         false,
         `${rel} must remain strictly vendor-neutral`
       );
+      assert.equal(
+        /Enroll Fingerprint|Verify with Fingerprint|Unlock with Biometrics \(Fingerprint|Remove Passkey|Device Passkey 2FA|isBiometricSupported|enrollStaffBiometric|verifyStaffBiometric/i.test(stripped),
+        false,
+        `${rel} must not contain removed Fingerprint / Passkey 2FA UI or helpers`
+      );
+    }
+
+    // Verify all Next.js API route.ts files only export valid Route handlers/config
+    const ALLOWED_ROUTE_EXPORTS = new Set([
+      'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS',
+      'runtime', 'dynamic', 'revalidate', 'maxDuration', 'preferredRegion', 'fetchCache', 'dynamicParams',
+    ]);
+    const walkRoutes = (dir) => {
+      const out = [];
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) out.push(...walkRoutes(full));
+        else if (entry.isFile() && entry.name === 'route.ts') out.push(full);
+      }
+      return out;
+    };
+    for (const routeFile of walkRoutes(path.join(OS_ROOT, 'src/app/api'))) {
+      const src = fs.readFileSync(routeFile, 'utf8');
+      for (const m of src.matchAll(/^export\s+(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z0-9_$]+)/gm)) {
+        assert.ok(
+          ALLOWED_ROUTE_EXPORTS.has(m[1]),
+          `Invalid Next.js Route export "${m[1]}" in ${path.relative(OS_ROOT, routeFile)}`
+        );
+      }
     }
   } finally {
     for (const [k, v] of Object.entries(prevEnv)) {

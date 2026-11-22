@@ -36,8 +36,6 @@ import { ModuleErrorBoundary } from '../components/common/ModuleErrorBoundary';
 import { authLog } from '../lib/authLog';
 import {
   getStaffBiometricStatus,
-  verifyStaffBiometric,
-  isBiometricSupported,
   isCameraBiometricSupported,
 } from '../lib/biometricAuth';
 import { FaceBiometricCaptureModal } from '../components/auth/FaceBiometricCaptureModal';
@@ -117,7 +115,7 @@ import {
   Pill, FlaskConical, Layers, Wind, Baby, Droplet, PhoneCall,
   Package, Wrench, Server, Gauge, Trash2, Cpu, FileCode, ShieldCheck, Landmark,
   Search, X, LayoutDashboard, MapPin, Ticket, HelpCircle, ChevronDown, CalendarDays, Zap, CheckCircle2, Globe, ArrowRight,
-  Command, CornerDownLeft, IdCard, Key, Fingerprint, Camera,
+  Command, CornerDownLeft, IdCard, Key, Camera,
 } from 'lucide-react';
 
 const TopHudClock = React.memo(function TopHudClock() {
@@ -242,9 +240,7 @@ export default function OSPage() {
   const [unlockError, setUnlockError] = useState('');
   const [unlockShake, setUnlockShake] = useState(false);
   const [unlockLoading, setUnlockLoading] = useState(false);
-  const [bioUnlockAvailable, setBioUnlockAvailable] = useState(false);
   const [faceUnlockAvailable, setFaceUnlockAvailable] = useState(false);
-  const [bioUnlockBusy, setBioUnlockBusy] = useState(false);
   const [faceUnlockModalOpen, setFaceUnlockModalOpen] = useState(false);
 
   useEffect(() => {
@@ -259,7 +255,6 @@ export default function OSPage() {
 
   useEffect(() => {
     if (!isLocked || !userSession?.badgeId) {
-      setBioUnlockAvailable(false);
       setFaceUnlockAvailable(false);
       setFaceUnlockModalOpen(false);
       return;
@@ -267,7 +262,6 @@ export default function OSPage() {
     let alive = true;
     void getStaffBiometricStatus(userSession.badgeId, userSession.hospitalId || 'IGH-EKT').then((st) => {
       if (!alive) return;
-      setBioUnlockAvailable(Boolean((st.passkeyEnrolled ?? st.enrolled) && isBiometricSupported()));
       setFaceUnlockAvailable(Boolean(st.faceEnrolled && isCameraBiometricSupported()));
     });
     return () => {
@@ -1188,7 +1182,6 @@ const handleLockScreen = () => {
               {faceUnlockAvailable && (
                 <button
                   type="button"
-                  disabled={bioUnlockBusy}
                   onClick={() => {
                     setUnlockError('');
                     setFaceUnlockModalOpen(true);
@@ -1212,56 +1205,6 @@ const handleLockScreen = () => {
                 >
                   <Camera size={16} />
                   <span>Unlock with Face Camera</span>
-                </button>
-              )}
-              {bioUnlockAvailable && (
-                <button
-                  type="button"
-                  disabled={bioUnlockBusy}
-                  onClick={async () => {
-                    if (!userSession?.badgeId) return;
-                    setBioUnlockBusy(true);
-                    setUnlockError('');
-                    try {
-                      const res = await verifyStaffBiometric({
-                        badgeId: userSession.badgeId,
-                        facilityId: userSession.hospitalId || 'IGH-EKT',
-                        staffName: userSession.name,
-                      });
-                      if (res.verified) {
-                        try {
-                          localStorage.removeItem(TERMINAL_LOCK_KEY);
-                          sessionStorage.removeItem(TERMINAL_LOCK_KEY);
-                        } catch { /* ignore */ }
-                        setIsLocked(false);
-                        setUnlockPin('');
-                        setUnlockError('');
-                      } else {
-                        setUnlockError(res.error || 'Biometric unlock cancelled or failed. Enter PIN above.');
-                      }
-                    } finally {
-                      setBioUnlockBusy(false);
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    marginTop: 10,
-                    padding: '10px 14px',
-                    borderRadius: 10,
-                    border: '1px solid #10B981',
-                    background: '#ECFDF5',
-                    color: '#065F46',
-                    fontWeight: 800,
-                    fontSize: '0.84rem',
-                    cursor: bioUnlockBusy ? 'wait' : 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <Fingerprint size={16} />
-                  <span>{bioUnlockBusy ? 'Waiting for Biometric…' : 'Unlock with Biometrics (Fingerprint / Face ID)'}</span>
                 </button>
               )}
             </form>

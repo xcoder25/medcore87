@@ -18,34 +18,14 @@ import {
   type FaceLivenessPrompt,
 } from '../../../../lib/aws/rekognitionServer';
 import { getS3ObjectBuffer, isS3Configured, uploadBufferToS3 } from '../../../../lib/s3Server';
+import {
+  normalizeBiometricVault,
+  type FaceBiometricDescriptor,
+  type UnifiedBiometricVault,
+} from '../../../../lib/biometricVault';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-export interface PasskeyDescriptor {
-  credentialId: string;
-  publicKeySpkiB64: string;
-  alg?: number;
-  deviceLabel?: string;
-  counter: number;
-  createdAt: string;
-  lastUsedAt?: string;
-}
-
-export interface FaceBiometricDescriptor {
-  storageMode: 'object_storage' | 'inline_vault';
-  objectKey?: string;
-  referenceImageB64?: string;
-  enrolledAt: string;
-  qualityScore?: number;
-  lastUsedAt?: string;
-}
-
-export interface UnifiedBiometricVault {
-  version: 2;
-  passkey?: PasskeyDescriptor;
-  face?: FaceBiometricDescriptor;
-}
 
 const BIO_VAULT_FILE = path.join(os.tmpdir(), 'medcore-staff-biometrics-vault.json');
 const MAX_FACE_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -58,41 +38,6 @@ function getChallengeSecret(): string {
     process.env.MEDCORE_API_SECRET ||
     'medcore-os-biometric-challenge-secret-v1'
   ).trim();
-}
-
-/**
- * Normalize both legacy flat passkey descriptors and unified v2 (passkey + face) vaults.
- */
-export function normalizeBiometricVault(raw: unknown): UnifiedBiometricVault | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const obj = raw as Record<string, unknown>;
-
-  if (obj.version === 2 || 'passkey' in obj || 'face' in obj) {
-    const passkey = obj.passkey && typeof obj.passkey === 'object' ? (obj.passkey as PasskeyDescriptor) : undefined;
-    const face = obj.face && typeof obj.face === 'object' ? (obj.face as FaceBiometricDescriptor) : undefined;
-    if (!passkey && !face) return null;
-    return {
-      version: 2,
-      ...(passkey ? { passkey } : {}),
-      ...(face ? { face } : {}),
-    };
-  }
-
-  // Legacy flat WebAuthn passkey row
-  if (typeof obj.credentialId === 'string' && typeof obj.publicKeySpkiB64 === 'string') {
-    const passkey: PasskeyDescriptor = {
-      credentialId: obj.credentialId,
-      publicKeySpkiB64: obj.publicKeySpkiB64,
-      alg: typeof obj.alg === 'number' ? obj.alg : -7,
-      deviceLabel: typeof obj.deviceLabel === 'string' ? obj.deviceLabel : undefined,
-      counter: typeof obj.counter === 'number' ? obj.counter : 0,
-      createdAt: typeof obj.createdAt === 'string' ? obj.createdAt : new Date().toISOString(),
-      lastUsedAt: typeof obj.lastUsedAt === 'string' ? obj.lastUsedAt : undefined,
-    };
-    return { version: 2, passkey };
-  }
-
-  return null;
 }
 
 type LocalVaultEntry = UnifiedBiometricVault & {
@@ -209,17 +154,16 @@ async function deleteStoredBiometric(facilityId: string, badgeId: string): Promi
 function issueSignedChallenge(
   badgeId: string,
   facilityId: string,
-  purpose: 'register' | 'auth' | 'face_auth',
-  prompt?: FaceLivenessPrompt
+  prompt: FaceLivenessPrompt
 ) {
   const challenge = crypto.randomBytes(32).toString('base64url');
-  const ttlMs = purpose === 'face_auth' ? 2 * 60 * 1000 : 5 * 60 * 1000;
+  const ttlMs = 2 * 60 * 1000;
   const payload = {
     challenge,
     badgeId: badgeId.trim().toUpperCase(),
     facilityId: facilityId.trim().toUpperCase(),
-    purpose,
-    ...(prompt ? { prompt } : {}),
+    purpose: 'face_auth' as const,
+    prompt,
     exp: Date.now() + ttlMs,
   };
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -233,8 +177,7 @@ function issueSignedChallenge(
 function verifySignedChallenge(
   token: string,
   expectedBadgeId: string,
-  expectedFacilityId: string,
-  expectedPurpose: 'register' | 'auth' | 'face_auth'
+  expectedFacilityId: string
 ): { ok: boolean; challenge?: string; prompt?: FaceLivenessPrompt; error?: string } {
   const parts = String(token || '').split('.');
   if (parts.length !== 2) return { ok: false, error: 'Malformed biometric challenge token.' };
@@ -255,26 +198,10 @@ function verifySignedChallenge(
     exp: number;
   };
   if (Date.now() > decoded.exp) return { ok: false, error: 'Biometric prompt expired. Try again.' };
-  if (decoded.purpose !== expectedPurpose) return { ok: false, error: 'Challenge purpose mismatch.' };
+  if (decoded.purpose !== 'face_auth') return { ok: false, error: 'Challenge purpose mismatch.' };
   if (decoded.badgeId !== expectedBadgeId.trim().toUpperCase()) return { ok: false, error: 'Badge mismatch.' };
   if (decoded.facilityId !== expectedFacilityId.trim().toUpperCase()) return { ok: false, error: 'Facility mismatch.' };
   return { ok: true, challenge: decoded.challenge, prompt: decoded.prompt };
-}
-
-function verifyAssertionSignature(
-  publicKeySpkiB64: string,
-  authenticatorDataB64u: string,
-  clientDataJSONB64u: string,
-  signatureB64u: string
-): boolean {
-  const spkiDer = Buffer.from(publicKeySpkiB64, 'base64');
-  const pubKey = crypto.createPublicKey({ key: spkiDer, format: 'der', type: 'spki' });
-  const authData = Buffer.from(authenticatorDataB64u, 'base64url');
-  const clientDataRaw = Buffer.from(clientDataJSONB64u, 'base64url');
-  const clientHash = crypto.createHash('sha256').update(clientDataRaw).digest();
-  const signedBytes = Buffer.concat([authData, clientHash]);
-  const signature = Buffer.from(signatureB64u, 'base64url');
-  return crypto.createVerify('SHA256').update(signedBytes).verify(pubKey, signature);
 }
 
 function decodeBase64Image(raw: unknown): Buffer | null {
@@ -288,23 +215,15 @@ function decodeBase64Image(raw: unknown): Buffer | null {
 }
 
 function buildStatusPayload(vault: UnifiedBiometricVault | null) {
-  const passkeyEnrolled = Boolean(vault?.passkey);
   const faceEnrolled = Boolean(vault?.face);
-  const lastUsedAt = [vault?.face?.lastUsedAt, vault?.passkey?.lastUsedAt]
-    .filter((x): x is string => Boolean(x))
-    .sort()
-    .pop() || null;
-
   return {
     ok: true,
-    enrolled: passkeyEnrolled || faceEnrolled,
-    passkeyEnrolled,
+    enrolled: faceEnrolled,
     faceEnrolled,
     faceServiceAvailable: isRekognitionConfigured(),
-    deviceLabel: vault?.passkey?.deviceLabel || null,
-    enrolledAt: vault?.passkey?.createdAt || vault?.face?.enrolledAt || null,
+    enrolledAt: vault?.face?.enrolledAt || null,
     faceEnrolledAt: vault?.face?.enrolledAt || null,
-    lastUsedAt,
+    lastUsedAt: vault?.face?.lastUsedAt || null,
   };
 }
 
@@ -334,168 +253,6 @@ export async function POST(req: NextRequest) {
     if (action === 'status') {
       const existing = await getStoredBiometric(facilityId, badgeId);
       return NextResponse.json(buildStatusPayload(existing));
-    }
-
-    if (action === 'register_options') {
-      const { challenge, challengeToken } = issueSignedChallenge(badgeId, facilityId, 'register');
-      return NextResponse.json({
-        ok: true,
-        challenge,
-        challengeToken,
-        user: {
-          id: Buffer.from(`${facilityId}:${badgeId}`).toString('base64url'),
-          name: `${badgeId} · MedCore`,
-          displayName: staffName,
-        },
-      });
-    }
-
-    if (action === 'register_verify') {
-      const challengeToken = String(body.challengeToken || '');
-      const check = verifySignedChallenge(challengeToken, badgeId, facilityId, 'register');
-      if (!check.ok || !check.challenge) {
-        return NextResponse.json({ ok: false, error: check.error }, { status: 401 });
-      }
-      const credentialId = String(body.credentialId || '').trim();
-      const publicKeySpkiB64 = String(body.publicKeySpkiB64 || '').trim();
-      const clientDataJSON = String(body.clientDataJSON || '').trim();
-      const deviceLabel = String(body.deviceLabel || 'Platform Biometric Passkey').trim();
-      const alg = typeof body.alg === 'number' ? body.alg : -7;
-
-      if (!credentialId || !publicKeySpkiB64 || !clientDataJSON) {
-        return NextResponse.json(
-          { ok: false, error: 'Incomplete passkey attestation from device.' },
-          { status: 400 }
-        );
-      }
-
-      const clientObj = JSON.parse(Buffer.from(clientDataJSON, 'base64url').toString('utf8')) as {
-        type?: string;
-        challenge?: string;
-      };
-      if (clientObj.type !== 'webauthn.create' || clientObj.challenge !== check.challenge) {
-        return NextResponse.json(
-          { ok: false, error: 'Biometric registration challenge verification failed.' },
-          { status: 401 }
-        );
-      }
-
-      crypto.createPublicKey({
-        key: Buffer.from(publicKeySpkiB64, 'base64'),
-        format: 'der',
-        type: 'spki',
-      });
-
-      const existing = await getStoredBiometric(facilityId, badgeId);
-      const passkey: PasskeyDescriptor = {
-        credentialId,
-        publicKeySpkiB64,
-        alg,
-        deviceLabel,
-        counter: 0,
-        createdAt: new Date().toISOString(),
-      };
-      await saveStoredBiometric(facilityId, badgeId, staffName, {
-        version: 2,
-        ...(existing || {}),
-        passkey,
-      });
-      return NextResponse.json({ ok: true, enrolled: true, passkeyEnrolled: true, deviceLabel });
-    }
-
-    if (action === 'auth_options') {
-      const existing = await getStoredBiometric(facilityId, badgeId);
-      if (!existing?.passkey) {
-        return NextResponse.json(
-          { ok: false, error: 'No biometric passkey enrolled for this staff member.' },
-          { status: 404 }
-        );
-      }
-      const { challenge, challengeToken } = issueSignedChallenge(badgeId, facilityId, 'auth');
-      return NextResponse.json({
-        ok: true,
-        challenge,
-        challengeToken,
-        credentialId: existing.passkey.credentialId,
-      });
-    }
-
-    if (action === 'auth_verify') {
-      const rl = checkRateLimit(`bio-verify:${ip}:${badgeId}`, 15, 10 * 60 * 1000);
-      if (!rl.allowed) {
-        return NextResponse.json(
-          { ok: false, verified: false, error: `Too many biometric attempts. Wait ${rl.retryAfterSeconds}s.` },
-          { status: 429 }
-        );
-      }
-
-      const existing = await getStoredBiometric(facilityId, badgeId);
-      if (!existing?.passkey) {
-        return NextResponse.json(
-          { ok: false, verified: false, error: 'No biometric credential found.' },
-          { status: 404 }
-        );
-      }
-
-      const challengeToken = String(body.challengeToken || '');
-      const check = verifySignedChallenge(challengeToken, badgeId, facilityId, 'auth');
-      if (!check.ok || !check.challenge) {
-        return NextResponse.json({ ok: false, verified: false, error: check.error }, { status: 401 });
-      }
-
-      const credentialId = String(body.credentialId || '').trim();
-      const authenticatorData = String(body.authenticatorData || '').trim();
-      const clientDataJSON = String(body.clientDataJSON || '').trim();
-      const signature = String(body.signature || '').trim();
-
-      if (credentialId !== existing.passkey.credentialId) {
-        return NextResponse.json(
-          { ok: false, verified: false, error: 'Unrecognized passkey credential for this account.' },
-          { status: 401 }
-        );
-      }
-
-      const clientObj = JSON.parse(Buffer.from(clientDataJSON, 'base64url').toString('utf8')) as {
-        type?: string;
-        challenge?: string;
-      };
-      if (clientObj.type !== 'webauthn.get' || clientObj.challenge !== check.challenge) {
-        return NextResponse.json(
-          { ok: false, verified: false, error: 'Biometric assertion challenge failed.' },
-          { status: 401 }
-        );
-      }
-
-      const sigValid = verifyAssertionSignature(
-        existing.passkey.publicKeySpkiB64,
-        authenticatorData,
-        clientDataJSON,
-        signature
-      );
-      if (!sigValid) {
-        return NextResponse.json(
-          { ok: false, verified: false, error: 'Biometric cryptographic signature could not be verified.' },
-          { status: 401 }
-        );
-      }
-
-      await saveStoredBiometric(facilityId, badgeId, staffName, {
-        ...existing,
-        version: 2,
-        passkey: {
-          ...existing.passkey,
-          counter: (existing.passkey.counter || 0) + 1,
-          lastUsedAt: new Date().toISOString(),
-        },
-      });
-
-      const mfaToken = await signMfaToken(badgeId, facilityId, 'biometric');
-      return NextResponse.json({
-        ok: true,
-        verified: true,
-        method: 'biometric',
-        mfaToken,
-      });
     }
 
     if (action === 'face_enroll') {
@@ -566,10 +323,8 @@ export async function POST(req: NextRequest) {
         };
       }
 
-      const existing = await getStoredBiometric(facilityId, badgeId);
       await saveStoredBiometric(facilityId, badgeId, staffName, {
         version: 2,
-        ...(existing || {}),
         face: faceDescriptor,
       });
 
@@ -598,7 +353,7 @@ export async function POST(req: NextRequest) {
       }
 
       const prompt = LIVENESS_PROMPTS[crypto.randomInt(LIVENESS_PROMPTS.length)];
-      const { challengeToken } = issueSignedChallenge(badgeId, facilityId, 'face_auth', prompt);
+      const { challengeToken } = issueSignedChallenge(badgeId, facilityId, prompt);
 
       let livenessSessionId: string | null = null;
       if (getRekognitionConfig().livenessSessionEnabled) {
@@ -644,7 +399,7 @@ export async function POST(req: NextRequest) {
       }
 
       const challengeToken = String(body.challengeToken || '');
-      const check = verifySignedChallenge(challengeToken, badgeId, facilityId, 'face_auth');
+      const check = verifySignedChallenge(challengeToken, badgeId, facilityId);
       if (!check.ok || !check.prompt) {
         return NextResponse.json({ ok: false, verified: false, error: check.error }, { status: 401 });
       }
@@ -716,7 +471,6 @@ export async function POST(req: NextRequest) {
       }
 
       await saveStoredBiometric(facilityId, badgeId, staffName, {
-        ...existing,
         version: 2,
         face: {
           ...existing.face,
@@ -736,23 +490,8 @@ export async function POST(req: NextRequest) {
 
     if (action === 'revoke') {
       const target = String(body.target || 'all').trim();
-      if (target === 'passkey' || target === 'face') {
-        const existing = await getStoredBiometric(facilityId, badgeId);
-        if (!existing) {
-          return NextResponse.json({ ok: true, revoked: true });
-        }
-        const updated: UnifiedBiometricVault = { version: 2 };
-        if (target === 'passkey' && existing.face) updated.face = existing.face;
-        if (target === 'face' && existing.passkey) updated.passkey = existing.passkey;
-        if (!updated.passkey && !updated.face) {
-          await deleteStoredBiometric(facilityId, badgeId);
-        } else {
-          await saveStoredBiometric(facilityId, badgeId, staffName, updated);
-        }
-        return NextResponse.json({ ok: true, revoked: true, target });
-      }
       await deleteStoredBiometric(facilityId, badgeId);
-      return NextResponse.json({ ok: true, revoked: true, target: 'all' });
+      return NextResponse.json({ ok: true, revoked: true, target });
     }
 
     return NextResponse.json({ ok: false, error: 'Unsupported biometric action.' }, { status: 400 });

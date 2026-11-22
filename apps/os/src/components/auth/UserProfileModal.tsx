@@ -3,17 +3,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   X, User, Building2, ShieldCheck, Key, LogOut, Clock,
-  CreditCard, CheckCircle2, Copy, Check, Shield, Briefcase, Fingerprint, Camera
+  CreditCard, CheckCircle2, Copy, Check, Shield, Briefcase, Camera
 } from 'lucide-react';
 import type { UserSession } from './AuthScreen';
 import { StaffIdCardView } from '../staffing/StaffIdCardView';
 import { getStaffCard, listStaffCards } from '../../lib/staffCardStore';
 import type { StaffCardRecord } from '@medcore/types';
 import {
-  isBiometricSupported,
   isCameraBiometricSupported,
   getStaffBiometricStatus,
-  enrollStaffBiometric,
   revokeStaffBiometric,
 } from '../../lib/biometricAuth';
 import { FaceBiometricCaptureModal } from './FaceBiometricCaptureModal';
@@ -74,10 +72,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'card'>('profile');
   const [copiedBadge, setCopiedBadge] = useState(false);
-  const [bioEnrolled, setBioEnrolled] = useState(false);
   const [faceEnrolled, setFaceEnrolled] = useState(false);
   const [faceServiceAvailable, setFaceServiceAvailable] = useState(false);
-  const [bioDevice, setBioDevice] = useState<string | null>(null);
   const [bioBusy, setBioBusy] = useState(false);
   const [bioMsg, setBioMsg] = useState<string | null>(null);
   const [faceModalOpen, setFaceModalOpen] = useState(false);
@@ -85,10 +81,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   useEffect(() => {
     if (!isOpen || !session?.badgeId) return;
     void getStaffBiometricStatus(session.badgeId, session.hospitalId || 'IGH-EKT').then((st) => {
-      setBioEnrolled(Boolean(st.passkeyEnrolled ?? st.enrolled));
       setFaceEnrolled(Boolean(st.faceEnrolled));
       setFaceServiceAvailable(Boolean(st.faceServiceAvailable));
-      setBioDevice(st.deviceLabel || null);
     });
   }, [isOpen, session?.badgeId, session?.hospitalId]);
 
@@ -670,107 +664,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         }}
                       >
                         {bioBusy ? 'Removing…' : 'Remove Face'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ borderTop: '1px solid rgba(199, 210, 254, 0.7)' }} />
-
-                {/* Platform Passkey (Fingerprint / Face ID / Windows Hello) */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: 10, background: bioEnrolled ? '#059669' : '#4F46E5', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Fingerprint size={18} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
-                        Device Passkey 2FA {bioEnrolled ? '· Active' : '· Not Enrolled'}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: '#475569' }}>
-                        {bioEnrolled
-                          ? `Enrolled passkey: ${bioDevice || 'Platform Biometric'}`
-                          : 'Use Fingerprint, Face ID, or Windows Hello for faster 2FA & terminal unlock.'}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {isBiometricSupported() && !bioEnrolled && (
-                      <button
-                        type="button"
-                        disabled={bioBusy}
-                        onClick={async () => {
-                          setBioBusy(true);
-                          setBioMsg(null);
-                          try {
-                            const res = await enrollStaffBiometric({
-                              badgeId: session.badgeId || session.id,
-                              facilityId: session.hospitalId || 'IGH-EKT',
-                              staffName: session.name,
-                            });
-                            if (res.ok) {
-                              setBioEnrolled(true);
-                              setBioDevice(res.deviceLabel || 'Platform Passkey');
-                              setBioMsg('Device Passkey 2FA enrolled successfully.');
-                            } else {
-                              setBioMsg(res.error || 'Could not enroll biometrics.');
-                            }
-                          } finally {
-                            setBioBusy(false);
-                          }
-                        }}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          background: '#4F46E5',
-                          color: '#FFFFFF',
-                          border: 'none',
-                          borderRadius: 8,
-                          padding: '8px 12px',
-                          fontSize: '0.76rem',
-                          fontWeight: 700,
-                          cursor: bioBusy ? 'wait' : 'pointer',
-                        }}
-                      >
-                        <Fingerprint size={14} />
-                        {bioBusy ? 'Registering…' : 'Enroll Fingerprint / Face ID'}
-                      </button>
-                    )}
-                    {bioEnrolled && (
-                      <button
-                        type="button"
-                        disabled={bioBusy}
-                        onClick={async () => {
-                          setBioBusy(true);
-                          setBioMsg(null);
-                          try {
-                            const ok = await revokeStaffBiometric(
-                              session.badgeId || session.id,
-                              session.hospitalId || 'IGH-EKT',
-                              'passkey'
-                            );
-                            if (ok) {
-                              setBioEnrolled(false);
-                              setBioDevice(null);
-                              setBioMsg('Device passkey removed.');
-                            }
-                          } finally {
-                            setBioBusy(false);
-                          }
-                        }}
-                        style={{
-                          background: '#FEF2F2',
-                          color: '#DC2626',
-                          border: '1px solid #FECACA',
-                          borderRadius: 8,
-                          padding: '7px 12px',
-                          fontSize: '0.75rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {bioBusy ? 'Removing…' : 'Remove Passkey'}
                       </button>
                     )}
                   </div>

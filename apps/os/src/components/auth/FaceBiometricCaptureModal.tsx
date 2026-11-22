@@ -125,7 +125,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
       } catch {
         if (!cancelled) {
           setCameraError(
-            'Camera permission was denied or no webcam was found. Enable camera access or use Passkey / Email OTP.'
+            'Camera permission was denied or no webcam was found. Enable camera access or use Email OTP.'
           );
         }
       }
