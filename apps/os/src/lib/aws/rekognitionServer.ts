@@ -33,30 +33,42 @@ export interface RekognitionConfig {
 }
 
 export function getRekognitionConfig(): RekognitionConfig {
-  const region =
+  const rawRegion =
+    clean(process.env.MEDCORE_REKOGNITION_AWS_REGION) ||
     clean(process.env.MEDCORE_REKOGNITION_REGION) ||
     clean(process.env.REKOGNITION_REGION) ||
-    clean(process.env.AWS_REGION) ||
+    clean(process.env.MEDCORE_S3_AWS_REGION) ||
     clean(process.env.MEDCORE_S3_REGION) ||
+    clean(process.env.AWS_REGION) ||
     clean(process.env.AWS_DEFAULT_REGION) ||
     'eu-west-1';
 
+  // Amazon Rekognition is not available in some regions such as eu-north-1
+  const region = rawRegion === 'eu-north-1' ? 'eu-west-1' : rawRegion;
+
   const roleArn =
+    clean(process.env.MEDCORE_REKOGNITION_AWS_ROLE_ARN) ||
     clean(process.env.MEDCORE_REKOGNITION_ROLE_ARN) ||
     clean(process.env.REKOGNITION_AWS_ROLE_ARN) ||
     clean(process.env.AWS_ROLE_ARN) ||
-    clean(process.env.MEDCORE_S3_ROLE_ARN);
+    clean(process.env.MEDCORE_S3_AWS_ROLE_ARN) ||
+    clean(process.env.MEDCORE_S3_ROLE_ARN) ||
+    clean(process.env.MEDCORE_AWS_ROLE_ARN);
 
   const accessKeyId =
+    clean(process.env.MEDCORE_REKOGNITION_AWS_ACCESS_KEY_ID) ||
     clean(process.env.MEDCORE_REKOGNITION_ACCESS_KEY_ID) ||
-    clean(process.env.AWS_ACCESS_KEY_ID) ||
+    clean(process.env.MEDCORE_S3_AWS_ACCESS_KEY_ID) ||
     clean(process.env.MEDCORE_S3_ACCESS_KEY_ID) ||
+    clean(process.env.AWS_ACCESS_KEY_ID) ||
     clean(process.env.MEDCORE_AWS_ACCESS_KEY_ID);
 
   const secretAccessKey =
+    clean(process.env.MEDCORE_REKOGNITION_AWS_SECRET_ACCESS_KEY) ||
     clean(process.env.MEDCORE_REKOGNITION_SECRET_ACCESS_KEY) ||
-    clean(process.env.AWS_SECRET_ACCESS_KEY) ||
+    clean(process.env.MEDCORE_S3_AWS_SECRET_ACCESS_KEY) ||
     clean(process.env.MEDCORE_S3_SECRET_ACCESS_KEY) ||
+    clean(process.env.AWS_SECRET_ACCESS_KEY) ||
     clean(process.env.MEDCORE_AWS_SECRET_ACCESS_KEY);
 
   const livenessSessionEnabled =
@@ -398,7 +410,7 @@ export function toSafeBiometricError(err: unknown): string {
     msg.includes('security token') ||
     msg.includes('credentials')
   ) {
-    return 'Facial biometric verification service is unavailable or not yet authorized on this server. Use Fingerprint Passkey or Email OTP.';
+    return 'Facial biometric verification service is unavailable or not yet authorized on this server. Use Email OTP.';
   }
   return 'Facial biometric verification encountered a temporary service error. Please try again or use Email OTP.';
 }

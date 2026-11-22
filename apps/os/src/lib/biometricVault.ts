@@ -5,6 +5,8 @@ export interface FaceBiometricDescriptor {
   enrolledAt: string;
   qualityScore?: number;
   lastUsedAt?: string;
+  faceVector?: number[];
+  verificationEngine?: 'cloud_vision' | 'standard';
 }
 
 export interface UnifiedBiometricVault {

@@ -498,10 +498,10 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                 >
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 800, color: '#065F46' }}>
-                      Fast Biometric 2FA Ready
+                      Face ID 2FA Ready
                     </div>
                     <div style={{ fontSize: 11.5, color: '#047857' }}>
-                      Facial Biometric Verification (Hospital Camera)
+                      Instant Facial Biometric Verification (Hospital Camera)
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -526,7 +526,7 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                       }}
                     >
                       <Camera size={15} />
-                      Verify with Face Camera
+                      Verify with Face ID
                     </button>
                   </div>
                 </div>

@@ -37,10 +37,17 @@ import {
   Zap,
   Layers,
   Mail,
+  Camera,
 } from 'lucide-react';
 import { ChangeCredentialsModal } from '../auth/ChangeCredentialsModal';
+import { FaceBiometricCaptureModal } from '../auth/FaceBiometricCaptureModal';
 import { FacilityOnboarding } from '../facility/FacilityOnboarding';
 import { getStaffMfaTotpCode } from '../auth/StaffEmailOtpModal';
+import {
+  getStaffBiometricStatus,
+  revokeStaffBiometric,
+  isCameraBiometricSupported,
+} from '../../lib/biometricAuth';
 import {
   getAdminSettings,
   saveAdminSettings,
@@ -110,6 +117,10 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
   const [pilotRunning, setPilotRunning] = useState(false);
   const [pilotResult, setPilotResult] = useState<PilotRunResult | null>(null);
   const [showCredModal, setShowCredModal] = useState(false);
+  const [adminFaceEnrolled, setAdminFaceEnrolled] = useState(false);
+  const [faceModalOpen, setFaceModalOpen] = useState(false);
+  const [faceActionBusy, setFaceActionBusy] = useState(false);
+  const [faceNotice, setFaceNotice] = useState<string | null>(null);
   const [showNewPosModal, setShowNewPosModal] = useState(false);
   const [newPosForm, setNewPosForm] = useState<Partial<PosTerminalConfig>>({
     terminalId: '',
@@ -215,6 +226,19 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
+
+  useEffect(() => {
+    const bid = session.badgeId || session.id;
+    if (!bid) return;
+    let alive = true;
+    void getStaffBiometricStatus(bid, facilityId).then((st) => {
+      if (!alive) return;
+      setAdminFaceEnrolled(Boolean(st.faceEnrolled));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [session.badgeId, session.id, facilityId, activeTab]);
 
   const autoSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirtyRef = React.useRef(false);
@@ -2332,10 +2356,10 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
                 </div>
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 800, color: C.navy }}>
-                    Staff 2FA &amp; Email OTP Verification Gate
+                    Staff 2FA &amp; Face ID Biometric Verification Gate
                   </div>
                   <div style={{ fontSize: 12, color: C.muted }}>
-                    Auto-generates and dispatches a 6-digit OTP to the staff member&apos;s work email on every login.
+                    Enroll Face ID for instant camera verification or auto-dispatch a 6-digit OTP to staff work email on sign-in.
                   </div>
                 </div>
               </div>
@@ -2350,15 +2374,168 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
                   border: `1px solid ${(draft.requireStaffMfa ?? false) ? '#A7F3D0' : '#FECACA'}`,
                 }}
               >
-                {(draft.requireStaffMfa ?? false) ? '● Email OTP 2FA Active' : '○ 2FA Disabled'}
+                {(draft.requireStaffMfa ?? false) ? '● Face ID & Email OTP 2FA Active' : '○ 2FA Disabled'}
               </span>
             </div>
 
+            {/* Face ID Biometric 2FA Enrollment Box */}
+            <div
+              style={{
+                marginBottom: 16,
+                padding: '14px 16px',
+                borderRadius: 12,
+                background: adminFaceEnrolled
+                  ? 'linear-gradient(135deg, #ECFDF5 0%, #F0FDF4 100%)'
+                  : 'linear-gradient(135deg, #EFF6FF 0%, #F0FDFA 100%)',
+                border: `1.5px solid ${adminFaceEnrolled ? '#6EE7B7' : '#BAE6FD'}`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 11,
+                      background: adminFaceEnrolled ? '#059669' : '#0F766E',
+                      color: '#FFFFFF',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Camera size={20} />
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: C.navy }}>
+                        Face ID Biometric 2FA Enrollment
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 800,
+                          padding: '2px 9px',
+                          borderRadius: 999,
+                          background: adminFaceEnrolled ? '#DCFCE7' : '#E2E8F0',
+                          color: adminFaceEnrolled ? '#065F46' : '#475569',
+                        }}
+                      >
+                        {adminFaceEnrolled ? '● Face ID Active' : '○ Not Enrolled'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                      {adminFaceEnrolled
+                        ? 'Your administrator Face ID is enrolled. 2FA verifies with Face ID at login and terminal unlock.'
+                        : 'Click Enroll Face ID to scan your face and immediately activate Face ID 2FA for your account and facility.'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    disabled={faceActionBusy}
+                    onClick={() => {
+                      if (!isCameraBiometricSupported()) {
+                        setFaceNotice('Camera access requires HTTPS or a browser webcam. Check browser permissions and try again.');
+                      } else {
+                        setFaceNotice(null);
+                      }
+                      setFaceModalOpen(true);
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 7,
+                      padding: '10px 16px',
+                      borderRadius: 10,
+                      border: 'none',
+                      background: adminFaceEnrolled ? '#0F766E' : '#059669',
+                      color: '#FFFFFF',
+                      fontWeight: 800,
+                      fontSize: 12.5,
+                      cursor: faceActionBusy ? 'wait' : 'pointer',
+                      boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)',
+                    }}
+                  >
+                    <Camera size={15} />
+                    <span>{adminFaceEnrolled ? 'Re-enroll Face ID' : 'Enroll Face ID'}</span>
+                  </button>
+
+                  {adminFaceEnrolled && (
+                    <button
+                      type="button"
+                      disabled={faceActionBusy}
+                      onClick={async () => {
+                        setFaceActionBusy(true);
+                        setFaceNotice(null);
+                        try {
+                          const ok = await revokeStaffBiometric(
+                            session.badgeId || session.id || 'ADMIN',
+                            facilityId,
+                            'face'
+                          );
+                          if (ok) {
+                            setAdminFaceEnrolled(false);
+                            setFaceNotice('Face ID profile removed from your account.');
+                          } else {
+                            setFaceNotice('Could not remove Face ID right now. Please try again.');
+                          }
+                        } finally {
+                          setFaceActionBusy(false);
+                        }
+                      }}
+                      style={{
+                        padding: '9px 13px',
+                        borderRadius: 10,
+                        border: '1px solid #FECACA',
+                        background: '#FEF2F2',
+                        color: '#DC2626',
+                        fontWeight: 700,
+                        fontSize: 12,
+                        cursor: faceActionBusy ? 'wait' : 'pointer',
+                      }}
+                    >
+                      {faceActionBusy ? 'Removing…' : 'Remove Face ID'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {faceNotice && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    background: '#FFFFFF',
+                    border: `1px solid ${faceNotice.includes('activated') ? '#A7F3D0' : '#E2E8F0'}`,
+                    color: faceNotice.includes('activated') ? '#065F46' : '#334155',
+                  }}
+                >
+                  {faceNotice}
+                </div>
+              )}
+            </div>
+
             <Toggle
-              label="Require Two-Factor Authentication (2FA / Email OTP) for All Staff Logins"
-              desc="Auto-generates a single-use 6-digit OTP and sends it to the staff member's registered email after PIN/Password"
+              label="Require Two-Factor Authentication (Face ID / Email OTP) for All Staff Logins"
+              desc="Prompts staff for Face ID camera verification (if enrolled) or single-use 6-digit Email OTP after PIN/Password"
               checked={draft.requireStaffMfa ?? false}
               onChange={(v) => patch({ requireStaffMfa: v })}
+            />
+
+            <Toggle
+              label="Require Face ID Enrollment Before Issuing New Staff Accounts"
+              desc="Opens camera Face ID enrollment automatically during new staff registration before the Staff ID & account are issued"
+              checked={draft.requireFaceIdOnStaffEnrol ?? true}
+              onChange={(v) => patch({ requireFaceIdOnStaffEnrol: v })}
             />
 
             <Toggle
@@ -2751,6 +2928,37 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
         session={session}
         isOpen={showCredModal}
         onClose={() => setShowCredModal(false)}
+      />
+
+      {/* ── Modal: Admin Face ID Enrollment & Immediate 2FA Activation ── */}
+      <FaceBiometricCaptureModal
+        mode="enroll"
+        isOpen={faceModalOpen}
+        badgeId={session.badgeId || session.id || 'ADMIN'}
+        facilityId={facilityId}
+        staffName={session.name || 'Hospital Administrator'}
+        subtitleOverride="Capture your Face ID now. Two-Factor Authentication (2FA) will activate immediately upon enrollment."
+        enrollButtonLabel="Capture & Activate Face ID 2FA"
+        onClose={() => setFaceModalOpen(false)}
+        onEnrolled={() => {
+          setAdminFaceEnrolled(true);
+          setFaceModalOpen(false);
+          const next = saveAdminSettings(
+            {
+              ...draft,
+              facilityId,
+              requireStaffMfa: true,
+              requireFaceIdOnStaffEnrol: draft.requireFaceIdOnStaffEnrol ?? true,
+            },
+            session.name || session.badgeId
+          );
+          setSettings(next);
+          setDraft(next);
+          setDirty(false);
+          dirtyRef.current = false;
+          setSavedAt(new Date().toLocaleTimeString('en-GB'));
+          setFaceNotice('Face ID enrolled & 2FA activated. Sign-in and terminal unlock will now verify with Face ID.');
+        }}
       />
     </div>
   );

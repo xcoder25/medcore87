@@ -53,6 +53,8 @@ import type { StaffCardRecord } from '@medcore/types';
 import type { UserSession } from '../auth/AuthScreen';
 import { HOSPITALS } from '../auth/AuthScreen';
 import { getCustomRoles } from '../../lib/rolePermissionsStore';
+import { getAdminSettings } from '../../lib/adminSettingsStore';
+import { FaceBiometricCaptureModal } from '../auth/FaceBiometricCaptureModal';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import {
   EMPLOYMENT_SCHEMES,
@@ -66,7 +68,7 @@ import {
 import {
   Shield, Plus, Search, CheckCircle2, XCircle, Lock, UserPlus, IdCard, Trash2, Sliders,
   Layers, Pencil, Save, X as XIcon, Users, Printer, Copy, Check, Sparkles,
-  Filter, ChevronRight, RefreshCw, Key, ShieldCheck, AlertTriangle, Eye,
+  Filter, ChevronRight, RefreshCw, Key, ShieldCheck, AlertTriangle, Eye, Camera,
 } from 'lucide-react';
 import { DuplicateCardModal } from '../staffing/DuplicateCardModal';
 
@@ -241,6 +243,20 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
   const [selectedBioEnrolled, setSelectedBioEnrolled] = useState<boolean>(false);
   const [selectedFaceEnrolled, setSelectedFaceEnrolled] = useState<boolean>(false);
   const [bioResetBusy, setBioResetBusy] = useState(false);
+  const [inspectFaceModalOpen, setInspectFaceModalOpen] = useState(false);
+  const [pendingStaffEnrolment, setPendingStaffEnrolment] = useState<{
+    nameSnap: string;
+    mail: string;
+    pinNorm: string;
+    schemeSnap: EmploymentSchemeKey;
+    civilIdSnap: string;
+    regBodySnap: RegulatoryCouncilCode;
+    licenseNoSnap?: string;
+    licenseExpSnap?: string;
+    photoSnap: string | null;
+    roleMeta: (typeof ROLE_OPTIONS)[number];
+    prepared: ReturnType<typeof prepareStaffEnrolment>;
+  } | null>(null);
   const [createFail, setCreateFail] = useState<string | null>(null);
   const [issued, setIssued] = useState<StaffCardRecord | null>(null);
   const [confirmInfo, setConfirmInfo] = useState<{
@@ -778,6 +794,246 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
     setPin(random);
   };
 
+  const finalizeStaffEnrolment = async (
+    bundle: {
+      nameSnap: string;
+      mail: string;
+      pinNorm: string;
+      schemeSnap: EmploymentSchemeKey;
+      civilIdSnap: string;
+      regBodySnap: RegulatoryCouncilCode;
+      licenseNoSnap?: string;
+      licenseExpSnap?: string;
+      photoSnap: string | null;
+      roleMeta: (typeof ROLE_OPTIONS)[number];
+      prepared: ReturnType<typeof prepareStaffEnrolment>;
+    },
+    faceEnrolled: boolean
+  ) => {
+    setPendingStaffEnrolment(null);
+    setBusy(true);
+    setError('');
+    setCreateFail(null);
+    setConfirmInfo(null);
+
+    const {
+      nameSnap,
+      mail,
+      pinNorm,
+      schemeSnap,
+      civilIdSnap,
+      regBodySnap,
+      licenseNoSnap,
+      licenseExpSnap,
+      photoSnap,
+      roleMeta: rm,
+      prepared,
+    } = bundle;
+
+    try {
+      let card = prepared.card;
+      const badgeId = card.badgeId;
+
+      let finalPhoto = photoSnap;
+      if (finalPhoto && finalPhoto.startsWith('data:image/')) {
+        try {
+          const s3Up = await uploadImageToS3(finalPhoto, {
+            folder: 'staff',
+            facilityId,
+            filename: `${badgeId}-headshot.jpg`,
+          });
+          if (s3Up.ok && s3Up.url && s3Up.isS3) {
+            finalPhoto = s3Up.url;
+          }
+        } catch { /* fall back */ }
+      }
+      if (finalPhoto && finalPhoto.startsWith('data:image/')) {
+        try {
+          finalPhoto = (await resolveStaffPhotoForEnrol(facilityId, badgeId, finalPhoto)) || finalPhoto;
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (finalPhoto) {
+        card = { ...card, photoUrl: finalPhoto };
+      }
+
+      const accessRow: AccessRecord = {
+        id: badgeId,
+        name: nameSnap,
+        role: rm.role,
+        roleKey: rm.roleKey,
+        department: rm.department,
+        clearance: rm.clearanceLevel,
+        status: 'active',
+        lastLogin: 'Never',
+        permissions: defaultPermissionsForRole(rm.roleKey),
+        email: mail || undefined,
+        employmentScheme: schemeSnap,
+        civilServiceId: civilIdSnap,
+        regulatoryBody: regBodySnap,
+        practicingLicenseNo: licenseNoSnap,
+        licenseExpiry: licenseExpSnap,
+      };
+
+      // 1) Commit local first
+      commitStaffEnrolment(
+        {
+          fullName: nameSnap,
+          role: rm.role,
+          roleKey: rm.roleKey,
+          title: rm.title,
+          department: rm.department,
+          facilityId,
+          facilityName,
+          clearanceLevel: rm.clearanceLevel,
+          clearanceLabel: rm.clearanceLabel,
+          pin: pinNorm,
+          shortRole: rm.shortRole,
+          permissions: accessRow.permissions,
+          photoUrl: finalPhoto || undefined,
+          email: mail || undefined,
+          employmentScheme: schemeSnap,
+          civilServiceId: civilIdSnap,
+          regulatoryBody: regBodySnap,
+          practicingLicenseNo: licenseNoSnap,
+          licenseExpiry: licenseExpSnap,
+        },
+        card,
+        {
+          ...prepared.entry,
+          pin: pinNorm,
+          email: mail || undefined,
+          photoUrl: finalPhoto || undefined,
+          employmentScheme: schemeSnap,
+          civilServiceId: civilIdSnap,
+          regulatoryBody: regBodySnap,
+          practicingLicenseNo: licenseNoSnap,
+          licenseExpiry: licenseExpSnap,
+        }
+      );
+
+      const nextAccess = [accessRow, ...getAccessRecords().filter((r) => r.id !== accessRow.id)];
+      setAccessRecords(nextAccess);
+      setRecords(nextAccess);
+
+      pushActivity(
+        faceEnrolled
+          ? `Staff Enrolled · ${nameSnap} · ${badgeId} · Digital ID issued · Face ID 2FA Active`
+          : `Staff Enrolled · ${nameSnap} · ${badgeId} · Digital ID issued`
+      );
+      emitLiveAction(`Staff enrolled · ${badgeId}`, { module: 'access' });
+
+      setIssued(card);
+      setSelectedId(badgeId);
+      setConfirmInfo({
+        badgeId,
+        name: nameSnap,
+        role: rm.role,
+        roleKey: rm.roleKey,
+        department: rm.department,
+        clearanceLabel: rm.clearanceLabel,
+        facilityName,
+        pin: pinNorm,
+        email: mail || undefined,
+      });
+
+      // Cloud sync with fallback
+      const profilePayload: Record<string, unknown> = {
+        badgeId,
+        name: nameSnap,
+        fullName: nameSnap,
+        role: rm.role,
+        roleKey: rm.roleKey,
+        title: rm.title,
+        department: rm.department,
+        hospitalId: facilityId,
+        facilityId,
+        hospitalName: facilityName,
+        facilityName,
+        clearanceLevel: rm.clearanceLevel,
+        clearanceLabel: rm.clearanceLabel,
+        permissions: accessRow.permissions,
+        email: mail || undefined,
+        workEmail: mail || undefined,
+        authEmail: badgeAuthEmail(badgeId),
+        status: 'active',
+        photoUrl: finalPhoto || undefined,
+        employmentScheme: schemeSnap,
+        civilServiceId: civilIdSnap,
+        regulatoryBody: regBodySnap,
+        practicingLicenseNo: licenseNoSnap,
+        licenseExpiry: licenseExpSnap,
+      };
+
+      try {
+        const cloudRes = await apiAtomicCreateStaff({
+          badgeId,
+          facilityId,
+          facilityName,
+          fullName: nameSnap,
+          role: rm.role,
+          roleKey: rm.roleKey,
+          title: rm.title,
+          department: rm.department,
+          email: mail || undefined,
+          password: pinNorm,
+          pin: pinNorm,
+          status: 'active',
+          clearanceLevel: rm.clearanceLevel,
+          clearanceLabel: rm.clearanceLabel,
+          templateKey: card.templateKey || 'TPL_CLINICAL',
+          photoUrl: finalPhoto || undefined,
+          employmentScheme: schemeSnap,
+          civilServiceId: civilIdSnap,
+          regulatoryBody: regBodySnap,
+          practicingLicenseNo: licenseNoSnap,
+          licenseExpiry: licenseExpSnap,
+        });
+
+        if (!cloudRes || !cloudRes.success) {
+          console.warn('[access] apiAtomicCreateStaff returned non-success, attempting client ensure fallback:', cloudRes?.error);
+          await ensureStaffCloudIdentity({
+            facilityId,
+            badgeId,
+            pin: pinNorm,
+            email: mail || undefined,
+            displayName: nameSnap,
+            profile: profilePayload,
+          });
+        }
+      } catch (cloudErr) {
+        console.warn('[access] apiAtomicCreateStaff error, running client ensure fallback:', cloudErr);
+        try {
+          await ensureStaffCloudIdentity({
+            facilityId,
+            badgeId,
+            pin: pinNorm,
+            email: mail || undefined,
+            displayName: nameSnap,
+            profile: profilePayload,
+          });
+        } catch { /* ignore */ }
+      }
+
+      setFullName('');
+      setEmail('');
+      setCivilServiceId('');
+      setPracticingLicenseNo('');
+      setLicenseExpiry('');
+      setPhotoUrl('');
+      setPhotoMeta('');
+      setEnrolSubmitAttempted(false);
+      setBusy(false);
+    } catch (err: unknown) {
+      console.error('[access] create failed', err);
+      setError((err as Error)?.message || 'Account creation failed.');
+      setCreateFail((err as Error)?.message || 'Account creation failed.');
+      setBusy(false);
+    }
+  };
+
   // Submit Enrolment
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -837,7 +1093,6 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
       }
     }
 
-    setBusy(true);
     setConfirmInfo(null);
 
     const pinNorm = normalizeStaffPin(pin);
@@ -874,201 +1129,31 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
         licenseExpiry: licenseExpSnap,
       });
 
-      let card = prepared.card;
-      const badgeId = card.badgeId;
-
-      let finalPhoto = photoSnap;
-      if (finalPhoto && finalPhoto.startsWith('data:image/')) {
-        try {
-          const s3Up = await uploadImageToS3(finalPhoto, {
-            folder: 'staff',
-            facilityId,
-            filename: `${badgeId}-headshot.jpg`,
-          });
-          if (s3Up.ok && s3Up.url && s3Up.isS3) {
-            finalPhoto = s3Up.url;
-          }
-        } catch { /* fall back */ }
-      }
-      if (finalPhoto && finalPhoto.startsWith('data:image/')) {
-        try {
-          finalPhoto = (await resolveStaffPhotoForEnrol(facilityId, badgeId, finalPhoto)) || finalPhoto;
-        } catch {
-          /* ignore */
-        }
-      }
-
-      if (finalPhoto) {
-        card = { ...card, photoUrl: finalPhoto };
-      }
-
-      const accessRow: AccessRecord = {
-        id: badgeId,
-        name: nameSnap,
-        role: roleMeta.role,
-        roleKey: roleMeta.roleKey,
-        department: roleMeta.department,
-        clearance: roleMeta.clearanceLevel,
-        status: 'active',
-        lastLogin: 'Never',
-        permissions: defaultPermissionsForRole(roleMeta.roleKey),
-        email: mail || undefined,
-        employmentScheme: schemeSnap,
-        civilServiceId: civilIdSnap,
-        regulatoryBody: regBodySnap,
-        practicingLicenseNo: licenseNoSnap,
-        licenseExpiry: licenseExpSnap,
+      const bundle = {
+        nameSnap,
+        mail,
+        pinNorm,
+        schemeSnap,
+        civilIdSnap,
+        regBodySnap,
+        licenseNoSnap,
+        licenseExpSnap,
+        photoSnap,
+        roleMeta,
+        prepared,
       };
 
-      // 1) Commit local first
-      commitStaffEnrolment(
-        {
-          fullName: nameSnap,
-          role: roleMeta.role,
-          roleKey: roleMeta.roleKey,
-          title: roleMeta.title,
-          department: roleMeta.department,
-          facilityId,
-          facilityName,
-          clearanceLevel: roleMeta.clearanceLevel,
-          clearanceLabel: roleMeta.clearanceLabel,
-          pin: pinNorm,
-          shortRole: roleMeta.shortRole,
-          permissions: accessRow.permissions,
-          photoUrl: finalPhoto || undefined,
-          email: mail || undefined,
-          employmentScheme: schemeSnap,
-          civilServiceId: civilIdSnap,
-          regulatoryBody: regBodySnap,
-          practicingLicenseNo: licenseNoSnap,
-          licenseExpiry: licenseExpSnap,
-        },
-        card,
-        {
-          ...prepared.entry,
-          pin: pinNorm,
-          email: mail || undefined,
-          photoUrl: finalPhoto || undefined,
-          employmentScheme: schemeSnap,
-          civilServiceId: civilIdSnap,
-          regulatoryBody: regBodySnap,
-          practicingLicenseNo: licenseNoSnap,
-          licenseExpiry: licenseExpSnap,
-        }
-      );
-
-      const nextAccess = [accessRow, ...getAccessRecords().filter((r) => r.id !== accessRow.id)];
-      setAccessRecords(nextAccess);
-      setRecords(nextAccess);
-
-      pushActivity(`Staff Enrolled · ${nameSnap} · ${badgeId} · Digital ID issued`);
-      emitLiveAction(`Staff enrolled · ${badgeId}`, { module: 'access' });
-
-      setIssued(card);
-      setSelectedId(badgeId);
-      setConfirmInfo({
-        badgeId,
-        name: nameSnap,
-        role: roleMeta.role,
-        roleKey: roleMeta.roleKey,
-        department: roleMeta.department,
-        clearanceLabel: roleMeta.clearanceLabel,
-        facilityName,
-        pin: pinNorm,
-        email: mail || undefined,
-      });
-
-      // Cloud sync with fallback
-      const profilePayload: Record<string, unknown> = {
-        badgeId,
-        name: nameSnap,
-        fullName: nameSnap,
-        role: roleMeta.role,
-        roleKey: roleMeta.roleKey,
-        title: roleMeta.title,
-        department: roleMeta.department,
-        hospitalId: facilityId,
-        facilityId,
-        hospitalName: facilityName,
-        facilityName,
-        clearanceLevel: roleMeta.clearanceLevel,
-        clearanceLabel: roleMeta.clearanceLabel,
-        permissions: accessRow.permissions,
-        email: mail || undefined,
-        workEmail: mail || undefined,
-        authEmail: badgeAuthEmail(badgeId),
-        status: 'active',
-        photoUrl: finalPhoto || undefined,
-        employmentScheme: schemeSnap,
-        civilServiceId: civilIdSnap,
-        regulatoryBody: regBodySnap,
-        practicingLicenseNo: licenseNoSnap,
-        licenseExpiry: licenseExpSnap,
-      };
-
-      try {
-        const cloudRes = await apiAtomicCreateStaff({
-          badgeId,
-          facilityId,
-          facilityName,
-          fullName: nameSnap,
-          role: roleMeta.role,
-          roleKey: roleMeta.roleKey,
-          title: roleMeta.title,
-          department: roleMeta.department,
-          email: mail || undefined,
-          password: pinNorm,
-          pin: pinNorm,
-          status: 'active',
-          clearanceLevel: roleMeta.clearanceLevel,
-          clearanceLabel: roleMeta.clearanceLabel,
-          templateKey: card.templateKey || 'TPL_CLINICAL',
-          photoUrl: finalPhoto || undefined,
-          employmentScheme: schemeSnap,
-          civilServiceId: civilIdSnap,
-          regulatoryBody: regBodySnap,
-          practicingLicenseNo: licenseNoSnap,
-          licenseExpiry: licenseExpSnap,
-        });
-
-        if (!cloudRes || !cloudRes.success) {
-          console.warn('[access] apiAtomicCreateStaff returned non-success, attempting client ensure fallback:', cloudRes?.error);
-          await ensureStaffCloudIdentity({
-            facilityId,
-            badgeId,
-            pin: pinNorm,
-            email: mail || undefined,
-            displayName: nameSnap,
-            profile: profilePayload,
-          });
-        }
-      } catch (cloudErr) {
-        console.warn('[access] apiAtomicCreateStaff error, running client ensure fallback:', cloudErr);
-        try {
-          await ensureStaffCloudIdentity({
-            facilityId,
-            badgeId,
-            pin: pinNorm,
-            email: mail || undefined,
-            displayName: nameSnap,
-            profile: profilePayload,
-          });
-        } catch { /* ignore */ }
+      const requireFaceOnEnrol = getAdminSettings(facilityId).requireFaceIdOnStaffEnrol !== false;
+      if (requireFaceOnEnrol) {
+        setPendingStaffEnrolment(bundle);
+        return;
       }
 
-      setFullName('');
-      setEmail('');
-      setCivilServiceId('');
-      setPracticingLicenseNo('');
-      setLicenseExpiry('');
-      setPhotoUrl('');
-      setPhotoMeta('');
-      setBusy(false);
+      await finalizeStaffEnrolment(bundle, false);
     } catch (err: unknown) {
-      console.error('[access] create failed', err);
-      setError((err as Error)?.message || 'Account creation failed.');
-      setCreateFail((err as Error)?.message || 'Account creation failed.');
-      setBusy(false);
+      console.error('[access] prepare failed', err);
+      setError((err as Error)?.message || 'Account preparation failed.');
+      setCreateFail((err as Error)?.message || 'Account preparation failed.');
     }
   };
 
@@ -2160,39 +2245,62 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                       <div>
                         <span style={{ color: '#64748B', fontWeight: 700, display: 'block', fontSize: '0.68rem' }}>BIOMETRIC 2FA</span>
                         <strong style={{ color: selectedBioEnrolled ? '#065F46' : '#475569' }}>
-                          {selectedFaceEnrolled ? 'Face Camera Enrolled' : 'Not enrolled'}
+                          {selectedFaceEnrolled ? 'Face ID Enrolled' : 'Not enrolled'}
                         </strong>
                       </div>
-                      {selectedBioEnrolled && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <button
                           type="button"
                           disabled={bioResetBusy}
-                          onClick={async () => {
-                            setBioResetBusy(true);
-                            try {
-                              const ok = await revokeStaffBiometric(selected.id, facilityId, 'all');
-                              if (ok) {
-                                setSelectedBioEnrolled(false);
-                                setSelectedFaceEnrolled(false);
-                              }
-                            } finally {
-                              setBioResetBusy(false);
-                            }
-                          }}
+                          onClick={() => setInspectFaceModalOpen(true)}
                           style={{
                             padding: '4px 9px',
                             borderRadius: 7,
-                            border: '1px solid #FECACA',
-                            background: '#FEF2F2',
-                            color: '#DC2626',
+                            border: 'none',
+                            background: '#059669',
+                            color: '#FFFFFF',
                             fontSize: '0.7rem',
                             fontWeight: 700,
                             cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
                           }}
                         >
-                          {bioResetBusy ? 'Resetting…' : 'Reset Biometrics'}
+                          <Camera size={12} />
+                          {selectedFaceEnrolled ? 'Re-enroll Face ID' : 'Enroll Face ID'}
                         </button>
-                      )}
+                        {selectedBioEnrolled && (
+                          <button
+                            type="button"
+                            disabled={bioResetBusy}
+                            onClick={async () => {
+                              setBioResetBusy(true);
+                              try {
+                                const ok = await revokeStaffBiometric(selected.id, facilityId, 'all');
+                                if (ok) {
+                                  setSelectedBioEnrolled(false);
+                                  setSelectedFaceEnrolled(false);
+                                }
+                              } finally {
+                                setBioResetBusy(false);
+                              }
+                            }}
+                            style={{
+                              padding: '4px 9px',
+                              borderRadius: 7,
+                              border: '1px solid #FECACA',
+                              background: '#FEF2F2',
+                              color: '#DC2626',
+                              fontSize: '0.7rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {bioResetBusy ? 'Resetting…' : 'Reset Biometrics'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -2587,7 +2695,14 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
                 className="os-primary-btn"
                 style={{ padding: '12px 18px', fontSize: '0.94rem', fontWeight: 800, justifyContent: 'center', marginTop: 4, background: '#0052D4' }}
               >
-                <Plus size={18} /> {busy ? 'Enrolling & Issuing ID Card…' : photoBusy ? 'Uploading Headshot…' : 'Complete Enrolment & Issue Staff ID'}
+                <Plus size={18} />{' '}
+                {busy
+                  ? 'Enrolling & Issuing ID Card…'
+                  : photoBusy
+                  ? 'Uploading Headshot…'
+                  : getAdminSettings(facilityId).requireFaceIdOnStaffEnrol !== false
+                  ? 'Enroll Staff & Capture Face ID'
+                  : 'Complete Enrolment & Issue Staff ID'}
               </button>
 
               <LogoProgressBar active={busy} label="Generating tamper-evident ID card & synchronizing access..." />
@@ -2794,6 +2909,38 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
           facilityId={facilityId}
           onClose={() => { setShowDupModal(false); loadRecords(); }}
           onDeleted={() => loadRecords()}
+        />
+      )}
+
+      {pendingStaffEnrolment && (
+        <FaceBiometricCaptureModal
+          mode="enroll"
+          isOpen={Boolean(pendingStaffEnrolment)}
+          badgeId={pendingStaffEnrolment.prepared.card.badgeId}
+          facilityId={facilityId}
+          staffName={pendingStaffEnrolment.nameSnap}
+          subtitleOverride="Capture Face ID before issuing this staff account & badge"
+          enrollButtonLabel="Capture Face ID & Issue Account"
+          skipLabel="Issue Account Without Face ID (No Camera)"
+          onClose={() => setPendingStaffEnrolment(null)}
+          onEnrolled={() => void finalizeStaffEnrolment(pendingStaffEnrolment, true)}
+          onSkipCameraUnavailable={() => void finalizeStaffEnrolment(pendingStaffEnrolment, false)}
+        />
+      )}
+
+      {selected && inspectFaceModalOpen && (
+        <FaceBiometricCaptureModal
+          mode="enroll"
+          isOpen={inspectFaceModalOpen}
+          badgeId={selected.id}
+          facilityId={facilityId}
+          staffName={selected.name}
+          onClose={() => setInspectFaceModalOpen(false)}
+          onEnrolled={() => {
+            setInspectFaceModalOpen(false);
+            setSelectedBioEnrolled(true);
+            setSelectedFaceEnrolled(true);
+          }}
         />
       )}
     </div>

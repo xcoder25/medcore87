@@ -48,6 +48,7 @@ export async function enrollStaffFaceBiometric(params: {
   facilityId: string;
   staffName: string;
   imageBase64: string;
+  faceVector?: number[];
 }): Promise<{ ok: boolean; enrolled?: boolean; enrolledAt?: string; error?: string }> {
   try {
     const res = await fetch('/api/auth/biometric', {
@@ -59,6 +60,7 @@ export async function enrollStaffFaceBiometric(params: {
         facilityId: params.facilityId,
         staffName: params.staffName,
         imageBase64: params.imageBase64,
+        ...(params.faceVector ? { faceVector: params.faceVector } : {}),
       }),
     });
     const json = (await res.json().catch(() => ({}))) as {
@@ -127,6 +129,8 @@ export async function verifyStaffFaceBiometric(params: {
   challengeToken: string;
   neutralImageBase64: string;
   challengeImageBase64: string;
+  neutralFaceVector?: number[];
+  challengeFaceVector?: number[];
 }): Promise<{ ok: boolean; verified?: boolean; similarity?: number; mfaToken?: string; error?: string }> {
   try {
     const res = await fetch('/api/auth/biometric', {
@@ -140,6 +144,8 @@ export async function verifyStaffFaceBiometric(params: {
         challengeToken: params.challengeToken,
         neutralImageBase64: params.neutralImageBase64,
         challengeImageBase64: params.challengeImageBase64,
+        ...(params.neutralFaceVector ? { neutralFaceVector: params.neutralFaceVector } : {}),
+        ...(params.challengeFaceVector ? { challengeFaceVector: params.challengeFaceVector } : {}),
       }),
     });
     const json = (await res.json().catch(() => ({}))) as {

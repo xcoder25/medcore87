@@ -1528,11 +1528,139 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
 
     assert.ok(sdkCalls.includes('DetectFaces') && sdkCalls.includes('CompareFaces'));
 
+    const prevExtraEnv = {
+      MEDCORE_REKOGNITION_AWS_ROLE_ARN: process.env.MEDCORE_REKOGNITION_AWS_ROLE_ARN,
+      MEDCORE_REKOGNITION_AWS_REGION: process.env.MEDCORE_REKOGNITION_AWS_REGION,
+      MEDCORE_S3_AWS_ROLE_ARN: process.env.MEDCORE_S3_AWS_ROLE_ARN,
+      MEDCORE_AWS_ROLE_ARN: process.env.MEDCORE_AWS_ROLE_ARN,
+      AWS_REGION: process.env.AWS_REGION,
+      AWS_DEFAULT_REGION: process.env.AWS_DEFAULT_REGION,
+    };
+
+    try {
+      // Clear any extra OIDC/region env vars during test
+      for (const k of Object.keys(prevExtraEnv)) delete process.env[k];
+
+      // Test MEDCORE_REKOGNITION_AWS_ROLE_ARN + eu-north-1 fallback -> eu-west-1
+      process.env.MEDCORE_REKOGNITION_AWS_ROLE_ARN = 'arn:aws:iam::123456789012:role/medcore-prefixed-oidc';
+      process.env.MEDCORE_REKOGNITION_AWS_REGION = 'eu-north-1';
+      rek.resetRekognitionClient();
+      const prefixedCfg = rek.getRekognitionConfig();
+      assert.equal(prefixedCfg.isConfigured, true);
+      assert.equal(prefixedCfg.region, 'eu-west-1', 'eu-north-1 must fall back to Rekognition-supported eu-west-1');
+      delete process.env.MEDCORE_REKOGNITION_AWS_ROLE_ARN;
+      delete process.env.MEDCORE_REKOGNITION_AWS_REGION;
+      delete process.env.MEDCORE_REKOGNITION_ROLE_ARN;
+      delete process.env.MEDCORE_REKOGNITION_REGION;
+
+      // Test Standard Vector Fallback when Rekognition is unconfigured
+      rek.resetRekognitionClient();
+      assert.equal(rek.isRekognitionConfigured(), false);
+      memVaultRow = null;
+
+      const makeVec = (seedShift = 0, deltaIdx = -1) => {
+        const arr = [];
+        for (let i = 0; i < 128; i++) {
+          let v = Math.sin((i + 1 + seedShift) * 0.37) * 0.5 + Math.cos((i + 3) * 0.19) * 0.5;
+          if (i === deltaIdx) v += 0.45;
+          arr.push(Math.round(v * 10000) / 10000);
+        }
+        return arr;
+      };
+      const baseVec = makeVec(0);
+      const movedVec = makeVec(0, 12);
+      const strangerVec = makeVec(4.2);
+
+      const stdEnroll = await post({
+        action: 'face_enroll',
+        badgeId: 'ADM-STD-1',
+        facilityId: 'TEST-FAC',
+        staffName: 'Admin Ini',
+        imageBase64: `data:image/jpeg;base64,${validImg}`,
+        faceVector: baseVec,
+      });
+      assert.equal(stdEnroll.status, 200);
+      assert.equal(stdEnroll.data.faceEnrolled, true);
+
+      const stdChal = await post({
+        action: 'face_challenge',
+        badgeId: 'ADM-STD-1',
+        facilityId: 'TEST-FAC',
+      });
+      assert.equal(stdChal.status, 200);
+
+      // Identical frames must still be rejected
+      const stdReplay = await post({
+        action: 'face_verify',
+        badgeId: 'ADM-STD-1',
+        facilityId: 'TEST-FAC',
+        challengeToken: stdChal.data.challengeToken,
+        neutralImageBase64: validImg,
+        challengeImageBase64: validImg,
+        neutralFaceVector: baseVec,
+        challengeFaceVector: movedVec,
+      });
+      assert.equal(stdReplay.status, 401);
+
+      // Valid match succeeds with mfaToken
+      const stdChal2 = await post({ action: 'face_challenge', badgeId: 'ADM-STD-1', facilityId: 'TEST-FAC' });
+      const stdOk = await post({
+        action: 'face_verify',
+        badgeId: 'ADM-STD-1',
+        facilityId: 'TEST-FAC',
+        challengeToken: stdChal2.data.challengeToken,
+        neutralImageBase64: validImg,
+        challengeImageBase64: challengeImg,
+        neutralFaceVector: baseVec,
+        challengeFaceVector: movedVec,
+      });
+      assert.equal(stdOk.status, 200);
+      assert.equal(stdOk.data.verified, true);
+      assert.equal(stdOk.data.mfaToken, 'mfa.ADM-STD-1.TEST-FAC.biometric');
+
+      // Mismatched vector fails cleanly
+      const stdChal3 = await post({ action: 'face_challenge', badgeId: 'ADM-STD-1', facilityId: 'TEST-FAC' });
+      const stdMismatch = await post({
+        action: 'face_verify',
+        badgeId: 'ADM-STD-1',
+        facilityId: 'TEST-FAC',
+        challengeToken: stdChal3.data.challengeToken,
+        neutralImageBase64: validImg,
+        challengeImageBase64: challengeImg,
+        neutralFaceVector: strangerVec,
+        challengeFaceVector: movedVec,
+      });
+      assert.equal(stdMismatch.status, 401);
+      assert.equal(stdMismatch.data.verified, false);
+    } finally {
+      for (const [k, v] of Object.entries(prevExtraEnv)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+
+    // Verify AdminSettings Face ID + auto-2FA, AuthScreen Face ID 2FA check, & AccessControl pre-issuance gate
+    const adminSettingsSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/admin/AdminSettings.tsx'), 'utf8');
+    assert.ok(adminSettingsSrc.includes('Enroll Face ID') && adminSettingsSrc.includes('requireStaffMfa: true'));
+    assert.ok(adminSettingsSrc.includes('FaceBiometricCaptureModal') && adminSettingsSrc.includes('requireFaceIdOnStaffEnrol'));
+
+    const accessCtrlSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/rbac/AccessControl.tsx'), 'utf8');
+    assert.ok(
+      accessCtrlSrc.includes('pendingStaffEnrolment') &&
+        accessCtrlSrc.includes('finalizeStaffEnrolment') &&
+        accessCtrlSrc.includes('FaceBiometricCaptureModal'),
+      'AccessControl must gate staff issuance behind Face ID capture'
+    );
+
+    const authScreenSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/AuthScreen.tsx'), 'utf8');
+    assert.ok(authScreenSrc.includes('getStaffBiometricStatus'), 'AuthScreen must check Face ID enrollment for 2FA');
+
     // UI + client vendor secrecy & Fingerprint/Passkey removal verification
     for (const rel of [
       'src/components/auth/FaceBiometricCaptureModal.tsx',
       'src/components/auth/StaffEmailOtpModal.tsx',
       'src/components/auth/UserProfileModal.tsx',
+      'src/components/admin/AdminSettings.tsx',
       'src/components/rbac/AccessControl.tsx',
       'src/app/page.tsx',
       'src/lib/biometricAuth.ts',

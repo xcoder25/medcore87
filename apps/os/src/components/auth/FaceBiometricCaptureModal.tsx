@@ -24,9 +24,43 @@ interface FaceBiometricCaptureModalProps {
   badgeId: string;
   facilityId: string;
   staffName: string;
+  subtitleOverride?: string;
+  enrollButtonLabel?: string;
+  onSkipCameraUnavailable?: () => void;
+  skipLabel?: string;
   onClose: () => void;
   onEnrolled?: (info: { enrolledAt?: string }) => void;
   onVerified?: (info: { mfaToken?: string; similarity?: number }) => void;
+}
+
+function computeFaceOvalVector(canvas: HTMLCanvasElement): number[] | undefined {
+  try {
+    const gridW = 16;
+    const gridH = 16;
+    const small = document.createElement('canvas');
+    small.width = gridW;
+    small.height = gridH;
+    const sctx = small.getContext('2d');
+    if (!sctx) return undefined;
+    const sx = Math.round(canvas.width * 0.23);
+    const sy = Math.round(canvas.height * 0.12);
+    const sw = Math.max(32, Math.round(canvas.width * 0.54));
+    const sh = Math.max(32, Math.round(canvas.height * 0.76));
+    sctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, gridW, gridH);
+    const data = sctx.getImageData(0, 0, gridW, gridH).data;
+    const raw: number[] = [];
+    for (let i = 0; i < data.length; i += 4) {
+      const lum = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) / 255;
+      raw.push(lum);
+    }
+    const mean = raw.reduce((a, b) => a + b, 0) / raw.length;
+    const centered = raw.map((v) => v - mean);
+    const norm = Math.sqrt(centered.reduce((a, b) => a + b * b, 0));
+    if (!Number.isFinite(norm) || norm < 1e-4) return undefined;
+    return centered.map((v) => Math.round((v / norm) * 10000) / 10000);
+  } catch {
+    return undefined;
+  }
 }
 
 export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps> = ({
@@ -35,6 +69,10 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
   badgeId,
   facilityId,
   staffName,
+  subtitleOverride,
+  enrollButtonLabel,
+  onSkipCameraUnavailable,
+  skipLabel,
   onClose,
   onEnrolled,
   onVerified,
@@ -53,6 +91,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
   const [prompt, setPrompt] = useState<FaceLivenessPrompt | null>(null);
   const [promptLabel, setPromptLabel] = useState<string>('');
   const [neutralFrameB64, setNeutralFrameB64] = useState<string | null>(null);
+  const [neutralVector, setNeutralVector] = useState<number[] | undefined>(undefined);
 
   const stopCamera = useCallback(() => {
     const s = streamRef.current;
@@ -76,6 +115,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     if (mode !== 'verify' || !badgeId) return;
     setErrorMsg(null);
     setNeutralFrameB64(null);
+    setNeutralVector(undefined);
     setChallengeToken(null);
     const ch = await requestFaceAuthChallenge({ badgeId, facilityId });
     if (!ch.ok || !ch.challengeToken || !ch.prompt) {
@@ -93,6 +133,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
       setErrorMsg(null);
       setSuccessMsg(null);
       setNeutralFrameB64(null);
+      setNeutralVector(undefined);
       setChallengeToken(null);
       return;
     }
@@ -144,7 +185,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
 
   if (!isOpen) return null;
 
-  const captureFrameBase64 = (): string | null => {
+  const captureFrame = (): { frame: string; vector?: number[] } | null => {
     const video = videoRef.current;
     if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
       setErrorMsg('Camera feed is still initializing. Wait a moment and try again.');
@@ -160,12 +201,15 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
     ctx.drawImage(video, 0, 0, w, h);
-    return canvas.toDataURL('image/jpeg', 0.85);
+    return {
+      frame: canvas.toDataURL('image/jpeg', 0.85),
+      vector: computeFaceOvalVector(canvas),
+    };
   };
 
   const handleEnrollCapture = async () => {
-    const frame = captureFrameBase64();
-    if (!frame) return;
+    const cap = captureFrame();
+    if (!cap) return;
     setBusy(true);
     setErrorMsg(null);
     try {
@@ -173,7 +217,8 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
         badgeId,
         facilityId,
         staffName,
-        imageBase64: frame,
+        imageBase64: cap.frame,
+        faceVector: cap.vector,
       });
       if (!res.ok) {
         setErrorMsg(res.error || 'Could not enroll facial biometric.');
@@ -190,12 +235,13 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
   };
 
   const handleVerifyCaptureStep = async () => {
-    const frame = captureFrameBase64();
-    if (!frame) return;
+    const cap = captureFrame();
+    if (!cap) return;
     setErrorMsg(null);
 
     if (!neutralFrameB64) {
-      setNeutralFrameB64(frame);
+      setNeutralFrameB64(cap.frame);
+      setNeutralVector(cap.vector);
       return;
     }
 
@@ -212,11 +258,14 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
         staffName,
         challengeToken,
         neutralImageBase64: neutralFrameB64,
-        challengeImageBase64: frame,
+        challengeImageBase64: cap.frame,
+        neutralFaceVector: neutralVector,
+        challengeFaceVector: cap.vector,
       });
       if (!res.verified) {
         setErrorMsg(res.error || 'Facial verification did not match. Resetting scan…');
         setNeutralFrameB64(null);
+        setNeutralVector(undefined);
         await loadVerifyChallenge();
         return;
       }
@@ -349,7 +398,8 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
                     fontWeight: 600,
                   }}
                 >
-                  Center your face inside the oval, look straight ahead with both eyes open, and remove tinted glasses.
+                  {subtitleOverride ||
+                    'Center your face inside the oval, look straight ahead with both eyes open, and remove tinted glasses.'}
                 </div>
               ) : (
                 <div
@@ -449,7 +499,26 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
 
                 {cameraError && (
                   <div style={{ padding: 20, textAlign: 'center', color: '#FCA5A5', fontSize: 12.5, fontWeight: 600 }}>
-                    {cameraError}
+                    <div>{cameraError}</div>
+                    {onSkipCameraUnavailable && (
+                      <button
+                        type="button"
+                        onClick={onSkipCameraUnavailable}
+                        style={{
+                          marginTop: 12,
+                          padding: '8px 14px',
+                          borderRadius: 8,
+                          border: '1px solid rgba(255,255,255,0.28)',
+                          background: 'rgba(255,255,255,0.12)',
+                          color: '#FFFFFF',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {skipLabel || 'Continue Without Face ID (No Camera)'}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -522,10 +591,10 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
                   <span>
                     {busy
                       ? mode === 'enroll'
-                        ? 'Enrolling Face Profile…'
+                        ? 'Enrolling Face ID…'
                         : 'Verifying Face & Liveness…'
                       : mode === 'enroll'
-                      ? 'Capture & Enroll Face'
+                      ? enrollButtonLabel || 'Capture & Enroll Face ID'
                       : neutralFrameB64
                       ? `Complete Liveness (${prompt === 'smile' ? 'Capture Smile' : 'Capture Turn'})`
                       : 'Capture Front View'}

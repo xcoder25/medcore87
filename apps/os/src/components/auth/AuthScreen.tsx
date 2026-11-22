@@ -10,6 +10,7 @@ import { inferRoleKey, defaultPermissionsForRole, listStaffCards } from '../../l
 import { isStaffRevokedLocal } from '../../lib/staffPresenceStore';
 import { getClaimedFacilityId } from '../../lib/onboardingStore';
 import { getAdminSettings, type AdminFacilitySettings } from '../../lib/adminSettingsStore';
+import { getStaffBiometricStatus } from '../../lib/biometricAuth';
 import { StaffEmailOtpModal } from './StaffEmailOtpModal';
 
 // --- Types --------------------------------------------------------------------
@@ -747,7 +748,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     if (onLoginSuccess) onLoginSuccess(verifiedSession);
   };
 
-  const triggerLogin = (session: UserSession) => {
+  const triggerLogin = async (session: UserSession) => {
     let enrichedSession = session;
     if ((!enrichedSession.photoUrl || !enrichedSession.email) && enrichedSession.badgeId) {
       try {
@@ -768,7 +769,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     }
 
     const adminCfg = getAdminSettings(enrichedSession.hospitalId);
-    if (adminCfg.requireStaffMfa === true) {
+    let mfaRequired = adminCfg.requireStaffMfa === true;
+
+    if (!mfaRequired && enrichedSession.badgeId) {
+      try {
+        const bioStatus = await Promise.race([
+          getStaffBiometricStatus(enrichedSession.badgeId, enrichedSession.hospitalId || 'IGH-EKT'),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+        ]);
+        if (bioStatus?.faceEnrolled) {
+          mfaRequired = true;
+        }
+      } catch {
+        /* ignore network hiccup on biometric probe */
+      }
+    }
+
+    if (mfaRequired) {
       setMfaSettings(adminCfg);
       setPendingMfaSession(enrichedSession);
       setSuccess(false);

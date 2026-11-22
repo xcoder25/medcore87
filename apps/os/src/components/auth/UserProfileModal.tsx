@@ -73,7 +73,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [activeTab, setActiveTab] = useState<'profile' | 'card'>('profile');
   const [copiedBadge, setCopiedBadge] = useState(false);
   const [faceEnrolled, setFaceEnrolled] = useState(false);
-  const [faceServiceAvailable, setFaceServiceAvailable] = useState(false);
   const [bioBusy, setBioBusy] = useState(false);
   const [bioMsg, setBioMsg] = useState<string | null>(null);
   const [faceModalOpen, setFaceModalOpen] = useState(false);
@@ -82,7 +81,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     if (!isOpen || !session?.badgeId) return;
     void getStaffBiometricStatus(session.badgeId, session.hospitalId || 'IGH-EKT').then((st) => {
       setFaceEnrolled(Boolean(st.faceEnrolled));
-      setFaceServiceAvailable(Boolean(st.faceServiceAvailable));
     });
   }, [isOpen, session?.badgeId, session?.hospitalId]);
 
@@ -593,19 +591,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     </div>
                     <div>
                       <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
-                        Facial Biometric 2FA {faceEnrolled ? '· Active' : '· Not Enrolled'}
+                        Face ID Biometric 2FA {faceEnrolled ? '· Active' : '· Not Enrolled'}
                       </div>
                       <div style={{ fontSize: '0.74rem', color: '#475569' }}>
                         {faceEnrolled
-                          ? 'Camera face verification + liveness active on any hospital terminal.'
-                          : faceServiceAvailable
-                          ? 'Verify identity using any clinic webcam with active liveness detection.'
-                          : 'Facial recognition service is awaiting server activation.'}
+                          ? 'Camera Face ID verification + liveness active on any hospital terminal.'
+                          : 'Enroll Face ID with any clinic webcam to verify 2FA and terminal unlock.'}
                       </div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {isCameraBiometricSupported() && faceServiceAvailable && (
+                    {isCameraBiometricSupported() && (
                       <button
                         type="button"
                         disabled={bioBusy}
@@ -628,7 +624,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         }}
                       >
                         <Camera size={14} />
-                        {faceEnrolled ? 'Re-enroll Face' : 'Enroll Face Camera'}
+                        {faceEnrolled ? 'Re-enroll Face ID' : 'Enroll Face ID'}
                       </button>
                     )}
                     {faceEnrolled && (

@@ -111,6 +111,7 @@ export interface AdminFacilitySettings {
 
   /** Staff 2FA / Email OTP & HIPAA Security */
   requireStaffMfa: boolean;
+  requireFaceIdOnStaffEnrol?: boolean;
   allowMfaBackupCodeFallback: boolean;
   otpExpiryMinutes: number;
   inactivityTimeoutMinutes: number;
@@ -200,6 +201,7 @@ const DEFAULTS: Omit<AdminFacilitySettings, 'facilityId' | 'updatedAt'> = {
   akwaremitEnvironment: 'live',
 
   requireStaffMfa: false,
+  requireFaceIdOnStaffEnrol: true,
   allowMfaBackupCodeFallback: true,
   otpExpiryMinutes: 5,
   inactivityTimeoutMinutes: 15,
