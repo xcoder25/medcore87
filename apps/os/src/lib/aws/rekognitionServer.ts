@@ -266,6 +266,194 @@ export function evaluateActiveLiveness(
   };
 }
 
+export interface FaceProbeResult {
+  ok: boolean;
+  faceDetected: boolean;
+  readyForNeutral: boolean;
+  livenessMatched: boolean;
+  guidance: string;
+  qualityScore?: number;
+  pose?: { yaw: number; pitch: number; roll: number };
+  smiling?: boolean;
+  smileConfidence?: number;
+  engine: 'cloud_vision' | 'standard';
+}
+
+export interface FaceProbeOptions {
+  stage?: 'enroll' | 'neutral' | 'liveness';
+  prompt?: FaceLivenessPrompt;
+  neutralPoseYaw?: number;
+  neutralSmileConfidence?: number;
+}
+
+/**
+ * Evaluate a single DetectFaces frame during hands-free auto-scanning to provide
+ * live positioning guidance and trigger automatic step transitions cleanly.
+ */
+export function evaluateFaceProbe(
+  faceDetails: FaceDetail[] | undefined,
+  opts: FaceProbeOptions = {}
+): FaceProbeResult {
+  const stage = opts.stage || 'neutral';
+  const faces = Array.isArray(faceDetails) ? faceDetails : [];
+
+  if (faces.length === 0) {
+    return {
+      ok: true,
+      faceDetected: false,
+      readyForNeutral: false,
+      livenessMatched: false,
+      guidance: 'Position your face inside the oval guide.',
+      engine: 'cloud_vision',
+    };
+  }
+
+  if (faces.length > 1) {
+    return {
+      ok: true,
+      faceDetected: true,
+      readyForNeutral: false,
+      livenessMatched: false,
+      guidance: 'Multiple faces detected. Only one person should be in view.',
+      engine: 'cloud_vision',
+    };
+  }
+
+  const face = faces[0];
+  const yaw = Number(face.Pose?.Yaw ?? 0);
+  const pitch = Number(face.Pose?.Pitch ?? 0);
+  const roll = Number(face.Pose?.Roll ?? 0);
+  const smiling = Boolean(face.Smile?.Value);
+  const smileConfidence = Number(face.Smile?.Confidence ?? 0);
+  const boxWidth = Number(face.BoundingBox?.Width ?? 0);
+
+  if (boxWidth > 0 && boxWidth < 0.14) {
+    return {
+      ok: true,
+      faceDetected: true,
+      readyForNeutral: false,
+      livenessMatched: false,
+      guidance: 'Move slightly closer to the camera.',
+      pose: { yaw, pitch, roll },
+      smiling,
+      smileConfidence,
+      engine: 'cloud_vision',
+    };
+  }
+
+  if (boxWidth > 0 && boxWidth > 0.85) {
+    return {
+      ok: true,
+      faceDetected: true,
+      readyForNeutral: false,
+      livenessMatched: false,
+      guidance: 'Move slightly back so your full face fits inside the oval.',
+      pose: { yaw, pitch, roll },
+      smiling,
+      smileConfidence,
+      engine: 'cloud_vision',
+    };
+  }
+
+  if (stage === 'enroll' || stage === 'neutral') {
+    const quality = evaluateFaceQuality(faces);
+    if (!quality.ok) {
+      return {
+        ok: true,
+        faceDetected: true,
+        readyForNeutral: false,
+        livenessMatched: false,
+        guidance: quality.reason || 'Center your face and look straight ahead.',
+        pose: { yaw, pitch, roll },
+        smiling,
+        smileConfidence,
+        engine: 'cloud_vision',
+      };
+    }
+
+    return {
+      ok: true,
+      faceDetected: true,
+      readyForNeutral: true,
+      livenessMatched: false,
+      guidance:
+        stage === 'enroll'
+          ? 'Face aligned — enrolling automatically…'
+          : 'Front view aligned — capturing automatically…',
+      qualityScore: quality.qualityScore,
+      pose: { yaw, pitch, roll },
+      smiling,
+      smileConfidence,
+      engine: 'cloud_vision',
+    };
+  }
+
+  // stage === 'liveness'
+  if (Number(face.Confidence ?? 0) < 90) {
+    return {
+      ok: true,
+      faceDetected: true,
+      readyForNeutral: true,
+      livenessMatched: false,
+      guidance: 'Keep your face well lit inside the oval.',
+      pose: { yaw, pitch, roll },
+      smiling,
+      smileConfidence,
+      engine: 'cloud_vision',
+    };
+  }
+
+  const prompt = opts.prompt || 'smile';
+  const neutralSmileConf = Number(opts.neutralSmileConfidence ?? 0);
+  const neutralFace: FaceDetail = {
+    Pose: { Yaw: Number(opts.neutralPoseYaw ?? 0) },
+    Smile: {
+      Value: neutralSmileConf >= 65,
+      Confidence: neutralSmileConf,
+    },
+  };
+  const liveness = evaluateActiveLiveness(neutralFace, face, prompt);
+  if (liveness.ok) {
+    return {
+      ok: true,
+      faceDetected: true,
+      readyForNeutral: true,
+      livenessMatched: true,
+      guidance: 'Liveness confirmed — verifying identity…',
+      pose: { yaw, pitch, roll },
+      smiling,
+      smileConfidence,
+      engine: 'cloud_vision',
+    };
+  }
+
+  return {
+    ok: true,
+    faceDetected: true,
+    readyForNeutral: true,
+    livenessMatched: false,
+    guidance: FACE_LIVENESS_PROMPTS[prompt],
+    pose: { yaw, pitch, roll },
+    smiling,
+    smileConfidence,
+    engine: 'cloud_vision',
+  };
+}
+
+export async function probeFaceFrame(
+  imageBuffer: Buffer,
+  opts: FaceProbeOptions = {}
+): Promise<FaceProbeResult> {
+  const client = getRekognitionClient();
+  const res = await client.send(
+    new DetectFacesCommand({
+      Image: { Bytes: imageBuffer },
+      Attributes: ['ALL'],
+    })
+  );
+  return evaluateFaceProbe(res.FaceDetails, opts);
+}
+
 export async function assessFaceQuality(imageBuffer: Buffer): Promise<FaceQualityEvaluation> {
   const client = getRekognitionClient();
   const res = await client.send(

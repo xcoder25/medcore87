@@ -1348,6 +1348,56 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
     ]);
     assert.equal(qOk.ok, true);
 
+    // Pure auto-scan probe evaluation checks
+    assert.equal(rek.evaluateFaceProbe([], { stage: 'neutral' }).faceDetected, false);
+    assert.equal(rek.evaluateFaceProbe([], { stage: 'neutral' }).readyForNeutral, false);
+    assert.equal(
+      rek.evaluateFaceProbe([{ Confidence: 99 }, { Confidence: 98 }], { stage: 'neutral' }).readyForNeutral,
+      false
+    );
+    assert.equal(
+      rek.evaluateFaceProbe(
+        [{ Confidence: 99, BoundingBox: { Width: 0.08 } }],
+        { stage: 'enroll' }
+      ).readyForNeutral,
+      false
+    );
+    const probeNeutralOk = rek.evaluateFaceProbe(
+      [
+        {
+          Confidence: 99.4,
+          BoundingBox: { Width: 0.38 },
+          EyesOpen: { Value: true, Confidence: 99 },
+          Sunglasses: { Value: false, Confidence: 99 },
+          Pose: { Yaw: 2, Pitch: -1, Roll: 0 },
+          Quality: { Brightness: 74, Sharpness: 86 },
+          Smile: { Value: false, Confidence: 8 },
+        },
+      ],
+      { stage: 'neutral' }
+    );
+    assert.equal(probeNeutralOk.faceDetected, true);
+    assert.equal(probeNeutralOk.readyForNeutral, true);
+    assert.equal(probeNeutralOk.engine, 'cloud_vision');
+
+    const probeLivenessNoSmile = rek.evaluateFaceProbe(
+      [{ Confidence: 99, BoundingBox: { Width: 0.38 }, Smile: { Value: false, Confidence: 10 }, Pose: { Yaw: 1 } }],
+      { stage: 'liveness', prompt: 'smile', neutralPoseYaw: 1, neutralSmileConfidence: 8 }
+    );
+    assert.equal(probeLivenessNoSmile.livenessMatched, false);
+
+    const probeLivenessSmileOk = rek.evaluateFaceProbe(
+      [{ Confidence: 99, BoundingBox: { Width: 0.38 }, Smile: { Value: true, Confidence: 92 }, Pose: { Yaw: 1 } }],
+      { stage: 'liveness', prompt: 'smile', neutralPoseYaw: 1, neutralSmileConfidence: 8 }
+    );
+    assert.equal(probeLivenessSmileOk.livenessMatched, true);
+
+    const probeLivenessTurnOk = rek.evaluateFaceProbe(
+      [{ Confidence: 99, BoundingBox: { Width: 0.38 }, Pose: { Yaw: 16 } }],
+      { stage: 'liveness', prompt: 'turn_left', neutralPoseYaw: 1, neutralSmileConfidence: 8 }
+    );
+    assert.equal(probeLivenessTurnOk.livenessMatched, true);
+
     // Pure liveness checks
     const neutralFace = { Smile: { Value: false, Confidence: 5 }, Pose: { Yaw: 0 } };
     assert.equal(
@@ -1446,6 +1496,33 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
         headers: new Headers(),
         json: async () => body,
       });
+
+    // Auto-scan face_probe via Amazon Rekognition
+    const probeCloudNeutral = await post({
+      action: 'face_probe',
+      badgeId: 'DOC-FACE-1',
+      facilityId: 'TEST-FAC',
+      stage: 'neutral',
+      imageBase64: `data:image/jpeg;base64,${validImg}`,
+    });
+    assert.equal(probeCloudNeutral.status, 200);
+    assert.equal(probeCloudNeutral.data.engine, 'cloud_vision');
+    assert.equal(probeCloudNeutral.data.readyForNeutral, true);
+    assert.equal(/amazon|aws|rekognition/i.test(JSON.stringify(probeCloudNeutral.data)), false);
+
+    mockChallengeSmile = true;
+    const probeCloudLiveness = await post({
+      action: 'face_probe',
+      badgeId: 'DOC-FACE-1',
+      facilityId: 'TEST-FAC',
+      stage: 'liveness',
+      prompt: 'smile',
+      neutralPoseYaw: 1,
+      neutralSmileConfidence: 10,
+      imageBase64: `data:image/jpeg;base64,${challengeImg}`,
+    });
+    assert.equal(probeCloudLiveness.status, 200);
+    assert.equal(probeCloudLiveness.data.livenessMatched, true);
 
     // Enroll face
     const enrollRes = await post({
@@ -1582,6 +1659,32 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
       assert.equal(stdEnroll.status, 200);
       assert.equal(stdEnroll.data.faceEnrolled, true);
 
+      // Standard fallback auto-scan face_probe
+      const probeStdNeutral = await post({
+        action: 'face_probe',
+        badgeId: 'ADM-STD-1',
+        facilityId: 'TEST-FAC',
+        stage: 'neutral',
+        imageBase64: `data:image/jpeg;base64,${validImg}`,
+        faceVector: baseVec,
+      });
+      assert.equal(probeStdNeutral.status, 200);
+      assert.equal(probeStdNeutral.data.engine, 'standard');
+      assert.equal(probeStdNeutral.data.readyForNeutral, true);
+
+      const probeStdMoved = await post({
+        action: 'face_probe',
+        badgeId: 'ADM-STD-1',
+        facilityId: 'TEST-FAC',
+        stage: 'liveness',
+        prompt: 'smile',
+        imageBase64: `data:image/jpeg;base64,${challengeImg}`,
+        faceVector: movedVec,
+        neutralFaceVector: baseVec,
+      });
+      assert.equal(probeStdMoved.status, 200);
+      assert.equal(probeStdMoved.data.livenessMatched, true);
+
       const stdChal = await post({
         action: 'face_challenge',
         badgeId: 'ADM-STD-1',
@@ -1654,6 +1757,18 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
 
     const authScreenSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/AuthScreen.tsx'), 'utf8');
     assert.ok(authScreenSrc.includes('getStaffBiometricStatus'), 'AuthScreen must check Face ID enrollment for 2FA');
+
+    const faceModalSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/FaceBiometricCaptureModal.tsx'), 'utf8');
+    assert.ok(
+      faceModalSrc.includes('probeStaffFaceFrame') && faceModalSrc.includes('Auto-Scan'),
+      'FaceBiometricCaptureModal must perform hands-free automatic face scanning'
+    );
+
+    const otpModalSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/StaffEmailOtpModal.tsx'), 'utf8');
+    assert.ok(
+      otpModalSrc.includes('autoLaunchedFaceRef') && otpModalSrc.includes('setFaceModalOpen(true)'),
+      'StaffEmailOtpModal must auto-open Face ID verification when Face ID is enrolled'
+    );
 
     // UI + client vendor secrecy & Fingerprint/Passkey removal verification
     for (const rel of [

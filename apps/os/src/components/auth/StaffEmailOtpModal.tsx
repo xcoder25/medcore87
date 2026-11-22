@@ -77,7 +77,8 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
   }, [session.email, badge]);
 
   const [tab, setTab] = useState<'email_otp' | 'backup_code'>('email_otp');
-  const [sending, setSending] = useState(true);
+  const [checkingBiometric, setCheckingBiometric] = useState(true);
+  const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [otpInput, setOtpInput] = useState('');
   const [backupInput, setBackupInput] = useState('');
@@ -91,14 +92,8 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
   const [faceEnrolled, setFaceEnrolled] = useState(false);
   const [faceModalOpen, setFaceModalOpen] = useState(false);
 
-  useEffect(() => {
-    if (!badge) return;
-    void getStaffBiometricStatus(badge, facilityId).then((st) => {
-      setFaceEnrolled(Boolean(st.faceEnrolled));
-    });
-  }, [badge, facilityId]);
-
   const initialSentRef = useRef(false);
+  const autoLaunchedFaceRef = useRef(false);
 
   const sendOtp = useCallback(async () => {
     setSending(true);
@@ -169,11 +164,43 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
     }
   }, [facilityId, badge, session.name, resolvedEmail, expiryMinutes]);
 
-  useEffect(() => {
+  const ensureOtpSent = useCallback(() => {
     if (initialSentRef.current) return;
     initialSentRef.current = true;
     void sendOtp();
   }, [sendOtp]);
+
+  useEffect(() => {
+    let alive = true;
+    const init = async () => {
+      if (!badge || !isCameraBiometricSupported()) {
+        if (!alive) return;
+        setCheckingBiometric(false);
+        ensureOtpSent();
+        return;
+      }
+      const st = await Promise.race([
+        getStaffBiometricStatus(badge, facilityId),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+      ]);
+      if (!alive) return;
+      const ready = Boolean(st?.faceEnrolled);
+      setFaceEnrolled(ready);
+      setCheckingBiometric(false);
+      if (ready) {
+        if (!autoLaunchedFaceRef.current) {
+          autoLaunchedFaceRef.current = true;
+          setFaceModalOpen(true);
+        }
+      } else {
+        ensureOtpSent();
+      }
+    };
+    void init();
+    return () => {
+      alive = false;
+    };
+  }, [badge, facilityId, ensureOtpSent]);
 
   useEffect(() => {
     const iv = window.setInterval(() => {
@@ -479,6 +506,10 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                 2FA Verified — Unlocking MedCore OS
               </div>
             </div>
+          ) : checkingBiometric ? (
+            <div style={{ textAlign: 'center', padding: '24px 10px', color: '#475569', fontSize: 13, fontWeight: 700 }}>
+              Checking Face ID &amp; 2FA status…
+            </div>
           ) : (
             <>
               {faceEnrolled && isCameraBiometricSupported() && (
@@ -768,7 +799,15 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
         badgeId={badge}
         facilityId={facilityId}
         staffName={session.name}
-        onClose={() => setFaceModalOpen(false)}
+        skipLabel="Use Email OTP Instead"
+        onSkipCameraUnavailable={() => {
+          setFaceModalOpen(false);
+          ensureOtpSent();
+        }}
+        onClose={() => {
+          setFaceModalOpen(false);
+          ensureOtpSent();
+        }}
         onVerified={(res) => {
           setFaceModalOpen(false);
           appendAudit({

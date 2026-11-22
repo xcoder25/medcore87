@@ -2919,8 +2919,8 @@ export const AccessControl: React.FC<Props> = ({ session, initialTab = 'director
           badgeId={pendingStaffEnrolment.prepared.card.badgeId}
           facilityId={facilityId}
           staffName={pendingStaffEnrolment.nameSnap}
-          subtitleOverride="Capture Face ID before issuing this staff account & badge"
-          enrollButtonLabel="Capture Face ID & Issue Account"
+          subtitleOverride="Center the staff member's face inside the oval — Face ID will enroll automatically before issuing the badge."
+          enrollButtonLabel="Auto-Enrolling Face ID & Issuing…"
           skipLabel="Issue Account Without Face ID (No Camera)"
           onClose={() => setPendingStaffEnrolment(null)}
           onEnrolled={() => void finalizeStaffEnrolment(pendingStaffEnrolment, true)}

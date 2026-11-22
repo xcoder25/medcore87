@@ -13,6 +13,7 @@ import {
   FACE_LIVENESS_PROMPTS,
   getRekognitionConfig,
   isRekognitionConfigured,
+  probeFaceFrame,
   toSafeBiometricError,
   verifyActiveLiveness,
   type FaceLivenessPrompt,
@@ -357,6 +358,124 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(buildStatusPayload(existing));
     }
 
+    if (action === 'face_probe') {
+      const rl = checkRateLimit(`face-probe:${ip}:${badgeId}`, 180, 10 * 60 * 1000);
+      if (!rl.allowed) {
+        return NextResponse.json(
+          { ok: false, error: `Too many live camera scans. Wait ${rl.retryAfterSeconds}s.` },
+          { status: 429 }
+        );
+      }
+
+      const imgBuf = decodeBase64Image(body.imageBase64);
+      if (!imgBuf) {
+        return NextResponse.json(
+          { ok: false, error: 'Camera frame could not be read.' },
+          { status: 400 }
+        );
+      }
+
+      const rawStage = String(body.stage || 'neutral').trim();
+      const stage: 'enroll' | 'neutral' | 'liveness' =
+        rawStage === 'enroll' || rawStage === 'liveness' ? rawStage : 'neutral';
+      const rawPrompt = String(body.prompt || 'smile').trim() as FaceLivenessPrompt;
+      const prompt: FaceLivenessPrompt = LIVENESS_PROMPTS.includes(rawPrompt) ? rawPrompt : 'smile';
+      const neutralPoseYaw = Number(body.neutralPoseYaw ?? 0);
+      const neutralSmileConfidence = Number(body.neutralSmileConfidence ?? 0);
+
+      const runStandardProbe = () => {
+        const currentVec = validateFaceVector(body.faceVector);
+        if (!currentVec) {
+          return {
+            ok: true,
+            faceDetected: false,
+            readyForNeutral: false,
+            livenessMatched: false,
+            guidance: 'Position your face inside the oval in clear lighting.',
+            engine: 'standard' as const,
+          };
+        }
+        if (stage === 'enroll' || stage === 'neutral') {
+          return {
+            ok: true,
+            faceDetected: true,
+            readyForNeutral: true,
+            livenessMatched: false,
+            guidance:
+              stage === 'enroll'
+                ? 'Face aligned — enrolling automatically…'
+                : 'Front view aligned — capturing automatically…',
+            qualityScore: 90,
+            pose: { yaw: 0, pitch: 0, roll: 0 },
+            smiling: false,
+            smileConfidence: 0,
+            engine: 'standard' as const,
+          };
+        }
+
+        const neutralVec = validateFaceVector(body.neutralFaceVector);
+        if (!neutralVec) {
+          return {
+            ok: true,
+            faceDetected: true,
+            readyForNeutral: true,
+            livenessMatched: false,
+            guidance: FACE_LIVENESS_PROMPTS[prompt],
+            engine: 'standard' as const,
+          };
+        }
+
+        const moveSim = cosineSimilarity(neutralVec, currentVec);
+        if (moveSim < 0.998 && moveSim >= 0.55) {
+          return {
+            ok: true,
+            faceDetected: true,
+            readyForNeutral: true,
+            livenessMatched: true,
+            guidance: 'Live movement confirmed — verifying identity…',
+            engine: 'standard' as const,
+          };
+        }
+        if (moveSim < 0.55) {
+          return {
+            ok: true,
+            faceDetected: true,
+            readyForNeutral: true,
+            livenessMatched: false,
+            guidance: 'Keep your face centered inside the oval while completing the movement.',
+            engine: 'standard' as const,
+          };
+        }
+        return {
+          ok: true,
+          faceDetected: true,
+          readyForNeutral: true,
+          livenessMatched: false,
+          guidance: FACE_LIVENESS_PROMPTS[prompt],
+          engine: 'standard' as const,
+        };
+      };
+
+      if (isRekognitionConfigured()) {
+        try {
+          const probe = await probeFaceFrame(imgBuf, {
+            stage,
+            prompt,
+            neutralPoseYaw,
+            neutralSmileConfidence,
+          });
+          return NextResponse.json(probe);
+        } catch (err) {
+          if (isRekognitionAuthError(err)) {
+            return NextResponse.json(runStandardProbe());
+          }
+          return NextResponse.json({ ok: false, error: toSafeBiometricError(err) }, { status: 502 });
+        }
+      }
+
+      return NextResponse.json(runStandardProbe());
+    }
+
     if (action === 'face_enroll') {
       const rl = checkRateLimit(`face-enroll:${ip}:${badgeId}`, 10, 10 * 60 * 1000);
       if (!rl.allowed) {
@@ -536,7 +655,7 @@ export async function POST(req: NextRequest) {
       const hasVectors = Boolean(refVec && neutralVec && challengeVec);
 
       let similarityPct: number | null = null;
-      const shouldTryCloud = isRekognitionConfigured() && existing.face.verificationEngine !== 'standard';
+      const shouldTryCloud = isRekognitionConfigured();
 
       if (shouldTryCloud) {
         let fellBackToVector = false;
@@ -579,31 +698,7 @@ export async function POST(req: NextRequest) {
           }
 
           if (!referenceBuf) {
-            return NextResponse.json(
-              {
-                ok: false,
-                verified: false,
-                error: 'Enrolled reference portrait could not be retrieved. Please re-enroll facial biometric in your profile.',
-              },
-              { status: 409 }
-            );
-          }
-
-          try {
-            const cmp = await compareFaceWithReference(neutralBuf, referenceBuf, 92);
-            if (!cmp.matched) {
-              return NextResponse.json(
-                {
-                  ok: false,
-                  verified: false,
-                  error: 'Facial identity did not match the enrolled staff profile. Please try again in clear lighting or use Email OTP.',
-                },
-                { status: 401 }
-              );
-            }
-            similarityPct = Math.round(cmp.similarity * 10) / 10;
-          } catch (err) {
-            if (isRekognitionAuthError(err) && hasVectors) {
+            if (hasVectors) {
               const vecRes = evaluateVectorVerification(refVec, neutralVec, challengeVec);
               if (!vecRes.ok) {
                 return NextResponse.json(
@@ -614,9 +709,44 @@ export async function POST(req: NextRequest) {
               similarityPct = vecRes.similarityPct;
             } else {
               return NextResponse.json(
-                { ok: false, verified: false, error: toSafeBiometricError(err) },
-                { status: 502 }
+                {
+                  ok: false,
+                  verified: false,
+                  error: 'Enrolled reference portrait could not be retrieved. Please re-enroll facial biometric in your profile.',
+                },
+                { status: 409 }
               );
+            }
+          } else {
+            try {
+              const cmp = await compareFaceWithReference(neutralBuf, referenceBuf, 92);
+              if (!cmp.matched) {
+                return NextResponse.json(
+                  {
+                    ok: false,
+                    verified: false,
+                    error: 'Facial identity did not match the enrolled staff profile. Please try again in clear lighting or use Email OTP.',
+                  },
+                  { status: 401 }
+                );
+              }
+              similarityPct = Math.round(cmp.similarity * 10) / 10;
+            } catch (err) {
+              if (isRekognitionAuthError(err) && hasVectors) {
+                const vecRes = evaluateVectorVerification(refVec, neutralVec, challengeVec);
+                if (!vecRes.ok) {
+                  return NextResponse.json(
+                    { ok: false, verified: false, error: vecRes.error },
+                    { status: vecRes.status }
+                  );
+                }
+                similarityPct = vecRes.similarityPct;
+              } else {
+                return NextResponse.json(
+                  { ok: false, verified: false, error: toSafeBiometricError(err) },
+                  { status: 502 }
+                );
+              }
             }
           }
         }

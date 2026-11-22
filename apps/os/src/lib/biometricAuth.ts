@@ -169,6 +169,60 @@ export async function verifyStaffFaceBiometric(params: {
   }
 }
 
+export interface FaceProbeClientResult {
+  ok: boolean;
+  faceDetected?: boolean;
+  readyForNeutral?: boolean;
+  livenessMatched?: boolean;
+  guidance?: string;
+  qualityScore?: number;
+  pose?: { yaw: number; pitch: number; roll: number };
+  smiling?: boolean;
+  smileConfidence?: number;
+  engine?: 'cloud_vision' | 'standard';
+  error?: string;
+}
+
+export async function probeStaffFaceFrame(params: {
+  badgeId: string;
+  facilityId: string;
+  stage: 'enroll' | 'neutral' | 'liveness';
+  imageBase64: string;
+  prompt?: FaceLivenessPrompt;
+  neutralPoseYaw?: number;
+  neutralSmileConfidence?: number;
+  faceVector?: number[];
+  neutralFaceVector?: number[];
+}): Promise<FaceProbeClientResult> {
+  try {
+    const res = await fetch('/api/auth/biometric', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'face_probe',
+        badgeId: params.badgeId,
+        facilityId: params.facilityId,
+        stage: params.stage,
+        imageBase64: params.imageBase64,
+        ...(params.prompt ? { prompt: params.prompt } : {}),
+        ...(typeof params.neutralPoseYaw === 'number' ? { neutralPoseYaw: params.neutralPoseYaw } : {}),
+        ...(typeof params.neutralSmileConfidence === 'number'
+          ? { neutralSmileConfidence: params.neutralSmileConfidence }
+          : {}),
+        ...(params.faceVector ? { faceVector: params.faceVector } : {}),
+        ...(params.neutralFaceVector ? { neutralFaceVector: params.neutralFaceVector } : {}),
+      }),
+    });
+    const json = (await res.json().catch(() => ({}))) as FaceProbeClientResult;
+    if (!res.ok || !json.ok) {
+      return { ok: false, error: json.error || 'Camera scan frame could not be checked.' };
+    }
+    return json;
+  } catch {
+    return { ok: false, error: 'Network error during automatic camera scan.' };
+  }
+}
+
 export async function revokeStaffBiometric(
   badgeId: string,
   facilityId: string,

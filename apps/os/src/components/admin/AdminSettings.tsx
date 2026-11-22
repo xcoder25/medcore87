@@ -2937,8 +2937,8 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
         badgeId={session.badgeId || session.id || 'ADMIN'}
         facilityId={facilityId}
         staffName={session.name || 'Hospital Administrator'}
-        subtitleOverride="Capture your Face ID now. Two-Factor Authentication (2FA) will activate immediately upon enrollment."
-        enrollButtonLabel="Capture & Activate Face ID 2FA"
+        subtitleOverride="Center your face inside the oval — Face ID will enroll automatically and activate 2FA."
+        enrollButtonLabel="Auto-Scanning & Activating 2FA…"
         onClose={() => setFaceModalOpen(false)}
         onEnrolled={() => {
           setAdminFaceEnrolled(true);
