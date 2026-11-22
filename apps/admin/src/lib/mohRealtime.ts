@@ -1,124 +1,230 @@
-/**
- * MOH Admin realtime engine
- * - Local simulation ticks (beds, ICU, epi cases, staff)
- * - Optional WebSocket to Hospital Gateway when available
- */
+'use client';
 
-export type MohRealtimeHandlers = {
-  onFacilitiesTick?: (mutator: (prev: any[]) => any[]) => void;
-  onAlertsTick?: (mutator: (prev: any[]) => any[]) => void;
-  onNotification?: (title: string, body: string, type?: 'success' | 'info' | 'alert') => void;
-  onConnectionChange?: (online: boolean) => void;
-  onServerEvent?: (topic: string, payload: unknown) => void;
-};
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type {
+  MohAuditRecord,
+  MohDirective,
+  MohFacilityTelemetry,
+  MohLiveSnapshot,
+  MohOutbreakAlert,
+  MohSyncStatus,
+  MohTransferRecord,
+} from './mohTypes';
 
-export function startMohRealtime(handlers: MohRealtimeHandlers) {
-  let stopped = false;
-  let ws: WebSocket | null = null;
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+export interface UseMohSyncState {
+  snapshot: MohLiveSnapshot | null;
+  loading: boolean;
+  refreshing: boolean;
+  error: string | null;
+  lastSyncedAt: string | null;
+  syncMode: MohSyncStatus;
+  refreshNow: () => Promise<void>;
+}
 
-  const tickFacilities = () => {
-    handlers.onFacilitiesTick?.((prev) =>
-      prev.map((f) => {
-        const delta = Math.random() > 0.55 ? 1 : -1;
-        const occupiedBeds = Math.max(
-          0,
-          Math.min(f.totalBeds, f.occupiedBeds + (Math.random() > 0.4 ? delta : 0))
-        );
-        const icuDelta = Math.random() > 0.7 ? (Math.random() > 0.5 ? 1 : -1) : 0;
-        const icuBedsOccupied = Math.max(
-          0,
-          Math.min(f.icuBedsTotal, f.icuBedsOccupied + icuDelta)
-        );
-        const staffOnDuty = Math.max(
-          10,
-          f.staffOnDuty + (Math.random() > 0.85 ? (Math.random() > 0.5 ? 1 : -1) : 0)
-        );
-        const ventilatorsAvailable = Math.max(
-          0,
-          f.ventilatorsAvailable + (Math.random() > 0.9 ? (Math.random() > 0.5 ? 1 : -1) : 0)
-        );
-        return { ...f, occupiedBeds, icuBedsOccupied, staffOnDuty, ventilatorsAvailable };
-      })
-    );
-  };
+export function useMohSync(districtFilter = 'all'): UseMohSyncState {
+  const [snapshot, setSnapshot] = useState<MohLiveSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const lastFetchRef = useRef<number>(0);
 
-  const tickAlerts = () => {
-    handlers.onAlertsTick?.((prev) =>
-      prev.map((a) => {
-        if (Math.random() > 0.6) return a;
-        const bump = Math.floor(Math.random() * 3);
-        const detectedCases = Math.max(0, a.detectedCases + bump);
-        const rateOfIncreasePercent = Math.max(
-          -5,
-          Math.min(40, a.rateOfIncreasePercent + (Math.random() * 2 - 0.8))
-        );
-        return {
-          ...a,
-          detectedCases,
-          rateOfIncreasePercent: Math.round(rateOfIncreasePercent * 10) / 10,
+  const fetchSnapshot = useCallback(
+    async (silent = false) => {
+      if (silent) setRefreshing(true);
+      else setLoading((prev) => (snapshot ? prev : true));
+
+      try {
+        const params = new URLSearchParams();
+        if (districtFilter && districtFilter !== 'all') {
+          params.set('district', districtFilter);
+        }
+        const qs = params.toString();
+        const res = await fetch(`/api/moh/snapshot${qs ? `?${qs}` : ''}`, { cache: 'no-store' });
+        const json = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          snapshot?: MohLiveSnapshot;
+          error?: string;
         };
-      })
-    );
-  };
+        if (!res.ok || !json.ok || !json.snapshot) {
+          throw new Error(json.error || 'Could not synchronize Ministry telemetry.');
+        }
+        setSnapshot(json.snapshot);
+        setError(null);
+        lastFetchRef.current = Date.now();
+      } catch (err) {
+        setError((err as Error)?.message || 'Telemetry sync unavailable.');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [districtFilter] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
-  const facilityTimer = setInterval(() => {
-    if (!stopped) tickFacilities();
-  }, 4000);
+  useEffect(() => {
+    void fetchSnapshot(false);
+  }, [fetchSnapshot]);
 
-  const alertTimer = setInterval(() => {
-    if (!stopped) tickAlerts();
-  }, 7000);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
 
-  const notifTimer = setInterval(() => {
-    if (stopped || Math.random() > 0.35) return;
-    const msgs: [string, string, 'info' | 'alert' | 'success'][] = [
-      ['Telemetry sync', 'National facility feed refreshed', 'info'],
-      ['Occupancy advisory', 'One facility crossed 90% bed occupancy', 'alert'],
-      ['Cold-chain check', 'Regional vaccine logger nominal', 'success'],
-      ['Workforce pulse', 'On-duty clinician counts updated', 'info'],
-    ];
-    const m = msgs[Math.floor(Math.random() * msgs.length)];
-    handlers.onNotification?.(m[0], m[1], m[2]);
-  }, 14000);
-
-  const connectWs = () => {
-    if (typeof window === 'undefined' || stopped) return;
+    let es: EventSource | null = null;
     try {
-      const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:4000/ws`;
-      ws = new WebSocket(url);
-      ws.onopen = () => {
-        handlers.onConnectionChange?.(true);
-        ws?.send(JSON.stringify({ action: 'SUBSCRIBE', topics: ['*'], app: 'MOH_ADMIN' }));
-      };
-      ws.onmessage = (ev) => {
+      es = new EventSource('/api/moh/stream');
+      es.onmessage = (ev) => {
         try {
-          const data = JSON.parse(ev.data);
-          if (data?.topic) handlers.onServerEvent?.(data.topic, data.payload);
+          const msg = JSON.parse(ev.data) as { type?: string };
+          if (
+            msg.type === 'directive' ||
+            msg.type === 'audit' ||
+            msg.type === 'transfer' ||
+            msg.type === 'facility' ||
+            msg.type === 'alert'
+          ) {
+            void fetchSnapshot(true);
+          } else if (
+            msg.type === 'sync_tick' &&
+            typeof document !== 'undefined' &&
+            document.visibilityState === 'visible' &&
+            Date.now() - lastFetchRef.current >= 25_000
+          ) {
+            void fetchSnapshot(true);
+          }
         } catch {
-          /* ignore */
+          /* ignore malformed SSE packet */
         }
       };
-      ws.onclose = () => {
-        handlers.onConnectionChange?.(false);
-        ws = null;
-        if (!stopped) reconnectTimer = setTimeout(connectWs, 5000);
-      };
-      ws.onerror = () => handlers.onConnectionChange?.(false);
     } catch {
-      handlers.onConnectionChange?.(false);
+      /* fallback interval handles sync */
     }
-  };
 
-  const wsBoot = setTimeout(connectWs, 800);
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (Date.now() - lastFetchRef.current >= 28_000) {
+        void fetchSnapshot(true);
+      }
+    }, 30_000);
 
-  return () => {
-    stopped = true;
-    clearInterval(facilityTimer);
-    clearInterval(alertTimer);
-    clearInterval(notifTimer);
-    clearTimeout(wsBoot);
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    try { ws?.close(); } catch { /* ignore */ }
+    return () => {
+      clearInterval(timer);
+      try {
+        es?.close();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [fetchSnapshot]);
+
+  return {
+    snapshot,
+    loading,
+    refreshing,
+    error,
+    lastSyncedAt: snapshot?.syncedAt || null,
+    syncMode: snapshot?.syncMode || 'local_registry',
+    refreshNow: () => fetchSnapshot(true),
   };
+}
+
+async function apiJson<T>(url: string, method: 'POST' | 'PATCH', body: unknown): Promise<{ ok: boolean; data?: T; error?: string }> {
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = (await res.json().catch(() => ({}))) as T & { ok?: boolean; error?: string };
+    if (!res.ok || !json.ok) {
+      return { ok: false, error: json.error || 'Request failed.' };
+    }
+    return { ok: true, data: json };
+  } catch (err) {
+    return { ok: false, error: (err as Error)?.message || 'Network error.' };
+  }
+}
+
+export async function broadcastMohDirective(input: {
+  title: string;
+  summary: string;
+  category?: string;
+  severity?: MohDirective['severity'];
+  targetDistricts?: string[];
+  mandatoryActions?: string[];
+  effectiveUntil?: string;
+  issuedBy?: string;
+}) {
+  return apiJson<{ directive: MohDirective }>('/api/moh/directives', 'POST', input);
+}
+
+export async function updateMohDirectiveStatus(id: string, status: MohDirective['status']) {
+  return apiJson<{ directive: MohDirective }>('/api/moh/directives', 'PATCH', { id, status });
+}
+
+export async function scheduleMohAudit(input: {
+  facilityId: string;
+  facilityName: string;
+  auditDate: string;
+  auditorName: string;
+  category: string;
+  resolutionDeadline?: string;
+  notes?: string;
+}) {
+  return apiJson<{ audit: MohAuditRecord }>('/api/moh/audits', 'POST', input);
+}
+
+export async function updateMohAuditStatus(
+  id: string,
+  patch: Partial<Pick<MohAuditRecord, 'status' | 'findingsCount' | 'criticalViolations' | 'notes'>>
+) {
+  return apiJson<{ audit: MohAuditRecord }>('/api/moh/audits', 'PATCH', { id, ...patch });
+}
+
+export async function createMohTransfer(input: {
+  staffBadge?: string;
+  staffName: string;
+  cadre: string;
+  fromFacilityId: string;
+  fromFacilityName: string;
+  toFacilityId: string;
+  toFacilityName: string;
+  transferType?: MohTransferRecord['transferType'];
+  urgency?: MohTransferRecord['urgency'];
+  reason: string;
+  requestedBy?: string;
+}) {
+  return apiJson<{ transfer: MohTransferRecord }>('/api/moh/transfers', 'POST', input);
+}
+
+export async function updateMohTransferStatus(
+  id: string,
+  status: MohTransferRecord['status'],
+  decidedBy: string
+) {
+  return apiJson<{ transfer: MohTransferRecord }>('/api/moh/transfers', 'PATCH', { id, status, decidedBy });
+}
+
+export async function updateMohFacilityOversight(input: {
+  facilityId: string;
+  emergencyStatus?: MohFacilityTelemetry['emergencyStatus'];
+  accreditationStatus?: MohFacilityTelemetry['accreditationStatus'];
+  notes?: string;
+  updatedBy?: string;
+}) {
+  return apiJson<{ facilityId: string }>('/api/moh/facilities', 'PATCH', input);
+}
+
+export async function createOrToggleMohAlert(input: {
+  id?: string;
+  toggleContainment?: boolean;
+  condition?: string;
+  icd10Category?: string;
+  detectedCases?: number;
+  rateOfIncrease?: number;
+  affectedDistricts?: string[];
+  severity?: MohOutbreakAlert['severity'];
+  reportingFacilities?: number;
+  notes?: string;
+}) {
+  const method = input.toggleContainment ? 'PATCH' : 'POST';
+  return apiJson<{ alert: MohOutbreakAlert }>('/api/moh/alerts', method, input);
 }

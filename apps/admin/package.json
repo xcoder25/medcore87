@@ -7,17 +7,22 @@
     "dev": "next dev -p 3004",
     "build": "next build",
     "start": "next start -p 3004",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --test tests/moh-invariants.mjs"
   },
   "dependencies": {
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "lucide-react": "^1.16.0",
+    "pg": "^8.16.0",
+    "@aws-sdk/rds-signer": "^3.1172.0",
+    "@vercel/functions": "^3.11.1",
     "@medcore/types": "file:../../packages/types"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.15.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "typescript": "^5.7.0"

@@ -1,11 +1,10 @@
 import type { Metadata } from 'next';
 import '../styles/admin.css';
-import '../styles/command-centre.css';
-import '../styles/hospital-admin.css';
+import '../styles/moh-interior.css';
 
 export const metadata: Metadata = {
-  title: 'Ministry of Health • National Health Operations & Regulatory Oversight',
-  description: 'National health authority command console: multi-facility hospital network surveillance, disease outbreak monitoring, and accreditation compliance.',
+  title: 'Ministry of Health, Akwa Ibom State • State Health Command & Oversight',
+  description: 'Akwa Ibom State Ministry of Health command console: live hospital census telemetry, disease surveillance, public finance, and regulatory compliance.',
 };
 
 export default function RootLayout({
