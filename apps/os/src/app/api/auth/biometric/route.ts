@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as crypto from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { ensureSchema, isPostgresConfigured, withTenantClient } from '../../../../lib/db/postgres';
 import { signMfaToken } from '../../../../lib/serverSession';
 import { checkRateLimit, getClientIp } from '../../../../lib/rateLimit';
 import {
@@ -12,24 +8,26 @@ import {
   createFaceLivenessSession,
   FACE_LIVENESS_PROMPTS,
   getRekognitionConfig,
+  isRekognitionAuthError,
   isRekognitionConfigured,
   probeFaceFrame,
   toSafeBiometricError,
   verifyActiveLiveness,
   type FaceLivenessPrompt,
 } from '../../../../lib/aws/rekognitionServer';
-import { getS3ObjectBuffer, isS3Configured, uploadBufferToS3 } from '../../../../lib/s3Server';
 import {
-  normalizeBiometricVault,
-  type FaceBiometricDescriptor,
-  type UnifiedBiometricVault,
-} from '../../../../lib/biometricVault';
+  decodeBase64Image,
+  deleteStoredBiometric,
+  getStoredBiometric,
+  loadFacePortraitBuffer,
+  saveStoredBiometric,
+  storeFacePortrait,
+} from '../../../../lib/biometricVaultServer';
+import { type UnifiedBiometricVault } from '../../../../lib/biometricVault';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const BIO_VAULT_FILE = path.join(os.tmpdir(), 'medcore-staff-biometrics-vault.json');
-const MAX_FACE_IMAGE_BYTES = 5 * 1024 * 1024;
 const LIVENESS_PROMPTS: FaceLivenessPrompt[] = ['smile', 'turn_left', 'turn_right'];
 
 function getChallengeSecret(): string {
@@ -39,117 +37,6 @@ function getChallengeSecret(): string {
     process.env.MEDCORE_API_SECRET ||
     'medcore-os-biometric-challenge-secret-v1'
   ).trim();
-}
-
-type LocalVaultEntry = UnifiedBiometricVault & {
-  badgeId: string;
-  facilityId: string;
-  staffName?: string;
-};
-
-function readLocalVault(): Record<string, Record<string, unknown>> {
-  try {
-    if (fs.existsSync(BIO_VAULT_FILE)) {
-      return JSON.parse(fs.readFileSync(BIO_VAULT_FILE, 'utf8'));
-    }
-  } catch {
-    /* ignore */
-  }
-  return {};
-}
-
-function writeLocalVault(map: Record<string, Record<string, unknown>>): void {
-  try {
-    fs.writeFileSync(BIO_VAULT_FILE, JSON.stringify(map), 'utf8');
-  } catch {
-    /* ignore */
-  }
-}
-
-function bioKey(facilityId: string, badgeId: string): string {
-  return `${facilityId.trim().toUpperCase()}::${badgeId.trim().toUpperCase()}`;
-}
-
-async function getStoredBiometric(
-  facilityId: string,
-  badgeId: string
-): Promise<UnifiedBiometricVault | null> {
-  const fid = facilityId.trim().toUpperCase();
-  const bid = badgeId.trim().toUpperCase();
-  if (isPostgresConfigured()) {
-    try {
-      await ensureSchema();
-      const row = await withTenantClient(fid, async (c) => {
-        const res = await c.query<{ descriptor: unknown }>(
-          `SELECT descriptor FROM staff_biometrics WHERE facility_id = $1 AND badge_id = $2`,
-          [fid, bid]
-        );
-        return res.rows[0]?.descriptor || null;
-      });
-      const normalized = normalizeBiometricVault(row);
-      if (normalized) return normalized;
-    } catch {
-      /* fallback to local vault */
-    }
-  }
-  const v = readLocalVault();
-  return normalizeBiometricVault(v[bioKey(fid, bid)]);
-}
-
-async function saveStoredBiometric(
-  facilityId: string,
-  badgeId: string,
-  staffName: string,
-  vault: UnifiedBiometricVault
-): Promise<void> {
-  const fid = facilityId.trim().toUpperCase();
-  const bid = badgeId.trim().toUpperCase();
-  const v = readLocalVault();
-  const entry: LocalVaultEntry = { ...vault, version: 2, badgeId: bid, facilityId: fid, staffName };
-  v[bioKey(fid, bid)] = entry as unknown as Record<string, unknown>;
-  writeLocalVault(v);
-
-  if (isPostgresConfigured()) {
-    try {
-      await ensureSchema();
-      await withTenantClient(fid, async (c) => {
-        await c.query(
-          `INSERT INTO staff_biometrics (badge_id, facility_id, staff_name, descriptor, version, enrolled_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, 2, NOW(), NOW())
-           ON CONFLICT (facility_id, badge_id)
-           DO UPDATE SET staff_name = EXCLUDED.staff_name,
-                         descriptor = EXCLUDED.descriptor,
-                         version = staff_biometrics.version + 1,
-                         updated_at = NOW()`,
-          [bid, fid, staffName || bid, JSON.stringify({ ...vault, version: 2 })]
-        );
-      });
-    } catch {
-      /* fallback persisted */
-    }
-  }
-}
-
-async function deleteStoredBiometric(facilityId: string, badgeId: string): Promise<void> {
-  const fid = facilityId.trim().toUpperCase();
-  const bid = badgeId.trim().toUpperCase();
-  const v = readLocalVault();
-  delete v[bioKey(fid, bid)];
-  writeLocalVault(v);
-
-  if (isPostgresConfigured()) {
-    try {
-      await ensureSchema();
-      await withTenantClient(fid, async (c) => {
-        await c.query(
-          `DELETE FROM staff_biometrics WHERE facility_id = $1 AND badge_id = $2`,
-          [fid, bid]
-        );
-      });
-    } catch {
-      /* ignore */
-    }
-  }
 }
 
 function issueSignedChallenge(
@@ -203,37 +90,6 @@ function verifySignedChallenge(
   if (decoded.badgeId !== expectedBadgeId.trim().toUpperCase()) return { ok: false, error: 'Badge mismatch.' };
   if (decoded.facilityId !== expectedFacilityId.trim().toUpperCase()) return { ok: false, error: 'Facility mismatch.' };
   return { ok: true, challenge: decoded.challenge, prompt: decoded.prompt };
-}
-
-function decodeBase64Image(raw: unknown): Buffer | null {
-  const text = String(raw || '').trim();
-  if (!text) return null;
-  const cleaned = text.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/i, '');
-  if (!cleaned) return null;
-  const buf = Buffer.from(cleaned, 'base64');
-  if (buf.length < 1024 || buf.length > MAX_FACE_IMAGE_BYTES) return null;
-  return buf;
-}
-
-function isRekognitionAuthError(err: unknown): boolean {
-  const e = err as { name?: string; Code?: string; message?: string } | undefined;
-  const code = String(e?.name || e?.Code || '').toLowerCase();
-  const msg = String(e?.message || '').toLowerCase();
-  return (
-    code.includes('accessdenied') ||
-    code.includes('unrecognizedclient') ||
-    code.includes('invalidsignature') ||
-    code.includes('expiredtoken') ||
-    code.includes('credentialsprovider') ||
-    code.includes('notauthorized') ||
-    code.includes('optinrequired') ||
-    code.includes('subscriptionrequired') ||
-    code.includes('endpointconnection') ||
-    msg.includes('security token') ||
-    msg.includes('credentials') ||
-    msg.includes('not authorized') ||
-    msg.includes('could not load credentials')
-  );
 }
 
 function validateFaceVector(raw: unknown): number[] | null {
@@ -522,44 +378,12 @@ export async function POST(req: NextRequest) {
       }
 
       const enrolledAt = new Date().toISOString();
-      let faceDescriptor: FaceBiometricDescriptor;
-
-      if (isS3Configured()) {
-        try {
-          const objectKey = `biometrics/${facilityId.toLowerCase()}/${badgeId.toLowerCase()}-face-${Date.now()}.jpg`;
-          await uploadBufferToS3(imgBuf, objectKey, 'image/jpeg', {
-            facilityId,
-            badgeId,
-            kind: 'face_biometric',
-          });
-          faceDescriptor = {
-            storageMode: 'object_storage',
-            objectKey,
-            enrolledAt,
-            qualityScore,
-            verificationEngine,
-            ...(faceVector ? { faceVector } : {}),
-          };
-        } catch {
-          faceDescriptor = {
-            storageMode: 'inline_vault',
-            referenceImageB64: imgBuf.toString('base64'),
-            enrolledAt,
-            qualityScore,
-            verificationEngine,
-            ...(faceVector ? { faceVector } : {}),
-          };
-        }
-      } else {
-        faceDescriptor = {
-          storageMode: 'inline_vault',
-          referenceImageB64: imgBuf.toString('base64'),
-          enrolledAt,
-          qualityScore,
-          verificationEngine,
-          ...(faceVector ? { faceVector } : {}),
-        };
-      }
+      const faceDescriptor = await storeFacePortrait(facilityId, badgeId, imgBuf, {
+        enrolledAt,
+        qualityScore,
+        verificationEngine,
+        faceVector,
+      });
 
       await saveStoredBiometric(facilityId, badgeId, staffName, {
         version: 2,
@@ -685,17 +509,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (!fellBackToVector) {
-          let referenceBuf: Buffer | null = null;
-          if (existing.face.storageMode === 'object_storage' && existing.face.objectKey) {
-            try {
-              const obj = await getS3ObjectBuffer(existing.face.objectKey);
-              referenceBuf = obj.buffer;
-            } catch {
-              referenceBuf = null;
-            }
-          } else if (existing.face.referenceImageB64) {
-            referenceBuf = decodeBase64Image(existing.face.referenceImageB64);
-          }
+          const referenceBuf = await loadFacePortraitBuffer(existing.face);
 
           if (!referenceBuf) {
             if (hasVectors) {

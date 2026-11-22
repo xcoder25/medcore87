@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import {
   Camera,
   CheckCircle2,
@@ -13,12 +14,18 @@ import {
   X,
 } from 'lucide-react';
 import {
+  completeLiveLivenessSession,
   enrollStaffFaceBiometric,
   probeStaffFaceFrame,
   requestFaceAuthChallenge,
+  startLiveLivenessSession,
   verifyStaffFaceBiometric,
   type FaceLivenessPrompt,
 } from '../../lib/biometricAuth';
+
+const LiveFaceLivenessDetector = dynamic(() => import('./LiveFaceLivenessDetector'), {
+  ssr: false,
+});
 
 interface FaceBiometricCaptureModalProps {
   mode: 'enroll' | 'verify';
@@ -150,6 +157,14 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
   );
   const [ringProgress, setRingProgress] = useState<number>(0);
 
+  // Cloud 3D Live Liveness streaming state (auto-falls back to hands-free auto_scan)
+  const [livenessMode, setLivenessMode] = useState<'checking' | 'streaming' | 'auto_scan'>('checking');
+  const [liveSession, setLiveSession] = useState<{
+    sessionId: string;
+    region: string;
+    livenessToken: string;
+  } | null>(null);
+
   // Verify mode active liveness UI state
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<FaceLivenessPrompt>('smile');
@@ -238,6 +253,8 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
       setNeutralFrameB64(null);
       setChallengeToken(null);
       setRingProgress(0);
+      setLiveSession(null);
+      setLivenessMode('checking');
       setLiveGuidance('Position your face inside the oval — scanning automatically…');
       updatePhase('starting');
       return;
@@ -247,9 +264,41 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     setCameraError(null);
     setErrorMsg(null);
     setSuccessMsg(null);
+    failAttemptsRef.current = 0;
+    setLiveSession(null);
+    setLivenessMode('checking');
+
+    const initSession = async () => {
+      const live = await startLiveLivenessSession({ badgeId, facilityId, mode });
+      if (cancelled) return;
+      if (live.ok && live.available && live.sessionId && live.region && live.livenessToken) {
+        setLiveSession({
+          sessionId: live.sessionId,
+          region: live.region,
+          livenessToken: live.livenessToken,
+        });
+        setLivenessMode('streaming');
+        return;
+      }
+      setLiveSession(null);
+      setLivenessMode('auto_scan');
+    };
+
+    void initSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, mode, badgeId, facilityId, stopCamera, updatePhase]);
+
+  useEffect(() => {
+    if (!isOpen || livenessMode !== 'auto_scan') {
+      return;
+    }
+
+    let cancelled = false;
+    setCameraError(null);
     setRingProgress(8);
     probeCountRef.current = 0;
-    failAttemptsRef.current = 0;
     stableCountRef.current = 0;
     prevVecRef.current = undefined;
     neutralDataRef.current = null;
@@ -298,7 +347,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
       cancelled = true;
       stopCamera();
     };
-  }, [isOpen, mode, loadVerifyChallenge, stopCamera, updatePhase]);
+  }, [isOpen, livenessMode, mode, loadVerifyChallenge, stopCamera, updatePhase]);
 
   const captureFrame = useCallback((): {
     frame: string;
@@ -327,15 +376,85 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     };
   }, []);
 
-  // Hands-free automatic scan loop (no button clicks required)
+  // Hands-free automatic scan loop (active when falling back to auto_scan mode)
   const autoScanEnabled =
     isOpen &&
+    livenessMode === 'auto_scan' &&
     cameraReady &&
     !cameraError &&
     !successMsg &&
     scanPhase !== 'paused' &&
     scanPhase !== 'done' &&
     (mode === 'enroll' || Boolean(challengeToken));
+
+  const handleLiveAnalysisComplete = useCallback(async () => {
+    if (!liveSession) return;
+    setBusy(true);
+    setErrorMsg(null);
+    try {
+      const res = await completeLiveLivenessSession({
+        badgeId,
+        facilityId,
+        staffName,
+        mode,
+        sessionId: liveSession.sessionId,
+        livenessToken: liveSession.livenessToken,
+      });
+      if (!mountedRef.current) return;
+
+      if (!res.ok) {
+        failAttemptsRef.current += 1;
+        setErrorMsg(res.error || 'Live camera anti-spoofing check did not pass.');
+        if (failAttemptsRef.current < MAX_FAIL_ATTEMPTS) {
+          const next = await startLiveLivenessSession({ badgeId, facilityId, mode });
+          if (
+            mountedRef.current &&
+            next.ok &&
+            next.available &&
+            next.sessionId &&
+            next.region &&
+            next.livenessToken
+          ) {
+            setLiveSession({
+              sessionId: next.sessionId,
+              region: next.region,
+              livenessToken: next.livenessToken,
+            });
+            return;
+          }
+        }
+        setLiveSession(null);
+        setLivenessMode('auto_scan');
+        return;
+      }
+
+      setLiveSession(null);
+      updatePhase('done');
+      if (mode === 'enroll') {
+        setSuccessMsg('Facial biometric profile enrolled.');
+        window.setTimeout(() => {
+          if (mountedRef.current) {
+            onEnrolled?.({ enrolledAt: res.enrolledAt });
+          }
+        }, 450);
+      } else {
+        setSuccessMsg(
+          res.similarity
+            ? `Facial identity confirmed (${res.similarity.toFixed(1)}% match)`
+            : 'Facial identity confirmed'
+        );
+        window.setTimeout(() => {
+          if (mountedRef.current) {
+            onVerified?.({ mfaToken: res.mfaToken, similarity: res.similarity });
+          }
+        }, 400);
+      }
+    } finally {
+      if (mountedRef.current) {
+        setBusy(false);
+      }
+    }
+  }, [liveSession, badgeId, facilityId, staffName, mode, updatePhase, onEnrolled, onVerified]);
 
   useEffect(() => {
     if (!autoScanEnabled) {
@@ -820,6 +939,94 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
               <CheckCircle2 size={46} color="#059669" style={{ margin: '0 auto 10px' }} />
               <div style={{ fontSize: 15.5, fontWeight: 800, color: '#065F46' }}>{successMsg}</div>
             </div>
+          ) : livenessMode === 'checking' ? (
+            <div style={{ textAlign: 'center', padding: '32px 12px', color: '#334155', fontSize: 13, fontWeight: 700, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+              <Loader2 size={26} color="#059669" style={{ animation: 'medcoreFaceSpin 1s linear infinite' }} />
+              <span>Preparing secure live camera check…</span>
+            </div>
+          ) : livenessMode === 'streaming' && liveSession ? (
+            <>
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  background: '#EFF6FF',
+                  border: '1.5px solid #93C5FD',
+                  color: '#1E3A8A',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <ShieldCheck size={17} color="#0284C7" style={{ flexShrink: 0 }} />
+                <span>
+                  {busy
+                    ? 'Finalizing anti-spoofing & identity match…'
+                    : subtitleOverride || 'Center your face inside the oval — live anti-spoofing verification starts automatically.'}
+                </span>
+              </div>
+
+              {busy ? (
+                <div style={{ textAlign: 'center', padding: '36px 12px', color: '#065F46', fontSize: 13.5, fontWeight: 800, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                  <Loader2 size={30} color="#059669" style={{ animation: 'medcoreFaceSpin 1s linear infinite' }} />
+                  <span>Confirming live facial identity…</span>
+                </div>
+              ) : (
+                <LiveFaceLivenessDetector
+                  sessionId={liveSession.sessionId}
+                  region={liveSession.region}
+                  livenessToken={liveSession.livenessToken}
+                  onAnalysisComplete={handleLiveAnalysisComplete}
+                  onFallback={() => {
+                    setLiveSession(null);
+                    setLivenessMode('auto_scan');
+                  }}
+                />
+              )}
+
+              {errorMsg && (
+                <div
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 10,
+                    background: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    color: '#B91C1C',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <ShieldAlert size={16} style={{ flexShrink: 0 }} />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
+
+              {onSkipCameraUnavailable && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={onSkipCameraUnavailable}
+                  style={{
+                    alignSelf: 'center',
+                    padding: '4px 10px',
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#64748B',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: busy ? 'not-allowed' : 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  {skipLabel || 'Continue Without Face ID'}
+                </button>
+              )}
+            </>
           ) : (
             <>
               {/* Step / Instruction Banner */}

@@ -223,6 +223,92 @@ export async function probeStaffFaceFrame(params: {
   }
 }
 
+export interface LiveLivenessSessionStartResult {
+  ok: boolean;
+  available: boolean;
+  sessionId?: string;
+  region?: string;
+  livenessToken?: string;
+  error?: string;
+}
+
+export async function startLiveLivenessSession(params: {
+  badgeId: string;
+  facilityId: string;
+  mode: 'enroll' | 'verify';
+}): Promise<LiveLivenessSessionStartResult> {
+  try {
+    const res = await fetch('/api/auth/biometric/liveness/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    const json = (await res.json().catch(() => ({}))) as LiveLivenessSessionStartResult;
+    if (!res.ok || !json.ok) {
+      return { ok: false, available: false, error: json.error || 'Could not start live verification.' };
+    }
+    return {
+      ok: true,
+      available: Boolean(json.available && json.sessionId && json.region && json.livenessToken),
+      sessionId: json.sessionId,
+      region: json.region,
+      livenessToken: json.livenessToken,
+    };
+  } catch {
+    return { ok: false, available: false, error: 'Network error starting live verification.' };
+  }
+}
+
+export async function completeLiveLivenessSession(params: {
+  badgeId: string;
+  facilityId: string;
+  staffName: string;
+  mode: 'enroll' | 'verify';
+  sessionId: string;
+  livenessToken: string;
+}): Promise<{
+  ok: boolean;
+  enrolled?: boolean;
+  enrolledAt?: string;
+  verified?: boolean;
+  similarity?: number;
+  livenessConfidence?: number;
+  mfaToken?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch('/api/auth/biometric/liveness/results', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      enrolled?: boolean;
+      enrolledAt?: string;
+      verified?: boolean;
+      similarity?: number;
+      livenessConfidence?: number;
+      mfaToken?: string;
+      error?: string;
+    };
+    if (!res.ok || !json.ok) {
+      return { ok: false, error: json.error || 'Live facial verification did not pass.' };
+    }
+    return {
+      ok: true,
+      enrolled: json.enrolled,
+      enrolledAt: json.enrolledAt,
+      verified: json.verified,
+      similarity: json.similarity,
+      livenessConfidence: json.livenessConfidence,
+      mfaToken: json.mfaToken,
+    };
+  } catch {
+    return { ok: false, error: 'Network error evaluating live camera verification.' };
+  }
+}
+
 export async function revokeStaffBiometric(
   badgeId: string,
   facilityId: string,

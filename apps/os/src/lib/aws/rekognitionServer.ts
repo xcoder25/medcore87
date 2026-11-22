@@ -6,6 +6,7 @@ import {
   RekognitionClient,
   type FaceDetail,
 } from '@aws-sdk/client-rekognition';
+import { AssumeRoleCommand, STSClient } from '@aws-sdk/client-sts';
 import { awsCredentialsProvider } from '@vercel/functions/oidc';
 
 /**
@@ -25,9 +26,12 @@ function clean(v: string | undefined | null): string {
 export interface RekognitionConfig {
   region: string;
   roleArn?: string;
+  livenessRoleArn?: string;
   accessKeyId: string;
   secretAccessKey: string;
   livenessSessionEnabled: boolean;
+  livenessMinConfidence: number;
+  canMintLivenessCredentials: boolean;
   isConfigured: boolean;
   authMethod: 'oidc_role' | 'iam_keys' | 'none';
 }
@@ -55,6 +59,11 @@ export function getRekognitionConfig(): RekognitionConfig {
     clean(process.env.MEDCORE_S3_ROLE_ARN) ||
     clean(process.env.MEDCORE_AWS_ROLE_ARN);
 
+  const livenessRoleArn =
+    clean(process.env.MEDCORE_REKOGNITION_LIVENESS_ROLE_ARN) ||
+    clean(process.env.AWS_LIVENESS_IAM_ROLE_ARN) ||
+    roleArn;
+
   const accessKeyId =
     clean(process.env.MEDCORE_REKOGNITION_AWS_ACCESS_KEY_ID) ||
     clean(process.env.MEDCORE_REKOGNITION_ACCESS_KEY_ID) ||
@@ -74,17 +83,29 @@ export function getRekognitionConfig(): RekognitionConfig {
   const livenessSessionEnabled =
     clean(process.env.MEDCORE_REKOGNITION_LIVENESS_ENABLED).toLowerCase() === 'true';
 
+  const rawMinConf = Number(clean(process.env.MEDCORE_REKOGNITION_LIVENESS_MIN_CONFIDENCE));
+  const livenessMinConfidence =
+    Number.isFinite(rawMinConf) && rawMinConf > 0
+      ? Math.max(50, Math.min(99, rawMinConf))
+      : 85;
+
   const hasOidc = Boolean(roleArn);
   const hasKeys = Boolean(accessKeyId && secretAccessKey);
   const authMethod = hasOidc ? 'oidc_role' : hasKeys ? 'iam_keys' : 'none';
   const isConfigured = hasOidc || hasKeys;
+  const canMintLivenessCredentials = Boolean(
+    isConfigured && (authMethod === 'oidc_role' || livenessRoleArn)
+  );
 
   return {
     region,
     roleArn: roleArn || undefined,
+    livenessRoleArn: livenessRoleArn || undefined,
     accessKeyId,
     secretAccessKey,
     livenessSessionEnabled,
+    livenessMinConfidence,
+    canMintLivenessCredentials,
     isConfigured,
     authMethod,
   };
@@ -550,10 +571,116 @@ export async function compareFaceWithReference(
   };
 }
 
-export async function createFaceLivenessSession(): Promise<{ sessionId: string | null }> {
+export interface TemporaryLivenessCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken: string;
+  expiration: string;
+  region: string;
+}
+
+const LIVENESS_ONLY_SESSION_POLICY = JSON.stringify({
+  Version: '2012-10-17',
+  Statement: [
+    {
+      Effect: 'Allow',
+      Action: 'rekognition:StartFaceLivenessSession',
+      Resource: '*',
+    },
+  ],
+});
+
+/**
+ * Mint short-lived AWS STS credentials strictly scoped to `rekognition:StartFaceLivenessSession`
+ * for browser streaming without Cognito. Never exposes long-lived IAM keys to the client.
+ */
+export async function getTemporaryLivenessCredentials(): Promise<TemporaryLivenessCredentials> {
+  const cfg = getRekognitionConfig();
+  const targetRoleArn = cfg.livenessRoleArn || cfg.roleArn;
+
+  if (cfg.authMethod === 'oidc_role' && targetRoleArn) {
+    const baseRoleArn = cfg.roleArn || targetRoleArn;
+    const baseProvider = awsCredentialsProvider({
+      roleArn: baseRoleArn,
+      clientConfig: { region: cfg.region },
+    });
+
+    if (cfg.livenessRoleArn && cfg.roleArn && cfg.livenessRoleArn !== cfg.roleArn) {
+      const sts = new STSClient({ region: cfg.region, credentials: baseProvider });
+      const assumed = await sts.send(
+        new AssumeRoleCommand({
+          RoleArn: cfg.livenessRoleArn,
+          RoleSessionName: 'medcore-liveness-web',
+          DurationSeconds: 900,
+          Policy: LIVENESS_ONLY_SESSION_POLICY,
+        })
+      );
+      const creds = assumed.Credentials;
+      if (!creds?.AccessKeyId || !creds?.SecretAccessKey || !creds?.SessionToken) {
+        throw new Error('Failed to mint scoped temporary liveness credentials.');
+      }
+      return {
+        accessKeyId: creds.AccessKeyId,
+        secretAccessKey: creds.SecretAccessKey,
+        sessionToken: creds.SessionToken,
+        expiration: (creds.Expiration || new Date(Date.now() + 900_000)).toISOString(),
+        region: cfg.region,
+      };
+    }
+
+    const oidcCreds = await baseProvider();
+    if (!oidcCreds?.accessKeyId || !oidcCreds?.secretAccessKey || !oidcCreds?.sessionToken) {
+      throw new Error('OIDC provider did not return temporary STS session credentials.');
+    }
+    return {
+      accessKeyId: oidcCreds.accessKeyId,
+      secretAccessKey: oidcCreds.secretAccessKey,
+      sessionToken: oidcCreds.sessionToken,
+      expiration: (oidcCreds.expiration || new Date(Date.now() + 900_000)).toISOString(),
+      region: cfg.region,
+    };
+  }
+
+  if (cfg.authMethod === 'iam_keys' && cfg.livenessRoleArn) {
+    const sts = new STSClient({
+      region: cfg.region,
+      credentials: {
+        accessKeyId: cfg.accessKeyId,
+        secretAccessKey: cfg.secretAccessKey,
+      },
+    });
+    const assumed = await sts.send(
+      new AssumeRoleCommand({
+        RoleArn: cfg.livenessRoleArn,
+        RoleSessionName: 'medcore-liveness-web',
+        DurationSeconds: 900,
+        Policy: LIVENESS_ONLY_SESSION_POLICY,
+      })
+    );
+    const creds = assumed.Credentials;
+    if (!creds?.AccessKeyId || !creds?.SecretAccessKey || !creds?.SessionToken) {
+      throw new Error('Failed to assume scoped temporary liveness role.');
+    }
+    return {
+      accessKeyId: creds.AccessKeyId,
+      secretAccessKey: creds.SecretAccessKey,
+      sessionToken: creds.SessionToken,
+      expiration: (creds.Expiration || new Date(Date.now() + 900_000)).toISOString(),
+      region: cfg.region,
+    };
+  }
+
+  throw new Error('Temporary liveness credentials require an IAM role ARN.');
+}
+
+export async function createFaceLivenessSession(): Promise<{
+  sessionId: string | null;
+  region: string;
+}> {
+  const cfg = getRekognitionConfig();
   const client = getRekognitionClient();
   const res = await client.send(new CreateFaceLivenessSessionCommand({}));
-  return { sessionId: res.SessionId || null };
+  return { sessionId: res.SessionId || null, region: cfg.region };
 }
 
 export async function getFaceLivenessSessionResult(sessionId: string): Promise<{
@@ -568,6 +695,27 @@ export async function getFaceLivenessSessionResult(sessionId: string): Promise<{
     confidence: Number(res.Confidence ?? 0),
     referenceBytes: res.ReferenceImage?.Bytes,
   };
+}
+
+export function isRekognitionAuthError(err: unknown): boolean {
+  const e = err as { name?: string; Code?: string; message?: string } | undefined;
+  const code = String(e?.name || e?.Code || '').toLowerCase();
+  const msg = String(e?.message || '').toLowerCase();
+  return (
+    code.includes('accessdenied') ||
+    code.includes('unrecognizedclient') ||
+    code.includes('invalidsignature') ||
+    code.includes('expiredtoken') ||
+    code.includes('credentialsprovider') ||
+    code.includes('notauthorized') ||
+    code.includes('optinrequired') ||
+    code.includes('subscriptionrequired') ||
+    code.includes('endpointconnection') ||
+    msg.includes('security token') ||
+    msg.includes('credentials') ||
+    msg.includes('not authorized') ||
+    msg.includes('could not load credentials')
+  );
 }
 
 /**

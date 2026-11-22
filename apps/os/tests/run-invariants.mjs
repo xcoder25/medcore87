@@ -1232,9 +1232,13 @@ test('phase-a-to-f-invariants: QR, HIM cards, Nurse e-MAR/ICU, Pharmacy isolatio
 
 test('facialBiometrics: validates Rekognition config/quality/liveness/matching, unified passkey+face vault, and vendor-neutral UI', async () => {
   const sdkCalls = [];
+  const stsCalls = [];
   let mockCompareSimilarity = 96.4;
   let mockChallengeSmile = true;
   let mockChallengeYaw = 15;
+  let mockLivenessStatus = 'SUCCEEDED';
+  let mockLivenessConfidence = 96.2;
+  let mockLivenessRefBytes = null;
 
   class MockRekognitionClient {
     constructor(opts) {
@@ -1268,7 +1272,11 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
         return { SessionId: 'liveness-sess-123' };
       }
       if (cmd.type === 'GetFaceLivenessSessionResults') {
-        return { Status: 'SUCCEEDED', Confidence: 98.5 };
+        return {
+          Status: mockLivenessStatus,
+          Confidence: mockLivenessConfidence,
+          ReferenceImage: mockLivenessRefBytes ? { Bytes: mockLivenessRefBytes } : undefined,
+        };
       }
       return {};
     }
@@ -1282,14 +1290,39 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
       CreateFaceLivenessSessionCommand: function (input) { this.type = 'CreateFaceLivenessSession'; this.input = input; },
       GetFaceLivenessSessionResultsCommand: function (input) { this.type = 'GetFaceLivenessSessionResults'; this.input = input; },
     },
+    '@aws-sdk/client-sts': {
+      STSClient: class MockStsClient {
+        async send(cmd) {
+          stsCalls.push(cmd.input);
+          return {
+            Credentials: {
+              AccessKeyId: 'ASIA-STS-TEMP-1',
+              SecretAccessKey: 'sts-temp-secret-1',
+              SessionToken: 'sts-temp-token-1',
+              Expiration: new Date(Date.now() + 900_000),
+            },
+          };
+        }
+      },
+      AssumeRoleCommand: function (input) { this.input = input; },
+    },
     '@vercel/functions/oidc': {
-      awsCredentialsProvider: ({ roleArn }) => async () => ({ roleArn }),
+      awsCredentialsProvider: ({ roleArn }) => async () => ({
+        roleArn,
+        accessKeyId: 'ASIA-OIDC-TEST-1',
+        secretAccessKey: 'oidc-secret-1',
+        sessionToken: 'oidc-session-token-1',
+        expiration: new Date(Date.now() + 900_000),
+      }),
     },
   };
 
   const prevEnv = {
     MEDCORE_REKOGNITION_ROLE_ARN: process.env.MEDCORE_REKOGNITION_ROLE_ARN,
     MEDCORE_REKOGNITION_REGION: process.env.MEDCORE_REKOGNITION_REGION,
+    MEDCORE_REKOGNITION_LIVENESS_ENABLED: process.env.MEDCORE_REKOGNITION_LIVENESS_ENABLED,
+    MEDCORE_REKOGNITION_LIVENESS_ROLE_ARN: process.env.MEDCORE_REKOGNITION_LIVENESS_ROLE_ARN,
+    MEDCORE_REKOGNITION_LIVENESS_MIN_CONFIDENCE: process.env.MEDCORE_REKOGNITION_LIVENESS_MIN_CONFIDENCE,
     AWS_ROLE_ARN: process.env.AWS_ROLE_ARN,
     AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
@@ -1431,44 +1464,54 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
     const challengeImg = Buffer.concat([Buffer.from('challenge-'), Buffer.alloc(2048, 9)]).toString('base64');
     let memVaultRow = null;
 
+    const postgresMock = {
+      ensureSchema: async () => {},
+      isPostgresConfigured: () => true,
+      withTenantClient: async (_fid, fn) =>
+        fn({
+          query: async (sql, params) => {
+            if (sql.includes('SELECT descriptor')) {
+              return { rows: memVaultRow ? [{ descriptor: memVaultRow }] : [] };
+            }
+            if (sql.includes('INSERT INTO staff_biometrics')) {
+              memVaultRow = JSON.parse(params[3]);
+            }
+            if (sql.includes('DELETE FROM staff_biometrics')) {
+              memVaultRow = null;
+            }
+            return { rows: [] };
+          },
+        }),
+    };
+    const s3Mock = {
+      isS3Configured: () => false,
+      uploadBufferToS3: async () => { throw new Error('unused'); },
+      getS3ObjectBuffer: async () => { throw new Error('unused'); },
+    };
+    const serverSessionMock = {
+      signMfaToken: async (badgeId, facilityId, method) => `mfa.${badgeId}.${facilityId}.${method}`,
+    };
+    const rateLimitMock = {
+      checkRateLimit: () => ({ allowed: true, retryAfterSeconds: 0 }),
+      getClientIp: () => '127.0.0.1',
+    };
+
     const routeMocks = {
       'next/server': {
         NextResponse: {
           json: (data, init = {}) => ({ status: init.status || 200, data }),
         },
       },
-      '../../../../lib/db/postgres': {
-        ensureSchema: async () => {},
-        isPostgresConfigured: () => true,
-        withTenantClient: async (_fid, fn) =>
-          fn({
-            query: async (sql, params) => {
-              if (sql.includes('SELECT descriptor')) {
-                return { rows: memVaultRow ? [{ descriptor: memVaultRow }] : [] };
-              }
-              if (sql.includes('INSERT INTO staff_biometrics')) {
-                memVaultRow = JSON.parse(params[3]);
-              }
-              if (sql.includes('DELETE FROM staff_biometrics')) {
-                memVaultRow = null;
-              }
-              return { rows: [] };
-            },
-          }),
-      },
-      '../../../../lib/serverSession': {
-        signMfaToken: async (badgeId, facilityId, method) => `mfa.${badgeId}.${facilityId}.${method}`,
-      },
-      '../../../../lib/rateLimit': {
-        checkRateLimit: () => ({ allowed: true, retryAfterSeconds: 0 }),
-        getClientIp: () => '127.0.0.1',
-      },
-      '../../../../lib/s3Server': {
-        isS3Configured: () => false,
-        uploadBufferToS3: async () => { throw new Error('unused'); },
-        getS3ObjectBuffer: async () => { throw new Error('unused'); },
-      },
+      './db/postgres': postgresMock,
+      './s3Server': s3Mock,
+      '../../../../lib/db/postgres': postgresMock,
+      '../../../../lib/serverSession': serverSessionMock,
+      '../../../../../../lib/serverSession': serverSessionMock,
+      '../../../../lib/rateLimit': rateLimitMock,
+      '../../../../../../lib/rateLimit': rateLimitMock,
+      '../../../../lib/s3Server': s3Mock,
       '../../../../lib/aws/rekognitionServer': rek,
+      '../../../../../../lib/aws/rekognitionServer': rek,
     };
 
     const bioVault = loadTsModule('src/lib/biometricVault.ts');
@@ -1604,6 +1647,110 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
     assert.equal(afterRevoke.data.faceEnrolled, false);
 
     assert.ok(sdkCalls.includes('DetectFaces') && sdkCalls.includes('CompareFaces'));
+
+    // 3D Face Liveness session + scoped STS credentials + GetFaceLivenessSessionResults flow
+    const livenessSessionRoute = loadTsModule('src/app/api/auth/biometric/liveness/session/route.ts', routeMocks);
+    const livenessResultsRoute = loadTsModule('src/app/api/auth/biometric/liveness/results/route.ts', routeMocks);
+    memVaultRow = null;
+
+    // When MEDCORE_REKOGNITION_LIVENESS_ENABLED is unset, /liveness/session degrades gracefully
+    delete process.env.MEDCORE_REKOGNITION_LIVENESS_ENABLED;
+    const liveDisabled = await livenessSessionRoute.POST({
+      headers: new Headers(),
+      json: async () => ({ badgeId: 'DOC-LIVE-1', facilityId: 'TEST-FAC', mode: 'enroll' }),
+    });
+    assert.equal(liveDisabled.status, 200);
+    assert.equal(liveDisabled.data.available, false);
+
+    // Enable 3D Live Liveness with OIDC role & custom secondary liveness role
+    process.env.MEDCORE_REKOGNITION_LIVENESS_ENABLED = 'true';
+    process.env.MEDCORE_REKOGNITION_LIVENESS_ROLE_ARN = 'arn:aws:iam::123456789012:role/medcore-liveness-web';
+    const liveCredsViaSts = await rek.getTemporaryLivenessCredentials();
+    assert.equal(liveCredsViaSts.accessKeyId, 'ASIA-STS-TEMP-1');
+    assert.equal(liveCredsViaSts.sessionToken, 'sts-temp-token-1');
+    assert.ok(stsCalls.some((c) => String(c.Policy || '').includes('rekognition:StartFaceLivenessSession')));
+    delete process.env.MEDCORE_REKOGNITION_LIVENESS_ROLE_ARN;
+
+    const liveSessEnroll = await livenessSessionRoute.POST({
+      headers: new Headers(),
+      json: async () => ({ badgeId: 'DOC-LIVE-1', facilityId: 'TEST-FAC', mode: 'enroll' }),
+    });
+    assert.equal(liveSessEnroll.status, 200);
+    assert.equal(liveSessEnroll.data.available, true);
+    assert.equal(liveSessEnroll.data.sessionId, 'liveness-sess-123');
+    assert.equal(liveSessEnroll.data.region, 'eu-west-1');
+    assert.ok(liveSessEnroll.data.livenessToken);
+
+    const credsRes = await livenessSessionRoute.GET({
+      headers: new Headers(),
+      nextUrl: new URL(`http://localhost/api/auth/biometric/liveness/session?livenessToken=${encodeURIComponent(liveSessEnroll.data.livenessToken)}`),
+    });
+    assert.equal(credsRes.status, 200);
+    assert.ok(credsRes.data.sessionToken);
+
+    const badCredsRes = await livenessSessionRoute.GET({
+      headers: new Headers(),
+      nextUrl: new URL('http://localhost/api/auth/biometric/liveness/session?livenessToken=bad.token'),
+    });
+    assert.equal(badCredsRes.status, 401);
+
+    // Reject low confidence liveness result
+    mockLivenessConfidence = 42.0;
+    mockLivenessRefBytes = Buffer.concat([Buffer.from('neutral-'), Buffer.alloc(2048, 8)]);
+    const liveResLow = await livenessResultsRoute.POST({
+      headers: new Headers(),
+      json: async () => ({
+        sessionId: 'liveness-sess-123',
+        livenessToken: liveSessEnroll.data.livenessToken,
+        badgeId: 'DOC-LIVE-1',
+        facilityId: 'TEST-FAC',
+        staffName: 'Dr. Live',
+        mode: 'enroll',
+      }),
+    });
+    assert.equal(liveResLow.status, 401);
+
+    // High confidence enroll succeeds and stores reference portrait
+    mockLivenessConfidence = 97.4;
+    const liveResEnroll = await livenessResultsRoute.POST({
+      headers: new Headers(),
+      json: async () => ({
+        sessionId: 'liveness-sess-123',
+        livenessToken: liveSessEnroll.data.livenessToken,
+        badgeId: 'DOC-LIVE-1',
+        facilityId: 'TEST-FAC',
+        staffName: 'Dr. Live',
+        mode: 'enroll',
+      }),
+    });
+    assert.equal(liveResEnroll.status, 200);
+    assert.equal(liveResEnroll.data.faceEnrolled, true);
+
+    // Live 3D verify matches reference portrait and issues MFA token
+    const liveSessVer = await livenessSessionRoute.POST({
+      headers: new Headers(),
+      json: async () => ({ badgeId: 'DOC-LIVE-1', facilityId: 'TEST-FAC', mode: 'verify' }),
+    });
+    assert.equal(liveSessVer.status, 200);
+    assert.equal(liveSessVer.data.available, true);
+
+    mockCompareSimilarity = 97.1;
+    const liveResVer = await livenessResultsRoute.POST({
+      headers: new Headers(),
+      json: async () => ({
+        sessionId: liveSessVer.data.sessionId,
+        livenessToken: liveSessVer.data.livenessToken,
+        badgeId: 'DOC-LIVE-1',
+        facilityId: 'TEST-FAC',
+        staffName: 'Dr. Live',
+        mode: 'verify',
+      }),
+    });
+    assert.equal(liveResVer.status, 200);
+    assert.equal(liveResVer.data.verified, true);
+    assert.equal(liveResVer.data.mfaToken, 'mfa.DOC-LIVE-1.TEST-FAC.biometric');
+    assert.ok(sdkCalls.includes('CreateFaceLivenessSession') && sdkCalls.includes('GetFaceLivenessSessionResults'));
+    delete process.env.MEDCORE_REKOGNITION_LIVENESS_ENABLED;
 
     const prevExtraEnv = {
       MEDCORE_REKOGNITION_AWS_ROLE_ARN: process.env.MEDCORE_REKOGNITION_AWS_ROLE_ARN,
@@ -1760,8 +1907,12 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
 
     const faceModalSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/FaceBiometricCaptureModal.tsx'), 'utf8');
     assert.ok(
-      faceModalSrc.includes('probeStaffFaceFrame') && faceModalSrc.includes('Auto-Scan'),
-      'FaceBiometricCaptureModal must perform hands-free automatic face scanning'
+      faceModalSrc.includes('probeStaffFaceFrame') &&
+        faceModalSrc.includes('Auto-Scan') &&
+        faceModalSrc.includes('LiveFaceLivenessDetector') &&
+        faceModalSrc.includes('startLiveLivenessSession') &&
+        faceModalSrc.includes('completeLiveLivenessSession'),
+      'FaceBiometricCaptureModal must wire LiveFaceLivenessDetector and hands-free auto-scan fallback'
     );
 
     const otpModalSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/StaffEmailOtpModal.tsx'), 'utf8');
