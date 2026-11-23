@@ -290,3 +290,130 @@ test('ui-hygiene: enforces calm UX, zero Math.random in interior UI, no legacy m
   const ledgerSrc = fs.readFileSync(path.join(mohDir, 'MohAuditLedgerView.tsx'), 'utf8');
   assert.ok(ledgerSrc.includes('Safe Harbor'), 'MohAuditLedgerView must document Safe Harbor de-identification');
 });
+
+test('facility-360-dossier: aggregates all 14 OS domains per hospital with zero PII and wires [facilityId] API route', async () => {
+  const dbQueries = [];
+  const publishedEvents = [];
+
+  const mockDb = {
+    isPostgresConfigured: () => true,
+    ensureMohSchema: async () => {},
+    safeTableExists: async () => true,
+    query: async (sql, params = []) => {
+      dbQueries.push({ sql, params });
+      if (sql.includes('FROM facilities WHERE id =')) {
+        return {
+          rows: [
+            {
+              id: 'IGH-EKT',
+              name: 'Immanuel General Hospital, Eket',
+              state: 'Akwa Ibom',
+              config: {
+                hfrCode: '03/06/1/2/1/0001',
+                supervisoryBoard: 'AKSHMB',
+                medicalDirector: 'Dr. Udoh',
+                requireStaffMfa: true,
+                acceptsAkshia: true,
+              },
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM staff WHERE facility_id =')) {
+        return {
+          rows: [
+            {
+              badge_id: 'IGH-DOC-01',
+              full_name: 'Dr. Ekpo',
+              role: 'Medical Officer',
+              role_key: 'doctor',
+              department: 'OPD',
+              status: 'active',
+              clearance_level: 4,
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM staff_biometrics WHERE facility_id =')) {
+        return { rows: [{ badge_id: 'IGH-DOC-01', enrolled_at: '2026-11-22T12:00:00.000Z' }] };
+      }
+      if (sql.includes('FROM patients WHERE facility_id =') && sql.includes('newRegistrations30d')) {
+        return { rows: [{ total: 200, active: 195, recent: 18 }] };
+      }
+      if (sql.includes('COUNT(*)::int AS total') && sql.includes('FROM patients')) {
+        return { rows: [{ total: 200, active: 195, recent: 18 }] };
+      }
+      if (sql.includes('GROUP BY 1') && sql.includes('FROM patients')) {
+        return { rows: sql.includes('date_of_birth') ? [{ band: '18–44 yrs (Adult)', cnt: 120 }] : [{ label: 'Female', cnt: 112 }] };
+      }
+      if (sql.includes('FROM inpatient_beds WHERE facility_id =')) {
+        return { rows: [{ id: 'B1', ward: 'ICU Bay', bed_no: 'ICU-01', status: 'occupied', doctor: 'Dr. Ekpo', diagnosis: 'Patient 08031234567 Pneumonia' }] };
+      }
+      if (sql.includes('FROM prescriptions WHERE facility_id =')) {
+        return { rows: [{ id: 'RX1', drug_name: 'Ceftriaxone 1g', dose: '1g', route: 'IV', status: 'dispensed', prescribed_by: 'Dr. Ekpo' }] };
+      }
+      if (sql.includes('FROM lab_results WHERE facility_id =')) {
+        return { rows: [{ id: 'LAB1', test_name: 'Troponin I', flag: 'CRITICAL', status: 'completed', validated_by: 'MLS Ini' }] };
+      }
+      if (sql.includes('FROM facility_kv WHERE facility_id =')) {
+        return { rows: [{ key: 'medcore_os_theatre_cases_v1', value: [{ id: 'SURG-1' }] }] };
+      }
+      return { rows: [] };
+    },
+  };
+
+  const mockBroker = {
+    publishMohEvent: (type, payload) => {
+      publishedEvents.push({ type, payload });
+    },
+  };
+
+  const engine = loadTsModule('src/lib/mohSyncEngine.ts', {
+    './db/postgres': mockDb,
+    './mohEventBroker': mockBroker,
+  });
+
+  const dossierRoute = loadTsModule('src/app/api/moh/facilities/[facilityId]/route.ts', {
+    'next/server': {
+      NextResponse: {
+        json: (data, init = {}) => ({ status: init.status || 200, data }),
+      },
+    },
+    '../../../../../lib/mohSyncEngine': engine,
+  });
+
+  const getRes = await dossierRoute.GET({}, { params: Promise.resolve({ facilityId: 'igh-ekt' }) });
+  assert.equal(getRes.status, 200);
+  assert.equal(getRes.data.ok, true);
+  const d = getRes.data.dossier;
+  assert.equal(d.facility.facilityId, 'IGH-EKT');
+  assert.equal(d.governance.hfrCode, '03/06/1/2/1/0001');
+  assert.equal(d.security.faceIdEnrolledCount, 1);
+  assert.equal(d.security.faceIdCompliancePct, 100);
+  assert.equal(d.demographics.totalRegistered, 200);
+  assert.equal(d.beds.bedList.length, 1);
+  assert.equal(d.clinical.pharmacy.topDrugs[0].drugName, 'Ceftriaxone 1g');
+  assert.equal(d.clinical.laboratory.criticalFlags, 1);
+  assert.equal(d.clinical.specialtyOperations.theatreCasesCount, 1);
+  assert.equal(d.workforce.staffRoster[0].faceIdEnrolled, true);
+
+  const jsonDossier = JSON.stringify(d);
+  assert.equal(jsonDossier.includes('08031234567'), false, 'Dossier must redact phone inside bed diagnosis');
+  for (const piiKey of ['"patientName"', '"pin_hash"', '"nin"', '"phone"', '"email"', '"address"']) {
+    assert.equal(jsonDossier.includes(piiKey), false, `Dossier must never contain PII property ${piiKey}`);
+  }
+
+  const postRes = await dossierRoute.POST(
+    { json: async () => ({ title: 'Verify Oxygen Plant', body: 'Report backup cylinder level.', level: 'alert', sentBy: 'Commissioner' }) },
+    { params: Promise.resolve({ facilityId: 'IGH-EKT' }) }
+  );
+  assert.equal(postRes.status, 200);
+  assert.equal(postRes.data.ok, true);
+  assert.ok(dbQueries.some((q) => q.sql.includes('INSERT INTO notifications') && q.params[1] === 'IGH-EKT'));
+  assert.ok(publishedEvents.some((e) => e.type === 'facility'));
+
+  const shellSrc = fs.readFileSync(path.join(ADMIN_ROOT, 'src/components/moh/MohShell.tsx'), 'utf8');
+  assert.ok(shellSrc.includes('MohFacilityDossierView'), 'MohShell must wire MohFacilityDossierView');
+  const drawerSrc = fs.readFileSync(path.join(ADMIN_ROOT, 'src/components/moh/MohFacilityDrawer.tsx'), 'utf8');
+  assert.ok(drawerSrc.includes('onOpenFullDossier'), 'MohFacilityDrawer must expose Open Full 360° Dossier action');
+});

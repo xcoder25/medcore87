@@ -7,6 +7,7 @@ import type { MohFacilityTelemetry } from '../../lib/mohTypes';
 interface MohFacilityDrawerProps {
   facility: MohFacilityTelemetry | null;
   onClose: () => void;
+  onOpenFullDossier?: (facilityId: string) => void;
   onUpdateOversight: (payload: {
     facilityId: string;
     emergencyStatus: MohFacilityTelemetry['emergencyStatus'];
@@ -23,6 +24,7 @@ function fmtNaira(val: number): string {
 export const MohFacilityDrawer: React.FC<MohFacilityDrawerProps> = ({
   facility,
   onClose,
+  onOpenFullDossier,
   onUpdateOversight,
   onScheduleAudit,
 }) => {
@@ -76,6 +78,17 @@ export const MohFacilityDrawer: React.FC<MohFacilityDrawerProps> = ({
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 16 }}>
+          {onOpenFullDossier && (
+            <button
+              type="button"
+              className="moh-btn-primary"
+              style={{ width: '100%', justifyContent: 'center' }}
+              onClick={() => onOpenFullDossier(facility.facilityId)}
+            >
+              <span>Open Full 360° Hospital Dossier →</span>
+            </button>
+          )}
+
           {/* Governance & Statutory Metadata */}
           <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>

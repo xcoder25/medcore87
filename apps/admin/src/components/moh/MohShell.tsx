@@ -54,6 +54,7 @@ import {
 import { MohAuditLedgerView } from './MohAuditLedgerView';
 import { MohDirectivesComplianceView } from './MohDirectivesComplianceView';
 import { MohFacilitiesView } from './MohFacilitiesView';
+import { MohFacilityDossierView } from './MohFacilityDossierView';
 import { MohFacilityDrawer } from './MohFacilityDrawer';
 import { MohFinanceView } from './MohFinanceView';
 import { MohIntelligenceView } from './MohIntelligenceView';
@@ -103,6 +104,7 @@ export const MohShell: React.FC<MohShellProps> = ({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const [selectedFacilityId, setSelectedFacilityId] = useState<string | null>(null);
+  const [dossierFacilityId, setDossierFacilityId] = useState<string | null>(null);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditPresetFacId, setAuditPresetFacId] = useState<string | undefined>(undefined);
@@ -484,6 +486,7 @@ export const MohShell: React.FC<MohShellProps> = ({
                       type="button"
                       className={`moh-nav-btn ${active ? 'active' : ''}`}
                       onClick={() => {
+                        setDossierFacilityId(null);
                         setActiveTab(item.key);
                         setMobileNavOpen(false);
                       }}
@@ -734,20 +737,47 @@ export const MohShell: React.FC<MohShellProps> = ({
 
         {/* Main Content Canvas */}
         <main className="moh-content-wrap">
-          {activeTab !== 'overview' && (
+          {(dossierFacilityId || activeTab !== 'overview') && (
             <div className="moh-back-bar">
               <button
                 type="button"
                 className="moh-back-btn"
-                onClick={() => setActiveTab('overview')}
+                onClick={() => {
+                  if (dossierFacilityId) {
+                    setDossierFacilityId(null);
+                  } else {
+                    setActiveTab('overview');
+                  }
+                }}
               >
                 <ArrowLeft size={14} />
-                <span>Back to Overview</span>
+                <span>
+                  {dossierFacilityId
+                    ? activeTab === 'facilities'
+                      ? 'Back to Facility Registry'
+                      : 'Back'
+                    : 'Back to Overview'}
+                </span>
               </button>
             </div>
           )}
 
-          {loading && !snapshot ? (
+          {dossierFacilityId ? (
+            <MohFacilityDossierView
+              facilityId={dossierFacilityId}
+              officerName={session.name}
+              onUpdateOversight={handleUpdateOversight}
+              onScheduleAudit={(facId) => {
+                setAuditPresetFacId(facId);
+                setAuditOpen(true);
+              }}
+              onUpdateAuditStatus={handleUpdateAuditStatus}
+              onOpenTransferModal={() => setTransferOpen(true)}
+              onDecideTransfer={handleDecideTransfer}
+              onUpdateDirectiveStatus={handleUpdateDirectiveStatus}
+              onNotify={notifyToast}
+            />
+          ) : loading && !snapshot ? (
             <div className="moh-panel" style={{ padding: 36, textAlign: 'center', color: '#64748B' }}>
               Synchronizing Akwa Ibom Ministry of Health telemetry…
             </div>
@@ -778,7 +808,7 @@ export const MohShell: React.FC<MohShellProps> = ({
               {activeTab === 'facilities' && (
                 <MohFacilitiesView
                   facilities={snapshot.facilities}
-                  onSelectFacility={(fac) => setSelectedFacilityId(fac.facilityId)}
+                  onSelectFacility={(fac) => setDossierFacilityId(fac.facilityId)}
                 />
               )}
 
@@ -843,6 +873,10 @@ export const MohShell: React.FC<MohShellProps> = ({
       <MohFacilityDrawer
         facility={selectedFacility}
         onClose={() => setSelectedFacilityId(null)}
+        onOpenFullDossier={(facId) => {
+          setSelectedFacilityId(null);
+          setDossierFacilityId(facId);
+        }}
         onUpdateOversight={handleUpdateOversight}
         onScheduleAudit={(facId) => {
           setSelectedFacilityId(null);
@@ -929,6 +963,7 @@ export const MohShell: React.FC<MohShellProps> = ({
                         className="moh-nav-btn"
                         style={{ padding: '7px 10px' }}
                         onClick={() => {
+                          setDossierFacilityId(null);
                           setActiveTab(t.key);
                           setCmdOpen(false);
                           setCmdQuery('');

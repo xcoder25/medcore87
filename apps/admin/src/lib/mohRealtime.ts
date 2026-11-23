@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   MohAuditRecord,
   MohDirective,
+  MohFacilityDossier,
   MohFacilityTelemetry,
   MohLiveSnapshot,
   MohOutbreakAlert,
@@ -227,4 +228,39 @@ export async function createOrToggleMohAlert(input: {
 }) {
   const method = input.toggleContainment ? 'PATCH' : 'POST';
   return apiJson<{ alert: MohOutbreakAlert }>('/api/moh/alerts', method, input);
+}
+
+export async function fetchMohFacilityDossier(
+  facilityId: string
+): Promise<{ ok: boolean; dossier?: MohFacilityDossier; error?: string }> {
+  try {
+    const res = await fetch(`/api/moh/facilities/${encodeURIComponent(facilityId)}`, {
+      cache: 'no-store',
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      dossier?: MohFacilityDossier;
+      error?: string;
+    };
+    if (!res.ok || !json.ok || !json.dossier) {
+      return { ok: false, error: json.error || 'Could not load facility dossier.' };
+    }
+    return { ok: true, dossier: json.dossier };
+  } catch (err) {
+    return { ok: false, error: (err as Error)?.message || 'Network error loading facility dossier.' };
+  }
+}
+
+export async function sendMohFacilityNotice(input: {
+  facilityId: string;
+  title: string;
+  body: string;
+  level?: 'info' | 'warning' | 'alert';
+  sentBy?: string;
+}) {
+  return apiJson<{ facilityId: string; sentAt: string }>(
+    `/api/moh/facilities/${encodeURIComponent(input.facilityId)}`,
+    'POST',
+    input
+  );
 }
