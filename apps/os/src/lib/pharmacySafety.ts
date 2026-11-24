@@ -1,17 +1,16 @@
 /**
  * Pharmacy clinical safety checks — assistive, not autonomous.
+ * Delegates to the isomorphic Clinical Safety Guard engine so prescription placement,
+ * pharmacist dispensing, Ambient SOAP, and server audits share one source of truth.
  */
-const ALLERGY_DRUG_MAP: Record<string, string[]> = {
-  penicillin: ['amoxicillin', 'ampicillin', 'augmentin', 'penicillin'],
-  sulfa: ['cotrimoxazole', 'sulfadiazine', 'septrin'],
-  nsaid: ['ibuprofen', 'diclofenac', 'aspirin', 'naproxen'],
-};
+import {
+  evaluatePrescriptionSafetyGuard,
+  type PrescriptionSafetyInput,
+  type PrescriptionSafetyReport,
+  type SafetyGuardAlert,
+} from './clinicalSafetyEngine';
 
-const INTERACTIONS: { a: string; b: string; note: string }[] = [
-  { a: 'warfarin', b: 'aspirin', note: 'Bleeding risk — verify indication' },
-  { a: 'metformin', b: 'contrast', note: 'Hold metformin around contrast if protocol requires' },
-  { a: 'amlodipine', b: 'simvastatin', note: 'Dose interaction possible' },
-];
+export { evaluatePrescriptionSafetyGuard, type PrescriptionSafetyInput, type PrescriptionSafetyReport, type SafetyGuardAlert };
 
 export interface SafetyFlag {
   level: 'high' | 'medium' | 'low';
@@ -23,34 +22,19 @@ export function checkPrescriptionSafety(input: {
   allergies?: string[];
   otherDrugs?: string[];
   notes?: string;
+  ageYears?: number;
+  dob?: string;
+  weightKg?: number;
+  sex?: string;
+  isPregnant?: boolean;
+  chronicConditions?: string[];
+  genotype?: string;
+  egfr?: number;
+  creatinineMgDl?: number;
 }): SafetyFlag[] {
-  const flags: SafetyFlag[] = [];
-  const drug = input.drugName.toLowerCase();
-  const allergies = (input.allergies || []).map((a) => a.toLowerCase());
-
-  for (const [allergen, drugs] of Object.entries(ALLERGY_DRUG_MAP)) {
-    if (allergies.some((a) => a.includes(allergen) || allergen.includes(a))) {
-      if (drugs.some((d) => drug.includes(d))) {
-        flags.push({
-          level: 'high',
-          message: `Possible allergy conflict: patient allergy related to ${allergen} vs ${input.drugName}`,
-        });
-      }
-    }
-  }
-
-  for (const other of input.otherDrugs || []) {
-    const o = other.toLowerCase();
-    for (const pair of INTERACTIONS) {
-      if ((drug.includes(pair.a) && o.includes(pair.b)) || (drug.includes(pair.b) && o.includes(pair.a))) {
-        flags.push({ level: 'medium', message: `Interaction: ${pair.note}` });
-      }
-    }
-  }
-
-  if (/mg|mcg|ml/i.test(input.drugName) === false && !input.notes) {
-    flags.push({ level: 'low', message: 'Confirm dose and frequency are documented' });
-  }
-
-  return flags;
+  const report = evaluatePrescriptionSafetyGuard(input);
+  return report.alerts.map((a) => ({
+    level: a.level === 'hard_stop' ? 'high' : a.level === 'warning' ? 'medium' : 'low',
+    message: `${a.title}: ${a.detail}`,
+  }));
 }

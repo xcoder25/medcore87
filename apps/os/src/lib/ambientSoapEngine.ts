@@ -1,8 +1,23 @@
 /**
- * Ambient clinical notes: browser speech → transcript → Gemini SOAP draft.
- * Never auto-signs; doctor must review.
+ * Ambient clinical notes: browser speech / audio capture → transcript → Clinical AI SOAP + ICD-11 + Orders + Safety Gate.
+ * Never auto-signs; doctor must review and explicitly confirm orders.
  */
-import { geminiGenerate, hasGeminiKey } from './geminiClient';
+import type { PrescriptionSafetyReport } from './clinicalSafetyEngine';
+
+export interface ScribeIcd11Suggestion {
+  code: string;
+  label: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface ScribeSuggestedOrder {
+  type: 'lab' | 'rx' | 'imaging';
+  code: string;
+  name: string;
+  priority: 'routine' | 'urgent' | 'stat';
+  dosageNotes?: string;
+  safetyReport?: PrescriptionSafetyReport;
+}
 
 export interface SoapNote {
   subjective: string;
@@ -10,7 +25,16 @@ export interface SoapNote {
   assessment: string;
   plan: string;
   rawTranscript: string;
-  provider: string;
+  provider: 'clinical-ai' | 'local-fallback';
+  modelUsed?: string;
+  icd11Suggestions?: ScribeIcd11Suggestion[];
+  suggestedOrders?: ScribeSuggestedOrder[];
+  redFlags?: string[];
+  patientSummary?: {
+    english: string;
+    pidgin: string;
+    ibibio: string;
+  };
   createdAt: string;
 }
 
@@ -41,7 +65,10 @@ type SpeechRec = {
 
 function SpeechRecognitionCtor(): (new () => SpeechRec) | null {
   if (typeof window === 'undefined') return null;
-  const w = window as any;
+  const w = window as unknown as {
+    SpeechRecognition?: new () => SpeechRec;
+    webkitSpeechRecognition?: new () => SpeechRec;
+  };
   return w.SpeechRecognition || w.webkitSpeechRecognition || null;
 }
 
@@ -58,7 +85,7 @@ export function startAmbientListening(opts: {
 }): { stop: () => void } | null {
   const Ctor = SpeechRecognitionCtor();
   if (!Ctor) {
-    opts.onError?.('Speech recognition not supported in this browser. Use Chrome/Edge.');
+    opts.onError?.('Live Web Speech not supported in this browser. Use Record Audio Clip instead.');
     return null;
   }
   const rec = new Ctor();
@@ -99,88 +126,93 @@ export function startAmbientListening(opts: {
   };
 }
 
-function parseSoapFromText(text: string, transcript: string): SoapNote {
-  const sections: Record<string, string> = {
-    subjective: '',
-    objective: '',
-    assessment: '',
-    plan: '',
-  };
-  const labels: Array<[string, RegExp]> = [
-    ['subjective', /(?:^|\n)\s*(?:S(?:ubjective)?|SUBJECTIVE)\s*[:.\-]\s*/i],
-    ['objective', /(?:^|\n)\s*(?:O(?:bjective)?|OBJECTIVE)\s*[:.\-]\s*/i],
-    ['assessment', /(?:^|\n)\s*(?:A(?:ssessment)?|ASSESSMENT)\s*[:.\-]\s*/i],
-    ['plan', /(?:^|\n)\s*(?:P(?:lan)?|PLAN)\s*[:.\-]\s*/i],
-  ];
-  const indices: Array<{ key: string; at: number }> = [];
-  for (const [key, re] of labels) {
-    const m = re.exec(text);
-    if (m) indices.push({ key, at: m.index + m[0].length });
-  }
-  indices.sort((a, b) => a.at - b.at);
-  for (let i = 0; i < indices.length; i++) {
-    const start = indices[i].at;
-    const end = i + 1 < indices.length ? indices[i + 1].at - (text.slice(0, indices[i + 1].at).length - text.slice(0, indices[i + 1].at).replace(/.*$/, '').length) : text.length;
-    // simpler end: next section start
-    const nextLabel = i + 1 < indices.length ? labels.find((l) => l[0] === indices[i + 1].key)?.[1] : null;
-    let sliceEnd = text.length;
-    if (i + 1 < indices.length) {
-      const nextRe = labels.find((l) => l[0] === indices[i + 1].key)?.[1];
-      if (nextRe) {
-        const nm = nextRe.exec(text);
-        if (nm) sliceEnd = nm.index;
-      }
-    }
-    sections[indices[i].key] = text.slice(start, sliceEnd).trim();
-  }
-  if (!sections.subjective && !sections.plan) {
-    sections.subjective = transcript.slice(0, 800);
-    sections.assessment = text.slice(0, 600);
-  }
-  return {
-    subjective: sections.subjective,
-    objective: sections.objective,
-    assessment: sections.assessment,
-    plan: sections.plan,
-    rawTranscript: transcript,
-    provider: 'gemini',
-    createdAt: new Date().toISOString(),
-  };
-}
-
 export async function synthesizeSoapNote(input: {
   transcript: string;
+  facilityId?: string;
+  patientId?: string;
   patientLabel?: string;
+  vitalsSummary?: string;
   extraContext?: string;
+  patientContext?: {
+    allergies?: string[];
+    otherDrugs?: string[];
+    dob?: string;
+    sex?: string;
+    isPregnant?: boolean;
+    chronicConditions?: string[];
+    genotype?: string;
+  };
 }): Promise<{ ok: boolean; soap?: SoapNote; text: string }> {
   const transcript = input.transcript.trim();
   if (!transcript) return { ok: false, text: 'No transcript to convert' };
 
-  if (!hasGeminiKey()) {
-    // Deterministic offline fallback structure
-    const soap: SoapNote = {
-      subjective: transcript,
-      objective: 'Vitals / exam — not captured in ambient audio (add manually).',
-      assessment: 'Clinical impression pending physician review of ambient transcript.',
-      plan: '1. Review and complete this draft\n2. Order investigations as indicated\n3. Follow-up as appropriate',
-      rawTranscript: transcript,
-      provider: 'local-fallback',
-      createdAt: new Date().toISOString(),
+  try {
+    const res = await fetch('/api/ai/scribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(input.facilityId ? { 'x-facility-id': input.facilityId } : {}),
+      },
+      body: JSON.stringify({
+        transcript: [transcript, input.extraContext].filter(Boolean).join('\n\n'),
+        facilityId: input.facilityId,
+        patientId: input.patientId,
+        patientLabel: input.patientLabel,
+        vitalsSummary: input.vitalsSummary,
+        patientContext: input.patientContext,
+      }),
+    });
+
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      draft?: {
+        soap?: { subjective?: string; objective?: string; assessment?: string; plan?: string };
+        icd11Suggestions?: ScribeIcd11Suggestion[];
+        suggestedOrders?: ScribeSuggestedOrder[];
+        redFlags?: string[];
+        patientSummary?: { english: string; pidgin: string; ibibio: string };
+        provider?: 'clinical-ai' | 'local-fallback';
+        modelUsed?: string;
+      };
+      error?: string;
     };
-    return { ok: true, soap, text: formatSoap(soap) };
+
+    if (res.ok && json.ok && json.draft?.soap) {
+      const soap: SoapNote = {
+        subjective: String(json.draft.soap.subjective || transcript),
+        objective: String(json.draft.soap.objective || 'Review vitals & exam findings.'),
+        assessment: String(json.draft.soap.assessment || 'Pending physician confirmation.'),
+        plan: String(json.draft.soap.plan || 'Review investigations & prescriptions.'),
+        rawTranscript: transcript,
+        provider: json.draft.provider === 'clinical-ai' ? 'clinical-ai' : 'local-fallback',
+        modelUsed: json.draft.modelUsed,
+        icd11Suggestions: json.draft.icd11Suggestions || [],
+        suggestedOrders: json.draft.suggestedOrders || [],
+        redFlags: json.draft.redFlags || [],
+        patientSummary: json.draft.patientSummary,
+        createdAt: new Date().toISOString(),
+      };
+      return { ok: true, soap, text: formatSoap(soap) };
+    }
+  } catch {
+    /* network unavailable — use offline fallback below */
   }
 
-  const res = await geminiGenerate(
-    `Convert this doctor–patient consultation transcript into a structured SOAP note for a Nigerian hospital OPD.\n\nPatient: ${input.patientLabel || 'Unknown'}\n${input.extraContext || ''}\n\nTranscript:\n${transcript}\n\nRespond ONLY with:\nS:\n...\nO:\n...\nA:\n...\nP:\n...\n`,
-    'You are MedCore ambient clinical scribe. Structure notes clearly. Never invent drugs, diagnoses, or vitals not supported by the transcript. Flag uncertainty.'
-  );
-
-  if (!res.ok || !res.text) {
-    return { ok: false, text: res.text || 'SOAP synthesis failed' };
-  }
-  const soap = parseSoapFromText(res.text, transcript);
-  soap.provider = res.usedGemini ? 'gemini' : 'local-fallback';
-  return { ok: true, soap, text: formatSoap(soap) };
+  const fallback: SoapNote = {
+    subjective: transcript,
+    objective: input.vitalsSummary
+      ? `Current Vitals: ${input.vitalsSummary}`
+      : 'Vitals / physical exam — add manually from Nursing Triage.',
+    assessment: 'Clinical impression pending physician review of ambient transcript.',
+    plan: '1. Review and complete this draft\n2. Place indicated investigations/prescriptions\n3. Counsel on warning signs & follow-up',
+    rawTranscript: transcript,
+    provider: 'local-fallback',
+    icd11Suggestions: [],
+    suggestedOrders: [],
+    redFlags: [],
+    createdAt: new Date().toISOString(),
+  };
+  return { ok: true, soap: fallback, text: formatSoap(fallback) };
 }
 
 export function formatSoap(s: SoapNote): string {

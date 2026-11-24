@@ -1,6 +1,16 @@
 'use client';
 
-import { geminiGenerate, hasGeminiKey, probeGeminiConfigured } from '../../lib/geminiClient';
+import {
+  geminiGenerate,
+  geminiStreamChat,
+  hasGeminiKey,
+  probeGeminiConfigured,
+  type CelestiaProposedAction,
+} from '../../lib/geminiClient';
+import { listPatients } from '../../lib/patientRegistryStore';
+import { placeOrder } from '../../lib/clinicalEventBus';
+import { evaluateOrderBpa } from '../../lib/clinicalIntelligenceEngine';
+import { appendAudit } from '../../lib/auditLogStore';
 import {
   resolveFrontDeskAction,
   extractReceptionJobWithAI,
@@ -73,6 +83,9 @@ interface ChatMessage {
   text: string;
   timestamp: string;
   category?: 'clinical' | 'operational' | 'financial';
+  toolTrace?: string[];
+  proposedActions?: CelestiaProposedAction[];
+  liveStreamed?: boolean;
 }
 
 const INITIAL_MESSAGES: ChatMessage[] = [];
@@ -195,6 +208,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose,
   const [pendingSendAccounts, setPendingSendAccounts] = useState(false);
   const [geminiOnline, setGeminiOnline] = useState<boolean | null>(null);
   const [streamingId, setStreamingId] = useState<string | null>(null);
+  const [liveStatusLabel, setLiveStatusLabel] = useState<string | null>(null);
   const [modelVer, setModelVer] = useState<string | null>(() => getModelState()?.version || null);
   const [engineReady, setEngineReady] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -1372,11 +1386,10 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose,
       return;
     }
 
-    // Gemini when available → else Celestia offline (local hospital knowledge)
+    // Live Streaming Tool-Calling Celestia when available → else Celestia offline (local hospital knowledge)
     let reply =
       'Celestia is offline for full chat right now. Ask about beds, revenue, or the queue — or if you are admin, say enrol nurse Ada Okon pin 123456.';
     let cat: ChatMessage['category'] = 'clinical';
-    let offlineMode = false;
 
     const fid = session?.hospitalId || 'IGH-EKT';
     const rag = [
@@ -1384,54 +1397,279 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose,
       buildM87RagContext(query, fid),
     ].join('\n\n');
     const localHits = retrieveRelevantExamples(query, fid, 1);
-    const gemini = await geminiGenerate(query, buildCelestiaSystemPrompt(session), rag, fid);
+
+    const streamMsgId = `msg-${Date.now()}-ai`;
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    let streamedStarted = false;
+    let accumulated = '';
+    const liveActions: CelestiaProposedAction[] = [];
+
+    const historyTurns = messages
+      .slice(-6)
+      .filter((m) => Boolean(m.text?.trim()))
+      .map((m) => ({
+        role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+        text: m.text,
+      }));
+
+    setLiveStatusLabel('Analyzing hospital context…');
+    const gemini = await geminiStreamChat({
+      prompt: query,
+      systemHint: buildCelestiaSystemPrompt(session),
+      ragContext: rag,
+      facilityId: fid,
+      roleKey: session?.roleKey || session?.role,
+      history: historyTurns,
+      onStatus: (statusText) => {
+        setLiveStatusLabel(statusText);
+      },
+      onProposedAction: (action) => {
+        if (!liveActions.some((a) => a.id === action.id)) {
+          liveActions.push(action);
+        }
+        if (streamedStarted) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === streamMsgId
+                ? { ...m, proposedActions: [...liveActions] }
+                : m
+            )
+          );
+        }
+      },
+      onToken: (delta) => {
+        accumulated += delta;
+        if (!streamedStarted) {
+          streamedStarted = true;
+          setIsThinking(false);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: streamMsgId,
+              sender: 'm87',
+              text: accumulated,
+              timestamp: nowTime,
+              category: 'clinical',
+              proposedActions: liveActions.length ? [...liveActions] : undefined,
+              liveStreamed: true,
+            },
+          ]);
+        } else {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === streamMsgId
+                ? {
+                    ...m,
+                    text: accumulated,
+                    proposedActions: liveActions.length ? [...liveActions] : m.proposedActions,
+                  }
+                : m
+            )
+          );
+        }
+      },
+    });
+
+    setLiveStatusLabel(null);
     setGeminiOnline(Boolean(gemini.ok && gemini.usedGemini));
 
-    if (gemini.ok && gemini.text) {
-      reply = gemini.text;
-      cat = 'clinical';
-      offlineMode = false;
-    } else {
-      offlineMode = true;
-      const lower = query.toLowerCase();
-      if (localHits[0]) {
-        reply =
-          localHits[0].idealOutput +
-          '\n\n— Celestia offline · using hospital knowledge base.';
-        cat = 'operational';
-      } else if (lower.includes('bed') || lower.includes('surge') || lower.includes('capacity') || lower.includes('ward')) {
-        reply =
-          'Beds are under **Bed & Ward Occupancy** — live counts, >90% wards, and long-stay. Open that screen for the board.';
-        cat = 'operational';
-      } else if (lower.includes('money') || lower.includes('revenue') || lower.includes('hmo') || lower.includes('billing') || lower.includes('payment')) {
-        reply =
-          'For money and unpaid bills, open **Accounts / Cashier**. Front desk still queues payment in realtime after enrolment.';
-        cat = 'financial';
-      } else if (lower.includes('access') || lower.includes('id card') || lower.includes('badge') || lower.includes('enrol') || lower.includes('staff')) {
-        reply = canAutomateStaff(actorRole)
-          ? 'Chat model is offline, but enrolment automation still works. Say enrol doctor Full Name pin 123456 and I will run the steps.'
-          : staffAutomationRefusal(actorRole);
-        cat = 'operational';
-      } else if (lower.includes('queue') || lower.includes('opd') || lower.includes('waiting')) {
-        reply =
-          'Live OPD queue is on **Reception / Front Desk** — visits and payment gates update without reload.';
-        cat = 'operational';
+    if (gemini.ok && (accumulated.trim() || gemini.text)) {
+      const finalText = (accumulated || gemini.text).trim();
+      const finalActions = gemini.proposedActions?.length ? gemini.proposedActions : liveActions;
+      const finalTrace = gemini.toolTrace?.length ? gemini.toolTrace : undefined;
+      if (streamedStarted) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === streamMsgId
+              ? {
+                  ...m,
+                  text: finalText,
+                  toolTrace: finalTrace,
+                  proposedActions: finalActions.length ? finalActions : m.proposedActions,
+                }
+              : m
+          )
+        );
       } else {
-        reply =
-          "I'm offline for deep chat right now. I can still point you to beds, revenue, or the queue — or run staff enrolment if you are admin. What do you need?";
-        cat = 'operational';
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: streamMsgId,
+            sender: 'm87',
+            text: finalText,
+            timestamp: nowTime,
+            category: 'clinical',
+            toolTrace: finalTrace,
+            proposedActions: finalActions.length ? finalActions : undefined,
+            liveStreamed: true,
+          },
+        ]);
       }
+      setIsThinking(false);
+      return;
+    }
+
+    const lower = query.toLowerCase();
+    if (localHits[0]) {
+      reply =
+        localHits[0].idealOutput +
+        '\n\n— Celestia offline · using hospital knowledge base.';
+      cat = 'operational';
+    } else if (lower.includes('bed') || lower.includes('surge') || lower.includes('capacity') || lower.includes('ward')) {
+      reply =
+        'Beds are under **Bed & Ward Occupancy** — live counts, >90% wards, and long-stay. Open that screen for the board.';
+      cat = 'operational';
+    } else if (lower.includes('money') || lower.includes('revenue') || lower.includes('hmo') || lower.includes('billing') || lower.includes('payment')) {
+      reply =
+        'For money and unpaid bills, open **Accounts / Cashier**. Front desk still queues payment in realtime after enrolment.';
+      cat = 'financial';
+    } else if (lower.includes('access') || lower.includes('id card') || lower.includes('badge') || lower.includes('enrol') || lower.includes('staff')) {
+      reply = canAutomateStaff(actorRole)
+        ? 'Chat model is offline, but enrolment automation still works. Say enrol doctor Full Name pin 123456 and I will run the steps.'
+        : staffAutomationRefusal(actorRole);
+      cat = 'operational';
+    } else if (lower.includes('queue') || lower.includes('opd') || lower.includes('waiting')) {
+      reply =
+        'Live OPD queue is on **Reception / Front Desk** — visits and payment gates update without reload.';
+      cat = 'operational';
+    } else {
+      reply =
+        "I'm offline for deep chat right now. I can still point you to beds, revenue, or the queue — or run staff enrolment if you are admin. What do you need?";
+      cat = 'operational';
     }
 
     const aiMsg: ChatMessage = {
-      id: `msg-${Date.now()}-ai`,
+      id: streamMsgId,
       sender: 'm87',
       text: reply,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: nowTime,
       category: cat,
     };
     setMessages((prev) => [...prev, aiMsg]);
     setIsThinking(false);
+  };
+
+  const handleProposedActionDecision = (
+    msgId: string,
+    action: CelestiaProposedAction,
+    decision: 'approved' | 'dismissed'
+  ) => {
+    const fid = session?.hospitalId || 'IGH-EKT';
+    if (decision === 'dismissed') {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId
+            ? {
+                ...m,
+                proposedActions: m.proposedActions?.map((a) =>
+                  a.id === action.id ? { ...a, status: 'dismissed' } : a
+                ),
+              }
+            : m
+        )
+      );
+      return;
+    }
+
+    if (action.kind === 'navigate') {
+      const mod = String(action.payload.moduleKey || '');
+      if (mod) onNavigate?.(mod);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId
+            ? {
+                ...m,
+                proposedActions: m.proposedActions?.map((a) =>
+                  a.id === action.id ? { ...a, status: 'approved' } : a
+                ),
+              }
+            : m
+        )
+      );
+      return;
+    }
+
+    if (action.kind === 'place_order') {
+      const rKey = normalizeRoleKey(session);
+      if (!['doctor', 'surgeon', 'admin', 'hospital_admin', 'medical_director'].includes(rKey)) {
+        liveAlert('Only authorized clinicians/doctors can confirm clinical orders.', 'm87-ai', fid);
+        return;
+      }
+      const ref = String(action.payload.patientRef || '').trim().toLowerCase();
+      const patients = listPatients(fid);
+      const matched = patients.find(
+        (p) =>
+          p.id.toLowerCase() === ref ||
+          p.hospitalNumber.toLowerCase() === ref ||
+          `${p.firstName} ${p.lastName}`.toLowerCase().includes(ref)
+      );
+      if (!matched) {
+        liveAlert(
+          `Could not auto-match patient "${action.payload.patientRef || ''}". Open Clinical Orders to place manually.`,
+          'm87-ai',
+          fid
+        );
+        return;
+      }
+      const orderType = String(action.payload.orderType || 'lab') as 'lab' | 'rx' | 'imaging' | 'procedure';
+      const orderName = String(action.payload.name || '').trim();
+      const orderCode = String(action.payload.code || `${orderType.toUpperCase()}-AI`).trim();
+      const priority = (String(action.payload.priority || 'routine') as 'routine' | 'urgent' | 'stat');
+
+      const bpa = evaluateOrderBpa({
+        facilityId: fid,
+        patientId: matched.id,
+        type: orderType,
+        code: orderCode,
+        name: orderName,
+        priority,
+      });
+      const hardStops = bpa.filter((b) => b.level === 'hard_stop');
+      if (hardStops.length > 0) {
+        liveAlert(
+          `Blocked by Clinical Safety Guard: ${hardStops[0].title}. Review in Clinical Orders before placing.`,
+          'm87-ai',
+          fid
+        );
+        return;
+      }
+
+      const placed = placeOrder({
+        facilityId: fid,
+        patientId: matched.id,
+        patientName: `${matched.firstName} ${matched.lastName}`,
+        hospitalNumber: matched.hospitalNumber,
+        type: orderType,
+        code: orderCode,
+        name: orderName,
+        orderedBy: session?.name || 'Clinician',
+        orderedByBadge: session?.badgeId,
+        priority,
+        notes: String(action.payload.rationale || 'Clinician-approved via Celestia'),
+      });
+      appendAudit({
+        facilityId: fid,
+        actor: session?.name || 'Clinician',
+        actorBadge: session?.badgeId,
+        action: 'celestia_approved_order',
+        entity: 'order',
+        entityId: placed.id,
+        detail: `${orderType.toUpperCase()} ${orderName} approved for ${matched.hospitalNumber}`,
+      });
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId
+            ? {
+                ...m,
+                proposedActions: m.proposedActions?.map((a) =>
+                  a.id === action.id ? { ...a, status: 'approved' } : a
+                ),
+              }
+            : m
+        )
+      );
+      liveAlert(`Order placed for ${matched.firstName} ${matched.lastName}: ${orderName}`, 'm87-ai', fid);
+    }
   };
 
 
@@ -1779,7 +2017,88 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose,
                 <div className={mine ? 'm87-bubble m87-bubble-user' : 'm87-bubble m87-bubble-ai'}>
                   {!mine ? (
                     <>
-                      <StreamingText text={msg.text} animate={streamingId === msg.id} />
+                      {msg.toolTrace && msg.toolTrace.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                          {msg.toolTrace.map((t, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                fontSize: 10.5,
+                                fontWeight: 700,
+                                padding: '2px 8px',
+                                borderRadius: 999,
+                                background: 'rgba(14, 165, 233, 0.14)',
+                                border: '1px solid rgba(56, 189, 248, 0.35)',
+                                color: '#BAE6FD',
+                              }}
+                            >
+                              ✓ {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <StreamingText text={msg.text} animate={streamingId === msg.id && !msg.liveStreamed} />
+                      {msg.proposedActions && msg.proposedActions.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+                          {msg.proposedActions.map((act) => (
+                            <div
+                              key={act.id}
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: 12,
+                                background: 'rgba(15, 23, 42, 0.55)',
+                                border: '1px solid rgba(167, 139, 250, 0.4)',
+                                fontSize: 12,
+                              }}
+                            >
+                              <div style={{ fontWeight: 800, color: '#F8FAFC' }}>{act.title}</div>
+                              <div style={{ color: '#CBD5E1', marginTop: 2, fontSize: 11.5 }}>{act.summary}</div>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                                {act.status === 'approved' ? (
+                                  <span style={{ color: '#34D399', fontWeight: 800, fontSize: 11 }}>✓ Approved & Executed</span>
+                                ) : act.status === 'dismissed' ? (
+                                  <span style={{ color: '#94A3B8', fontWeight: 700, fontSize: 11 }}>Dismissed</span>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleProposedActionDecision(msg.id, act, 'approved')}
+                                      style={{
+                                        padding: '5px 11px',
+                                        borderRadius: 8,
+                                        border: 'none',
+                                        background: '#10B981',
+                                        color: '#052E16',
+                                        fontWeight: 800,
+                                        fontSize: 11,
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      Approve & Execute
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleProposedActionDecision(msg.id, act, 'dismissed')}
+                                      style={{
+                                        padding: '5px 10px',
+                                        borderRadius: 8,
+                                        border: '1px solid rgba(148,163,184,0.4)',
+                                        background: 'transparent',
+                                        color: '#CBD5E1',
+                                        fontWeight: 700,
+                                        fontSize: 11,
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      Dismiss
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div className="m87-feedback">
                         <button
                           type="button"
@@ -1850,7 +2169,7 @@ export const M87AICopilotSuite: React.FC<Props> = ({ session, inDrawer, onClose,
                       <span />
                     </div>
                     <span className="m87-thinking-label">
-                      {geminiOnline === false ? 'Celestia offline · local desk…' : 'Celestia is analyzing…'}
+                      {liveStatusLabel || (geminiOnline === false ? 'Celestia offline · local desk…' : 'Celestia is analyzing…')}
                     </span>
                   </>
                 )}

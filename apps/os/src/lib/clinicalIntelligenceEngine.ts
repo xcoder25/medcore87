@@ -7,7 +7,7 @@ import { listOrders, type ClinicalOrder, type ClinicalOrderType } from './clinic
 import { getPatient, type FacilityPatient } from './patientRegistryStore';
 import { todayVisits } from './receptionOpsStore';
 import { pushNotification } from './notificationEngine';
-import { checkPrescriptionSafety } from './pharmacySafety';
+import { evaluatePrescriptionSafetyGuard } from './clinicalSafetyEngine';
 
 export type BpaLevel = 'hard_stop' | 'warning' | 'info';
 
@@ -182,21 +182,49 @@ export function evaluateOrderBpa(input: {
     });
   }
 
-  // Allergy vs Rx (Cerner/Epic pharmacy safety)
+  // Deep Prescription Safety Guard (cross-allergy, DDI, renal, pregnancy, paediatric, genotype, duplicate class)
   if (input.type === 'rx' && patient) {
-    const flags = checkPrescriptionSafety({
+    const activeRxNames = open
+      .filter((o) => o.type === 'rx' && o.name.toLowerCase() !== input.name.toLowerCase())
+      .map((o) => o.name);
+    const allOtherDrugs = Array.from(
+      new Set([...(patient.currentMedications || []), ...activeRxNames])
+    );
+
+    // Extract optional renal labs from recent lab orders if available
+    const recentLabs = listOrders(input.facilityId, { patientId: input.patientId }).filter(
+      (o) => o.type === 'lab' && o.resultSummary
+    );
+    let egfr: number | undefined;
+    let creatinineMgDl: number | undefined;
+    for (const lab of recentLabs) {
+      const txt = lab.resultSummary || '';
+      const egfrMatch = txt.match(/egfr\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+      if (egfrMatch && egfr === undefined) egfr = Number(egfrMatch[1]);
+      const crMatch = txt.match(/creat(?:inine)?\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+      if (crMatch && creatinineMgDl === undefined) creatinineMgDl = Number(crMatch[1]);
+    }
+
+    const report = evaluatePrescriptionSafetyGuard({
       drugName: input.name,
       allergies: patient.allergies,
-      otherDrugs: patient.currentMedications,
+      otherDrugs: allOtherDrugs,
+      dob: patient.dob,
+      sex: patient.sex,
+      chronicConditions: patient.chronicConditions,
+      genotype: patient.genotype,
+      egfr,
+      creatinineMgDl,
     });
-    for (const f of flags) {
+
+    for (const sa of report.alerts) {
       alerts.push({
-        id: `rx-${f.message.slice(0, 16).replace(/[^a-z0-9]/gi, "")}`,
-        level: f.level === 'high' ? 'hard_stop' : f.level === 'medium' ? 'warning' : 'info',
-        code: 'RX_SAFETY',
-        title: f.level === 'high' ? 'Allergy / interaction risk' : 'Pharmacy advisory',
-        detail: f.message,
-        requiresOverride: f.level === 'high',
+        id: `rx-${sa.id}`,
+        level: sa.level,
+        code: sa.code,
+        title: sa.title,
+        detail: sa.detail,
+        requiresOverride: sa.requiresOverride,
       });
     }
   }
@@ -210,34 +238,6 @@ export function evaluateOrderBpa(input: {
       title: 'STAT priority',
       detail: 'STAT routes to lab/pharmacy queue immediately and notifies duty staff. Use only when clinically indicated.',
     });
-  }
-
-  // Pregnancy / chronic hints
-  if (patient?.chronicConditions?.some((c) => /pregnan|antenatal/i.test(c))) {
-    if (input.type === 'rx' && /doxycycline|ciprofloxacin|warfarin|isotretinoin/i.test(input.name)) {
-      alerts.push({
-        id: 'preg-rx',
-        level: 'hard_stop',
-        code: 'PREG_CONTRA',
-        title: 'Possible pregnancy contraindication',
-        detail: `${input.name} may be unsafe in pregnancy. Verify gestation and choose alternative if indicated.`,
-        requiresOverride: true,
-      });
-    }
-  }
-
-  // G6PD / genotype AS mild advisory for certain drugs
-  if (patient?.genotype === 'AS' || patient?.genotype === 'SS') {
-    if (/primaquine|sulfa|dapsone/i.test(input.name)) {
-      alerts.push({
-        id: 'g6pd-ish',
-        level: 'warning',
-        code: 'GENOTYPE_RX',
-        title: 'Genotype-related caution',
-        detail: `Patient genotype ${patient.genotype}. Review haemolysis risk for ${input.name}.`,
-        requiresOverride: true,
-      });
-    }
   }
 
   return alerts;

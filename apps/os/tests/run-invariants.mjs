@@ -2143,3 +2143,206 @@ test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts an
   assert.equal(/\bAmazon\b|Rekognition|AWS S3|Aurora Postgres/i.test(otpStripped), false, 'StaffEmailOtpModal must stay vendor-neutral');
 });
 
+test('clinicalSafetyEngine: NEWS2, qSOFA, Obstetric Shock Index, trajectory collapse, and deep Rx safety guard', () => {
+  const cs = loadTsModule('src/lib/clinicalSafetyEngine.ts');
+
+  // 1. NEWS2 high-risk + qSOFA sepsis screen
+  const sepsisEval = cs.evaluateVitalDeterioration({
+    respRate: 26,
+    spo2: 90,
+    supplementalO2: true,
+    bpSystolic: 88,
+    bpDiastolic: 54,
+    pulse: 132,
+    tempC: 39.4,
+    avpu: 'Voice',
+  });
+  assert.ok(sepsisEval.news2.total >= 7, `Expected NEWS2 >= 7, got ${sepsisEval.news2.total}`);
+  assert.equal(sepsisEval.news2.riskLevel, 'high');
+  assert.ok(sepsisEval.qsofa.sepsisScreenPositive);
+  assert.equal(sepsisEval.qsofa.score, 3);
+  assert.equal(sepsisEval.urgency, 'critical');
+  assert.equal(sepsisEval.recommendedBundleKey, 'sepsis_1hr');
+
+  // 2. Single 3-point NEWS2 red score -> at least urgent/low_medium
+  const singleRed = cs.computeNews2Score({ spo2: 91, respRate: 16, tempC: 37.0, bpSystolic: 120, pulse: 76, avpu: 'Alert' });
+  assert.equal(singleRed.singleRedScore, true);
+  assert.equal(singleRed.riskLevel, 'low_medium');
+
+  // 3. Obstetric Shock Index & Severe Pre-Eclampsia
+  const pphEval = cs.evaluateVitalDeterioration(
+    { bpSystolic: 100, bpDiastolic: 64, pulse: 115, tempC: 36.8, spo2: 97 },
+    [],
+    { sex: 'Female', isPregnant: true }
+  );
+  assert.equal(pphEval.obstetric.haemorrhageAlert, true);
+  assert.equal(pphEval.recommendedBundleKey, 'pph_emergency');
+  assert.equal(pphEval.urgency, 'critical');
+
+  const preEclampsiaEval = cs.evaluateVitalDeterioration(
+    { bpSystolic: 168, bpDiastolic: 112, pulse: 94, tempC: 37.1, spo2: 98 },
+    [],
+    { sex: 'Female', chronicConditions: ['Pregnancy 34 weeks'] }
+  );
+  assert.equal(preEclampsiaEval.obstetric.severePreEclampsiaAlert, true);
+  assert.equal(preEclampsiaEval.recommendedBundleKey, 'eclampsia_obstetric');
+  assert.equal(preEclampsiaEval.urgency, 'critical');
+
+  // 4. Longitudinal 24h hemodynamic collapse trajectory (looks normal at single snapshot, critical on slope)
+  const slopeEval = cs.evaluateVitalDeterioration(
+    { bpSystolic: 94, bpDiastolic: 60, pulse: 112, tempC: 37.2, spo2: 96, recordedAt: '2026-11-24T12:00:00.000Z' },
+    [{ bpSystolic: 124, bpDiastolic: 80, pulse: 78, tempC: 37.0, spo2: 98, recordedAt: '2026-11-24T09:00:00.000Z' }]
+  );
+  assert.ok(slopeEval.trajectoryAlerts.some((a) => /shock trajectory/i.test(a)));
+  assert.equal(slopeEval.urgency, 'critical');
+
+  // 5. Deep Rx Safety Guard rules
+  const penAllergy = cs.evaluatePrescriptionSafetyGuard({ drugName: 'Amoxicillin 500mg caps', allergies: ['Penicillin'] });
+  assert.equal(penAllergy.safe, false);
+  assert.ok(penAllergy.alerts.some((a) => a.code === 'ALLERGY_CONFLICT' && a.level === 'hard_stop'));
+
+  const cephCross = cs.evaluatePrescriptionSafetyGuard({ drugName: 'Ceftriaxone 1g IV', allergies: ['Penicillin'] });
+  assert.equal(cephCross.safe, true);
+  assert.ok(cephCross.alerts.some((a) => a.code === 'ALLERGY_CROSS_REACTIVITY' && a.level === 'warning'));
+
+  const qtMajor = cs.evaluatePrescriptionSafetyGuard({
+    drugName: 'Artemether-Lumefantrine 20/120mg',
+    otherDrugs: ['Fluconazole 200mg'],
+  });
+  assert.equal(qtMajor.safe, false);
+  assert.ok(qtMajor.alerts.some((a) => a.code === 'DRUG_INTERACTION' && a.level === 'hard_stop'));
+
+  const renalMetformin = cs.evaluatePrescriptionSafetyGuard({
+    drugName: 'Metformin 500mg tabs',
+    egfr: 24,
+  });
+  assert.equal(renalMetformin.safe, false);
+  assert.ok(renalMetformin.alerts.some((a) => a.code === 'RENAL_CONTRA' && a.level === 'hard_stop'));
+
+  const pregDoxy = cs.evaluatePrescriptionSafetyGuard({
+    drugName: 'Doxycycline 100mg',
+    chronicConditions: ['Antenatal pregnancy'],
+  });
+  assert.equal(pregDoxy.safe, false);
+  assert.ok(pregDoxy.alerts.some((a) => a.code === 'PREG_CONTRA' && a.level === 'hard_stop'));
+
+  const paedAspirin = cs.evaluatePrescriptionSafetyGuard({
+    drugName: 'Aspirin 75mg',
+    ageYears: 6,
+  });
+  assert.equal(paedAspirin.safe, false);
+  assert.ok(paedAspirin.alerts.some((a) => a.code === 'PAED_REYE_RISK' && a.level === 'hard_stop'));
+
+  const ssPrimaquine = cs.evaluatePrescriptionSafetyGuard({
+    drugName: 'Primaquine 15mg',
+    genotype: 'SS',
+  });
+  assert.equal(ssPrimaquine.safe, false);
+  assert.ok(ssPrimaquine.alerts.some((a) => a.code === 'G6PD_HAEMOLYSIS' && a.level === 'hard_stop'));
+
+  const dupNsaid = cs.evaluatePrescriptionSafetyGuard({
+    drugName: 'Ibuprofen 400mg',
+    otherDrugs: ['Diclofenac 50mg'],
+  });
+  assert.ok(dupNsaid.alerts.some((a) => a.code === 'DUPLICATE_CLASS' && a.level === 'warning'));
+});
+
+test('ai-routes-and-hygiene: verifies current Gemini Interactions models, API routes, Scribe safety & vendor-neutral UI', async () => {
+  // 1. Ensure ZERO deprecated gemini-2.5 / 2.0 / 1.5 models remain in upgraded AI files
+  for (const rel of [
+    'src/lib/geminiServer.ts',
+    'src/app/api/gemini/route.ts',
+    'src/app/api/ai/transcribe/route.ts',
+    'src/app/api/ai/scribe/route.ts',
+    'src/app/api/ai/clinical-safety/route.ts',
+  ]) {
+    const src = fs.readFileSync(path.join(OS_ROOT, rel), 'utf8');
+    assert.equal(/gemini-(?:2\.5|2\.0|1\.5)/i.test(src), false, `${rel} must not use deprecated Gemini models`);
+  }
+
+  // 2. Verify clinical-safety & scribe route handlers in deterministic offline mode
+  const ssePublished = [];
+  const mockNextServer = {
+    NextRequest: class {},
+    NextResponse: {
+      json: (data, init) => ({ status: init?.status || 200, json: async () => data }),
+    },
+  };
+  const mockPg = {
+    isPostgresConfigured: () => false,
+    ensureSchema: async () => {},
+    withTenantClient: async () => {},
+  };
+
+  const safetyRoute = loadTsModule('src/app/api/ai/clinical-safety/route.ts', {
+    'next/server': mockNextServer,
+    '../../../../lib/db/postgres': mockPg,
+    '../../../../lib/sseBroker': {
+      publishFacilitySseEvent: (ev) => ssePublished.push(ev),
+    },
+  });
+
+  const vitalsRes = await safetyRoute.POST({
+    headers: new Headers(),
+    json: async () => ({
+      action: 'evaluate_vitals',
+      facilityId: 'IGH-EKT',
+      patientId: 'PT-10',
+      patientName: 'Ekaette Udo',
+      vitals: { respRate: 24, bpSystolic: 92, pulse: 124, tempC: 39.2, spo2: 91, avpu: 'Alert' },
+    }),
+  });
+  const vitalsJson = await vitalsRes.json();
+  assert.equal(vitalsJson.ok, true);
+  assert.equal(vitalsJson.escalated, true);
+  assert.equal(vitalsJson.assessment.qsofa.sepsisScreenPositive, true);
+  assert.equal(ssePublished.length, 1);
+
+  const scribeRoute = loadTsModule('src/app/api/ai/scribe/route.ts', {
+    'next/server': mockNextServer,
+    '../../../../lib/db/postgres': mockPg,
+  });
+
+  const prevKey = process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  const scribeRes = await scribeRoute.POST({
+    headers: new Headers(),
+    json: async () => ({
+      transcript: 'Patient presents with 3 days fever, rigors, headache; considering Amoxicillin 500mg and Coartem.',
+      facilityId: 'IGH-EKT',
+      patientId: 'PT-ALLERGY-1',
+      vitalsSummary: 'BP 118/76 · Temp 38.9°C',
+      patientContext: { allergies: ['Penicillin'] },
+    }),
+  });
+  if (prevKey) process.env.GEMINI_API_KEY = prevKey;
+
+  const scribeJson = await scribeRes.json();
+  assert.equal(scribeJson.ok, true);
+  assert.ok(scribeJson.draft.soap.subjective.includes('fever'));
+  assert.ok(scribeJson.draft.icd11Suggestions.length >= 1);
+  const amoxSuggestion = scribeJson.draft.suggestedOrders.find((o) => /amoxicillin/i.test(o.name));
+  assert.ok(amoxSuggestion, 'Scribe fallback should suggest Amoxicillin from transcript');
+  assert.ok(amoxSuggestion.safetyReport.hardStopCount >= 1, 'Scribe must attach Clinical Safety Guard hard-stop to Amoxicillin for Penicillin allergy');
+
+  // 3. Vendor neutrality across touched AI & Pharmacy client components
+  for (const rel of [
+    'src/components/clinical-core/AmbientSoapPanel.tsx',
+    'src/components/ai-insights/M87AICopilotSuite.tsx',
+    'src/components/clinical-core/PharmacyDispensingSuite.tsx',
+    'src/components/clinical-core/ClinicalOrdersPanel.tsx',
+  ]) {
+    const stripped = fs
+      .readFileSync(path.join(OS_ROOT, rel), 'utf8')
+      .replace(/^\s*(?:\/\/.*|\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\/)/gm, '');
+    assert.equal(
+      /\bAmazon\b|Rekognition|AWS S3|Aurora Postgres|\bVercel\b|\bFirebase\b/i.test(stripped),
+      false,
+      `${rel} must remain strictly vendor-neutral`
+    );
+  }
+  const soapPanelSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/clinical-core/AmbientSoapPanel.tsx'), 'utf8');
+  assert.equal(soapPanelSrc.includes("'Gemini'"), false, 'AmbientSoapPanel UI must use vendor-neutral Clinical AI label');
+});
+
+

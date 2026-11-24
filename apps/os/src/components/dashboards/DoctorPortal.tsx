@@ -865,6 +865,9 @@ const ConsultationView: React.FC<{ session?: UserSession; onQuickNav?: (mod: Sub
         patientId={patient?.id}
         patientName={patient?.name}
         hospitalNumber={patient?.id}
+        patientVitals={patient?.vitals as Record<string, string | number> | undefined}
+        doctorName={session?.name}
+        doctorBadge={session?.badgeId}
         onSoapReady={(soap) => {
           if (soap.subjective) setHpi(soap.subjective);
           if (soap.objective) setExamination(soap.objective);

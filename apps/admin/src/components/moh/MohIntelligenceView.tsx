@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Sparkles, Send, ClipboardCheck, Building2, Activity, ArrowRight } from 'lucide-react';
+import { Sparkles, Send, ClipboardCheck, Building2, Activity, ArrowRight, Loader2 } from 'lucide-react';
 import type { MohLiveSnapshot, MohTabKey } from '../../lib/mohTypes';
 
 interface MohIntelligenceViewProps {
@@ -18,6 +18,9 @@ interface IntelligenceReport {
   summary: string;
   metrics: { label: string; value: string }[];
   bullets: string[];
+  recommendedDirectives?: string[];
+  followUpQuestions?: string[];
+  aiPowered?: boolean;
   generatedAt: string;
 }
 
@@ -240,15 +243,49 @@ export const MohIntelligenceView: React.FC<MohIntelligenceViewProps> = ({
   const [queryInput, setQueryInput] = useState('');
   const [activePrompt, setActivePrompt] = useState('Statewide Situation Report');
   const [attempted, setAttempted] = useState(false);
+  const [loadingLive, setLoadingLive] = useState(false);
+  const [liveReport, setLiveReport] = useState<IntelligenceReport | null>(null);
 
-  const report = useMemo(() => buildReport(activePrompt, snapshot), [activePrompt, snapshot]);
+  const instantReport = useMemo(() => buildReport(activePrompt, snapshot), [activePrompt, snapshot]);
+  const report =
+    liveReport && liveReport.question.toLowerCase() === activePrompt.toLowerCase()
+      ? liveReport
+      : instantReport;
+
+  const requestLiveBrief = async (promptText: string) => {
+    const clean = promptText.trim();
+    if (!clean) return;
+    setActivePrompt(clean);
+    setAttempted(false);
+    setLoadingLive(true);
+    try {
+      const res = await fetch('/api/moh/intelligence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: clean,
+          district: snapshot.districtFilter !== 'ALL' ? snapshot.districtFilter : undefined,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        report?: IntelligenceReport;
+      };
+      if (res.ok && json.ok && json.report) {
+        setLiveReport(json.report);
+      }
+    } catch {
+      /* retain deterministic instant report */
+    } finally {
+      setLoadingLive(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setAttempted(true);
     if (!queryInput.trim()) return;
-    setActivePrompt(queryInput.trim());
-    setAttempted(false);
+    void requestLiveBrief(queryInput.trim());
   };
 
   return (
@@ -257,7 +294,7 @@ export const MohIntelligenceView: React.FC<MohIntelligenceViewProps> = ({
         <div>
           <h1 className="moh-view-title">Celestia MOH Executive Intelligence</h1>
           <p className="moh-view-sub">
-            Structured ministerial briefings computed strictly from live, de-identified Akwa Ibom facility telemetry.
+            Structured ministerial briefings synthesized strictly from live, de-identified Akwa Ibom facility telemetry across all 6 governance pillars.
           </p>
         </div>
         <button type="button" className="moh-btn-primary" onClick={onBroadcastDirective}>
@@ -275,11 +312,11 @@ export const MohIntelligenceView: React.FC<MohIntelligenceViewProps> = ({
             style={{ flex: 1, minWidth: 260 }}
             value={queryInput}
             onChange={(e) => setQueryInput(e.target.value)}
-            placeholder="Ask about bed surge, ICU occupancy, AkwaRemit revenue, district gaps, or pending transfers..."
+            placeholder="Ask about bed surge, ICU occupancy, supply stock-outs, enforcement, IDSR outbreaks, or HRH gaps..."
           />
-          <button type="submit" className="moh-btn-primary">
-            <Sparkles size={15} />
-            <span>Generate Brief</span>
+          <button type="submit" className="moh-btn-primary" disabled={loadingLive}>
+            {loadingLive ? <Loader2 size={15} /> : <Sparkles size={15} />}
+            <span>{loadingLive ? 'Synthesizing...' : 'Generate Brief'}</span>
           </button>
         </form>
         {attempted && !queryInput.trim() && (
@@ -303,8 +340,7 @@ export const MohIntelligenceView: React.FC<MohIntelligenceViewProps> = ({
               }}
               onClick={() => {
                 setQueryInput(preset);
-                setActivePrompt(preset);
-                setAttempted(false);
+                void requestLiveBrief(preset);
               }}
             >
               {preset}
@@ -320,7 +356,11 @@ export const MohIntelligenceView: React.FC<MohIntelligenceViewProps> = ({
             <Sparkles size={17} color="#065F46" />
             <span>{report.headline}</span>
           </h2>
-          <span className="moh-pill emerald">Grounded at {report.generatedAt} WAT</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span className="moh-pill emerald">
+              {report.aiPowered ? 'Live AI Synthesis' : 'Live Telemetry Briefing'} · {report.generatedAt} WAT
+            </span>
+          </div>
         </div>
 
         <p style={{ margin: '0 0 16px', fontSize: '0.9rem', lineHeight: 1.55, color: '#1E293B' }}>
@@ -344,6 +384,38 @@ export const MohIntelligenceView: React.FC<MohIntelligenceViewProps> = ({
             <li key={idx}>{b}</li>
           ))}
         </ul>
+
+        {report.recommendedDirectives && report.recommendedDirectives.length > 0 && (
+          <div style={{ marginTop: 16, padding: '12px 14px', borderRadius: 12, background: '#ECFDF5', border: '1px solid #A7F3D0' }}>
+            <div style={{ fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#065F46', marginBottom: 6 }}>
+              Recommended Ministerial Actions
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4, color: '#064E3B', fontSize: '0.82rem' }}>
+              {report.recommendedDirectives.map((dir, i) => (
+                <li key={i}>{dir}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {report.followUpQuestions && report.followUpQuestions.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+            {report.followUpQuestions.map((fq) => (
+              <button
+                key={fq}
+                type="button"
+                className="moh-btn-outline"
+                style={{ fontSize: '0.75rem', padding: '5px 10px' }}
+                onClick={() => {
+                  setQueryInput(fq);
+                  void requestLiveBrief(fq);
+                }}
+              >
+                {fq}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 18, paddingTop: 14, borderTop: '1px solid #F1F5F9' }}>
           <button type="button" className="moh-btn-outline" onClick={() => onNavigateTab('facilities')}>

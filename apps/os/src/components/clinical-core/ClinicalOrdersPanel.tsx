@@ -292,8 +292,13 @@ export const ClinicalOrdersPanel: React.FC<Props> = ({ session }) => {
                   background: a.level === 'hard_stop' ? '#FEF2F2' : a.level === 'warning' ? '#FFFBEB' : '#F8FAFC',
                 }}
               >
-                <div style={{ fontWeight: 800, color: a.level === 'hard_stop' ? '#B91C1C' : '#92400E' }}>
-                  {a.level === 'hard_stop' ? 'Hard stop' : a.level === 'warning' ? 'Warning' : 'Info'} · {a.title}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 800, color: a.level === 'hard_stop' ? '#B91C1C' : a.level === 'warning' ? '#92400E' : '#334155' }}>
+                    {a.level === 'hard_stop' ? 'Hard stop' : a.level === 'warning' ? 'Warning' : 'Info'} · {a.title}
+                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 999, background: 'rgba(15,23,42,0.06)', color: '#475569' }}>
+                    {a.code}
+                  </span>
                 </div>
                 <div style={{ color: '#475569', marginTop: 2 }}>{a.detail}</div>
               </div>

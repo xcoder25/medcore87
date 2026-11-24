@@ -56,6 +56,10 @@ import { parseRxNotes } from '../../lib/rxSigParse';
 import { listPatients, subscribePatients } from '../../lib/patientRegistryStore';
 import { parseScannedEmrQr } from '../../lib/qrPayload';
 import {
+  evaluatePrescriptionSafetyGuard,
+  type PrescriptionSafetyReport,
+} from '../../lib/clinicalSafetyEngine';
+import {
   listWardMedRequests,
   subscribeWardMedRequests,
   updateWardMedRequestStatus,
@@ -150,8 +154,64 @@ export const PharmacyDispensingSuite: React.FC = () => {
     controlled: 0,
     totalUnits: 0,
   });
+  const [safetyConfirmRxId, setSafetyConfirmRxId] = useState<string | null>(null);
+  const [safetyOverrideReason, setSafetyOverrideReason] = useState('');
 
   const reload = () => setTick((t) => t + 1);
+
+  const facilityPatients = useMemo(() => listPatients(facilityId), [facilityId, tick]);
+
+  const getRxSafetyReport = (rx: {
+    id: string;
+    patientId: string;
+    hospitalNumber?: string;
+    medication: string;
+    dosage?: string;
+    frequency?: string;
+    duration?: string;
+  }): PrescriptionSafetyReport => {
+    const pt = facilityPatients.find(
+      (p) =>
+        p.id === rx.patientId ||
+        (rx.hospitalNumber && p.hospitalNumber === rx.hospitalNumber)
+    );
+    const activeOtherDrugs = prescriptions
+      .filter(
+        (other) =>
+          other.id !== rx.id &&
+          other.status !== 'dispensed' &&
+          (other.patientId === rx.patientId ||
+            (rx.hospitalNumber && other.hospitalNumber === rx.hospitalNumber)) &&
+          other.medication.toLowerCase() !== rx.medication.toLowerCase()
+      )
+      .map((other) => other.medication);
+
+    const recentLabs = listOrders(facilityId, { patientId: pt?.id || rx.patientId }).filter(
+      (o) => o.type === 'lab' && o.resultSummary
+    );
+    let egfr: number | undefined;
+    let creatinineMgDl: number | undefined;
+    for (const lab of recentLabs) {
+      const txt = lab.resultSummary || '';
+      const egfrMatch = txt.match(/egfr\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+      if (egfrMatch && egfr === undefined) egfr = Number(egfrMatch[1]);
+      const crMatch = txt.match(/creat(?:inine)?\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+      if (crMatch && creatinineMgDl === undefined) creatinineMgDl = Number(crMatch[1]);
+    }
+
+    return evaluatePrescriptionSafetyGuard({
+      drugName: `${rx.medication} ${rx.dosage || ''}`.trim(),
+      notes: [rx.frequency, rx.duration].filter(Boolean).join(' '),
+      allergies: pt?.allergies,
+      otherDrugs: Array.from(new Set([...(pt?.currentMedications || []), ...activeOtherDrugs])),
+      dob: pt?.dob,
+      sex: pt?.sex,
+      chronicConditions: pt?.chronicConditions,
+      genotype: pt?.genotype,
+      egfr,
+      creatinineMgDl,
+    });
+  };
 
   useEffect(() => {
     seedDefaultFormulary(facilityId);
@@ -230,7 +290,38 @@ export const PharmacyDispensingSuite: React.FC = () => {
     }));
   }, [activeTab, prescriptions, invDrugs, facilityId]);
 
-  const handleLegacyDispense = (id: string, opts?: { emergency?: boolean }) => {
+  const handleLegacyDispense = (
+    id: string,
+    opts?: { emergency?: boolean; safetyOverride?: boolean; overrideReason?: string }
+  ) => {
+    const rx = prescriptions.find((p) => p.id === id);
+    if (rx) {
+      const safetyReport = getRxSafetyReport(rx);
+      if (safetyReport.hardStopCount > 0 && !opts?.safetyOverride) {
+        setSafetyConfirmRxId(id);
+        setSafetyOverrideReason('');
+        liveAlert(
+          `Clinical Safety Guard HARD STOP: ${safetyReport.alerts.find((a) => a.level === 'hard_stop')?.title || 'Review alert before dispensing'}. Confirm explicit pharmacist override below.`,
+          'pharmacy',
+          facilityId
+        );
+        return;
+      }
+      if (safetyReport.hardStopCount > 0 && opts?.safetyOverride) {
+        const reason = (opts.overrideReason || safetyOverrideReason || 'Pharmacist confirmed clinical override with prescriber').trim();
+        appendAudit({
+          facilityId,
+          actor: 'Pharmacist',
+          action: 'pharmacy_safety_override',
+          entity: 'rx',
+          entityId: id,
+          detail: `Safety Guard override for ${rx.medication}: ${reason} (${safetyReport.alerts.map((a) => a.code).join(', ')})`,
+        });
+        setSafetyConfirmRxId(null);
+        setSafetyOverrideReason('');
+      }
+    }
+
     const gate = canDispenseOrder(id);
     if (gate.line?.status === 'deferred' && !opts?.emergency) {
       liveAlert(
@@ -261,7 +352,6 @@ export const PharmacyDispensingSuite: React.FC = () => {
         paymentRef: 'EMERG',
       });
     }
-    const rx = prescriptions.find((p) => p.id === id);
     const drugName = rx?.medication || '';
     const dep = drugName
       ? depleteStockDetailed(facilityId, drugName, 1, {
@@ -709,8 +799,14 @@ export const PharmacyDispensingSuite: React.FC = () => {
                 No prescriptions match this filter right now.
               </div>
             ) : (
-              filteredPrescriptions.map((rx) => (
-                <div key={rx.id} className="os-card" style={{ padding: '16px 20px', borderLeft: rx.deferredForPayment ? '4px solid #9333EA' : undefined }}>
+              filteredPrescriptions.map((rx) => {
+                const safety = rx.status !== 'dispensed' ? getRxSafetyReport(rx) : null;
+                const needsSafetyBanner = Boolean(
+                  safety && (safety.hardStopCount > 0 || safety.warningCount > 0)
+                );
+                const awaitingOverride = safetyConfirmRxId === rx.id;
+                return (
+                <div key={rx.id} className="os-card" style={{ padding: '16px 20px', borderLeft: safety?.hardStopCount ? '4px solid #DC2626' : rx.deferredForPayment ? '4px solid #9333EA' : undefined }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
@@ -832,8 +928,66 @@ export const PharmacyDispensingSuite: React.FC = () => {
                       )}
                     </div>
                   </div>
+                  {needsSafetyBanner && safety && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: '10px 12px',
+                        borderRadius: 10,
+                        border: `1px solid ${safety.hardStopCount > 0 ? '#FECACA' : '#FDE68A'}`,
+                        background: safety.hardStopCount > 0 ? '#FEF2F2' : '#FFFBEB',
+                        fontSize: 12,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 800, color: safety.hardStopCount > 0 ? '#B91C1C' : '#B45309', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <AlertTriangle size={14} />
+                          {safety.hardStopCount > 0 ? 'CLINICAL SAFETY HARD STOP' : 'SAFETY ADVISORY'}
+                        </span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>
+                          {safety.alerts.filter((a) => a.level !== 'info').map((a) => a.code).join(' · ')}
+                        </span>
+                      </div>
+                      <ul style={{ margin: '6px 0 0', paddingLeft: 16, color: '#334155' }}>
+                        {safety.alerts
+                          .filter((a) => a.level !== 'info')
+                          .slice(0, 3)
+                          .map((a) => (
+                            <li key={a.id} style={{ marginBottom: 2 }}>
+                              <strong>{a.title}:</strong> {a.detail}
+                            </li>
+                          ))}
+                      </ul>
+                      {awaitingOverride && (
+                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #FECACA', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <input
+                            type="text"
+                            placeholder="Document clinical override rationale (or confirm with prescriber)..."
+                            value={safetyOverrideReason}
+                            onChange={(e) => setSafetyOverrideReason(e.target.value)}
+                            style={{ flex: 1, minWidth: 220, padding: '6px 10px', borderRadius: 8, border: '1px solid #FCA5A5', fontSize: 12 }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleLegacyDispense(rx.id, { safetyOverride: true, overrideReason: safetyOverrideReason })}
+                            style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#B91C1C', color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}
+                          >
+                            Confirm Clinical Override & Dispense
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setSafetyConfirmRxId(null); setSafetyOverrideReason(''); }}
+                            style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #CBD5E1', background: '#fff', color: '#475569', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         )}

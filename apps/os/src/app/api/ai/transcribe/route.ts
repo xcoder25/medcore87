@@ -1,51 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  CURRENT_TRANSCRIBE_MODELS,
+  createGeminiInteraction,
+  resolveServerGeminiKey,
+} from '../../../../lib/geminiServer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const GEMINI_ENV_NAMES = [
-  'GEMINI_API_KEY',
-  'GOOGLE_GEMINI_API_KEY',
-  'GOOGLE_GENERATIVE_AI_API_KEY',
-  'GOOGLE_API_KEY',
-  'GEMINI_KEY',
-  'AI_GOOGLE_API_KEY',
-] as const;
-
-function cleanKey(raw: string | undefined | null): string {
-  let k = String(raw || '').trim();
-  if (
-    (k.startsWith('"') && k.endsWith('"')) ||
-    (k.startsWith("'") && k.endsWith("'"))
-  ) {
-    k = k.slice(1, -1).trim();
-  }
-  if (k.toLowerCase().startsWith('bearer ')) k = k.slice(7).trim();
-  return k;
-}
-
-function getEnvGeminiKey(): string {
-  const env = process.env as Record<string, string | undefined>;
-  for (const name of GEMINI_ENV_NAMES) {
-    const k = cleanKey(env[name]);
-    if (k) return k;
-  }
-  for (const name of Object.keys(env)) {
-    if (name.startsWith('NEXT_PUBLIC_')) continue;
-    if (!/GEMINI/i.test(name)) continue;
-    if (!/KEY|API/i.test(name)) continue;
-    const k = cleanKey(env[name]);
-    if (k) return k;
-  }
-  return '';
-}
-
-const AUDIO_MODELS = [
-  'gemini-3.5-flash',
-  'gemini-3.8-flash',
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-];
 
 export async function POST(req: NextRequest) {
   try {
@@ -65,7 +26,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Audio recording exceeds size limit.' }, { status: 413 });
     }
 
-    const key = getEnvGeminiKey();
+    const { key } = resolveServerGeminiKey();
     if (!key) {
       return NextResponse.json(
         { ok: false, error: 'Voice transcription service not configured on server.' },
@@ -74,49 +35,28 @@ export async function POST(req: NextRequest) {
     }
 
     const instruction = [
-      `Transcribe the user's spoken clinical/hospital EMR request accurately in plain text (verbatim transcript only, no quotes or commentary).`,
+      `Transcribe the user's spoken clinical/hospital EMR audio accurately in plain text (verbatim transcript only, no quotes or commentary).`,
       `Speaker role context: ${roleHint}.`,
-      `Accurately recognize Nigerian names, Akwa Ibom places/LGAs (Uyo, Eket, Ikot Ekpene, Oron, Ibeno, Itu, Etinan, Abak), Nigerian drugs (Artemether-Lumefantrine, Coartem, Paracetamol, Amoxicillin, Ciprofloxacin, Metformin, Amlodipine, ORS, Zinc), vitals (mmHg, SpO2, bpm, °C), AkwaRemit RRR/ARN, SHID, NHIA, HFR, and MedCore commands.`,
+      `Accurately recognize Nigerian English, Nigerian Pidgin, Ibibio/Annang/Oron accents, Akwa Ibom places/LGAs (Uyo, Eket, Ikot Ekpene, Oron, Ibeno, Itu, Etinan, Abak), Nigerian drugs (Artemether-Lumefantrine, Coartem, Paracetamol, Amoxicillin, Augmentin, Ciprofloxacin, Metformin, Amlodipine, MgSO4, ORS, Zinc), vitals (mmHg, SpO2, bpm, °C, NEWS2, qSOFA), AkwaRemit RRR/ARN, SHID, NHIA, HFR, and MedCore commands.`,
     ].join(' ');
 
-    for (const model of AUDIO_MODELS) {
-      try {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': key,
-            },
-            body: JSON.stringify({
-              contents: [
-                {
-                  role: 'user',
-                  parts: [
-                    { text: instruction },
-                    { inlineData: { mimeType, data: rawBase64 } },
-                  ],
-                },
-              ],
-              generationConfig: {
-                temperature: 0.05,
-              },
-            }),
-          }
-        );
-        if (!res.ok) continue;
-        const json = (await res.json().catch(() => null)) as {
-          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-        } | null;
-        const transcript =
-          json?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join(' ').trim() || '';
-        if (transcript) {
-          return NextResponse.json({ ok: true, transcript, modelUsed: model });
-        }
-      } catch {
-        continue;
-      }
+    const res = await createGeminiInteraction({
+      apiKey: key,
+      models: CURRENT_TRANSCRIBE_MODELS,
+      input: [
+        { type: 'text', text: instruction },
+        { type: 'audio', data: rawBase64, mime_type: mimeType },
+      ],
+      temperature: 0.05,
+      maxOutputTokens: 1024,
+    });
+
+    if (res.ok && res.text.trim()) {
+      return NextResponse.json({
+        ok: true,
+        transcript: res.text.trim(),
+        modelUsed: res.model,
+      });
     }
 
     return NextResponse.json(

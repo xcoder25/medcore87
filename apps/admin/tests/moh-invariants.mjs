@@ -677,3 +677,174 @@ test('moh-6-pillars: GIS, private registry, enforcement seal, HRH LGA/recruitmen
     assert.equal(jsonSnap.includes(piiKey), false, `6-pillar snapshot must never expose PII property ${piiKey}`);
   }
 });
+
+test('moh-intelligence-api: generates de-identified 6-pillar executive briefings via Interactions API with fallback', async () => {
+  const mockNextServer = {
+    NextRequest: class {},
+    NextResponse: {
+      json: (data, init) => ({ status: init?.status || 200, json: async () => data }),
+    },
+  };
+
+  const mockSnapshot = {
+    syncMode: 'live_db',
+    syncedAt: '2026-11-24T22:00:00.000Z',
+    districtFilter: 'ALL',
+    summary: {
+      totalOfficialFacilities: 39,
+      connectedFacilities: 12,
+      pendingFacilities: 27,
+      totalBeds: 640,
+      occupiedBeds: 410,
+      bedOccupancyPct: 64,
+      icuBedsTotal: 28,
+      icuBedsOccupied: 19,
+      icuOccupancyPct: 68,
+      activeStaffCount: 310,
+      totalStaffCount: 340,
+      registeredPatientsCount: 8420,
+      activeOpdVisits: 96,
+      totalRevenuePaidNgn: 14500000,
+      totalRevenuePendingNgn: 1850000,
+      activeDirectivesCount: 2,
+      pendingTransfersCount: 1,
+      openRemediationsCount: 1,
+      activeAlertsCount: 1,
+      surgeFacilitiesCount: 0,
+    },
+    facilities: [],
+    regionalRollup: [
+      {
+        district: 'Uyo',
+        totalFacilities: 14,
+        connectedFacilities: 6,
+        totalBeds: 280,
+        occupiedBeds: 190,
+        icuTotal: 16,
+        icuOccupied: 12,
+        staffCount: 160,
+        patientsCount: 4100,
+        revenuePaidNgn: 8200000,
+        activeOpdVisits: 48,
+        avgComplianceScore: 86,
+      },
+    ],
+    workforce: { totalActive: 310, byCadre: [], staffDirectory: [] },
+    finance: {
+      totalCollectedNgn: 14500000,
+      totalPendingNgn: 1850000,
+      byChannel: { akwaremit: 10200000, paystack: 1200000, cash: 900000, hmo: 2200000, other: 0 },
+      openRequestsCount: 4,
+      paidReceiptsCount: 412,
+      byFacility: [],
+    },
+    surveillance: {
+      activeOpdVisits: 96,
+      waitingOpd: 40,
+      withProviderOpd: 56,
+      completedOpdToday: 180,
+      totalLabOrders: 240,
+      criticalLabAlerts: 2,
+      criticalVitalsAlerts: 1,
+      totalPrescriptions: 190,
+      pendingPrescriptions: 24,
+      clinicalSignals: [],
+      alerts: [],
+    },
+    directives: [],
+    audits: [],
+    transfers: [],
+    auditLedger: { totalEvents: 0, criticalEvents: 0, integrityVerified: true, latestHash: '', events: [] },
+    enforcement: [],
+    hrh: { lgaDistribution: [], attendanceSummary: { avgAttendancePct: 91, avgAbsenteeismPct: 9, ruralUnderstaffedCount: 4 }, recruitment: [] },
+    supplyChain: { items: [], lowStockCount: 2, stockOutCount: 1, faultyEquipmentCount: 1, activeRenovationsCount: 2 },
+    idsr: {
+      dsnoReports: [],
+      serviceMetrics: [],
+      maternalDeathsTotal: 0,
+      under5DeathsTotal: 1,
+      ancVisitsTotal: 840,
+      skilledDeliveriesTotal: 220,
+      immunizationDosesTotal: 1400,
+      emergencyReferralsTotal: 18,
+    },
+    grievances: { items: [], openCount: 2, investigatingCount: 1, resolvedCount: 5, avgTurnaroundHours: 6.2, avgRating: 4.3 },
+  };
+
+  const intelRoute = loadTsModule('src/app/api/moh/intelligence/route.ts', {
+    'next/server': mockNextServer,
+    '../../../../lib/mohSyncEngine': {
+      buildLiveMohSnapshot: async () => mockSnapshot,
+      sanitizeMohAuditDetail: (raw) => String(raw || '').replace(/\b\d{11}\b/g, '[REDACTED]'),
+    },
+  });
+
+  // 1. Offline deterministic briefing fallback (no API key)
+  const prevKey = process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  const fallbackRes = await intelRoute.POST({
+    json: async () => ({ question: 'Statewide Situation Report' }),
+  });
+  const fallbackJson = await fallbackRes.json();
+  assert.equal(fallbackJson.ok, true);
+  assert.equal(fallbackJson.report.aiPowered, false);
+  assert.ok(fallbackJson.report.recommendedDirectives.length >= 2);
+  assert.ok(fallbackJson.report.followUpQuestions.length >= 2);
+
+  // 2. Mocked Gemini Interactions API live synthesis (verifies current model & v1beta/interactions endpoint)
+  process.env.GEMINI_API_KEY = 'test-key-moh';
+  const origFetch = globalThis.fetch;
+  let capturedUrl = '';
+  let capturedModel = '';
+  globalThis.fetch = async (url, init) => {
+    capturedUrl = String(url);
+    const body = JSON.parse(String(init?.body || '{}'));
+    capturedModel = body.model;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'int-moh-1',
+        steps: [
+          {
+            type: 'model_output',
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  headline: 'Akwa Ibom Executive Health Advisory',
+                  summary: '12 live facilities at 64% bed occupancy with 1 supply stock-out.',
+                  metrics: [{ label: 'Bed Occupancy', value: '64%' }],
+                  bullets: ['Uyo senatorial district leads at 86% compliance.'],
+                  recommendedDirectives: ['Replenish flagged stock-out immediately.'],
+                  followUpQuestions: ['Show supply chain gaps by LGA'],
+                }),
+              },
+            ],
+          },
+        ],
+      }),
+    };
+  };
+
+  try {
+    const liveRes = await intelRoute.POST({
+      json: async () => ({ question: 'Give me a ministerial executive summary' }),
+    });
+    const liveJson = await liveRes.json();
+    assert.equal(liveJson.ok, true);
+    assert.equal(liveJson.report.aiPowered, true);
+    assert.equal(liveJson.report.headline, 'Akwa Ibom Executive Health Advisory');
+    assert.ok(capturedUrl.includes('/v1beta/interactions'));
+    assert.equal(capturedModel, 'gemini-4-hydrogen');
+  } finally {
+    globalThis.fetch = origFetch;
+    if (prevKey) process.env.GEMINI_API_KEY = prevKey;
+    else delete process.env.GEMINI_API_KEY;
+  }
+
+  // Ensure no deprecated model references exist in intelligence/route.ts
+  const routeSrc = fs.readFileSync(path.join(ADMIN_ROOT, 'src/app/api/moh/intelligence/route.ts'), 'utf8');
+  assert.equal(/gemini-(?:2\.5|2\.0|1\.5)/i.test(routeSrc), false);
+});
+
