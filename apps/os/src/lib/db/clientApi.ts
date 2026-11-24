@@ -51,6 +51,30 @@ export async function apiAtomicCreateStaff(payload: Record<string, unknown>): Pr
   }
 }
 
+async function fetchJsonWithTimeout<T>(
+  url: string,
+  init: RequestInit | undefined,
+  timeoutMs: number
+): Promise<T> {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = setTimeout(() => {
+    try {
+      controller?.abort();
+    } catch {
+      /* ignore */
+    }
+  }, timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...(init || {}),
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    return (await res.json()) as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function apiListStaff(facilityId: string): Promise<{
   ok: boolean;
   staff?: Array<Record<string, unknown>>;
@@ -58,13 +82,12 @@ export async function apiListStaff(facilityId: string): Promise<{
   configured?: boolean;
 }> {
   try {
-    const res = await fetch(`/api/staff?facilityId=${encodeURIComponent(facilityId)}`);
-    return (await res.json()) as {
+    return await fetchJsonWithTimeout<{
       ok: boolean;
       staff?: Array<Record<string, unknown>>;
       error?: string;
       configured?: boolean;
-    };
+    }>(`/api/staff?facilityId=${encodeURIComponent(facilityId)}`, undefined, 20_000);
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -80,8 +103,11 @@ export async function apiLookupStaff(
 ): Promise<{ ok: boolean; staff?: Record<string, unknown> | null; error?: string }> {
   try {
     const qs = new URLSearchParams({ facilityId, badgeId: badgeId.toUpperCase() });
-    const res = await fetch(`/api/staff/lookup?${qs}`);
-    return (await res.json()) as { ok: boolean; staff?: Record<string, unknown> | null; error?: string };
+    return await fetchJsonWithTimeout<{ ok: boolean; staff?: Record<string, unknown> | null; error?: string }>(
+      `/api/staff/lookup?${qs}`,
+      undefined,
+      25_000
+    );
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }

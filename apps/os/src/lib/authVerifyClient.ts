@@ -79,9 +79,9 @@ export async function verifyPinOnServer(
   }
 
   const fetchFn = opts.fetchImpl ?? fetch;
-  const timeoutMs = opts.timeoutMs ?? 10_000;
-  const maxRetries = Math.max(0, opts.maxRetries ?? 1);
-  const retryDelayMs = opts.retryDelayMs ?? 600;
+  const timeoutMs = opts.timeoutMs ?? 25_000;
+  const maxRetries = Math.max(0, opts.maxRetries ?? 2);
+  const retryDelayMs = opts.retryDelayMs ?? 1_000;
 
   let lastResult: VerifyPinResult = { status: 'network_error', verified: false };
 

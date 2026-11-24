@@ -78,7 +78,7 @@ test('serverSession: signs and verifies session & MFA tokens with tenant binding
 
 test('notificationEngine: partitions clinical alerts away from Reception and Accounts', () => {
   const ne = loadTsModule('src/lib/notificationEngine.ts', {
-    './roleSyncBus': { publishFacilityData: () => {} },
+    './roleSyncBus': { publishFacilityData: () => { } },
   });
 
   const clinicalAlert = {
@@ -171,7 +171,7 @@ test('hipaaPrivacy: scrubPhiOnLogout removes all PHI keys from localStorage and 
     ['medcore_os_patient_context_v1', '{"patientId":"PT-1"}'],
   ]);
   globalThis.window = {
-    dispatchEvent: () => {},
+    dispatchEvent: () => { },
   };
   globalThis.localStorage = {
     getItem: (k) => lsMap.get(k) ?? null,
@@ -185,7 +185,7 @@ test('hipaaPrivacy: scrubPhiOnLogout removes all PHI keys from localStorage and 
   };
 
   const hp = loadTsModule('src/lib/hipaaPrivacy.ts', {
-    './auditLogStore': { appendAudit: () => {} },
+    './auditLogStore': { appendAudit: () => { } },
   });
   hp.scrubPhiOnLogout({ reason: 'inactivity_timeout' });
 
@@ -262,7 +262,7 @@ test('middleware: allows public auth/lookup routes, blocks unauthenticated PHI, 
 
 test('hipaaPrivacy: stripSecretsDeep & sanitizeStorageString remove all PINs, passwords, tokens, and API secrets', () => {
   const hp = loadTsModule('src/lib/hipaaPrivacy.ts', {
-    './auditLogStore': { appendAudit: () => {} },
+    './auditLogStore': { appendAudit: () => { } },
   });
 
   const dirty = {
@@ -306,9 +306,9 @@ test('hipaaPrivacy: stripSecretsDeep & sanitizeStorageString remove all PINs, pa
 
 test('postgres: validates ISO dates and projects notifications, vitals, and patients safely', async () => {
   const pg = loadTsModule('src/lib/db/postgres.ts', {
-    pg: { Pool: class MockPool {} },
-    '@aws-sdk/rds-signer': { Signer: class MockSigner {} },
-    '@vercel/functions': { attachDatabasePool: () => {} },
+    pg: { Pool: class MockPool { } },
+    '@aws-sdk/rds-signer': { Signer: class MockSigner { } },
+    '@vercel/functions': { attachDatabasePool: () => { } },
     '@vercel/functions/oidc': { awsCredentialsProvider: () => async () => ({}) },
   });
 
@@ -326,7 +326,7 @@ test('postgres: validates ISO dates and projects notifications, vitals, and pati
       queries.push({ sql: String(sql), params });
       return { rows: [], rowCount: 1, command: 'INSERT', oid: 0, fields: [] };
     },
-    release: () => {},
+    release: () => { },
   };
 
   // Notifications projection uses valid `meta` column (not nonexistent module/patient_id/payload)
@@ -398,7 +398,7 @@ test('postgres: validates ISO dates and projects notifications, vitals, and pati
 test('rolePermissionsStore: ambulance module removed from catalog and role defaults', () => {
   const rp = loadTsModule('src/lib/rolePermissionsStore.ts', {
     './facilityContext': { getActiveFacilityId: () => 'IGH-EKT' },
-    './roleSyncBus': { publishFacilityData: () => {} },
+    './roleSyncBus': { publishFacilityData: () => { } },
   });
   assert.equal(rp.MODULE_CATALOG.some((m) => m.key === 'ambulance'), false);
   const permsMap = rp.getRolePermissionsMap();
@@ -412,7 +412,7 @@ test('s3Server: builds private object proxy URLs and tenant-scoped staff headsho
   delete process.env.NEXT_PUBLIC_S3_BASE_URL;
 
   const s3 = loadTsModule('src/lib/s3Server.ts', {
-    '@aws-sdk/client-s3': { S3Client: class {}, PutObjectCommand: class {}, GetObjectCommand: class {} },
+    '@aws-sdk/client-s3': { S3Client: class { }, PutObjectCommand: class { }, GetObjectCommand: class { } },
     '@aws-sdk/s3-request-presigner': { getSignedUrl: async () => 'https://signed.example' },
     '@vercel/functions/oidc': { awsCredentialsProvider: () => async () => ({}) },
   });
@@ -551,9 +551,9 @@ test('publicHospitalCompliance: enforces public boards, HFR codes, and statutory
 test('facilityCatalogStore: completeness checks HFR, supervisory board, ward & CMD for public hospitals', () => {
   const fc = loadTsModule('src/lib/facilityCatalogStore.ts', {
     './bedBoardStore': { createBeds: () => [], listBeds: () => [], listWards: () => [] },
-    './liveActions': { emitLiveAction: () => {} },
-    './roleSyncBus': { publishFacilityData: () => {}, FACILITY_KEYS: { facilityCatalog: 'medcore_facility_catalog_v1' } },
-    './firebase': { firestoreSubscribeFacility: () => () => {}, firestoreReadFacility: async () => null },
+    './liveActions': { emitLiveAction: () => { } },
+    './roleSyncBus': { publishFacilityData: () => { }, FACILITY_KEYS: { facilityCatalog: 'medcore_facility_catalog_v1' } },
+    './firebase': { firestoreSubscribeFacility: () => () => { }, firestoreReadFacility: async () => null },
   });
 
   const blankPublic = fc.defaultCatalog('IGH-EKT', 'Immanuel General Hospital');
@@ -579,9 +579,9 @@ test('facilityCatalogStore: completeness checks HFR, supervisory board, ward & C
 
 test('postgres: projects public hospital settings into facilities.config cleanly', async () => {
   const pg = loadTsModule('src/lib/db/postgres.ts', {
-    pg: { Pool: class MockPool {} },
-    '@aws-sdk/rds-signer': { Signer: class MockSigner {} },
-    '@vercel/functions': { attachDatabasePool: () => {} },
+    pg: { Pool: class MockPool { } },
+    '@aws-sdk/rds-signer': { Signer: class MockSigner { } },
+    '@vercel/functions': { attachDatabasePool: () => { } },
     '@vercel/functions/oidc': { awsCredentialsProvider: () => async () => ({}) },
   });
 
@@ -591,7 +591,7 @@ test('postgres: projects public hospital settings into facilities.config cleanly
       queries.push({ sql: String(sql), params });
       return { rows: [], rowCount: 1, command: 'INSERT', oid: 0, fields: [] };
     },
-    release: () => {},
+    release: () => { },
   };
 
   await pg.projectKeyToRelationalTables(mockClient, 'IGH-EKT', 'medcore_os_admin_settings_v1', {
@@ -641,7 +641,7 @@ test('dhis2Export: uses configured HFR code as orgUnit and includes Akwa Ibom fa
       }),
     ],
   ]);
-  globalThis.window = { dispatchEvent: () => {} };
+  globalThis.window = { dispatchEvent: () => { } };
   globalThis.localStorage = {
     getItem: (k) => lsMap.get(k) ?? null,
     setItem: (k, v) => lsMap.set(k, String(v)),
@@ -654,9 +654,9 @@ test('dhis2Export: uses configured HFR code as orgUnit and includes Akwa Ibom fa
     './clinicalEventBus': { listOrders: () => [] },
     './bedBoardStore': { listBeds: () => [], listBedAudit: () => [] },
     './dhis2TrackerBedBridge': { readTrackerStore: () => [] },
-    './durableOutbox': { enqueueFacilitySync: () => {} },
+    './durableOutbox': { enqueueFacilitySync: () => { } },
     './adminRealtimeStore': { getActiveFacilityId: () => 'IGH-EKT' },
-    './roleSyncBus': { publishFacilityData: () => {} },
+    './roleSyncBus': { publishFacilityData: () => { } },
   });
 
   const payload = dhis2.buildDhis2Aggregate('IGH-EKT');
@@ -780,11 +780,11 @@ function withBrowserShims(fn) {
 test('bedAutomation: parses multi-ward bed requests and increments bed numbers without collision', () => {
   withBrowserShims(() => {
     const mocks = {
-      './roleSyncBus': { publishFacilityData: () => {}, FACILITY_KEYS: { beds: 'beds' } },
-      './idb': { idbGet: async () => null, idbSet: async () => {} },
-      './dhis2TrackerBedBridge': { syncTrackerFromBedRecord: () => {} },
-      './auditLogStore': { appendAudit: () => {} },
-      './liveActions': { emitLiveAction: () => {} },
+      './roleSyncBus': { publishFacilityData: () => { }, FACILITY_KEYS: { beds: 'beds' } },
+      './idb': { idbGet: async () => null, idbSet: async () => { } },
+      './dhis2TrackerBedBridge': { syncTrackerFromBedRecord: () => { } },
+      './auditLogStore': { appendAudit: () => { } },
+      './liveActions': { emitLiveAction: () => { } },
     };
     const bedAuto = loadTsModule('src/lib/bedAutomation.ts', mocks);
 
@@ -815,7 +815,7 @@ test('bedAutomation: parses multi-ward bed requests and increments bed numbers w
 test('akwaRemit & paymentReceipts: cash stays pending until Accountant batch settlement, never Direct AkwaRemit', async () => {
   await withBrowserShims(async () => {
     const mocks = {
-      './roleSyncBus': { publishFacilityData: () => {} },
+      './roleSyncBus': { publishFacilityData: () => { } },
       './adminSettingsStore': { getAdminSettings: () => ({}), isPublicOwnership: () => true },
       './systemSettingsStore': { getSystemSettings: () => ({}) },
       './receptionSettingsStore': { getReceptionSettings: () => null },
@@ -900,7 +900,7 @@ test('akwaRemit & paymentReceipts: cash stays pending until Accountant batch set
 test('accountsAutomation & inBasketTaxonomy: routes Akwa Remitta Mandate to Notices and resolves live treasury intents', () => {
   withBrowserShims(() => {
     const mocks = {
-      './roleSyncBus': { publishFacilityData: () => {} },
+      './roleSyncBus': { publishFacilityData: () => { } },
       './adminSettingsStore': { getAdminSettings: () => ({}), isPublicOwnership: () => true },
       './systemSettingsStore': { getSystemSettings: () => ({}) },
       './frontDeskAccountsBridge': { listAccountsRequests: () => [] },
@@ -1465,7 +1465,7 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
     let memVaultRow = null;
 
     const postgresMock = {
-      ensureSchema: async () => {},
+      ensureSchema: async () => { },
       isPostgresConfigured: () => true,
       withTenantClient: async (_fid, fn) =>
         fn({
@@ -1897,8 +1897,8 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
     const accessCtrlSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/rbac/AccessControl.tsx'), 'utf8');
     assert.ok(
       accessCtrlSrc.includes('pendingStaffEnrolment') &&
-        accessCtrlSrc.includes('finalizeStaffEnrolment') &&
-        accessCtrlSrc.includes('FaceBiometricCaptureModal'),
+      accessCtrlSrc.includes('finalizeStaffEnrolment') &&
+      accessCtrlSrc.includes('FaceBiometricCaptureModal'),
       'AccessControl must gate staff issuance behind Face ID capture'
     );
 
@@ -1908,10 +1908,10 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
     const faceModalSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/FaceBiometricCaptureModal.tsx'), 'utf8');
     assert.ok(
       faceModalSrc.includes('probeStaffFaceFrame') &&
-        faceModalSrc.includes('Auto-Scan') &&
-        faceModalSrc.includes('LiveFaceLivenessDetector') &&
-        faceModalSrc.includes('startLiveLivenessSession') &&
-        faceModalSrc.includes('completeLiveLivenessSession'),
+      faceModalSrc.includes('Auto-Scan') &&
+      faceModalSrc.includes('LiveFaceLivenessDetector') &&
+      faceModalSrc.includes('startLiveLivenessSession') &&
+      faceModalSrc.includes('completeLiveLivenessSession'),
       'FaceBiometricCaptureModal must wire LiveFaceLivenessDetector and hands-free auto-scan fallback'
     );
 
@@ -2014,7 +2014,7 @@ test('ux-frontdesk-card-lock-pharmacy: printable reg form, health card AI auto-b
       },
     ];
     const commonMocks = {
-      './roleSyncBus': { publishFacilityData: () => {}, FACILITY_KEYS: { reception: 'reception' } },
+      './roleSyncBus': { publishFacilityData: () => { }, FACILITY_KEYS: { reception: 'reception' } },
       './adminRealtimeStore': { getActiveFacilityId: () => 'IGH-EKT' },
       './patientRegistryStore': { listPatients: () => patientsStore },
       './receptionSettingsStore': {
@@ -2056,7 +2056,7 @@ test('ux-frontdesk-card-lock-pharmacy: printable reg form, health card AI auto-b
     // 4. Pharmacy Role Isolation & Explicit Admin Grant Extension
     const perms = loadTsModule('src/lib/rolePermissionsStore.ts', {
       './facilityContext': { getActiveFacilityId: () => 'IGH-EKT' },
-      './roleSyncBus': { publishFacilityData: () => {} },
+      './roleSyncBus': { publishFacilityData: () => { } },
     });
     assert.equal(perms.roleCanAccessModule('pharmacist', 'patient-flow'), false);
     assert.equal(perms.roleCanAccessModule('pharmacist', 'pharmacy'), true);
@@ -2111,5 +2111,35 @@ test('ux-frontdesk-card-lock-pharmacy: printable reg form, health card AI auto-b
       );
     }
   });
+});
+
+test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts and auto-routes per-account Face ID vs Email OTP', () => {
+  const verifySrc = fs.readFileSync(path.join(OS_ROOT, 'src/lib/authVerifyClient.ts'), 'utf8');
+  assert.ok(verifySrc.includes('25_000'), 'verifyPinOnServer default timeout should be >= 25_000ms');
+  assert.ok(verifySrc.includes('opts.maxRetries ?? 2'), 'verifyPinOnServer should allow 2 retries on slow hospital networks');
+
+  const clientApiSrc = fs.readFileSync(path.join(OS_ROOT, 'src/lib/db/clientApi.ts'), 'utf8');
+  assert.ok(clientApiSrc.includes('fetchJsonWithTimeout') && clientApiSrc.includes('25_000'));
+
+  const bioClientSrc = fs.readFileSync(path.join(OS_ROOT, 'src/lib/biometricAuth.ts'), 'utf8');
+  assert.ok(bioClientSrc.includes('fetchWithTimeout') && bioClientSrc.includes('10_000'));
+
+  const authSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/AuthScreen.tsx'), 'utf8');
+  assert.ok(authSrc.includes('ms = 25_000'), 'AuthScreen withTimeout default must be >= 25_000ms');
+  assert.ok(authSrc.includes('apiLookupStaff(effectiveHospital.id, badgeQuery), 25_000'));
+  assert.ok(authSrc.includes('getStaffBiometricStatus(enrichedSession.badgeId'));
+  assert.ok(authSrc.includes('10_000'));
+  assert.ok(authSrc.includes('initialFaceEnrolled={pendingMfaFaceEnrolled}'));
+
+  const otpSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/StaffEmailOtpModal.tsx'), 'utf8');
+  assert.ok(otpSrc.includes('initialFaceEnrolled'), 'StaffEmailOtpModal must accept initialFaceEnrolled hint');
+  assert.ok(otpSrc.includes('10_000'), 'StaffEmailOtpModal biometric check timeout should be >= 10_000ms');
+  assert.ok(otpSrc.includes('25_000'), 'StaffEmailOtpModal OTP send/verify fetch timeout should be >= 25_000ms');
+  assert.ok(
+    otpSrc.includes('Face ID is not yet enrolled for this account') && otpSrc.includes('ensureOtpSent()'),
+    'StaffEmailOtpModal must auto-continue with Email OTP when Face ID is not yet enrolled'
+  );
+  const otpStripped = otpSrc.replace(/^\s*(?:\/\/.*|\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\/)/gm, '');
+  assert.equal(/\bAmazon\b|Rekognition|AWS S3|Aurora Postgres/i.test(otpStripped), false, 'StaffEmailOtpModal must stay vendor-neutral');
 });
 

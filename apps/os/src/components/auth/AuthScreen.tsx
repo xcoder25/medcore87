@@ -142,6 +142,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
   const [firebaseLive, setFirebaseLive] = useState(false);
   const [pendingMfaSession, setPendingMfaSession] = useState<UserSession | null>(null);
   const [mfaSettings, setMfaSettings] = useState<AdminFacilitySettings | null>(null);
+  const [pendingMfaFaceEnrolled, setPendingMfaFaceEnrolled] = useState<boolean | null>(null);
 
   // ── Forgot Password / PIN Recovery State ─────────────────────────────
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -519,7 +520,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         const { apiListStaff } = await import('../../lib/db/clientApi');
         const res = await Promise.race([
           apiListStaff(selectedHospital.id),
-          new Promise<{ ok: false }>((resolve) => setTimeout(() => resolve({ ok: false }), 5000)),
+          new Promise<{ ok: false }>((resolve) => setTimeout(() => resolve({ ok: false }), 15_000)),
         ]);
         if ((res as any).ok && (res as any).staff?.length) {
           const rows: any[] = (res as any).staff;
@@ -721,6 +722,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
   const completeMfaLogin = async (verifiedSession: UserSession) => {
     setPendingMfaSession(null);
+    setPendingMfaFaceEnrolled(null);
     setSuccess(true);
     if (typeof fetch !== 'undefined') {
       try {
@@ -738,7 +740,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
               mfaToken: verifiedSession.token?.startsWith('mfa.') ? verifiedSession.token : undefined,
             }),
           }),
-          new Promise((resolve) => setTimeout(resolve, 1500)),
+          new Promise((resolve) => setTimeout(resolve, 5000)),
         ]);
       } catch {
         /* offline fallback */
@@ -770,15 +772,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
     const adminCfg = getAdminSettings(enrichedSession.hospitalId);
     let mfaRequired = adminCfg.requireStaffMfa === true;
+    let accountFaceEnrolled: boolean | null = null;
 
-    if (!mfaRequired && enrichedSession.badgeId) {
+    if (enrichedSession.badgeId) {
       try {
         const bioStatus = await Promise.race([
           getStaffBiometricStatus(enrichedSession.badgeId, enrichedSession.hospitalId || 'IGH-EKT'),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
         ]);
-        if (bioStatus?.faceEnrolled) {
-          mfaRequired = true;
+        if (bioStatus?.ok) {
+          accountFaceEnrolled = Boolean(bioStatus.faceEnrolled);
+          if (accountFaceEnrolled) {
+            mfaRequired = true;
+          }
         }
       } catch {
         /* ignore network hiccup on biometric probe */
@@ -787,6 +793,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
 
     if (mfaRequired) {
       setMfaSettings(adminCfg);
+      setPendingMfaFaceEnrolled(accountFaceEnrolled);
       setPendingMfaSession(enrichedSession);
       setSuccess(false);
       setLoading(false);
@@ -808,7 +815,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     setLoading(true);
     setError(null);
 
-    const withTimeout = <T,>(p: Promise<T>, ms = 6000): Promise<T> =>
+    const withTimeout = <T,>(p: Promise<T>, ms = 25_000): Promise<T> =>
       Promise.race([
         p,
         new Promise<T>((_, reject) =>
@@ -893,7 +900,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         if (online) {
           try {
             const { isStaffRevoked } = await import('../../lib/firebase');
-            if (await withTimeout(isStaffRevoked(effectiveHospital.id, badgeQuery), 4000)) {
+            if (await withTimeout(isStaffRevoked(effectiveHospital.id, badgeQuery), 10_000)) {
               setError('This staff account was removed by an administrator. Sign-in is disabled.');
               setLoading(false);
               return;
@@ -908,7 +915,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         if (!profile && online) {
           try {
             const { apiLookupStaff } = await import('../../lib/db/clientApi');
-            const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, badgeQuery), 12000);
+            const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, badgeQuery), 25_000);
             if (!pgRes.ok && pgRes.error) {
               const em = pgRes.error.toLowerCase();
               badgeLookupNetworkError = em.includes('timeout') || em.includes('abort') ? 'timeout' : 'network';
@@ -1001,12 +1008,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         let badgeAuthMiss: unknown = null;
         if (!profile && isFirebaseClientConfigured()) {
           try {
-            fbUser = await withTimeout(firebaseSignInWithBadge(badgeQuery, pinNorm), 6000);
+            fbUser = await withTimeout(firebaseSignInWithBadge(badgeQuery, pinNorm), 20_000);
             // Auth ok but no staff profile yet — try Firestore or reconstruct from Firebase custom claims
             try {
               const retry = await withTimeout(
                 firestoreGetStaffByBadge(effectiveHospital.id, badgeQuery),
-                3000
+                10_000
               );
               if (retry && (retry.badgeId || retry.id)) {
                 profile = mapProfile(retry);
@@ -1129,7 +1136,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           if (isFirebaseClientConfigured()) {
             try {
               if (!fbUser) {
-                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
+                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 20_000);
               }
             } catch (adminErr: unknown) {
               const { classifyAuthError } = await import('../../lib/firebase');
@@ -1153,7 +1160,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           if (isFirebaseClientConfigured()) {
             try {
               if (!fbUser) {
-                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 6000);
+                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 20_000);
               }
             } catch (pinErr: unknown) {
               const { classifyAuthError } = await import('../../lib/firebase');
@@ -1175,12 +1182,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           try {
             if (!fbUser) {
               try {
-                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 4000);
+                fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 8_000);
               } catch {
                 // Cloud badge identity might not exist yet in Firebase Auth; ensure it now
                 try {
-                  await withTimeout(firebaseEnsureBadgeAccount(profile.badgeId, pinNorm), 5000);
-                  fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 4000);
+                  await withTimeout(firebaseEnsureBadgeAccount(profile.badgeId, pinNorm), 10_000);
+                  fbUser = await withTimeout(firebaseSignInWithBadge(profile.badgeId, pinNorm), 8_000);
                 } catch (cloudErr) {
                   console.warn('[auth] badge cloud account sync skipped:', cloudErr);
                   fbUser = null; // Valid staff with matching PIN: fall back to server session
@@ -1305,7 +1312,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           const lookupEmailStaffFromCloud = async (): Promise<PresetStaff | undefined> => {
             try {
               const { apiLookupStaff } = await import('../../lib/db/clientApi');
-              const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, email), 12000);
+              const pgRes = await withTimeout(apiLookupStaff(effectiveHospital.id, email), 25_000);
               if (!pgRes.ok) {
                 const em = String(pgRes.error || '').toLowerCase();
                 emailLookupNetworkError = em.includes('timeout') || em.includes('abort') ? 'timeout' : 'network';
@@ -1378,7 +1385,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           if (!serverEmailVerified) {
             if (isFirebaseClientConfigured()) {
               try {
-                fbUser = await withTimeout(firebaseSignIn(email, effectivePass), 8000);
+                fbUser = await withTimeout(firebaseSignIn(email, effectivePass), 20_000);
               } catch (signInErr: unknown) {
                 if (matchedStaff) {
                   const storedPin = String(matchedStaff.pin || '');
@@ -1391,8 +1398,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
                   if (pinMatches) {
                     try {
                       const { firebaseEnsureEmailAccount } = await import('../../lib/firebase');
-                      await withTimeout(firebaseEnsureEmailAccount(email, effectivePass), 5000);
-                      fbUser = await withTimeout(firebaseSignIn(email, effectivePass), 5000);
+                      await withTimeout(firebaseEnsureEmailAccount(email, effectivePass), 12_000);
+                      fbUser = await withTimeout(firebaseSignIn(email, effectivePass), 12_000);
                     } catch (ensureErr) {
                       console.warn('[auth] Email account auto-creation skipped, proceeding with authenticated record:', ensureErr);
                       fbUser = null;
@@ -3027,9 +3034,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
         <StaffEmailOtpModal
           session={pendingMfaSession}
           settings={mfaSettings || getAdminSettings(pendingMfaSession.hospitalId)}
+          initialFaceEnrolled={pendingMfaFaceEnrolled}
           onVerified={(verified) => void completeMfaLogin(verified)}
           onCancel={() => {
             setPendingMfaSession(null);
+            setPendingMfaFaceEnrolled(null);
             setSuccess(false);
             setLoading(false);
             setError('2FA Email OTP verification was cancelled. Access blocked.');

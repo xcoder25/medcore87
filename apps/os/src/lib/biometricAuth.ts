@@ -1,5 +1,28 @@
 'use client';
 
+async function fetchWithTimeout(
+  url: string,
+  init?: RequestInit,
+  timeoutMs = 15_000
+): Promise<Response> {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = setTimeout(() => {
+    try {
+      controller?.abort();
+    } catch {
+      /* ignore */
+    }
+  }, timeoutMs);
+  try {
+    return await fetch(url, {
+      ...(init || {}),
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function isCameraBiometricSupported(): boolean {
   if (typeof window === 'undefined') return false;
   return Boolean(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
@@ -24,8 +47,10 @@ export async function getStaffBiometricStatus(
 ): Promise<BiometricStatusResult> {
   if (!badgeId) return { ok: false, enrolled: false, faceEnrolled: false };
   try {
-    const res = await fetch(
-      `/api/auth/biometric?badgeId=${encodeURIComponent(badgeId)}&facilityId=${encodeURIComponent(facilityId || 'IGH-EKT')}`
+    const res = await fetchWithTimeout(
+      `/api/auth/biometric?badgeId=${encodeURIComponent(badgeId)}&facilityId=${encodeURIComponent(facilityId || 'IGH-EKT')}`,
+      undefined,
+      10_000
     );
     const json = (await res.json().catch(() => ({}))) as BiometricStatusResult;
     const faceEnrolled = Boolean(json.faceEnrolled ?? json.enrolled);
@@ -51,18 +76,22 @@ export async function enrollStaffFaceBiometric(params: {
   faceVector?: number[];
 }): Promise<{ ok: boolean; enrolled?: boolean; enrolledAt?: string; error?: string }> {
   try {
-    const res = await fetch('/api/auth/biometric', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'face_enroll',
-        badgeId: params.badgeId,
-        facilityId: params.facilityId,
-        staffName: params.staffName,
-        imageBase64: params.imageBase64,
-        ...(params.faceVector ? { faceVector: params.faceVector } : {}),
-      }),
-    });
+    const res = await fetchWithTimeout(
+      '/api/auth/biometric',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'face_enroll',
+          badgeId: params.badgeId,
+          facilityId: params.facilityId,
+          staffName: params.staffName,
+          imageBase64: params.imageBase64,
+          ...(params.faceVector ? { faceVector: params.faceVector } : {}),
+        }),
+      },
+      25_000
+    );
     const json = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
       enrolled?: boolean;
@@ -90,15 +119,19 @@ export async function requestFaceAuthChallenge(params: {
   error?: string;
 }> {
   try {
-    const res = await fetch('/api/auth/biometric', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'face_challenge',
-        badgeId: params.badgeId,
-        facilityId: params.facilityId,
-      }),
-    });
+    const res = await fetchWithTimeout(
+      '/api/auth/biometric',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'face_challenge',
+          badgeId: params.badgeId,
+          facilityId: params.facilityId,
+        }),
+      },
+      25_000
+    );
     const json = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
       challengeToken?: string;
@@ -133,21 +166,25 @@ export async function verifyStaffFaceBiometric(params: {
   challengeFaceVector?: number[];
 }): Promise<{ ok: boolean; verified?: boolean; similarity?: number; mfaToken?: string; error?: string }> {
   try {
-    const res = await fetch('/api/auth/biometric', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'face_verify',
-        badgeId: params.badgeId,
-        facilityId: params.facilityId,
-        staffName: params.staffName,
-        challengeToken: params.challengeToken,
-        neutralImageBase64: params.neutralImageBase64,
-        challengeImageBase64: params.challengeImageBase64,
-        ...(params.neutralFaceVector ? { neutralFaceVector: params.neutralFaceVector } : {}),
-        ...(params.challengeFaceVector ? { challengeFaceVector: params.challengeFaceVector } : {}),
-      }),
-    });
+    const res = await fetchWithTimeout(
+      '/api/auth/biometric',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'face_verify',
+          badgeId: params.badgeId,
+          facilityId: params.facilityId,
+          staffName: params.staffName,
+          challengeToken: params.challengeToken,
+          neutralImageBase64: params.neutralImageBase64,
+          challengeImageBase64: params.challengeImageBase64,
+          ...(params.neutralFaceVector ? { neutralFaceVector: params.neutralFaceVector } : {}),
+          ...(params.challengeFaceVector ? { challengeFaceVector: params.challengeFaceVector } : {}),
+        }),
+      },
+      25_000
+    );
     const json = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
       verified?: boolean;
@@ -195,24 +232,28 @@ export async function probeStaffFaceFrame(params: {
   neutralFaceVector?: number[];
 }): Promise<FaceProbeClientResult> {
   try {
-    const res = await fetch('/api/auth/biometric', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'face_probe',
-        badgeId: params.badgeId,
-        facilityId: params.facilityId,
-        stage: params.stage,
-        imageBase64: params.imageBase64,
-        ...(params.prompt ? { prompt: params.prompt } : {}),
-        ...(typeof params.neutralPoseYaw === 'number' ? { neutralPoseYaw: params.neutralPoseYaw } : {}),
-        ...(typeof params.neutralSmileConfidence === 'number'
-          ? { neutralSmileConfidence: params.neutralSmileConfidence }
-          : {}),
-        ...(params.faceVector ? { faceVector: params.faceVector } : {}),
-        ...(params.neutralFaceVector ? { neutralFaceVector: params.neutralFaceVector } : {}),
-      }),
-    });
+    const res = await fetchWithTimeout(
+      '/api/auth/biometric',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'face_probe',
+          badgeId: params.badgeId,
+          facilityId: params.facilityId,
+          stage: params.stage,
+          imageBase64: params.imageBase64,
+          ...(params.prompt ? { prompt: params.prompt } : {}),
+          ...(typeof params.neutralPoseYaw === 'number' ? { neutralPoseYaw: params.neutralPoseYaw } : {}),
+          ...(typeof params.neutralSmileConfidence === 'number'
+            ? { neutralSmileConfidence: params.neutralSmileConfidence }
+            : {}),
+          ...(params.faceVector ? { faceVector: params.faceVector } : {}),
+          ...(params.neutralFaceVector ? { neutralFaceVector: params.neutralFaceVector } : {}),
+        }),
+      },
+      15_000
+    );
     const json = (await res.json().catch(() => ({}))) as FaceProbeClientResult;
     if (!res.ok || !json.ok) {
       return { ok: false, error: json.error || 'Camera scan frame could not be checked.' };
@@ -238,11 +279,15 @@ export async function startLiveLivenessSession(params: {
   mode: 'enroll' | 'verify';
 }): Promise<LiveLivenessSessionStartResult> {
   try {
-    const res = await fetch('/api/auth/biometric/liveness/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
+    const res = await fetchWithTimeout(
+      '/api/auth/biometric/liveness/session',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      },
+      25_000
+    );
     const json = (await res.json().catch(() => ({}))) as LiveLivenessSessionStartResult;
     if (!res.ok || !json.ok) {
       return { ok: false, available: false, error: json.error || 'Could not start live verification.' };
@@ -277,11 +322,15 @@ export async function completeLiveLivenessSession(params: {
   error?: string;
 }> {
   try {
-    const res = await fetch('/api/auth/biometric/liveness/results', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
+    const res = await fetchWithTimeout(
+      '/api/auth/biometric/liveness/results',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      },
+      25_000
+    );
     const json = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
       enrolled?: boolean;
@@ -315,11 +364,15 @@ export async function revokeStaffBiometric(
   target: 'all' | 'face' = 'all'
 ): Promise<boolean> {
   try {
-    const res = await fetch('/api/auth/biometric', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'revoke', badgeId, facilityId, target }),
-    });
+    const res = await fetchWithTimeout(
+      '/api/auth/biometric',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'revoke', badgeId, facilityId, target }),
+      },
+      15_000
+    );
     const json = (await res.json().catch(() => ({}))) as { ok?: boolean };
     return Boolean(res.ok && json.ok);
   } catch {

@@ -48,6 +48,7 @@ export function getStaffMfaTotpCode(
 interface StaffEmailOtpModalProps {
   session: UserSession;
   settings: AdminFacilitySettings;
+  initialFaceEnrolled?: boolean | null;
   onVerified: (verifiedSession: UserSession) => void;
   onCancel: () => void;
 }
@@ -55,6 +56,7 @@ interface StaffEmailOtpModalProps {
 export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
   session,
   settings,
+  initialFaceEnrolled = null,
   onVerified,
   onCancel,
 }) => {
@@ -89,7 +91,8 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
   const [secondsLeft, setSecondsLeft] = useState(expiryMinutes * 60);
   const [resendCooldown, setResendCooldown] = useState(30);
   const [verifiedSuccess, setVerifiedSuccess] = useState(false);
-  const [faceEnrolled, setFaceEnrolled] = useState(false);
+  const [faceEnrolled, setFaceEnrolled] = useState(Boolean(initialFaceEnrolled));
+  const [faceStatusNote, setFaceStatusNote] = useState<'none' | 'not_enrolled' | 'camera_unavailable'>('none');
   const [faceModalOpen, setFaceModalOpen] = useState(false);
 
   const initialSentRef = useRef(false);
@@ -99,6 +102,15 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
     setSending(true);
     setErrorMsg(null);
     setDevPreviewCode(null);
+
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = setTimeout(() => {
+      try {
+        controller?.abort();
+      } catch {
+        /* ignore */
+      }
+    }, 25_000);
 
     try {
       const res = await fetch('/api/auth/mfa', {
@@ -112,6 +124,7 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
           email: resolvedEmail || undefined,
           expiryMinutes,
         }),
+        ...(controller ? { signal: controller.signal } : {}),
       });
       const data = (await res.json()) as {
         ok?: boolean;
@@ -157,9 +170,15 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
         entityId: badge,
         detail: `Auto-generated 6-digit login OTP dispatched to ${data.maskedEmail || 'staff email'} (${data.channel || 'server'})`,
       });
-    } catch {
-      setErrorMsg('Network unreachable while sending Email OTP. Switch to Offline Admin Code if enabled.');
+    } catch (err) {
+      const msg = String((err as Error)?.message || (err as Error)?.name || '').toLowerCase();
+      setErrorMsg(
+        msg.includes('abort') || msg.includes('timeout')
+          ? 'Connection timed out while sending Email OTP. Click Resend OTP to retry or use Offline Admin Code.'
+          : 'Network unreachable while sending Email OTP. Switch to Offline Admin Code if enabled.'
+      );
     } finally {
+      clearTimeout(timer);
       setSending(false);
     }
   }, [facilityId, badge, session.name, resolvedEmail, expiryMinutes]);
@@ -173,26 +192,42 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
   useEffect(() => {
     let alive = true;
     const init = async () => {
-      if (!badge || !isCameraBiometricSupported()) {
+      if (!badge) {
         if (!alive) return;
+        setFaceEnrolled(false);
+        setFaceStatusNote('not_enrolled');
         setCheckingBiometric(false);
         ensureOtpSent();
         return;
       }
-      const st = await Promise.race([
-        getStaffBiometricStatus(badge, facilityId),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
-      ]);
+
+      let ready: boolean;
+      if (typeof initialFaceEnrolled === 'boolean') {
+        ready = initialFaceEnrolled;
+      } else {
+        const st = await Promise.race([
+          getStaffBiometricStatus(badge, facilityId),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
+        ]);
+        ready = Boolean(st?.faceEnrolled);
+      }
       if (!alive) return;
-      const ready = Boolean(st?.faceEnrolled);
+
+      const cameraSupported = isCameraBiometricSupported();
       setFaceEnrolled(ready);
       setCheckingBiometric(false);
-      if (ready) {
+
+      if (ready && cameraSupported) {
+        setFaceStatusNote('none');
         if (!autoLaunchedFaceRef.current) {
           autoLaunchedFaceRef.current = true;
           setFaceModalOpen(true);
         }
+      } else if (ready && !cameraSupported) {
+        setFaceStatusNote('camera_unavailable');
+        ensureOtpSent();
       } else {
+        setFaceStatusNote('not_enrolled');
         ensureOtpSent();
       }
     };
@@ -200,7 +235,7 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
     return () => {
       alive = false;
     };
-  }, [badge, facilityId, ensureOtpSent]);
+  }, [badge, facilityId, initialFaceEnrolled, ensureOtpSent]);
 
   useEffect(() => {
     const iv = window.setInterval(() => {
@@ -226,6 +261,14 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
     }
 
     setVerifying(true);
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = setTimeout(() => {
+      try {
+        controller?.abort();
+      } catch {
+        /* ignore */
+      }
+    }, 25_000);
     try {
       const res = await fetch('/api/auth/mfa', {
         method: 'POST',
@@ -236,6 +279,7 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
           badgeId: badge,
           code: clean,
         }),
+        ...(controller ? { signal: controller.signal } : {}),
       });
       const data = (await res.json()) as {
         ok?: boolean;
@@ -282,9 +326,16 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
           authMethod: `${session.authMethod} + Email OTP`,
         });
       }, 400);
-    } catch {
-      setErrorMsg('Failed to verify Email OTP due to network error.');
+    } catch (err) {
+      const msg = String((err as Error)?.message || (err as Error)?.name || '').toLowerCase();
+      setErrorMsg(
+        msg.includes('abort') || msg.includes('timeout')
+          ? 'Connection timed out while verifying Email OTP. Please retry.'
+          : 'Failed to verify Email OTP due to network error.'
+      );
       setVerifying(false);
+    } finally {
+      clearTimeout(timer);
     }
   };
 
@@ -413,7 +464,7 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
               <ShieldCheck size={20} color="#93C5FD" />
             </div>
             <div>
-              <div style={{ fontSize: 15.5, fontWeight: 800 }}>Staff 2FA Email OTP Verification</div>
+              <div style={{ fontSize: 15.5, fontWeight: 800 }}>Staff Two-Factor Verification</div>
               <div style={{ fontSize: 12, color: '#BFDBFE' }}>
                 {session.name} · <span style={{ fontFamily: 'monospace' }}>{badge}</span>
               </div>
@@ -562,6 +613,40 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                   </div>
                 </div>
               )}
+              {tab === 'email_otp' && faceStatusNote === 'not_enrolled' && (
+                <div
+                  style={{
+                    marginBottom: 12,
+                    padding: '10px 12px',
+                    borderRadius: 10,
+                    background: '#F8FAFC',
+                    border: '1px solid #E2E8F0',
+                    color: '#334155',
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  Face ID is not yet enrolled for this account — continuing automatically with Email OTP until your administrator enrolls your Face ID.
+                </div>
+              )}
+
+              {tab === 'email_otp' && faceStatusNote === 'camera_unavailable' && (
+                <div
+                  style={{
+                    marginBottom: 12,
+                    padding: '10px 12px',
+                    borderRadius: 10,
+                    background: '#FFFBEB',
+                    border: '1px solid #FDE68A',
+                    color: '#92400E',
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  Camera unavailable on this workstation — continuing automatically with Email OTP.
+                </div>
+              )}
+
           {tab === 'email_otp' ? (
             <form onSubmit={handleVerifyEmailOtp} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div
