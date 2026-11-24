@@ -359,6 +359,133 @@ export async function ensureMohSchema(): Promise<void> {
           first_identified TEXT DEFAULT '',
           updated_at TIMESTAMPTZ DEFAULT NOW()
         );
+
+        ALTER TABLE moh_facility_overrides ADD COLUMN IF NOT EXISTS operational_status TEXT DEFAULT 'fully_functional';
+        ALTER TABLE moh_facility_overrides ADD COLUMN IF NOT EXISTS license_no TEXT DEFAULT '';
+        ALTER TABLE moh_facility_overrides ADD COLUMN IF NOT EXISTS license_expiry TEXT DEFAULT '';
+        ALTER TABLE moh_facility_overrides ADD COLUMN IF NOT EXISTS approved_services JSONB DEFAULT '[]'::jsonb;
+        ALTER TABLE moh_facility_overrides ADD COLUMN IF NOT EXISTS ownership TEXT DEFAULT '';
+        ALTER TABLE moh_facility_overrides ADD COLUMN IF NOT EXISTS unapproved_practice_flag BOOLEAN DEFAULT FALSE;
+        ALTER TABLE moh_facility_overrides ADD COLUMN IF NOT EXISTS gps_lat NUMERIC;
+        ALTER TABLE moh_facility_overrides ADD COLUMN IF NOT EXISTS gps_lng NUMERIC;
+
+        CREATE TABLE IF NOT EXISTS moh_private_facilities (
+          facility_id TEXT PRIMARY KEY,
+          facility_name TEXT NOT NULL,
+          lga TEXT NOT NULL,
+          district TEXT NOT NULL,
+          ownership TEXT DEFAULT 'private',
+          facility_type TEXT DEFAULT 'Private Clinic',
+          tier TEXT DEFAULT 'cottage_hospital',
+          license_no TEXT DEFAULT '',
+          license_expiry TEXT DEFAULT '',
+          operational_status TEXT DEFAULT 'fully_functional',
+          accreditation_status TEXT DEFAULT 'provisional',
+          approved_services JSONB DEFAULT '[]'::jsonb,
+          latitude NUMERIC DEFAULT 5.03,
+          longitude NUMERIC DEFAULT 7.91,
+          registered_by TEXT DEFAULT '',
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS moh_enforcement_actions (
+          id TEXT PRIMARY KEY,
+          facility_id TEXT NOT NULL,
+          facility_name TEXT NOT NULL,
+          lga TEXT DEFAULT '',
+          district TEXT DEFAULT 'Uyo',
+          action_type TEXT DEFAULT 'inspection',
+          reason TEXT NOT NULL,
+          checklist JSONB DEFAULT '[]'::jsonb,
+          evidence_photo_data TEXT DEFAULT '',
+          officer_name TEXT NOT NULL,
+          status TEXT DEFAULT 'active_seal',
+          follow_up_date TEXT DEFAULT '',
+          resolution_notes TEXT DEFAULT '',
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS moh_hrh_recruitment (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          cadre TEXT NOT NULL,
+          facility_id TEXT NOT NULL,
+          facility_name TEXT NOT NULL,
+          lga TEXT DEFAULT '',
+          vacancies_count INT DEFAULT 1,
+          applicants_count INT DEFAULT 0,
+          shortlisted_count INT DEFAULT 0,
+          deployed_count INT DEFAULT 0,
+          stage TEXT DEFAULT 'open',
+          posted_by TEXT DEFAULT 'MOH HRH Desk',
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS moh_supply_equipment (
+          id TEXT PRIMARY KEY,
+          domain TEXT NOT NULL,
+          facility_id TEXT NOT NULL,
+          facility_name TEXT NOT NULL,
+          lga TEXT DEFAULT '',
+          item_name TEXT NOT NULL,
+          category TEXT DEFAULT '',
+          quantity NUMERIC DEFAULT 0,
+          reorder_level NUMERIC DEFAULT 0,
+          unit TEXT DEFAULT 'units',
+          cold_chain_temp_c NUMERIC,
+          functional_status TEXT DEFAULT 'operational',
+          notes TEXT DEFAULT '',
+          updated_by TEXT DEFAULT '',
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS moh_idsr_reports (
+          id TEXT PRIMARY KEY,
+          report_kind TEXT NOT NULL,
+          facility_id TEXT DEFAULT '',
+          facility_name TEXT DEFAULT '',
+          lga TEXT NOT NULL,
+          district TEXT NOT NULL,
+          period_label TEXT DEFAULT '',
+          disease TEXT DEFAULT '',
+          suspected_cases INT DEFAULT 0,
+          confirmed_cases INT DEFAULT 0,
+          deaths INT DEFAULT 0,
+          anc_visits INT DEFAULT 0,
+          skilled_deliveries INT DEFAULT 0,
+          immunization_doses INT DEFAULT 0,
+          emergency_referrals INT DEFAULT 0,
+          maternal_deaths INT DEFAULT 0,
+          under5_deaths INT DEFAULT 0,
+          dsno_officer TEXT DEFAULT '',
+          status TEXT DEFAULT 'submitted',
+          notes TEXT DEFAULT '',
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS moh_citizen_grievances (
+          id TEXT PRIMARY KEY,
+          tracking_code TEXT NOT NULL,
+          facility_id TEXT NOT NULL,
+          facility_name TEXT NOT NULL,
+          lga TEXT DEFAULT '',
+          channel TEXT DEFAULT 'qr',
+          category TEXT DEFAULT 'service_quality',
+          rating INT DEFAULT 3,
+          summary TEXT NOT NULL,
+          anonymous BOOLEAN DEFAULT TRUE,
+          status TEXT DEFAULT 'open',
+          assigned_to TEXT DEFAULT '',
+          resolution_notes TEXT DEFAULT '',
+          turnaround_hours NUMERIC,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          resolved_at TIMESTAMPTZ,
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
       `);
     })().catch((e) => {
       schemaReady = null;

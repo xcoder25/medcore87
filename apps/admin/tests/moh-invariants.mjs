@@ -79,7 +79,17 @@ test('facilities-catalog: enforces 39 canonical Akwa Ibom facilities mapped to 3
   const validDistricts = new Set(['Uyo', 'Ikot Ekpene', 'Eket']);
   for (const f of list) {
     assert.ok(validDistricts.has(f.district), `Facility ${f.facilityId} district must be valid: ${f.district}`);
+    assert.ok(
+      typeof f.latitude === 'number' && f.latitude >= 4.4 && f.latitude <= 5.6,
+      `Facility ${f.facilityId} latitude must lie in Akwa Ibom: ${f.latitude}`
+    );
+    assert.ok(
+      typeof f.longitude === 'number' && f.longitude >= 7.3 && f.longitude <= 8.5,
+      `Facility ${f.facilityId} longitude must lie in Akwa Ibom: ${f.longitude}`
+    );
   }
+  assert.equal(Array.isArray(cat.AKWA_IBOM_LGAS), true);
+  assert.equal(cat.AKWA_IBOM_LGAS.length, 31, 'All 31 Akwa Ibom LGAs must be defined');
 });
 
 test('mohSyncEngine: de-identifies PII, aggregates OS telemetry accurately & syncs oversight writes to OS notifications', async () => {
@@ -245,7 +255,7 @@ test('api-routes: enforces valid Next.js 15 Route exports across all apps/admin 
     return out;
   };
   const routeFiles = walk(apiDir);
-  assert.ok(routeFiles.length >= 7, 'Expected all 7 MOH API routes under src/app/api/moh');
+  assert.ok(routeFiles.length >= 12, 'Expected all 12+ MOH API routes under src/app/api/moh');
   for (const rf of routeFiles) {
     const src = fs.readFileSync(rf, 'utf8');
     for (const m of src.matchAll(/^export\s+(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z0-9_$]+)/gm)) {
@@ -259,6 +269,7 @@ test('ui-hygiene: enforces calm UX, zero Math.random in interior UI, no legacy m
   const files = [
     path.join(ADMIN_ROOT, 'src/lib/mohRealtime.ts'),
     path.join(ADMIN_ROOT, 'src/app/page.tsx'),
+    path.join(ADMIN_ROOT, 'src/app/feedback/page.tsx'),
     ...fs.readdirSync(mohDir).filter((f) => f.endsWith('.tsx')).map((f) => path.join(mohDir, f)),
   ];
 
@@ -416,4 +427,253 @@ test('facility-360-dossier: aggregates all 14 OS domains per hospital with zero 
   assert.ok(shellSrc.includes('MohFacilityDossierView'), 'MohShell must wire MohFacilityDossierView');
   const drawerSrc = fs.readFileSync(path.join(ADMIN_ROOT, 'src/components/moh/MohFacilityDrawer.tsx'), 'utf8');
   assert.ok(drawerSrc.includes('onOpenFullDossier'), 'MohFacilityDrawer must expose Open Full 360° Dossier action');
+});
+
+test('moh-6-pillars: GIS, private registry, enforcement seal, HRH LGA/recruitment, supply/cold-chain, IDSR/RMNCH & citizen grievance SLA', async () => {
+  const dbQueries = [];
+  const publishedEvents = [];
+  const grievanceStore = new Map();
+
+  const mockDb = {
+    isPostgresConfigured: () => true,
+    ensureMohSchema: async () => {},
+    safeTableExists: async () => true,
+    query: async (sql, params = []) => {
+      dbQueries.push({ sql, params });
+      if (sql.includes('INSERT INTO moh_citizen_grievances')) {
+        grievanceStore.set(params[0], {
+          id: params[0],
+          tracking_code: params[1],
+          facility_id: params[2],
+          facility_name: params[3],
+          lga: params[4],
+          channel: params[5],
+          category: params[6],
+          rating: params[7],
+          summary: params[8],
+          anonymous: params[9],
+          status: 'open',
+          assigned_to: '',
+          resolution_notes: '',
+          turnaround_hours: null,
+          created_at: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+          resolved_at: null,
+        });
+      }
+      if (sql.includes('SELECT created_at FROM moh_citizen_grievances')) {
+        const hit = grievanceStore.get(params[0]);
+        return { rows: hit ? [{ created_at: hit.created_at }] : [] };
+      }
+      if (sql.includes('UPDATE moh_citizen_grievances')) {
+        const hit = grievanceStore.get(params[0]);
+        if (!hit) return { rows: [] };
+        const updated = {
+          ...hit,
+          status: params[1] || hit.status,
+          assigned_to: params[2] || hit.assigned_to,
+          resolution_notes: params[3] || hit.resolution_notes,
+          turnaround_hours: params[4] ?? hit.turnaround_hours,
+          resolved_at: params[1] === 'resolved' ? new Date().toISOString() : hit.resolved_at,
+        };
+        grievanceStore.set(params[0], updated);
+        return { rows: [updated] };
+      }
+      return { rows: [], rowCount: 0, command: 'SELECT', oid: 0, fields: [] };
+    },
+  };
+
+  const mockBroker = {
+    publishMohEvent: (type, payload) => {
+      publishedEvents.push({ type, payload });
+    },
+  };
+
+  const engine = loadTsModule('src/lib/mohSyncEngine.ts', {
+    './db/postgres': mockDb,
+    './mohEventBroker': mockBroker,
+  });
+
+  // 1. Register Private Clinic
+  const priv = await engine.registerPrivateFacilityRecord({
+    facilityId: 'PRV-UYO-01',
+    facilityName: 'Ibom Premier Private Clinic',
+    lga: 'Uyo',
+    ownership: 'private',
+    licenseNo: 'AKS-PRV-001',
+    licenseExpiry: '2026-10-01',
+    approvedServices: ['General OPD', 'Ultrasound'],
+    registeredBy: 'Director of Medical Services',
+  });
+  assert.equal(priv.facilityId, 'PRV-UYO-01');
+  assert.ok(dbQueries.some((q) => q.sql.includes('INSERT INTO moh_private_facilities')));
+
+  // 2. Anti-Quackery Seal updates moh_facility_overrides & notifies OS
+  const seal = await engine.createEnforcementActionRecord({
+    facilityId: 'PRV-UYO-01',
+    facilityName: 'Ibom Premier Private Clinic',
+    actionType: 'sealed',
+    reason: 'Operating unapproved surgical theatre; caller 08035556666 reported',
+    checklist: [{ label: 'Valid Operating License', passed: false }],
+    officerName: 'Inspector Bassey',
+  });
+  assert.equal(seal.status, 'active_seal');
+  assert.equal(seal.reason.includes('08035556666'), false, 'Enforcement reason must redact phone PII');
+  assert.ok(dbQueries.some((q) => q.sql.includes('INSERT INTO moh_enforcement_actions')));
+  assert.ok(dbQueries.some((q) => q.sql.includes('INSERT INTO moh_facility_overrides') && q.params[3] === 'sealed'));
+  assert.ok(dbQueries.some((q) => q.sql.includes('INSERT INTO notifications') && q.params[1] === 'PRV-UYO-01'));
+  assert.ok(publishedEvents.some((e) => e.type === 'enforcement'));
+
+  // 3. HRH Recruitment posting
+  const rec = await engine.createHrhRecruitmentRecord({
+    title: 'Rural Midwife Deployment 2026',
+    cadre: 'Midwife',
+    facilityId: 'IGH-EKT',
+    vacanciesCount: 4,
+    postedBy: 'HRH Desk',
+  });
+  assert.equal(rec.vacanciesCount, 4);
+  assert.ok(publishedEvents.some((e) => e.type === 'hrh'));
+
+  // 4. Supply Chain (Stock-Out + Cold-Chain + Faulty Equipment + Renovation)
+  const vax = await engine.upsertSupplyEquipmentRecord({
+    domain: 'medicine_vaccine',
+    facilityId: 'IGH-EKT',
+    itemName: 'Pentavalent Vaccine',
+    category: 'Vaccine',
+    quantity: 0,
+    reorderLevel: 50,
+    coldChainTempC: 11.4,
+  });
+  assert.equal(vax.functionalStatus, 'stock_out');
+  const eq = await engine.upsertSupplyEquipmentRecord({
+    domain: 'equipment',
+    facilityId: 'IGH-EKT',
+    itemName: 'Oxygen Plant',
+    functionalStatus: 'faulty',
+    quantity: 1,
+  });
+  const infra = await engine.upsertSupplyEquipmentRecord({
+    domain: 'infrastructure',
+    facilityId: 'IGH-EKT',
+    itemName: 'Maternity Ward Wing',
+    functionalStatus: 'ongoing_renovation',
+    quantity: 1,
+  });
+  assert.ok(publishedEvents.some((e) => e.type === 'supply'));
+
+  // 5. DSNO IDSR Outbreak & RMNCH Service Return
+  const dsno = await engine.createIdsrReportRecord({
+    reportKind: 'dsno_outbreak',
+    facilityId: 'IGH-EKT',
+    lga: 'Eket',
+    disease: 'Cholera',
+    suspectedCases: 5,
+    confirmedCases: 2,
+    deaths: 0,
+    dsnoOfficer: 'DSNO Eket',
+  });
+  const rmnch = await engine.createIdsrReportRecord({
+    reportKind: 'service_utilization',
+    facilityId: 'IGH-EKT',
+    lga: 'Eket',
+    periodLabel: '2026-11',
+    ancVisits: 310,
+    skilledDeliveries: 95,
+    immunizationDoses: 480,
+    emergencyReferrals: 14,
+    maternalDeaths: 1,
+    under5Deaths: 2,
+  });
+  assert.ok(publishedEvents.some((e) => e.type === 'idsr'));
+
+  // 6. Citizen Grievance PII Redaction + SLA Turnaround Calculation
+  const grv = await engine.createCitizenGrievanceRecord({
+    facilityId: 'IGH-EKT',
+    channel: 'qr',
+    category: 'extortion_billing',
+    rating: 2,
+    summary: 'Unreceipted fee requested; contact complainant@example.com or 08091112233',
+  });
+  assert.equal(grv.summary.includes('complainant@example.com'), false);
+  assert.equal(grv.summary.includes('08091112233'), false);
+  const resolvedGrv = await engine.updateCitizenGrievanceRecord(grv.id, {
+    status: 'resolved',
+    assignedTo: 'Commissioner Desk',
+    resolutionNotes: 'Cashier audited and billing compliance restored.',
+  });
+  assert.equal(resolvedGrv.status, 'resolved');
+  assert.ok(typeof resolvedGrv.turnaroundHours === 'number' && resolvedGrv.turnaroundHours >= 1.5);
+  assert.ok(publishedEvents.some((e) => e.type === 'grievance'));
+
+  // 7. Full Snapshot Aggregation Across All 6 Pillars
+  const snap = engine.aggregateMohSnapshot({
+    syncMode: 'live_db',
+    syncedAt: '2026-11-24T10:00:00.000Z',
+    facilitiesRows: [],
+    staffRows: [
+      { badge_id: 'DOC-1', facility_id: 'IGH-EKT', full_name: 'Dr. Akpan', role: 'Medical Officer', role_key: 'doctor', department: 'OPD', status: 'active', clearance_level: 4 },
+      { badge_id: 'MW-1', facility_id: 'IGH-EKT', full_name: 'Midwife Ini', role: 'Senior Midwife', role_key: 'midwife', department: 'Maternity', status: 'active', clearance_level: 3 },
+      { badge_id: 'CHW-1', facility_id: 'IGH-EKT', full_name: 'CHEW Edidiong', role: 'CHEW', role_key: 'chew', department: 'PHC', status: 'active', clearance_level: 2 },
+    ],
+    patientCounts: [],
+    bedRows: [],
+    visitRows: [],
+    invoiceRows: [],
+    accountRequestRows: [],
+    orderRows: [],
+    prescriptionRows: [],
+    labRows: [],
+    vitalRows: [],
+    auditLedgerRows: [],
+    directives: [],
+    audits: [],
+    transfers: [],
+    alerts: [],
+    facilityOverrides: {
+      'PRV-UYO-01': {
+        emergencyStatus: 'normal',
+        accreditationStatus: 'suspended',
+        operationalStatus: 'sealed',
+        licenseNo: 'AKS-PRV-001',
+        licenseExpiry: '2026-10-01',
+        updatedAt: '2026-11-24T10:00:00.000Z',
+      },
+    },
+    privateFacilities: [priv],
+    enforcementActions: [seal],
+    hrhRecruitment: [rec],
+    supplyEquipment: [vax, eq, infra],
+    idsrReports: [dsno, rmnch],
+    citizenGrievances: [resolvedGrv],
+  });
+
+  assert.equal(snap.facilities.length, 40, '39 official + 1 private clinic must be merged');
+  const sealedClinic = snap.facilities.find((f) => f.facilityId === 'PRV-UYO-01');
+  assert.equal(sealedClinic?.operationalStatus, 'sealed');
+  assert.equal(sealedClinic?.licenseAlert, 'expired');
+
+  assert.equal(snap.hrh.lgaDistribution.length, 31, 'HRH distribution must cover all 31 Akwa Ibom LGAs');
+  const eketLga = snap.hrh.lgaDistribution.find((r) => r.lga === 'Eket');
+  assert.equal(eketLga?.doctors, 1);
+  assert.equal(eketLga?.midwives, 1);
+  assert.equal(eketLga?.chews, 1);
+  assert.equal(snap.hrh.recruitment.length, 1);
+
+  assert.equal(snap.supplyChain.stockOutCount, 1);
+  assert.equal(snap.supplyChain.faultyEquipmentCount, 1);
+  assert.equal(snap.supplyChain.activeRenovationsCount, 1);
+
+  assert.equal(snap.idsr.dsnoReports.length, 1);
+  assert.equal(snap.idsr.maternalDeathsTotal, 1);
+  assert.equal(snap.idsr.under5DeathsTotal, 2);
+  assert.equal(snap.idsr.ancVisitsTotal, 310);
+  assert.equal(snap.idsr.skilledDeliveriesTotal, 95);
+
+  assert.equal(snap.grievances.resolvedCount, 1);
+  assert.ok(snap.grievances.avgTurnaroundHours >= 1.5);
+
+  const jsonSnap = JSON.stringify(snap);
+  for (const piiKey of ['"patientName"', '"pin_hash"', '"nin"', '"phone"', '"email"', '"address"']) {
+    assert.equal(jsonSnap.includes(piiKey), false, `6-pillar snapshot must never expose PII property ${piiKey}`);
+  }
 });

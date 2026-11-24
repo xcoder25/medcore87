@@ -1,7 +1,9 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  AKWA_IBOM_LGAS,
   OFFICIAL_AKWA_IBOM_FACILITIES,
   SENATORIAL_DISTRICTS,
   inferSenatorialDistrict,
@@ -14,38 +16,60 @@ import { publishMohEvent } from './mohEventBroker';
 import type {
   MohAuditLedgerEvent,
   MohAuditRecord,
+  MohCitizenGrievance,
   MohDirective,
+  MohEnforcementAction,
   MohFacilityBedItem,
   MohFacilityDossier,
   MohFacilityGovernance,
   MohFacilitySecurity,
   MohFacilityStaffRosterItem,
   MohFacilityTelemetry,
+  MohHrhRecruitment,
+  MohIdsrReport,
+  MohLicenseAlertStatus,
   MohLiveSnapshot,
+  MohLgaWorkforceRow,
+  MohOperationalStatus,
   MohOutbreakAlert,
+  MohPrivateFacilityRecord,
   MohRegionalRollup,
   MohStaffDirectoryItem,
+  MohSupplyEquipmentItem,
   MohSyncStatus,
   MohTransferRecord,
 } from './mohTypes';
 
 const LOCAL_MOH_STATE_FILE = path.join(os.tmpdir(), 'medcore-moh-oversight-v1.json');
 
+interface MohFacilityOverrideEntry {
+  emergencyStatus: MohFacilityTelemetry['emergencyStatus'];
+  accreditationStatus: MohFacilityTelemetry['accreditationStatus'];
+  operationalStatus?: MohOperationalStatus;
+  licenseNo?: string;
+  licenseExpiry?: string;
+  approvedServices?: string[];
+  ownership?: string;
+  unapprovedPracticeFlag?: boolean;
+  gpsLat?: number;
+  gpsLng?: number;
+  notes?: string;
+  updatedBy?: string;
+  updatedAt: string;
+}
+
 interface LocalMohOversightStore {
   directives: MohDirective[];
   audits: MohAuditRecord[];
   transfers: MohTransferRecord[];
   alerts: MohOutbreakAlert[];
-  facilityOverrides: Record<
-    string,
-    {
-      emergencyStatus: MohFacilityTelemetry['emergencyStatus'];
-      accreditationStatus: MohFacilityTelemetry['accreditationStatus'];
-      notes?: string;
-      updatedBy?: string;
-      updatedAt: string;
-    }
-  >;
+  facilityOverrides: Record<string, MohFacilityOverrideEntry>;
+  privateFacilities: MohPrivateFacilityRecord[];
+  enforcementActions: MohEnforcementAction[];
+  hrhRecruitment: MohHrhRecruitment[];
+  supplyEquipment: MohSupplyEquipmentItem[];
+  idsrReports: MohIdsrReport[];
+  citizenGrievances: MohCitizenGrievance[];
 }
 
 const DEFAULT_SEED_ALERTS: MohOutbreakAlert[] = [];
@@ -61,6 +85,12 @@ function readLocalMohStore(): LocalMohOversightStore {
         alerts: Array.isArray(parsed.alerts) ? parsed.alerts : DEFAULT_SEED_ALERTS,
         facilityOverrides:
           parsed.facilityOverrides && typeof parsed.facilityOverrides === 'object' ? parsed.facilityOverrides : {},
+        privateFacilities: Array.isArray(parsed.privateFacilities) ? parsed.privateFacilities : [],
+        enforcementActions: Array.isArray(parsed.enforcementActions) ? parsed.enforcementActions : [],
+        hrhRecruitment: Array.isArray(parsed.hrhRecruitment) ? parsed.hrhRecruitment : [],
+        supplyEquipment: Array.isArray(parsed.supplyEquipment) ? parsed.supplyEquipment : [],
+        idsrReports: Array.isArray(parsed.idsrReports) ? parsed.idsrReports : [],
+        citizenGrievances: Array.isArray(parsed.citizenGrievances) ? parsed.citizenGrievances : [],
       };
     }
   } catch {
@@ -72,6 +102,12 @@ function readLocalMohStore(): LocalMohOversightStore {
     transfers: [],
     alerts: [],
     facilityOverrides: {},
+    privateFacilities: [],
+    enforcementActions: [],
+    hrhRecruitment: [],
+    supplyEquipment: [],
+    idsrReports: [],
+    citizenGrievances: [],
   };
 }
 
@@ -157,16 +193,38 @@ export interface MohRawDatabaseInputs {
   audits: MohAuditRecord[];
   transfers: MohTransferRecord[];
   alerts: MohOutbreakAlert[];
-  facilityOverrides: Record<
-    string,
-    {
-      emergencyStatus: MohFacilityTelemetry['emergencyStatus'];
-      accreditationStatus: MohFacilityTelemetry['accreditationStatus'];
-      notes?: string;
-      updatedBy?: string;
-      updatedAt: string;
-    }
-  >;
+  facilityOverrides: Record<string, MohFacilityOverrideEntry>;
+  privateFacilities?: MohPrivateFacilityRecord[];
+  enforcementActions?: MohEnforcementAction[];
+  hrhRecruitment?: MohHrhRecruitment[];
+  supplyEquipment?: MohSupplyEquipmentItem[];
+  idsrReports?: MohIdsrReport[];
+  citizenGrievances?: MohCitizenGrievance[];
+}
+
+export function computeLicenseAlert(licenseExpiry: string, nowIso: string): MohLicenseAlertStatus {
+  const clean = String(licenseExpiry || '').trim();
+  if (!clean) return 'missing';
+  const expMs = Date.parse(clean);
+  if (!Number.isFinite(expMs)) return 'missing';
+  const refMs = Date.parse(nowIso);
+  const nowMs = Number.isFinite(refMs) ? refMs : Date.now();
+  if (expMs < nowMs) return 'expired';
+  if (expMs <= nowMs + 30 * 24 * 60 * 60 * 1000) return 'expiring_soon';
+  return 'valid';
+}
+
+function classifyHrhCadre(
+  role?: string | null,
+  roleKey?: string | null
+): 'doctors' | 'nurses' | 'midwives' | 'pharmacists' | 'chews' | 'otherStaff' {
+  const text = `${role || ''} ${roleKey || ''}`.toLowerCase();
+  if (/doctor|physician|consultant|medical officer|surgeon|dentist|md\b/.test(text)) return 'doctors';
+  if (/chew|community health|extension/.test(text)) return 'chews';
+  if (/pharm/.test(text)) return 'pharmacists';
+  if (/midwi/.test(text)) return 'midwives';
+  if (/nurse|matron|\brn\b/.test(text)) return 'nurses';
+  return 'otherStaff';
 }
 
 function classifyChannel(paidVia?: string | null, source?: string | null): 'akwaremit' | 'paystack' | 'cash' | 'hmo' | 'other' {
@@ -202,13 +260,25 @@ export function aggregateMohSnapshot(
   const fidFilter = String(filters?.facilityId || '').trim().toUpperCase();
   const syncedAt = raw.syncedAt || new Date().toISOString();
 
-  // Map official catalog first
+  // Map official catalog first + private clinic registry + dynamic DB rows
   const catalogMap = new Map<string, OfficialAkwaIbomFacility>();
   for (const item of OFFICIAL_AKWA_IBOM_FACILITIES) {
     catalogMap.set(item.facilityId, item);
   }
 
-  // Track all known facility IDs (official + dynamic DB rows)
+  const privateMap = new Map<string, MohPrivateFacilityRecord>();
+  for (const p of raw.privateFacilities || []) {
+    const pid = String(p.facilityId || '').trim().toUpperCase();
+    if (!pid) continue;
+    privateMap.set(pid, { ...p, facilityId: pid });
+  }
+
+  const lgaInfoMap = new Map<string, (typeof AKWA_IBOM_LGAS)[number]>();
+  for (const row of AKWA_IBOM_LGAS) {
+    lgaInfoMap.set(row.lga.toLowerCase(), row);
+  }
+
+  // Track all known facility IDs (official + private registry + dynamic DB rows)
   const dbFacilityMap = new Map<string, MohRawDatabaseInputs['facilitiesRows'][number]>();
   for (const f of raw.facilitiesRows) {
     const id = String(f.id || '').trim().toUpperCase();
@@ -216,7 +286,7 @@ export function aggregateMohSnapshot(
     dbFacilityMap.set(id, f);
   }
 
-  const allFacilityIds = new Set<string>([...catalogMap.keys(), ...dbFacilityMap.keys()]);
+  const allFacilityIds = new Set<string>([...catalogMap.keys(), ...privateMap.keys(), ...dbFacilityMap.keys()]);
 
   const patientCountMap = new Map<string, number>();
   for (const p of raw.patientCounts) {
@@ -290,18 +360,23 @@ export function aggregateMohSnapshot(
 
   for (const fid of allFacilityIds) {
     const official = catalogMap.get(fid);
+    const priv = privateMap.get(fid);
     const dbRow = dbFacilityMap.get(fid);
     const cfg = (dbRow?.config && typeof dbRow.config === 'object' ? dbRow.config : {}) as Record<string, any>;
 
     const facilityName = String(
-      official?.facilityName || cfg.displayName || dbRow?.name || fid
+      official?.facilityName || priv?.facilityName || cfg.displayName || dbRow?.name || fid
     ).trim();
-    const lga = String(cfg.lga || official?.lga || '').trim();
+    const lga = String(cfg.lga || priv?.lga || official?.lga || '').trim();
     const location = String(official?.location || (lga ? `${lga}, Akwa Ibom` : 'Akwa Ibom')).trim();
-    const district: SenatorialDistrict = official?.district || inferSenatorialDistrict(lga || location, facilityName);
-    const board: SupervisoryBoard = normalizeBoard(cfg.supervisoryBoard, official?.board || 'AKSHMB');
-    const tier = official?.tier || 'district_hospital';
-    const facilityType = String(official?.facilityType || cfg.facilityType || 'General Hospital');
+    const district: SenatorialDistrict =
+      official?.district || priv?.district || inferSenatorialDistrict(lga || location, facilityName);
+    const board: SupervisoryBoard = normalizeBoard(
+      cfg.supervisoryBoard,
+      official?.board || (priv?.ownership === 'mission' ? 'Mission' : 'AKSHMB')
+    );
+    const tier = official?.tier || priv?.tier || 'district_hospital';
+    const facilityType = String(official?.facilityType || priv?.facilityType || cfg.facilityType || 'General Hospital');
 
     const staffList = staffByFac.get(fid) || [];
     const activeStaff = staffList.filter((s) => String(s.status || 'active').toLowerCase() !== 'suspended');
@@ -399,22 +474,76 @@ export function aggregateMohSnapshot(
 
     const accreditationStatus: MohFacilityTelemetry['accreditationStatus'] =
       ov?.accreditationStatus ||
+      priv?.accreditationStatus ||
       (hasDbActivity
         ? complianceScore >= 75 && Boolean(hfrCode)
           ? 'accredited'
           : 'provisional'
         : 'pending');
 
+    const operationalStatus: MohOperationalStatus =
+      ov?.operationalStatus ||
+      priv?.operationalStatus ||
+      (accreditationStatus === 'suspended'
+        ? 'sealed'
+        : hasDbActivity
+        ? 'fully_functional'
+        : 'partially_functional');
+
+    const ownership = String(
+      ov?.ownership ||
+        priv?.ownership ||
+        cfg.ownership ||
+        official?.ownership ||
+        (board === 'Mission' ? 'mission' : 'public_state')
+    ).trim();
+    const licenseNo = String(ov?.licenseNo || priv?.licenseNo || cfg.licenseNo || '').trim();
+    const licenseExpiry = String(ov?.licenseExpiry || priv?.licenseExpiry || cfg.licenseExpiry || '').trim();
+    const licenseAlert = computeLicenseAlert(licenseExpiry, syncedAt);
+    const approvedServices =
+      ov?.approvedServices?.length
+        ? ov.approvedServices
+        : priv?.approvedServices?.length
+        ? priv.approvedServices
+        : official?.approvedServices?.length
+        ? official.approvedServices
+        : ['General OPD'];
+
+    const resolvedLga = lga || location.split(',')[0].trim();
+    const lgaMeta = lgaInfoMap.get(resolvedLga.toLowerCase());
+    const cfgLat = Number(cfg.gpsLatitude);
+    const cfgLng = Number(cfg.gpsLongitude);
+    const latitude =
+      typeof ov?.gpsLat === 'number' && Number.isFinite(ov.gpsLat)
+        ? ov.gpsLat
+        : Number.isFinite(cfgLat) && cfgLat !== 0
+        ? cfgLat
+        : typeof priv?.latitude === 'number' && Number.isFinite(priv.latitude)
+        ? priv.latitude
+        : official?.latitude ?? lgaMeta?.latitude ?? 5.0377;
+    const longitude =
+      typeof ov?.gpsLng === 'number' && Number.isFinite(ov.gpsLng)
+        ? ov.gpsLng
+        : Number.isFinite(cfgLng) && cfgLng !== 0
+        ? cfgLng
+        : typeof priv?.longitude === 'number' && Number.isFinite(priv.longitude)
+        ? priv.longitude
+        : official?.longitude ?? lgaMeta?.longitude ?? 7.9128;
+
+    const attendanceRatePct =
+      staffList.length > 0 ? Math.round((activeStaff.length / staffList.length) * 100) : 0;
+    const ruralUnderstaffed = Boolean(lgaMeta?.ruralPriority && activeStaff.length < 5);
+
     allFacilities.push({
       facilityId: fid,
       facilityName,
       location,
-      lga: lga || location.split(',')[0],
+      lga: resolvedLga,
       district,
       tier,
       facilityType,
       board,
-      enrollmentStatus: hasDbActivity ? 'active' : 'pending',
+      enrollmentStatus: hasDbActivity || Boolean(priv) ? 'active' : 'pending',
       hasDbActivity,
       lastSyncedAt: dbRow?.updated_at ? String(dbRow.updated_at) : hasDbActivity ? syncedAt : null,
       hfrCode,
@@ -424,6 +553,17 @@ export function aggregateMohSnapshot(
       complianceScore,
       accreditationStatus,
       emergencyStatus,
+      operationalStatus,
+      ownership,
+      licenseNo,
+      licenseExpiry,
+      licenseAlert,
+      unapprovedPracticeFlag: Boolean(ov?.unapprovedPracticeFlag),
+      approvedServices,
+      latitude,
+      longitude,
+      attendanceRatePct,
+      ruralUnderstaffed,
       totalBeds,
       occupiedBeds,
       availableBeds: Math.max(0, totalBeds - occupiedBeds),
@@ -641,6 +781,133 @@ export function aggregateMohSnapshot(
   const icuBedsOccupied = filteredFacilities.reduce((s, f) => s + f.icuBedsOccupied, 0);
   const connectedFacilities = filteredFacilities.filter((f) => f.enrollmentStatus === 'active').length;
 
+  // Pillar 2: Anti-Quackery & Enforcement
+  const enforcement = (raw.enforcementActions || [])
+    .filter((e) => {
+      const fid = String(e.facilityId || '').trim().toUpperCase();
+      if (fidFilter) return fid === fidFilter;
+      if (districtFilter !== 'ALL') return includedFacIds.has(fid) || e.district === districtFilter;
+      return true;
+    })
+    .map((e) => ({
+      ...e,
+      reason: sanitizeMohAuditDetail(e.reason),
+      resolutionNotes: sanitizeMohAuditDetail(e.resolutionNotes),
+    }));
+
+  // Pillar 3: HRH LGA Cadre Distribution, Attendance & Recruitment
+  const lgaDistribution: MohLgaWorkforceRow[] = AKWA_IBOM_LGAS.filter(
+    (l) => districtFilter === 'ALL' || l.district === districtFilter
+  ).map((lgaInfo) => {
+    const lgaFacs = filteredFacilities.filter(
+      (f) => f.lga.trim().toLowerCase() === lgaInfo.lga.toLowerCase()
+    );
+    const facIdsInLga = new Set(lgaFacs.map((f) => f.facilityId));
+    let doctors = 0;
+    let nurses = 0;
+    let midwives = 0;
+    let pharmacists = 0;
+    let chews = 0;
+    let otherStaff = 0;
+    let totalStaff = 0;
+    let activeStaff = 0;
+    for (const st of raw.staffRows) {
+      const sfid = String(st.facility_id || '').trim().toUpperCase();
+      if (!facIdsInLga.has(sfid)) continue;
+      totalStaff++;
+      if (String(st.status || 'active').toLowerCase() === 'suspended') continue;
+      activeStaff++;
+      const bucket = classifyHrhCadre(st.role, st.role_key);
+      if (bucket === 'doctors') doctors++;
+      else if (bucket === 'nurses') nurses++;
+      else if (bucket === 'midwives') midwives++;
+      else if (bucket === 'pharmacists') pharmacists++;
+      else if (bucket === 'chews') chews++;
+      else otherStaff++;
+    }
+    const attendanceRatePct = totalStaff > 0 ? Math.round((activeStaff / totalStaff) * 100) : 0;
+    return {
+      lga: lgaInfo.lga,
+      district: lgaInfo.district,
+      ruralPriority: Boolean(lgaInfo.ruralPriority),
+      facilitiesCount: lgaFacs.length,
+      doctors,
+      nurses,
+      midwives,
+      pharmacists,
+      chews,
+      otherStaff,
+      totalStaff: activeStaff,
+      attendanceRatePct,
+      understaffed: Boolean(lgaInfo.ruralPriority && activeStaff < 5),
+    };
+  });
+
+  const facsWithStaff = filteredFacilities.filter((f) => f.totalStaffCount > 0);
+  const avgAttendancePct =
+    facsWithStaff.length > 0
+      ? Math.round(facsWithStaff.reduce((s, f) => s + f.attendanceRatePct, 0) / facsWithStaff.length)
+      : 0;
+  const hrhRecruitment = (raw.hrhRecruitment || []).filter((r) => {
+    const fid = String(r.facilityId || '').trim().toUpperCase();
+    if (fidFilter) return fid === fidFilter;
+    if (districtFilter !== 'ALL') return includedFacIds.has(fid) || lgaInfoMap.get(r.lga.toLowerCase())?.district === districtFilter;
+    return true;
+  });
+
+  // Pillar 4: Supply Chain, Equipment & Infrastructure
+  const supplyItems = (raw.supplyEquipment || [])
+    .filter((item) => {
+      const fid = String(item.facilityId || '').trim().toUpperCase();
+      if (fidFilter) return fid === fidFilter;
+      if (districtFilter !== 'ALL') return includedFacIds.has(fid) || lgaInfoMap.get(item.lga.toLowerCase())?.district === districtFilter;
+      return true;
+    })
+    .map((item) => ({
+      ...item,
+      notes: sanitizeMohAuditDetail(item.notes),
+    }));
+
+  // Pillar 5: DSNO IDSR Outbreak Reports & Weekly/Monthly RMNCH Service Utilization
+  const idsrFiltered = (raw.idsrReports || [])
+    .filter((r) => {
+      const fid = String(r.facilityId || '').trim().toUpperCase();
+      if (fidFilter) return fid === fidFilter;
+      if (districtFilter !== 'ALL') return r.district === districtFilter || includedFacIds.has(fid);
+      return true;
+    })
+    .map((r) => ({
+      ...r,
+      notes: sanitizeMohAuditDetail(r.notes),
+    }));
+  const dsnoReports = idsrFiltered.filter((r) => r.reportKind === 'dsno_outbreak');
+  const serviceMetrics = idsrFiltered.filter((r) => r.reportKind === 'service_utilization');
+
+  // Pillar 6: Public Citizen Feedback & Grievance Redressal
+  const grievanceItems = (raw.citizenGrievances || [])
+    .filter((g) => {
+      const fid = String(g.facilityId || '').trim().toUpperCase();
+      if (fidFilter) return fid === fidFilter;
+      if (districtFilter !== 'ALL') return includedFacIds.has(fid) || lgaInfoMap.get(g.lga.toLowerCase())?.district === districtFilter;
+      return true;
+    })
+    .map((g) => ({
+      ...g,
+      summary: sanitizeMohAuditDetail(g.summary),
+      resolutionNotes: sanitizeMohAuditDetail(g.resolutionNotes),
+    }));
+  const resolvedWithHrs = grievanceItems.filter(
+    (g) => g.status === 'resolved' && typeof g.turnaroundHours === 'number' && Number.isFinite(g.turnaroundHours)
+  );
+  const avgTurnaroundHours =
+    resolvedWithHrs.length > 0
+      ? Math.round((resolvedWithHrs.reduce((s, g) => s + Number(g.turnaroundHours || 0), 0) / resolvedWithHrs.length) * 10) / 10
+      : 0;
+  const avgRating =
+    grievanceItems.length > 0
+      ? Math.round((grievanceItems.reduce((s, g) => s + Number(g.rating || 0), 0) / grievanceItems.length) * 10) / 10
+      : 0;
+
   return {
     syncMode: raw.syncMode,
     syncedAt,
@@ -707,6 +974,43 @@ export function aggregateMohSnapshot(
       latestHash: auditEvents[0]?.rowHash || 'GENESIS',
       events: auditEvents,
     },
+    enforcement,
+    hrh: {
+      lgaDistribution,
+      attendanceSummary: {
+        avgAttendancePct,
+        avgAbsenteeismPct: avgAttendancePct > 0 ? Math.max(0, 100 - avgAttendancePct) : 0,
+        ruralUnderstaffedCount: lgaDistribution.filter((r) => r.understaffed).length,
+      },
+      recruitment: hrhRecruitment,
+    },
+    supplyChain: {
+      items: supplyItems,
+      lowStockCount: supplyItems.filter((i) => i.functionalStatus === 'low_stock').length,
+      stockOutCount: supplyItems.filter((i) => i.functionalStatus === 'stock_out').length,
+      faultyEquipmentCount: supplyItems.filter(
+        (i) => i.domain === 'equipment' && (i.functionalStatus === 'faulty' || i.functionalStatus === 'out_of_service')
+      ).length,
+      activeRenovationsCount: supplyItems.filter((i) => i.functionalStatus === 'ongoing_renovation').length,
+    },
+    idsr: {
+      dsnoReports,
+      serviceMetrics,
+      maternalDeathsTotal: idsrFiltered.reduce((s, r) => s + Number(r.maternalDeaths || 0), 0),
+      under5DeathsTotal: idsrFiltered.reduce((s, r) => s + Number(r.under5Deaths || 0), 0),
+      ancVisitsTotal: serviceMetrics.reduce((s, r) => s + Number(r.ancVisits || 0), 0),
+      skilledDeliveriesTotal: serviceMetrics.reduce((s, r) => s + Number(r.skilledDeliveries || 0), 0),
+      immunizationDosesTotal: serviceMetrics.reduce((s, r) => s + Number(r.immunizationDoses || 0), 0),
+      emergencyReferralsTotal: serviceMetrics.reduce((s, r) => s + Number(r.emergencyReferrals || 0), 0),
+    },
+    grievances: {
+      items: grievanceItems,
+      openCount: grievanceItems.filter((g) => g.status === 'open').length,
+      investigatingCount: grievanceItems.filter((g) => g.status === 'under_investigation').length,
+      resolvedCount: grievanceItems.filter((g) => g.status === 'resolved').length,
+      avgTurnaroundHours,
+      avgRating,
+    },
   };
 }
 
@@ -767,6 +1071,12 @@ export async function buildLiveMohSnapshot(filters?: { district?: string; facili
         transfers: localStore.transfers,
         alerts: localStore.alerts,
         facilityOverrides: localStore.facilityOverrides,
+        privateFacilities: localStore.privateFacilities,
+        enforcementActions: localStore.enforcementActions,
+        hrhRecruitment: localStore.hrhRecruitment,
+        supplyEquipment: localStore.supplyEquipment,
+        idsrReports: localStore.idsrReports,
+        citizenGrievances: localStore.citizenGrievances,
       },
       filters
     );
@@ -792,6 +1102,12 @@ export async function buildLiveMohSnapshot(filters?: { district?: string; facili
     transferRows,
     overrideRows,
     alertRows,
+    privateRows,
+    enforcementRows,
+    recruitmentRows,
+    supplyRows,
+    idsrRows,
+    grievanceRows,
   ] = await Promise.all([
     safeQueryRows(`SELECT id, name, state, config, updated_at FROM facilities`),
     safeQueryRows(`SELECT badge_id, facility_id, full_name, role, role_key, department, status, clearance_level FROM staff`),
@@ -810,6 +1126,12 @@ export async function buildLiveMohSnapshot(filters?: { district?: string; facili
     safeQueryRows(`SELECT * FROM moh_staff_transfers ORDER BY created_at DESC LIMIT 100`),
     safeQueryRows(`SELECT * FROM moh_facility_overrides`),
     safeQueryRows(`SELECT * FROM moh_alerts ORDER BY updated_at DESC LIMIT 100`),
+    safeQueryRows(`SELECT * FROM moh_private_facilities ORDER BY created_at DESC LIMIT 200`),
+    safeQueryRows(`SELECT * FROM moh_enforcement_actions ORDER BY created_at DESC LIMIT 150`),
+    safeQueryRows(`SELECT * FROM moh_hrh_recruitment ORDER BY created_at DESC LIMIT 150`),
+    safeQueryRows(`SELECT * FROM moh_supply_equipment ORDER BY updated_at DESC LIMIT 300`),
+    safeQueryRows(`SELECT * FROM moh_idsr_reports ORDER BY created_at DESC LIMIT 200`),
+    safeQueryRows(`SELECT * FROM moh_citizen_grievances ORDER BY created_at DESC LIMIT 200`),
   ]);
 
   const directives: MohDirective[] = dirRows.map((d: any) => ({
@@ -869,6 +1191,14 @@ export async function buildLiveMohSnapshot(filters?: { district?: string; facili
     facilityOverrides[fid] = {
       emergencyStatus: ov.emergency_status || 'normal',
       accreditationStatus: ov.accreditation_status || 'pending',
+      operationalStatus: ov.operational_status || undefined,
+      licenseNo: ov.license_no || '',
+      licenseExpiry: ov.license_expiry || '',
+      approvedServices: Array.isArray(ov.approved_services) ? ov.approved_services : undefined,
+      ownership: ov.ownership || undefined,
+      unapprovedPracticeFlag: Boolean(ov.unapproved_practice_flag),
+      gpsLat: ov.gps_lat !== null && ov.gps_lat !== undefined ? Number(ov.gps_lat) : undefined,
+      gpsLng: ov.gps_lng !== null && ov.gps_lng !== undefined ? Number(ov.gps_lng) : undefined,
       notes: ov.notes || '',
       updatedBy: ov.updated_by || '',
       updatedAt: ov.updated_at ? new Date(ov.updated_at).toISOString() : new Date().toISOString(),
@@ -888,6 +1218,119 @@ export async function buildLiveMohSnapshot(filters?: { district?: string; facili
     notes: String(a.notes || ''),
     firstIdentified: String(a.first_identified || ''),
     updatedAt: a.updated_at ? new Date(a.updated_at).toISOString() : new Date().toISOString(),
+  }));
+
+  const privateFacilities: MohPrivateFacilityRecord[] = privateRows.map((p: any) => ({
+    facilityId: String(p.facility_id).toUpperCase(),
+    facilityName: String(p.facility_name),
+    lga: String(p.lga || 'Uyo'),
+    district: (p.district || 'Uyo') as SenatorialDistrict,
+    ownership: (p.ownership || 'private') as MohPrivateFacilityRecord['ownership'],
+    facilityType: String(p.facility_type || 'Private Clinic'),
+    tier: (p.tier || 'cottage_hospital') as MohPrivateFacilityRecord['tier'],
+    licenseNo: String(p.license_no || ''),
+    licenseExpiry: String(p.license_expiry || ''),
+    operationalStatus: (p.operational_status || 'fully_functional') as MohOperationalStatus,
+    accreditationStatus: (p.accreditation_status || 'provisional') as MohPrivateFacilityRecord['accreditationStatus'],
+    approvedServices: Array.isArray(p.approved_services) ? p.approved_services : ['General OPD'],
+    latitude: Number(p.latitude || 5.03),
+    longitude: Number(p.longitude || 7.91),
+    registeredBy: String(p.registered_by || 'MOH Registry'),
+    createdAt: p.created_at ? new Date(p.created_at).toISOString() : new Date().toISOString(),
+  }));
+
+  const enforcementActions: MohEnforcementAction[] = enforcementRows.map((e: any) => ({
+    id: String(e.id),
+    facilityId: String(e.facility_id || '').toUpperCase(),
+    facilityName: String(e.facility_name || ''),
+    lga: String(e.lga || ''),
+    district: (e.district || 'Uyo') as SenatorialDistrict,
+    actionType: (e.action_type || 'inspection') as MohEnforcementAction['actionType'],
+    reason: String(e.reason || ''),
+    checklist: Array.isArray(e.checklist) ? e.checklist : [],
+    evidencePhotoData: e.evidence_photo_data ? String(e.evidence_photo_data) : undefined,
+    officerName: String(e.officer_name || 'MOH Taskforce'),
+    status: (e.status || 'active_seal') as MohEnforcementAction['status'],
+    followUpDate: String(e.follow_up_date || ''),
+    resolutionNotes: String(e.resolution_notes || ''),
+    createdAt: e.created_at ? new Date(e.created_at).toISOString() : new Date().toISOString(),
+  }));
+
+  const hrhRecruitment: MohHrhRecruitment[] = recruitmentRows.map((r: any) => ({
+    id: String(r.id),
+    title: String(r.title),
+    cadre: String(r.cadre),
+    facilityId: String(r.facility_id || '').toUpperCase(),
+    facilityName: String(r.facility_name || ''),
+    lga: String(r.lga || ''),
+    vacanciesCount: Number(r.vacancies_count || 1),
+    applicantsCount: Number(r.applicants_count || 0),
+    shortlistedCount: Number(r.shortlisted_count || 0),
+    deployedCount: Number(r.deployed_count || 0),
+    stage: (r.stage || 'open') as MohHrhRecruitment['stage'],
+    postedBy: String(r.posted_by || 'MOH HRH Desk'),
+    createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+  }));
+
+  const supplyEquipment: MohSupplyEquipmentItem[] = supplyRows.map((s: any) => ({
+    id: String(s.id),
+    domain: (s.domain || 'medicine_vaccine') as MohSupplyEquipmentItem['domain'],
+    facilityId: String(s.facility_id || '').toUpperCase(),
+    facilityName: String(s.facility_name || ''),
+    lga: String(s.lga || ''),
+    itemName: String(s.item_name || ''),
+    category: String(s.category || ''),
+    quantity: Number(s.quantity || 0),
+    reorderLevel: Number(s.reorder_level || 0),
+    unit: String(s.unit || 'units'),
+    coldChainTempC: s.cold_chain_temp_c !== null && s.cold_chain_temp_c !== undefined ? Number(s.cold_chain_temp_c) : null,
+    functionalStatus: (s.functional_status || 'operational') as MohSupplyEquipmentItem['functionalStatus'],
+    notes: String(s.notes || ''),
+    updatedBy: String(s.updated_by || ''),
+    updatedAt: s.updated_at ? new Date(s.updated_at).toISOString() : new Date().toISOString(),
+  }));
+
+  const idsrReports: MohIdsrReport[] = idsrRows.map((r: any) => ({
+    id: String(r.id),
+    reportKind: (r.report_kind || 'dsno_outbreak') as MohIdsrReport['reportKind'],
+    facilityId: String(r.facility_id || '').toUpperCase(),
+    facilityName: String(r.facility_name || ''),
+    lga: String(r.lga || 'Uyo'),
+    district: (r.district || 'Uyo') as SenatorialDistrict,
+    periodLabel: String(r.period_label || ''),
+    disease: String(r.disease || ''),
+    suspectedCases: Number(r.suspected_cases || 0),
+    confirmedCases: Number(r.confirmed_cases || 0),
+    deaths: Number(r.deaths || 0),
+    ancVisits: Number(r.anc_visits || 0),
+    skilledDeliveries: Number(r.skilled_deliveries || 0),
+    immunizationDoses: Number(r.immunization_doses || 0),
+    emergencyReferrals: Number(r.emergency_referrals || 0),
+    maternalDeaths: Number(r.maternal_deaths || 0),
+    under5Deaths: Number(r.under5_deaths || 0),
+    dsnoOfficer: String(r.dsno_officer || ''),
+    status: (r.status || 'submitted') as MohIdsrReport['status'],
+    notes: String(r.notes || ''),
+    createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+  }));
+
+  const citizenGrievances: MohCitizenGrievance[] = grievanceRows.map((g: any) => ({
+    id: String(g.id),
+    trackingCode: String(g.tracking_code || ''),
+    facilityId: String(g.facility_id || '').toUpperCase(),
+    facilityName: String(g.facility_name || ''),
+    lga: String(g.lga || ''),
+    channel: (g.channel || 'qr') as MohCitizenGrievance['channel'],
+    category: (g.category || 'service_quality') as MohCitizenGrievance['category'],
+    rating: Number(g.rating || 3),
+    summary: String(g.summary || ''),
+    anonymous: Boolean(g.anonymous),
+    status: (g.status || 'open') as MohCitizenGrievance['status'],
+    assignedTo: String(g.assigned_to || ''),
+    resolutionNotes: String(g.resolution_notes || ''),
+    turnaroundHours: g.turnaround_hours !== null && g.turnaround_hours !== undefined ? Number(g.turnaround_hours) : null,
+    createdAt: g.created_at ? new Date(g.created_at).toISOString() : new Date().toISOString(),
+    resolvedAt: g.resolved_at ? new Date(g.resolved_at).toISOString() : null,
   }));
 
   return aggregateMohSnapshot(
@@ -910,6 +1353,12 @@ export async function buildLiveMohSnapshot(filters?: { district?: string; facili
       transfers,
       alerts,
       facilityOverrides,
+      privateFacilities,
+      enforcementActions,
+      hrhRecruitment,
+      supplyEquipment,
+      idsrReports,
+      citizenGrievances,
     },
     filters
   );
@@ -1241,6 +1690,14 @@ export async function updateMohFacilityOverrideRecord(input: {
   facilityId: string;
   emergencyStatus?: MohFacilityTelemetry['emergencyStatus'];
   accreditationStatus?: MohFacilityTelemetry['accreditationStatus'];
+  operationalStatus?: MohOperationalStatus;
+  licenseNo?: string;
+  licenseExpiry?: string;
+  approvedServices?: string[];
+  ownership?: string;
+  unapprovedPracticeFlag?: boolean;
+  gpsLat?: number;
+  gpsLng?: number;
   notes?: string;
   updatedBy?: string;
 }): Promise<void> {
@@ -1253,19 +1710,71 @@ export async function updateMohFacilityOverrideRecord(input: {
     const prev = existing[0] || {};
     const emergencyStatus = input.emergencyStatus || prev.emergency_status || 'normal';
     const accreditationStatus = input.accreditationStatus || prev.accreditation_status || 'provisional';
+    const operationalStatus = input.operationalStatus || prev.operational_status || 'fully_functional';
+    const licenseNo = input.licenseNo !== undefined ? input.licenseNo : prev.license_no || '';
+    const licenseExpiry = input.licenseExpiry !== undefined ? input.licenseExpiry : prev.license_expiry || '';
+    const approvedServices =
+      input.approvedServices !== undefined
+        ? input.approvedServices
+        : Array.isArray(prev.approved_services)
+        ? prev.approved_services
+        : [];
+    const ownership = input.ownership !== undefined ? input.ownership : prev.ownership || '';
+    const unapprovedPracticeFlag =
+      input.unapprovedPracticeFlag !== undefined
+        ? input.unapprovedPracticeFlag
+        : Boolean(prev.unapproved_practice_flag);
+    const gpsLat =
+      typeof input.gpsLat === 'number' && Number.isFinite(input.gpsLat)
+        ? input.gpsLat
+        : prev.gps_lat !== null && prev.gps_lat !== undefined
+        ? Number(prev.gps_lat)
+        : null;
+    const gpsLng =
+      typeof input.gpsLng === 'number' && Number.isFinite(input.gpsLng)
+        ? input.gpsLng
+        : prev.gps_lng !== null && prev.gps_lng !== undefined
+        ? Number(prev.gps_lng)
+        : null;
     const notes = input.notes !== undefined ? input.notes : prev.notes || '';
     const updatedBy = input.updatedBy || 'MOH Oversight';
 
     await query(
-      `INSERT INTO moh_facility_overrides (facility_id, emergency_status, accreditation_status, notes, updated_by, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
+      `INSERT INTO moh_facility_overrides (
+         facility_id, emergency_status, accreditation_status, operational_status,
+         license_no, license_expiry, approved_services, ownership, unapproved_practice_flag,
+         gps_lat, gps_lng, notes, updated_by, updated_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13, NOW())
        ON CONFLICT (facility_id) DO UPDATE SET
          emergency_status = EXCLUDED.emergency_status,
          accreditation_status = EXCLUDED.accreditation_status,
+         operational_status = EXCLUDED.operational_status,
+         license_no = EXCLUDED.license_no,
+         license_expiry = EXCLUDED.license_expiry,
+         approved_services = EXCLUDED.approved_services,
+         ownership = EXCLUDED.ownership,
+         unapproved_practice_flag = EXCLUDED.unapproved_practice_flag,
+         gps_lat = EXCLUDED.gps_lat,
+         gps_lng = EXCLUDED.gps_lng,
          notes = EXCLUDED.notes,
          updated_by = EXCLUDED.updated_by,
          updated_at = NOW()`,
-      [fid, emergencyStatus, accreditationStatus, notes, updatedBy]
+      [
+        fid,
+        emergencyStatus,
+        accreditationStatus,
+        operationalStatus,
+        licenseNo,
+        licenseExpiry,
+        JSON.stringify(approvedServices),
+        ownership,
+        unapprovedPracticeFlag,
+        gpsLat,
+        gpsLng,
+        notes,
+        updatedBy,
+      ]
     );
 
     if (input.emergencyStatus && input.emergencyStatus !== 'normal') {
@@ -1282,6 +1791,15 @@ export async function updateMohFacilityOverrideRecord(input: {
     store.facilityOverrides[fid] = {
       emergencyStatus: input.emergencyStatus || prev?.emergencyStatus || 'normal',
       accreditationStatus: input.accreditationStatus || prev?.accreditationStatus || 'provisional',
+      operationalStatus: input.operationalStatus || prev?.operationalStatus,
+      licenseNo: input.licenseNo !== undefined ? input.licenseNo : prev?.licenseNo,
+      licenseExpiry: input.licenseExpiry !== undefined ? input.licenseExpiry : prev?.licenseExpiry,
+      approvedServices: input.approvedServices !== undefined ? input.approvedServices : prev?.approvedServices,
+      ownership: input.ownership !== undefined ? input.ownership : prev?.ownership,
+      unapprovedPracticeFlag:
+        input.unapprovedPracticeFlag !== undefined ? input.unapprovedPracticeFlag : prev?.unapprovedPracticeFlag,
+      gpsLat: input.gpsLat !== undefined ? input.gpsLat : prev?.gpsLat,
+      gpsLng: input.gpsLng !== undefined ? input.gpsLng : prev?.gpsLng,
       notes: input.notes !== undefined ? input.notes : prev?.notes,
       updatedBy: input.updatedBy || 'MOH Oversight',
       updatedAt,
@@ -1289,7 +1807,12 @@ export async function updateMohFacilityOverrideRecord(input: {
     writeLocalMohStore(store);
   }
 
-  publishMohEvent('facility', { facilityId: fid, emergencyStatus: input.emergencyStatus, accreditationStatus: input.accreditationStatus });
+  publishMohEvent('facility', {
+    facilityId: fid,
+    emergencyStatus: input.emergencyStatus,
+    accreditationStatus: input.accreditationStatus,
+    operationalStatus: input.operationalStatus,
+  });
 }
 
 export async function upsertOrToggleMohAlertRecord(input: {
@@ -1397,13 +1920,7 @@ export interface MohFacilityDossierInputs {
     config?: Record<string, any> | null;
     updated_at?: string | null;
   } | null;
-  overrideRow?: {
-    emergencyStatus: MohFacilityTelemetry['emergencyStatus'];
-    accreditationStatus: MohFacilityTelemetry['accreditationStatus'];
-    notes?: string;
-    updatedBy?: string;
-    updatedAt: string;
-  } | null;
+  overrideRow?: MohFacilityOverrideEntry | null;
   staffRows: {
     badge_id: string;
     facility_id?: string;
@@ -1622,7 +2139,7 @@ export function buildFacilityDossierFromInputs(
     location: catalogMatch?.location || 'Akwa Ibom State',
     lga: catalogMatch?.lga || 'Akwa Ibom',
     district: catalogMatch?.district || inferSenatorialDistrict(catalogMatch?.lga || ''),
-    tier: catalogMatch?.tier || 'secondary',
+    tier: catalogMatch?.tier || 'district_hospital',
     facilityType: catalogMatch?.facilityType || 'State Health Facility',
     board: catalogMatch?.board || 'AKSHMB',
     enrollmentStatus: raw.facilityRow ? 'active' : 'pending',
@@ -1635,6 +2152,17 @@ export function buildFacilityDossierFromInputs(
     complianceScore: 0,
     accreditationStatus: raw.overrideRow?.accreditationStatus || 'pending',
     emergencyStatus: raw.overrideRow?.emergencyStatus || 'normal',
+    operationalStatus: raw.overrideRow?.operationalStatus || (raw.facilityRow ? 'fully_functional' : 'partially_functional'),
+    ownership: raw.overrideRow?.ownership || catalogMatch?.ownership || (catalogMatch?.board === 'Mission' ? 'mission' : 'public_state'),
+    licenseNo: raw.overrideRow?.licenseNo || '',
+    licenseExpiry: raw.overrideRow?.licenseExpiry || '',
+    licenseAlert: computeLicenseAlert(raw.overrideRow?.licenseExpiry || '', syncedAt),
+    unapprovedPracticeFlag: Boolean(raw.overrideRow?.unapprovedPracticeFlag),
+    approvedServices: raw.overrideRow?.approvedServices || catalogMatch?.approvedServices || ['General OPD'],
+    latitude: raw.overrideRow?.gpsLat ?? catalogMatch?.latitude ?? 5.0377,
+    longitude: raw.overrideRow?.gpsLng ?? catalogMatch?.longitude ?? 7.9128,
+    attendanceRatePct: raw.staffRows.length > 0 ? 100 : 0,
+    ruralUnderstaffed: false,
     totalBeds: 0,
     occupiedBeds: 0,
     availableBeds: 0,
@@ -2296,6 +2824,14 @@ export async function buildLiveFacilityDossier(facilityId: string): Promise<MohF
       ? {
           emergencyStatus: ov.emergency_status || 'normal',
           accreditationStatus: ov.accreditation_status || 'pending',
+          operationalStatus: ov.operational_status || undefined,
+          licenseNo: ov.license_no || '',
+          licenseExpiry: ov.license_expiry || '',
+          approvedServices: Array.isArray(ov.approved_services) ? ov.approved_services : undefined,
+          ownership: ov.ownership || undefined,
+          unapprovedPracticeFlag: Boolean(ov.unapproved_practice_flag),
+          gpsLat: ov.gps_lat !== null && ov.gps_lat !== undefined ? Number(ov.gps_lat) : undefined,
+          gpsLng: ov.gps_lng !== null && ov.gps_lng !== undefined ? Number(ov.gps_lng) : undefined,
           notes: ov.notes || '',
           updatedBy: ov.updated_by || '',
           updatedAt: ov.updated_at ? new Date(ov.updated_at).toISOString() : new Date().toISOString(),
@@ -2350,4 +2886,859 @@ export async function sendDirectFacilityNotice(input: {
 
   publishMohEvent('facility', { facilityId: fid, action: 'direct_notice', sentAt });
   return { ok: true, facilityId: fid, sentAt };
+}
+
+function resolveFacilityMeta(facilityId: string, fallbackName?: string, fallbackLga?: string, fallbackDistrict?: SenatorialDistrict) {
+  const fid = facilityId.trim().toUpperCase();
+  const official = OFFICIAL_AKWA_IBOM_FACILITIES.find((f) => f.facilityId === fid);
+  const lga = String(fallbackLga || official?.lga || 'Uyo').trim();
+  const district = fallbackDistrict || official?.district || inferSenatorialDistrict(lga, fallbackName || official?.facilityName || '');
+  const lgaMeta = AKWA_IBOM_LGAS.find((l) => l.lga.toLowerCase() === lga.toLowerCase());
+  return {
+    facilityId: fid,
+    facilityName: String(fallbackName || official?.facilityName || fid).trim(),
+    lga,
+    district,
+    latitude: official?.latitude ?? lgaMeta?.latitude ?? 5.0377,
+    longitude: official?.longitude ?? lgaMeta?.longitude ?? 7.9128,
+  };
+}
+
+// ── Pillar 2: Private Clinic Registration & Anti-Quackery Enforcement ─────
+export async function registerPrivateFacilityRecord(input: {
+  facilityId?: string;
+  facilityName: string;
+  lga: string;
+  district?: SenatorialDistrict;
+  ownership?: MohPrivateFacilityRecord['ownership'];
+  facilityType?: string;
+  licenseNo?: string;
+  licenseExpiry?: string;
+  approvedServices?: string[];
+  latitude?: number;
+  longitude?: number;
+  registeredBy?: string;
+}): Promise<MohPrivateFacilityRecord> {
+  const cleanLga = input.lga.trim();
+  const lgaMeta = AKWA_IBOM_LGAS.find((l) => l.lga.toLowerCase() === cleanLga.toLowerCase());
+  const district = input.district || lgaMeta?.district || inferSenatorialDistrict(cleanLga, input.facilityName);
+  const slug = crypto.randomBytes(2).toString('hex').toUpperCase();
+  const rec: MohPrivateFacilityRecord = {
+    facilityId: (input.facilityId || `PRV-${slug}`).trim().toUpperCase(),
+    facilityName: sanitizeMohAuditDetail(input.facilityName),
+    lga: cleanLga,
+    district,
+    ownership: input.ownership || 'private',
+    facilityType: (input.facilityType || 'Private Clinic').trim(),
+    tier: 'cottage_hospital',
+    licenseNo: (input.licenseNo || `AKS-HFR-PRV-${slug}`).trim(),
+    licenseExpiry: (input.licenseExpiry || '').trim(),
+    operationalStatus: 'fully_functional',
+    accreditationStatus: 'provisional',
+    approvedServices: input.approvedServices?.length ? input.approvedServices : ['General OPD', 'Maternal Care'],
+    latitude: typeof input.latitude === 'number' && Number.isFinite(input.latitude) ? input.latitude : lgaMeta?.latitude ?? 5.0377,
+    longitude: typeof input.longitude === 'number' && Number.isFinite(input.longitude) ? input.longitude : lgaMeta?.longitude ?? 7.9128,
+    registeredBy: (input.registeredBy || 'MOH Facility Registry').trim(),
+    createdAt: new Date().toISOString(),
+  };
+
+  if (isPostgresConfigured()) {
+    await ensureMohSchema();
+    await query(
+      `INSERT INTO moh_private_facilities (
+         facility_id, facility_name, lga, district, ownership, facility_type, tier,
+         license_no, license_expiry, operational_status, accreditation_status,
+         approved_services, latitude, longitude, registered_by, created_at, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,NOW(),NOW())
+       ON CONFLICT (facility_id) DO UPDATE SET
+         facility_name = EXCLUDED.facility_name,
+         lga = EXCLUDED.lga,
+         district = EXCLUDED.district,
+         ownership = EXCLUDED.ownership,
+         facility_type = EXCLUDED.facility_type,
+         license_no = EXCLUDED.license_no,
+         license_expiry = EXCLUDED.license_expiry,
+         approved_services = EXCLUDED.approved_services,
+         latitude = EXCLUDED.latitude,
+         longitude = EXCLUDED.longitude,
+         updated_at = NOW()`,
+      [
+        rec.facilityId,
+        rec.facilityName,
+        rec.lga,
+        rec.district,
+        rec.ownership,
+        rec.facilityType,
+        rec.tier,
+        rec.licenseNo,
+        rec.licenseExpiry,
+        rec.operationalStatus,
+        rec.accreditationStatus,
+        JSON.stringify(rec.approvedServices),
+        rec.latitude,
+        rec.longitude,
+        rec.registeredBy,
+      ]
+    );
+  } else {
+    const store = readLocalMohStore();
+    store.privateFacilities = [rec, ...store.privateFacilities.filter((f) => f.facilityId !== rec.facilityId)];
+    writeLocalMohStore(store);
+  }
+
+  publishMohEvent('facility', { facilityId: rec.facilityId, action: 'register_private' });
+  return rec;
+}
+
+export async function createEnforcementActionRecord(input: {
+  facilityId: string;
+  facilityName?: string;
+  lga?: string;
+  district?: SenatorialDistrict;
+  actionType: MohEnforcementAction['actionType'];
+  reason: string;
+  checklist?: { label: string; passed: boolean }[];
+  evidencePhotoData?: string;
+  officerName: string;
+  followUpDate?: string;
+}): Promise<MohEnforcementAction> {
+  const meta = resolveFacilityMeta(input.facilityId, input.facilityName, input.lga, input.district);
+  const status: MohEnforcementAction['status'] =
+    input.actionType === 'unsealed'
+      ? 'resolved'
+      : input.actionType === 'sealed' || input.actionType === 'quackery_raid'
+      ? 'active_seal'
+      : 'follow_up';
+
+  const rec: MohEnforcementAction = {
+    id: `ENF-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+    facilityId: meta.facilityId,
+    facilityName: meta.facilityName,
+    lga: meta.lga,
+    district: meta.district,
+    actionType: input.actionType,
+    reason: sanitizeMohAuditDetail(input.reason),
+    checklist: Array.isArray(input.checklist) ? input.checklist : [],
+    evidencePhotoData: input.evidencePhotoData ? String(input.evidencePhotoData).slice(0, 600_000) : undefined,
+    officerName: (input.officerName || 'MOH Inspectorate').trim(),
+    status,
+    followUpDate: (input.followUpDate || '').trim(),
+    resolutionNotes: '',
+    createdAt: new Date().toISOString(),
+  };
+
+  if (isPostgresConfigured()) {
+    await ensureMohSchema();
+    await query(
+      `INSERT INTO moh_enforcement_actions (
+         id, facility_id, facility_name, lga, district, action_type, reason,
+         checklist, evidence_photo_data, officer_name, status, follow_up_date, resolution_notes, created_at, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,'',NOW(),NOW())`,
+      [
+        rec.id,
+        rec.facilityId,
+        rec.facilityName,
+        rec.lga,
+        rec.district,
+        rec.actionType,
+        rec.reason,
+        JSON.stringify(rec.checklist),
+        rec.evidencePhotoData || '',
+        rec.officerName,
+        rec.status,
+        rec.followUpDate,
+      ]
+    );
+  } else {
+    const store = readLocalMohStore();
+    store.enforcementActions = [rec, ...store.enforcementActions];
+    writeLocalMohStore(store);
+  }
+
+  if (input.actionType === 'sealed' || input.actionType === 'quackery_raid') {
+    await updateMohFacilityOverrideRecord({
+      facilityId: rec.facilityId,
+      operationalStatus: 'sealed',
+      accreditationStatus: 'suspended',
+      unapprovedPracticeFlag: input.actionType === 'quackery_raid',
+      notes: rec.reason,
+      updatedBy: rec.officerName,
+    });
+    await notifyFacilitiesInOs([rec.facilityId], {
+      level: 'alert',
+      title: `MOH Enforcement Order: Facility Sealed (${rec.facilityId})`,
+      body: rec.reason,
+      category: 'moh_enforcement',
+    });
+  } else if (input.actionType === 'unsealed') {
+    await updateMohFacilityOverrideRecord({
+      facilityId: rec.facilityId,
+      operationalStatus: 'fully_functional',
+      accreditationStatus: 'provisional',
+      unapprovedPracticeFlag: false,
+      notes: rec.reason,
+      updatedBy: rec.officerName,
+    });
+  }
+
+  publishMohEvent('enforcement', { id: rec.id, facilityId: rec.facilityId, actionType: rec.actionType });
+  return rec;
+}
+
+export async function updateEnforcementActionRecord(
+  id: string,
+  patch: {
+    status?: MohEnforcementAction['status'];
+    followUpDate?: string;
+    resolutionNotes?: string;
+    unsealFacility?: boolean;
+    updatedBy?: string;
+  }
+): Promise<MohEnforcementAction | null> {
+  const cleanNotes = patch.resolutionNotes !== undefined ? sanitizeMohAuditDetail(patch.resolutionNotes) : undefined;
+  let updated: MohEnforcementAction | null = null;
+
+  if (isPostgresConfigured()) {
+    await ensureMohSchema();
+    const res = await query<any>(
+      `UPDATE moh_enforcement_actions
+       SET status = COALESCE($2, status),
+           follow_up_date = COALESCE($3, follow_up_date),
+           resolution_notes = COALESCE($4, resolution_notes),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id, patch.status ?? null, patch.followUpDate ?? null, cleanNotes ?? null]
+    );
+    const e = res.rows[0];
+    if (!e) return null;
+    updated = {
+      id: String(e.id),
+      facilityId: String(e.facility_id).toUpperCase(),
+      facilityName: String(e.facility_name),
+      lga: String(e.lga || ''),
+      district: (e.district || 'Uyo') as SenatorialDistrict,
+      actionType: e.action_type,
+      reason: String(e.reason || ''),
+      checklist: Array.isArray(e.checklist) ? e.checklist : [],
+      evidencePhotoData: e.evidence_photo_data ? String(e.evidence_photo_data) : undefined,
+      officerName: String(e.officer_name || ''),
+      status: e.status,
+      followUpDate: String(e.follow_up_date || ''),
+      resolutionNotes: String(e.resolution_notes || ''),
+      createdAt: new Date(e.created_at).toISOString(),
+    };
+  } else {
+    const store = readLocalMohStore();
+    store.enforcementActions = store.enforcementActions.map((e) => {
+      if (e.id !== id) return e;
+      updated = {
+        ...e,
+        status: patch.status || e.status,
+        followUpDate: patch.followUpDate !== undefined ? patch.followUpDate : e.followUpDate,
+        resolutionNotes: cleanNotes !== undefined ? cleanNotes : e.resolutionNotes,
+      };
+      return updated;
+    });
+    writeLocalMohStore(store);
+  }
+
+  if (updated && patch.unsealFacility) {
+    await updateMohFacilityOverrideRecord({
+      facilityId: updated.facilityId,
+      operationalStatus: 'fully_functional',
+      accreditationStatus: 'provisional',
+      unapprovedPracticeFlag: false,
+      notes: cleanNotes || 'Seal lifted after verified remediation.',
+      updatedBy: patch.updatedBy || 'MOH Enforcement Desk',
+    });
+  }
+
+  if (updated) publishMohEvent('enforcement', { id, status: updated.status });
+  return updated;
+}
+
+// ── Pillar 3: HRH Recruitment & Deployment Pipeline ──────────────────────
+export async function createHrhRecruitmentRecord(input: {
+  title: string;
+  cadre: string;
+  facilityId: string;
+  facilityName?: string;
+  lga?: string;
+  vacanciesCount?: number;
+  applicantsCount?: number;
+  shortlistedCount?: number;
+  deployedCount?: number;
+  stage?: MohHrhRecruitment['stage'];
+  postedBy?: string;
+}): Promise<MohHrhRecruitment> {
+  const meta = resolveFacilityMeta(input.facilityId, input.facilityName, input.lga);
+  const rec: MohHrhRecruitment = {
+    id: `REC-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+    title: sanitizeMohAuditDetail(input.title),
+    cadre: input.cadre.trim(),
+    facilityId: meta.facilityId,
+    facilityName: meta.facilityName,
+    lga: meta.lga,
+    vacanciesCount: Math.max(1, Number(input.vacanciesCount || 1)),
+    applicantsCount: Math.max(0, Number(input.applicantsCount || 0)),
+    shortlistedCount: Math.max(0, Number(input.shortlistedCount || 0)),
+    deployedCount: Math.max(0, Number(input.deployedCount || 0)),
+    stage: input.stage || 'open',
+    postedBy: (input.postedBy || 'MOH HRH Desk').trim(),
+    createdAt: new Date().toISOString(),
+  };
+
+  if (isPostgresConfigured()) {
+    await ensureMohSchema();
+    await query(
+      `INSERT INTO moh_hrh_recruitment (
+         id, title, cadre, facility_id, facility_name, lga, vacancies_count,
+         applicants_count, shortlisted_count, deployed_count, stage, posted_by, created_at, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW())`,
+      [
+        rec.id,
+        rec.title,
+        rec.cadre,
+        rec.facilityId,
+        rec.facilityName,
+        rec.lga,
+        rec.vacanciesCount,
+        rec.applicantsCount,
+        rec.shortlistedCount,
+        rec.deployedCount,
+        rec.stage,
+        rec.postedBy,
+      ]
+    );
+  } else {
+    const store = readLocalMohStore();
+    store.hrhRecruitment = [rec, ...store.hrhRecruitment];
+    writeLocalMohStore(store);
+  }
+
+  publishMohEvent('hrh', { id: rec.id, stage: rec.stage });
+  return rec;
+}
+
+export async function updateHrhRecruitmentRecord(
+  id: string,
+  patch: Partial<Pick<MohHrhRecruitment, 'stage' | 'applicantsCount' | 'shortlistedCount' | 'deployedCount'>>
+): Promise<MohHrhRecruitment | null> {
+  if (isPostgresConfigured()) {
+    await ensureMohSchema();
+    const res = await query<any>(
+      `UPDATE moh_hrh_recruitment
+       SET stage = COALESCE($2, stage),
+           applicants_count = COALESCE($3, applicants_count),
+           shortlisted_count = COALESCE($4, shortlisted_count),
+           deployed_count = COALESCE($5, deployed_count),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [
+        id,
+        patch.stage ?? null,
+        patch.applicantsCount ?? null,
+        patch.shortlistedCount ?? null,
+        patch.deployedCount ?? null,
+      ]
+    );
+    const r = res.rows[0];
+    if (!r) return null;
+    publishMohEvent('hrh', { id, stage: r.stage });
+    return {
+      id: String(r.id),
+      title: String(r.title),
+      cadre: String(r.cadre),
+      facilityId: String(r.facility_id).toUpperCase(),
+      facilityName: String(r.facility_name),
+      lga: String(r.lga || ''),
+      vacanciesCount: Number(r.vacancies_count || 1),
+      applicantsCount: Number(r.applicants_count || 0),
+      shortlistedCount: Number(r.shortlisted_count || 0),
+      deployedCount: Number(r.deployed_count || 0),
+      stage: r.stage,
+      postedBy: String(r.posted_by || ''),
+      createdAt: new Date(r.created_at).toISOString(),
+    };
+  }
+  const store = readLocalMohStore();
+  let updated: MohHrhRecruitment | null = null;
+  store.hrhRecruitment = store.hrhRecruitment.map((r) => {
+    if (r.id !== id) return r;
+    updated = { ...r, ...patch };
+    return updated;
+  });
+  writeLocalMohStore(store);
+  if (updated) publishMohEvent('hrh', { id, stage: (updated as MohHrhRecruitment).stage });
+  return updated;
+}
+
+// ── Pillar 4: Supply Chain, Equipment Audit & Facility Infrastructure ────
+export async function upsertSupplyEquipmentRecord(input: {
+  id?: string;
+  domain: MohSupplyEquipmentItem['domain'];
+  facilityId: string;
+  facilityName?: string;
+  lga?: string;
+  itemName: string;
+  category?: string;
+  quantity?: number;
+  reorderLevel?: number;
+  unit?: string;
+  coldChainTempC?: number | null;
+  functionalStatus?: MohSupplyEquipmentItem['functionalStatus'];
+  notes?: string;
+  updatedBy?: string;
+}): Promise<MohSupplyEquipmentItem> {
+  const meta = resolveFacilityMeta(input.facilityId, input.facilityName, input.lga);
+  const qty = Number(input.quantity ?? 0);
+  const reorder = Number(input.reorderLevel ?? 0);
+  let status: MohSupplyEquipmentItem['functionalStatus'] =
+    input.functionalStatus ||
+    (input.domain === 'medicine_vaccine'
+      ? qty <= 0
+        ? 'stock_out'
+        : qty <= reorder
+        ? 'low_stock'
+        : 'in_stock'
+      : input.domain === 'equipment'
+      ? 'operational'
+      : 'adequate');
+
+  const rec: MohSupplyEquipmentItem = {
+    id: input.id || `SUP-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+    domain: input.domain,
+    facilityId: meta.facilityId,
+    facilityName: meta.facilityName,
+    lga: meta.lga,
+    itemName: sanitizeMohAuditDetail(input.itemName),
+    category: (input.category || input.domain).trim(),
+    quantity: qty,
+    reorderLevel: reorder,
+    unit: (input.unit || (input.domain === 'medicine_vaccine' ? 'doses/packs' : 'units')).trim(),
+    coldChainTempC:
+      typeof input.coldChainTempC === 'number' && Number.isFinite(input.coldChainTempC) ? input.coldChainTempC : null,
+    functionalStatus: status,
+    notes: sanitizeMohAuditDetail(input.notes || ''),
+    updatedBy: (input.updatedBy || 'MOH Logistics').trim(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (isPostgresConfigured()) {
+    await ensureMohSchema();
+    await query(
+      `INSERT INTO moh_supply_equipment (
+         id, domain, facility_id, facility_name, lga, item_name, category,
+         quantity, reorder_level, unit, cold_chain_temp_c, functional_status,
+         notes, updated_by, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         quantity = EXCLUDED.quantity,
+         reorder_level = EXCLUDED.reorder_level,
+         cold_chain_temp_c = EXCLUDED.cold_chain_temp_c,
+         functional_status = EXCLUDED.functional_status,
+         notes = EXCLUDED.notes,
+         updated_by = EXCLUDED.updated_by,
+         updated_at = NOW()`,
+      [
+        rec.id,
+        rec.domain,
+        rec.facilityId,
+        rec.facilityName,
+        rec.lga,
+        rec.itemName,
+        rec.category,
+        rec.quantity,
+        rec.reorderLevel,
+        rec.unit,
+        rec.coldChainTempC,
+        rec.functionalStatus,
+        rec.notes,
+        rec.updatedBy,
+      ]
+    );
+  } else {
+    const store = readLocalMohStore();
+    store.supplyEquipment = [rec, ...store.supplyEquipment.filter((i) => i.id !== rec.id)];
+    writeLocalMohStore(store);
+  }
+
+  publishMohEvent('supply', { id: rec.id, domain: rec.domain, status: rec.functionalStatus });
+  return rec;
+}
+
+export async function updateSupplyEquipmentRecord(
+  id: string,
+  patch: Partial<Pick<MohSupplyEquipmentItem, 'quantity' | 'coldChainTempC' | 'functionalStatus' | 'notes' | 'updatedBy'>>
+): Promise<MohSupplyEquipmentItem | null> {
+  const cleanNotes = patch.notes !== undefined ? sanitizeMohAuditDetail(patch.notes) : undefined;
+  if (isPostgresConfigured()) {
+    await ensureMohSchema();
+    const res = await query<any>(
+      `UPDATE moh_supply_equipment
+       SET quantity = COALESCE($2, quantity),
+           cold_chain_temp_c = COALESCE($3, cold_chain_temp_c),
+           functional_status = COALESCE($4, functional_status),
+           notes = COALESCE($5, notes),
+           updated_by = COALESCE($6, updated_by),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [
+        id,
+        patch.quantity ?? null,
+        patch.coldChainTempC === undefined ? null : patch.coldChainTempC,
+        patch.functionalStatus ?? null,
+        cleanNotes ?? null,
+        patch.updatedBy ?? null,
+      ]
+    );
+    const s = res.rows[0];
+    if (!s) return null;
+    publishMohEvent('supply', { id, status: s.functional_status });
+    return {
+      id: String(s.id),
+      domain: s.domain,
+      facilityId: String(s.facility_id).toUpperCase(),
+      facilityName: String(s.facility_name),
+      lga: String(s.lga || ''),
+      itemName: String(s.item_name),
+      category: String(s.category || ''),
+      quantity: Number(s.quantity || 0),
+      reorderLevel: Number(s.reorder_level || 0),
+      unit: String(s.unit || 'units'),
+      coldChainTempC: s.cold_chain_temp_c !== null && s.cold_chain_temp_c !== undefined ? Number(s.cold_chain_temp_c) : null,
+      functionalStatus: s.functional_status,
+      notes: String(s.notes || ''),
+      updatedBy: String(s.updated_by || ''),
+      updatedAt: new Date(s.updated_at).toISOString(),
+    };
+  }
+  const store = readLocalMohStore();
+  let updated: MohSupplyEquipmentItem | null = null;
+  store.supplyEquipment = store.supplyEquipment.map((item) => {
+    if (item.id !== id) return item;
+    updated = {
+      ...item,
+      ...patch,
+      notes: cleanNotes !== undefined ? cleanNotes : item.notes,
+      updatedAt: new Date().toISOString(),
+    };
+    return updated;
+  });
+  writeLocalMohStore(store);
+  if (updated) publishMohEvent('supply', { id, status: (updated as MohSupplyEquipmentItem).functionalStatus });
+  return updated;
+}
+
+// ── Pillar 5: DSNO IDSR Reports & RMNCH Service Delivery Metrics ─────────
+export async function createIdsrReportRecord(input: {
+  reportKind: MohIdsrReport['reportKind'];
+  facilityId?: string;
+  facilityName?: string;
+  lga: string;
+  district?: SenatorialDistrict;
+  periodLabel?: string;
+  disease?: string;
+  suspectedCases?: number;
+  confirmedCases?: number;
+  deaths?: number;
+  ancVisits?: number;
+  skilledDeliveries?: number;
+  immunizationDoses?: number;
+  emergencyReferrals?: number;
+  maternalDeaths?: number;
+  under5Deaths?: number;
+  dsnoOfficer?: string;
+  notes?: string;
+}): Promise<MohIdsrReport> {
+  const fid = (input.facilityId || '').trim().toUpperCase();
+  const meta = fid
+    ? resolveFacilityMeta(fid, input.facilityName, input.lga, input.district)
+    : {
+        facilityId: '',
+        facilityName: input.facilityName || `${input.lga} LGA Surveillance`,
+        lga: input.lga.trim(),
+        district:
+          input.district ||
+          AKWA_IBOM_LGAS.find((l) => l.lga.toLowerCase() === input.lga.trim().toLowerCase())?.district ||
+          inferSenatorialDistrict(input.lga, ''),
+      };
+
+  const now = new Date();
+  const rec: MohIdsrReport = {
+    id: `IDSR-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+    reportKind: input.reportKind,
+    facilityId: meta.facilityId,
+    facilityName: meta.facilityName,
+    lga: meta.lga,
+    district: meta.district,
+    periodLabel: (input.periodLabel || now.toISOString().slice(0, 7)).trim(),
+    disease: (input.disease || '').trim(),
+    suspectedCases: Number(input.suspectedCases || 0),
+    confirmedCases: Number(input.confirmedCases || 0),
+    deaths: Number(input.deaths || 0),
+    ancVisits: Number(input.ancVisits || 0),
+    skilledDeliveries: Number(input.skilledDeliveries || 0),
+    immunizationDoses: Number(input.immunizationDoses || 0),
+    emergencyReferrals: Number(input.emergencyReferrals || 0),
+    maternalDeaths: Number(input.maternalDeaths || 0),
+    under5Deaths: Number(input.under5Deaths || 0),
+    dsnoOfficer: (input.dsnoOfficer || 'LGA DSNO Desk').trim(),
+    status: input.reportKind === 'service_utilization' ? 'verified' : 'submitted',
+    notes: sanitizeMohAuditDetail(input.notes || ''),
+    createdAt: now.toISOString(),
+  };
+
+  if (isPostgresConfigured()) {
+    await ensureMohSchema();
+    await query(
+      `INSERT INTO moh_idsr_reports (
+         id, report_kind, facility_id, facility_name, lga, district, period_label,
+         disease, suspected_cases, confirmed_cases, deaths, anc_visits, skilled_deliveries,
+         immunization_doses, emergency_referrals, maternal_deaths, under5_deaths,
+         dsno_officer, status, notes, created_at, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,NOW(),NOW())`,
+      [
+        rec.id,
+        rec.reportKind,
+        rec.facilityId,
+        rec.facilityName,
+        rec.lga,
+        rec.district,
+        rec.periodLabel,
+        rec.disease,
+        rec.suspectedCases,
+        rec.confirmedCases,
+        rec.deaths,
+        rec.ancVisits,
+        rec.skilledDeliveries,
+        rec.immunizationDoses,
+        rec.emergencyReferrals,
+        rec.maternalDeaths,
+        rec.under5Deaths,
+        rec.dsnoOfficer,
+        rec.status,
+        rec.notes,
+      ]
+    );
+
+    if (rec.reportKind === 'dsno_outbreak' && rec.facilityId) {
+      await notifyFacilitiesInOs([rec.facilityId], {
+        level: 'warning',
+        title: `DSNO IDSR Alert (${rec.disease}) — ${rec.lga} LGA`,
+        body: `${rec.suspectedCases} suspected, ${rec.confirmedCases} confirmed. Activate isolation & line listing.`,
+        category: 'moh_idsr',
+      });
+    }
+  } else {
+    const store = readLocalMohStore();
+    store.idsrReports = [rec, ...store.idsrReports];
+    writeLocalMohStore(store);
+  }
+
+  publishMohEvent('idsr', { id: rec.id, reportKind: rec.reportKind, disease: rec.disease });
+  return rec;
+}
+
+export async function updateIdsrReportRecord(
+  id: string,
+  patch: Partial<Pick<MohIdsrReport, 'status' | 'confirmedCases' | 'deaths' | 'notes'>>
+): Promise<MohIdsrReport | null> {
+  const cleanNotes = patch.notes !== undefined ? sanitizeMohAuditDetail(patch.notes) : undefined;
+  if (isPostgresConfigured()) {
+    await ensureMohSchema();
+    const res = await query<any>(
+      `UPDATE moh_idsr_reports
+       SET status = COALESCE($2, status),
+           confirmed_cases = COALESCE($3, confirmed_cases),
+           deaths = COALESCE($4, deaths),
+           notes = COALESCE($5, notes),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id, patch.status ?? null, patch.confirmedCases ?? null, patch.deaths ?? null, cleanNotes ?? null]
+    );
+    const r = res.rows[0];
+    if (!r) return null;
+    publishMohEvent('idsr', { id, status: r.status });
+    return {
+      id: String(r.id),
+      reportKind: r.report_kind,
+      facilityId: String(r.facility_id || '').toUpperCase(),
+      facilityName: String(r.facility_name || ''),
+      lga: String(r.lga),
+      district: r.district,
+      periodLabel: String(r.period_label || ''),
+      disease: String(r.disease || ''),
+      suspectedCases: Number(r.suspected_cases || 0),
+      confirmedCases: Number(r.confirmed_cases || 0),
+      deaths: Number(r.deaths || 0),
+      ancVisits: Number(r.anc_visits || 0),
+      skilledDeliveries: Number(r.skilled_deliveries || 0),
+      immunizationDoses: Number(r.immunization_doses || 0),
+      emergencyReferrals: Number(r.emergency_referrals || 0),
+      maternalDeaths: Number(r.maternal_deaths || 0),
+      under5Deaths: Number(r.under5_deaths || 0),
+      dsnoOfficer: String(r.dsno_officer || ''),
+      status: r.status,
+      notes: String(r.notes || ''),
+      createdAt: new Date(r.created_at).toISOString(),
+    };
+  }
+  const store = readLocalMohStore();
+  let updated: MohIdsrReport | null = null;
+  store.idsrReports = store.idsrReports.map((r) => {
+    if (r.id !== id) return r;
+    updated = { ...r, ...patch, notes: cleanNotes !== undefined ? cleanNotes : r.notes };
+    return updated;
+  });
+  writeLocalMohStore(store);
+  if (updated) publishMohEvent('idsr', { id, status: (updated as MohIdsrReport).status });
+  return updated;
+}
+
+// ── Pillar 6: Public Citizen Feedback & Grievance Redressal ──────────────
+export async function createCitizenGrievanceRecord(input: {
+  facilityId: string;
+  facilityName?: string;
+  lga?: string;
+  channel?: MohCitizenGrievance['channel'];
+  category?: MohCitizenGrievance['category'];
+  rating?: number;
+  summary: string;
+  anonymous?: boolean;
+}): Promise<MohCitizenGrievance> {
+  const meta = resolveFacilityMeta(input.facilityId, input.facilityName, input.lga);
+  const trackingCode = `AKS-FB-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+  const rec: MohCitizenGrievance = {
+    id: `GRV-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+    trackingCode,
+    facilityId: meta.facilityId,
+    facilityName: meta.facilityName,
+    lga: meta.lga,
+    channel: input.channel || 'qr',
+    category: input.category || 'service_quality',
+    rating: Math.max(1, Math.min(5, Math.round(Number(input.rating ?? 3)))),
+    summary: sanitizeMohAuditDetail(input.summary),
+    anonymous: input.anonymous !== false,
+    status: 'open',
+    assignedTo: '',
+    resolutionNotes: '',
+    turnaroundHours: null,
+    createdAt: new Date().toISOString(),
+    resolvedAt: null,
+  };
+
+  if (isPostgresConfigured()) {
+    await ensureMohSchema();
+    await query(
+      `INSERT INTO moh_citizen_grievances (
+         id, tracking_code, facility_id, facility_name, lga, channel, category,
+         rating, summary, anonymous, status, assigned_to, resolution_notes,
+         turnaround_hours, created_at, resolved_at, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'open','','',NULL,NOW(),NULL,NOW())`,
+      [
+        rec.id,
+        rec.trackingCode,
+        rec.facilityId,
+        rec.facilityName,
+        rec.lga,
+        rec.channel,
+        rec.category,
+        rec.rating,
+        rec.summary,
+        rec.anonymous,
+      ]
+    );
+  } else {
+    const store = readLocalMohStore();
+    store.citizenGrievances = [rec, ...store.citizenGrievances];
+    writeLocalMohStore(store);
+  }
+
+  publishMohEvent('grievance', { id: rec.id, trackingCode: rec.trackingCode, facilityId: rec.facilityId });
+  return rec;
+}
+
+export async function updateCitizenGrievanceRecord(
+  id: string,
+  patch: {
+    status?: MohCitizenGrievance['status'];
+    assignedTo?: string;
+    resolutionNotes?: string;
+  }
+): Promise<MohCitizenGrievance | null> {
+  const cleanNotes = patch.resolutionNotes !== undefined ? sanitizeMohAuditDetail(patch.resolutionNotes) : undefined;
+  const now = new Date();
+
+  if (isPostgresConfigured()) {
+    await ensureMohSchema();
+    const prevRows = await safeQueryRows<any>(`SELECT created_at FROM moh_citizen_grievances WHERE id = $1 LIMIT 1`, [id]);
+    if (prevRows.length === 0) return null;
+    const createdMs = Date.parse(prevRows[0].created_at) || now.getTime();
+    const isResolved = patch.status === 'resolved';
+    const turnaroundHours = isResolved
+      ? Math.max(0.1, Math.round(((now.getTime() - createdMs) / 3_600_000) * 10) / 10)
+      : null;
+
+    const res = await query<any>(
+      `UPDATE moh_citizen_grievances
+       SET status = COALESCE($2, status),
+           assigned_to = COALESCE($3, assigned_to),
+           resolution_notes = COALESCE($4, resolution_notes),
+           turnaround_hours = COALESCE($5, turnaround_hours),
+           resolved_at = CASE WHEN $2 = 'resolved' THEN NOW() ELSE resolved_at END,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id, patch.status ?? null, patch.assignedTo ?? null, cleanNotes ?? null, turnaroundHours]
+    );
+    const g = res.rows[0];
+    if (!g) return null;
+    publishMohEvent('grievance', { id, status: g.status });
+    return {
+      id: String(g.id),
+      trackingCode: String(g.tracking_code),
+      facilityId: String(g.facility_id).toUpperCase(),
+      facilityName: String(g.facility_name),
+      lga: String(g.lga || ''),
+      channel: g.channel,
+      category: g.category,
+      rating: Number(g.rating || 3),
+      summary: String(g.summary || ''),
+      anonymous: Boolean(g.anonymous),
+      status: g.status,
+      assignedTo: String(g.assigned_to || ''),
+      resolutionNotes: String(g.resolution_notes || ''),
+      turnaroundHours: g.turnaround_hours !== null && g.turnaround_hours !== undefined ? Number(g.turnaround_hours) : null,
+      createdAt: new Date(g.created_at).toISOString(),
+      resolvedAt: g.resolved_at ? new Date(g.resolved_at).toISOString() : null,
+    };
+  }
+
+  const store = readLocalMohStore();
+  let updated: MohCitizenGrievance | null = null;
+  store.citizenGrievances = store.citizenGrievances.map((g) => {
+    if (g.id !== id) return g;
+    const isResolved = patch.status === 'resolved';
+    const createdMs = Date.parse(g.createdAt) || now.getTime();
+    const hrs = isResolved
+      ? Math.max(0.1, Math.round(((now.getTime() - createdMs) / 3_600_000) * 10) / 10)
+      : g.turnaroundHours;
+    updated = {
+      ...g,
+      status: patch.status || g.status,
+      assignedTo: patch.assignedTo !== undefined ? patch.assignedTo : g.assignedTo,
+      resolutionNotes: cleanNotes !== undefined ? cleanNotes : g.resolutionNotes,
+      turnaroundHours: hrs,
+      resolvedAt: isResolved ? now.toISOString() : g.resolvedAt,
+    };
+    return updated;
+  });
+  writeLocalMohStore(store);
+  if (updated) publishMohEvent('grievance', { id, status: (updated as MohCitizenGrievance).status });
+  return updated;
 }

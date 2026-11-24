@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Send,
   ClipboardCheck,
@@ -8,16 +8,23 @@ import {
   AlertTriangle,
   Building2,
   Calendar,
+  ShieldAlert,
+  Lock,
+  Unlock,
+  Camera,
+  X,
 } from 'lucide-react';
 import type {
   MohAuditRecord,
   MohDirective,
+  MohEnforcementAction,
   MohFacilityTelemetry,
   MohLiveSnapshot,
 } from '../../lib/mohTypes';
 
 interface MohDirectivesComplianceViewProps {
   snapshot: MohLiveSnapshot;
+  officerName?: string;
   onBroadcastDirective: () => void;
   onUpdateDirectiveStatus: (id: string, status: MohDirective['status']) => Promise<void>;
   onScheduleAudit: (presetFacilityId?: string) => void;
@@ -26,35 +33,127 @@ interface MohDirectivesComplianceViewProps {
     patch: Partial<Pick<MohAuditRecord, 'status' | 'findingsCount' | 'criticalViolations' | 'notes'>>
   ) => Promise<void>;
   onSelectFacility: (facility: MohFacilityTelemetry) => void;
+  onCreateEnforcement?: (input: {
+    facilityId: string;
+    facilityName?: string;
+    lga?: string;
+    district?: MohFacilityTelemetry['district'];
+    actionType: MohEnforcementAction['actionType'];
+    reason: string;
+    checklist?: { label: string; passed: boolean }[];
+    evidencePhotoData?: string;
+    officerName: string;
+    followUpDate?: string;
+  }) => Promise<void>;
+  onUpdateEnforcement?: (input: {
+    id: string;
+    status?: MohEnforcementAction['status'];
+    followUpDate?: string;
+    resolutionNotes?: string;
+    unsealFacility?: boolean;
+    updatedBy?: string;
+  }) => Promise<void>;
 }
+
+const DEFAULT_CHECKLIST = [
+  'Valid MOH Operating License displayed',
+  'Licensed Medical / Nursing personnel on duty',
+  'Approved scope of practice adhered to',
+  'Minimum IPC & sterile equipment standards met',
+];
 
 export const MohDirectivesComplianceView: React.FC<MohDirectivesComplianceViewProps> = ({
   snapshot,
+  officerName,
   onBroadcastDirective,
   onUpdateDirectiveStatus,
   onScheduleAudit,
   onUpdateAuditStatus,
   onSelectFacility,
+  onCreateEnforcement,
+  onUpdateEnforcement,
 }) => {
-  const [subTab, setSubTab] = useState<'directives' | 'audits'>('directives');
+  const [subTab, setSubTab] = useState<'directives' | 'audits' | 'enforcement'>('directives');
+  const [enfOpen, setEnfOpen] = useState(false);
+  const [enfFacId, setEnfFacId] = useState(snapshot.facilities[0]?.facilityId || 'IGH-EKT');
+  const [enfActionType, setEnfActionType] = useState<MohEnforcementAction['actionType']>('sealed');
+  const [enfReason, setEnfReason] = useState('');
+  const [enfFollowUp, setEnfFollowUp] = useState('');
+  const [enfChecks, setEnfChecks] = useState<{ label: string; passed: boolean }[]>(
+    DEFAULT_CHECKLIST.map((label) => ({ label, passed: false }))
+  );
+  const [enfPhoto, setEnfPhoto] = useState<string>('');
+  const [enfBusy, setEnfBusy] = useState(false);
 
-  const { directives, audits, facilities } = snapshot;
+  const { directives, audits, facilities, enforcement } = snapshot;
   const activeDirectives = directives.filter((d) => d.status === 'active').length;
   const openRemediations = audits.filter((a) => a.status === 'remediation_required').length;
+
+  const licenseAlerts = useMemo(
+    () =>
+      facilities.filter(
+        (f) => f.licenseAlert === 'expired' || f.licenseAlert === 'expiring_soon' || f.unapprovedPracticeFlag
+      ),
+    [facilities]
+  );
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setEnfPhoto(reader.result.slice(0, 500_000));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleEnfSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onCreateEnforcement || !enfFacId || !enfReason.trim()) return;
+    const fac = facilities.find((f) => f.facilityId === enfFacId);
+    setEnfBusy(true);
+    try {
+      await onCreateEnforcement({
+        facilityId: enfFacId,
+        facilityName: fac?.facilityName,
+        lga: fac?.lga,
+        district: fac?.district,
+        actionType: enfActionType,
+        reason: enfReason.trim(),
+        checklist: enfChecks,
+        evidencePhotoData: enfPhoto || undefined,
+        officerName: officerName || 'MOH Enforcement Taskforce',
+        followUpDate: enfFollowUp,
+      });
+      setEnfReason('');
+      setEnfFollowUp('');
+      setEnfPhoto('');
+      setEnfOpen(false);
+    } finally {
+      setEnfBusy(false);
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div className="moh-view-header">
         <div>
-          <h1 className="moh-view-title">Directives &amp; Regulatory Compliance</h1>
+          <h1 className="moh-view-title">Directives, Licensing &amp; Anti-Quackery</h1>
           <p className="moh-view-sub">
-            Official Ministry circulars synced to hospital leadership, alongside HFR accreditation and facility audits.
+            Official Ministry circulars, automated license renewal alerts, accreditation audits, and facility enforcement seals.
           </p>
         </div>
         {subTab === 'directives' ? (
           <button type="button" className="moh-btn-primary" onClick={onBroadcastDirective}>
             <Send size={15} />
             <span>Broadcast Directive</span>
+          </button>
+        ) : subTab === 'enforcement' && onCreateEnforcement ? (
+          <button type="button" className="moh-btn-primary" onClick={() => setEnfOpen(true)}>
+            <ShieldAlert size={15} />
+            <span>Log Enforcement / Seal Facility</span>
           </button>
         ) : (
           <button type="button" className="moh-btn-primary" onClick={() => onScheduleAudit()}>
@@ -82,7 +181,16 @@ export const MohDirectivesComplianceView: React.FC<MohDirectivesComplianceViewPr
           onClick={() => setSubTab('audits')}
         >
           <ClipboardCheck size={14} />
-          <span>Accreditation &amp; Audits ({audits.length})</span>
+          <span>Accreditation &amp; Renewals ({audits.length})</span>
+        </button>
+        <button
+          type="button"
+          className={subTab === 'enforcement' ? 'moh-btn-primary' : 'moh-btn-outline'}
+          style={subTab === 'enforcement' ? { padding: '8px 14px', fontSize: '0.8rem' } : undefined}
+          onClick={() => setSubTab('enforcement')}
+        >
+          <ShieldAlert size={14} />
+          <span>Anti-Quackery &amp; Enforcement ({enforcement.length})</span>
         </button>
       </div>
 
@@ -184,7 +292,53 @@ export const MohDirectivesComplianceView: React.FC<MohDirectivesComplianceViewPr
             </div>
           )}
         </div>
-      ) : (
+      ) : subTab === 'audits' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Automated License Renewal & Unapproved Practice Tracker */}
+          <div className="moh-panel">
+            <div className="moh-panel-head">
+              <h2 className="moh-panel-title">
+                <AlertTriangle size={17} color="#D97706" />
+                <span>Automated License Renewal &amp; Unapproved Practice Alerts ({licenseAlerts.length})</span>
+              </h2>
+            </div>
+            {licenseAlerts.length === 0 ? (
+              <div style={{ fontSize: '0.82rem', color: '#64748B' }}>
+                No expired licenses, pending 30-day renewals, or unapproved practice flags detected.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {licenseAlerts.map((fac) => (
+                  <div
+                    key={`lic-${fac.facilityId}`}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '10px 12px',
+                      borderRadius: 10,
+                      border: '1px solid #FDE68A',
+                      background: '#FFFBEB',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div>
+                      <strong style={{ fontSize: '0.85rem', color: '#0F172A' }}>{fac.facilityName}</strong>
+                      <div style={{ fontSize: '0.75rem', color: '#475569' }}>
+                        {fac.lga} · License: {fac.licenseNo || 'Pending'} · Expiry: {fac.licenseExpiry || 'Not set'}
+                        {fac.unapprovedPracticeFlag ? ' · Flagged for unapproved clinical practice' : ''}
+                      </div>
+                    </div>
+                    <button type="button" className="moh-btn-outline" onClick={() => onScheduleAudit(fac.facilityId)}>
+                      Inspect Facility
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
         <div className="moh-two-col">
           {/* Scheduled & Past Inspections */}
           <div className="moh-panel">
@@ -333,6 +487,242 @@ export const MohDirectivesComplianceView: React.FC<MohDirectivesComplianceViewPr
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="moh-kpi-grid">
+            <div className="moh-kpi-card">
+              <div className="moh-kpi-label">Actively Sealed Facilities</div>
+              <div className="moh-kpi-val" style={{ color: '#DC2626' }}>
+                {facilities.filter((f) => f.operationalStatus === 'sealed').length}
+              </div>
+              <div className="moh-kpi-sub">Suspended from clinical operations</div>
+            </div>
+            <div className="moh-kpi-card">
+              <div className="moh-kpi-label">Total Enforcement Actions</div>
+              <div className="moh-kpi-val">{enforcement.length}</div>
+              <div className="moh-kpi-sub">Taskforce raids, warnings &amp; inspections</div>
+            </div>
+            <div className="moh-kpi-card">
+              <div className="moh-kpi-label">Pending Follow-Ups</div>
+              <div className="moh-kpi-val" style={{ color: '#D97706' }}>
+                {enforcement.filter((e) => e.status === 'follow_up' || e.status === 'active_seal').length}
+              </div>
+              <div className="moh-kpi-sub">Requiring field verification sign-off</div>
+            </div>
+          </div>
+
+          <div className="moh-panel">
+            <div className="moh-panel-head">
+              <h2 className="moh-panel-title">
+                <ShieldAlert size={17} color="#DC2626" />
+                <span>Anti-Quackery &amp; Enforcement Field Log</span>
+              </h2>
+            </div>
+
+            {enforcement.length === 0 ? (
+              <div style={{ padding: 28, textAlign: 'center', color: '#64748B', fontSize: '0.84rem' }}>
+                No enforcement actions or seals recorded yet. Use <strong>Log Enforcement / Seal Facility</strong> to document inspections, checklists, and field photo evidence.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {enforcement.map((enf) => {
+                  const passedCount = enf.checklist.filter((c) => c.passed).length;
+                  return (
+                    <div
+                      key={enf.id}
+                      style={{
+                        border: '1px solid #E2E8F0',
+                        borderRadius: 12,
+                        padding: 14,
+                        background: enf.status === 'active_seal' ? '#FEF2F2' : '#FFFFFF',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+                        <div>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
+                            <span className={`moh-pill ${enf.actionType === 'sealed' || enf.actionType === 'quackery_raid' ? 'danger' : 'amber'}`}>
+                              {enf.actionType.replace(/_/g, ' ').toUpperCase()}
+                            </span>
+                            <code style={{ fontWeight: 700, color: '#065F46' }}>{enf.facilityId}</code>
+                            {enf.checklist.length > 0 && (
+                              <span className="moh-pill slate">
+                                Checklist: {passedCount}/{enf.checklist.length} passed
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontWeight: 800, fontSize: '0.94rem', color: '#0F172A' }}>{enf.facilityName}</div>
+                          <div style={{ fontSize: '0.76rem', color: '#64748B' }}>
+                            Officer: {enf.officerName} · {enf.lga} ({enf.district})
+                            {enf.followUpDate ? ` · Follow-up: ${enf.followUpDate}` : ''}
+                          </div>
+                        </div>
+                        <span className={`moh-pill ${enf.status === 'resolved' ? 'emerald' : enf.status === 'active_seal' ? 'danger' : 'amber'}`}>
+                          {enf.status.replace(/_/g, ' ').toUpperCase()}
+                        </span>
+                      </div>
+
+                      <div style={{ fontSize: '0.83rem', color: '#1E293B' }}>{enf.reason}</div>
+
+                      {enf.evidencePhotoData && (
+                        <div>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginBottom: 4 }}>
+                            Field Officer Photographic Evidence
+                          </div>
+                          <img
+                            src={enf.evidencePhotoData}
+                            alt={`Field evidence for ${enf.facilityName}`}
+                            style={{ maxHeight: 160, borderRadius: 10, border: '1px solid #CBD5E1' }}
+                          />
+                        </div>
+                      )}
+
+                      {onUpdateEnforcement && enf.status !== 'resolved' && (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {enf.status === 'active_seal' && (
+                            <button
+                              type="button"
+                              className="moh-btn-outline"
+                              style={{ padding: '5px 11px', fontSize: '0.75rem' }}
+                              onClick={() =>
+                                void onUpdateEnforcement({
+                                  id: enf.id,
+                                  status: 'resolved',
+                                  unsealFacility: true,
+                                  resolutionNotes: 'Compliance verified and seal lifted by MOH.',
+                                  updatedBy: officerName,
+                                })
+                              }
+                            >
+                              <Unlock size={13} />
+                              <span>Verify &amp; Lift Seal</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="moh-btn-outline"
+                            style={{ padding: '5px 11px', fontSize: '0.75rem' }}
+                            onClick={() =>
+                              void onUpdateEnforcement({
+                                id: enf.id,
+                                status: 'resolved',
+                                resolutionNotes: 'Compliance follow-up closed.',
+                                updatedBy: officerName,
+                              })
+                            }
+                          >
+                            <CheckCircle2 size={13} />
+                            <span>Close Action</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Enforcement Log Modal */}
+      {enfOpen && (
+        <div className="moh-backdrop" onClick={() => !enfBusy && setEnfOpen(false)}>
+          <div className="moh-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Log Enforcement Action">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>Log Enforcement / Anti-Quackery Action</h3>
+                <div style={{ fontSize: '0.76rem', color: '#64748B' }}>
+                  Sealing or flagging a facility automatically updates its GIS operational pin and accreditation standing.
+                </div>
+              </div>
+              <button type="button" className="moh-icon-btn" onClick={() => setEnfOpen(false)} aria-label="Close">
+                <X size={15} />
+              </button>
+            </div>
+            <form onSubmit={handleEnfSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+              <div className="moh-two-col">
+                <label style={{ fontSize: '0.78rem', fontWeight: 700 }}>
+                  Target Facility *
+                  <select className="moh-input" style={{ marginTop: 4 }} value={enfFacId} onChange={(e) => setEnfFacId(e.target.value)}>
+                    {facilities.map((f) => (
+                      <option key={f.facilityId} value={f.facilityId}>
+                        {f.facilityName} ({f.facilityId})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700 }}>
+                  Action Type *
+                  <select className="moh-input" style={{ marginTop: 4 }} value={enfActionType} onChange={(e) => setEnfActionType(e.target.value as any)}>
+                    <option value="sealed">Seal Facility Immediately</option>
+                    <option value="quackery_raid">Anti-Quackery Raid &amp; Seal</option>
+                    <option value="compliance_warning">Compliance Warning Notice</option>
+                    <option value="inspection">Routine Enforcement Inspection</option>
+                    <option value="unsealed">Lift Existing Seal</option>
+                  </select>
+                </label>
+              </div>
+              <label style={{ fontSize: '0.78rem', fontWeight: 700 }}>
+                Violation Findings &amp; Reason *
+                <textarea
+                  rows={2}
+                  required
+                  className="moh-textarea"
+                  style={{ marginTop: 4 }}
+                  value={enfReason}
+                  onChange={(e) => setEnfReason(e.target.value)}
+                  placeholder="Describe unlicensed practice, unqualified personnel, or safety breaches..."
+                />
+              </label>
+              <div>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, marginBottom: 6 }}>Inspection Checklist</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {enfChecks.map((item, idx) => (
+                    <label key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={item.passed}
+                        onChange={(e) =>
+                          setEnfChecks((prev) =>
+                            prev.map((row, i) => (i === idx ? { ...row, passed: e.target.checked } : row))
+                          )
+                        }
+                      />
+                      <span>{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="moh-two-col">
+                <label style={{ fontSize: '0.78rem', fontWeight: 700 }}>
+                  Follow-up Inspection Date
+                  <input type="date" className="moh-input" style={{ marginTop: 4 }} value={enfFollowUp} onChange={(e) => setEnfFollowUp(e.target.value)} />
+                </label>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700 }}>
+                  Field Officer Photo Evidence
+                  <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label className="moh-btn-outline" style={{ padding: '6px 10px', fontSize: '0.76rem', cursor: 'pointer' }}>
+                      <Camera size={14} />
+                      <span>{enfPhoto ? 'Photo Attached' : 'Upload Photo'}</span>
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoUpload} />
+                    </label>
+                  </div>
+                </label>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+                <button type="button" className="moh-btn-outline" onClick={() => setEnfOpen(false)} disabled={enfBusy}>Cancel</button>
+                <button type="submit" className="moh-btn-primary" disabled={enfBusy}>
+                  <Lock size={14} />
+                  <span>{enfBusy ? 'Recording…' : 'Record Enforcement Action'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

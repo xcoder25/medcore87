@@ -15,6 +15,17 @@ export async function PATCH(req: NextRequest) {
       facilityId,
       emergencyStatus: body.emergencyStatus as any,
       accreditationStatus: body.accreditationStatus as any,
+      operationalStatus: body.operationalStatus as any,
+      licenseNo: typeof body.licenseNo === 'string' ? body.licenseNo : undefined,
+      licenseExpiry: typeof body.licenseExpiry === 'string' ? body.licenseExpiry : undefined,
+      approvedServices: Array.isArray(body.approvedServices)
+        ? body.approvedServices.map((s) => String(s).trim()).filter(Boolean)
+        : undefined,
+      ownership: typeof body.ownership === 'string' ? body.ownership : undefined,
+      unapprovedPracticeFlag:
+        typeof body.unapprovedPracticeFlag === 'boolean' ? body.unapprovedPracticeFlag : undefined,
+      gpsLat: typeof body.gpsLat === 'number' && Number.isFinite(body.gpsLat) ? body.gpsLat : undefined,
+      gpsLng: typeof body.gpsLng === 'number' && Number.isFinite(body.gpsLng) ? body.gpsLng : undefined,
       notes: typeof body.notes === 'string' ? body.notes : undefined,
       updatedBy: typeof body.updatedBy === 'string' ? body.updatedBy : undefined,
     });

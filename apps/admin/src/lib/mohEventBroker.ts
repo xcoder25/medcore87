@@ -5,7 +5,19 @@
 
 export interface MohBrokerEvent {
   id: string;
-  type: 'connected' | 'directive' | 'audit' | 'transfer' | 'facility' | 'alert' | 'sync_tick';
+  type:
+    | 'connected'
+    | 'directive'
+    | 'audit'
+    | 'transfer'
+    | 'facility'
+    | 'alert'
+    | 'enforcement'
+    | 'hrh'
+    | 'supply'
+    | 'idsr'
+    | 'grievance'
+    | 'sync_tick';
   at: string;
   detail?: Record<string, unknown>;
 }

@@ -3,11 +3,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   MohAuditRecord,
+  MohCitizenGrievance,
   MohDirective,
+  MohEnforcementAction,
   MohFacilityDossier,
   MohFacilityTelemetry,
+  MohHrhRecruitment,
+  MohIdsrReport,
   MohLiveSnapshot,
+  MohOperationalStatus,
   MohOutbreakAlert,
+  MohPrivateFacilityRecord,
+  MohSupplyEquipmentItem,
   MohSyncStatus,
   MohTransferRecord,
 } from './mohTypes';
@@ -80,7 +87,12 @@ export function useMohSync(districtFilter = 'all'): UseMohSyncState {
             msg.type === 'audit' ||
             msg.type === 'transfer' ||
             msg.type === 'facility' ||
-            msg.type === 'alert'
+            msg.type === 'alert' ||
+            msg.type === 'enforcement' ||
+            msg.type === 'hrh' ||
+            msg.type === 'supply' ||
+            msg.type === 'idsr' ||
+            msg.type === 'grievance'
           ) {
             void fetchSnapshot(true);
           } else if (
@@ -208,10 +220,173 @@ export async function updateMohFacilityOversight(input: {
   facilityId: string;
   emergencyStatus?: MohFacilityTelemetry['emergencyStatus'];
   accreditationStatus?: MohFacilityTelemetry['accreditationStatus'];
+  operationalStatus?: MohOperationalStatus;
+  licenseNo?: string;
+  licenseExpiry?: string;
+  approvedServices?: string[];
+  ownership?: string;
+  unapprovedPracticeFlag?: boolean;
   notes?: string;
   updatedBy?: string;
 }) {
   return apiJson<{ facilityId: string }>('/api/moh/facilities', 'PATCH', input);
+}
+
+export async function registerPrivateFacility(input: {
+  facilityId?: string;
+  facilityName: string;
+  lga: string;
+  district?: MohFacilityTelemetry['district'];
+  ownership?: MohPrivateFacilityRecord['ownership'];
+  facilityType?: string;
+  licenseNo?: string;
+  licenseExpiry?: string;
+  approvedServices?: string[];
+  latitude?: number;
+  longitude?: number;
+  registeredBy?: string;
+}) {
+  return apiJson<{ facility: MohPrivateFacilityRecord }>('/api/moh/enforcement', 'POST', {
+    action: 'register_private',
+    ...input,
+  });
+}
+
+export async function createEnforcementAction(input: {
+  facilityId: string;
+  facilityName?: string;
+  lga?: string;
+  district?: MohFacilityTelemetry['district'];
+  actionType: MohEnforcementAction['actionType'];
+  reason: string;
+  checklist?: { label: string; passed: boolean }[];
+  evidencePhotoData?: string;
+  officerName: string;
+  followUpDate?: string;
+}) {
+  return apiJson<{ actionRecord: MohEnforcementAction }>('/api/moh/enforcement', 'POST', input);
+}
+
+export async function updateEnforcementAction(input: {
+  id: string;
+  status?: MohEnforcementAction['status'];
+  followUpDate?: string;
+  resolutionNotes?: string;
+  unsealFacility?: boolean;
+  updatedBy?: string;
+}) {
+  return apiJson<{ actionRecord: MohEnforcementAction }>('/api/moh/enforcement', 'PATCH', input);
+}
+
+export async function createHrhRecruitment(input: {
+  title: string;
+  cadre: string;
+  facilityId: string;
+  facilityName?: string;
+  lga?: string;
+  vacanciesCount?: number;
+  applicantsCount?: number;
+  shortlistedCount?: number;
+  deployedCount?: number;
+  stage?: MohHrhRecruitment['stage'];
+  postedBy?: string;
+}) {
+  return apiJson<{ recruitment: MohHrhRecruitment }>('/api/moh/hrh', 'POST', input);
+}
+
+export async function updateHrhRecruitment(input: {
+  id: string;
+  stage?: MohHrhRecruitment['stage'];
+  applicantsCount?: number;
+  shortlistedCount?: number;
+  deployedCount?: number;
+}) {
+  return apiJson<{ recruitment: MohHrhRecruitment }>('/api/moh/hrh', 'PATCH', input);
+}
+
+export async function saveSupplyEquipment(input: {
+  id?: string;
+  domain: MohSupplyEquipmentItem['domain'];
+  facilityId: string;
+  facilityName?: string;
+  lga?: string;
+  itemName: string;
+  category?: string;
+  quantity?: number;
+  reorderLevel?: number;
+  unit?: string;
+  coldChainTempC?: number | null;
+  functionalStatus?: MohSupplyEquipmentItem['functionalStatus'];
+  notes?: string;
+  updatedBy?: string;
+}) {
+  return apiJson<{ item: MohSupplyEquipmentItem }>('/api/moh/supply-infra', 'POST', input);
+}
+
+export async function updateSupplyEquipment(input: {
+  id: string;
+  quantity?: number;
+  coldChainTempC?: number | null;
+  functionalStatus?: MohSupplyEquipmentItem['functionalStatus'];
+  notes?: string;
+  updatedBy?: string;
+}) {
+  return apiJson<{ item: MohSupplyEquipmentItem }>('/api/moh/supply-infra', 'PATCH', input);
+}
+
+export async function createIdsrReport(input: {
+  reportKind: MohIdsrReport['reportKind'];
+  facilityId?: string;
+  facilityName?: string;
+  lga: string;
+  district?: MohFacilityTelemetry['district'];
+  periodLabel?: string;
+  disease?: string;
+  suspectedCases?: number;
+  confirmedCases?: number;
+  deaths?: number;
+  ancVisits?: number;
+  skilledDeliveries?: number;
+  immunizationDoses?: number;
+  emergencyReferrals?: number;
+  maternalDeaths?: number;
+  under5Deaths?: number;
+  dsnoOfficer?: string;
+  notes?: string;
+}) {
+  return apiJson<{ report: MohIdsrReport }>('/api/moh/idsr', 'POST', input);
+}
+
+export async function updateIdsrReport(input: {
+  id: string;
+  status?: MohIdsrReport['status'];
+  confirmedCases?: number;
+  deaths?: number;
+  notes?: string;
+}) {
+  return apiJson<{ report: MohIdsrReport }>('/api/moh/idsr', 'PATCH', input);
+}
+
+export async function submitCitizenGrievance(input: {
+  facilityId: string;
+  facilityName?: string;
+  lga?: string;
+  channel?: MohCitizenGrievance['channel'];
+  category?: MohCitizenGrievance['category'];
+  rating?: number;
+  summary: string;
+  anonymous?: boolean;
+}) {
+  return apiJson<{ grievance: MohCitizenGrievance }>('/api/moh/grievances', 'POST', input);
+}
+
+export async function updateCitizenGrievance(input: {
+  id: string;
+  status?: MohCitizenGrievance['status'];
+  assignedTo?: string;
+  resolutionNotes?: string;
+}) {
+  return apiJson<{ grievance: MohCitizenGrievance }>('/api/moh/grievances', 'PATCH', input);
 }
 
 export async function createOrToggleMohAlert(input: {

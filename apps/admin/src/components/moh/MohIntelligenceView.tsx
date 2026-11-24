@@ -29,7 +29,7 @@ function fmtNaira(n: number): string {
 
 function buildReport(query: string, snapshot: MohLiveSnapshot): IntelligenceReport {
   const q = query.toLowerCase();
-  const { summary, facilities, regionalRollup, finance, transfers, audits, surveillance } = snapshot;
+  const { summary, facilities, regionalRollup, finance, transfers, audits, surveillance, supplyChain, enforcement, idsr, grievances } = snapshot;
 
   const topOccupied = [...facilities]
     .filter((f) => f.totalBeds > 0)
@@ -39,6 +39,70 @@ function buildReport(query: string, snapshot: MohLiveSnapshot): IntelligenceRepo
   const pendingTransfers = transfers.filter((t) => t.status === 'pending');
   const openRemediations = audits.filter((a) => a.status === 'remediation_required');
   const surgeFacilities = facilities.filter((f) => f.emergencyStatus !== 'normal');
+
+  if (q.includes('supply') || q.includes('vaccine') || q.includes('equipment') || q.includes('cold')) {
+    return {
+      id: `rep-${Date.now()}`,
+      question: query,
+      headline: 'Supply Chain, Cold-Chain & Equipment Readiness Brief',
+      summary: `Tracking ${supplyChain.items.length} inventory, biomedical equipment, and infrastructure records across Akwa Ibom. Currently flagging ${supplyChain.stockOutCount} stock-out(s), ${supplyChain.lowStockCount} low-stock commodities, and ${supplyChain.faultyEquipmentCount} faulty major assets.`,
+      metrics: [
+        { label: 'Critical Stock-Outs', value: String(supplyChain.stockOutCount) },
+        { label: 'Low Stock Items', value: String(supplyChain.lowStockCount) },
+        { label: 'Faulty Equipment', value: String(supplyChain.faultyEquipmentCount) },
+        { label: 'Active Renovations', value: String(supplyChain.activeRenovationsCount) },
+      ],
+      bullets:
+        supplyChain.items.slice(0, 6).map(
+          (i) =>
+            `${i.facilityName}: ${i.itemName} (${i.functionalStatus.replace(/_/g, ' ').toUpperCase()}, ${i.quantity} ${i.unit}${i.coldChainTempC !== null ? `, ${i.coldChainTempC}°C` : ''})`
+        ),
+      generatedAt: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+    };
+  }
+
+  if (q.includes('quackery') || q.includes('license') || q.includes('enforcement') || q.includes('seal')) {
+    const expiredCount = facilities.filter((f) => f.licenseAlert === 'expired' || f.licenseAlert === 'expiring_soon').length;
+    const sealedCount = facilities.filter((f) => f.operationalStatus === 'sealed').length;
+    return {
+      id: `rep-${Date.now()}`,
+      question: query,
+      headline: 'Licensing Renewal & Anti-Quackery Enforcement Brief',
+      summary: `${sealedCount} facility site(s) are actively sealed, ${expiredCount} facilities require license renewal action, and ${enforcement.length} field enforcement docket(s) are on record.`,
+      metrics: [
+        { label: 'Sealed Facilities', value: String(sealedCount) },
+        { label: 'License Alerts', value: String(expiredCount) },
+        { label: 'Enforcement Actions', value: String(enforcement.length) },
+        { label: 'Audit Remediations', value: String(openRemediations.length) },
+      ],
+      bullets:
+        enforcement.slice(0, 5).map(
+          (e) => `${e.facilityName} (${e.actionType.replace(/_/g, ' ').toUpperCase()}): ${e.reason}`
+        ),
+      generatedAt: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+    };
+  }
+
+  if (q.includes('grievance') || q.includes('citizen') || q.includes('rmnch') || q.includes('maternal')) {
+    return {
+      id: `rep-${Date.now()}`,
+      question: query,
+      headline: 'Citizen Feedback, SLA & RMNCH Utilization Brief',
+      summary: `Public accountability logs ${grievances.openCount} open and ${grievances.resolvedCount} resolved citizen reports (avg SLA ${grievances.avgTurnaroundHours}h). Service utilization reports ${idsr.ancVisitsTotal.toLocaleString()} ANC visits, ${idsr.skilledDeliveriesTotal.toLocaleString()} skilled deliveries, and ${idsr.maternalDeathsTotal} maternal / ${idsr.under5DeathsTotal} under-5 deaths.`,
+      metrics: [
+        { label: 'Open Grievances', value: String(grievances.openCount) },
+        { label: 'Avg Turnaround SLA', value: `${grievances.avgTurnaroundHours}h` },
+        { label: 'Skilled Deliveries', value: String(idsr.skilledDeliveriesTotal) },
+        { label: 'Maternal / U-5 Deaths', value: `${idsr.maternalDeathsTotal} / ${idsr.under5DeathsTotal}` },
+      ],
+      bullets: [
+        `Routine immunization doses delivered: ${idsr.immunizationDosesTotal.toLocaleString()}`,
+        `Emergency obstetric/acute referrals: ${idsr.emergencyReferralsTotal.toLocaleString()}`,
+        `Average citizen satisfaction score: ${grievances.avgRating || '—'} / 5`,
+      ],
+      generatedAt: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+    };
+  }
 
   if (q.includes('bed') || q.includes('icu') || q.includes('surge') || q.includes('capacity')) {
     return {
@@ -162,6 +226,9 @@ const PRESET_QUERIES = [
   'Revenue Breakdown',
   'Pending Actions',
   'District Comparison',
+  'Supply Chain & Equipment',
+  'Licensing & Anti-Quackery',
+  'Citizen Grievances & RMNCH',
 ];
 
 export const MohIntelligenceView: React.FC<MohIntelligenceViewProps> = ({

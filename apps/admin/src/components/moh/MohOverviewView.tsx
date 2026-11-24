@@ -10,6 +10,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import type { MohFacilityTelemetry, MohLiveSnapshot, MohTabKey } from '../../lib/mohTypes';
+import { MohGisMap } from './MohGisMap';
 
 interface MohOverviewViewProps {
   officerName: string;
@@ -18,6 +19,7 @@ interface MohOverviewViewProps {
   onBroadcastDirective: () => void;
   onNavigateTab: (tab: MohTabKey) => void;
   onSelectFacility: (facility: MohFacilityTelemetry) => void;
+  onOpenDossier?: (facility: MohFacilityTelemetry) => void;
 }
 
 function fmtNaira(n: number): string {
@@ -33,8 +35,9 @@ export const MohOverviewView: React.FC<MohOverviewViewProps> = ({
   onBroadcastDirective,
   onNavigateTab,
   onSelectFacility,
+  onOpenDossier,
 }) => {
-  const { summary, facilities, regionalRollup, transfers, audits, surveillance } = snapshot;
+  const { summary, facilities, regionalRollup, transfers, audits, surveillance, supplyChain, idsr, grievances } = snapshot;
 
   // Compute genuine exceptions only for the Ministerial Attention Queue
   const attentionItems: {
@@ -47,6 +50,25 @@ export const MohOverviewView: React.FC<MohOverviewViewProps> = ({
   }[] = [];
 
   for (const fac of facilities) {
+    if (fac.operationalStatus === 'sealed' || fac.unapprovedPracticeFlag) {
+      attentionItems.push({
+        id: `seal-${fac.facilityId}`,
+        severity: 'danger',
+        title: `${fac.facilityName} · ${fac.operationalStatus === 'sealed' ? 'SEALED BY MOH' : 'UNAPPROVED PRACTICE FLAG'}`,
+        detail: `${fac.lga} LGA · Accreditation: ${fac.accreditationStatus}`,
+        actionLabel: 'Enforcement',
+        onAction: () => onNavigateTab('directives'),
+      });
+    } else if (fac.licenseAlert === 'expired' || fac.licenseAlert === 'expiring_soon') {
+      attentionItems.push({
+        id: `lic-${fac.facilityId}`,
+        severity: fac.licenseAlert === 'expired' ? 'danger' : 'amber',
+        title: `${fac.facilityName} · Operating license ${fac.licenseAlert === 'expired' ? 'EXPIRED' : 'expiring soon'}`,
+        detail: `License ${fac.licenseNo || 'N/A'} · Expiry ${fac.licenseExpiry || 'Pending'}`,
+        actionLabel: 'Renewals',
+        onAction: () => onNavigateTab('directives'),
+      });
+    }
     if (fac.emergencyStatus !== 'normal') {
       attentionItems.push({
         id: `surge-${fac.facilityId}`,
@@ -66,6 +88,28 @@ export const MohOverviewView: React.FC<MohOverviewViewProps> = ({
         onAction: () => onSelectFacility(fac),
       });
     }
+  }
+
+  if (supplyChain.stockOutCount > 0) {
+    attentionItems.push({
+      id: 'sup-stockout',
+      severity: 'danger',
+      title: `${supplyChain.stockOutCount} Essential Medicine / Vaccine Stock-Out(s)`,
+      detail: `${supplyChain.lowStockCount} additional items at or below reorder threshold`,
+      actionLabel: 'Supply Chain',
+      onAction: () => onNavigateTab('supply'),
+    });
+  }
+
+  if (grievances.openCount > 0) {
+    attentionItems.push({
+      id: 'grv-open',
+      severity: 'amber',
+      title: `${grievances.openCount} Open Citizen / Whistleblower Report(s)`,
+      detail: `${grievances.investigatingCount} under active MOH investigation`,
+      actionLabel: 'Grievances',
+      onAction: () => onNavigateTab('grievances'),
+    });
   }
 
   for (const tr of transfers.filter((t) => t.status === 'pending')) {
@@ -163,7 +207,23 @@ export const MohOverviewView: React.FC<MohOverviewViewProps> = ({
             Active directives · {summary.openRemediationsCount} remediation docket(s)
           </div>
         </div>
+
+        <div className="moh-kpi-card">
+          <div className="moh-kpi-label">Maternal &amp; Under-5 Surveillance</div>
+          <div className="moh-kpi-val">
+            {idsr.maternalDeathsTotal} / {idsr.under5DeathsTotal}
+          </div>
+          <div className="moh-kpi-sub">
+            Maternal / U-5 reported · {idsr.skilledDeliveriesTotal.toLocaleString()} skilled deliveries
+          </div>
+        </div>
       </div>
+
+      {/* Interactive Akwa Ibom Statewide GIS Health Map */}
+      <MohGisMap
+        facilities={facilities}
+        onSelectFacility={onOpenDossier || onSelectFacility}
+      />
 
       {/* Ministerial Attention Queue (Quiet Single-Line Row When Zero Exceptions) */}
       {attentionItems.length === 0 ? (

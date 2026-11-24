@@ -14,6 +14,8 @@ import {
   Lock,
   LogOut,
   Menu,
+  MessageSquareWarning,
+  Package,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
@@ -28,13 +30,24 @@ import {
 import { SENATORIAL_DISTRICTS } from '../../data/akwaIbomFacilities';
 import {
   broadcastMohDirective,
+  createEnforcementAction,
+  createHrhRecruitment,
+  createIdsrReport,
   createOrToggleMohAlert,
   createMohTransfer,
+  registerPrivateFacility,
+  saveSupplyEquipment,
   scheduleMohAudit,
+  submitCitizenGrievance,
+  updateCitizenGrievance,
+  updateEnforcementAction,
+  updateHrhRecruitment,
+  updateIdsrReport,
   updateMohAuditStatus,
   updateMohDirectiveStatus,
   updateMohFacilityOversight,
   updateMohTransferStatus,
+  updateSupplyEquipment,
   useMohSync,
 } from '../../lib/mohRealtime';
 import type {
@@ -57,8 +70,10 @@ import { MohFacilitiesView } from './MohFacilitiesView';
 import { MohFacilityDossierView } from './MohFacilityDossierView';
 import { MohFacilityDrawer } from './MohFacilityDrawer';
 import { MohFinanceView } from './MohFinanceView';
+import { MohGrievancesView } from './MohGrievancesView';
 import { MohIntelligenceView } from './MohIntelligenceView';
 import { MohOverviewView } from './MohOverviewView';
+import { MohSupplyInfraView } from './MohSupplyInfraView';
 import { MohSurveillanceView } from './MohSurveillanceView';
 import { MohWorkforceView } from './MohWorkforceView';
 
@@ -226,6 +241,32 @@ export const MohShell: React.FC<MohShellProps> = ({
       });
     }
 
+    if (snapshot.supplyChain.stockOutCount > 0) {
+      items.push({
+        id: 'supply-stockout',
+        severity: 'danger',
+        title: `${snapshot.supplyChain.stockOutCount} Essential Stock-Out(s)`,
+        detail: `${snapshot.supplyChain.lowStockCount} low-stock · ${snapshot.supplyChain.faultyEquipmentCount} faulty equipment`,
+        onOpen: () => {
+          setActiveTab('supply');
+          setNotifOpen(false);
+        },
+      });
+    }
+
+    if (snapshot.grievances.openCount > 0) {
+      items.push({
+        id: 'grievances-open',
+        severity: 'amber',
+        title: `${snapshot.grievances.openCount} Open Citizen Grievance(s)`,
+        detail: `${snapshot.grievances.investigatingCount} under active review`,
+        onOpen: () => {
+          setActiveTab('grievances');
+          setNotifOpen(false);
+        },
+      });
+    }
+
     return items;
   }, [snapshot]);
 
@@ -240,7 +281,13 @@ export const MohShell: React.FC<MohShellProps> = ({
     }[];
   }[] = useMemo(() => {
     const sum = snapshot?.summary;
-    const surveillanceCount = (sum?.activeAlertsCount || 0) + (sum?.surgeFacilitiesCount || 0);
+    const surveillanceCount =
+      (sum?.activeAlertsCount || 0) +
+      (sum?.surgeFacilitiesCount || 0) +
+      (snapshot?.idsr.dsnoReports.filter((r) => r.status !== 'contained').length || 0);
+    const supplyAlerts =
+      (snapshot?.supplyChain.stockOutCount || 0) + (snapshot?.supplyChain.faultyEquipmentCount || 0);
+    const openGrievances = snapshot?.grievances.openCount || 0;
     return [
       {
         label: 'Command',
@@ -254,7 +301,7 @@ export const MohShell: React.FC<MohShellProps> = ({
           },
           {
             key: 'surveillance',
-            label: 'Capacity & Surveillance',
+            label: 'Surveillance & IDSR',
             icon: Activity,
             badge: surveillanceCount > 0 ? surveillanceCount : undefined,
             badgeTone: 'alert',
@@ -266,15 +313,22 @@ export const MohShell: React.FC<MohShellProps> = ({
         items: [
           {
             key: 'workforce',
-            label: 'Workforce & Transfers',
+            label: 'HRH & Transfers',
             icon: Users,
             badge: sum && sum.pendingTransfersCount > 0 ? sum.pendingTransfersCount : undefined,
+            badgeTone: 'warn',
+          },
+          {
+            key: 'supply',
+            label: 'Supply & Equipment',
+            icon: Package,
+            badge: supplyAlerts > 0 ? supplyAlerts : undefined,
             badgeTone: 'warn',
           },
           { key: 'finance', label: 'Public Health Finance', icon: Wallet },
           {
             key: 'directives',
-            label: 'Directives & Compliance',
+            label: 'Compliance & Enforcement',
             icon: Send,
             badge: sum && sum.openRemediationsCount > 0 ? sum.openRemediationsCount : undefined,
             badgeTone: 'warn',
@@ -284,12 +338,19 @@ export const MohShell: React.FC<MohShellProps> = ({
       {
         label: 'Governance',
         items: [
+          {
+            key: 'grievances',
+            label: 'Citizen Feedback',
+            icon: MessageSquareWarning,
+            badge: openGrievances > 0 ? openGrievances : undefined,
+            badgeTone: 'alert',
+          },
           { key: 'audit', label: 'Audit Ledger & Privacy', icon: ShieldCheck },
           { key: 'intelligence', label: 'Celestia MOH AI', icon: Sparkles },
         ],
       },
     ];
-  }, [snapshot?.summary]);
+  }, [snapshot]);
 
   const cmdMatches = useMemo(() => {
     const q = cmdQuery.trim().toLowerCase();
@@ -416,6 +477,120 @@ export const MohShell: React.FC<MohShellProps> = ({
       return;
     }
     notifyToast('Surveillance containment posture updated.');
+    await refreshNow();
+  };
+
+  const handleRegisterPrivateFacility = async (payload: Parameters<typeof registerPrivateFacility>[0]) => {
+    const res = await registerPrivateFacility(payload);
+    if (!res.ok) {
+      notifyToast(res.error || 'Could not register private facility.', 'error');
+      throw new Error(res.error);
+    }
+    notifyToast(`Registered ${payload.facilityName} on the state GIS registry.`);
+    await refreshNow();
+  };
+
+  const handleCreateEnforcement = async (payload: Parameters<typeof createEnforcementAction>[0]) => {
+    const res = await createEnforcementAction(payload);
+    if (!res.ok) {
+      notifyToast(res.error || 'Could not log enforcement action.', 'error');
+      throw new Error(res.error);
+    }
+    notifyToast(`Enforcement action logged for ${payload.facilityId}.`);
+    await refreshNow();
+  };
+
+  const handleUpdateEnforcement = async (payload: Parameters<typeof updateEnforcementAction>[0]) => {
+    const res = await updateEnforcementAction(payload);
+    if (!res.ok) {
+      notifyToast(res.error || 'Could not update enforcement action.', 'error');
+      return;
+    }
+    notifyToast(payload.unsealFacility ? 'Facility verified and seal lifted.' : 'Enforcement action updated.');
+    await refreshNow();
+  };
+
+  const handleCreateRecruitment = async (payload: Parameters<typeof createHrhRecruitment>[0]) => {
+    const res = await createHrhRecruitment(payload);
+    if (!res.ok) {
+      notifyToast(res.error || 'Could not publish recruitment vacancy.', 'error');
+      throw new Error(res.error);
+    }
+    notifyToast(`Published vacancy: ${payload.title}.`);
+    await refreshNow();
+  };
+
+  const handleUpdateRecruitment = async (payload: Parameters<typeof updateHrhRecruitment>[0]) => {
+    const res = await updateHrhRecruitment(payload);
+    if (!res.ok) {
+      notifyToast(res.error || 'Could not update recruitment status.', 'error');
+      return;
+    }
+    notifyToast('Recruitment pipeline stage updated.');
+    await refreshNow();
+  };
+
+  const handleSaveSupplyEquipment = async (payload: Parameters<typeof saveSupplyEquipment>[0]) => {
+    const res = await saveSupplyEquipment(payload);
+    if (!res.ok) {
+      notifyToast(res.error || 'Could not save supply/equipment item.', 'error');
+      throw new Error(res.error);
+    }
+    notifyToast(`Saved ${payload.itemName} inventory record.`);
+    await refreshNow();
+  };
+
+  const handleUpdateSupplyEquipment = async (payload: Parameters<typeof updateSupplyEquipment>[0]) => {
+    const res = await updateSupplyEquipment(payload);
+    if (!res.ok) {
+      notifyToast(res.error || 'Could not update supply/equipment record.', 'error');
+      return;
+    }
+    notifyToast('Supply & equipment status updated.');
+    await refreshNow();
+  };
+
+  const handleCreateIdsrReport = async (payload: Parameters<typeof createIdsrReport>[0]) => {
+    const res = await createIdsrReport(payload);
+    if (!res.ok) {
+      notifyToast(res.error || 'Could not save IDSR/service report.', 'error');
+      throw new Error(res.error);
+    }
+    notifyToast(
+      payload.reportKind === 'dsno_outbreak'
+        ? `DSNO notification logged for ${payload.disease || payload.lga}.`
+        : 'RMNCH & service utilization return recorded.'
+    );
+    await refreshNow();
+  };
+
+  const handleUpdateIdsrReport = async (payload: Parameters<typeof updateIdsrReport>[0]) => {
+    const res = await updateIdsrReport(payload);
+    if (!res.ok) {
+      notifyToast(res.error || 'Could not update IDSR report.', 'error');
+      return;
+    }
+    notifyToast('IDSR surveillance record updated.');
+    await refreshNow();
+  };
+
+  const handleSubmitGrievance = async (payload: Parameters<typeof submitCitizenGrievance>[0]) => {
+    const res = await submitCitizenGrievance(payload);
+    if (!res.ok) {
+      notifyToast(res.error || 'Could not log grievance.', 'error');
+      throw new Error(res.error);
+    }
+    notifyToast(`Logged grievance ticket ${res.data?.grievance?.trackingCode || ''}.`);
+    await refreshNow();
+  };
+
+  const handleUpdateGrievance = async (payload: Parameters<typeof updateCitizenGrievance>[0]) => {
+    const res = await updateCitizenGrievance(payload);
+    if (!res.ok) {
+      notifyToast(res.error || 'Could not update grievance ticket.', 'error');
+      return;
+    }
+    notifyToast(`Grievance marked ${payload.status?.replace(/_/g, ' ') || 'updated'}.`);
     await refreshNow();
   };
 
@@ -802,22 +977,28 @@ export const MohShell: React.FC<MohShellProps> = ({
                   onBroadcastDirective={() => setBroadcastOpen(true)}
                   onNavigateTab={(tab) => setActiveTab(tab)}
                   onSelectFacility={(fac) => setSelectedFacilityId(fac.facilityId)}
+                  onOpenDossier={(fac) => setDossierFacilityId(fac.facilityId)}
                 />
               )}
 
               {activeTab === 'facilities' && (
                 <MohFacilitiesView
                   facilities={snapshot.facilities}
+                  officerName={session.name}
                   onSelectFacility={(fac) => setDossierFacilityId(fac.facilityId)}
+                  onRegisterPrivateFacility={handleRegisterPrivateFacility}
                 />
               )}
 
               {activeTab === 'surveillance' && (
                 <MohSurveillanceView
                   snapshot={snapshot}
+                  officerName={session.name}
                   onSelectFacility={(fac) => setSelectedFacilityId(fac.facilityId)}
                   onOpenAlertModal={() => setAlertOpen(true)}
                   onToggleContainment={handleToggleContainment}
+                  onCreateIdsrReport={handleCreateIdsrReport}
+                  onUpdateIdsrReport={handleUpdateIdsrReport}
                 />
               )}
 
@@ -827,6 +1008,17 @@ export const MohShell: React.FC<MohShellProps> = ({
                   officerName={session.name}
                   onOpenTransferModal={() => setTransferOpen(true)}
                   onDecideTransfer={handleDecideTransfer}
+                  onCreateRecruitment={handleCreateRecruitment}
+                  onUpdateRecruitment={handleUpdateRecruitment}
+                />
+              )}
+
+              {activeTab === 'supply' && (
+                <MohSupplyInfraView
+                  snapshot={snapshot}
+                  officerName={session.name}
+                  onSaveSupplyEquipment={handleSaveSupplyEquipment}
+                  onUpdateSupplyEquipment={handleUpdateSupplyEquipment}
                 />
               )}
 
@@ -840,6 +1032,7 @@ export const MohShell: React.FC<MohShellProps> = ({
               {activeTab === 'directives' && (
                 <MohDirectivesComplianceView
                   snapshot={snapshot}
+                  officerName={session.name}
                   onBroadcastDirective={() => setBroadcastOpen(true)}
                   onUpdateDirectiveStatus={handleUpdateDirectiveStatus}
                   onScheduleAudit={(presetId) => {
@@ -848,6 +1041,18 @@ export const MohShell: React.FC<MohShellProps> = ({
                   }}
                   onUpdateAuditStatus={handleUpdateAuditStatus}
                   onSelectFacility={(fac) => setSelectedFacilityId(fac.facilityId)}
+                  onCreateEnforcement={handleCreateEnforcement}
+                  onUpdateEnforcement={handleUpdateEnforcement}
+                />
+              )}
+
+              {activeTab === 'grievances' && (
+                <MohGrievancesView
+                  snapshot={snapshot}
+                  officerName={session.name}
+                  onSubmitGrievance={handleSubmitGrievance}
+                  onUpdateGrievance={handleUpdateGrievance}
+                  onNotify={notifyToast}
                 />
               )}
 

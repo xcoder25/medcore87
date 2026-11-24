@@ -5,12 +5,22 @@ export type MohTabKey =
   | 'facilities'
   | 'surveillance'
   | 'workforce'
+  | 'supply'
   | 'finance'
   | 'directives'
+  | 'grievances'
   | 'audit'
   | 'intelligence';
 
 export type MohSyncStatus = 'live_db' | 'local_registry';
+
+export type MohOperationalStatus =
+  | 'fully_functional'
+  | 'partially_functional'
+  | 'closed'
+  | 'sealed';
+
+export type MohLicenseAlertStatus = 'valid' | 'expiring_soon' | 'expired' | 'missing';
 
 export interface MohFacilityTelemetry {
   facilityId: string;
@@ -31,6 +41,17 @@ export interface MohFacilityTelemetry {
   complianceScore: number;
   accreditationStatus: 'accredited' | 'provisional' | 'suspended' | 'pending';
   emergencyStatus: 'normal' | 'surge_code_yellow' | 'surge_code_red' | 'critical';
+  operationalStatus: MohOperationalStatus;
+  ownership: string;
+  licenseNo: string;
+  licenseExpiry: string;
+  licenseAlert: MohLicenseAlertStatus;
+  unapprovedPracticeFlag: boolean;
+  approvedServices: string[];
+  latitude: number;
+  longitude: number;
+  attendanceRatePct: number;
+  ruralUnderstaffed: boolean;
   totalBeds: number;
   occupiedBeds: number;
   availableBeds: number;
@@ -251,6 +272,180 @@ export interface MohLiveSnapshot {
   audits: MohAuditRecord[];
   transfers: MohTransferRecord[];
   auditLedger: MohAuditLedgerSummary;
+  enforcement: MohEnforcementAction[];
+  hrh: {
+    lgaDistribution: MohLgaWorkforceRow[];
+    attendanceSummary: {
+      avgAttendancePct: number;
+      avgAbsenteeismPct: number;
+      ruralUnderstaffedCount: number;
+    };
+    recruitment: MohHrhRecruitment[];
+  };
+  supplyChain: {
+    items: MohSupplyEquipmentItem[];
+    lowStockCount: number;
+    stockOutCount: number;
+    faultyEquipmentCount: number;
+    activeRenovationsCount: number;
+  };
+  idsr: {
+    dsnoReports: MohIdsrReport[];
+    serviceMetrics: MohIdsrReport[];
+    maternalDeathsTotal: number;
+    under5DeathsTotal: number;
+    ancVisitsTotal: number;
+    skilledDeliveriesTotal: number;
+    immunizationDosesTotal: number;
+    emergencyReferralsTotal: number;
+  };
+  grievances: {
+    items: MohCitizenGrievance[];
+    openCount: number;
+    investigatingCount: number;
+    resolvedCount: number;
+    avgTurnaroundHours: number;
+    avgRating: number;
+  };
+}
+
+export interface MohEnforcementAction {
+  id: string;
+  facilityId: string;
+  facilityName: string;
+  lga: string;
+  district: SenatorialDistrict;
+  actionType: 'sealed' | 'unsealed' | 'quackery_raid' | 'compliance_warning' | 'inspection';
+  reason: string;
+  checklist: { label: string; passed: boolean }[];
+  evidencePhotoData?: string;
+  officerName: string;
+  status: 'active_seal' | 'follow_up' | 'resolved';
+  followUpDate: string;
+  resolutionNotes: string;
+  createdAt: string;
+}
+
+export interface MohLgaWorkforceRow {
+  lga: string;
+  district: SenatorialDistrict;
+  ruralPriority: boolean;
+  facilitiesCount: number;
+  doctors: number;
+  nurses: number;
+  midwives: number;
+  pharmacists: number;
+  chews: number;
+  otherStaff: number;
+  totalStaff: number;
+  attendanceRatePct: number;
+  understaffed: boolean;
+}
+
+export interface MohHrhRecruitment {
+  id: string;
+  title: string;
+  cadre: string;
+  facilityId: string;
+  facilityName: string;
+  lga: string;
+  vacanciesCount: number;
+  applicantsCount: number;
+  shortlistedCount: number;
+  deployedCount: number;
+  stage: 'open' | 'shortlisting' | 'interviewing' | 'deploying' | 'closed';
+  postedBy: string;
+  createdAt: string;
+}
+
+export interface MohSupplyEquipmentItem {
+  id: string;
+  domain: 'medicine_vaccine' | 'equipment' | 'infrastructure';
+  facilityId: string;
+  facilityName: string;
+  lga: string;
+  itemName: string;
+  category: string;
+  quantity: number;
+  reorderLevel: number;
+  unit: string;
+  coldChainTempC: number | null;
+  functionalStatus:
+    | 'in_stock'
+    | 'low_stock'
+    | 'stock_out'
+    | 'operational'
+    | 'faulty'
+    | 'out_of_service'
+    | 'ongoing_renovation'
+    | 'adequate'
+    | 'intermittent'
+    | 'critical';
+  notes: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export interface MohIdsrReport {
+  id: string;
+  reportKind: 'dsno_outbreak' | 'service_utilization';
+  facilityId: string;
+  facilityName: string;
+  lga: string;
+  district: SenatorialDistrict;
+  periodLabel: string;
+  disease: string;
+  suspectedCases: number;
+  confirmedCases: number;
+  deaths: number;
+  ancVisits: number;
+  skilledDeliveries: number;
+  immunizationDoses: number;
+  emergencyReferrals: number;
+  maternalDeaths: number;
+  under5Deaths: number;
+  dsnoOfficer: string;
+  status: 'submitted' | 'investigating' | 'verified' | 'contained';
+  notes: string;
+  createdAt: string;
+}
+
+export interface MohCitizenGrievance {
+  id: string;
+  trackingCode: string;
+  facilityId: string;
+  facilityName: string;
+  lga: string;
+  channel: 'qr' | 'hotline' | 'whistleblower' | 'walkin';
+  category: 'service_quality' | 'extortion_billing' | 'unqualified_practice' | 'drug_stockout' | 'staff_conduct' | 'commendation';
+  rating: number;
+  summary: string;
+  anonymous: boolean;
+  status: 'open' | 'under_investigation' | 'resolved';
+  assignedTo: string;
+  resolutionNotes: string;
+  turnaroundHours: number | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface MohPrivateFacilityRecord {
+  facilityId: string;
+  facilityName: string;
+  lga: string;
+  district: SenatorialDistrict;
+  ownership: 'private' | 'mission' | 'ppp';
+  facilityType: string;
+  tier: FacilityTierLocal;
+  licenseNo: string;
+  licenseExpiry: string;
+  operationalStatus: MohOperationalStatus;
+  accreditationStatus: 'accredited' | 'provisional' | 'suspended' | 'pending';
+  approvedServices: string[];
+  latitude: number;
+  longitude: number;
+  registeredBy: string;
+  createdAt: string;
 }
 
 export interface MohFacilityGovernance {
