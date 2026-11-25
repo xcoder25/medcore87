@@ -249,8 +249,9 @@ test('api-routes: enforces valid Next.js 15 Route exports across all apps/admin 
     const out = [];
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) out.push(...walk(full));
-      else if (entry.isFile() && entry.name === 'route.ts') out.push(full);
+      const st = fs.statSync(full);
+      if (st.isDirectory()) out.push(...walk(full));
+      else if (st.isFile() && entry.name === 'route.ts') out.push(full);
     }
     return out;
   };
@@ -875,6 +876,93 @@ test('mohSyndromicEngine: detects cross-LGA outbreak clusters across neighboring
   assert.ok(clusters[0].affectedLgas.includes('Uyo') && clusters[0].affectedLgas.includes('Itu'));
   assert.ok(clusters[0].neighboringRiskLgas.length >= 1);
   assert.equal(JSON.stringify(clusters).includes('"patientName"'), false);
+
+  const heatmap = syn.buildMohOutbreakHeatmap({
+    syncedAt: '2026-11-24T22:00:00.000Z',
+    facilities: [
+      { facilityId: 'FAC-UYO', facilityName: 'Uyo Clinic', lga: 'Uyo', latitude: 5.0377, longitude: 7.9128 },
+      { facilityId: 'FAC-EKT', facilityName: 'Eket GH', lga: 'Eket', latitude: 4.6423, longitude: 7.9244 },
+    ],
+    surveillance: {
+      clinicalSignals: [
+        { id: 'S1', facilityId: 'FAC-UYO', facilityName: 'Uyo Clinic', summary: 'Suspected Cholera acute watery diarrhoea' },
+      ],
+    },
+    idsr: {
+      dsnoReports: [
+        { id: 'D2', lga: 'Eket', facilityName: 'Eket GH', disease: 'Lassa Fever', suspectedCases: 2, notes: 'PCR sent' },
+      ],
+    },
+  });
+  assert.ok(heatmap.length === 2, 'Expected Uyo Cholera & Eket Lassa hotspots on heatmap');
+  assert.equal(heatmap[0].dominantSyndrome, 'lassa_vhf');
+  assert.equal(JSON.stringify(heatmap).includes('"patientName"'), false);
+});
+
+test('mohSupplyForecastEngine: forecasts seasonal stockouts, near-expiry/cold-chain risks & inter-LGA transfers', () => {
+  const sf = loadTsModule('src/lib/mohSupplyForecastEngine.ts');
+  const nowMs = Date.parse('2026-07-20T09:00:00Z');
+  const report = sf.forecastStatewideDrugDemandAndExpiry(
+    {
+      supplyChain: {
+        items: [
+          {
+            id: 'SUP-1',
+            domain: 'medicine_vaccine',
+            facilityId: 'FAC-EKT',
+            facilityName: 'Immanuel General Hospital, Eket',
+            lga: 'Eket',
+            itemName: 'Artemether-Lumefantrine 20/120mg (ACT)',
+            category: 'Antimalarial',
+            quantity: 18,
+            reorderLevel: 60,
+            unit: 'packs',
+            coldChainTempC: null,
+            functionalStatus: 'low_stock',
+            notes: 'High OPD demand',
+          },
+          {
+            id: 'SUP-2',
+            domain: 'medicine_vaccine',
+            facilityId: 'FAC-UYO',
+            facilityName: 'Ibom Specialist Hospital, Uyo',
+            lga: 'Uyo',
+            itemName: 'Artemether-Lumefantrine 20/120mg (ACT)',
+            category: 'Antimalarial',
+            quantity: 420,
+            reorderLevel: 80,
+            unit: 'packs',
+            coldChainTempC: null,
+            functionalStatus: 'in_stock',
+            notes: 'Batch expiring 2026-08-10 short-dated',
+          },
+          {
+            id: 'SUP-3',
+            domain: 'medicine_vaccine',
+            facilityId: 'FAC-ORN',
+            facilityName: 'General Hospital, Oron',
+            lga: 'Oron',
+            itemName: 'Pentavalent Vaccine',
+            category: 'Immunization',
+            quantity: 200,
+            reorderLevel: 50,
+            unit: 'doses',
+            coldChainTempC: 11.4,
+            functionalStatus: 'in_stock',
+            notes: 'Solar fridge door seal fault',
+          },
+        ],
+      },
+    },
+    nowMs
+  );
+
+  assert.equal(report.antimalarialMultiplier, 1.45);
+  assert.ok(report.stockoutRisks.some((r) => r.facilityId === 'FAC-EKT' && r.therapeuticClass === 'antimalarial'));
+  assert.ok(report.nearExpiryRisks.some((n) => n.reason === 'short_dated_expiry'));
+  assert.ok(report.nearExpiryRisks.some((n) => n.reason === 'cold_chain_excursion'));
+  assert.ok(report.redistributionPairs.some((p) => p.fromLga === 'Uyo' && p.toLga === 'Eket'));
+  assert.equal(/\bMath\.random\s*\(/.test(fs.readFileSync(path.join(ADMIN_ROOT, 'src/lib/mohSupplyForecastEngine.ts'), 'utf8')), false);
 });
 
 

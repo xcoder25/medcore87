@@ -8,8 +8,9 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Building2, Shield, Plug, Users, CheckCircle2, ChevronRight, ChevronLeft,
   SkipForward, KeyRound, Stethoscope, Sparkles, AlertTriangle, Hospital, Radio,
-  Upload, MapPin, Landmark, UserCheck, FileText,
+  Upload, MapPin, Landmark, UserCheck, FileText, ScanLine,
 } from 'lucide-react';
+import { OnboardingFhirDigitizerPanel } from './OnboardingFhirDigitizerPanel';
 import type { UserSession } from '../auth/AuthScreen';
 import {
   SPECIALTY_OPTIONS,
@@ -112,6 +113,7 @@ const ADMIN_STEPS = [
   { id: 2, label: 'Compliance', icon: Shield },
   { id: 3, label: 'Services & desks', icon: Plug },
   { id: 4, label: 'Access & payments', icon: Users },
+  { id: 5, label: 'Paper → FHIR digitization', icon: ScanLine },
 ];
 
 const STAFF_STEPS = [
@@ -364,7 +366,7 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
     const err = validateStep(step);
     if (err) { setError(err); return; }
     setError(null);
-    setStep((s) => Math.min(4, s + 1));
+    setStep((s) => Math.min(5, s + 1));
   };
 
   const finish = () => {
@@ -824,23 +826,31 @@ function FacilityWizard({ session, onComplete }: { session: UserSession; onCompl
             </Field>
           )}
           <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12, padding: 14, fontSize: '0.82rem', color: '#065F46', lineHeight: 1.5 }}>
-            <strong>This completes facility configuration.</strong>
+            <strong>Core facility settings are ready.</strong>
             <ol style={{ margin: '8px 0 0', paddingLeft: 18 }}>
               <li>Open <strong>Staff Access</strong> and enrol civil-service clinical &amp; HIM staff with Staff ID/IPPIS + practicing licences (MDCN, NMCN, PCN, MLSCN, HRORBN).</li>
               <li>Health Records (HIM) &amp; Reception initiate patient folders and visits; each clinical desk operates in its own module.</li>
-              <li>Admin Settings: review HFR / AKSHIA / NHIA / BHCPF codes, AkwaRemit TSA, and onsite LAN hub URL if used.</li>
+              <li>Next (optional): scan existing paper folders, handwritten lab slips, or external ultrasound reports into HL7 FHIR R4, or complete setup immediately.</li>
             </ol>
           </div>
         </div>
       )}
 
+      {step === 5 && (
+        <OnboardingFhirDigitizerPanel
+          facilityId={session.hospitalId}
+          facilityName={draft.facilityName || session.facility}
+          actorName={session.name}
+        />
+      )}
+
       <WizardFooter
-        step={step} total={4}
+        step={step} total={5}
         onBack={() => { setError(null); setStep((s) => Math.max(1, s - 1)); }}
         onNext={next}
         onFinish={finish}
         onSkip={() => setShowSkipConfirm(true)}
-        skipLabel={step < 4 ? 'Skip remaining (configure later)' : undefined}
+        skipLabel={step < 5 ? 'Skip remaining (configure later)' : undefined}
         finishLabel="Complete facility setup"
       />
 

@@ -4,7 +4,11 @@ import React, { useMemo, useState } from 'react';
 import { Activity, AlertTriangle, Baby, BedDouble, Plus, ShieldAlert, Radio } from 'lucide-react';
 import { AKWA_IBOM_LGAS } from '../../data/akwaIbomFacilities';
 import type { MohFacilityTelemetry, MohIdsrReport, MohLiveSnapshot } from '../../lib/mohTypes';
-import { detectCrossLgaSyndromicAnomalies } from '../../lib/mohSyndromicEngine';
+import {
+  detectCrossLgaSyndromicAnomalies,
+  buildMohOutbreakHeatmap,
+} from '../../lib/mohSyndromicEngine';
+import { MohGisMap } from './MohGisMap';
 
 interface MohSurveillanceViewProps {
   snapshot: MohLiveSnapshot;
@@ -77,6 +81,7 @@ export const MohSurveillanceView: React.FC<MohSurveillanceViewProps> = ({
   const { summary, facilities, surveillance, idsr } = snapshot;
   const capacityFacilities = facilities.filter((f) => f.totalBeds > 0 || f.enrollmentStatus === 'active');
   const syndromicClusters = useMemo(() => detectCrossLgaSyndromicAnomalies(snapshot), [snapshot]);
+  const heatmapHotspots = useMemo(() => buildMohOutbreakHeatmap(snapshot), [snapshot]);
 
   const handleDsnoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -290,7 +295,7 @@ export const MohSurveillanceView: React.FC<MohSurveillanceViewProps> = ({
         </div>
       </div>
 
-      {/* Bed Capacity Matrix */}
+      {/* Cross-LGA Syndromic Radar */}
       <div className="moh-panel">
         <div className="moh-panel-head">
           <h2 className="moh-panel-title">
@@ -340,6 +345,13 @@ export const MohSurveillanceView: React.FC<MohSurveillanceViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Hyper-Local Outbreak Early-Warning Heatmap */}
+      <MohGisMap
+        facilities={facilities}
+        heatmapHotspots={heatmapHotspots}
+        onSelectFacility={onSelectFacility}
+      />
 
       {/* Bed Capacity Matrix */}
       <div className="moh-panel">

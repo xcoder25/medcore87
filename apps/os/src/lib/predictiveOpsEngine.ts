@@ -12,6 +12,8 @@ export interface StockoutForecastItem {
   drugId: string;
   name: string;
   category: string;
+  drugClass: 'antimalarial' | 'antihypertensive' | 'antibiotic' | 'essential';
+  seasonalityNote: string;
   currentStockUnits: number;
   reorderLevel: number;
   dailyBurnRate: number;
@@ -22,6 +24,20 @@ export interface StockoutForecastItem {
   recommendedReorderQty: number;
   supplierTarget: 'Akwa Ibom State Central Medical Store (CMS) - Uyo Depot';
   status: 'Requisition Drafted' | 'Monitor Stock' | 'Healthy';
+}
+
+export interface NearExpiryAlertItem {
+  batchId: string;
+  drugId: string;
+  drugName: string;
+  drugClass: 'antimalarial' | 'antihypertensive' | 'antibiotic' | 'essential';
+  batchNo: string;
+  expiry: string;
+  qty: number;
+  daysToExpiry: number;
+  estimatedLossNgn: number;
+  severity: 'expired' | 'critical_30d' | 'warning_60d' | 'watch_90d';
+  recommendedAction: string;
 }
 
 export interface BedSurgeForecast {
@@ -63,6 +79,20 @@ export interface HmoClaimAuditReport {
   }>;
 }
 
+function classifyDrugClass(name: string, genericName: string, category: string): StockoutForecastItem['drugClass'] {
+  const hay = `${name} ${genericName} ${category}`.toLowerCase();
+  if (/artemether|lumefantrine|artesunate|malaria|amodiaquine|quinine|coartem/.test(hay)) {
+    return 'antimalarial';
+  }
+  if (/amlodipine|lisinopril|nifedipine|losartan|hydrochlorothiazide|atenolol|methyldopa|labetalol|hypertens/.test(hay)) {
+    return 'antihypertensive';
+  }
+  if (/amoxicillin|augmentin|ceftriaxone|ciprofloxacin|azithromycin|metronidazole|gentamicin|cefuroxime|antibiotic/.test(hay)) {
+    return 'antibiotic';
+  }
+  return 'essential';
+}
+
 export function forecastFormularyStockouts(
   drugs: FormularyDrug[],
   batches: StockBatch[],
@@ -71,7 +101,7 @@ export function forecastFormularyStockouts(
 ): StockoutForecastItem[] {
   const nowMs = opts?.nowMs ?? Date.now();
   const month = new Date(nowMs).getUTCMonth() + 1; // 1..12
-  const defaultSeasonMult = month >= 4 && month <= 10 ? 1.35 : 1.1;
+  const isWetPeak = month >= 4 && month <= 10;
   const thirtyDaysAgo = nowMs - 30 * 24 * 60 * 60 * 1000;
 
   const qtyByDrug = new Map<string, number>();
@@ -89,19 +119,25 @@ export function forecastFormularyStockouts(
     const reorderLevel = Math.max(10, Number(drug.reorderLevel || 20));
     const lowerName = drug.name.toLowerCase();
     const lowerGeneric = (drug.genericName || '').toLowerCase();
-    const catLower = (drug.category || '').toLowerCase();
+    const drugClass = classifyDrugClass(drug.name, drug.genericName || '', drug.category || '');
 
     const matchedOrders = rxOrdersLast30d.filter((o) => {
       const n = o.name.toLowerCase();
       return n.includes(lowerName.split(' ')[0]) || (lowerGeneric && n.includes(lowerGeneric.split(' ')[0]));
     }).length;
 
-    const isSeasonalDrug = /malaria|antibiotic|ors|oral rehydration|fluid|paed/i.test(
-      `${drug.category} ${drug.name}`
-    );
-    const seasonalMultiplier = isSeasonalDrug
-      ? opts?.rainySeasonMultiplier ?? defaultSeasonMult
-      : 1.0;
+    let seasonalMultiplier = 1.0;
+    let seasonalityNote = 'Baseline consumption';
+    if (drugClass === 'antimalarial') {
+      seasonalMultiplier = opts?.rainySeasonMultiplier ?? (isWetPeak ? 1.45 : 1.12);
+      seasonalityNote = isWetPeak ? 'Rainy-season malaria surge (+45%)' : 'Baseline endemic demand (+12%)';
+    } else if (drugClass === 'antibiotic') {
+      seasonalMultiplier = isWetPeak ? 1.25 : 1.15;
+      seasonalityNote = isWetPeak ? 'Wet-season enteric/ARI co-prescribing (+25%)' : 'Harmattan respiratory demand (+15%)';
+    } else if (drugClass === 'antihypertensive') {
+      seasonalMultiplier = 1.12;
+      seasonalityNote = 'Chronic NCD refill adherence growth (+12%)';
+    }
 
     // Baseline daily burn rate grounded in actual 30d orders or minimum ward consumption floor for critical items
     const measuredDaily = matchedOrders / 30;
@@ -129,6 +165,8 @@ export function forecastFormularyStockouts(
       drugId: drug.id,
       name: `${drug.name}${drug.strength ? ` (${drug.strength})` : ''}`,
       category: drug.category || 'Essential Medicine',
+      drugClass,
+      seasonalityNote,
       currentStockUnits,
       reorderLevel,
       dailyBurnRate,
@@ -148,6 +186,66 @@ export function forecastFormularyStockouts(
   });
 
   return items.sort((a, b) => a.daysUntilStockout - b.daysUntilStockout || a.currentStockUnits - b.currentStockUnits);
+}
+
+export function forecastNearExpiryBatches(
+  drugs: FormularyDrug[],
+  batches: StockBatch[],
+  opts?: { nowMs?: number; horizonDays?: number }
+): NearExpiryAlertItem[] {
+  const nowMs = opts?.nowMs ?? Date.now();
+  const horizonDays = opts?.horizonDays ?? 90;
+  const drugMap = new Map<string, FormularyDrug>();
+  for (const d of drugs) drugMap.set(d.id, d);
+
+  const alerts: NearExpiryAlertItem[] = [];
+  for (const batch of batches) {
+    if (!batch.qty || batch.qty <= 0 || !batch.expiry) continue;
+    const expMs = Date.parse(batch.expiry);
+    if (!Number.isFinite(expMs)) continue;
+    const daysToExpiry = Math.ceil((expMs - nowMs) / 86_400_000);
+    if (daysToExpiry > horizonDays) continue;
+
+    const drug = drugMap.get(batch.drugId);
+    const drugName = drug ? `${drug.name}${drug.strength ? ` (${drug.strength})` : ''}` : batch.drugId;
+    const drugClass = classifyDrugClass(drugName, drug?.genericName || '', drug?.category || '');
+    const unitPrice = Math.max(100, Number(drug?.unitPriceNgn || 500));
+    const estimatedLossNgn = Math.round(batch.qty * unitPrice);
+
+    const severity: NearExpiryAlertItem['severity'] =
+      daysToExpiry <= 0
+        ? 'expired'
+        : daysToExpiry <= 30
+          ? 'critical_30d'
+          : daysToExpiry <= 60
+            ? 'warning_60d'
+            : 'watch_90d';
+
+    const recommendedAction =
+      severity === 'expired'
+        ? 'Quarantine immediately & file NAFDAC reverse-logistics disposal.'
+        : severity === 'critical_30d'
+          ? 'Enforce FEFO priority dispense & push inter-clinic transfer alert to busy General Hospital.'
+          : severity === 'warning_60d'
+            ? 'Flag shelf bin for FEFO rotation & review surplus redistribution across AKS network.'
+            : 'Monitor FEFO depletion against 90-day prescribing velocity.';
+
+    alerts.push({
+      batchId: batch.id,
+      drugId: batch.drugId,
+      drugName,
+      drugClass,
+      batchNo: batch.batchNo,
+      expiry: batch.expiry,
+      qty: batch.qty,
+      daysToExpiry,
+      estimatedLossNgn,
+      severity,
+      recommendedAction,
+    });
+  }
+
+  return alerts.sort((a, b) => a.daysToExpiry - b.daysToExpiry || b.estimatedLossNgn - a.estimatedLossNgn);
 }
 
 export function forecastBedSurge72h(

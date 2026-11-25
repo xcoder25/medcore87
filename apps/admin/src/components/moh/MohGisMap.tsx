@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { MapPin, ZoomIn, ZoomOut, RotateCcw, ExternalLink } from 'lucide-react';
+import { MapPin, ZoomIn, ZoomOut, RotateCcw, ExternalLink, Flame } from 'lucide-react';
 import type { MohFacilityTelemetry, MohOperationalStatus } from '../../lib/mohTypes';
+import type { MohHeatmapHotspot } from '../../lib/mohSyndromicEngine';
 
 interface MohGisMapProps {
   facilities: MohFacilityTelemetry[];
+  heatmapHotspots?: MohHeatmapHotspot[];
   onSelectFacility: (facility: MohFacilityTelemetry) => void;
 }
 
@@ -52,11 +54,13 @@ const STATUS_STYLE: Record<
   },
 };
 
-export const MohGisMap: React.FC<MohGisMapProps> = ({ facilities, onSelectFacility }) => {
+export const MohGisMap: React.FC<MohGisMapProps> = ({ facilities, heatmapHotspots = [], onSelectFacility }) => {
   const [statusFilter, setStatusFilter] = useState<'all' | MohOperationalStatus>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [zoom, setZoom] = useState<number>(1);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [showHeatmap, setShowHeatmap] = useState<boolean>(true);
+  const [selectedHotspotLga, setSelectedHotspotLga] = useState<string | null>(null);
 
   const typeBuckets = useMemo(() => {
     const set = new Set<string>();
@@ -108,6 +112,14 @@ export const MohGisMap: React.FC<MohGisMapProps> = ({ facilities, onSelectFacili
     [filtered, hoveredId]
   );
 
+  const activeHotspot = useMemo(
+    () =>
+      (selectedHotspotLga
+        ? heatmapHotspots.find((h) => h.lga === selectedHotspotLga)
+        : heatmapHotspots[0]) || null,
+    [heatmapHotspots, selectedHotspotLga]
+  );
+
   // Compute SVG viewBox center crop for deterministic zoom without jitter
   const vbW = 800 / zoom;
   const vbH = 540 / zoom;
@@ -128,6 +140,22 @@ export const MohGisMap: React.FC<MohGisMapProps> = ({ facilities, onSelectFacili
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="moh-btn-outline"
+            style={{
+              padding: '5px 10px',
+              fontSize: '0.74rem',
+              background: showHeatmap ? '#FEF2F2' : '#FFFFFF',
+              borderColor: showHeatmap ? '#DC2626' : '#CBD5E1',
+              color: showHeatmap ? '#B91C1C' : '#475569',
+            }}
+            onClick={() => setShowHeatmap((v) => !v)}
+          >
+            <Flame size={13} />
+            <span>Outbreak Heatmap ({heatmapHotspots.length})</span>
+          </button>
+
           <select
             className="moh-select"
             value={typeFilter}
@@ -243,6 +271,24 @@ export const MohGisMap: React.FC<MohGisMapProps> = ({ facilities, onSelectFacili
             role="img"
             aria-label="GPS map of Akwa Ibom State health facilities"
           >
+            <defs>
+              <radialGradient id="moh-heat-surge" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#DC2626" stopOpacity="0.68" />
+                <stop offset="55%" stopColor="#EF4444" stopOpacity="0.28" />
+                <stop offset="100%" stopColor="#EF4444" stopOpacity="0" />
+              </radialGradient>
+              <radialGradient id="moh-heat-alert" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#D97706" stopOpacity="0.62" />
+                <stop offset="55%" stopColor="#F59E0B" stopOpacity="0.24" />
+                <stop offset="100%" stopColor="#F59E0B" stopOpacity="0" />
+              </radialGradient>
+              <radialGradient id="moh-heat-watch" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#0284C7" stopOpacity="0.45" />
+                <stop offset="65%" stopColor="#38BDF8" stopOpacity="0.16" />
+                <stop offset="100%" stopColor="#38BDF8" stopOpacity="0" />
+              </radialGradient>
+            </defs>
+
             {/* Coordinate graticule */}
             {[160, 320, 480, 640].map((gx) => (
               <line key={gx} x1={gx} y1={20} x2={gx} y2={520} stroke="#E2E8F0" strokeDasharray="4 4" />
@@ -276,6 +322,54 @@ export const MohGisMap: React.FC<MohGisMapProps> = ({ facilities, onSelectFacili
             <text x={430} y={405} fontSize="11" fill="#94A3B8" fontWeight={700}>
               EKET DISTRICT
             </text>
+
+            {/* Hyper-Local Anonymized Outbreak Early-Warning Heatmap Layer */}
+            {showHeatmap &&
+              heatmapHotspots.map((hs) => {
+                const { x, y } = projectPoint(hs.lat, hs.lng);
+                const heatRadius = Math.round(24 + hs.intensity * 36);
+                const gradId =
+                  hs.severity === 'outbreak_surge'
+                    ? 'url(#moh-heat-surge)'
+                    : hs.severity === 'alert'
+                      ? 'url(#moh-heat-alert)'
+                      : 'url(#moh-heat-watch)';
+                const strokeColor =
+                  hs.severity === 'outbreak_surge'
+                    ? '#DC2626'
+                    : hs.severity === 'alert'
+                      ? '#D97706'
+                      : '#0284C7';
+                return (
+                  <g
+                    key={`heat-${hs.lga}`}
+                    transform={`translate(${x}, ${y})`}
+                    style={{ cursor: 'pointer' }}
+                    onMouseEnter={() => setSelectedHotspotLga(hs.lga)}
+                    onClick={() => setSelectedHotspotLga(hs.lga)}
+                  >
+                    <circle r={heatRadius} fill={gradId} />
+                    <circle
+                      r={Math.max(12, Math.round(heatRadius * 0.42))}
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth={hs.severity === 'outbreak_surge' ? 1.6 : 1}
+                      strokeDasharray="3 2"
+                      strokeOpacity={0.75}
+                    />
+                    <text
+                      x={0}
+                      y={heatRadius * 0.55 + 10}
+                      textAnchor="middle"
+                      fontSize="9"
+                      fontWeight={800}
+                      fill={strokeColor}
+                    >
+                      {hs.lga} ({hs.suspectedCases})
+                    </text>
+                  </g>
+                );
+              })}
 
             {/* GPS Facility Pins */}
             {filtered.map((fac) => {
@@ -398,6 +492,30 @@ export const MohGisMap: React.FC<MohGisMapProps> = ({ facilities, onSelectFacili
               <MapPin size={26} color="#065F46" style={{ margin: '0 auto 8px' }} />
               <div>
                 Hover over or tap any GPS facility marker on the Akwa Ibom map to inspect operational status, license standing, and live clinical telemetry.
+              </div>
+            </div>
+          )}
+
+          {showHeatmap && activeHotspot && (
+            <div
+              style={{
+                borderTop: '1px solid #E2E8F0',
+                paddingTop: 10,
+                fontSize: '0.75rem',
+                color: '#334155',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <strong style={{ color: '#991B1B' }}>Outbreak Hotspot: {activeHotspot.lga} LGA</strong>
+                <span className={`moh-pill ${activeHotspot.severity === 'outbreak_surge' ? 'danger' : 'amber'}`}>
+                  {activeHotspot.suspectedCases} cases
+                </span>
+              </div>
+              <div style={{ color: '#475569' }}>
+                {activeHotspot.dominantLabel} · {activeHotspot.facilitiesReporting} facility cluster(s)
+              </div>
+              <div style={{ color: '#0369A1', fontWeight: 600, marginTop: 4 }}>
+                {activeHotspot.recommendedAction}
               </div>
             </div>
           )}

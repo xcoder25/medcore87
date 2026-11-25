@@ -47,10 +47,15 @@ import {
   seedDefaultFormulary,
   stockQty,
   listFormulary,
+  listBatches,
   subscribeFormulary,
   formularyStats,
   type FormularyDrug,
 } from '../../lib/formularyInventory';
+import {
+  forecastFormularyStockouts,
+  forecastNearExpiryBatches,
+} from '../../lib/predictiveOpsEngine';
 import { appendAudit } from '../../lib/auditLogStore';
 import { parseRxNotes } from '../../lib/rxSigParse';
 import { listPatients, subscribePatients } from '../../lib/patientRegistryStore';
@@ -248,6 +253,16 @@ export const PharmacyDispensingSuite: React.FC = () => {
   const prescriptions = useMemo<StableRxRow[]>(
     () => rawOrders.map(orderToStableRow),
     [rawOrders]
+  );
+
+  const stockoutForecast = useMemo(
+    () => forecastFormularyStockouts(invDrugs, listBatches(facilityId), rawOrders),
+    [invDrugs, facilityId, rawOrders, tick]
+  );
+
+  const nearExpiryAlerts = useMemo(
+    () => forecastNearExpiryBatches(invDrugs, listBatches(facilityId)),
+    [invDrugs, facilityId, tick]
   );
 
   const wardRequests = useMemo<WardMedRequest[]>(
@@ -1088,6 +1103,56 @@ export const PharmacyDispensingSuite: React.FC = () => {
                 </div>
               ))}
             </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 12 }}>
+              <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: 12 }}>
+                <div style={{ fontWeight: 800, fontSize: 13, color: '#92400E', marginBottom: 6 }}>
+                  Seasonal Stockout Radar (Antimalarials · Antihypertensives · Antibiotics)
+                </div>
+                {stockoutForecast.filter((s) => s.urgency !== 'healthy').length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#065F46' }}>
+                    All tracked therapeutic classes hold &gt;14 days seasonal safety stock.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {stockoutForecast
+                      .filter((s) => s.urgency !== 'healthy')
+                      .slice(0, 4)
+                      .map((s) => (
+                        <div key={s.drugId} style={{ fontSize: 12, background: '#FFFFFF', padding: '6px 9px', borderRadius: 8, border: '1px solid #FDE68A' }}>
+                          <strong style={{ color: '#0F172A' }}>{s.name}</strong> ({s.drugClass})
+                          <div style={{ color: s.urgency === 'critical' ? '#B91C1C' : '#B45309', fontWeight: 700 }}>
+                            {s.daysUntilStockout}d runway ({s.seasonalityNote}) · Reorder {s.recommendedReorderQty} units
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: 12 }}>
+                <div style={{ fontWeight: 800, fontSize: 13, color: '#991B1B', marginBottom: 6 }}>
+                  Near-Expiry Batch Loss Prevention ({nearExpiryAlerts.length} flagged)
+                </div>
+                {nearExpiryAlerts.length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#065F46' }}>
+                    Zero batches expiring within 90 days.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {nearExpiryAlerts.slice(0, 4).map((b) => (
+                      <div key={b.batchId} style={{ fontSize: 12, background: '#FFFFFF', padding: '6px 9px', borderRadius: 8, border: '1px solid #FECACA' }}>
+                        <strong style={{ color: '#0F172A' }}>{b.drugName}</strong> · Batch {b.batchNo} ({b.qty} units)
+                        <div style={{ color: '#B91C1C', fontWeight: 700 }}>
+                          {b.daysToExpiry <= 0 ? 'EXPIRED' : `${b.daysToExpiry}d left (${b.expiry})`} · ₦{b.estimatedLossNgn.toLocaleString()} at risk
+                        </div>
+                        <div style={{ fontSize: 11, color: '#475569' }}>{b.recommendedAction}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div style={{ fontSize: 13, color: '#475569' }}>
               Live facility stock (realtime). Open <strong>Formulary & stock</strong> in the sidebar for full inventory, receive stock, and AKS EML reference.
             </div>

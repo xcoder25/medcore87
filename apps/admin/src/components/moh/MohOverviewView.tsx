@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Send,
   AlertTriangle,
@@ -10,6 +10,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import type { MohFacilityTelemetry, MohLiveSnapshot, MohTabKey } from '../../lib/mohTypes';
+import { buildMohOutbreakHeatmap } from '../../lib/mohSyndromicEngine';
 import { MohGisMap } from './MohGisMap';
 
 interface MohOverviewViewProps {
@@ -219,9 +220,10 @@ export const MohOverviewView: React.FC<MohOverviewViewProps> = ({
         </div>
       </div>
 
-      {/* Interactive Akwa Ibom Statewide GIS Health Map */}
+      {/* Interactive Akwa Ibom Statewide GIS Health Map + Outbreak Early-Warning Heatmap */}
       <MohGisMap
         facilities={facilities}
+        heatmapHotspots={buildMohOutbreakHeatmap(snapshot)}
         onSelectFacility={onOpenDossier || onSelectFacility}
       />
 

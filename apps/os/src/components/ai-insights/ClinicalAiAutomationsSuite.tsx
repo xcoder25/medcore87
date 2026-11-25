@@ -28,7 +28,9 @@ import {
 import {
   forecastBedSurge72h,
   auditHmoClaimReadiness,
+  forecastNearExpiryBatches,
 } from '../../lib/predictiveOpsEngine';
+import { listFormulary, listBatches } from '../../lib/formularyInventory';
 import { listVitals } from '../../lib/nursingVitalsStore';
 import { listBeds } from '../../lib/bedBoardStore';
 import { listVisits } from '../../lib/receptionOpsStore';
@@ -111,6 +113,54 @@ export const ClinicalAiAutomationsSuite: React.FC<Props> = ({ session }) => {
       return null;
     }
   }, [facilityId]);
+
+  const nearExpiryBatches = useMemo(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      return forecastNearExpiryBatches(listFormulary(facilityId), listBatches(facilityId));
+    } catch {
+      return [];
+    }
+  }, [facilityId]);
+
+  const [waSimLang, setWaSimLang] = useState<'english' | 'pidgin' | 'ibibio' | 'annang' | 'oron'>('pidgin');
+  const [waSimInput, setWaSimInput] = useState('Abeg check my AKSHIA card status and book ANC visit for Eket');
+  const [waSimBusy, setWaSimBusy] = useState(false);
+  const [waSimReply, setWaSimReply] = useState<{
+    intent?: string;
+    urgency?: string;
+    replyText: string;
+    appointmentDraft?: { bookingRef: string; facilityName: string; department: string; preferredSlot: string };
+    akshiaStatus?: { cardNumber: string; scheme: string; status: string; primaryFacility: string };
+  } | null>(null);
+
+  const runWhatsAppBotSim = async () => {
+    if (!waSimInput.trim()) return;
+    setWaSimBusy(true);
+    try {
+      const res = await fetch('/api/whatsapp/triage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: waSimInput.trim(),
+          language: waSimLang,
+          patient: { name: 'Idara Ekpo', lga: 'Eket', isPregnant: true, gestationWeeks: 28 },
+        }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setWaSimReply({
+          intent: json.intent,
+          urgency: json.urgency,
+          replyText: json.replyText,
+          appointmentDraft: json.appointmentDraft,
+          akshiaStatus: json.akshiaStatus,
+        });
+      }
+    } finally {
+      setWaSimBusy(false);
+    }
+  };
 
   const claimAudit = useMemo(
     () =>
@@ -804,8 +854,23 @@ export const ClinicalAiAutomationsSuite: React.FC<Props> = ({ session }) => {
               )}
             </div>
 
-            {/* 72h Bed Surge & NHIA Claim Readiness Scrubber */}
+            {/* 72h Bed Surge & Near-Expiry & NHIA Claim Scrubber */}
             <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ padding: 12, borderRadius: 12, background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#991B1B', marginBottom: 6 }}>
+                  Near-Expiry Inventory Loss Prevention ({nearExpiryBatches.length} batches &le;90d)
+                </div>
+                {nearExpiryBatches.length === 0 ? (
+                  <div style={{ fontSize: '0.75rem', color: '#065F46' }}>Zero batches approaching expiry within 90 days.</div>
+                ) : (
+                  nearExpiryBatches.slice(0, 3).map((b) => (
+                    <div key={b.batchId} style={{ fontSize: '0.74rem', color: '#7F1D1D', marginTop: 4 }}>
+                      • <strong>{b.drugName}</strong> (Batch {b.batchNo}) — {b.daysToExpiry <= 0 ? 'EXPIRED' : `${b.daysToExpiry}d left`}, ₦{b.estimatedLossNgn.toLocaleString()} at risk · {b.recommendedAction}
+                    </div>
+                  ))
+                )}
+              </div>
+
               {bedSurge && (
                 <div style={{ padding: 12, borderRadius: 12, background: bedSurge.surgeRisk === 'critical' ? '#FEF2F2' : '#F8FAFC', border: '1px solid #CBD5E1' }}>
                   <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A' }}>
@@ -918,6 +983,51 @@ export const ClinicalAiAutomationsSuite: React.FC<Props> = ({ session }) => {
                   )}
                 </div>
               ))
+            )}
+          </div>
+
+          {/* Interactive Voice & WhatsApp Triage, Appointment, AKSHIA & ANC Check-In Simulator */}
+          <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid #E2E8F0' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0F172A', marginBottom: 6 }}>
+              Voice-Enabled WhatsApp &amp; Care App Triage Simulator
+            </div>
+            <div style={{ fontSize: '0.76rem', color: '#64748B', marginBottom: 10 }}>
+              Test multi-lingual patient voice transcripts &amp; WhatsApp messages for symptom triage, appointment booking, AKSHIA card checks, and ANC / chronic reminders via <code>/api/whatsapp/triage</code>.
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              <select
+                value={waSimLang}
+                onChange={(e) => setWaSimLang(e.target.value as any)}
+                style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 12, fontWeight: 700 }}
+              >
+                <option value="english">English</option>
+                <option value="pidgin">Nigerian Pidgin</option>
+                <option value="ibibio">Ibibio</option>
+                <option value="annang">Annang</option>
+                <option value="oron">Oron</option>
+              </select>
+              <input
+                value={waSimInput}
+                onChange={(e) => setWaSimInput(e.target.value)}
+                style={{ flex: 1, minWidth: 260, padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 12 }}
+                placeholder="Enter simulated patient WhatsApp / voice note text..."
+              />
+              <button
+                type="button"
+                disabled={waSimBusy}
+                onClick={runWhatsAppBotSim}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#16A34A', color: '#FFF', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}
+              >
+                {waSimBusy ? 'Processing…' : 'Simulate Bot Reply'}
+              </button>
+            </div>
+            {waSimReply && (
+              <div style={{ padding: 12, borderRadius: 10, background: waSimReply.urgency === 'emergency' ? '#FEF2F2' : '#F0FDF4', border: '1px solid #CBD5E1', fontSize: 12.5 }}>
+                <div style={{ fontWeight: 800, color: waSimReply.urgency === 'emergency' ? '#B91C1C' : '#065F46', marginBottom: 4 }}>
+                  Intent: {waSimReply.intent} · Urgency: {waSimReply.urgency?.toUpperCase()}
+                </div>
+                <div style={{ color: '#0F172A' }}>{waSimReply.replyText}</div>
+              </div>
             )}
           </div>
         </div>

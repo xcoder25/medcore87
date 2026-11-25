@@ -2486,5 +2486,160 @@ test('phase2-vision-brief-predictive-ops: verifies Vision AI, 30-Second Patient 
   }
 });
 
+test('phase3-fhir-digitization-expiry-triage: paper-to-FHIR bundle, seasonal stockout/expiry alerts & WhatsApp voice triage bot', async () => {
+  // 1. Check new API routes & engines follow strict Next.js 15 exports & current Gemini models ONLY
+  const ALLOWED_EXPORTS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'runtime', 'dynamic', 'revalidate', 'maxDuration']);
+  for (const rel of ['src/app/api/ai/digitize-fhir/route.ts', 'src/app/api/whatsapp/triage/route.ts']) {
+    const src = fs.readFileSync(path.join(OS_ROOT, rel), 'utf8');
+    assert.equal(/gemini-(?:2\.5|2\.0|1\.5)/i.test(src), false, `${rel} must not reference deprecated Gemini models`);
+    for (const m of src.matchAll(/^export\s+(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z0-9_$]+)/gm)) {
+      assert.ok(ALLOWED_EXPORTS.has(m[1]), `Invalid Route export "${m[1]}" in ${rel}`);
+    }
+  }
+
+  // 2. Test /api/ai/digitize-fhir + fhirStub.ts FHIR R4 Bundle generation for paper folder, lab & ultrasound
+  const fhirMod = loadTsModule('src/lib/fhirStub.ts');
+  const mockNextServer = {
+    NextRequest: class {},
+    NextResponse: {
+      json: (data, init) => ({ status: init?.status || 200, json: async () => data }),
+    },
+  };
+  const digitizeRoute = loadTsModule('src/app/api/ai/digitize-fhir/route.ts', {
+    'next/server': mockNextServer,
+  });
+
+  const prevKey = process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+
+  const digRes = await digitizeRoute.POST({
+    json: async () => ({
+      recordKind: 'mixed_chart',
+      facilityId: 'IGH-EKT',
+      textFallback: [
+        'Patient Name: Ekaette Bassey',
+        'Folder No: AKS-OB-902',
+        'DOB: 1995-03-11',
+        'Sex: Female',
+        'LGA: Eket',
+        'Allergies: Penicillin',
+        'Hb: 6.4 g/dL',
+        'Platelets: 45 x10^9/L',
+        'GA: 32 weeks',
+        'FHR: 105 bpm',
+        'Placenta: Marginal placenta previa',
+        'Impression: Marginal placenta previa with fetal bradycardia',
+        'Diagnosis: Placenta previa, Severe Anaemia',
+        'Rx: Amoxicillin 500mg TDS',
+      ].join('\n'),
+    }),
+  });
+  const digJson = await digRes.json();
+  assert.equal(digJson.ok, true);
+  assert.equal(digJson.fhirBundle.resourceType, 'Bundle');
+  const resourceTypes = digJson.fhirBundle.entry.map((e) => e.resource.resourceType);
+  assert.ok(resourceTypes.includes('Patient'));
+  assert.ok(resourceTypes.includes('DocumentReference'));
+  assert.ok(resourceTypes.includes('Observation'));
+  assert.ok(resourceTypes.includes('DiagnosticReport'));
+  assert.ok(resourceTypes.includes('Condition'));
+  assert.ok(resourceTypes.includes('MedicationRequest'));
+  assert.ok(digJson.extraction.panicAlerts.length >= 2, 'Expected anaemia + fetal bradycardia/previa panic alerts');
+  assert.ok(digJson.prescriptionSafety && digJson.prescriptionSafety.hardStopCount >= 1, 'Expected penicillin allergy cross-check hard stop');
+  assert.ok(typeof fhirMod.digitizedRecordToFhirBundle === 'function');
+
+  // 3. Test predictiveOpsEngine.ts seasonal class multipliers + forecastNearExpiryBatches
+  const pred = loadTsModule('src/lib/predictiveOpsEngine.ts');
+  const nowMs = Date.parse('2026-07-15T10:00:00Z'); // rainy season month 7
+  const seasonalStock = pred.forecastFormularyStockouts(
+    [
+      { id: 'D1', facilityId: 'IGH-EKT', name: 'Amlodipine', genericName: 'Amlodipine', strength: '10mg', form: 'Tab', category: 'Cardiovascular', unitPriceNgn: 1200, reorderLevel: 50, controlled: false },
+      { id: 'D2', facilityId: 'IGH-EKT', name: 'Artemether-Lumefantrine', genericName: 'ACT', strength: '20/120mg', form: 'Tab', category: 'Antimalarial', unitPriceNgn: 1500, reorderLevel: 50, controlled: false },
+    ],
+    [
+      { id: 'B-OLD', drugId: 'D1', facilityId: 'IGH-EKT', batchNo: 'AML-09', expiry: '2026-08-05', qty: 40 },
+      { id: 'B-EXP', drugId: 'D2', facilityId: 'IGH-EKT', batchNo: 'ACT-01', expiry: '2026-07-01', qty: 10 },
+    ],
+    [],
+    { nowMs }
+  );
+  const antimal = seasonalStock.find((s) => s.drugId === 'D2');
+  const antihyp = seasonalStock.find((s) => s.drugId === 'D1');
+  assert.equal(antimal.drugClass, 'antimalarial');
+  assert.equal(antimal.seasonalMultiplier, 1.45);
+  assert.equal(antihyp.drugClass, 'antihypertensive');
+
+  const expiryAlerts = pred.forecastNearExpiryBatches(
+    [
+      { id: 'D1', facilityId: 'IGH-EKT', name: 'Amlodipine', genericName: 'Amlodipine', strength: '10mg', form: 'Tab', category: 'Cardiovascular', unitPriceNgn: 1200, reorderLevel: 50, controlled: false },
+      { id: 'D2', facilityId: 'IGH-EKT', name: 'Artemether-Lumefantrine', genericName: 'ACT', strength: '20/120mg', form: 'Tab', category: 'Antimalarial', unitPriceNgn: 1500, reorderLevel: 50, controlled: false },
+    ],
+    [
+      { id: 'B-OLD', drugId: 'D1', facilityId: 'IGH-EKT', batchNo: 'AML-09', expiry: '2026-08-05', qty: 40 },
+      { id: 'B-EXP', drugId: 'D2', facilityId: 'IGH-EKT', batchNo: 'ACT-01', expiry: '2026-07-01', qty: 10 },
+    ],
+    { nowMs }
+  );
+  assert.equal(expiryAlerts.length, 2);
+  assert.equal(expiryAlerts[0].severity, 'expired');
+  assert.equal(expiryAlerts[1].severity, 'critical_30d');
+  assert.equal(expiryAlerts[1].estimatedLossNgn, 48000);
+
+  // 4. Test patientTriageBotEngine.ts + /api/whatsapp/triage webhook & mobile bot API
+  const botEngine = loadTsModule('src/lib/patientTriageBotEngine.ts');
+  const emerg = botEngine.runPatientTriageBot({
+    text: 'I get belle 28 weeks, my head dey pain me well well and my eye dey blur',
+    language: 'pidgin',
+  });
+  assert.equal(emerg.urgency, 'emergency');
+  assert.equal(emerg.intent, 'emergency_triage');
+  assert.ok(emerg.redFlags.length >= 1);
+
+  const appt = botEngine.runPatientTriageBot({
+    text: 'Please book antenatal appointment at Immanuel General Hospital Eket tomorrow',
+  });
+  assert.equal(appt.intent, 'book_appointment');
+  assert.ok(appt.appointmentDraft && appt.appointmentDraft.bookingRef.startsWith('AKS-APT-'));
+
+  const akshia = botEngine.runPatientTriageBot({
+    text: 'Check my AKSHIA card status AKSHIA-9921',
+  });
+  assert.equal(akshia.intent, 'check_akshia');
+  assert.equal(akshia.akshiaStatus.status, 'ACTIVE');
+
+  const waRoute = loadTsModule('src/app/api/whatsapp/triage/route.ts', {
+    'next/server': mockNextServer,
+  });
+  const waRes = await waRoute.POST({
+    json: async () => ({
+      text: 'Remind me about my ANC and hypertension BP check-in',
+      patient: { name: 'Idara', isPregnant: true, gestationWeeks: 30, chronicConditions: ['Hypertension'] },
+    }),
+  });
+  if (prevKey) process.env.GEMINI_API_KEY = prevKey;
+
+  const waJson = await waRes.json();
+  assert.equal(waJson.ok, true);
+  assert.equal(waJson.intent, 'care_checkin');
+  assert.ok(Array.isArray(waJson.careReminders) && waJson.careReminders.length >= 2);
+
+  // 5. Vendor neutrality for OnboardingFhirDigitizerPanel + VoiceCareBotPanel
+  const CARE_VOICE_PANEL = path.resolve(OS_ROOT, '../care/src/components/triage/VoiceCareBotPanel.tsx');
+  for (const absPath of [
+    path.join(OS_ROOT, 'src/components/onboarding/OnboardingFhirDigitizerPanel.tsx'),
+    CARE_VOICE_PANEL,
+  ]) {
+    const stripped = fs
+      .readFileSync(absPath, 'utf8')
+      .replace(/^\s*(?:\/\/.*|\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\/)/gm, '');
+    assert.equal(
+      /\bAmazon\b|Rekognition|AWS S3|Aurora Postgres|\bVercel\b|\bFirebase\b|\bGemini\b/i.test(stripped),
+      false,
+      `${absPath} must remain strictly vendor-neutral`
+    );
+  }
+});
+
+
 
 

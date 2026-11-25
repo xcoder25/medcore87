@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MyAncPanel } from './components/maternity/MyAncPanel';
 import { MyDischargeSummaryPanel } from './components/discharge/MyDischargeSummaryPanel';
+import { VoiceCareBotPanel } from './components/triage/VoiceCareBotPanel';
 
 const { width, height } = Dimensions.get('window');
 const patLogo = require('./assets/patmedcore.png');
@@ -58,7 +59,8 @@ export type SubView =
   | 'mentalHealth'
   | 'healthEdu'
   | 'myAnc'
-  | 'dischargeSummary';
+  | 'dischargeSummary'
+  | 'voiceBot';
 
 export interface DoctorInfo {
   id: string;
@@ -1815,6 +1817,7 @@ export const App: React.FC = () => {
             {subView === 'healthEdu' && 'Health Education'}
             {subView === 'myAnc' && 'My ANC'}
             {subView === 'dischargeSummary' && 'AI Discharge & Care Bot'}
+            {subView === 'voiceBot' && 'Voice Triage & AKSHIA Bot'}
           </Text>
           <View style={{ width: 40 }} />
         </View>
@@ -3184,6 +3187,19 @@ export const App: React.FC = () => {
           />
         )}
 
+        {subView === 'voiceBot' && (
+          <VoiceCareBotPanel
+            patientName={patientDisplayName}
+            akshiaId={patientId}
+            shid={patientId}
+            onBack={() => setSubView('none')}
+            onAppointmentBooked={(b) =>
+              showToast(`Booked ${b.bookingRef} at ${b.facilityName} (${b.preferredSlot})`)
+            }
+            onToast={(msg) => showToast(msg)}
+          />
+        )}
+
         {subView === 'immunization' && (
           <View style={styles.subViewContainer}>
             {/* Registry Info Card */}
@@ -3700,6 +3716,13 @@ export const App: React.FC = () => {
                   </View>
                   <Text style={styles.glassTileTitle}>AI Discharge</Text>
                   <Text style={styles.glassTileSub}>Multi-lingual & Bot</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.glassTile} onPress={() => setSubView('voiceBot')} activeOpacity={0.84}>
+                  <View style={[styles.glassTileIconBadge, { backgroundColor: 'rgba(124, 58, 237, 0.16)' }]}>
+                    <Text style={{ fontSize: 18 }}>🎙️</Text>
+                  </View>
+                  <Text style={styles.glassTileTitle}>Voice Care Bot</Text>
+                  <Text style={styles.glassTileSub}>Triage · Book · AKSHIA</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.glassTile} onPress={() => setSubView('feedback')} activeOpacity={0.84}>
                   <View style={[styles.glassTileIconBadge, { backgroundColor: 'rgba(234, 179, 8, 0.16)' }]}>

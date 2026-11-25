@@ -12,6 +12,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import type { MohLiveSnapshot, MohSupplyEquipmentItem } from '../../lib/mohTypes';
+import { forecastStatewideDrugDemandAndExpiry } from '../../lib/mohSupplyForecastEngine';
 
 interface MohSupplyInfraViewProps {
   snapshot: MohLiveSnapshot;
@@ -77,6 +78,8 @@ export const MohSupplyInfraView: React.FC<MohSupplyInfraViewProps> = ({
       ).length,
     [supplyChain.items]
   );
+
+  const drugForecast = useMemo(() => forecastStatewideDrugDemandAndExpiry(snapshot), [snapshot]);
 
   const domainItems = useMemo(
     () =>
@@ -191,6 +194,88 @@ export const MohSupplyInfraView: React.FC<MohSupplyInfraViewProps> = ({
           <div className="moh-kpi-sub">Tracked civil &amp; WASH upgrades</div>
         </div>
       </div>
+
+      {/* Predictive Drug Demand, Stockout & Near-Expiry Loss Prevention (Medicine Tab) */}
+      {domainTab === 'medicine_vaccine' && (
+        <div className="moh-panel" style={{ borderColor: '#BAE6FD', background: '#F8FAFC' }}>
+          <div className="moh-panel-head" style={{ marginBottom: 10 }}>
+            <h2 className="moh-panel-title" style={{ color: '#0369A1' }}>
+              <Activity size={17} color="#0284C7" />
+              Predictive Drug Demand, Stockout &amp; Near-Expiry Prevention ({drugForecast.seasonLabel})
+            </h2>
+            <span className="moh-pill emerald">
+              Antimalarial ×{drugForecast.antimalarialMultiplier} · Antibiotic ×{drugForecast.antibioticMultiplier} · Antihypertensive ×{drugForecast.antihypertensiveMultiplier}
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 12 }}>
+            <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, padding: 12 }}>
+              <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0F172A', marginBottom: 6 }}>
+                Predicted Stockout Runway ({drugForecast.stockoutRisks.length})
+              </div>
+              {drugForecast.stockoutRisks.length === 0 ? (
+                <div style={{ fontSize: '0.76rem', color: '#059669' }}>
+                  All monitored AKS clinics hold &gt;14-day seasonal buffer stock across antimalarials, antihypertensives, and antibiotics.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {drugForecast.stockoutRisks.slice(0, 4).map((r) => (
+                    <div key={r.id} style={{ fontSize: '0.75rem', padding: '6px 8px', borderRadius: 8, background: r.urgency === 'critical' ? '#FEF2F2' : '#FFFBEB', border: '1px solid #E2E8F0' }}>
+                      <strong style={{ color: '#0F172A' }}>{r.itemName}</strong> · {r.facilityName} ({r.lga})
+                      <div style={{ color: r.urgency === 'critical' ? '#B91C1C' : '#B45309', fontWeight: 700 }}>
+                        {r.projectedDaysSupply}d runway · Dispatch {r.recommendedDispatchQty} {r.unit}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, padding: 12 }}>
+              <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0F172A', marginBottom: 6 }}>
+                Near-Expiry &amp; Cold-Chain Loss Alerts ({drugForecast.nearExpiryRisks.length})
+              </div>
+              {drugForecast.nearExpiryRisks.length === 0 ? (
+                <div style={{ fontSize: '0.76rem', color: '#64748B' }}>
+                  Zero short-dated batches (&le;90d) or cold-chain excursions reported. Tag batch expiry dates in supply notes to monitor.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {drugForecast.nearExpiryRisks.slice(0, 4).map((ne) => (
+                    <div key={ne.id} style={{ fontSize: '0.75rem', padding: '6px 8px', borderRadius: 8, background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                      <strong>{ne.itemName}</strong> · {ne.facilityName}
+                      <div style={{ color: '#991B1B', fontWeight: 700 }}>{ne.detail}</div>
+                      <div style={{ color: '#334155', marginTop: 2 }}>{ne.recommendedAction}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, padding: 12 }}>
+              <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0F172A', marginBottom: 6 }}>
+                Inter-LGA Redistribution Suggestions ({drugForecast.redistributionPairs.length})
+              </div>
+              {drugForecast.redistributionPairs.length === 0 ? (
+                <div style={{ fontSize: '0.76rem', color: '#64748B' }}>
+                  No cross-facility surplus-to-deficit transfers required currently.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {drugForecast.redistributionPairs.slice(0, 4).map((rp, idx) => (
+                    <div key={idx} style={{ fontSize: '0.75rem', padding: '6px 8px', borderRadius: 8, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                      <strong>Transfer {rp.suggestedTransferQty} {rp.unit} {rp.itemName}</strong>
+                      <div style={{ color: '#166534' }}>
+                        {rp.fromLga} &rarr; {rp.toLga} ({rp.toFacilityName})
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sub-Tabs + Facility Filter */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
