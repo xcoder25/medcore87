@@ -25,6 +25,15 @@ import { listStaffCards } from '../../lib/staffCardStore';
 import { RECEPTION_DEPTS } from '../../lib/receptionConstants';
 import { pushNotification } from '../../lib/notificationEngine';
 import {
+  evaluateVitalDeterioration,
+  evaluatePrescriptionSafetyGuard,
+  type ClinicalDeteriorationAssessment,
+} from '../../lib/clinicalSafetyEngine';
+import { getPatient } from '../../lib/patientRegistryStore';
+import { STATE_ORDER_BUNDLES } from '../../lib/clinicalAiAutomations';
+import { placeOrder } from '../../lib/clinicalEventBus';
+import { appendAudit } from '../../lib/auditLogStore';
+import {
   Heart,
   Thermometer,
   Activity,
@@ -90,6 +99,7 @@ export interface FormState {
   respRate: string;
   painScore: number;
   avpu: 'Alert' | 'Voice' | 'Pain' | 'Unresponsive';
+  supplementalO2: boolean;
   notes: string;
 }
 
@@ -104,6 +114,7 @@ const EMPTY_FORM: FormState = {
   respRate: '',
   painScore: 0,
   avpu: 'Alert',
+  supplementalO2: false,
   notes: '',
 };
 
@@ -329,6 +340,109 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
 
   const analytics = useMemo(() => computeClinicalAnalytics(form), [form]);
 
+  const deterioration: ClinicalDeteriorationAssessment = useMemo(() => {
+    const prior = selectedVisit
+      ? vitalsLog
+          .filter((v) => v.patientId === selectedVisit.patientId)
+          .slice(0, 5)
+          .map((v) => ({
+            bpSystolic: v.bpSystolic,
+            bpDiastolic: v.bpDiastolic,
+            pulse: v.pulse,
+            tempC: v.tempC,
+            spo2: v.spo2,
+            respRate: v.respRate,
+            avpu: v.avpu,
+            supplementalO2: v.supplementalO2,
+            recordedAt: v.recordedAt,
+          }))
+      : [];
+    const pt = selectedVisit ? getPatient(selectedVisit.patientId) : undefined;
+    return evaluateVitalDeterioration(
+      {
+        bpSystolic: form.bpSystolic ? Number(form.bpSystolic) : undefined,
+        bpDiastolic: form.bpDiastolic ? Number(form.bpDiastolic) : undefined,
+        pulse: form.pulse ? Number(form.pulse) : undefined,
+        tempC: form.tempC ? Number(form.tempC) : undefined,
+        spo2: form.spo2 ? Number(form.spo2) : undefined,
+        respRate: form.respRate ? Number(form.respRate) : undefined,
+        avpu: form.avpu,
+        supplementalO2: form.supplementalO2,
+      },
+      prior,
+      pt ? { dob: pt.dob, sex: pt.sex, chronicConditions: pt.chronicConditions } : undefined
+    );
+  }, [form, selectedVisit, vitalsLog]);
+
+  const [bundleMessage, setBundleMessage] = useState<string | null>(null);
+
+  const activateEmergencyBundle = (bundleKey: string) => {
+    if (!selectedVisit) return;
+    const bundle = STATE_ORDER_BUNDLES[bundleKey] || STATE_ORDER_BUNDLES.severe_malaria;
+    const pt = getPatient(selectedVisit.patientId);
+    let queuedCount = 0;
+    let blockedMeds = 0;
+
+    for (const lab of bundle.labs.slice(0, 3)) {
+      placeOrder({
+        facilityId,
+        patientId: selectedVisit.patientId,
+        patientName: selectedVisit.patientName,
+        hospitalNumber: selectedVisit.hospitalNumber,
+        type: 'lab',
+        code: `LAB-${lab.slice(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '')}`,
+        name: lab,
+        orderedBy: nurseName,
+        priority: 'stat',
+        notes: `Emergency bundle: ${bundle.title}`,
+      });
+      queuedCount += 1;
+    }
+
+    for (const med of bundle.medications.slice(0, 2)) {
+      const safety = evaluatePrescriptionSafetyGuard({
+        drugName: med,
+        allergies: pt?.allergies,
+        otherDrugs: pt?.currentMedications,
+        dob: pt?.dob,
+        sex: pt?.sex,
+        chronicConditions: pt?.chronicConditions,
+        genotype: pt?.genotype,
+      });
+      if (safety.hardStopCount > 0) {
+        blockedMeds += 1;
+        continue;
+      }
+      placeOrder({
+        facilityId,
+        patientId: selectedVisit.patientId,
+        patientName: selectedVisit.patientName,
+        hospitalNumber: selectedVisit.hospitalNumber,
+        type: 'rx',
+        code: `RX-${med.slice(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '')}`,
+        name: med,
+        orderedBy: nurseName,
+        priority: 'stat',
+        notes: `Emergency bundle draft (${bundle.title}) — doctor review`,
+      });
+      queuedCount += 1;
+    }
+
+    appendAudit({
+      facilityId,
+      actor: nurseName,
+      actorBadge: session.badgeId,
+      action: 'emergency_bundle_activated',
+      entity: 'patient',
+      entityId: selectedVisit.patientId,
+      detail: `${bundle.title}: ${queuedCount} STAT orders queued, ${blockedMeds} held by Safety Guard`,
+    });
+    setBundleMessage(
+      `${bundle.title}: ${queuedCount} STAT order(s) dispatched${blockedMeds ? ` · ${blockedMeds} med(s) held by Clinical Safety Guard` : ''}`
+    );
+    window.setTimeout(() => setBundleMessage(null), 6000);
+  };
+
   // Quick Preset Handlers
   const applyPreset = (type: 'adult' | 'pediatric') => {
     if (type === 'adult') {
@@ -387,13 +501,18 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
         tempC: form.tempC ? Number(form.tempC) : undefined,
         weightKg: form.weightKg ? Number(form.weightKg) : undefined,
         spo2: form.spo2 ? Number(form.spo2) : undefined,
+        respRate: form.respRate ? Number(form.respRate) : undefined,
+        avpu: form.avpu,
+        supplementalO2: form.supplementalO2,
         notes: [
           form.notes,
           form.heightCm ? `Height: ${form.heightCm}cm (BMI ${analytics.bmi})` : '',
           form.respRate ? `RR: ${form.respRate}bpm` : '',
+          form.supplementalO2 ? 'Supplemental O2' : '',
           form.painScore > 0 ? `Pain: ${form.painScore}/10` : '',
           form.avpu !== 'Alert' ? `AVPU: ${form.avpu}` : '',
-          `NEWS2: ${analytics.newsPoints} pts`,
+          `NEWS2: ${deterioration.news2.total} pts`,
+          deterioration.qsofa.sepsisScreenPositive ? `qSOFA: ${deterioration.qsofa.score}/3` : '',
         ]
           .filter(Boolean)
           .join(' · '),
@@ -406,7 +525,7 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
         facilityId,
         department: targetDept,
         doctor: targetDoctor,
-        triageUrgency: analytics.urgency,
+        triageUrgency: deterioration.urgency,
         vitalsSummary: summaryStr,
         vitalsBp: form.bpSystolic && form.bpDiastolic ? `${form.bpSystolic}/${form.bpDiastolic}` : undefined,
         vitalsPulse: form.pulse ? Number(form.pulse) : undefined,
@@ -1508,8 +1627,24 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
                           <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>%</span>
                         </div>
 
-                        <div style={{ fontSize: 10, color: C.muted }}>
-                          Target: <strong>95% – 100% room air</strong>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10, color: C.muted }}>
+                          <span>Target: <strong>95% – 100%</strong></span>
+                          <button
+                            type="button"
+                            onClick={() => setForm((p) => ({ ...p, supplementalO2: !p.supplementalO2 }))}
+                            style={{
+                              padding: '2px 7px',
+                              borderRadius: 999,
+                              border: `1px solid ${form.supplementalO2 ? '#2563EB' : C.border}`,
+                              background: form.supplementalO2 ? '#DBEAFE' : '#FFFFFF',
+                              color: form.supplementalO2 ? '#1D4ED8' : C.muted,
+                              fontWeight: 800,
+                              fontSize: 10,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {form.supplementalO2 ? 'On Supplemental O₂' : 'Room Air'}
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1836,106 +1971,153 @@ export const NursingTriageStation: React.FC<Props> = ({ session, onClose }) => {
                       </div>
                     </div>
 
-                    {/* Early Warning Score (NEWS2) & Urgency HUD */}
+                    {/* Early Warning Score (NEWS2 / qSOFA / Obstetric Radar) & 1-Click Emergency Bundles */}
                     <div
                       style={{
                         padding: 16,
                         borderRadius: 14,
                         background:
-                          analytics.urgency === 'critical'
+                          deterioration.urgency === 'critical'
                             ? '#FEF2F2'
-                            : analytics.urgency === 'urgent'
+                            : deterioration.urgency === 'urgent'
                             ? '#FFFBEB'
                             : '#F0FDF4',
                         border:
-                          analytics.urgency === 'critical'
+                          deterioration.urgency === 'critical'
                             ? '1.5px solid #FECACA'
-                            : analytics.urgency === 'urgent'
+                            : deterioration.urgency === 'urgent'
                             ? '1.5px solid #FDE68A'
                             : '1.5px solid #BBF7D0',
                         display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        flexWrap: 'wrap',
-                        gap: 14,
+                        flexDirection: 'column',
+                        gap: 12,
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div
-                          style={{
-                            width: 42,
-                            height: 42,
-                            borderRadius: 12,
-                            background:
-                              analytics.urgency === 'critical'
-                                ? '#EF4444'
-                                : analytics.urgency === 'urgent'
-                                ? '#F59E0B'
-                                : '#10B981',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: '#FFFFFF',
-                          }}
-                        >
-                          {analytics.urgency === 'critical' ? (
-                            <AlertTriangle size={22} />
-                          ) : analytics.urgency === 'urgent' ? (
-                            <AlertCircle size={22} />
-                          ) : (
-                            <CheckCircle2 size={22} />
-                          )}
-                        </div>
-                        <div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           <div
                             style={{
-                              fontSize: 14,
-                              fontWeight: 800,
-                              color:
-                                analytics.urgency === 'critical'
-                                  ? '#DC2626'
-                                  : analytics.urgency === 'urgent'
-                                  ? '#D97706'
-                                  : '#059669',
+                              width: 42,
+                              height: 42,
+                              borderRadius: 12,
+                              background:
+                                deterioration.urgency === 'critical'
+                                  ? '#EF4444'
+                                  : deterioration.urgency === 'urgent'
+                                  ? '#F59E0B'
+                                  : '#10B981',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: '#FFFFFF',
                             }}
                           >
-                            Triage Classification: {analytics.urgency.toUpperCase()}
+                            {deterioration.urgency === 'critical' ? (
+                              <AlertTriangle size={22} />
+                            ) : deterioration.urgency === 'urgent' ? (
+                              <AlertCircle size={22} />
+                            ) : (
+                              <CheckCircle2 size={22} />
+                            )}
                           </div>
-                          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                            Calculated NEWS2 Risk: <strong>{analytics.newsPoints} Points</strong> •{' '}
-                            {analytics.urgency === 'critical'
-                              ? 'Immediate physician notification recommended'
-                              : analytics.urgency === 'urgent'
-                              ? 'Priority doctor worklist'
-                              : 'Standard OPD consultation track'}
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 14,
+                                fontWeight: 800,
+                                color:
+                                  deterioration.urgency === 'critical'
+                                    ? '#DC2626'
+                                    : deterioration.urgency === 'urgent'
+                                    ? '#D97706'
+                                    : '#059669',
+                              }}
+                            >
+                              Triage Classification: {deterioration.urgency.toUpperCase()}
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4, fontSize: 11, fontWeight: 700 }}>
+                              <span style={{ background: '#FFFFFF', padding: '2px 8px', borderRadius: 999, border: '1px solid #E2E8F0', color: '#0F172A' }}>
+                                NEWS2: {deterioration.news2.total} pts
+                              </span>
+                              <span style={{ background: deterioration.qsofa.sepsisScreenPositive ? '#FEE2E2' : '#FFFFFF', padding: '2px 8px', borderRadius: 999, border: '1px solid #E2E8F0', color: deterioration.qsofa.sepsisScreenPositive ? '#B91C1C' : '#0F172A' }}>
+                                qSOFA: {deterioration.qsofa.score}/3
+                              </span>
+                              {deterioration.shockIndex !== null && (
+                                <span style={{ background: deterioration.obstetric.haemorrhageAlert ? '#FEE2E2' : '#FFFFFF', padding: '2px 8px', borderRadius: 999, border: '1px solid #E2E8F0', color: deterioration.obstetric.haemorrhageAlert ? '#B91C1C' : '#0F172A' }}>
+                                  Shock Index: {deterioration.shockIndex}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
+
+                        {/* Primary Save & Dispatch Button */}
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={handleSaveVitals}
+                          style={{
+                            padding: '12px 24px',
+                            borderRadius: 12,
+                            border: 'none',
+                            cursor: saving ? 'wait' : 'pointer',
+                            background: 'linear-gradient(135deg, #0D9488 0%, #2563EB 100%)',
+                            color: '#FFFFFF',
+                            fontSize: 13,
+                            fontWeight: 800,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            boxShadow: '0 4px 16px rgba(13,148,136,0.3)',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Send size={15} />
+                          <span>{saving ? 'Transmitting to EMR & Routing...' : `Authorize Vitals & Route to ${targetDept}`}</span>
+                        </button>
                       </div>
 
-                      {/* Primary Save & Dispatch Button */}
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={handleSaveVitals}
-                        style={{
-                          padding: '12px 24px',
-                          borderRadius: 12,
-                          border: 'none',
-                          cursor: saving ? 'wait' : 'pointer',
-                          background: 'linear-gradient(135deg, #0D9488 0%, #2563EB 100%)',
-                          color: '#FFFFFF',
-                          fontSize: 13,
-                          fontWeight: 800,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          boxShadow: '0 4px 16px rgba(13,148,136,0.3)',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <Send size={15} />
-                        <span>{saving ? 'Transmitting to EMR & Routing...' : `Authorize Vitals & Route to ${targetDept}`}</span>
-                      </button>
+                      {deterioration.alerts.length > 0 && (
+                        <div style={{ background: '#FFFFFF', borderRadius: 10, padding: '8px 12px', border: '1px solid #FECACA', fontSize: 11.5, color: '#7F1D1D' }}>
+                          {deterioration.alerts.map((al, i) => (
+                            <div key={i} style={{ marginBottom: 2, fontWeight: 600 }}>• {al}</div>
+                          ))}
+                        </div>
+                      )}
+
+                      {(deterioration.recommendedBundleKey || deterioration.urgency === 'critical') && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, paddingTop: 8, borderTop: '1px dashed #FCA5A5' }}>
+                          <span style={{ fontSize: 11.5, fontWeight: 800, color: '#991B1B' }}>
+                            Recommended Protocol:{' '}
+                            {STATE_ORDER_BUNDLES[deterioration.recommendedBundleKey || 'sepsis_1hr']?.title || 'Critical Stabilization Bundle'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => activateEmergencyBundle(deterioration.recommendedBundleKey || 'sepsis_1hr')}
+                            style={{
+                              padding: '7px 14px',
+                              borderRadius: 9,
+                              border: 'none',
+                              background: '#DC2626',
+                              color: '#FFFFFF',
+                              fontWeight: 800,
+                              fontSize: 11.5,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                            }}
+                          >
+                            <Zap size={13} /> 1-Click Queue Emergency Bundle STAT
+                          </button>
+                        </div>
+                      )}
+
+                      {bundleMessage && (
+                        <div style={{ fontSize: 11.5, fontWeight: 800, color: '#065F46', background: '#DCFCE7', padding: '7px 10px', borderRadius: 8 }}>
+                          ✓ {bundleMessage}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

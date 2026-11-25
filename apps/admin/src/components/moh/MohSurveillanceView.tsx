@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Activity, AlertTriangle, Baby, BedDouble, Plus, ShieldAlert } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Activity, AlertTriangle, Baby, BedDouble, Plus, ShieldAlert, Radio } from 'lucide-react';
 import { AKWA_IBOM_LGAS } from '../../data/akwaIbomFacilities';
 import type { MohFacilityTelemetry, MohIdsrReport, MohLiveSnapshot } from '../../lib/mohTypes';
+import { detectCrossLgaSyndromicAnomalies } from '../../lib/mohSyndromicEngine';
 
 interface MohSurveillanceViewProps {
   snapshot: MohLiveSnapshot;
@@ -75,6 +76,7 @@ export const MohSurveillanceView: React.FC<MohSurveillanceViewProps> = ({
 
   const { summary, facilities, surveillance, idsr } = snapshot;
   const capacityFacilities = facilities.filter((f) => f.totalBeds > 0 || f.enrollmentStatus === 'active');
+  const syndromicClusters = useMemo(() => detectCrossLgaSyndromicAnomalies(snapshot), [snapshot]);
 
   const handleDsnoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -286,6 +288,57 @@ export const MohSurveillanceView: React.FC<MohSurveillanceViewProps> = ({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Bed Capacity Matrix */}
+      <div className="moh-panel">
+        <div className="moh-panel-head">
+          <h2 className="moh-panel-title">
+            <Radio size={17} color="#DC2626" />
+            Cross-LGA Syndromic Early-Warning Clusters ({syndromicClusters.length})
+          </h2>
+          <button type="button" className="moh-btn-outline" onClick={onOpenAlertModal}>
+            Escalate Bulletin
+          </button>
+        </div>
+
+        {syndromicClusters.length === 0 ? (
+          <div style={{ padding: 16, borderRadius: 10, background: '#F8FAFC', color: '#64748B', fontSize: '0.82rem' }}>
+            Zero cross-LGA syndromic clusters (Cholera/AWD, Lassa VHF, Measles, Severe Malaria, or SARI) detected above baseline.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+            {syndromicClusters.map((c) => (
+              <div
+                key={c.id}
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  border: c.severity === 'outbreak_surge' ? '1.5px solid #DC2626' : '1px solid #F59E0B',
+                  background: c.severity === 'outbreak_surge' ? '#FEF2F2' : '#FFFBEB',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <strong style={{ fontSize: '0.88rem', color: '#0F172A' }}>{c.syndromeLabel}</strong>
+                  <span className={`moh-pill ${c.severity === 'outbreak_surge' ? 'danger' : 'amber'}`}>
+                    {c.severity.replace(/_/g, ' ').toUpperCase()}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.76rem', color: '#475569', marginTop: 6 }}>
+                  <strong>Affected LGAs:</strong> {c.affectedLgas.join(', ')} · <strong>Signals/Cases:</strong> {c.suspectedCasesTotal}
+                </div>
+                {c.neighboringRiskLgas.length > 0 && (
+                  <div style={{ fontSize: '0.74rem', color: '#B45309', marginTop: 3 }}>
+                    Adjacent Watch LGAs: {c.neighboringRiskLgas.join(', ')}
+                  </div>
+                )}
+                <div style={{ fontSize: '0.75rem', color: '#1E293B', marginTop: 6, background: '#FFFFFF', padding: 8, borderRadius: 8 }}>
+                  {c.recommendedAction}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Bed Capacity Matrix */}

@@ -25,6 +25,16 @@ import {
   type WhatsAppCareFollowup,
   type DischargeSummaryRecord,
 } from '../../lib/clinicalAiAutomations';
+import {
+  forecastBedSurge72h,
+  auditHmoClaimReadiness,
+} from '../../lib/predictiveOpsEngine';
+import { listVitals } from '../../lib/nursingVitalsStore';
+import { listBeds } from '../../lib/bedBoardStore';
+import { listVisits } from '../../lib/receptionOpsStore';
+import { listOrders, placeOrder } from '../../lib/clinicalEventBus';
+import { listPatients } from '../../lib/patientRegistryStore';
+import { evaluateVitalDeterioration, evaluatePrescriptionSafetyGuard } from '../../lib/clinicalSafetyEngine';
 
 interface Props {
   session?: any;
@@ -85,8 +95,132 @@ export const ClinicalAiAutomationsSuite: React.FC<Props> = ({ session }) => {
 
   const bundles = STATE_ORDER_BUNDLES;
   const activeBundle = bundles[selectedBundleKey] || bundles.severe_malaria;
-  const stockReorders = useMemo(() => computeRoboticStockReorders(), []);
+  const stockReorders = useMemo(() => computeRoboticStockReorders(facilityId), [facilityId]);
   const epidemicAlerts = useMemo(() => detectStateEpidemicClusters(), []);
+  const [bundleStatus, setBundleStatus] = useState<string>('');
+  const [claimNhia, setClaimNhia] = useState('NHIA-2026-00412');
+  const [claimIcd11, setClaimIcd11] = useState('1F40');
+  const [claimPreAuth, setClaimPreAuth] = useState('');
+  const [claimAmount, setClaimAmount] = useState(24500);
+
+  const bedSurge = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return forecastBedSurge72h(listBeds(facilityId), listVisits(facilityId));
+    } catch {
+      return null;
+    }
+  }, [facilityId]);
+
+  const claimAudit = useMemo(
+    () =>
+      auditHmoClaimReadiness({
+        insuranceProvider: 'AKSHIA / NHIA',
+        nhiaNumber: claimNhia,
+        icd11Code: claimIcd11,
+        diagnosis: 'Acute Clinical Encounter',
+        authorizationCode: claimPreAuth,
+        totalAmountNgn: claimAmount,
+        lineItems: [
+          { description: 'Consultation & Nursing Care', amountNgn: 5000, category: 'opd' },
+          { description: 'Investigations & Treatment', amountNgn: Math.max(0, claimAmount - 5000), category: 'lab' },
+        ],
+      }),
+    [claimNhia, claimIcd11, claimPreAuth, claimAmount]
+  );
+
+  const liveVitalsAlerts = useMemo(() => {
+    if (typeof window === 'undefined') return [];
+    const logs = listVitals(facilityId).slice(0, 60);
+    const byPatient = new Map<string, typeof logs>();
+    for (const r of logs) {
+      const arr = byPatient.get(r.patientId) || [];
+      arr.push(r);
+      byPatient.set(r.patientId, arr);
+    }
+    const flagged: Array<{
+      patientId: string;
+      patientName: string;
+      hospitalNumber: string;
+      news2: number;
+      qsofa: number;
+      urgency: string;
+      alerts: string[];
+    }> = [];
+    for (const [pid, arr] of byPatient.entries()) {
+      const latest = arr[0];
+      const evalRes = evaluateVitalDeterioration(latest, arr.slice(1, 5));
+      if (evalRes.urgency !== 'routine') {
+        flagged.push({
+          patientId: pid,
+          patientName: latest.patientName,
+          hospitalNumber: latest.hospitalNumber,
+          news2: evalRes.news2.total,
+          qsofa: evalRes.qsofa.score,
+          urgency: evalRes.urgency,
+          alerts: evalRes.alerts,
+        });
+      }
+    }
+    return flagged;
+  }, [facilityId]);
+
+  const queueBundleToFirstPatient = () => {
+    const pts = listPatients(facilityId);
+    const pt = pts[0];
+    if (!pt) {
+      setBundleStatus('Register or select an active facility patient before queueing bundle orders.');
+      return;
+    }
+    let placed = 0;
+    let held = 0;
+    for (const lab of activeBundle.labs.slice(0, 3)) {
+      placeOrder({
+        facilityId,
+        patientId: pt.id,
+        patientName: `${pt.firstName} ${pt.lastName}`,
+        hospitalNumber: pt.hospitalNumber,
+        type: 'lab',
+        code: `LAB-${lab.slice(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '')}`,
+        name: lab,
+        orderedBy: session?.name || 'Clinician',
+        priority: 'stat',
+        notes: `Protocol bundle: ${activeBundle.title}`,
+      });
+      placed += 1;
+    }
+    for (const med of activeBundle.medications.slice(0, 2)) {
+      const guard = evaluatePrescriptionSafetyGuard({
+        drugName: med,
+        allergies: pt.allergies,
+        otherDrugs: pt.currentMedications,
+        dob: pt.dob,
+        sex: pt.sex,
+        chronicConditions: pt.chronicConditions,
+        genotype: pt.genotype,
+      });
+      if (guard.hardStopCount > 0) {
+        held += 1;
+        continue;
+      }
+      placeOrder({
+        facilityId,
+        patientId: pt.id,
+        patientName: `${pt.firstName} ${pt.lastName}`,
+        hospitalNumber: pt.hospitalNumber,
+        type: 'rx',
+        code: `RX-${med.slice(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '')}`,
+        name: med,
+        orderedBy: session?.name || 'Clinician',
+        priority: 'stat',
+        notes: `Protocol bundle: ${activeBundle.title}`,
+      });
+      placed += 1;
+    }
+    setBundleStatus(
+      `Queued ${placed} STAT order(s) for ${pt.firstName} ${pt.lastName}${held ? ` (${held} held by Safety Guard)` : ''}.`
+    );
+  };
 
   // Drug Safety Demo
   const [safetyDrug, setSafetyDrug] = useState('Amoxicillin-Clavulanate (Augmentin) 625mg');
@@ -477,13 +611,19 @@ export const ClinicalAiAutomationsSuite: React.FC<Props> = ({ session }) => {
 
               <button
                 type="button"
+                onClick={queueBundleToFirstPatient}
                 style={{
                   width: '100%', padding: '10px', borderRadius: 8, background: '#0284C7', color: '#FFF',
                   fontWeight: 800, fontSize: '0.82rem', border: 'none', cursor: 'pointer', marginTop: 10
                 }}
               >
-                Apply Full Order Bundle to Chart STAT
+                Apply Full Order Bundle to Chart STAT (Safety Checked)
               </button>
+              {bundleStatus && (
+                <div style={{ marginTop: 8, fontSize: '0.76rem', fontWeight: 700, color: '#0369A1' }}>
+                  {bundleStatus}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -499,6 +639,25 @@ export const ClinicalAiAutomationsSuite: React.FC<Props> = ({ session }) => {
               <span style={{ fontSize: '0.78rem', color: '#64748B' }}>Continuous vital trend trajectory monitoring · Instant duty nurse push alerts</span>
             </div>
           </div>
+
+          {liveVitalsAlerts.length > 0 && (
+            <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#B91C1C' }}>
+                Live Facility Patients Flagged ({liveVitalsAlerts.length})
+              </div>
+              {liveVitalsAlerts.map((lv) => (
+                <div key={lv.patientId} style={{ padding: 12, borderRadius: 12, border: '1px solid #FCA5A5', background: '#FEF2F2', fontSize: '0.8rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, color: '#991B1B' }}>
+                    <span>{lv.patientName} ({lv.hospitalNumber})</span>
+                    <span>NEWS2 {lv.news2} · qSOFA {lv.qsofa}/3 · {lv.urgency.toUpperCase()}</span>
+                  </div>
+                  <div style={{ marginTop: 4, color: '#7F1D1D', fontSize: '0.75rem' }}>
+                    {lv.alerts.slice(0, 2).join(' · ')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {deteriorationAlert && (
             <div style={{ border: '2px solid #EF4444', borderRadius: 14, padding: 18, background: '#FEF2F2', marginBottom: 20 }}>
@@ -643,6 +802,41 @@ export const ClinicalAiAutomationsSuite: React.FC<Props> = ({ session }) => {
                   </div>
                 ))
               )}
+            </div>
+
+            {/* 72h Bed Surge & NHIA Claim Readiness Scrubber */}
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {bedSurge && (
+                <div style={{ padding: 12, borderRadius: 12, background: bedSurge.surgeRisk === 'critical' ? '#FEF2F2' : '#F8FAFC', border: '1px solid #CBD5E1' }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A' }}>
+                    72h Bed Surge Forecast · Risk: {bedSurge.surgeRisk.toUpperCase()}
+                  </div>
+                  <div style={{ fontSize: '0.76rem', color: '#475569', marginTop: 4 }}>
+                    Current: {bedSurge.currentOccupancyPct}% ({bedSurge.occupiedNow}/{bedSurge.totalBeds}) · Projected 72h: <strong>{bedSurge.projected72hPct}%</strong> · Expected Discharges: {bedSurge.expectedDischarges72h}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ padding: 12, borderRadius: 12, background: '#F8FAFC', border: '1px solid #CBD5E1' }}>
+                <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A', marginBottom: 8 }}>
+                  NHIA / AKSHIA Claim Pre-Submission Scrubber ({claimAudit.readinessScore}/100)
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                  <input value={claimNhia} onChange={(e) => setClaimNhia(e.target.value)} placeholder="NHIA / AKSHIA ID" style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: 12 }} />
+                  <input value={claimIcd11} onChange={(e) => setClaimIcd11(e.target.value)} placeholder="ICD-11 Code" style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: 12 }} />
+                  <input value={claimPreAuth} onChange={(e) => setClaimPreAuth(e.target.value)} placeholder="Pre-Auth Code (if >= ₦15k)" style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: 12 }} />
+                  <input type="number" value={claimAmount} onChange={(e) => setClaimAmount(Number(e.target.value) || 0)} placeholder="Claim ₦" style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: 12 }} />
+                </div>
+                {claimAudit.denialRisks.length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#059669', fontWeight: 700 }}>✓ Claim ready for submission (zero denial flags)</div>
+                ) : (
+                  claimAudit.denialRisks.map((dr) => (
+                    <div key={dr.code} style={{ fontSize: 11.5, color: dr.severity === 'high' ? '#B91C1C' : '#B45309', marginTop: 3 }}>
+                      • <strong>[{dr.severity.toUpperCase()}]</strong> {dr.message}
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>

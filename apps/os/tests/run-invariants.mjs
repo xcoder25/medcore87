@@ -2345,4 +2345,146 @@ test('ai-routes-and-hygiene: verifies current Gemini Interactions models, API ro
   assert.equal(soapPanelSrc.includes("'Gemini'"), false, 'AmbientSoapPanel UI must use vendor-neutral Clinical AI label');
 });
 
+test('wallClockTimer-and-background-expiry: prevents countdown pauses when app is minimized/backgrounded', () => {
+  const wt = loadTsModule('src/lib/wallClockTimer.ts');
+
+  const t0 = 1_700_000_000_000;
+  const deadline = t0 + 300_000; // 5 minutes
+  assert.equal(wt.computeRemainingSeconds(deadline, t0), 300);
+  // App minimized for 180s -> wall clock jumps 180s forward immediately on resume
+  assert.equal(wt.computeRemainingSeconds(deadline, t0 + 180_000), 120);
+  assert.equal(wt.isDeadlineExpired(deadline, t0 + 299_000), false);
+  assert.equal(wt.computeRemainingSeconds(deadline, t0 + 305_000), 0);
+  assert.equal(wt.isDeadlineExpired(deadline, t0 + 305_000), true);
+
+  const otpModalSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/StaffEmailOtpModal.tsx'), 'utf8');
+  assert.ok(otpModalSrc.includes('computeRemainingSeconds') && otpModalSrc.includes('subscribeForegroundResume'));
+  assert.equal(otpModalSrc.includes('setSecondsLeft((s) => (s > 0 ? s - 1 : 0))'), false, 'StaffEmailOtpModal must not decrement seconds blindly via setInterval');
+  assert.equal(otpModalSrc.includes('setResendCooldown((c) => (c > 0 ? c - 1 : 0))'), false, 'StaffEmailOtpModal must not decrement resend cooldown blindly via setInterval');
+
+  const idleGuardSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/InactivityLockGuard.tsx'), 'utf8');
+  assert.ok(idleGuardSrc.includes('subscribeForegroundResume') && idleGuardSrc.includes('isDeadlineExpired(lastActivityRef.current + limitMs'));
+  assert.ok(idleGuardSrc.includes('medcore_os_last_activity_at_v1'));
+
+  const paystackSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/reception/PaystackBrandedCheckout.tsx'), 'utf8');
+  assert.ok(paystackSrc.includes('subscribeForegroundResume'));
+});
+
+test('phase2-vision-brief-predictive-ops: verifies Vision AI, 30-Second Patient Brief, Predictive Ops, and vendor neutrality', async () => {
+  // 1. Ensure ZERO deprecated gemini-2.5 / 2.0 / 1.5 models in upgraded Phase 2 AI routes
+  for (const rel of [
+    'src/app/api/ai/scan-form/route.ts',
+    'src/app/api/ai/vision-clinical/route.ts',
+    'src/app/api/ai/patient-brief/route.ts',
+  ]) {
+    const src = fs.readFileSync(path.join(OS_ROOT, rel), 'utf8');
+    assert.equal(/gemini-(?:2\.5|2\.0|1\.5)/i.test(src), false, `${rel} must not use deprecated Gemini models`);
+  }
+
+  const mockNextServer = {
+    NextRequest: class {},
+    NextResponse: {
+      json: (data, init) => ({ status: init?.status || 200, json: async () => data }),
+    },
+  };
+
+  // 2. Test /api/ai/vision-clinical deterministic parser + panic lab + drug safety guard
+  const visionRoute = loadTsModule('src/app/api/ai/vision-clinical/route.ts', {
+    'next/server': mockNextServer,
+  });
+  const prevKey = process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+
+  const visionRes = await visionRoute.POST({
+    json: async () => ({
+      documentType: 'lab_report',
+      textFallback: 'Hb: 5.8 g/dL, Creatinine: 3.4 mg/dL, Malaria: +++, Rx: Amoxicillin 500mg',
+      patientContext: { allergies: ['Penicillin'] },
+    }),
+  });
+  const visionJson = await visionRes.json();
+  assert.equal(visionJson.ok, true);
+  assert.ok(visionJson.extraction.panicFlags.some((f) => /Haemoglobin/i.test(f)));
+  assert.ok(visionJson.extraction.panicFlags.some((f) => /Creatinine/i.test(f)));
+  const amox = visionJson.extraction.extractedMedications.find((m) => /amoxicillin/i.test(m.name));
+  assert.ok(amox && amox.safetyReport.hardStopCount >= 1, 'Vision clinical extraction must run Safety Guard on extracted drugs');
+
+  // 3. Test /api/ai/patient-brief offline deterministic summary + bilingual discharge packet
+  const briefRoute = loadTsModule('src/app/api/ai/patient-brief/route.ts', {
+    'next/server': mockNextServer,
+  });
+  const briefRes = await briefRoute.POST({
+    json: async () => ({
+      patient: {
+        id: 'PT-BRF-1',
+        name: 'Arit Ekpo',
+        allergies: ['Penicillin'],
+        genotype: 'SS',
+        chronicConditions: ['Hypertension'],
+        currentMedications: ['Amlodipine 5mg daily'],
+      },
+      vitals: [{ bpSystolic: 152, bpDiastolic: 94, pulse: 88, tempC: 37.1, spo2: 98, respRate: 18, avpu: 'Alert' }],
+      orders: [{ type: 'lab', name: 'UEC', status: 'ordered' }],
+      diagnosis: 'Uncontrolled Hypertension',
+    }),
+  });
+  if (prevKey) process.env.GEMINI_API_KEY = prevKey;
+
+  const briefJson = await briefRes.json();
+  assert.equal(briefJson.ok, true);
+  assert.ok(briefJson.brief.activeProblems.includes('Uncontrolled Hypertension'));
+  assert.ok(briefJson.brief.careGaps.some((g) => g.includes('Penicillin')));
+  assert.ok(briefJson.brief.dischargePacket.english && briefJson.brief.dischargePacket.pidgin && briefJson.brief.dischargePacket.ibibio);
+
+  // 4. Test predictiveOpsEngine.ts (stockout forecast, 72h bed surge, NHIA claim scrubber)
+  const pred = loadTsModule('src/lib/predictiveOpsEngine.ts');
+  const stockForecast = pred.forecastFormularyStockouts(
+    [{ id: 'DRG-ACT', facilityId: 'IGH-EKT', name: 'Artemether-Lumefantrine', genericName: 'ACT', strength: '20/120mg', form: 'Tablet', category: 'Antimalarial', unitPriceNgn: 1500, reorderLevel: 40, controlled: false }],
+    [{ id: 'BAT-1', drugId: 'DRG-ACT', facilityId: 'IGH-EKT', batchNo: 'B1', expiry: '2027-05-01', qty: 12 }],
+    [],
+    { rainySeasonMultiplier: 1.4 }
+  );
+  assert.equal(stockForecast[0].urgency, 'critical');
+  assert.ok(stockForecast[0].daysUntilStockout <= 3);
+
+  const surge = pred.forecastBedSurge72h(
+    [
+      { id: 'B1', facilityId: 'IGH-EKT', ward: 'Female Medical', bedNo: '01', status: 'occupied', updatedAt: '2026-11-24T10:00:00Z' },
+      { id: 'B2', facilityId: 'IGH-EKT', ward: 'Female Medical', bedNo: '02', status: 'occupied', updatedAt: '2026-11-24T10:00:00Z' },
+      { id: 'B3', facilityId: 'IGH-EKT', ward: 'Female Medical', bedNo: '03', status: 'available', updatedAt: '2026-11-24T10:00:00Z' },
+    ],
+    [{ triageUrgency: 'critical', status: 'waiting' }, { triageUrgency: 'critical', status: 'waiting' }]
+  );
+  assert.equal(surge.surgeRisk, 'critical');
+
+  const claimCheck = pred.auditHmoClaimReadiness({
+    nhiaNumber: '',
+    icd11Code: '',
+    totalAmountNgn: 30000,
+    lineItems: [{ description: 'Inpatient Bed Fee', amountNgn: 30000, category: 'inpatient' }],
+  });
+  assert.equal(claimCheck.status, 'high_denial_risk');
+  assert.ok(claimCheck.denialRisks.some((r) => r.code === 'MISSING_PREAUTH'));
+
+  // 5. Vendor neutrality across new Phase 2 client components
+  for (const rel of [
+    'src/components/clinical-core/ClinicalVisionScannerModal.tsx',
+    'src/components/clinical-core/PatientClinicalBriefCard.tsx',
+    'src/components/clinical-core/NursingTriageStation.tsx',
+    'src/components/ai-insights/ClinicalAiAutomationsSuite.tsx',
+    'src/components/auth/StaffEmailOtpModal.tsx',
+    'src/components/auth/InactivityLockGuard.tsx',
+  ]) {
+    const stripped = fs
+      .readFileSync(path.join(OS_ROOT, rel), 'utf8')
+      .replace(/^\s*(?:\/\/.*|\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\/)/gm, '');
+    assert.equal(
+      /\bAmazon\b|Rekognition|AWS S3|Aurora Postgres|\bVercel\b|\bFirebase\b/i.test(stripped),
+      false,
+      `${rel} must remain strictly vendor-neutral`
+    );
+  }
+});
+
+
 

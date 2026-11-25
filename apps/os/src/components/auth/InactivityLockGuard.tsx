@@ -4,6 +4,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ShieldAlert, Clock, LogOut } from 'lucide-react';
 import { getAdminSettings, subscribeAdminSettings } from '../../lib/adminSettingsStore';
 import { scrubPhiOnLogout } from '../../lib/hipaaPrivacy';
+import {
+  computeRemainingSeconds,
+  isDeadlineExpired,
+  subscribeForegroundResume,
+} from '../../lib/wallClockTimer';
 
 interface InactivityLockGuardProps {
   facilityId: string;
@@ -13,6 +18,7 @@ interface InactivityLockGuardProps {
 }
 
 const WARNING_SECONDS = 60;
+const LAST_ACTIVITY_KEY = 'medcore_os_last_activity_at_v1';
 
 export const InactivityLockGuard: React.FC<InactivityLockGuardProps> = ({
   facilityId,
@@ -24,7 +30,17 @@ export const InactivityLockGuard: React.FC<InactivityLockGuardProps> = ({
     Math.max(5, Number(getAdminSettings(facilityId).inactivityTimeoutMinutes) || 15)
   );
   const [warningCountdown, setWarningCountdown] = useState<number | null>(null);
-  const lastActivityRef = useRef<number>(Date.now());
+  const lastActivityRef = useRef<number>((() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = Number(window.sessionStorage.getItem(LAST_ACTIVITY_KEY) || '0');
+        if (stored > 0 && stored <= Date.now()) return stored;
+      } catch {
+        /* ignore */
+      }
+    }
+    return Date.now();
+  })());
   const loggedOutRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -37,33 +53,33 @@ export const InactivityLockGuard: React.FC<InactivityLockGuardProps> = ({
   useEffect(() => {
     if (typeof window === 'undefined') return;
     let lastBump = 0;
+    const limitMs = timeoutMinutes * 60 * 1000;
 
-    const bumpActivity = () => {
-      const now = Date.now();
-      if (now - lastBump < 1000) return;
-      lastBump = now;
-      lastActivityRef.current = now;
-      setWarningCountdown((prev) => (prev !== null ? null : prev));
+    const triggerLogout = () => {
+      if (loggedOutRef.current) return;
+      loggedOutRef.current = true;
+      try {
+        window.sessionStorage.removeItem(LAST_ACTIVITY_KEY);
+      } catch {
+        /* ignore */
+      }
+      scrubPhiOnLogout({
+        reason: 'inactivity_timeout',
+        facilityId,
+        actor: staffName,
+        actorBadge: staffBadge,
+      });
+      onAutoLogout();
     };
 
-    const events: (keyof WindowEventMap)[] = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
-    events.forEach((ev) => window.addEventListener(ev, bumpActivity, { passive: true }));
-
-    const iv = window.setInterval(() => {
+    const evaluateIdle = () => {
       if (loggedOutRef.current) return;
-      const idleMs = Date.now() - lastActivityRef.current;
-      const limitMs = timeoutMinutes * 60 * 1000;
-      const remainingSec = Math.ceil((limitMs - idleMs) / 1000);
+      const now = Date.now();
+      const deadlineMs = lastActivityRef.current + limitMs;
+      const remainingSec = computeRemainingSeconds(deadlineMs, now);
 
-      if (remainingSec <= 0) {
-        loggedOutRef.current = true;
-        scrubPhiOnLogout({
-          reason: 'inactivity_timeout',
-          facilityId,
-          actor: staffName,
-          actorBadge: staffBadge,
-        });
-        onAutoLogout();
+      if (remainingSec <= 0 || isDeadlineExpired(deadlineMs, now)) {
+        triggerLogout();
         return;
       }
 
@@ -72,11 +88,37 @@ export const InactivityLockGuard: React.FC<InactivityLockGuardProps> = ({
       } else {
         setWarningCountdown((prev) => (prev !== null ? null : prev));
       }
-    }, 1000);
+    };
+
+    const bumpActivity = () => {
+      const now = Date.now();
+      // If timeout already elapsed while app was minimized/backgrounded, enforce logout immediately
+      if (isDeadlineExpired(lastActivityRef.current + limitMs, now)) {
+        triggerLogout();
+        return;
+      }
+      if (now - lastBump < 1000) return;
+      lastBump = now;
+      lastActivityRef.current = now;
+      try {
+        window.sessionStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+      } catch {
+        /* ignore */
+      }
+      setWarningCountdown((prev) => (prev !== null ? null : prev));
+    };
+
+    evaluateIdle();
+    const events: (keyof WindowEventMap)[] = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
+    events.forEach((ev) => window.addEventListener(ev, bumpActivity, { passive: true }));
+
+    const iv = window.setInterval(evaluateIdle, 1000);
+    const unsubResume = subscribeForegroundResume(evaluateIdle);
 
     return () => {
       events.forEach((ev) => window.removeEventListener(ev, bumpActivity));
       window.clearInterval(iv);
+      unsubResume();
     };
   }, [timeoutMinutes, facilityId, staffName, staffBadge, onAutoLogout]);
 

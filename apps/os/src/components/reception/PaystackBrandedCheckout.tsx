@@ -19,6 +19,7 @@ import {
   type PaystackSuccess,
 } from '../../lib/paystackClient';
 import { CreditCard, Building2, X, ShieldCheck, Loader2, Smartphone } from 'lucide-react';
+import { subscribeForegroundResume } from '../../lib/wallClockTimer';
 
 export type PaystackCheckoutInput = {
   facilityId: string;
@@ -71,7 +72,11 @@ export const PaystackBrandedCheckout: React.FC<Props> = ({ open, input, onClose,
     const tick = () => setClock(formatCountdown(expiresAt));
     tick();
     const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
+    const unsub = subscribeForegroundResume(tick);
+    return () => {
+      clearInterval(id);
+      unsub();
+    };
   }, [phase, expiresAt]);
 
   // Realtime Paystack Payment Listener — automated zero-click verification polling every 2.5s
@@ -99,9 +104,13 @@ export const PaystackBrandedCheckout: React.FC<Props> = ({ open, input, onClose,
     };
 
     const pollId = setInterval(poll, 2500);
+    const unsubResume = subscribeForegroundResume(() => {
+      void poll();
+    });
     return () => {
       cancelled = true;
       clearInterval(pollId);
+      unsubResume();
     };
   }, [phase, reference, input, mode, onPaid]);
 

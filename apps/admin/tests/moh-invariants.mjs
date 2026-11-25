@@ -848,3 +848,33 @@ test('moh-intelligence-api: generates de-identified 6-pillar executive briefings
   assert.equal(/gemini-(?:2\.5|2\.0|1\.5)/i.test(routeSrc), false);
 });
 
+test('mohSyndromicEngine: detects cross-LGA outbreak clusters across neighboring LGAs with zero PII', () => {
+  const syn = loadTsModule('src/lib/mohSyndromicEngine.ts');
+  const clusters = syn.detectCrossLgaSyndromicAnomalies({
+    syncedAt: '2026-11-24T22:00:00.000Z',
+    facilities: [
+      { facilityId: 'FAC-UYO', facilityName: 'Uyo Clinic', lga: 'Uyo' },
+      { facilityId: 'FAC-ITU', facilityName: 'Itu General Hospital', lga: 'Itu' },
+    ],
+    surveillance: {
+      clinicalSignals: [
+        { id: 'S1', facilityId: 'FAC-UYO', facilityName: 'Uyo Clinic', summary: 'Severe acute watery diarrhoea cholera suspect' },
+        { id: 'S2', facilityId: 'FAC-ITU', facilityName: 'Itu General Hospital', summary: 'Cluster of acute watery diarrhoea and dehydration' },
+      ],
+    },
+    idsr: {
+      dsnoReports: [
+        { id: 'D1', lga: 'Uyo', facilityName: 'Uyo Clinic', disease: 'Cholera', suspectedCases: 3, notes: 'Stool RDT positive' },
+      ],
+    },
+  });
+
+  assert.ok(clusters.length >= 1, 'Expected Cholera cross-LGA cluster across neighboring Uyo and Itu');
+  assert.equal(clusters[0].syndromeKey, 'cholera_awd');
+  assert.equal(clusters[0].severity, 'outbreak_surge');
+  assert.ok(clusters[0].affectedLgas.includes('Uyo') && clusters[0].affectedLgas.includes('Itu'));
+  assert.ok(clusters[0].neighboringRiskLgas.length >= 1);
+  assert.equal(JSON.stringify(clusters).includes('"patientName"'), false);
+});
+
+

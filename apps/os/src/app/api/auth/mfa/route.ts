@@ -400,6 +400,7 @@ export async function POST(req: NextRequest) {
         fromConfigured: sendResult.fromConfigured,
         maskedEmail: maskEmail(resolvedEmail),
         expiresInSeconds: expiryMinutes * 60,
+        expiresAt: now + expiryMinutes * 60 * 1000,
         deliveryError: sendResult.error,
         ...(sendResult.channel === 'console_fallback' ? { devPreviewCode: otp } : {}),
       });

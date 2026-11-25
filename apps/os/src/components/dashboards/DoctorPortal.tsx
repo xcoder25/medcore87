@@ -47,6 +47,8 @@ import {
   ChevronsRight, LifeBuoy, UserCheck, ExternalLink
 } from 'lucide-react';
 import { AmbientSoapPanel } from '../clinical-core/AmbientSoapPanel';
+import { ClinicalVisionScannerModal } from '../clinical-core/ClinicalVisionScannerModal';
+import { PatientClinicalBriefCard } from '../clinical-core/PatientClinicalBriefCard';
 import { DoctorAdmissionSuite, AdmitToBedModal } from '../beds/DoctorAdmissionSuite';
 import { occupiedBeds, subscribeBeds } from '../../lib/bedBoardStore';
 
@@ -692,6 +694,7 @@ const ConsultationView: React.FC<{ session?: UserSession; onQuickNav?: (mod: Sub
   const [step, setStep] = useState<'select' | 'consult'>('select');
   const [patient, setPatient] = useState<Patient | null>(null);
   const [showAdmitModal, setShowAdmitModal] = useState(false);
+  const [showVisionModal, setShowVisionModal] = useState(false);
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [hpi, setHpi] = useState('');
   const [pmh, setPmh] = useState('');
@@ -879,6 +882,15 @@ const ConsultationView: React.FC<{ session?: UserSession; onQuickNav?: (mod: Sub
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
         {patient && (
+          <PatientClinicalBriefCard
+            facilityId={facilityId}
+            patientId={patient.id}
+            patientName={patient.name}
+            diagnosis={assessment.trim() || chiefComplaint.trim() || patient.diagnosis}
+            vitals={patient.vitals as Record<string, string | number> | undefined}
+          />
+        )}
+        {patient && (
           <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '15px', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)' }}>
             <div style={{ fontWeight: 700, color: '#0A2540', fontSize: '0.86rem', marginBottom: 10 }}>Patient Summary</div>
             {[{ l: 'Name', v: patient.name }, { l: 'MRN', v: patient.id }, { l: 'Diagnosis', v: patient.diagnosis }, { l: 'Ward', v: patient.ward }].map(x => (
@@ -897,11 +909,27 @@ const ConsultationView: React.FC<{ session?: UserSession; onQuickNav?: (mod: Sub
             { l: '+ Prescribe Drug', c: '#7C3AED', fn: () => onQuickNav?.('prescriptions') },
             { l: '+ Refer Patient', c: '#059669', fn: () => onQuickNav?.('referrals') },
             { l: '+ Request Admission', c: '#0284C7', fn: () => setShowAdmitModal(true) },
+            { l: '📷 Scan Paper Lab / Referral', c: '#0F766E', fn: () => setShowVisionModal(true) },
           ].map(a => (
             <button key={a.l} type="button" onClick={a.fn} style={{ width: '100%', marginBottom: 6, background: '#F8FAFC', border: '1px solid #E2E8F0', color: a.c, padding: '8px 11px', borderRadius: 7, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', textAlign: 'left' }}>{a.l}</button>
           ))}
         </div>
       </div>
+
+      <ClinicalVisionScannerModal
+        open={showVisionModal}
+        facilityId={facilityId}
+        patientId={patient?.id}
+        patientName={patient?.name}
+        hospitalNumber={patient?.id}
+        doctorName={session?.name}
+        doctorBadge={session?.badgeId}
+        onClose={() => setShowVisionModal(false)}
+        onInsertToChart={(formattedSummary) => {
+          setExamination((prev) => [prev.trim(), formattedSummary].filter(Boolean).join('\n\n'));
+          setSoapTab('O');
+        }}
+      />
 
       {showAdmitModal && (
         <AdmitToBedModal

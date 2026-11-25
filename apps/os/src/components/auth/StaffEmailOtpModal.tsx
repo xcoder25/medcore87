@@ -21,6 +21,10 @@ import {
   isCameraBiometricSupported,
 } from '../../lib/biometricAuth';
 import { FaceBiometricCaptureModal } from './FaceBiometricCaptureModal';
+import {
+  computeRemainingSeconds,
+  subscribeForegroundResume,
+} from '../../lib/wallClockTimer';
 
 function normBadge(b: string): string {
   return String(b || '').trim().toUpperCase().replace(/\s+/g, '');
@@ -97,6 +101,29 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
 
   const initialSentRef = useRef(false);
   const autoLaunchedFaceRef = useRef(false);
+  const otpExpiresAtRef = useRef<number>(0);
+  const resendAvailableAtRef = useRef<number>(0);
+  const deadlineStorageKey = `medcore_otp_deadlines_${facilityId}_${badge}`;
+
+  const syncTimers = useCallback(() => {
+    const now = Date.now();
+    if (otpExpiresAtRef.current > 0) {
+      setSecondsLeft(computeRemainingSeconds(otpExpiresAtRef.current, now));
+    }
+    if (resendAvailableAtRef.current > 0) {
+      setResendCooldown(computeRemainingSeconds(resendAvailableAtRef.current, now));
+    }
+  }, []);
+
+  const clearDeadlines = useCallback(() => {
+    otpExpiresAtRef.current = 0;
+    resendAvailableAtRef.current = 0;
+    try {
+      window.sessionStorage.removeItem(deadlineStorageKey);
+    } catch {
+      /* ignore */
+    }
+  }, [deadlineStorageKey]);
 
   const sendOtp = useCallback(async () => {
     setSending(true);
@@ -132,6 +159,7 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
         channel?: string;
         maskedEmail?: string;
         expiresInSeconds?: number;
+        expiresAt?: number;
         devPreviewCode?: string;
         deliveryError?: string;
         message?: string;
@@ -148,10 +176,25 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
         return;
       }
 
+      const now = Date.now();
+      const ttlSec = data.expiresInSeconds || expiryMinutes * 60;
+      const expAt = typeof data.expiresAt === 'number' && data.expiresAt > now ? data.expiresAt : now + ttlSec * 1000;
+      const resendAt = now + 30 * 1000;
+      otpExpiresAtRef.current = expAt;
+      resendAvailableAtRef.current = resendAt;
+      try {
+        window.sessionStorage.setItem(
+          deadlineStorageKey,
+          JSON.stringify({ otpExpiresAt: expAt, resendAvailableAt: resendAt })
+        );
+      } catch {
+        /* ignore */
+      }
+
       setMaskedEmail(data.maskedEmail || resolvedEmail || 'staff email');
       setDeliveryChannel(data.channel || '');
-      setSecondsLeft(data.expiresInSeconds || expiryMinutes * 60);
-      setResendCooldown(30);
+      setSecondsLeft(computeRemainingSeconds(expAt, now));
+      setResendCooldown(computeRemainingSeconds(resendAt, now));
       if (data.devPreviewCode) {
         setDevPreviewCode(data.devPreviewCode);
       }
@@ -186,8 +229,23 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
   const ensureOtpSent = useCallback(() => {
     if (initialSentRef.current) return;
     initialSentRef.current = true;
+    try {
+      const raw = window.sessionStorage.getItem(deadlineStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { otpExpiresAt?: number; resendAvailableAt?: number };
+        const now = Date.now();
+        if (typeof parsed.otpExpiresAt === 'number' && parsed.otpExpiresAt > now) {
+          otpExpiresAtRef.current = parsed.otpExpiresAt;
+          resendAvailableAtRef.current = typeof parsed.resendAvailableAt === 'number' ? parsed.resendAvailableAt : 0;
+          syncTimers();
+          return;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
     void sendOtp();
-  }, [sendOtp]);
+  }, [deadlineStorageKey, sendOtp, syncTimers]);
 
   useEffect(() => {
     let alive = true;
@@ -238,12 +296,19 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
   }, [badge, facilityId, initialFaceEnrolled, ensureOtpSent]);
 
   useEffect(() => {
-    const iv = window.setInterval(() => {
-      setSecondsLeft((s) => (s > 0 ? s - 1 : 0));
-      setResendCooldown((c) => (c > 0 ? c - 1 : 0));
-    }, 1000);
-    return () => window.clearInterval(iv);
-  }, []);
+    if (otpExpiresAtRef.current <= 0) {
+      const now = Date.now();
+      otpExpiresAtRef.current = now + expiryMinutes * 60 * 1000;
+      resendAvailableAtRef.current = now + 30 * 1000;
+    }
+    syncTimers();
+    const iv = window.setInterval(syncTimers, 1000);
+    const unsubResume = subscribeForegroundResume(syncTimers);
+    return () => {
+      window.clearInterval(iv);
+      unsubResume();
+    };
+  }, [expiryMinutes, syncTimers]);
 
   const formatTimer = (sec: number) => {
     const m = Math.floor(sec / 60);
@@ -319,6 +384,7 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
       });
 
       setVerifiedSuccess(true);
+      clearDeadlines();
       window.setTimeout(() => {
         onVerified({
           ...session,
@@ -672,8 +738,13 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                       <strong>{maskedEmail || 'your staff email'}</strong>.
                     </span>
                   )}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 11.5, color: '#475569' }}>
-                    <Clock size={12} /> Expires in <strong>{formatTimer(secondsLeft)}</strong>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 11.5, color: secondsLeft === 0 ? '#DC2626' : '#475569', fontWeight: secondsLeft === 0 ? 700 : 400 }}>
+                    <Clock size={12} />{' '}
+                    {secondsLeft > 0 ? (
+                      <>Expires in <strong>{formatTimer(secondsLeft)}</strong></>
+                    ) : (
+                      <span>Code expired — click Resend OTP</span>
+                    )}
                   </div>
                 </div>
               </div>

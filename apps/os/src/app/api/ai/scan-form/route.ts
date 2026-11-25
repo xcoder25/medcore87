@@ -1,51 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  CURRENT_CHAT_MODELS,
+  createGeminiInteraction,
+  resolveServerGeminiKey,
+} from '../../../../lib/geminiServer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const GEMINI_ENV_NAMES = [
-  'GEMINI_API_KEY',
-  'GOOGLE_GEMINI_API_KEY',
-  'GOOGLE_GENERATIVE_AI_API_KEY',
-  'GOOGLE_API_KEY',
-  'GEMINI_KEY',
-  'AI_GOOGLE_API_KEY',
-] as const;
-
-function cleanKey(raw: string | undefined | null): string {
-  let k = String(raw || '').trim();
-  if (
-    (k.startsWith('"') && k.endsWith('"')) ||
-    (k.startsWith("'") && k.endsWith("'"))
-  ) {
-    k = k.slice(1, -1).trim();
-  }
-  if (k.toLowerCase().startsWith('bearer ')) k = k.slice(7).trim();
-  return k;
-}
-
-function getEnvGeminiKey(): string {
-  const env = process.env as Record<string, string | undefined>;
-  for (const name of GEMINI_ENV_NAMES) {
-    const k = cleanKey(env[name]);
-    if (k) return k;
-  }
-  for (const name of Object.keys(env)) {
-    if (name.startsWith('NEXT_PUBLIC_')) continue;
-    if (!/GEMINI/i.test(name)) continue;
-    if (!/KEY|API/i.test(name)) continue;
-    const k = cleanKey(env[name]);
-    if (k) return k;
-  }
-  return '';
-}
-
-const VISION_MODELS = [
-  'gemini-3.5-flash',
-  'gemini-3.8-flash',
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-];
 
 const SYSTEM_PROMPT = `You are a hospital medical records digitization engine in Nigeria.
 Examine the uploaded image of a physical hospital patient registration form or card (handwritten or printed).
@@ -89,12 +50,11 @@ export async function POST(req: NextRequest) {
       mimeType?: string;
     };
     const rawBase64 = String(body.imageBase64 || '').replace(/^data:[^;]+;base64,/, '').trim();
-    const mimeType = String(body.mimeType || 'image/jpeg').trim();
+    const mimeType = String(body.mimeType || 'image/jpeg').trim() || 'image/jpeg';
 
     if (!rawBase64) {
       return NextResponse.json({ ok: false, error: 'Image payload is required.' }, { status: 400 });
     }
-    // ~8MB binary cap (~11M base64 chars)
     if (rawBase64.length > 11_000_000) {
       return NextResponse.json(
         { ok: false, error: 'Image exceeds 8MB limit. Crop or retake closer to the form.' },
@@ -102,7 +62,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const key = getEnvGeminiKey();
+    const { key } = resolveServerGeminiKey();
     if (!key) {
       return NextResponse.json(
         {
@@ -113,43 +73,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    for (const model of VISION_MODELS) {
+    const contentBlock =
+      mimeType === 'application/pdf'
+        ? { type: 'document', data: rawBase64, mime_type: mimeType }
+        : { type: 'image', data: rawBase64, mime_type: mimeType };
+
+    const res = await createGeminiInteraction({
+      apiKey: key,
+      models: [CURRENT_CHAT_MODELS[0], CURRENT_CHAT_MODELS[2]],
+      systemInstruction: SYSTEM_PROMPT,
+      input: [
+        { type: 'text', text: 'Extract patient registration fields as strict JSON.' },
+        contentBlock,
+      ],
+      temperature: 0.1,
+      maxOutputTokens: 1200,
+    });
+
+    if (res.ok && res.text) {
       try {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': key,
-            },
-            body: JSON.stringify({
-              contents: [
-                {
-                  role: 'user',
-                  parts: [
-                    { text: SYSTEM_PROMPT },
-                    { inlineData: { mimeType, data: rawBase64 } },
-                  ],
-                },
-              ],
-              generationConfig: {
-                temperature: 0.1,
-                responseMimeType: 'application/json',
-              },
-            }),
-          }
-        );
-
-        if (!res.ok) continue;
-        const json = (await res.json().catch(() => null)) as {
-          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-        } | null;
-        const rawText =
-          json?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
-        if (!rawText) continue;
-
-        const cleaned = rawText
+        const cleaned = res.text
           .replace(/^```json\s*/i, '')
           .replace(/^```\s*/i, '')
           .replace(/```$/i, '')
@@ -158,20 +101,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           ok: true,
           fields: parsed,
-          modelUsed: model,
+          modelUsed: res.model,
         });
       } catch {
-        continue;
+        /* fall through */
       }
     }
 
     return NextResponse.json(
-      { ok: false, error: 'Could not extract readable registration fields from this form photo.' },
+      { ok: false, error: 'Unable to extract legible fields from this photo. Ensure bright light and clear focus.' },
       { status: 422 }
     );
   } catch {
     return NextResponse.json(
-      { ok: false, error: 'Unexpected error while scanning paper registration form.' },
+      { ok: false, error: 'Form scan request failed.' },
       { status: 500 }
     );
   }

@@ -3,6 +3,10 @@
  * Tailored for Akwa Ibom State public & private health systems.
  * Fully connected to MedCore Mobile (apps/care) for patient engagement.
  */
+import { evaluatePrescriptionSafetyGuard } from './clinicalSafetyEngine';
+import { forecastFormularyStockouts } from './predictiveOpsEngine';
+import { listFormulary, listBatches } from './formularyInventory';
+import { listOrders } from './clinicalEventBus';
 
 export interface DischargeSummaryRecord {
   id: string;
@@ -167,6 +171,46 @@ export const STATE_ORDER_BUNDLES: Record<string, DynamicOrderBundle> = {
     medications: ['IV Crystalloid bolus 30 mL/kg within 1 hour', 'Broad-Spectrum IV Meropenem 1g STAT or Ceftriaxone 2g STAT', 'IV Noradrenaline infusion if MAP < 65 mmHg post-fluids'],
     nursingDirectives: ['Target MAP >= 65 mmHg', 'Re-check lactate in 2 hours', 'ICU transfer reservation'],
   },
+  sepsis_1hr: {
+    conditionKey: 'sepsis_1hr',
+    title: 'Sepsis 1-Hour Stabilization Bundle (qSOFA >= 2)',
+    guidelineSource: 'Surviving Sepsis Campaign & FMOH Protocol',
+    urgency: 'STAT',
+    labs: ['Blood Cultures x2 STAT', 'Serum Lactate STAT', 'Full Blood Count (FBC)', 'Urea Electrolytes Creatinine (UEC)'],
+    imaging: ['Portable Chest X-Ray'],
+    medications: ['IV Crystalloid Bolus 30 mL/kg', 'IV Ceftriaxone 2g STAT', 'IV Metronidazole 500mg STAT'],
+    nursingDirectives: ['Hourly urine output & NEWS2', 'Urgent doctor bedside review'],
+  },
+  eclampsia_obstetric: {
+    conditionKey: 'eclampsia_obstetric',
+    title: 'Severe Pre-Eclampsia / Eclampsia MgSO4 Bundle',
+    guidelineSource: 'AKS Maternal Health Directive & FMOH Obstetric Guidelines',
+    urgency: 'STAT',
+    labs: ['Urinalysis (Protein Dipstick STAT)', 'FBC + Platelets', 'LFT (AST/ALT) & UEC'],
+    imaging: ['Bedside Obstetric Ultrasound'],
+    medications: ['IV Magnesium Sulfate 4g loading + 10g IM (Pritchard)', 'Oral Nifedipine 10mg STAT or IV Labetalol 20mg'],
+    nursingDirectives: ['Foley catheter urometer > 30mL/hr', 'Monitor patellar reflexes & RR Q1H'],
+  },
+  pph_emergency: {
+    conditionKey: 'pph_emergency',
+    title: 'Obstetric Haemorrhage / PPH Shock Index Bundle',
+    guidelineSource: 'FMOH Emergency Obstetric Care (EMOC) Protocol',
+    urgency: 'STAT',
+    labs: ['Urgent Blood Grouping & Crossmatch (4 units)', 'Packed Cell Volume / FBC STAT', 'Coagulation Clotting Time'],
+    imaging: ['Bedside Pelvic Ultrasound'],
+    medications: ['IV Oxytocin 40 IU in 1L Normal Saline', 'IV Tranexamic Acid 1g slow bolus', 'IV Crystalloid rapid resuscitation'],
+    nursingDirectives: ['2 wide-bore (16G/18G) IV cannulae', 'Uterine massage & strict Q15M vitals'],
+  },
+  hypertensive_crisis: {
+    conditionKey: 'hypertensive_crisis',
+    title: 'Hypertensive Crisis & End-Organ Screen Bundle',
+    guidelineSource: 'Nigerian Hypertension Society Clinical Protocol',
+    urgency: 'STAT',
+    labs: ['Urea Electrolytes Creatinine (UEC)', 'Urinalysis', 'Random Blood Sugar (RBS)'],
+    imaging: ['12-Lead ECG STAT', 'Chest X-Ray PA'],
+    medications: ['Oral Amlodipine 10mg or IV Labetalol titrated per physician'],
+    nursingDirectives: ['Repeat BP Q15M in both arms', 'Assess chest pain / visual / neuro deficits'],
+  },
 };
 
 // ── 2. AUTONOMOUS TRIAGE PRIORITIZER ───────────────────────────────────────
@@ -320,56 +364,32 @@ export function auditPrescriptionSafety(
   drugName: string,
   patient: { allergies?: string[]; isPregnant?: boolean; egfr?: number; currentMeds?: string[] }
 ): PrescriptionSafetyAudit {
-  const normDrug = drugName.toLowerCase();
-  const alerts: PrescriptionSafetyAudit['alerts'] = [];
-
-  // Allergy Check
-  const allergies = (patient.allergies || []).map((a) => a.toLowerCase());
-  if (allergies.some((a) => /penicillin|amox|ampic/.test(a)) && /amox|ampic|augmentin|penicillin/.test(normDrug)) {
-    alerts.push({
-      type: 'ALLERGY_WARNING',
-      message: `Documented Penicillin allergy. ${drugName} administration can cause anaphylaxis.`,
-      severity: 'High',
-    });
-  }
-
-  // Renal / eGFR Dosing Check
-  if (patient.egfr && patient.egfr < 30) {
-    if (/metformin|gentamicin|tenofovir|ciprofloxacin|vancomycin/.test(normDrug)) {
-      alerts.push({
-        type: 'DOSE_ADJUSTMENT',
-        message: `Severe Renal Impairment (eGFR ${patient.egfr} mL/min/1.73m²). ${drugName} requires dosage reduction or interval extension to prevent acute nephrotoxicity.`,
-        severity: 'High',
-      });
-    }
-  }
-
-  // Pregnancy Safety Check
-  if (patient.isPregnant) {
-    if (/lisinopril|losartan|enalapril|atorvastatin|warfarin|doxycycline|methotrexate/.test(normDrug)) {
-      alerts.push({
-        type: 'CONTRAINDICATION',
-        message: `FDA Pregnancy Category D/X: ${drugName} is teratogenic. Avoid in pregnant patient. Switch to obstetric-safe alternative (e.g. Methyldopa/Labetalol).`,
-        severity: 'High',
-      });
-    }
-  }
-
-  // Drug-Drug Interactions
-  const meds = (patient.currentMeds || []).map((m) => m.toLowerCase());
-  if (/ciprofloxacin|artemether|clarithromycin/.test(normDrug) && meds.some((m) => /fluconazole|haloperidol|amiodarone/.test(m))) {
-    alerts.push({
-      type: 'DRUG_INTERACTION',
-      message: `Combined administration increases risk of QT Prolongation / cardiac dysrhythmia. Baseline ECG recommended.`,
-      severity: 'Medium',
-    });
-  }
+  const report = evaluatePrescriptionSafetyGuard({
+    drugName,
+    allergies: patient.allergies,
+    isPregnant: patient.isPregnant,
+    egfr: patient.egfr,
+    otherDrugs: patient.currentMeds,
+  });
 
   return {
     drugName,
     patientId: 'PAT-CURRENT',
-    safeToDispense: alerts.filter((a) => a.severity === 'High').length === 0,
-    alerts,
+    safeToDispense: report.safe,
+    alerts: report.alerts
+      .filter((a) => a.level !== 'info')
+      .map((a) => ({
+        type:
+          a.category === 'allergy'
+            ? 'ALLERGY_WARNING'
+            : a.category === 'interaction'
+              ? 'DRUG_INTERACTION'
+              : a.category === 'renal'
+                ? 'DOSE_ADJUSTMENT'
+                : 'CONTRAINDICATION',
+        message: `${a.title}: ${a.detail}`,
+        severity: a.level === 'hard_stop' ? 'High' : 'Medium',
+      })),
   };
 }
 
@@ -473,8 +493,39 @@ export interface ReorderRecommendation {
   status: 'Requisition Drafted' | 'Auto-Submitted to State CMS' | 'Dispatched';
 }
 
-export function computeRoboticStockReorders(): ReorderRecommendation[] {
-  return [];
+export function computeRoboticStockReorders(facilityId = 'IGH-EKT'): ReorderRecommendation[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const drugs = listFormulary(facilityId);
+    const batches = listBatches(facilityId);
+    const orders = listOrders(facilityId);
+    const forecast = forecastFormularyStockouts(drugs, batches, orders);
+    return forecast
+      .filter((f) => f.urgency !== 'healthy' || f.recommendedReorderQty > 0)
+      .slice(0, 8)
+      .map((f) => ({
+        drugId: f.drugId,
+        name: f.name,
+        category: /malaria/i.test(f.category)
+          ? 'Antimalarial'
+          : /obstetric|maternal|oxytocin/i.test(f.name + f.category)
+            ? 'Maternal Emergency'
+            : /vaccine/i.test(f.category)
+              ? 'Vaccine'
+              : /antibiotic|anti-infective/i.test(f.category)
+                ? 'Antibiotic'
+                : 'Consumable',
+        currentStockUnits: f.currentStockUnits,
+        minSafetyBuffer: f.reorderLevel,
+        burnRatePerDay: f.adjustedDailyBurn,
+        seasonalMultiplier: f.seasonalMultiplier,
+        recommendedReorderUnits: f.recommendedReorderQty,
+        supplierTarget: f.supplierTarget,
+        status: f.urgency === 'critical' ? 'Auto-Submitted to State CMS' : 'Requisition Drafted',
+      }));
+  } catch {
+    return [];
+  }
 }
 
 // ── 8. AUTONOMOUS STATE EPIDEMIC SYNDROMIC DETECTOR ────────────────────────
