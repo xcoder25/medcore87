@@ -963,6 +963,15 @@ test('mohSupplyForecastEngine: forecasts seasonal stockouts, near-expiry/cold-ch
   assert.ok(report.nearExpiryRisks.some((n) => n.reason === 'cold_chain_excursion'));
   assert.ok(report.redistributionPairs.some((p) => p.fromLga === 'Uyo' && p.toLga === 'Eket'));
   assert.equal(/\bMath\.random\s*\(/.test(fs.readFileSync(path.join(ADMIN_ROOT, 'src/lib/mohSupplyForecastEngine.ts'), 'utf8')), false);
+
+  const mohMerkle = loadTsModule('src/lib/mohMerkle.ts');
+  const root = mohMerkle.computeMohLedgerMerkleRoot([
+    mohMerkle.sha256Hex('EVENT-1'),
+    mohMerkle.sha256Hex('EVENT-2'),
+  ]);
+  assert.equal(root.length, 64);
+  assert.equal(/\bMath\.random\s*\(/.test(fs.readFileSync(path.join(ADMIN_ROOT, 'src/lib/mohMerkle.ts'), 'utf8')), false);
 });
+
 
 

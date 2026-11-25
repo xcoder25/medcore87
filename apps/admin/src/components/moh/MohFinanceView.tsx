@@ -191,6 +191,33 @@ export const MohFinanceView: React.FC<MohFinanceViewProps> = ({
         </div>
       </div>
 
+      {/* Statewide AKSHIA / NHIA Claims & Reimbursement Velocity */}
+      <div className="moh-panel" style={{ background: '#F8FAFC', borderColor: '#BFDBFE' }}>
+        <div className="moh-panel-head" style={{ marginBottom: 8 }}>
+          <h2 className="moh-panel-title" style={{ color: '#1E3A8A' }}>
+            <Wallet size={16} color="#2563EB" />
+            Statewide AKSHIA / NHIA Claims &amp; Reimbursement Tracker
+          </h2>
+          <span className="moh-pill emerald">First-Pass Collection: {collectionRate}%</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10, fontSize: '0.78rem' }}>
+          <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, padding: 12 }}>
+            <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700 }}>AKSHIA / HMO CLAIM SETTLEMENTS</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#065F46', marginTop: 4 }}>{fmtNaira(finance.byChannel.hmo)}</div>
+          </div>
+          <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, padding: 12 }}>
+            <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700 }}>PENDING PAYER SETTLEMENT</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: finance.totalPendingNgn > 0 ? '#D97706' : '#065F46', marginTop: 4 }}>
+              {fmtNaira(finance.totalPendingNgn)}
+            </div>
+          </div>
+          <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, padding: 12 }}>
+            <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700 }}>REPORTING FACILITIES</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0F172A', marginTop: 4 }}>{rows.length} hospitals</div>
+          </div>
+        </div>
+      </div>
+
       {/* Facility Revenue Table */}
       <div className="moh-panel">
         <div className="moh-panel-head">

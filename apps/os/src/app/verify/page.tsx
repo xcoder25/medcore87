@@ -39,6 +39,34 @@ function VerifyContent() {
   const [manualInput, setManualInput] = useState(initialToken);
 
   const activeToken = (manualInput || initialToken).trim();
+  const [hashInput, setHashInput] = useState('');
+  const [merkleResult, setMerkleResult] = useState<{
+    checked: boolean;
+    verified: boolean;
+    network?: string;
+    merkleRoot?: string;
+    txHash?: string | null;
+    message?: string;
+  } | null>(null);
+
+  const checkMerkleInclusion = async () => {
+    const cleanHash = hashInput.trim().toLowerCase();
+    if (!cleanHash) return;
+    try {
+      const res = await fetch(`/api/audit/anchor?hash=${encodeURIComponent(cleanHash)}`);
+      const json = await res.json();
+      setMerkleResult({
+        checked: true,
+        verified: Boolean(json.verified),
+        network: json.anchor?.network,
+        merkleRoot: json.anchor?.merkleRoot,
+        txHash: json.anchor?.externalTxHash,
+        message: json.message,
+      });
+    } catch {
+      setMerkleResult({ checked: true, verified: false, message: 'Unable to query Merkle proof endpoint offline.' });
+    }
+  };
 
   const verification = useMemo(() => {
     if (!activeToken) return null;
@@ -421,6 +449,36 @@ function VerifyContent() {
                 </div>
               </div>
             )}
+
+            {/* Audit Ledger Merkle-Root Inclusion Verifier */}
+            <div style={{ padding: 14, borderRadius: 10, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+              <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0F172A', marginBottom: 6 }}>
+                Cryptographic Audit Merkle-Root Proof Verifier (Zero PHI)
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  value={hashInput}
+                  onChange={(e) => setHashInput(e.target.value)}
+                  placeholder="Paste SHA-256 audit rowHash to verify Merkle inclusion..."
+                  style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: '0.76rem', fontFamily: 'monospace' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => void checkMerkleInclusion()}
+                  style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: '#065F46', color: '#FFFFFF', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Verify Proof
+                </button>
+              </div>
+              {merkleResult && (
+                <div style={{ marginTop: 8, fontSize: '0.74rem', fontWeight: 700, color: merkleResult.verified ? '#065F46' : '#B45309' }}>
+                  {merkleResult.verified
+                    ? `MERKLE INCLUSION VERIFIED (${merkleResult.network || 'sealed_local'}) · Root: ${String(merkleResult.merkleRoot || '').slice(0, 18)}…`
+                    : merkleResult.message || 'Hash not included in latest sealed Merkle anchor.'}
+                </div>
+              )}
+            </div>
 
             {/* Zero-PHI Privacy Notice */}
             <div

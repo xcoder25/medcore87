@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { ShieldCheck, Lock, Download, Search, CheckCircle2, AlertTriangle } from 'lucide-react';
 import type { MohLiveSnapshot } from '../../lib/mohTypes';
+import { computeMohLedgerMerkleRoot } from '../../lib/mohMerkle';
 
 interface MohAuditLedgerViewProps {
   snapshot: MohLiveSnapshot;
@@ -13,6 +14,11 @@ export const MohAuditLedgerView: React.FC<MohAuditLedgerViewProps> = ({ snapshot
   const [severityFilter, setSeverityFilter] = useState('all');
 
   const { auditLedger } = snapshot;
+
+  const merkleRoot = useMemo(
+    () => computeMohLedgerMerkleRoot(auditLedger.events.map((e) => e.rowHash)),
+    [auditLedger.events]
+  );
 
   const filteredEvents = useMemo(() => {
     return auditLedger.events.filter((ev) => {
@@ -152,6 +158,9 @@ export const MohAuditLedgerView: React.FC<MohAuditLedgerViewProps> = ({ snapshot
             </div>
             <div style={{ fontSize: '0.8rem', color: '#047857' }}>
               Patient names, NINs, phone numbers, email addresses, and credential hashes are scrubbed server-side before reaching Ministry views.
+            </div>
+            <div style={{ fontSize: '0.73rem', fontFamily: 'monospace', color: '#065F46', marginTop: 4 }}>
+              Merkle Root Seal ({auditLedger.events.length} leaves): {merkleRoot.slice(0, 24)}…
             </div>
           </div>
         </div>

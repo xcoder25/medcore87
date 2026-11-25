@@ -10,6 +10,11 @@ import {
   type TriageBotLanguage,
   type TriageBotPatientContext,
 } from '../../../../lib/patientTriageBotEngine';
+import { recordAppointmentFromCarePortal } from '../../../../lib/careReminderScheduler';
+import { publishFacilitySseEvent } from '../../../../lib/sseBroker';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -216,6 +221,43 @@ export async function POST(req: Request) {
       language,
       patient,
     });
+
+    if (triage.appointmentDraft) {
+      try {
+        const facId = /eket|immanuel/i.test(triage.appointmentDraft.facilityName)
+          ? 'IGH-EKT'
+          : /ibom/i.test(triage.appointmentDraft.facilityName)
+            ? 'ISH-UYO'
+            : 'UUTH-UYO';
+        const booking = recordAppointmentFromCarePortal({
+          bookingRef: triage.appointmentDraft.bookingRef,
+          facilityId: facId,
+          facilityName: triage.appointmentDraft.facilityName,
+          patientName: patient?.name || 'WhatsApp / Care Patient',
+          shid: patient?.shid || patient?.akshiaId,
+          phone: patient?.phone,
+          department: triage.appointmentDraft.department,
+          preferredSlot: triage.appointmentDraft.preferredSlot,
+          source: 'whatsapp_voice_bot',
+        });
+        const bookingsFile = path.join(os.tmpdir(), 'medcore-care-bookings-v1.json');
+        const existing = fs.existsSync(bookingsFile)
+          ? (JSON.parse(fs.readFileSync(bookingsFile, 'utf8')) as unknown[])
+          : [];
+        fs.writeFileSync(bookingsFile, JSON.stringify([booking, ...(Array.isArray(existing) ? existing : [])].slice(0, 300)), 'utf8');
+        publishFacilitySseEvent({
+          facilityId: facId,
+          key: 'care_portal_booking',
+          value: {
+            bookingRef: booking.bookingRef,
+            department: booking.department,
+            source: booking.source,
+          },
+        });
+      } catch {
+        // non-fatal sync persistence
+      }
+    }
 
     // Optional warm conversational enrichment for non-emergency responses when live key exists
     let finalReplyText = triage.replyText;

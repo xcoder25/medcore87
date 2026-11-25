@@ -56,6 +56,7 @@ import {
   forecastFormularyStockouts,
   forecastNearExpiryBatches,
 } from '../../lib/predictiveOpsEngine';
+import { verifyNafdacBatch } from '../../lib/nafdacVerificationEngine';
 import { appendAudit } from '../../lib/auditLogStore';
 import { parseRxNotes } from '../../lib/rxSigParse';
 import { listPatients, subscribePatients } from '../../lib/patientRegistryStore';
@@ -263,6 +264,24 @@ export const PharmacyDispensingSuite: React.FC = () => {
   const nearExpiryAlerts = useMemo(
     () => forecastNearExpiryBatches(invDrugs, listBatches(facilityId)),
     [invDrugs, facilityId, tick]
+  );
+
+  const [nafdacDrug, setNafdacDrug] = useState('Artemether-Lumefantrine 20/120mg');
+  const [nafdacReg, setNafdacReg] = useState('A4-4821');
+  const [nafdacBatch, setNafdacBatch] = useState('ACT-2026-09');
+  const [nafdacGtin, setNafdacGtin] = useState('');
+  const [nafdacExp, setNafdacExp] = useState('2027-06-30');
+
+  const nafdacCheck = useMemo(
+    () =>
+      verifyNafdacBatch({
+        drugName: nafdacDrug,
+        nafdacRegNo: nafdacReg,
+        batchNo: nafdacBatch,
+        gtin14: nafdacGtin || undefined,
+        expiry: nafdacExp || undefined,
+      }),
+    [nafdacDrug, nafdacReg, nafdacBatch, nafdacGtin, nafdacExp]
   );
 
   const wardRequests = useMemo<WardMedRequest[]>(
@@ -1150,6 +1169,22 @@ export const PharmacyDispensingSuite: React.FC = () => {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+
+            <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 12, padding: 12 }}>
+              <div style={{ fontWeight: 800, fontSize: 13, color: '#0369A1', marginBottom: 8 }}>
+                NAFDAC &amp; GS1 Anti-Counterfeit Batch Verifier (Pre-Receiving Gate)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginBottom: 8 }}>
+                <input value={nafdacDrug} onChange={(e) => setNafdacDrug(e.target.value)} placeholder="Drug Name" style={{ padding: '6px 9px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: 12 }} />
+                <input value={nafdacReg} onChange={(e) => setNafdacReg(e.target.value)} placeholder="NAFDAC Reg (e.g. A4-4821)" style={{ padding: '6px 9px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: 12 }} />
+                <input value={nafdacBatch} onChange={(e) => setNafdacBatch(e.target.value)} placeholder="Batch No." style={{ padding: '6px 9px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: 12 }} />
+                <input value={nafdacGtin} onChange={(e) => setNafdacGtin(e.target.value)} placeholder="Optional GS1 GTIN-14" style={{ padding: '6px 9px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: 12 }} />
+                <input type="date" value={nafdacExp} onChange={(e) => setNafdacExp(e.target.value)} style={{ padding: '6px 9px', borderRadius: 7, border: '1px solid #CBD5E1', fontSize: 12 }} />
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: nafdacCheck.valid ? '#047857' : '#B91C1C' }}>
+                Status: {nafdacCheck.riskLevel.toUpperCase()} — {nafdacCheck.reasons.join(' ')}
               </div>
             </div>
 

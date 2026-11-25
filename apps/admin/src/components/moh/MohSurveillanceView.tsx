@@ -222,6 +222,11 @@ export const MohSurveillanceView: React.FC<MohSurveillanceViewProps> = ({
           <div className="moh-kpi-val">{surveillance.criticalLabAlerts + surveillance.criticalVitalsAlerts}</div>
           <div className="moh-kpi-sub">{surveillance.criticalLabAlerts} critical labs · {surveillance.criticalVitalsAlerts} urgent vitals</div>
         </div>
+        <div className="moh-kpi-card">
+          <div className="moh-kpi-label">HIE Emergency Referrals</div>
+          <div className="moh-kpi-val">{idsr.emergencyReferralsTotal}</div>
+          <div className="moh-kpi-sub">Cross-facility bed-lock transfers logged</div>
+        </div>
       </div>
 
       <div className="moh-two-col">

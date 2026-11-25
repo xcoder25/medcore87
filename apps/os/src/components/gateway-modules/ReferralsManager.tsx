@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { InteractiveSearchBar, SearchSuggestion } from '../common/InteractiveSearchBar';
 import { ReferralItem, INITIAL_REFERRALS } from '../../data/hospitalData';
 import { getActiveFacilityId } from '../../lib/adminRealtimeStore';
+import type { HieBedCategory, HieReferralAction, HieReferralPacket } from '../../lib/hieReferralEngine';
 import { VerifiedPatientField } from '../common/VerifiedPatientField';
 import { verifyPatientExists, formatFullPatientName } from '../../lib/patientVerification';
 import {
@@ -22,6 +23,27 @@ export const ReferralsManager: React.FC<ReferralsManagerProps> = ({ onNavigate }
   const [searchQuery, setSearchQuery] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [hieReferrals, setHieReferrals] = useState<HieReferralPacket[]>([]);
+  const [expandedFhirId, setExpandedFhirId] = useState<string | null>(null);
+  const [requestBedLock, setRequestBedLock] = useState(true);
+  const [bedCategory, setBedCategory] = useState<HieBedCategory>('Emergency Resus');
+
+  const refreshHie = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/referrals/hie?facilityId=${encodeURIComponent(facilityId)}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.ok && Array.isArray(json.referrals)) {
+        setHieReferrals(json.referrals);
+      }
+    } catch {
+      // keep offline cache cleanly
+    }
+  }, [facilityId]);
+
+  useEffect(() => {
+    void refreshHie();
+  }, [refreshHie]);
 
   // New referral form state
   const [formName, setFormName] = useState('');
@@ -66,6 +88,15 @@ export const ReferralsManager: React.FC<ReferralsManagerProps> = ({ onNavigate }
       }
     }
 
+    const facCodeMap: Record<string, string> = {
+      'University of Uyo Teaching Hospital (UUTH)': 'UUTH-UYO',
+      'Immanuel General Hospital, Eket': 'IGH-EKT',
+      'General Hospital, Ikot Ekpene': 'GH-IKP',
+      'Ibom Specialist Hospital, Uyo': 'ISH-UYO',
+      'General Hospital, Oron': 'GH-ORN',
+      'Cottage Hospital, Asong': 'CH-ASG',
+    };
+
     const newRef: ReferralItem = {
       id: `REF-${Date.now().toString().slice(-4)}`,
       patientName: formName.trim(),
@@ -81,12 +112,51 @@ export const ReferralsManager: React.FC<ReferralsManagerProps> = ({ onNavigate }
     };
 
     setReferrals([newRef, ...referrals]);
+    void fetch('/api/referrals/hie', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        referringFacilityId: formDirection === 'outbound' ? facilityId : facCodeMap[formFacility] || 'EXT-FAC',
+        referringFacilityName: newRef.referringFacility,
+        targetFacilityId: formDirection === 'outbound' ? facCodeMap[formFacility] || 'UUTH-UYO' : facilityId,
+        targetFacilityName: newRef.destinationFacility,
+        specialty: formSpecialty,
+        priority: formPriority,
+        patientName: newRef.patientName,
+        hospitalNumber: newRef.mrn,
+        clinicalSummary: newRef.clinicalSummary,
+        requestBedLock,
+        bedCategory,
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j?.ok) void refreshHie();
+      })
+      .catch(() => {});
+
     setShowModal(false);
     setFormName('');
     setFormMrn('');
     setFormError(null);
     setFormSummary('');
-    triggerNotice(`Referral for ${newRef.patientName} submitted.`);
+    triggerNotice(`HIE Referral Packet + FHIR R4 summary for ${newRef.patientName} transmitted.`);
+  };
+
+  const handleHieTransition = async (id: string, action: HieReferralAction) => {
+    try {
+      const res = await fetch('/api/referrals/hie', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action }),
+      });
+      if (res.ok) {
+        await refreshHie();
+        triggerNotice(`HIE referral ${id} updated (${action.replace(/_/g, ' ')}).`);
+      }
+    } catch {
+      // ignore offline
+    }
   };
 
   const handleUpdateStatus = (id: string, newStatus: ReferralItem['status']) => {
@@ -207,6 +277,67 @@ export const ReferralsManager: React.FC<ReferralsManagerProps> = ({ onNavigate }
           ))}
         </div>
       </div>
+
+      {/* Live Cross-Hospital HIE Network Referrals & Bed Reservations */}
+      {hieReferrals.length > 0 && (
+        <div style={{ background: '#F0FDF4', border: '1px solid #A7F3D0', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#065F46' }}>
+            Live Cross-Hospital HIE Network &amp; Bed-Lock Handover ({hieReferrals.length})
+          </div>
+          {hieReferrals.slice(0, 6).map((hr) => (
+            <div key={hr.id} style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 10, padding: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <div>
+                  <strong style={{ color: '#0F172A' }}>{hr.patientName}</strong> ({hr.hospitalNumber}) · {hr.specialty}
+                  <div style={{ fontSize: '0.75rem', color: '#475569' }}>
+                    {hr.referringFacilityName} &rarr; {hr.targetFacilityName} · Status: <strong>{hr.status.toUpperCase()}</strong>
+                  </div>
+                  {hr.bedReservation && (
+                    <div style={{ fontSize: '0.72rem', color: '#0369A1', fontWeight: 700, marginTop: 2 }}>
+                      Bed Locked: {hr.bedReservation.bedLockId} ({hr.bedReservation.bedCategory} · {hr.bedReservation.ward})
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {hr.status === 'pending_acceptance' && (
+                    <button type="button" onClick={() => void handleHieTransition(hr.id, 'accept_and_lock_bed')} style={{ padding: '5px 10px', borderRadius: 6, border: 'none', background: '#059669', color: '#FFF', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                      Accept &amp; Lock Bed
+                    </button>
+                  )}
+                  {hr.status === 'bed_locked' && (
+                    <button type="button" onClick={() => void handleHieTransition(hr.id, 'mark_in_transit')} style={{ padding: '5px 10px', borderRadius: 6, border: 'none', background: '#0284C7', color: '#FFF', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                      Mark In Transit
+                    </button>
+                  )}
+                  {hr.status === 'in_transit' && (
+                    <button type="button" onClick={() => void handleHieTransition(hr.id, 'confirm_arrival_admission')} style={{ padding: '5px 10px', borderRadius: 6, border: 'none', background: '#7C3AED', color: '#FFF', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                      Confirm Arrival &amp; Admit
+                    </button>
+                  )}
+                  {hr.status === 'arrived_admitted' && (
+                    <button type="button" onClick={() => void handleHieTransition(hr.id, 'close_loop_outcome')} style={{ padding: '5px 10px', borderRadius: 6, border: 'none', background: '#0F172A', color: '#FFF', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                      Send Outcome to Referring Clinic
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setExpandedFhirId(expandedFhirId === hr.id ? null : hr.id)} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #CBD5E1', background: '#F8FAFC', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                    {expandedFhirId === hr.id ? 'Hide FHIR Bundle' : 'FHIR R4 Packet'}
+                  </button>
+                </div>
+              </div>
+              {hr.receivingFeedback && (
+                <div style={{ marginTop: 6, fontSize: '0.73rem', color: '#065F46', background: '#ECFDF5', padding: 7, borderRadius: 6 }}>
+                  Closed-Loop Outcome: {hr.receivingFeedback.outcomeSummary}
+                </div>
+              )}
+              {expandedFhirId === hr.id && (
+                <pre style={{ marginTop: 8, maxHeight: 160, overflow: 'auto', background: '#0F172A', color: '#E2E8F0', padding: 10, borderRadius: 8, fontSize: 11 }}>
+                  {JSON.stringify(hr.fhirSummaryBundle, null, 2)}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Referrals List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -370,11 +501,32 @@ export const ReferralsManager: React.FC<ReferralsManagerProps> = ({ onNavigate }
                   style={{ width: '100%', padding: '10px 12px', background: '#0A1929', border: '1px solid #1E446B', borderRadius: 8, color: '#0A2540', outline: 'none' }}
                 >
                   <option>University of Uyo Teaching Hospital (UUTH)</option>
+                  <option>Ibom Specialist Hospital, Uyo</option>
                   <option>Immanuel General Hospital, Eket</option>
                   <option>General Hospital, Ikot Ekpene</option>
-                  <option>National Hospital, Abuja</option>
+                  <option>General Hospital, Oron</option>
                   <option>Cottage Hospital, Asong</option>
                 </select>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#0A1929', padding: '8px 12px', borderRadius: 8, border: '1px solid #1E446B' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: '#E2E8F0', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={requestBedLock} onChange={(e) => setRequestBedLock(e.target.checked)} />
+                  Reserve &amp; Lock Target Bed Pre-Arrival (HIE)
+                </label>
+                {requestBedLock && (
+                  <select
+                    value={bedCategory}
+                    onChange={(e) => setBedCategory(e.target.value as HieBedCategory)}
+                    style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.74rem' }}
+                  >
+                    <option value="Emergency Resus">Emergency Resus</option>
+                    <option value="ICU">ICU</option>
+                    <option value="Maternity / Labour">Maternity / Labour</option>
+                    <option value="NICU">NICU</option>
+                    <option value="General Ward">General Ward</option>
+                  </select>
+                )}
               </div>
 
               <div>

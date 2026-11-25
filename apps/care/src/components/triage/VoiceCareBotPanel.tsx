@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -180,6 +180,39 @@ export const VoiceCareBotPanel: React.FC<VoiceCareBotPanelProps> = ({
 
   const mediaRecorderRef = useRef<any>(null);
   const chunksRef = useRef<BlobPart[]>([]);
+
+  useEffect(() => {
+    const idKey = shid || akshiaId || '';
+    if (!idKey) return;
+    let active = true;
+    const baseOrigin =
+      (typeof process !== 'undefined' && (process as any).env?.EXPO_PUBLIC_OS_API_URL) || '';
+    fetch(`${baseOrigin}/api/care/sync?shid=${encodeURIComponent(idKey)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!active || !json?.ok) return;
+        const apptCount = Array.isArray(json.appointments) ? json.appointments.length : 0;
+        if (apptCount > 0 || json.akshiaCoverage) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `sync-${Date.now()}`,
+              sender: 'assistant',
+              urgency: 'routine',
+              text: `Live Hospital Sync Complete: ${apptCount} synced clinic booking(s) found for ${idKey}.`,
+              akshiaStatus: json.akshiaCoverage,
+              careReminders: json.reminders,
+            },
+          ]);
+        }
+      })
+      .catch(() => {
+        // stay functional offline
+      });
+    return () => {
+      active = false;
+    };
+  }, [shid, akshiaId]);
 
   const speakOut = (text: string) => {
     if (Platform.OS === 'web' && typeof window !== 'undefined' && 'speechSynthesis' in window) {

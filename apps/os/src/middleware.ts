@@ -9,6 +9,9 @@ const PUBLIC_API_PREFIXES = [
   '/api/ping',
   '/api/akwaremit/webhook',
   '/api/paystack/webhook',
+  '/api/whatsapp/triage',
+  '/api/care/',
+  '/api/audit/anchor',
 ];
 
 const ADMIN_ONLY_API_PREFIXES = [

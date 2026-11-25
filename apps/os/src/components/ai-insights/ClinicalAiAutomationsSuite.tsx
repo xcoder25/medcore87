@@ -134,6 +134,34 @@ export const ClinicalAiAutomationsSuite: React.FC<Props> = ({ session }) => {
     akshiaStatus?: { cardNumber: string; scheme: string; status: string; primaryFacility: string };
   } | null>(null);
 
+  const [remQueue, setRemQueue] = useState<
+    Array<{ id: string; patientName: string; track: string; dueDate: string; status: string; messageBody: string }>
+  >([]);
+  const [remNotice, setRemNotice] = useState<string>('');
+
+  const loadCareReminders = async () => {
+    try {
+      const res = await fetch(`/api/care/reminders?facilityId=${encodeURIComponent(facilityId)}`);
+      const j = await res.json();
+      if (j.ok && Array.isArray(j.reminders)) setRemQueue(j.reminders);
+    } catch {
+      // ignore
+    }
+  };
+
+  const dispatchDueReminders = async () => {
+    const res = await fetch('/api/care/reminders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ facilityId }),
+    });
+    const j = await res.json();
+    if (j.ok) {
+      setRemQueue(j.reminders || []);
+      setRemNotice(`Dispatched ${j.dispatchedCount} ANC / Immunization / Chronic reminder(s) via ${j.deliveryMode}.`);
+    }
+  };
+
   const runWhatsAppBotSim = async () => {
     if (!waSimInput.trim()) return;
     setWaSimBusy(true);
@@ -1027,6 +1055,39 @@ export const ClinicalAiAutomationsSuite: React.FC<Props> = ({ session }) => {
                   Intent: {waSimReply.intent} · Urgency: {waSimReply.urgency?.toUpperCase()}
                 </div>
                 <div style={{ color: '#0F172A' }}>{waSimReply.replyText}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Scheduled ANC, Immunization & Chronic Care Reminder Dispatcher */}
+          <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid #E2E8F0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0F172A' }}>
+                  Automated ANC, Immunization &amp; Chronic Check-In Dispatcher
+                </div>
+                <div style={{ fontSize: '0.76rem', color: '#64748B' }}>
+                  Sends scheduled WhatsApp &amp; Care App voice/text reminders for upcoming ANC weeks and Hypertension/Diabetes refills.
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" onClick={() => void loadCareReminders()} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #CBD5E1', background: '#F8FAFC', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  Load Due Queue
+                </button>
+                <button type="button" onClick={() => void dispatchDueReminders()} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#0284C7', color: '#FFF', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
+                  Dispatch Due Reminders
+                </button>
+              </div>
+            </div>
+            {remNotice && <div style={{ fontSize: 12, fontWeight: 700, color: '#047857', marginBottom: 8 }}>{remNotice}</div>}
+            {remQueue.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 8 }}>
+                {remQueue.slice(0, 4).map((r) => (
+                  <div key={r.id} style={{ padding: 10, borderRadius: 9, border: '1px solid #E2E8F0', background: '#F8FAFC', fontSize: 12 }}>
+                    <div style={{ fontWeight: 700 }}>{r.patientName} · {r.track} ({r.status.toUpperCase()})</div>
+                    <div style={{ color: '#475569', marginTop: 3 }}>{r.messageBody}</div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

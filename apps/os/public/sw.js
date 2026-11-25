@@ -15,8 +15,8 @@
  * subsequent module clicks load at near-0ms even on 2G.
  */
 
-const CACHE_NAME = 'medcore-os-shell-v6';
-const CHUNK_CACHE = 'medcore-os-chunks-v6';
+const CACHE_NAME = 'medcore-os-shell-v7';
+const CHUNK_CACHE = 'medcore-os-chunks-v7';
 
 // Minimal set for immediate install (small — keeps SW install fast on slow networks)
 const CORE_PRECACHE = ['/', '/manifest.json'];

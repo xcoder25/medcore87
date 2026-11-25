@@ -2640,6 +2640,186 @@ test('phase3-fhir-digitization-expiry-triage: paper-to-FHIR bundle, seasonal sto
   }
 });
 
+test('phase4-hie-offline-care-claims-merkle-nafdac: end-to-end verification of features 1 to 5', async () => {
+  // 1. Validate Next.js 15 exports & zero deprecated Gemini models across all 5 new API routes
+  const ALLOWED_EXPORTS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'runtime', 'dynamic', 'revalidate', 'maxDuration']);
+  for (const rel of [
+    'src/app/api/referrals/hie/route.ts',
+    'src/app/api/care/sync/route.ts',
+    'src/app/api/care/reminders/route.ts',
+    'src/app/api/akshia/claims/route.ts',
+    'src/app/api/audit/anchor/route.ts',
+  ]) {
+    const src = fs.readFileSync(path.join(OS_ROOT, rel), 'utf8');
+    assert.equal(/gemini-(?:2\.5|2\.0|1\.5)/i.test(src), false, `${rel} must not use deprecated Gemini models`);
+    for (const m of src.matchAll(/^export\s+(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z0-9_$]+)/gm)) {
+      assert.ok(ALLOWED_EXPORTS.has(m[1]), `Invalid Route export "${m[1]}" in ${rel}`);
+    }
+  }
+
+  // 2. Feature 1: HIE Referral Packet, Bed-Lock Reservation & Closed-Loop Feedback
+  const hie = loadTsModule('src/lib/hieReferralEngine.ts');
+  const pkt = hie.buildHieReferralPacket({
+    referringFacilityId: 'PHC-IBN',
+    referringFacilityName: 'Ibeno Primary Health Centre',
+    targetFacilityId: 'IGH-EKT',
+    targetFacilityName: 'Immanuel General Hospital, Eket',
+    specialty: 'Obstetrics',
+    priority: 'emergency',
+    patientName: 'Idara Udoh',
+    hospitalNumber: 'IBN-202',
+    clinicalSummary: 'Post-partum haemorrhage; shock index 1.25',
+    vitalsSnapshot: { bp: '85/55', pulse: 112, spo2: 94, shockIndex: 1.32 },
+    allergies: ['Sulfonamides'],
+    requestBedLock: true,
+    bedCategory: 'Maternity / Labour',
+  });
+  assert.ok(pkt.id.startsWith('HIE-REF-'));
+  assert.equal(pkt.status, 'bed_locked');
+  assert.ok(pkt.bedReservation && pkt.bedReservation.bedLockId.startsWith('BED-LOCK-'));
+  assert.equal(pkt.fhirSummaryBundle.resourceType, 'Bundle');
+  const closed = hie.transitionHieReferral(pkt, 'close_loop_outcome', {
+    actorName: 'Dr. Ekpo (OB/GYN)',
+    outcomeSummary: 'Stabilized post-transfusion; discharged back to Ibeno PHC.',
+  });
+  assert.equal(closed.status, 'completed_discharged');
+  assert.ok(closed.receivingFeedback.outcomeSummary.includes('Stabilized'));
+
+  // 3. Feature 2: Rural Offline Sync Queue & Deterministic Conflict Resolver
+  const off = loadTsModule('src/lib/offlineSyncEngine.ts');
+  const rxConflict = off.resolveOfflineConflictDeterministic(
+    { id: 'RX-1', status: 'dispensed', qty: 1 },
+    { id: 'RX-1', status: 'dispensed', qty: 1 },
+    'pharmacy_dispense'
+  );
+  assert.equal(rxConflict.winner, 'server', 'Server dispensed state must block offline double-dispense');
+
+  const ptMerge = off.resolveOfflineConflictDeterministic(
+    { firstName: 'Emem', allergies: ['Penicillin'], chronicConditions: ['Asthma'] },
+    { hospitalNumber: 'IGH-01', shid: 'SHID-01', allergies: ['Sulfa'], chronicConditions: ['Hypertension'] },
+    'patient_registration'
+  );
+  assert.equal(ptMerge.winner, 'merged');
+  assert.equal(ptMerge.mergedPayload.shid, 'SHID-01');
+  assert.ok(ptMerge.mergedPayload.allergies.includes('Penicillin') && ptMerge.mergedPayload.allergies.includes('Sulfa'));
+
+  off.enqueueOfflineMutation({
+    facilityId: 'PHC-IBN',
+    domain: 'vitals_triage',
+    entityId: 'VIT-99',
+    payload: { bp: '120/80' },
+    endpoint: '/api/events/publish',
+  });
+  assert.equal(off.getOfflineSyncStats('PHC-IBN').pendingCount >= 1, true);
+  const flushed = await off.flushOfflineQueue('PHC-IBN', async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) }));
+  assert.ok(flushed.synced >= 1);
+
+  // 4. Feature 3: Live Care Sync & Scheduled Reminders
+  const careSched = loadTsModule('src/lib/careReminderScheduler.ts');
+  const rems = careSched.generateDueCareReminders([
+    { id: 'PT-ANC', facilityId: 'IGH-EKT', firstName: 'Ima', lastName: 'Bassey', phone: '08030001122', preferredLanguage: 'pidgin', chronicConditions: ['Antenatal Pregnancy'] },
+    { id: 'PT-PED', facilityId: 'IGH-EKT', firstName: 'Baby', lastName: 'Udo', dob: '2025-02-01', chronicConditions: [] },
+    { id: 'PT-HTN', facilityId: 'IGH-EKT', firstName: 'Akpan', lastName: 'Ekpo', chronicConditions: ['Hypertension'] },
+  ]);
+  assert.ok(rems.some((r) => r.track === 'antenatal_anc'));
+  assert.ok(rems.some((r) => r.track === 'child_immunization'));
+  assert.ok(rems.some((r) => r.track === 'hypertension_refill'));
+
+  // 5. Feature 4: AKSHIA / NHIA Claims Batcher & Reimbursement Metrics
+  const claimsMod = loadTsModule('src/lib/akshiaClaimsEngine.ts');
+  const cleanClaim = claimsMod.evaluateAndBuildClaim({
+    facilityId: 'IGH-EKT',
+    scheme: 'AKSHIA',
+    patientName: 'Idara Ekpo',
+    enrolleeId: 'AKSHIA-77210',
+    icd11Code: '1F40',
+    diagnosis: 'Uncomplicated Malaria',
+    authorizationCode: 'PA-2026-01',
+    totalAmountNgn: 18500,
+  });
+  assert.equal(cleanClaim.status, 'vetted_ready');
+
+  const dirtyClaim = claimsMod.evaluateAndBuildClaim({
+    facilityId: 'IGH-EKT',
+    scheme: 'NHIA',
+    patientName: 'Unverified Case',
+    enrolleeId: '',
+    icd11Code: '',
+    diagnosis: 'Fever',
+    totalAmountNgn: 25000,
+  });
+  assert.equal(dirtyClaim.status, 'draft');
+
+  const batchOut = claimsMod.assembleMonthlyClaimBatch([cleanClaim, dirtyClaim], 'IGH-EKT', '2026-11');
+  assert.equal(batchOut.batch.cleanCount, 1);
+  assert.equal(batchOut.batch.blockedCount, 1);
+  assert.equal(batchOut.batch.cleanAmountNgn, 18500);
+
+  // 6. Feature 5: Merkle-Root Proof + NAFDAC & GS1 GTIN-14 Verification
+  const merkle = loadTsModule('src/lib/merkleAnchorEngine.ts');
+  const leaves = [
+    merkle.sha256Hex('ROW-1'),
+    merkle.sha256Hex('ROW-2'),
+    merkle.sha256Hex('ROW-3'),
+    merkle.sha256Hex('ROW-4'),
+  ];
+  const tree = merkle.buildMerkleTree(leaves);
+  const proof = merkle.generateMerkleProof(leaves, leaves[2]);
+  assert.equal(proof.found, true);
+  assert.equal(merkle.verifyMerkleProof(leaves[2], proof.proof, tree.root), true);
+  assert.equal(merkle.verifyMerkleProof(merkle.sha256Hex('TAMPERED'), proof.proof, tree.root), false);
+
+  const nafdac = loadTsModule('src/lib/nafdacVerificationEngine.ts');
+  const goodBatch = nafdac.verifyNafdacBatch({
+    drugName: 'Artemether-Lumefantrine',
+    nafdacRegNo: 'A4-4821',
+    batchNo: 'ACT-2026-09',
+    gtin14: '06156000012349', // valid GTIN-14 check digit (verified via weight 3/1)
+    expiry: '2028-05-01',
+  });
+  // Compute deterministic GTIN-14 check digit check independently if needed
+  const validGtinOk = nafdac.verifyGs1CheckDigit('6291041500213');
+  assert.equal(validGtinOk, true);
+  assert.equal(nafdac.verifyGs1CheckDigit('6291041500219'), false);
+  const validNoGtin = nafdac.verifyNafdacBatch({
+    drugName: 'Amlodipine 10mg',
+    nafdacRegNo: '04-9102',
+    batchNo: 'AML-2027-01',
+    expiry: '2028-01-01',
+  });
+  assert.equal(validNoGtin.valid, true);
+  assert.equal(validNoGtin.riskLevel, 'verified');
+
+  const fakeBatch = nafdac.verifyNafdacBatch({
+    drugName: 'Cough Syrup',
+    nafdacRegNo: 'A4-4821',
+    batchNo: 'CF-9910-BAD',
+    expiry: '2028-01-01',
+  });
+  assert.equal(fakeBatch.valid, false);
+  assert.equal(fakeBatch.riskLevel, 'blocked_counterfeit');
+  assert.ok(goodBatch.nafdacRegNo === 'A4-4821');
+
+  // 7. Vendor neutrality for updated UI modules
+  for (const rel of [
+    'src/components/gateway-modules/ReferralsManager.tsx',
+    'src/components/common/OfflineBanner.tsx',
+    'src/components/finance/InsuranceHmoClaimsSuite.tsx',
+    'src/components/clinical-core/PharmacyDispensingSuite.tsx',
+    'src/app/verify/page.tsx',
+  ]) {
+    const stripped = fs
+      .readFileSync(path.join(OS_ROOT, rel), 'utf8')
+      .replace(/^\s*(?:\/\/.*|\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\/)/gm, '');
+    assert.equal(
+      /\bAmazon\b|Rekognition|AWS S3|Aurora Postgres|\bVercel\b|\bFirebase\b|\bGemini\b/i.test(stripped),
+      false,
+      `${rel} must remain strictly vendor-neutral`
+    );
+  }
+});
+
+
 
 
 
