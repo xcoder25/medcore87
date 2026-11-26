@@ -265,6 +265,7 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
       }
 
       let ready: boolean;
+      let serviceAvailable = true;
       if (typeof initialFaceEnrolled === 'boolean') {
         ready = initialFaceEnrolled;
       } else {
@@ -273,20 +274,23 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
         ]);
         ready = Boolean(st?.ok && st?.faceEnrolled);
+        if (st?.ok && st.faceServiceAvailable === false) {
+          serviceAvailable = false;
+        }
       }
       if (!alive) return;
 
       const cameraSupported = isCameraBiometricSupported();
-      setFaceEnrolled(ready);
+      setFaceEnrolled(ready && serviceAvailable);
       setCheckingBiometric(false);
 
-      if (ready && cameraSupported) {
+      if (ready && serviceAvailable && cameraSupported) {
         setFaceStatusNote('none');
         if (!autoLaunchedFaceRef.current) {
           autoLaunchedFaceRef.current = true;
           setFaceModalOpen(true);
         }
-      } else if (ready && !cameraSupported) {
+      } else if (ready && (!cameraSupported || !serviceAvailable)) {
         setFaceStatusNote('camera_unavailable');
         setTab('email_otp');
         ensureOtpSent();

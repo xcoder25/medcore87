@@ -10,6 +10,7 @@ import {
   getRekognitionConfig,
   isRekognitionAuthError,
   isRekognitionConfigured,
+  isStandardBiometricFallbackAllowed,
   probeFaceFrame,
   toSafeBiometricError,
   verifyActiveLiveness,
@@ -175,11 +176,19 @@ function evaluateVectorVerification(
 
 function buildStatusPayload(vault: UnifiedBiometricVault | null) {
   const faceEnrolled = Boolean(vault?.face);
+  const cloudReady = isRekognitionConfigured();
+  const fallbackAllowed = isStandardBiometricFallbackAllowed();
+  const biometricEngineMode: 'cloud_vision' | 'standard_dev' | 'unavailable' = cloudReady
+    ? 'cloud_vision'
+    : fallbackAllowed
+      ? 'standard_dev'
+      : 'unavailable';
   return {
     ok: true,
     enrolled: faceEnrolled,
     faceEnrolled,
-    faceServiceAvailable: true,
+    faceServiceAvailable: cloudReady || fallbackAllowed,
+    biometricEngineMode,
     enrolledAt: vault?.face?.enrolledAt || null,
     faceEnrolledAt: vault?.face?.enrolledAt || null,
     lastUsedAt: vault?.face?.lastUsedAt || null,
@@ -323,10 +332,31 @@ export async function POST(req: NextRequest) {
           return NextResponse.json(probe);
         } catch (err) {
           if (isRekognitionAuthError(err)) {
-            return NextResponse.json(runStandardProbe());
+            if (isStandardBiometricFallbackAllowed()) {
+              return NextResponse.json(runStandardProbe());
+            }
+            return NextResponse.json(
+              {
+                ok: false,
+                biometricUnavailable: true,
+                error: 'Facial biometric service is unavailable on this server. Please continue with Email OTP.',
+              },
+              { status: 503 }
+            );
           }
           return NextResponse.json({ ok: false, error: toSafeBiometricError(err) }, { status: 502 });
         }
+      }
+
+      if (!isStandardBiometricFallbackAllowed()) {
+        return NextResponse.json(
+          {
+            ok: false,
+            biometricUnavailable: true,
+            error: 'Facial biometric service is unavailable on this server. Please continue with Email OTP.',
+          },
+          { status: 503 }
+        );
       }
 
       return NextResponse.json(runStandardProbe());
@@ -372,9 +402,28 @@ export async function POST(req: NextRequest) {
           if (!isRekognitionAuthError(err)) {
             return NextResponse.json({ ok: false, error: toSafeBiometricError(err) }, { status: 502 });
           }
+          if (!isStandardBiometricFallbackAllowed()) {
+            return NextResponse.json(
+              {
+                ok: false,
+                biometricUnavailable: true,
+                error: 'Facial biometric enrollment requires an authorized biometric service. Contact ICT administration.',
+              },
+              { status: 503 }
+            );
+          }
           verificationEngine = 'standard';
           qualityScore = 88;
         }
+      } else if (!isStandardBiometricFallbackAllowed()) {
+        return NextResponse.json(
+          {
+            ok: false,
+            biometricUnavailable: true,
+            error: 'Facial biometric enrollment requires an authorized biometric service. Contact ICT administration.',
+          },
+          { status: 503 }
+        );
       }
 
       const enrolledAt = new Date().toISOString();
@@ -405,6 +454,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           { ok: false, notEnrolled: true, error: 'No facial biometric is enrolled for this staff member.' },
           { status: 404 }
+        );
+      }
+
+      if (!isRekognitionConfigured() && !isStandardBiometricFallbackAllowed()) {
+        return NextResponse.json(
+          {
+            ok: false,
+            biometricUnavailable: true,
+            error: 'Facial biometric verification service is unavailable. Please continue with Email OTP.',
+          },
+          { status: 503 }
         );
       }
 
@@ -490,7 +550,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ ok: false, verified: false, error: liveness.reason }, { status: 401 });
           }
         } catch (err) {
-          if (isRekognitionAuthError(err) && hasVectors) {
+          if (isRekognitionAuthError(err) && hasVectors && isStandardBiometricFallbackAllowed()) {
             const vecRes = evaluateVectorVerification(refVec, neutralVec, challengeVec);
             if (!vecRes.ok) {
               return NextResponse.json(
@@ -500,6 +560,16 @@ export async function POST(req: NextRequest) {
             }
             similarityPct = vecRes.similarityPct;
             fellBackToVector = true;
+          } else if (isRekognitionAuthError(err) && !isStandardBiometricFallbackAllowed()) {
+            return NextResponse.json(
+              {
+                ok: false,
+                verified: false,
+                biometricUnavailable: true,
+                error: 'Facial biometric verification service is unavailable. Please verify with Email OTP.',
+              },
+              { status: 503 }
+            );
           } else {
             return NextResponse.json(
               { ok: false, verified: false, error: toSafeBiometricError(err) },
@@ -512,7 +582,7 @@ export async function POST(req: NextRequest) {
           const referenceBuf = await loadFacePortraitBuffer(existing.face);
 
           if (!referenceBuf) {
-            if (hasVectors) {
+            if (hasVectors && isStandardBiometricFallbackAllowed()) {
               const vecRes = evaluateVectorVerification(refVec, neutralVec, challengeVec);
               if (!vecRes.ok) {
                 return NextResponse.json(
@@ -546,7 +616,7 @@ export async function POST(req: NextRequest) {
               }
               similarityPct = Math.round(cmp.similarity * 10) / 10;
             } catch (err) {
-              if (isRekognitionAuthError(err) && hasVectors) {
+              if (isRekognitionAuthError(err) && hasVectors && isStandardBiometricFallbackAllowed()) {
                 const vecRes = evaluateVectorVerification(refVec, neutralVec, challengeVec);
                 if (!vecRes.ok) {
                   return NextResponse.json(
@@ -555,6 +625,16 @@ export async function POST(req: NextRequest) {
                   );
                 }
                 similarityPct = vecRes.similarityPct;
+              } else if (isRekognitionAuthError(err) && !isStandardBiometricFallbackAllowed()) {
+                return NextResponse.json(
+                  {
+                    ok: false,
+                    verified: false,
+                    biometricUnavailable: true,
+                    error: 'Facial biometric verification service is unavailable. Please verify with Email OTP.',
+                  },
+                  { status: 503 }
+                );
               } else {
                 return NextResponse.json(
                   { ok: false, verified: false, error: toSafeBiometricError(err) },
@@ -565,6 +645,17 @@ export async function POST(req: NextRequest) {
           }
         }
       } else {
+        if (!isStandardBiometricFallbackAllowed()) {
+          return NextResponse.json(
+            {
+              ok: false,
+              verified: false,
+              biometricUnavailable: true,
+              error: 'Facial biometric verification service is unavailable. Please verify with Email OTP.',
+            },
+            { status: 503 }
+          );
+        }
         const vecRes = evaluateVectorVerification(refVec, neutralVec, challengeVec);
         if (!vecRes.ok) {
           return NextResponse.json(

@@ -115,6 +115,17 @@ export function isRekognitionConfigured(): boolean {
   return getRekognitionConfig().isConfigured;
 }
 
+/**
+ * Tier-3 pixel-vector fallback is permitted only in non-production environments
+ * unless explicitly opted in via MEDCORE_ALLOW_STANDARD_BIOMETRIC_FALLBACK=true.
+ */
+export function isStandardBiometricFallbackAllowed(): boolean {
+  if (clean(process.env.MEDCORE_ALLOW_STANDARD_BIOMETRIC_FALLBACK).toLowerCase() === 'true') {
+    return true;
+  }
+  return process.env.NODE_ENV !== 'production';
+}
+
 let cachedClient: { key: string; client: RekognitionClient } | null = null;
 
 export function resetRekognitionClient(): void {

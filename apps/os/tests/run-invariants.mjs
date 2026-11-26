@@ -1882,6 +1882,47 @@ test('facialBiometrics: validates Rekognition config/quality/liveness/matching, 
       });
       assert.equal(stdMismatch.status, 401);
       assert.equal(stdMismatch.data.verified, false);
+
+      // Production strict mode: when Rekognition is unconfigured and NODE_ENV === 'production', disable standard fallback
+      const prevNodeEnv = process.env.NODE_ENV;
+      const prevForceFallback = process.env.MEDCORE_ALLOW_STANDARD_BIOMETRIC_FALLBACK;
+      try {
+        process.env.NODE_ENV = 'production';
+        delete process.env.MEDCORE_ALLOW_STANDARD_BIOMETRIC_FALLBACK;
+        assert.equal(rek.isStandardBiometricFallbackAllowed(), false, 'Standard vector fallback must be disabled in production');
+
+        const prodStatus = await bioRoute.GET({
+          nextUrl: { searchParams: new URLSearchParams('badgeId=ADM-STD-1&facilityId=TEST-FAC') },
+        });
+        assert.equal(prodStatus.data.faceServiceAvailable, false);
+        assert.equal(prodStatus.data.biometricEngineMode, 'unavailable');
+
+        const prodChal = await post({ action: 'face_challenge', badgeId: 'ADM-STD-1', facilityId: 'TEST-FAC' });
+        assert.equal(prodChal.status, 503);
+        assert.equal(prodChal.data.biometricUnavailable, true);
+
+        const prodVerify = await post({
+          action: 'face_verify',
+          badgeId: 'ADM-STD-1',
+          facilityId: 'TEST-FAC',
+          challengeToken: stdChal3.data.challengeToken,
+          neutralImageBase64: validImg,
+          challengeImageBase64: challengeImg,
+          neutralFaceVector: baseVec,
+          challengeFaceVector: movedVec,
+        });
+        assert.equal(prodVerify.status, 503);
+        assert.equal(prodVerify.data.biometricUnavailable, true);
+        assert.equal(prodVerify.data.verified, false);
+
+        process.env.MEDCORE_ALLOW_STANDARD_BIOMETRIC_FALLBACK = 'true';
+        assert.equal(rek.isStandardBiometricFallbackAllowed(), true);
+      } finally {
+        if (prevNodeEnv === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = prevNodeEnv;
+        if (prevForceFallback === undefined) delete process.env.MEDCORE_ALLOW_STANDARD_BIOMETRIC_FALLBACK;
+        else process.env.MEDCORE_ALLOW_STANDARD_BIOMETRIC_FALLBACK = prevForceFallback;
+      }
     } finally {
       for (const [k, v] of Object.entries(prevExtraEnv)) {
         if (v === undefined) delete process.env[k];
@@ -2995,6 +3036,31 @@ test('docs-openapi-and-compliance-invariants: OpenAPI 3.1 spec covers all API ro
       assert.equal(pat.test(content), false, `${rel} must not contain live credential pattern ${pat}`);
     }
   }
+});
+
+test('mobile-facility-admin-enrolment-and-emr-only-boundaries: validates mobile admin role, facility-scoped enrolment & Desktop EMR lockouts', () => {
+  const MOBILE_ROOT = path.resolve(OS_ROOT, '../clinic/src');
+  const permSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'rbac/permissions.ts'), 'utf8');
+  assert.ok(permSrc.includes("'hospital_admin'") && permSrc.includes("'staff.admin_hub'") && permSrc.includes("'staff.enrol'"));
+  assert.ok(permSrc.includes('EMR_ONLY_ADMIN_CAPABILITIES') && permSrc.includes('isEmrOnlyCapability'));
+
+  const perms = loadTsModule('../clinic/src/rbac/permissions.ts');
+  assert.equal(perms.can('staff', 'hospital_admin', 'staff.admin_hub'), true);
+  assert.equal(perms.can('staff', 'hospital_admin', 'staff.enrol'), true);
+  assert.equal(perms.can('staff', 'doctor', 'staff.admin_hub'), false);
+  assert.equal(perms.isEmrOnlyCapability('rbac_matrix'), true);
+  assert.equal(perms.isEmrOnlyCapability('treasury_settlement'), true);
+  assert.equal(perms.isEmrOnlyCapability('destructive_auth_flush'), true);
+
+  const authSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'components/auth/StaffAuthScreen.tsx'), 'utf8');
+  assert.ok(authSrc.includes("key: 'hospital_admin'") && authSrc.includes('facilityId: hospital.id'));
+
+  const hubSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'components/admin/FacilityAdminHub.tsx'), 'utf8');
+  assert.ok(hubSrc.includes('/api/staff/create') && hubSrc.includes('EMR_ONLY_ADMIN_CAPABILITIES'));
+  assert.ok(hubSrc.includes('DESKTOP EMR ONLY') && hubSrc.includes('m.facilityId.toUpperCase() === facilityId.toUpperCase()'));
+
+  const appSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'App.tsx'), 'utf8');
+  assert.ok(appSrc.includes('FacilityAdminHub') && appSrc.includes("selectedTab === 'admin'"));
 });
 
 

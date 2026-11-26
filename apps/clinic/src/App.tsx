@@ -29,6 +29,7 @@ import { PorteringRequest } from './components/portering/PorteringRequest';
 import { StaffAuthScreen, StaffSession } from './components/auth/StaffAuthScreen';
 import { PrescriptionWriter } from './components/pharmacy/PrescriptionWriter';
 import { StaffIdCardScreen } from './components/identity/StaffIdCardScreen';
+import { FacilityAdminHub } from './components/admin/FacilityAdminHub';
 
 import { UnifiedGate } from './auth/UnifiedGate';
 import { PatientAuthScreen } from './auth/PatientAuthScreen';
@@ -37,7 +38,7 @@ import type { AppSession, PatientSession } from './auth/sessionTypes';
 import type { Persona } from './rbac/permissions';
 import { can, TOOL_PERMISSION, TAB_PERMISSION } from './rbac/permissions';
 
-type TabKey = 'ward' | 'patients' | 'tasks' | 'orders' | 'more';
+type TabKey = 'admin' | 'ward' | 'patients' | 'tasks' | 'orders' | 'more';
 type Stage = 'gate' | 'patient-auth' | 'staff-auth' | 'app';
 
 const C = {
@@ -66,7 +67,7 @@ export default function App() {
   const staffRole = session?.persona === 'staff' ? session.roleKey : undefined;
 
   const allowedTabs = useMemo(() => {
-    return (['ward', 'patients', 'tasks', 'orders', 'more'] as TabKey[]).filter((t) =>
+    return (['admin', 'ward', 'patients', 'tasks', 'orders', 'more'] as TabKey[]).filter((t) =>
       can('staff', staffRole, TAB_PERMISSION[t])
     );
   }, [staffRole]);
@@ -129,6 +130,8 @@ export default function App() {
   const staff = session;
 
   const moreItems = [
+    { k: 'admin-hub', icon: '🏛️', title: 'Facility Admin Hub', desc: 'Staff enrolment, directory & EMR policies' },
+    { k: 'staff-enrol', icon: '🪪', title: 'Enrol Facility Staff', desc: 'Issue facility-scoped staff badge & PIN' },
     { k: 'emar', icon: '💊', title: 'eMAR', desc: 'Record drug administration' },
     { k: 'prescription', icon: '🖊', title: 'e-Prescription Writer', desc: 'Issue digital Rx · Route to pharmacy' },
     { k: 'notes', icon: '📝', title: 'Progress Notes', desc: 'Clinical documentation & SOAP' },
@@ -152,6 +155,14 @@ export default function App() {
   });
 
   const renderMoreBody = () => {
+    if (moreSection === 'admin-hub' || moreSection === 'staff-enrol') {
+      return (
+        <FacilityAdminHub
+          session={staff}
+          onOpenTool={(toolKey) => setMoreSection(toolKey)}
+        />
+      );
+    }
     if (moreSection === 'emar') return <MedicationAdmin />;
     if (moreSection === 'prescription') return <PrescriptionWriter />;
     if (moreSection === 'notes') return <ProgressNotes />;
@@ -260,6 +271,15 @@ export default function App() {
         </View>
       </View>
 
+      {selectedTab === 'admin' && can('staff', staff.roleKey, 'staff.admin_hub') && (
+        <FacilityAdminHub
+          session={staff}
+          onOpenTool={(toolKey) => {
+            setSelectedTab('more');
+            setMoreSection(toolKey);
+          }}
+        />
+      )}
       {selectedTab === 'ward' && can('staff', staff.roleKey, 'staff.ward') && renderWard()}
       {selectedTab === 'patients' && can('staff', staff.roleKey, 'staff.patients') && <ClinicalWorkbench />}
       {selectedTab === 'tasks' && can('staff', staff.roleKey, 'staff.tasks') && <TaskTracker />}
@@ -277,6 +297,7 @@ export default function App() {
         <View style={styles.tabBar}>
           {(
             [
+              { k: 'admin' as const, icon: '🏛️', label: 'Admin' },
               { k: 'ward' as const, icon: '🏥', label: 'Ward' },
               { k: 'patients' as const, icon: '👥', label: 'Patients' },
               { k: 'tasks' as const, icon: '✅', label: 'Tasks' },

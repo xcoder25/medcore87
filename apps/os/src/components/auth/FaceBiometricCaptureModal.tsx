@@ -232,6 +232,15 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     fallback?.(reason || 'No facial biometric is enrolled for this account.');
   }, [stopCamera, updatePhase]);
 
+  const triggerServiceUnavailable = useCallback(() => {
+    if (notEnrolledHandledRef.current) return;
+    notEnrolledHandledRef.current = true;
+    stopCamera();
+    setLiveSession(null);
+    updatePhase('paused');
+    callbacksRef.current.onSkipCameraUnavailable?.();
+  }, [stopCamera, updatePhase]);
+
   const handleLiveFallback = useCallback(() => {
     setLiveSession(null);
     setLivenessMode('auto_scan');
@@ -251,6 +260,10 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
         triggerNotEnrolled(ch.error || 'No facial biometric is enrolled for this account.');
         return false;
       }
+      if (ch.biometricUnavailable) {
+        triggerServiceUnavailable();
+        return false;
+      }
       setErrorMsg(ch.error || 'Could not initialize facial verification challenge.');
       updatePhase('paused');
       return false;
@@ -265,7 +278,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     setPrompt(ch.prompt);
     setPromptLabel(label);
     return true;
-  }, [mode, badgeId, facilityId, triggerNotEnrolled, updatePhase]);
+  }, [mode, badgeId, facilityId, triggerNotEnrolled, triggerServiceUnavailable, updatePhase]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -314,6 +327,10 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 6_000)),
         ]);
         if (cancelled) return;
+        if (preflight?.ok && preflight.faceServiceAvailable === false) {
+          triggerServiceUnavailable();
+          return;
+        }
         if (!preflight?.ok || !preflight.faceEnrolled) {
           triggerNotEnrolled(
             !preflight || preflight.ok === false
@@ -607,6 +624,10 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
           if (cancelled || !mountedRef.current) return;
 
           if (!probe.ok) {
+            if (probe.biometricUnavailable) {
+              triggerServiceUnavailable();
+              return;
+            }
             failAttemptsRef.current += 1;
             setErrorMsg(probe.error || 'Could not evaluate camera frame.');
             if (failAttemptsRef.current >= MAX_FAIL_ATTEMPTS) {
@@ -711,6 +732,10 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
           if (cancelled || !mountedRef.current) return;
 
           if (!probe.ok) {
+            if (probe.biometricUnavailable) {
+              triggerServiceUnavailable();
+              return;
+            }
             failAttemptsRef.current += 1;
             setErrorMsg(probe.error || 'Could not evaluate camera frame.');
             if (failAttemptsRef.current >= MAX_FAIL_ATTEMPTS) {
@@ -816,6 +841,10 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
         setBusy(false);
         if (res.notEnrolled) {
           triggerNotEnrolled(res.error || 'No facial biometric is enrolled for this account.');
+          return;
+        }
+        if (res.biometricUnavailable) {
+          triggerServiceUnavailable();
           return;
         }
         if (!res.verified) {

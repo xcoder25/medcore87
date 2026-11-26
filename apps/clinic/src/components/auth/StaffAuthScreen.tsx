@@ -27,8 +27,10 @@ export interface StaffSession {
   role: string;
   roleKey: string;
   title: string;
+  facilityId: string;
   facility: string;
   department: string;
+  email?: string;
   avatarInitials: string;
   shift: string;
 }
@@ -51,6 +53,7 @@ export const AKWA_IBOM_HOSPITALS = [
 ];
 
 export const CLINICAL_ROLES = [
+  { key: 'hospital_admin', title: 'Hospital Administrator', short: 'Facility Admin', dept: 'Hospital Management & Governance', icon: '🏛️' },
   { key: 'doctor', title: 'Doctor / Physician', short: 'Doctor', dept: 'Internal Medicine & Wards', icon: '🩺' },
   { key: 'nurse', title: 'Nurse / Nursing Officer', short: 'Nurse', dept: 'Inpatient Ward & e-MAR', icon: '💉' },
   { key: 'surgeon', title: 'Surgeon / Theatre Specialist', short: 'Surgeon', dept: 'Operating Theatres & PACU', icon: '🫀' },
@@ -101,7 +104,9 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({ onLoginSuccess
 
     const staffDisplayName =
       idVal ||
-      (role.key === 'doctor'
+      (role.key === 'hospital_admin'
+        ? `Facility Admin (${hospital.short})`
+        : role.key === 'doctor'
         ? 'Dr. Julian Thorne, MD'
         : role.key === 'nurse'
         ? 'Nurse Sister Blessing, RN'
@@ -110,13 +115,15 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({ onLoginSuccess
         : `${role.short} on Duty`);
 
     const session: StaffSession = {
-      staffId: idVal || `${hospital.id}-${role.key.toUpperCase()}-042`,
+      staffId: idVal || `${hospital.id}-${role.key === 'hospital_admin' ? 'ADMIN' : role.key.toUpperCase()}-042`,
       name: staffDisplayName,
       role: role.title,
       roleKey: role.key,
       title: role.title,
+      facilityId: hospital.id,
       facility: hospital.name,
       department: `${role.dept} · Day Shift`,
+      email: usernameInput.includes('@') ? usernameInput.trim().toLowerCase() : undefined,
       avatarInitials: staffDisplayName.slice(0, 2).toUpperCase(),
       shift: 'Day 07:00–19:00',
     };
