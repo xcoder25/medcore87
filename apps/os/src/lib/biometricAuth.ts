@@ -49,7 +49,7 @@ export async function getStaffBiometricStatus(
   try {
     const res = await fetchWithTimeout(
       `/api/auth/biometric?badgeId=${encodeURIComponent(badgeId)}&facilityId=${encodeURIComponent(facilityId || 'IGH-EKT')}`,
-      undefined,
+      { cache: 'no-store' },
       10_000
     );
     const json = (await res.json().catch(() => ({}))) as BiometricStatusResult;
@@ -331,6 +331,7 @@ export async function completeLiveLivenessSession(params: {
   livenessToken: string;
 }): Promise<{
   ok: boolean;
+  notEnrolled?: boolean;
   enrolled?: boolean;
   enrolledAt?: string;
   verified?: boolean;
@@ -351,6 +352,7 @@ export async function completeLiveLivenessSession(params: {
     );
     const json = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
+      notEnrolled?: boolean;
       enrolled?: boolean;
       enrolledAt?: string;
       verified?: boolean;
@@ -360,7 +362,11 @@ export async function completeLiveLivenessSession(params: {
       error?: string;
     };
     if (!res.ok || !json.ok) {
-      return { ok: false, error: json.error || 'Live facial verification did not pass.' };
+      return {
+        ok: false,
+        notEnrolled: res.status === 404 || Boolean(json.notEnrolled),
+        error: json.error || 'Live facial verification did not pass.',
+      };
     }
     return {
       ok: true,

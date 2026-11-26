@@ -1278,42 +1278,38 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
           // 1) First resolve staff by work email (Aurora Postgres cloud-first, then local registry)
           let matchedStaff: PresetStaff | undefined;
 
-          // Check local staff registry / cards first across facilities to detect correct facility
+          // Check local staff registry strictly for the currently selected facility first
+          const hydrateLocalStaff = (hit: ReturnType<typeof findStaffByEmail>): PresetStaff | undefined => {
+            if (!hit) return undefined;
+            const bid = String(hit.badgeId || hit.id || '');
+            const rk = inferRoleKey(String(hit.roleKey || hit.role || hit.title || ''), bid);
+            return {
+              badgeId: bid,
+              name: String(hit.name || hit.fullName || email.split('@')[0]),
+              role: String(hit.role || 'Staff'),
+              shortRole: String(hit.shortRole || hit.role || 'Staff'),
+              title: String(hit.title || hit.role || 'Staff'),
+              roleKey: rk,
+              clearanceLevel: Number(hit.clearanceLevel ?? 2),
+              clearanceLabel: String(hit.clearanceLabel || 'L2'),
+              department: String(hit.department || ''),
+              initials: String(hit.initials || 'ST'),
+              permissions:
+                Array.isArray(hit.permissions) && hit.permissions.length > 0
+                  ? hit.permissions
+                  : defaultPermissionsForRole(rk),
+              pin: '',
+              hospitalId: hit.hospitalId || hit.facilityId || effectiveHospital.id,
+              hospitalName: hit.hospitalName || hit.facilityName || effectiveHospital.name,
+              photoUrl: hit.photoUrl || undefined,
+              color: '#0052D4',
+            };
+          };
+
           try {
-            let hit = findStaffByEmail(email, effectiveHospital.id);
-            if (!hit) {
-              const crossHit = findStaffByEmail(email);
-              if (crossHit) {
-                hit = crossHit;
-                const hitFid = String(crossHit.hospitalId || crossHit.facilityId || '');
-                const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === hitFid.toUpperCase());
-                if (hospObj) {
-                  effectiveHospital = hospObj;
-                  setSelectedHospital(hospObj);
-                }
-              }
-            }
-            if (hit) {
-              const bid = String(hit.badgeId || hit.id || '');
-              const rk = inferRoleKey(String(hit.roleKey || hit.role || hit.title || ''), bid);
-              matchedStaff = {
-                badgeId: bid,
-                name: String(hit.name || hit.fullName || email.split('@')[0]),
-                role: String(hit.role || 'Staff'),
-                shortRole: String(hit.shortRole || hit.role || 'Staff'),
-                title: String(hit.title || hit.role || 'Staff'),
-                roleKey: rk,
-                clearanceLevel: Number(hit.clearanceLevel ?? 2),
-                clearanceLabel: String(hit.clearanceLabel || 'L2'),
-                department: String(hit.department || ''),
-                initials: String(hit.initials || 'ST'),
-                permissions: Array.isArray(hit.permissions) && hit.permissions.length > 0 ? hit.permissions : defaultPermissionsForRole(rk),
-                pin: '',
-                hospitalId: hit.hospitalId || hit.facilityId || effectiveHospital.id,
-                hospitalName: hit.hospitalName || hit.facilityName || effectiveHospital.name,
-                photoUrl: hit.photoUrl || undefined,
-                color: '#0052D4',
-              };
+            const localHit = findStaffByEmail(email, effectiveHospital.id);
+            if (localHit) {
+              matchedStaff = hydrateLocalStaff(localHit);
             }
           } catch { /* */ }
 
@@ -1365,9 +1361,25 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
             }
           };
 
-          // Cloud query: Aurora PostgreSQL + Firebase Admin lookup
+          // Cloud query for selected facility BEFORE any cross-facility local fallback
           if (!matchedStaff) {
             matchedStaff = await lookupEmailStaffFromCloud();
+          }
+
+          // Offline / wrong-dropdown local fallback across cached facilities only if selected-facility lookup missed
+          if (!matchedStaff) {
+            try {
+              const crossHit = findStaffByEmail(email);
+              if (crossHit) {
+                const hitFid = String(crossHit.hospitalId || crossHit.facilityId || '');
+                const hospObj = HOSPITALS.find((h) => h.id.toUpperCase() === hitFid.toUpperCase());
+                if (hospObj) {
+                  effectiveHospital = hospObj;
+                  setSelectedHospital(hospObj);
+                }
+                matchedStaff = hydrateLocalStaff(crossHit);
+              }
+            } catch { /* */ }
           }
 
           // 2) Server-first verification (/api/auth/verify-pin -> Postgres pin_hash or server FIREBASE_WEB_API_KEY)

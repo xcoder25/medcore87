@@ -2133,8 +2133,15 @@ test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts an
     'liveness session verify route must return notEnrolled: true when face biometric is unenrolled'
   );
 
+  const livenessResultsSrc = fs.readFileSync(path.join(OS_ROOT, 'src/app/api/auth/biometric/liveness/results/route.ts'), 'utf8');
+  assert.ok(
+    livenessResultsSrc.includes('notEnrolled: true'),
+    'liveness results verify route must return notEnrolled: true when face biometric is unenrolled'
+  );
+
   const bioClientSrc = fs.readFileSync(path.join(OS_ROOT, 'src/lib/biometricAuth.ts'), 'utf8');
   assert.ok(bioClientSrc.includes('fetchWithTimeout') && bioClientSrc.includes('10_000'));
+  assert.ok(bioClientSrc.includes("cache: 'no-store'"), 'getStaffBiometricStatus must bypass stale caches');
   assert.ok(
     bioClientSrc.includes('notEnrolled: res.status === 404 || Boolean(json.notEnrolled)'),
     'biometricAuth client helpers must propagate notEnrolled on 404 / unenrolled profiles'
@@ -2142,8 +2149,16 @@ test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts an
 
   const faceModalSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/FaceBiometricCaptureModal.tsx'), 'utf8');
   assert.ok(
-    faceModalSrc.includes('onNotEnrolled?: (reason?: string) => void') && faceModalSrc.includes('if (ch.notEnrolled)'),
-    'FaceBiometricCaptureModal must auto-fallback via onNotEnrolled instead of stalling on unenrolled accounts'
+    faceModalSrc.includes('onNotEnrolled?: (reason?: string) => void') &&
+      faceModalSrc.includes('if (ch.notEnrolled)') &&
+      faceModalSrc.includes('callbacksRef') &&
+      faceModalSrc.includes('notEnrolledHandledRef'),
+    'FaceBiometricCaptureModal must stabilize callbacks via callbacksRef and guard one-shot notEnrolled fallback'
+  );
+  assert.equal(
+    /\},\s*\[[^\]]*(?:onNotEnrolled|onSkipCameraUnavailable)/.test(faceModalSrc),
+    false,
+    'FaceBiometricCaptureModal hooks must not depend directly on inline parent callback props'
   );
 
   const authSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/AuthScreen.tsx'), 'utf8');
@@ -2164,9 +2179,10 @@ test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts an
   assert.ok(
     otpSrc.includes('Face ID Not Enrolled — Switched Automatically to Email OTP') &&
       otpSrc.includes('Face ID is not yet enrolled for this account') &&
-      otpSrc.includes('onNotEnrolled={') &&
+      otpSrc.includes('{faceModalOpen && (') &&
+      otpSrc.includes('onNotEnrolled={handleFaceNotEnrolled}') &&
       otpSrc.includes('ensureOtpSent()'),
-    'StaffEmailOtpModal must indicate unenrolled admin/staff Face ID and auto-switch to Email OTP'
+    'StaffEmailOtpModal must indicate unenrolled admin/staff Face ID, conditionally mount FaceBiometricCaptureModal, and auto-switch to Email OTP'
   );
   const otpStripped = otpSrc.replace(/^\s*(?:\/\/.*|\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\/)/gm, '');
   assert.equal(/\bAmazon\b|Rekognition|AWS S3|Aurora Postgres/i.test(otpStripped), false, 'StaffEmailOtpModal must stay vendor-neutral');

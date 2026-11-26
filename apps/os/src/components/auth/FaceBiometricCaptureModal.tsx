@@ -146,6 +146,21 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     prompt: FaceLivenessPrompt;
     promptLabel: string;
   } | null>(null);
+  const notEnrolledHandledRef = useRef(false);
+  const callbacksRef = useRef({
+    onNotEnrolled,
+    onSkipCameraUnavailable,
+    onClose,
+    onEnrolled,
+    onVerified,
+  });
+  callbacksRef.current = {
+    onNotEnrolled,
+    onSkipCameraUnavailable,
+    onClose,
+    onEnrolled,
+    onVerified,
+  };
 
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -206,6 +221,21 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     setCameraReady(false);
   }, [clearLoopTimer]);
 
+  const triggerNotEnrolled = useCallback((reason?: string) => {
+    if (notEnrolledHandledRef.current) return;
+    notEnrolledHandledRef.current = true;
+    stopCamera();
+    setLiveSession(null);
+    updatePhase('paused');
+    const fallback = callbacksRef.current.onNotEnrolled || callbacksRef.current.onSkipCameraUnavailable;
+    fallback?.(reason || 'No facial biometric is enrolled for this account.');
+  }, [stopCamera, updatePhase]);
+
+  const handleLiveFallback = useCallback(() => {
+    setLiveSession(null);
+    setLivenessMode('auto_scan');
+  }, []);
+
   const loadVerifyChallenge = useCallback(async () => {
     if (mode !== 'verify' || !badgeId) return false;
     setErrorMsg(null);
@@ -217,12 +247,8 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     if (!mountedRef.current) return false;
     if (!ch.ok || !ch.challengeToken || !ch.prompt) {
       if (ch.notEnrolled) {
-        stopCamera();
-        const fallback = onNotEnrolled || onSkipCameraUnavailable;
-        if (fallback) {
-          fallback(ch.error || 'No facial biometric is enrolled for this account.');
-          return false;
-        }
+        triggerNotEnrolled(ch.error || 'No facial biometric is enrolled for this account.');
+        return false;
       }
       setErrorMsg(ch.error || 'Could not initialize facial verification challenge.');
       updatePhase('paused');
@@ -238,7 +264,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     setPrompt(ch.prompt);
     setPromptLabel(label);
     return true;
-  }, [mode, badgeId, facilityId, stopCamera, updatePhase, onNotEnrolled, onSkipCameraUnavailable]);
+  }, [mode, badgeId, facilityId, triggerNotEnrolled, updatePhase]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -249,6 +275,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
 
   useEffect(() => {
     if (!isOpen) {
+      notEnrolledHandledRef.current = false;
       stopCamera();
       inFlightRef.current = false;
       prevVecRef.current = undefined;
@@ -271,6 +298,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     }
 
     let cancelled = false;
+    notEnrolledHandledRef.current = false;
     setCameraError(null);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -282,12 +310,8 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
       const live = await startLiveLivenessSession({ badgeId, facilityId, mode });
       if (cancelled) return;
       if (mode === 'verify' && live.notEnrolled) {
-        stopCamera();
-        const fallback = onNotEnrolled || onSkipCameraUnavailable;
-        if (fallback) {
-          fallback(live.error || 'No facial biometric is enrolled for this account.');
-          return;
-        }
+        triggerNotEnrolled(live.error || 'No facial biometric is enrolled for this account.');
+        return;
       }
       if (live.ok && live.available && live.sessionId && live.region && live.livenessToken) {
         setLiveSession({
@@ -306,10 +330,10 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     return () => {
       cancelled = true;
     };
-  }, [isOpen, mode, badgeId, facilityId, stopCamera, updatePhase, onNotEnrolled, onSkipCameraUnavailable]);
+  }, [isOpen, mode, badgeId, facilityId, stopCamera, triggerNotEnrolled, updatePhase]);
 
   useEffect(() => {
-    if (!isOpen || livenessMode !== 'auto_scan') {
+    if (!isOpen || livenessMode !== 'auto_scan' || notEnrolledHandledRef.current) {
       return;
     }
 
@@ -421,10 +445,18 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
       if (!mountedRef.current) return;
 
       if (!res.ok) {
+        if (mode === 'verify' && res.notEnrolled) {
+          triggerNotEnrolled(res.error || 'No facial biometric is enrolled for this account.');
+          return;
+        }
         failAttemptsRef.current += 1;
         setErrorMsg(res.error || 'Live camera anti-spoofing check did not pass.');
         if (failAttemptsRef.current < MAX_FAIL_ATTEMPTS) {
           const next = await startLiveLivenessSession({ badgeId, facilityId, mode });
+          if (mountedRef.current && mode === 'verify' && next.notEnrolled) {
+            triggerNotEnrolled(next.error || 'No facial biometric is enrolled for this account.');
+            return;
+          }
           if (
             mountedRef.current &&
             next.ok &&
@@ -452,7 +484,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
         setSuccessMsg('Facial biometric profile enrolled.');
         window.setTimeout(() => {
           if (mountedRef.current) {
-            onEnrolled?.({ enrolledAt: res.enrolledAt });
+            callbacksRef.current.onEnrolled?.({ enrolledAt: res.enrolledAt });
           }
         }, 450);
       } else {
@@ -463,7 +495,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
         );
         window.setTimeout(() => {
           if (mountedRef.current) {
-            onVerified?.({ mfaToken: res.mfaToken, similarity: res.similarity });
+            callbacksRef.current.onVerified?.({ mfaToken: res.mfaToken, similarity: res.similarity });
           }
         }, 400);
       }
@@ -472,7 +504,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
         setBusy(false);
       }
     }
-  }, [liveSession, badgeId, facilityId, staffName, mode, updatePhase, onEnrolled, onVerified]);
+  }, [liveSession, badgeId, facilityId, staffName, mode, triggerNotEnrolled, updatePhase]);
 
   useEffect(() => {
     if (!autoScanEnabled) {
@@ -614,7 +646,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
           stopCamera();
           window.setTimeout(() => {
             if (mountedRef.current) {
-              onEnrolled?.({ enrolledAt: res.enrolledAt });
+              callbacksRef.current.onEnrolled?.({ enrolledAt: res.enrolledAt });
             }
           }, 450);
         } finally {
@@ -763,12 +795,8 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
 
         setBusy(false);
         if (res.notEnrolled) {
-          stopCamera();
-          const fallback = onNotEnrolled || onSkipCameraUnavailable;
-          if (fallback) {
-            fallback(res.error || 'No facial biometric is enrolled for this account.');
-            return;
-          }
+          triggerNotEnrolled(res.error || 'No facial biometric is enrolled for this account.');
+          return;
         }
         if (!res.verified) {
           failAttemptsRef.current += 1;
@@ -800,7 +828,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
         stopCamera();
         window.setTimeout(() => {
           if (mountedRef.current) {
-            onVerified?.({ mfaToken: res.mfaToken, similarity: res.similarity });
+            callbacksRef.current.onVerified?.({ mfaToken: res.mfaToken, similarity: res.similarity });
           }
         }, 400);
       } finally {
@@ -825,11 +853,8 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     clearLoopTimer,
     loadVerifyChallenge,
     stopCamera,
+    triggerNotEnrolled,
     updatePhase,
-    onEnrolled,
-    onVerified,
-    onNotEnrolled,
-    onSkipCameraUnavailable,
   ]);
 
   if (!isOpen) return null;
@@ -1007,10 +1032,7 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
                   region={liveSession.region}
                   livenessToken={liveSession.livenessToken}
                   onAnalysisComplete={handleLiveAnalysisComplete}
-                  onFallback={() => {
-                    setLiveSession(null);
-                    setLivenessMode('auto_scan');
-                  }}
+                  onFallback={handleLiveFallback}
                 />
               )}
 

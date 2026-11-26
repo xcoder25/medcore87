@@ -111,10 +111,12 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
   const syncTimers = useCallback(() => {
     const now = Date.now();
     if (otpExpiresAtRef.current > 0) {
-      setSecondsLeft(computeRemainingSeconds(otpExpiresAtRef.current, now));
+      const nextSec = computeRemainingSeconds(otpExpiresAtRef.current, now);
+      setSecondsLeft((prev) => (prev === nextSec ? prev : nextSec));
     }
     if (resendAvailableAtRef.current > 0) {
-      setResendCooldown(computeRemainingSeconds(resendAvailableAtRef.current, now));
+      const nextResend = computeRemainingSeconds(resendAvailableAtRef.current, now);
+      setResendCooldown((prev) => (prev === nextResend ? prev : nextResend));
     }
   }, []);
 
@@ -307,13 +309,66 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
       resendAvailableAtRef.current = now + 30 * 1000;
     }
     syncTimers();
-    const iv = window.setInterval(syncTimers, 1000);
     const unsubResume = subscribeForegroundResume(syncTimers);
+    if (faceModalOpen) {
+      return () => {
+        unsubResume();
+      };
+    }
+    const iv = window.setInterval(syncTimers, 1000);
     return () => {
       window.clearInterval(iv);
       unsubResume();
     };
-  }, [expiryMinutes, syncTimers]);
+  }, [expiryMinutes, faceModalOpen, syncTimers]);
+
+  const handleFaceNotEnrolled = useCallback(() => {
+    setFaceModalOpen(false);
+    setFaceEnrolled(false);
+    setFaceStatusNote('not_enrolled');
+    setTab('email_otp');
+    setErrorMsg(null);
+    ensureOtpSent();
+  }, [ensureOtpSent]);
+
+  const handleFaceSkipCamera = useCallback(() => {
+    setFaceModalOpen(false);
+    setFaceStatusNote('camera_unavailable');
+    setTab('email_otp');
+    ensureOtpSent();
+  }, [ensureOtpSent]);
+
+  const handleFaceClose = useCallback(() => {
+    setFaceModalOpen(false);
+    setTab('email_otp');
+    ensureOtpSent();
+  }, [ensureOtpSent]);
+
+  const handleFaceVerified = useCallback(
+    (res: { mfaToken?: string; similarity?: number }) => {
+      setFaceModalOpen(false);
+      appendAudit({
+        facilityId,
+        actor: session.name,
+        actorBadge: badge,
+        category: 'access',
+        severity: 'normal',
+        action: 'STAFF_2FA_FACE_BIOMETRIC_VERIFIED',
+        entity: 'staff_auth',
+        entityId: badge,
+        detail: `Staff facial biometric 2FA verified${res.similarity ? ` (${res.similarity}% match)` : ''}`,
+      });
+      setVerifiedSuccess(true);
+      window.setTimeout(() => {
+        onVerified({
+          ...session,
+          token: res.mfaToken || session.token,
+          authMethod: `${session.authMethod} + Facial Biometric 2FA`,
+        });
+      }, 350);
+    },
+    [facilityId, session, badge, onVerified]
+  );
 
   const formatTimer = (sec: number) => {
     const m = Math.floor(sec / 60);
@@ -968,55 +1023,20 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
         </div>
       </div>
 
-      <FaceBiometricCaptureModal
-        mode="verify"
-        isOpen={faceModalOpen}
-        badgeId={badge}
-        facilityId={facilityId}
-        staffName={session.name}
-        skipLabel="Use Email OTP Instead"
-        onNotEnrolled={() => {
-          setFaceModalOpen(false);
-          setFaceEnrolled(false);
-          setFaceStatusNote('not_enrolled');
-          setTab('email_otp');
-          setErrorMsg(null);
-          ensureOtpSent();
-        }}
-        onSkipCameraUnavailable={() => {
-          setFaceModalOpen(false);
-          setFaceStatusNote('camera_unavailable');
-          setTab('email_otp');
-          ensureOtpSent();
-        }}
-        onClose={() => {
-          setFaceModalOpen(false);
-          setTab('email_otp');
-          ensureOtpSent();
-        }}
-        onVerified={(res) => {
-          setFaceModalOpen(false);
-          appendAudit({
-            facilityId,
-            actor: session.name,
-            actorBadge: badge,
-            category: 'access',
-            severity: 'normal',
-            action: 'STAFF_2FA_FACE_BIOMETRIC_VERIFIED',
-            entity: 'staff_auth',
-            entityId: badge,
-            detail: `Staff facial biometric 2FA verified${res.similarity ? ` (${res.similarity}% match)` : ''}`,
-          });
-          setVerifiedSuccess(true);
-          window.setTimeout(() => {
-            onVerified({
-              ...session,
-              token: res.mfaToken || session.token,
-              authMethod: `${session.authMethod} + Facial Biometric 2FA`,
-            });
-          }, 350);
-        }}
-      />
+      {faceModalOpen && (
+        <FaceBiometricCaptureModal
+          mode="verify"
+          isOpen={faceModalOpen}
+          badgeId={badge}
+          facilityId={facilityId}
+          staffName={session.name}
+          skipLabel="Use Email OTP Instead"
+          onNotEnrolled={handleFaceNotEnrolled}
+          onSkipCameraUnavailable={handleFaceSkipCamera}
+          onClose={handleFaceClose}
+          onVerified={handleFaceVerified}
+        />
+      )}
     </div>
   );
 };
