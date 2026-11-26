@@ -112,6 +112,7 @@ export async function requestFaceAuthChallenge(params: {
   facilityId: string;
 }): Promise<{
   ok: boolean;
+  notEnrolled?: boolean;
   challengeToken?: string;
   prompt?: FaceLivenessPrompt;
   promptLabel?: string;
@@ -134,6 +135,7 @@ export async function requestFaceAuthChallenge(params: {
     );
     const json = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
+      notEnrolled?: boolean;
       challengeToken?: string;
       prompt?: FaceLivenessPrompt;
       promptLabel?: string;
@@ -141,7 +143,11 @@ export async function requestFaceAuthChallenge(params: {
       error?: string;
     };
     if (!res.ok || !json.ok || !json.challengeToken || !json.prompt) {
-      return { ok: false, error: json.error || 'Could not start facial liveness challenge.' };
+      return {
+        ok: false,
+        notEnrolled: res.status === 404 || Boolean(json.notEnrolled),
+        error: json.error || 'Could not start facial liveness challenge.',
+      };
     }
     return {
       ok: true,
@@ -164,7 +170,7 @@ export async function verifyStaffFaceBiometric(params: {
   challengeImageBase64: string;
   neutralFaceVector?: number[];
   challengeFaceVector?: number[];
-}): Promise<{ ok: boolean; verified?: boolean; similarity?: number; mfaToken?: string; error?: string }> {
+}): Promise<{ ok: boolean; verified?: boolean; notEnrolled?: boolean; similarity?: number; mfaToken?: string; error?: string }> {
   try {
     const res = await fetchWithTimeout(
       '/api/auth/biometric',
@@ -188,12 +194,18 @@ export async function verifyStaffFaceBiometric(params: {
     const json = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
       verified?: boolean;
+      notEnrolled?: boolean;
       similarity?: number;
       mfaToken?: string;
       error?: string;
     };
     if (!res.ok || !json.verified) {
-      return { ok: false, verified: false, error: json.error || 'Facial biometric verification did not match.' };
+      return {
+        ok: false,
+        verified: false,
+        notEnrolled: res.status === 404 || Boolean(json.notEnrolled),
+        error: json.error || 'Facial biometric verification did not match.',
+      };
     }
     return {
       ok: true,
@@ -267,6 +279,7 @@ export async function probeStaffFaceFrame(params: {
 export interface LiveLivenessSessionStartResult {
   ok: boolean;
   available: boolean;
+  notEnrolled?: boolean;
   sessionId?: string;
   region?: string;
   livenessToken?: string;
@@ -290,7 +303,12 @@ export async function startLiveLivenessSession(params: {
     );
     const json = (await res.json().catch(() => ({}))) as LiveLivenessSessionStartResult;
     if (!res.ok || !json.ok) {
-      return { ok: false, available: false, error: json.error || 'Could not start live verification.' };
+      return {
+        ok: false,
+        available: false,
+        notEnrolled: res.status === 404 || Boolean(json.notEnrolled),
+        error: json.error || 'Could not start live verification.',
+      };
     }
     return {
       ok: true,

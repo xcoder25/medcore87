@@ -2121,13 +2121,39 @@ test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts an
   const clientApiSrc = fs.readFileSync(path.join(OS_ROOT, 'src/lib/db/clientApi.ts'), 'utf8');
   assert.ok(clientApiSrc.includes('fetchJsonWithTimeout') && clientApiSrc.includes('25_000'));
 
+  const bioRouteSrc = fs.readFileSync(path.join(OS_ROOT, 'src/app/api/auth/biometric/route.ts'), 'utf8');
+  assert.ok(
+    bioRouteSrc.includes('notEnrolled: true'),
+    'biometric API must include notEnrolled: true when no face profile exists for verify/challenge'
+  );
+
+  const livenessRouteSrc = fs.readFileSync(path.join(OS_ROOT, 'src/app/api/auth/biometric/liveness/session/route.ts'), 'utf8');
+  assert.ok(
+    livenessRouteSrc.includes('notEnrolled: true'),
+    'liveness session verify route must return notEnrolled: true when face biometric is unenrolled'
+  );
+
   const bioClientSrc = fs.readFileSync(path.join(OS_ROOT, 'src/lib/biometricAuth.ts'), 'utf8');
   assert.ok(bioClientSrc.includes('fetchWithTimeout') && bioClientSrc.includes('10_000'));
+  assert.ok(
+    bioClientSrc.includes('notEnrolled: res.status === 404 || Boolean(json.notEnrolled)'),
+    'biometricAuth client helpers must propagate notEnrolled on 404 / unenrolled profiles'
+  );
+
+  const faceModalSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/FaceBiometricCaptureModal.tsx'), 'utf8');
+  assert.ok(
+    faceModalSrc.includes('onNotEnrolled?: (reason?: string) => void') && faceModalSrc.includes('if (ch.notEnrolled)'),
+    'FaceBiometricCaptureModal must auto-fallback via onNotEnrolled instead of stalling on unenrolled accounts'
+  );
 
   const authSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/AuthScreen.tsx'), 'utf8');
   assert.ok(authSrc.includes('ms = 25_000'), 'AuthScreen withTimeout default must be >= 25_000ms');
   assert.ok(authSrc.includes('apiLookupStaff(effectiveHospital.id, badgeQuery), 25_000'));
-  assert.ok(authSrc.includes('getStaffBiometricStatus(enrichedSession.badgeId'));
+  assert.ok(
+    authSrc.includes("enrichedSession.badgeId || enrichedSession.id || (isAdminAccount ? 'ADMIN' : '')") &&
+      authSrc.includes('getStaffBiometricStatus(effectiveBadge'),
+    'AuthScreen must align admin badge fallback with AdminSettings enrollment lookup'
+  );
   assert.ok(authSrc.includes('10_000'));
   assert.ok(authSrc.includes('initialFaceEnrolled={pendingMfaFaceEnrolled}'));
 
@@ -2136,11 +2162,20 @@ test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts an
   assert.ok(otpSrc.includes('10_000'), 'StaffEmailOtpModal biometric check timeout should be >= 10_000ms');
   assert.ok(otpSrc.includes('25_000'), 'StaffEmailOtpModal OTP send/verify fetch timeout should be >= 25_000ms');
   assert.ok(
-    otpSrc.includes('Face ID is not yet enrolled for this account') && otpSrc.includes('ensureOtpSent()'),
-    'StaffEmailOtpModal must auto-continue with Email OTP when Face ID is not yet enrolled'
+    otpSrc.includes('Face ID Not Enrolled — Switched Automatically to Email OTP') &&
+      otpSrc.includes('Face ID is not yet enrolled for this account') &&
+      otpSrc.includes('onNotEnrolled={') &&
+      otpSrc.includes('ensureOtpSent()'),
+    'StaffEmailOtpModal must indicate unenrolled admin/staff Face ID and auto-switch to Email OTP'
   );
   const otpStripped = otpSrc.replace(/^\s*(?:\/\/.*|\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\/)/gm, '');
   assert.equal(/\bAmazon\b|Rekognition|AWS S3|Aurora Postgres/i.test(otpStripped), false, 'StaffEmailOtpModal must stay vendor-neutral');
+
+  const adminSettingsSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/admin/AdminSettings.tsx'), 'utf8');
+  assert.ok(
+    adminSettingsSrc.includes('switches to Email OTP until you click Enroll Face ID here'),
+    'AdminSettings must clarify automatic Email OTP fallback until admin Face ID is enrolled'
+  );
 });
 
 test('clinicalSafetyEngine: NEWS2, qSOFA, Obstetric Shock Index, trajectory collapse, and deep Rx safety guard', () => {

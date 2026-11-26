@@ -64,7 +64,10 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
   onVerified,
   onCancel,
 }) => {
-  const badge = normBadge(session.badgeId || session.id || '');
+  const isAdminAccount =
+    ['hospital_admin', 'sysadmin', 'medical_director'].includes(String(session.role || '')) ||
+    Number(session.clearanceLevel ?? 0) >= 4;
+  const badge = normBadge(session.badgeId || session.id || (isAdminAccount ? 'ADMIN' : ''));
   const facilityId = session.hospitalId || 'IGH-EKT';
   const expiryMinutes = Math.max(2, Math.min(15, Number(settings.otpExpiryMinutes) || 5));
   const allowOfflineBackup = settings.allowMfaBackupCodeFallback !== false;
@@ -283,9 +286,11 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
         }
       } else if (ready && !cameraSupported) {
         setFaceStatusNote('camera_unavailable');
+        setTab('email_otp');
         ensureOtpSent();
       } else {
         setFaceStatusNote('not_enrolled');
+        setTab('email_otp');
         ensureOtpSent();
       }
     };
@@ -530,9 +535,11 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
               <ShieldCheck size={20} color="#93C5FD" />
             </div>
             <div>
-              <div style={{ fontSize: 15.5, fontWeight: 800 }}>Staff Two-Factor Verification</div>
+              <div style={{ fontSize: 15.5, fontWeight: 800 }}>
+                {isAdminAccount ? 'Administrator Two-Factor Verification' : 'Staff Two-Factor Verification'}
+              </div>
               <div style={{ fontSize: 12, color: '#BFDBFE' }}>
-                {session.name} · <span style={{ fontFamily: 'monospace' }}>{badge}</span>
+                {session.name} · <span style={{ fontFamily: 'monospace' }}>{badge || 'ADMIN'}</span>
               </div>
             </div>
           </div>
@@ -683,16 +690,28 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                 <div
                   style={{
                     marginBottom: 12,
-                    padding: '10px 12px',
+                    padding: '11px 13px',
                     borderRadius: 10,
-                    background: '#F8FAFC',
-                    border: '1px solid #E2E8F0',
-                    color: '#334155',
+                    background: isAdminAccount ? '#FFFBEB' : '#F8FAFC',
+                    border: isAdminAccount ? '1px solid #FDE68A' : '1px solid #E2E8F0',
+                    color: isAdminAccount ? '#92400E' : '#334155',
                     fontSize: 12,
-                    lineHeight: 1.45,
+                    lineHeight: 1.5,
                   }}
                 >
-                  Face ID is not yet enrolled for this account — continuing automatically with Email OTP until your administrator enrolls your Face ID.
+                  {isAdminAccount ? (
+                    <>
+                      <div style={{ fontWeight: 800, marginBottom: 3, color: '#78350F' }}>
+                        Face ID Not Enrolled — Switched Automatically to Email OTP
+                      </div>
+                      <div>
+                        Your administrator Face ID is not yet enrolled. Sign-in has switched automatically to Email OTP verification until you enroll your Face ID in{' '}
+                        <strong>Admin Settings → Security &amp; 2FA</strong>.
+                      </div>
+                    </>
+                  ) : (
+                    'Face ID is not yet enrolled for this account — continuing automatically with Email OTP until your administrator enrolls your Face ID.'
+                  )}
                 </div>
               )}
 
@@ -956,12 +975,23 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
         facilityId={facilityId}
         staffName={session.name}
         skipLabel="Use Email OTP Instead"
+        onNotEnrolled={() => {
+          setFaceModalOpen(false);
+          setFaceEnrolled(false);
+          setFaceStatusNote('not_enrolled');
+          setTab('email_otp');
+          setErrorMsg(null);
+          ensureOtpSent();
+        }}
         onSkipCameraUnavailable={() => {
           setFaceModalOpen(false);
+          setFaceStatusNote('camera_unavailable');
+          setTab('email_otp');
           ensureOtpSent();
         }}
         onClose={() => {
           setFaceModalOpen(false);
+          setTab('email_otp');
           ensureOtpSent();
         }}
         onVerified={(res) => {

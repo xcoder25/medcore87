@@ -771,13 +771,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onLoginSuccess 
     }
 
     const adminCfg = getAdminSettings(enrichedSession.hospitalId);
+    const isAdminAccount =
+      ['hospital_admin', 'sysadmin', 'medical_director'].includes(String(enrichedSession.role || '')) ||
+      Number(enrichedSession.clearanceLevel ?? 0) >= 4;
+    const effectiveBadge = String(
+      enrichedSession.badgeId || enrichedSession.id || (isAdminAccount ? 'ADMIN' : '')
+    ).trim();
+    if (effectiveBadge && !enrichedSession.badgeId) {
+      enrichedSession = { ...enrichedSession, badgeId: effectiveBadge };
+    }
     let mfaRequired = adminCfg.requireStaffMfa === true;
     let accountFaceEnrolled: boolean | null = null;
 
-    if (enrichedSession.badgeId) {
+    if (effectiveBadge) {
       try {
         const bioStatus = await Promise.race([
-          getStaffBiometricStatus(enrichedSession.badgeId, enrichedSession.hospitalId || 'IGH-EKT'),
+          getStaffBiometricStatus(effectiveBadge, enrichedSession.hospitalId || 'IGH-EKT'),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
         ]);
         if (bioStatus?.ok) {

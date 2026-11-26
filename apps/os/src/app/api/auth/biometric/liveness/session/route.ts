@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
       const existing = await getStoredBiometric(facilityId, badgeId);
       if (!existing?.face) {
         return NextResponse.json(
-          { ok: false, error: 'No facial biometric is enrolled for this staff member.' },
+          { ok: false, notEnrolled: true, error: 'No facial biometric is enrolled for this staff member.' },
           { status: 404 }
         );
       }

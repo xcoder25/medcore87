@@ -2431,7 +2431,7 @@ export const AdminSettings: React.FC<Props> = ({ session, onNavigate, initialTab
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
                       {adminFaceEnrolled
                         ? 'Your administrator Face ID is enrolled. 2FA verifies with Face ID at login and terminal unlock.'
-                        : 'Click Enroll Face ID to scan your face and immediately activate Face ID 2FA for your account and facility.'}
+                        : 'Not enrolled yet — 2FA sign-in automatically indicates this and switches to Email OTP until you click Enroll Face ID here.'}
                     </div>
                   </div>
                 </div>
