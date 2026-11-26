@@ -61,6 +61,7 @@ export function PatientAuthScreen({ onSuccess, onBack }: Props) {
       persona: 'patient',
       patientId: id,
       name: name.trim() || 'Patient',
+      facilityId: hospital.id,
       facility: hospital.name,
       phone: phone.trim() || undefined,
     });
@@ -337,11 +338,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   sheetWrap: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'flex-end',
   },
   sheetDim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   sheet: {

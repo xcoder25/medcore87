@@ -1,12 +1,41 @@
 /**
- * MedCore Mobile — unified Patient + Staff app (RBAC)
- * Formerly separate Care (patient) and Clinic (staff) apps.
+ * MedCore Mobile — Unified Liquid-Glass + RBAC Clinical & Patient App
+ * - Single UnifiedAuthScreen for EMR Staff/Admin login & Patient Sign-In / Create Account
+ * - Real-time bidirectional sync with MedCore OS (/api/patients, /api/staff, /api/facility/stream, /api/care/sync)
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  StyleSheet, Text, View, ScrollView, SafeAreaView, TouchableOpacity, StatusBar, Image, Platform,
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  SafeAreaView,
+  TouchableOpacity,
+  StatusBar,
+  Platform,
 } from 'react-native';
-import { PATIENTS, subscribe, startClinicRealtime, type Patient } from './services/clinicData';
+import {
+  PATIENTS,
+  subscribe,
+  startClinicRealtime,
+  hydratePatientsFromEmr,
+  type Patient,
+} from './services/clinicData';
+import {
+  fetchEmrPatients,
+  subscribeEmrFacilityStream,
+} from './services/emrSyncClient';
+import { C } from './theme';
+import {
+  AmbientGlowBackdrop,
+  LiquidGlassCard,
+  GlowButton,
+  LiveSyncPill,
+  LiquidTabBar,
+  type SyncState,
+  type LiquidTabItem,
+} from './components/ui/LiquidGlass';
+import { MedIcon, type MedIconName } from './components/ui/PremiumIcons';
 
 import { ClinicalWorkbench } from './components/workbench/ClinicalWorkbench';
 import { TaskTracker } from './components/tasks/TaskTracker';
@@ -26,45 +55,68 @@ import { Referrals } from './components/referrals/Referrals';
 import { NursingAssessments } from './components/nursing/NursingAssessments';
 import { EmergencyResponse } from './components/emergency/EmergencyResponse';
 import { PorteringRequest } from './components/portering/PorteringRequest';
-import { StaffAuthScreen, StaffSession } from './components/auth/StaffAuthScreen';
+import type { StaffSession } from './components/auth/StaffAuthScreen';
 import { PrescriptionWriter } from './components/pharmacy/PrescriptionWriter';
 import { StaffIdCardScreen } from './components/identity/StaffIdCardScreen';
 import { FacilityAdminHub } from './components/admin/FacilityAdminHub';
 
-import { UnifiedGate } from './auth/UnifiedGate';
-import { PatientAuthScreen } from './auth/PatientAuthScreen';
+import { UnifiedAuthScreen } from './auth/UnifiedAuthScreen';
 import { PatientShell } from './shells/PatientShell';
 import type { AppSession, PatientSession } from './auth/sessionTypes';
-import type { Persona } from './rbac/permissions';
 import { can, TOOL_PERMISSION, TAB_PERMISSION } from './rbac/permissions';
 
 type TabKey = 'admin' | 'ward' | 'patients' | 'tasks' | 'orders' | 'more';
-type Stage = 'gate' | 'patient-auth' | 'staff-auth' | 'app';
 
-const C = {
-  primary: '#1E3A8A', teal: '#0D9488', bg: '#F0F9FF', card: '#FFFFFF',
-  text: '#0F172A', muted: '#64748B', border: '#E2E8F0',
-  danger: '#EF4444', dangerSoft: '#FEF2F2', success: '#059669', successSoft: '#ECFDF5',
-  purple: '#7C3AED', purpleSoft: '#FAF5FF',
-};
+interface MoreToolDef {
+  k: string;
+  icon: MedIconName;
+  glow: string;
+  title: string;
+  desc: string;
+}
 
 export default function App() {
-  const [stage, setStage] = useState<Stage>('gate');
-  const [persona, setPersona] = useState<Persona | null>(null);
   const [session, setSession] = useState<AppSession | null>(null);
-
   const [selectedTab, setSelectedTab] = useState<TabKey>('ward');
   const [isRecordingAI, setIsRecordingAI] = useState(false);
   const [moreSection, setMoreSection] = useState<string | null>(null);
   const [patients, setPatients] = useState<Patient[]>(PATIENTS);
+  const [syncState, setSyncState] = useState<SyncState>('syncing');
+
+  const staffSession = session?.persona === 'staff' ? session : null;
+
+  const syncPatientsFromEmr = useCallback(async () => {
+    if (!staffSession) return;
+    setSyncState((prev) => (prev === 'live' ? 'live' : 'syncing'));
+    const res = await fetchEmrPatients(staffSession.facilityId, staffSession.sessionToken);
+    if (res.ok) {
+      hydratePatientsFromEmr(res.patients);
+      setSyncState('live');
+    } else if (!staffSession.sessionToken) {
+      setSyncState('offline');
+    }
+  }, [staffSession]);
 
   useEffect(() => {
-    if (session?.persona !== 'staff') return;
+    if (!staffSession) return;
     startClinicRealtime();
-    return subscribe(() => setPatients([...PATIENTS]));
-  }, [session?.persona]);
+    const unsubStore = subscribe(() => setPatients([...PATIENTS]));
+    void syncPatientsFromEmr();
+    const unsubStream = subscribeEmrFacilityStream(
+      staffSession.facilityId,
+      staffSession.sessionToken,
+      setSyncState,
+      () => {
+        void syncPatientsFromEmr();
+      }
+    );
+    return () => {
+      unsubStore();
+      unsubStream();
+    };
+  }, [staffSession, syncPatientsFromEmr]);
 
-  const staffRole = session?.persona === 'staff' ? session.roleKey : undefined;
+  const staffRole = staffSession?.roleKey;
 
   const allowedTabs = useMemo(() => {
     return (['admin', 'ward', 'patients', 'tasks', 'orders', 'more'] as TabKey[]).filter((t) =>
@@ -73,86 +125,70 @@ export default function App() {
   }, [staffRole]);
 
   useEffect(() => {
-    if (session?.persona === 'staff' && allowedTabs.length && !allowedTabs.includes(selectedTab)) {
+    if (staffSession && allowedTabs.length && !allowedTabs.includes(selectedTab)) {
       setSelectedTab(allowedTabs[0]);
     }
-  }, [allowedTabs, selectedTab, session?.persona]);
+  }, [allowedTabs, selectedTab, staffSession]);
 
   const signOut = () => {
     setSession(null);
-    setPersona(null);
-    setStage('gate');
     setMoreSection(null);
+    setIsRecordingAI(false);
+    setSelectedTab('ward');
   };
 
-  if (stage === 'gate') {
+  if (!session) {
     return (
-      <UnifiedGate
-        onSelect={(p) => {
-          setPersona(p);
-          setStage(p === 'patient' ? 'patient-auth' : 'staff-auth');
-        }}
-      />
-    );
-  }
-
-  if (stage === 'patient-auth') {
-    return (
-      <PatientAuthScreen
-        onBack={() => setStage('gate')}
-        onSuccess={(s: PatientSession) => {
-          setSession(s);
-          setStage('app');
-        }}
-      />
-    );
-  }
-
-  if (stage === 'staff-auth') {
-    return (
-      <StaffAuthScreen
-        onLoginSuccess={(s: StaffSession) => {
+      <UnifiedAuthScreen
+        onStaffLogin={(s: StaffSession) => {
           setSession({ ...s, persona: 'staff' });
-          setStage('app');
+          setMoreSection(null);
+          setSelectedTab(can('staff', s.roleKey, 'staff.admin_hub') ? 'admin' : 'ward');
+        }}
+        onPatientAuth={(s: PatientSession) => {
+          setSession(s);
+          setMoreSection(null);
         }}
       />
     );
   }
 
-  if (session?.persona === 'patient') {
+  if (session.persona === 'patient') {
     return <PatientShell session={session} onSignOut={signOut} />;
-  }
-
-  if (!session || session.persona !== 'staff') {
-    return null;
   }
 
   const staff = session;
 
-  const moreItems = [
-    { k: 'admin-hub', icon: '🏛️', title: 'Facility Admin Hub', desc: 'Staff enrolment, directory & EMR policies' },
-    { k: 'staff-enrol', icon: '🪪', title: 'Enrol Facility Staff', desc: 'Issue facility-scoped staff badge & PIN' },
-    { k: 'emar', icon: '💊', title: 'eMAR', desc: 'Record drug administration' },
-    { k: 'prescription', icon: '🖊', title: 'e-Prescription Writer', desc: 'Issue digital Rx · Route to pharmacy' },
-    { k: 'notes', icon: '📝', title: 'Progress Notes', desc: 'Clinical documentation & SOAP' },
-    { k: 'results', icon: '🧪', title: 'Results Review', desc: 'Lab & Imaging acknowledgment' },
-    { k: 'discharge', icon: '🚪', title: 'Discharge & ADT', desc: 'Discharge checklist & bed board' },
-    { k: 'theatre', icon: '🏥', title: 'Theatre List', desc: "Today's operating theatre cases" },
-    { k: 'referrals', icon: '📤', title: 'Referrals', desc: 'Internal & external referrals' },
-    { k: 'nursing', icon: '🩺', title: 'Nursing Assessments', desc: 'Pain, fall risk, I&O, wounds' },
-    { k: 'emergency', icon: '🚨', title: 'Emergency Response', desc: 'Code Blue & Rapid Response' },
-    { k: 'portering', icon: '🛏️', title: 'Portering & Transport', desc: 'Patient & specimen transport' },
-    { k: 'handover', icon: '🔄', title: 'Handover Notes (SBAR)', desc: 'Structured shift handovers' },
-    { k: 'chat', icon: '💬', title: 'Secure Team Chat', desc: 'Encrypted clinical messaging' },
-    { k: 'roster', icon: '📅', title: 'Rostering & Shifts', desc: 'On-call coverage & fatigue risk' },
-    { k: 'alerts', icon: '🔔', title: 'Clinical Alerts', desc: 'Panic values & STAT notifications' },
-    { k: 'assistant', icon: '🤖', title: 'Doctor Assistant (M87)', desc: 'SOAP, ICD-10 & discharge drafts' },
-    { k: 'activity', icon: '📊', title: 'Activity Overview', desc: 'Caseload & documentation metrics' },
-    { k: 'staff-id', icon: '🪪', title: 'My Staff ID Card', desc: 'Badge linked to OS enrolment & auth' },
-  ].filter((item) => {
+  const moreItems: MoreToolDef[] = (
+    [
+      { k: 'admin-hub', icon: 'building', glow: C.glowBlue, title: 'Facility Admin Hub', desc: 'Staff enrolment, directory & EMR policies' },
+      { k: 'staff-enrol', icon: 'user-plus', glow: C.glowCyan, title: 'Enrol Facility Staff', desc: 'Issue facility-scoped staff badge & PIN' },
+      { k: 'emar', icon: 'pill', glow: C.glowEmerald, title: 'eMAR', desc: 'Record drug administration' },
+      { k: 'prescription', icon: 'clipboard', glow: C.glowBlue, title: 'e-Prescription Writer', desc: 'Issue digital Rx · Route to pharmacy' },
+      { k: 'notes', icon: 'clipboard', glow: C.glowCyan, title: 'Progress Notes', desc: 'Clinical documentation & SOAP' },
+      { k: 'results', icon: 'lab', glow: C.glowViolet, title: 'Results Review', desc: 'Lab & Imaging acknowledgment' },
+      { k: 'discharge', icon: 'arrow-right', glow: C.glowAmber, title: 'Discharge & ADT', desc: 'Discharge checklist & bed board' },
+      { k: 'theatre', icon: 'activity', glow: C.glowRose, title: 'Theatre List', desc: "Today's operating theatre cases" },
+      { k: 'referrals', icon: 'users', glow: C.glowBlue, title: 'Referrals', desc: 'Internal & external referrals' },
+      { k: 'nursing', icon: 'stethoscope', glow: C.glowEmerald, title: 'Nursing Assessments', desc: 'Pain, fall risk, I&O, wounds' },
+      { k: 'emergency', icon: 'bell', glow: C.glowRose, title: 'Emergency Response', desc: 'Code Blue & Rapid Response' },
+      { k: 'portering', icon: 'activity', glow: C.glowAmber, title: 'Portering & Transport', desc: 'Patient & specimen transport' },
+      { k: 'handover', icon: 'sync', glow: C.glowCyan, title: 'Handover Notes (SBAR)', desc: 'Structured shift handovers' },
+      { k: 'chat', icon: 'sparkles', glow: C.glowViolet, title: 'Secure Team Chat', desc: 'Encrypted clinical messaging' },
+      { k: 'roster', icon: 'calendar', glow: C.glowBlue, title: 'Rostering & Shifts', desc: 'On-call coverage & fatigue risk' },
+      { k: 'alerts', icon: 'bell', glow: C.glowAmber, title: 'Clinical Alerts', desc: 'Panic values & STAT notifications' },
+      { k: 'assistant', icon: 'sparkles', glow: C.glowViolet, title: 'Doctor Assistant (M87)', desc: 'SOAP, ICD-10 & discharge drafts' },
+      { k: 'activity', icon: 'activity', glow: C.glowEmerald, title: 'Activity Overview', desc: 'Caseload & documentation metrics' },
+      { k: 'staff-id', icon: 'card', glow: C.glowCyan, title: 'My Staff ID Card', desc: 'Badge linked to OS enrolment & auth' },
+    ] as MoreToolDef[]
+  ).filter((item) => {
     const perm = TOOL_PERMISSION[item.k];
     return perm ? can('staff', staff.roleKey, perm) : false;
   });
+
+  const renderLegacyToolSurface = (node: React.ReactNode) => (
+    <View style={styles.legacyToolSurface}>{node}</View>
+  );
 
   const renderMoreBody = () => {
     if (moreSection === 'admin-hub' || moreSection === 'staff-enrol') {
@@ -163,216 +199,365 @@ export default function App() {
         />
       );
     }
-    if (moreSection === 'emar') return <MedicationAdmin />;
-    if (moreSection === 'prescription') return <PrescriptionWriter />;
-    if (moreSection === 'notes') return <ProgressNotes />;
-    if (moreSection === 'results') return <ResultsReview />;
-    if (moreSection === 'discharge') return <DischargeADT />;
-    if (moreSection === 'theatre') return <TheatreList />;
-    if (moreSection === 'referrals') return <Referrals />;
-    if (moreSection === 'nursing') return <NursingAssessments />;
-    if (moreSection === 'emergency') return <EmergencyResponse />;
-    if (moreSection === 'portering') return <PorteringRequest />;
-    if (moreSection === 'handover') return <HandoverNotes />;
-    if (moreSection === 'chat') return <SecureTeamChat />;
-    if (moreSection === 'roster') return <RosteringManagement />;
-    if (moreSection === 'alerts') return <ClinicalAlerts />;
-    if (moreSection === 'assistant') return <DoctorAssistant />;
-    if (moreSection === 'activity') return <ActivityOverview />;
-    if (moreSection === 'staff-id') return <StaffIdCardScreen session={staff} />;
+    if (moreSection === 'staff-id') {
+      return <StaffIdCardScreen session={staff} onBack={() => setMoreSection(null)} />;
+    }
+    if (moreSection === 'emar') return renderLegacyToolSurface(<MedicationAdmin />);
+    if (moreSection === 'prescription') return renderLegacyToolSurface(<PrescriptionWriter />);
+    if (moreSection === 'notes') return renderLegacyToolSurface(<ProgressNotes />);
+    if (moreSection === 'results') return renderLegacyToolSurface(<ResultsReview />);
+    if (moreSection === 'discharge') return renderLegacyToolSurface(<DischargeADT />);
+    if (moreSection === 'theatre') return renderLegacyToolSurface(<TheatreList />);
+    if (moreSection === 'referrals') return renderLegacyToolSurface(<Referrals />);
+    if (moreSection === 'nursing') return renderLegacyToolSurface(<NursingAssessments />);
+    if (moreSection === 'emergency') return renderLegacyToolSurface(<EmergencyResponse />);
+    if (moreSection === 'portering') return renderLegacyToolSurface(<PorteringRequest />);
+    if (moreSection === 'handover') return renderLegacyToolSurface(<HandoverNotes />);
+    if (moreSection === 'chat') return renderLegacyToolSurface(<SecureTeamChat />);
+    if (moreSection === 'roster') return renderLegacyToolSurface(<RosteringManagement />);
+    if (moreSection === 'alerts') return renderLegacyToolSurface(<ClinicalAlerts />);
+    if (moreSection === 'assistant') return renderLegacyToolSurface(<DoctorAssistant />);
+    if (moreSection === 'activity') return renderLegacyToolSurface(<ActivityOverview />);
+
     return (
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 112 }}
+      >
         <Text style={styles.sectionTitle}>Tools for {staff.role}</Text>
-        <Text style={{ color: C.muted, marginBottom: 12, fontSize: 12 }}>
-          Access controlled by your role · {moreItems.length} tools available
+        <Text style={styles.sectionSub}>
+          RBAC active · {moreItems.length} clinical module(s) · {staff.facilityId}
         </Text>
+
         {moreItems.map((item) => (
-          <TouchableOpacity key={item.k} style={styles.moreCard} onPress={() => setMoreSection(item.k)} activeOpacity={0.85}>
-            <View style={styles.moreIconBox}><Text style={{ fontSize: 22 }}>{item.icon}</Text></View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.moreTitle}>{item.title}</Text>
-              <Text style={styles.moreDesc}>{item.desc}</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
+          <TouchableOpacity
+            key={item.k}
+            onPress={() => setMoreSection(item.k)}
+            activeOpacity={0.85}
+            style={{ marginBottom: 10 }}
+          >
+            <LiquidGlassCard glowColor={item.glow} style={styles.moreCardInner}>
+              <MedIcon name={item.icon} size={20} color="#F8FAFC" glowColor={item.glow} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.moreTitle}>{item.title}</Text>
+                <Text style={styles.moreDesc}>{item.desc}</Text>
+              </View>
+              <MedIcon name="arrow-right" size={16} color={C.muted} badge={false} />
+            </LiquidGlassCard>
           </TouchableOpacity>
         ))}
+
         {moreItems.length === 0 && (
-          <Text style={{ color: C.muted }}>No extra tools for this role.</Text>
+          <LiquidGlassCard glowColor={C.glowAmber} style={{ marginBottom: 12 }}>
+            <Text style={styles.moreDesc}>No extra tools assigned for this role.</Text>
+          </LiquidGlassCard>
         )}
-        <TouchableOpacity style={[styles.moreCard, { marginTop: 8 }]} onPress={signOut}>
-          <Text style={{ color: C.danger, fontWeight: '800' }}>Sign out</Text>
-        </TouchableOpacity>
+
+        <View style={{ marginTop: 8 }}>
+          <GlowButton
+            label="Lock Session & Sign Out"
+            variant="danger"
+            icon="logout"
+            onPress={signOut}
+          />
+        </View>
       </ScrollView>
     );
   };
 
   const renderWard = () => (
-    <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
-      <View style={styles.alertBanner}>
-        <View style={styles.alertIconWrap}><Text style={{ fontSize: 20 }}>🚨</Text></View>
+    <ScrollView
+      style={styles.content}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingBottom: 112 }}
+    >
+      <LiquidGlassCard glowColor={C.glowCyan} intensity="strong" animateIn style={styles.bannerCard}>
+        <MedIcon name="activity" size={20} color="#38BDF8" glowColor={C.glowCyan} />
         <View style={{ flex: 1 }}>
-          <Text style={styles.alertTitle}>Live ward</Text>
-          <Text style={styles.alertDesc}>Alerts and patients appear as the hospital hub syncs data.</Text>
+          <Text style={styles.bannerTitle}>Live Ward Telemetry</Text>
+          <Text style={styles.bannerDesc}>
+            {syncState === 'live'
+              ? `Synced in real time with MedCore OS (${staff.facilityId}).`
+              : syncState === 'syncing'
+              ? 'Synchronizing inpatient roster with MedCore OS…'
+              : 'Offline mobile cache active — mutations queue automatically.'}
+          </Text>
         </View>
-      </View>
+      </LiquidGlassCard>
 
       {can('staff', staff.roleKey, 'staff.assistant') && (
-        <View style={styles.aiCard}>
+        <LiquidGlassCard glowColor={isRecordingAI ? C.glowRose : C.glowViolet} style={styles.aiCard}>
           <View style={styles.aiHeader}>
-            <View>
-              <Text style={styles.aiTitle}>M87 Ambient Assistant</Text>
-              <Text style={styles.aiSub}>AI SOAP Generator</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+              <MedIcon
+                name="sparkles"
+                size={18}
+                color="#F8FAFC"
+                glowColor={isRecordingAI ? C.glowRose : C.glowViolet}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.aiTitle}>M87 Ambient Assistant</Text>
+                <Text style={styles.aiSub}>AI SOAP & Clinical Summary Drafts</Text>
+              </View>
             </View>
             <View style={[styles.livePill, isRecordingAI && styles.livePillOn]}>
-              <Text style={[styles.liveText, isRecordingAI && styles.liveTextOn]}>{isRecordingAI ? '● LIVE' : 'Ready'}</Text>
+              <Text style={[styles.liveText, isRecordingAI && styles.liveTextOn]}>
+                {isRecordingAI ? '● LIVE' : 'READY'}
+              </Text>
             </View>
           </View>
           <Text style={styles.aiDesc}>
-            {isRecordingAI ? 'Listening & drafting structured SOAP notes…' : 'Tap to start ambient recording during bedside rounds.'}
+            {isRecordingAI
+              ? 'Listening and structuring bedside SOAP notes for this shift…'
+              : 'Tap below to capture ambient bedside rounds and draft structured notes.'}
           </Text>
-          <TouchableOpacity style={[styles.aiBtn, isRecordingAI && styles.aiBtnOn]} onPress={() => setIsRecordingAI(!isRecordingAI)} activeOpacity={0.85}>
-            <Text style={styles.aiBtnText}>{isRecordingAI ? 'Stop & Generate SOAP Note' : 'Start Ambient Ward Round'}</Text>
-          </TouchableOpacity>
-        </View>
+          <GlowButton
+            label={isRecordingAI ? 'Stop & Generate SOAP Note' : 'Start Ambient Ward Round'}
+            variant={isRecordingAI ? 'danger' : 'violet'}
+            icon="sparkles"
+            onPress={() => setIsRecordingAI((v) => !v)}
+          />
+        </LiquidGlassCard>
       )}
 
-      <Text style={styles.sectionTitle}>On this shift · {patients.length} patient(s) in list</Text>
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionTitle}>On This Shift · {patients.length} patient(s)</Text>
+        <TouchableOpacity onPress={() => void syncPatientsFromEmr()} activeOpacity={0.8}>
+          <Text style={styles.refreshLink}>Refresh</Text>
+        </TouchableOpacity>
+      </View>
+
       {patients.length === 0 && (
-        <Text style={{ color: C.muted, marginBottom: 12 }}>No patients loaded yet — hub will fill this list.</Text>
+        <LiquidGlassCard glowColor={C.glowBlue} style={{ marginBottom: 12 }}>
+          <Text style={styles.moreDesc}>No patients loaded yet — EMR sync will populate this ward list.</Text>
+        </LiquidGlassCard>
       )}
-      {patients.slice(0, 8).map((p) => (
-        <View key={p.id || p.name} style={styles.patientCard}>
+
+      {patients.slice(0, 12).map((p) => (
+        <LiquidGlassCard key={p.id || p.name} glowColor={C.glowCyan} style={styles.patientCard}>
           <View style={styles.patientTop}>
-            <View>
-              <Text style={styles.bedTag}>{p.bed || p.ward || 'Ward'}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bedTag}>{p.bed || p.ward || 'General Ward'}</Text>
               <Text style={styles.patientName}>{p.name}</Text>
-              <Text style={styles.dx}>{p.dx || '—'}</Text>
+              <Text style={styles.dx}>{p.dx || 'Active inpatient care'}</Text>
+            </View>
+            <View style={styles.statusChip}>
+              <Text style={styles.statusChipText}>INPATIENT</Text>
             </View>
           </View>
-        </View>
+        </LiquidGlassCard>
       ))}
     </ScrollView>
   );
 
+  const tabItems: LiquidTabItem<TabKey>[] = (
+    [
+      { key: 'admin', icon: 'building', label: 'Admin' },
+      { key: 'ward', icon: 'activity', label: 'Ward' },
+      { key: 'patients', icon: 'users', label: 'Patients' },
+      { key: 'tasks', icon: 'check', label: 'Tasks' },
+      { key: 'orders', icon: 'clipboard', label: 'Orders' },
+      { key: 'more', icon: 'grid', label: 'More' },
+    ] as LiquidTabItem<TabKey>[]
+  ).filter((t) => allowedTabs.includes(t.key));
+
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={C.primary} />
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View>
-            <Text style={styles.brand}>MedCore Staff</Text>
-            <Text style={styles.doctor}>{staff.name}</Text>
-            <Text style={styles.ward}>{staff.role} · {staff.facility}</Text>
+      <StatusBar barStyle="light-content" backgroundColor={C.canvas} />
+      <AmbientGlowBackdrop variant="clinical" />
+
+      <View style={styles.headerWrap}>
+        <LiquidGlassCard glowColor={C.glowBlue} intensity="strong" style={styles.headerCard}>
+          <View style={styles.headerLeft}>
+            <MedIcon
+              name={staff.roleKey === 'hospital_admin' ? 'shield' : 'stethoscope'}
+              size={20}
+              color="#F8FAFC"
+              glowColor={staff.roleKey === 'hospital_admin' ? C.glowViolet : C.glowCyan}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.brand}>MEDCORE STAFF · {staff.facilityId}</Text>
+              <Text style={styles.doctor} numberOfLines={1}>{staff.name}</Text>
+              <Text style={styles.ward} numberOfLines={1}>{staff.role} · {staff.facility}</Text>
+            </View>
           </View>
-        </View>
-        <View style={styles.onDuty}>
-          <View style={styles.dot} />
-          <Text style={styles.onDutyText}>ON DUTY</Text>
-        </View>
+          <View style={styles.headerActions}>
+            <LiveSyncPill state={syncState} onPress={() => void syncPatientsFromEmr()} />
+            <TouchableOpacity style={styles.lockBtn} onPress={signOut} activeOpacity={0.8}>
+              <MedIcon name="logout" size={14} color="#FCA5A5" badge={false} />
+            </TouchableOpacity>
+          </View>
+        </LiquidGlassCard>
       </View>
 
-      {selectedTab === 'admin' && can('staff', staff.roleKey, 'staff.admin_hub') && (
-        <FacilityAdminHub
-          session={staff}
-          onOpenTool={(toolKey) => {
-            setSelectedTab('more');
-            setMoreSection(toolKey);
-          }}
-        />
-      )}
-      {selectedTab === 'ward' && can('staff', staff.roleKey, 'staff.ward') && renderWard()}
-      {selectedTab === 'patients' && can('staff', staff.roleKey, 'staff.patients') && <ClinicalWorkbench />}
-      {selectedTab === 'tasks' && can('staff', staff.roleKey, 'staff.tasks') && <TaskTracker />}
-      {selectedTab === 'orders' && can('staff', staff.roleKey, 'staff.orders') && <OrderEntryReview />}
-      {selectedTab === 'more' && renderMoreBody()}
+      <View style={styles.body}>
+        {selectedTab === 'admin' && can('staff', staff.roleKey, 'staff.admin_hub') && (
+          <FacilityAdminHub
+            session={staff}
+            onOpenTool={(toolKey) => {
+              setSelectedTab('more');
+              setMoreSection(toolKey);
+            }}
+          />
+        )}
+        {selectedTab === 'ward' && can('staff', staff.roleKey, 'staff.ward') && renderWard()}
+        {selectedTab === 'patients' &&
+          can('staff', staff.roleKey, 'staff.patients') &&
+          renderLegacyToolSurface(<ClinicalWorkbench />)}
+        {selectedTab === 'tasks' &&
+          can('staff', staff.roleKey, 'staff.tasks') &&
+          renderLegacyToolSurface(<TaskTracker />)}
+        {selectedTab === 'orders' &&
+          can('staff', staff.roleKey, 'staff.orders') &&
+          renderLegacyToolSurface(<OrderEntryReview />)}
+        {selectedTab === 'more' && renderMoreBody()}
+      </View>
 
       {moreSection ? (
-        <TouchableOpacity
-          style={{ backgroundColor: '#FFF', padding: 12, borderTopWidth: 1, borderTopColor: C.border }}
-          onPress={() => setMoreSection(null)}
-        >
-          <Text style={{ textAlign: 'center', fontWeight: '700', color: C.primary }}>← Back to tools</Text>
-        </TouchableOpacity>
-      ) : (
-        <View style={styles.tabBar}>
-          {(
-            [
-              { k: 'admin' as const, icon: '🏛️', label: 'Admin' },
-              { k: 'ward' as const, icon: '🏥', label: 'Ward' },
-              { k: 'patients' as const, icon: '👥', label: 'Patients' },
-              { k: 'tasks' as const, icon: '✅', label: 'Tasks' },
-              { k: 'orders' as const, icon: '📋', label: 'Orders' },
-              { k: 'more' as const, icon: '☰', label: 'More' },
-            ] as const
-          )
-            .filter((t) => allowedTabs.includes(t.k))
-            .map((t) => {
-              const active = selectedTab === t.k;
-              return (
-                <TouchableOpacity
-                  key={t.k}
-                  style={styles.tabItem}
-                  onPress={() => {
-                    setSelectedTab(t.k);
-                    setMoreSection(null);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.tabIcon, active && styles.tabIconOn]}>{t.icon}</Text>
-                  <Text style={[styles.tabLabel, active && styles.tabLabelOn]}>{t.label}</Text>
-                  {active && <View style={styles.tabDot} />}
-                </TouchableOpacity>
-              );
-            })}
+        <View style={styles.backDockWrap}>
+          <GlowButton
+            label="Back to Clinical Tools"
+            variant="glass"
+            icon="back"
+            onPress={() => setMoreSection(null)}
+          />
         </View>
+      ) : (
+        <LiquidTabBar
+          items={tabItems}
+          activeKey={selectedTab}
+          onSelect={(k) => {
+            setSelectedTab(k);
+            setMoreSection(null);
+          }}
+          accentColor={selectedTab === 'admin' ? C.glowViolet : C.glowCyan}
+        />
       )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.primary },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: C.primary },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  brand: { color: '#93C5FD', fontSize: 11, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' },
-  doctor: { color: '#FFF', fontSize: 16, fontWeight: '700', marginTop: 1 },
-  ward: { color: '#BFDBFE', fontSize: 12, marginTop: 1 },
-  onDuty: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(16,185,129,0.18)', borderWidth: 1, borderColor: '#34D399', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
-  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#34D399' },
-  onDutyText: { color: '#A7F3D0', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
-  content: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 16, paddingTop: 16 },
-  alertBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.dangerSoft, borderRadius: 16, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: '#FECACA' },
-  alertIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  alertTitle: { fontSize: 13, fontWeight: '800', color: '#991B1B' },
-  alertDesc: { fontSize: 12, color: '#7F1D1D', marginTop: 2, lineHeight: 17 },
-  aiCard: { backgroundColor: C.purpleSoft, borderRadius: 18, padding: 16, marginBottom: 18, borderWidth: 1, borderColor: '#E9D5FF' },
-  aiHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  aiTitle: { fontSize: 15, fontWeight: '700', color: '#581C87' },
-  aiSub: { fontSize: 11, color: '#7E22CE', marginTop: 1, fontWeight: '600' },
-  livePill: { backgroundColor: '#F3E8FF', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  livePillOn: { backgroundColor: '#FEE2E2' },
-  liveText: { fontSize: 11, fontWeight: '800', color: '#7E22CE' },
-  liveTextOn: { color: '#DC2626' },
-  aiDesc: { fontSize: 13, color: '#6B21A8', lineHeight: 19, marginBottom: 14 },
-  aiBtn: { backgroundColor: C.purple, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
-  aiBtnOn: { backgroundColor: C.danger },
-  aiBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
-  sectionTitle: { fontSize: 14, fontWeight: '800', color: C.text, marginBottom: 12, marginTop: 4, letterSpacing: 0.2 },
-  patientCard: { backgroundColor: C.card, borderRadius: 18, padding: 16, marginBottom: 12, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
-  patientTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  bedTag: { fontSize: 11, fontWeight: '800', color: C.teal, letterSpacing: 0.3 },
-  patientName: { fontSize: 16, fontWeight: '700', color: C.text, marginTop: 3 },
+  safe: { flex: 1, backgroundColor: C.canvas },
+  headerWrap: {
+    paddingHorizontal: 14,
+    paddingTop: Platform.OS === 'android' ? 10 : 6,
+    paddingBottom: 8,
+  },
+  headerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 11, flex: 1 },
+  brand: {
+    color: C.glowCyan,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  doctor: { color: '#F8FAFC', fontSize: 16, fontWeight: '800', marginTop: 1 },
+  ward: { color: C.muted, fontSize: 11, fontWeight: '600', marginTop: 1 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  lockBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(244, 63, 94, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(251, 113, 133, 0.35)',
+  },
+  body: { flex: 1 },
+  content: { flex: 1, paddingHorizontal: 14, paddingTop: 6 },
+  legacyToolSurface: {
+    flex: 1,
+    marginHorizontal: 10,
+    marginBottom: 86,
+    borderRadius: 22,
+    overflow: 'hidden',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  bannerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  bannerTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '800' },
+  bannerDesc: { color: '#CBD5E1', fontSize: 12, marginTop: 2, lineHeight: 17 },
+  aiCard: { marginBottom: 18 },
+  aiHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  aiTitle: { fontSize: 15, fontWeight: '800', color: '#F8FAFC' },
+  aiSub: { fontSize: 11, color: '#C4B5FD', marginTop: 1, fontWeight: '600' },
+  livePill: {
+    backgroundColor: 'rgba(139, 92, 246, 0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.4)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  livePillOn: {
+    backgroundColor: 'rgba(244, 63, 94, 0.22)',
+    borderColor: 'rgba(251, 113, 133, 0.5)',
+  },
+  liveText: { fontSize: 10, fontWeight: '900', color: '#DDD6FE', letterSpacing: 0.6 },
+  liveTextOn: { color: '#FDA4AF' },
+  aiDesc: { fontSize: 13, color: '#CBD5E1', lineHeight: 19, marginBottom: 14 },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#F8FAFC',
+    letterSpacing: 0.3,
+  },
+  sectionSub: { color: C.muted, marginBottom: 12, fontSize: 12 },
+  refreshLink: { color: C.glowCyan, fontSize: 12, fontWeight: '800' },
+  patientCard: { marginBottom: 10 },
+  patientTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  bedTag: { fontSize: 11, fontWeight: '800', color: C.glowCyan, letterSpacing: 0.4 },
+  patientName: { fontSize: 16, fontWeight: '800', color: '#F8FAFC', marginTop: 3 },
   dx: { fontSize: 12, color: C.muted, marginTop: 3, lineHeight: 17 },
-  moreCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 16, padding: 16, marginBottom: 10, shadowColor: '#0F172A', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  moreIconBox: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#DBEAFE', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
-  moreTitle: { fontSize: 15, fontWeight: '700', color: C.text },
+  statusChip: {
+    backgroundColor: 'rgba(16, 185, 129, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.4)',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  statusChipText: { color: '#6EE7B7', fontSize: 10, fontWeight: '900', letterSpacing: 0.6 },
+  moreCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  moreTitle: { fontSize: 15, fontWeight: '800', color: '#F8FAFC' },
   moreDesc: { fontSize: 12, color: C.muted, marginTop: 2 },
-  chevron: { fontSize: 22, color: '#CBD5E1', fontWeight: '300' },
-  tabBar: { flexDirection: 'row', backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: C.border, paddingTop: 8, paddingBottom: Platform.OS === 'ios' ? 20 : 10, shadowColor: '#0F172A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: -4 }, elevation: 12 },
-  tabItem: { flex: 1, alignItems: 'center', paddingVertical: 4 },
-  tabIcon: { fontSize: 20, color: '#94A3B8' },
-  tabIconOn: { color: C.primary },
-  tabLabel: { fontSize: 10, color: '#94A3B8', marginTop: 3, fontWeight: '600' },
-  tabLabelOn: { color: C.primary, fontWeight: '800' },
-  tabDot: { width: 18, height: 3, borderRadius: 2, backgroundColor: C.teal, marginTop: 5 },
+  backDockWrap: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: Platform.OS === 'ios' ? 20 : 12,
+  },
 });

@@ -5,9 +5,13 @@ export type { StaffSession };
 
 export interface PatientSession {
   patientId: string;
+  shid?: string;
   name: string;
+  facilityId: string;
   facility: string;
   phone?: string;
+  email?: string;
+  emrSynced?: boolean;
   persona: 'patient';
 }
 

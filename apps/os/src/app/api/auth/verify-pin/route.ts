@@ -4,6 +4,7 @@ import { hashPin, isPostgresConfigured } from '../../../../lib/db/postgres';
 import { findStaffAnyFacility, getStaff, upsertStaff } from '../../../../lib/db/staffRepo';
 import { getAdminAuth } from '../../../../lib/firebaseAdmin';
 import { checkRateLimit, getClientIp } from '../../../../lib/rateLimit';
+import { SESSION_COOKIE_NAME, signSessionToken } from '../../../../lib/serverSession';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -203,14 +204,58 @@ export async function POST(req: NextRequest) {
               }
             }
 
-            return NextResponse.json({
+            if (!verified) {
+              return NextResponse.json({
+                ok: true,
+                configured: true,
+                hasPinHash: true,
+                accountFound: true,
+                verified: false,
+                source: 'postgres',
+              });
+            }
+
+            const staffProfile = {
+              badgeId: String(effectiveRow.badge_id || badgeId || '').trim().toUpperCase(),
+              name: String(effectiveRow.full_name || effectiveRow.badge_id || 'Staff').trim(),
+              role: String(effectiveRow.role || 'Staff').trim(),
+              roleKey: String(effectiveRow.role_key || 'doctor').trim().toLowerCase(),
+              title: String(effectiveRow.title || effectiveRow.role || 'Staff').trim(),
+              department: String(effectiveRow.department || 'Clinical Operations').trim(),
+              facilityId: String(effectiveRow.facility_id || facilityId || 'IGH-EKT').trim().toUpperCase(),
+              clearanceLevel: Number(effectiveRow.clearance_level ?? 2),
+              email: (effectiveRow.email ? String(effectiveRow.email).trim().toLowerCase() : cleanEmail) || undefined,
+              photoUrl: effectiveRow.photo_url ? String(effectiveRow.photo_url) : undefined,
+            };
+
+            const sessionToken = await signSessionToken({
+              badgeId: staffProfile.badgeId,
+              name: staffProfile.name,
+              roleKey: staffProfile.roleKey,
+              role: staffProfile.role,
+              facilityId: staffProfile.facilityId,
+              clearanceLevel: staffProfile.clearanceLevel,
+              mfaVerified: false,
+            });
+
+            const res = NextResponse.json({
               ok: true,
               configured: true,
               hasPinHash: true,
               accountFound: true,
-              verified,
+              verified: true,
               source: 'postgres',
+              sessionToken,
+              staff: staffProfile,
             });
+            res.cookies?.set?.(SESSION_COOKIE_NAME, sessionToken, {
+              httpOnly: true,
+              sameSite: 'lax',
+              path: '/',
+              maxAge: 12 * 3600,
+              secure: process.env.NODE_ENV === 'production',
+            });
+            return res;
           }
         }
       } catch (pgErr) {
@@ -277,45 +322,60 @@ export async function POST(req: NextRequest) {
       }
 
       if (fbRes.ok) {
+        const fbPrimaryUser =
+          fbLookup?.fbUser ||
+          (adminAuth ? await adminAuth.getUserByEmail(candidateEmail).catch(() => null) : null);
+        const claims = (fbPrimaryUser?.customClaims || {}) as Record<string, unknown>;
+        const resolvedBadge = String(
+          effectiveRow?.badge_id || claims.badgeId || fbLookup?.resolvedBadge || badgeId || ''
+        )
+          .trim()
+          .toUpperCase();
+        const fbBadgeFallback =
+          fbLookup?.badgeUser ||
+          (adminAuth &&
+          resolvedBadge &&
+          (!fbPrimaryUser ||
+            !fbPrimaryUser.displayName ||
+            fbPrimaryUser.displayName.trim().toUpperCase() === resolvedBadge)
+            ? await adminAuth.getUserByEmail(badgeAuthEmail(resolvedBadge)).catch(() => null)
+            : null);
+        const badgeClaims = (fbBadgeFallback?.customClaims || {}) as Record<string, unknown>;
+        const mergedClaims = { ...badgeClaims, ...claims };
+
+        const resolvedFid = String(
+          effectiveRow?.facility_id || mergedClaims.facility_id || facilityId || 'IGH-EKT'
+        )
+          .trim()
+          .toUpperCase();
+        const resolvedRoleKey = String(
+          effectiveRow?.role_key || mergedClaims.role || 'staff'
+        ).trim().toLowerCase() || 'staff';
+        const isAdmin =
+          resolvedRoleKey === 'hospital_admin' || resolvedRoleKey === 'sysadmin';
+        const resolvedClearance =
+          Number(effectiveRow?.clearance_level ?? mergedClaims.clearanceLevel) || (isAdmin ? 5 : 2);
+        const resolvedEmail =
+          (effectiveRow?.email ? String(effectiveRow.email).trim().toLowerCase() : '') ||
+          cleanEmail ||
+          (mergedClaims.workEmail ? String(mergedClaims.workEmail).trim().toLowerCase() : undefined);
+        const resolvedFullName =
+          (effectiveRow?.full_name ? String(effectiveRow.full_name).trim() : '') ||
+          [fbPrimaryUser?.displayName, fbBadgeFallback?.displayName]
+            .map((d) => String(d || '').trim())
+            .find((d) => d && d.toUpperCase() !== resolvedBadge) ||
+          resolvedBadge ||
+          'Staff';
+        const resolvedRole = String(
+          effectiveRow?.role || (isAdmin ? 'Hospital Administrator' : 'Staff')
+        ).trim();
+        const resolvedDept = String(
+          effectiveRow?.department || (isAdmin ? 'Hospital Management' : 'Clinical Operations')
+        ).trim();
+
         // Best-effort backfill into Aurora Postgres so future logins verify against Postgres
         if (isPostgresConfigured()) {
           try {
-            const fbPrimaryUser =
-              fbLookup?.fbUser ||
-              (adminAuth ? await adminAuth.getUserByEmail(candidateEmail).catch(() => null) : null);
-            const claims = (fbPrimaryUser?.customClaims || {}) as Record<string, unknown>;
-            const resolvedBadge = String(claims.badgeId || fbLookup?.resolvedBadge || badgeId || '')
-              .trim()
-              .toUpperCase();
-            const fbBadgeFallback =
-              fbLookup?.badgeUser ||
-              (adminAuth &&
-              resolvedBadge &&
-              (!fbPrimaryUser ||
-                !fbPrimaryUser.displayName ||
-                fbPrimaryUser.displayName.trim().toUpperCase() === resolvedBadge)
-                ? await adminAuth.getUserByEmail(badgeAuthEmail(resolvedBadge)).catch(() => null)
-                : null);
-            const badgeClaims = (fbBadgeFallback?.customClaims || {}) as Record<string, unknown>;
-            const mergedClaims = { ...badgeClaims, ...claims };
-
-            const resolvedFid = String(mergedClaims.facility_id || facilityId || 'IGH-EKT')
-              .trim()
-              .toUpperCase();
-            const resolvedRoleKey = String(mergedClaims.role || 'staff').trim() || 'staff';
-            const isAdmin =
-              resolvedRoleKey === 'hospital_admin' || resolvedRoleKey === 'sysadmin';
-            const resolvedClearance =
-              Number(mergedClaims.clearanceLevel) || (isAdmin ? 5 : 2);
-            const resolvedEmail =
-              cleanEmail ||
-              (mergedClaims.workEmail ? String(mergedClaims.workEmail).trim().toLowerCase() : undefined);
-            const resolvedFullName =
-              [fbPrimaryUser?.displayName, fbBadgeFallback?.displayName]
-                .map((d) => String(d || '').trim())
-                .find((d) => d && d.toUpperCase() !== resolvedBadge) || resolvedBadge;
-            const resolvedRole = isAdmin ? 'Hospital Administrator' : 'Staff';
-
             if (resolvedBadge && resolvedFid) {
               await upsertStaff({
                 badgeId: resolvedBadge,
@@ -324,11 +384,11 @@ export async function POST(req: NextRequest) {
                 role: resolvedRole,
                 roleKey: resolvedRoleKey,
                 title: resolvedRole,
-                department: isAdmin ? 'Hospital Management' : 'Clinical Operations',
+                department: resolvedDept,
                 clearanceLevel: resolvedClearance,
                 clearanceLabel: isAdmin ? 'Administrator' : `L${resolvedClearance}`,
                 permissions: isAdmin ? ['*'] : undefined,
-                email: resolvedEmail,
+                email: resolvedEmail || undefined,
                 authEmail: badgeAuthEmail(resolvedBadge),
                 pin: fbPass,
               });
@@ -338,14 +398,46 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        return NextResponse.json({
+        const staffProfile = {
+          badgeId: resolvedBadge || candidateEmail,
+          name: resolvedFullName,
+          role: resolvedRole,
+          roleKey: resolvedRoleKey,
+          title: String(effectiveRow?.title || resolvedRole).trim(),
+          department: resolvedDept,
+          facilityId: resolvedFid,
+          clearanceLevel: resolvedClearance,
+          email: resolvedEmail || undefined,
+        };
+
+        const sessionToken = await signSessionToken({
+          badgeId: staffProfile.badgeId,
+          name: staffProfile.name,
+          roleKey: staffProfile.roleKey,
+          role: staffProfile.role,
+          facilityId: staffProfile.facilityId,
+          clearanceLevel: staffProfile.clearanceLevel,
+          mfaVerified: false,
+        });
+
+        const res = NextResponse.json({
           ok: true,
           configured: isPostgresConfigured(),
           hasPinHash: false,
           accountFound: true,
           verified: true,
           source: 'firebase_server',
+          sessionToken,
+          staff: staffProfile,
         });
+        res.cookies?.set?.(SESSION_COOKIE_NAME, sessionToken, {
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 12 * 3600,
+          secure: process.env.NODE_ENV === 'production',
+        });
+        return res;
       }
 
       if (fbRes.status >= 500) {

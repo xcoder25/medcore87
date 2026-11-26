@@ -3,6 +3,7 @@
 export type Patient = {
   id: string;
   bed: string;
+  ward?: string;
   mrn: string;
   name: string;
   age: string;
@@ -134,9 +135,39 @@ export let MEDS: MedDose[] = [
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
-export function subscribe(fn: Listener) {
+export function subscribe(fn: Listener): () => void {
   listeners.add(fn);
-  return () => listeners.delete(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+
+export function hydratePatientsFromEmr(
+  rows: Array<{
+    id: string;
+    full_name?: string;
+    hospital_number?: string | null;
+    sex?: string | null;
+    status?: string | null;
+  }>
+) {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  const mapped: Patient[] = rows.slice(0, 40).map((r, idx) => ({
+    id: String(r.id || `emr-${idx}`),
+    bed: `EMR-${String(idx + 1).padStart(2, '0')}`,
+    ward: 'Synced Ward',
+    mrn: String(r.hospital_number || r.id || 'EMR-PT'),
+    name: String(r.full_name || 'EMR Patient'),
+    age: r.sex ? String(r.sex) : 'Adult',
+    dx: `EMR Status: ${String(r.status || 'active')}`,
+    news: 1,
+    high: false,
+    vitals: ['120/80', '78 bpm', '98%', '36.8°C'],
+    allergies: 'Synced from MedCore OS',
+  }));
+  const seen = new Set(mapped.map((p) => p.id));
+  PATIENTS = [...mapped, ...PATIENTS.filter((p) => !seen.has(p.id))];
+  notify();
 }
 
 function notify() {

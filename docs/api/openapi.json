@@ -6332,6 +6332,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Error Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       },
@@ -6433,6 +6443,16 @@
             }
           },
           "502": {
+            "description": "Error Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
             "description": "Error Response",
             "content": {
               "application/json": {
@@ -7774,29 +7794,53 @@
                 "type": "object",
                 "additionalProperties": true,
                 "properties": {
+                  "action": {
+                    "type": "string",
+                    "description": "Extracted from route body.action"
+                  },
+                  "fullName": {
+                    "type": "string",
+                    "description": "Extracted from route body.fullName"
+                  },
                   "patientName": {
                     "type": "string",
                     "description": "Extracted from route body.patientName"
-                  },
-                  "shid": {
-                    "type": "string",
-                    "description": "Extracted from route body.shid"
                   },
                   "phone": {
                     "type": "string",
                     "description": "Extracted from route body.phone"
                   },
+                  "email": {
+                    "type": "string",
+                    "description": "Extracted from route body.email"
+                  },
                   "facilityId": {
                     "type": "string",
                     "description": "Extracted from route body.facilityId"
                   },
-                  "bookingRef": {
-                    "type": "string",
-                    "description": "Extracted from route body.bookingRef"
-                  },
                   "facilityName": {
                     "type": "string",
                     "description": "Extracted from route body.facilityName"
+                  },
+                  "patientId": {
+                    "type": "string",
+                    "description": "Extracted from route body.patientId"
+                  },
+                  "shid": {
+                    "type": "string",
+                    "description": "Extracted from route body.shid"
+                  },
+                  "sex": {
+                    "type": "string",
+                    "description": "Extracted from route body.sex"
+                  },
+                  "dateOfBirth": {
+                    "type": "string",
+                    "description": "Extracted from route body.dateOfBirth"
+                  },
+                  "bookingRef": {
+                    "type": "string",
+                    "description": "Extracted from route body.bookingRef"
                   },
                   "department": {
                     "type": "string",

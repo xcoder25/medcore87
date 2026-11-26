@@ -1,32 +1,32 @@
 /**
- * Patient experience — premium Care-style shell
+ * Patient experience — Liquid-Glass MedCore Care Portal synced with hospital EMR
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
   SafeAreaView,
+  ScrollView,
   StatusBar,
+  StyleSheet,
+  Text,
   TextInput,
-  Platform,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import type { PatientSession } from '../auth/sessionTypes';
-
-const C = {
-  primary: '#0D9488',
-  deep: '#0F766E',
-  navy: '#0B1220',
-  bg: '#F0FDFA',
-  card: '#FFFFFF',
-  text: '#0F172A',
-  muted: '#64748B',
-  border: '#E2E8F0',
-  danger: '#EF4444',
-  blue: '#0066FF',
-};
+import {
+  AmbientGlowBackdrop,
+  GlowButton,
+  LiquidGlassCard,
+  LiquidTabBar,
+  LiveSyncPill,
+  type SyncState,
+} from '../components/ui/LiquidGlass';
+import { MedIcon } from '../components/ui/PremiumIcons';
+import { C } from '../theme';
+import {
+  bookPatientAppointmentWithEmr,
+  fetchPatientCareSync,
+} from '../services/emrSyncClient';
 
 type PatientTab = 'home' | 'appointments' | 'records' | 'card' | 'profile';
 
@@ -37,149 +37,274 @@ interface Props {
 
 export function PatientShell({ session, onSignOut }: Props) {
   const [tab, setTab] = useState<PatientTab>('home');
+  const [department, setDepartment] = useState('General Outpatient (GOPD)');
+  const [preferredSlot, setPreferredSlot] = useState('Tomorrow · 09:00 AM');
   const [bookNote, setBookNote] = useState('');
-  const [booked, setBooked] = useState(false);
+  const [bookingBusy, setBookingBusy] = useState(false);
+  const [syncState, setSyncState] = useState<SyncState>(
+    session.emrSynced ? 'live' : 'offline'
+  );
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [reminders, setReminders] = useState<any[]>([]);
+  const [akshiaStatus, setAkshiaStatus] = useState<any>(null);
+  const [bookedToast, setBookedToast] = useState<string | null>(null);
 
   const first = session.name.split(' ')[0] || 'there';
 
+  const refreshCareSync = async () => {
+    setSyncState('syncing');
+    const res = await fetchPatientCareSync({
+      shid: session.shid || session.patientId,
+      phone: session.phone,
+      facilityId: session.facilityId || 'IGH-EKT',
+    });
+    if (res.ok) {
+      setSyncState('live');
+      setAppointments(res.appointments);
+      setReminders(res.reminders);
+      setAkshiaStatus(res.akshiaCoverage);
+    } else {
+      setSyncState(session.emrSynced ? 'syncing' : 'offline');
+    }
+  };
+
+  useEffect(() => {
+    void refreshCareSync();
+  }, [session.patientId, session.facilityId]);
+
+  const handleBookVisit = async () => {
+    setBookingBusy(true);
+    setBookedToast(null);
+    try {
+      const res = await bookPatientAppointmentWithEmr({
+        facilityId: session.facilityId || 'IGH-EKT',
+        facilityName: session.facility,
+        patientName: session.name,
+        shid: session.shid || session.patientId,
+        phone: session.phone,
+        department: bookNote.trim() ? `${department} (${bookNote.trim()})` : department,
+        preferredSlot,
+      });
+      if (res.booking) {
+        setAppointments((prev) => [res.booking, ...prev]);
+      } else {
+        setAppointments((prev) => [
+          {
+            bookingRef: `LOCAL-${Date.now().toString(36).toUpperCase()}`,
+            department,
+            preferredSlot,
+            status: res.synced ? 'scheduled' : 'queued',
+          },
+          ...prev,
+        ]);
+      }
+      setBookNote('');
+      setBookedToast(
+        res.synced
+          ? 'Booking synced live to hospital EMR Reception queue.'
+          : 'Booking saved offline and queued for hospital EMR sync.'
+      );
+      setTab('home');
+    } finally {
+      setBookingBusy(false);
+    }
+  };
+
   const renderHome = () => (
     <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
-      <View style={styles.heroCard}>
-        <Text style={styles.heroEyebrow}>MedCore Care</Text>
-        <Text style={styles.hello}>Hello, {first} 👋</Text>
+      <LiquidGlassCard glowColor={C.glowEmerald} intensity="strong" animateIn style={{ marginBottom: 14 }}>
+        <Text style={styles.heroEyebrow}>MEDCORE CARE PORTAL</Text>
+        <Text style={styles.hello}>Hello, {first}</Text>
         <Text style={styles.heroSub}>{session.facility}</Text>
         <View style={styles.mrnPill}>
-          <Text style={styles.mrn}>ID · {session.patientId}</Text>
+          <MedIcon name="card" size={13} color="#6EE7B7" badge={false} />
+          <Text style={styles.mrn}>
+            {session.shid || session.patientId}
+          </Text>
         </View>
-      </View>
+      </LiquidGlassCard>
 
-      <Text style={styles.section}>Quick actions</Text>
+      <Text style={styles.section}>Quick Actions</Text>
       <View style={styles.grid}>
         {[
-          { k: 'appointments' as const, icon: '📅', label: 'Book visit', tint: '#ECFDF5' },
-          { k: 'records' as const, icon: '📋', label: 'My records', tint: '#EFF6FF' },
-          { k: 'card' as const, icon: '🪪', label: 'Health card', tint: '#F5F3FF' },
-          { k: 'profile' as const, icon: '👤', label: 'Profile', tint: '#FFF7ED' },
+          { k: 'appointments' as const, icon: 'calendar' as const, label: 'Book Visit', glow: C.glowEmerald },
+          { k: 'records' as const, icon: 'clipboard' as const, label: 'My Records', glow: C.glowBlue },
+          { k: 'card' as const, icon: 'card' as const, label: 'Health Card', glow: C.glowViolet },
+          { k: 'profile' as const, icon: 'users' as const, label: 'Profile', glow: C.glowAmber },
         ].map((a) => (
           <TouchableOpacity
             key={a.k}
-            style={[styles.gridBtn, { backgroundColor: a.tint }]}
+            style={styles.gridItem}
             onPress={() => setTab(a.k)}
-            activeOpacity={0.85}
+            activeOpacity={0.88}
           >
-            <Text style={styles.gridIcon}>{a.icon}</Text>
-            <Text style={styles.gridLabel}>{a.label}</Text>
+            <LiquidGlassCard glowColor={a.glow} style={styles.gridGlass}>
+              <MedIcon name={a.icon} size={18} color="#FFFFFF" glowColor={a.glow} />
+              <Text style={styles.gridLabel}>{a.label}</Text>
+            </LiquidGlassCard>
           </TouchableOpacity>
         ))}
       </View>
 
-      <TouchableOpacity style={styles.emergency} activeOpacity={0.9}>
-        <View style={styles.emergencyIcon}>
-          <Text style={{ fontSize: 22 }}>🚨</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.emergencyTitle}>Emergency</Text>
-          <Text style={styles.emergencySub}>Nearest A&E · hospital emergency desk</Text>
-        </View>
-        <Text style={styles.emergencyChev}>›</Text>
-      </TouchableOpacity>
+      {bookedToast && (
+        <LiquidGlassCard glowColor={C.glowEmerald} style={{ marginBottom: 14 }}>
+          <Text style={{ color: '#A7F3D0', fontSize: 12.5, fontWeight: '700' }}>{bookedToast}</Text>
+        </LiquidGlassCard>
+      )}
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Next appointment</Text>
-        {booked ? (
-          <Text style={styles.cardBodyOk}>Request sent — the hospital will confirm your time.</Text>
+      <LiquidGlassCard glowColor={C.glowCyan} style={{ marginBottom: 14 }}>
+        <View style={styles.rowBetween}>
+          <Text style={styles.cardTitle}>Upcoming Visits ({appointments.length})</Text>
+          <TouchableOpacity onPress={refreshCareSync}>
+            <Text style={styles.linkText}>Refresh EMR</Text>
+          </TouchableOpacity>
+        </View>
+        {appointments.length > 0 ? (
+          appointments.slice(0, 3).map((a, idx) => (
+            <View key={a.bookingRef || idx} style={styles.visitRow}>
+              <Text style={styles.visitTitle}>{a.department || 'General OPD'}</Text>
+              <Text style={styles.visitMeta}>
+                {a.preferredSlot || 'Tomorrow'} · {a.bookingRef || 'Scheduled'}
+              </Text>
+            </View>
+          ))
         ) : (
-          <Text style={styles.cardBody}>None scheduled. Book a visit when you need care.</Text>
+          <Text style={styles.cardBody}>
+            No upcoming visits scheduled yet. Book a slot and it syncs straight to {session.facility} Reception.
+          </Text>
         )}
-        <TouchableOpacity style={styles.ghostBtn} onPress={() => setTab('appointments')}>
-          <Text style={styles.ghostBtnText}>Book a visit</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={{ marginTop: 12 }}>
+          <GlowButton label="Book a Hospital Visit" icon="calendar" variant="emerald" onPress={() => setTab('appointments')} />
+        </View>
+      </LiquidGlassCard>
+
+      {reminders.length > 0 && (
+        <LiquidGlassCard glowColor={C.glowViolet}>
+          <Text style={styles.cardTitle}>Care Reminders from EMR</Text>
+          {reminders.slice(0, 2).map((r: any, idx: number) => (
+            <Text key={idx} style={[styles.cardBody, { marginTop: 6 }]}>
+              • {r.title || r.message || r.track || 'Scheduled check-in reminder'}
+            </Text>
+          ))}
+        </LiquidGlassCard>
+      )}
     </ScrollView>
   );
 
   const renderAppointments = () => (
     <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 32 }}>
-      <Text style={styles.section}>Book a visit</Text>
-      <View style={styles.card}>
-        <Text style={styles.label}>Reason for visit</Text>
+      <Text style={styles.section}>Book a Visit (EMR Live Sync)</Text>
+      <LiquidGlassCard glowColor={C.glowEmerald}>
+        <Text style={styles.label}>DEPARTMENT</Text>
+        <View style={styles.chipWrap}>
+          {['General Outpatient (GOPD)', 'Antenatal / Maternity', 'Paediatrics', 'Chronic Care / HTN'].map((d) => (
+            <TouchableOpacity
+              key={d}
+              onPress={() => setDepartment(d)}
+              style={[styles.chip, department === d && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, department === d && { color: '#A7F3D0' }]}>{d}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.label}>PREFERRED SLOT</Text>
+        <View style={styles.chipWrap}>
+          {['Tomorrow · 09:00 AM', 'Tomorrow · 12:30 PM', 'In 2 Days · 09:00 AM'].map((s) => (
+            <TouchableOpacity
+              key={s}
+              onPress={() => setPreferredSlot(s)}
+              style={[styles.chip, preferredSlot === s && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, preferredSlot === s && { color: '#A7F3D0' }]}>{s}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.label}>SYMPTOMS / REASON FOR VISIT</Text>
         <TextInput
           style={styles.input}
-          placeholder="e.g. Follow-up, fever, antenatal"
-          placeholderTextColor="#94A3B8"
+          placeholder="e.g. Follow-up checkup, fever, blood pressure review"
+          placeholderTextColor="#64748B"
           value={bookNote}
           onChangeText={setBookNote}
         />
-        <TouchableOpacity
-          style={styles.primaryBtn}
-          onPress={() => {
-            setBookNote('');
-            setBooked(true);
-            setTab('home');
-          }}
-        >
-          <Text style={styles.primaryBtnText}>Request appointment</Text>
-        </TouchableOpacity>
-        <Text style={styles.hint}>Your facility will confirm the time. Works offline, syncs later.</Text>
-      </View>
+
+        <GlowButton
+          label="Confirm Appointment & Sync to EMR"
+          icon="check"
+          variant="emerald"
+          loading={bookingBusy}
+          onPress={handleBookVisit}
+        />
+      </LiquidGlassCard>
     </ScrollView>
   );
 
   const renderRecords = () => (
     <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 32 }}>
-      <Text style={styles.section}>My health records</Text>
-      <View style={styles.card}>
+      <Text style={styles.section}>My Health Records</Text>
+      <LiquidGlassCard glowColor={C.glowBlue}>
+        <Text style={styles.cardTitle}>EMR Clinical Summary</Text>
         <Text style={styles.cardBody}>
-          No shared records yet. After your first visit, lab results and notes from {session.facility} will appear here.
+          Verified lab results, prescriptions, and clinician summaries released by {session.facility} appear here automatically once resulted in MedCore OS.
         </Text>
-      </View>
+      </LiquidGlassCard>
     </ScrollView>
   );
 
   const renderCard = () => (
     <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 32 }}>
-      <View style={styles.idCard}>
-        <Text style={styles.idBrand}>MEDCORE HEALTH CARD</Text>
+      <LiquidGlassCard glowColor={C.glowViolet} intensity="strong" animateIn>
+        <View style={styles.rowBetween}>
+          <Text style={styles.idBrand}>MEDCORE DIGITAL HEALTH CARD</Text>
+          <MedIcon name="sparkles" size={16} color="#C4B5FD" badge={false} />
+        </View>
         <Text style={styles.idName}>{session.name}</Text>
         <View style={styles.idDivider} />
-        <Text style={styles.idMeta}>{session.patientId}</Text>
-        <Text style={styles.idMeta}>{session.facility}</Text>
-        <Text style={styles.idMeta}>{session.phone || 'Phone on file'}</Text>
-        <View style={styles.idFooter}>
-          <Text style={styles.idFooterText}>Akwa Ibom State</Text>
-        </View>
-      </View>
+        <Text style={styles.idMeta}>SHID / ID: {session.shid || session.patientId}</Text>
+        <Text style={styles.idMeta}>Primary Facility: {session.facility}</Text>
+        <Text style={styles.idMeta}>Phone: {session.phone || 'On file'}</Text>
+        {akshiaStatus && (
+          <Text style={[styles.idMeta, { color: '#6EE7B7', marginTop: 8 }]}>
+            AKSHIA Status: {akshiaStatus.status || akshiaStatus.tier || 'Verified Enrollee'}
+          </Text>
+        )}
+      </LiquidGlassCard>
     </ScrollView>
   );
 
   const renderProfile = () => (
     <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 32 }}>
-      <Text style={styles.section}>Profile</Text>
-      <View style={styles.card}>
-        <Text style={styles.rowLabel}>Name</Text>
+      <Text style={styles.section}>Patient Profile</Text>
+      <LiquidGlassCard glowColor={C.glowCyan} style={{ marginBottom: 16 }}>
+        <Text style={styles.rowLabel}>Full Name</Text>
         <Text style={styles.rowValue}>{session.name}</Text>
-        <Text style={styles.rowLabel}>Patient ID</Text>
-        <Text style={styles.rowValue}>{session.patientId}</Text>
-        <Text style={styles.rowLabel}>Facility</Text>
-        <Text style={styles.rowValue}>{session.facility}</Text>
-      </View>
-      <TouchableOpacity style={styles.signOut} onPress={onSignOut}>
-        <Text style={styles.signOutText}>Sign out</Text>
-      </TouchableOpacity>
+        <Text style={styles.rowLabel}>Patient / SHID</Text>
+        <Text style={styles.rowValue}>{session.shid || session.patientId}</Text>
+        <Text style={styles.rowLabel}>Registered Facility</Text>
+        <Text style={styles.rowValue}>{session.facility} ({session.facilityId})</Text>
+      </LiquidGlassCard>
+      <GlowButton label="Sign Out" icon="logout" variant="danger" onPress={onSignOut} />
     </ScrollView>
   );
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={C.deep} />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <AmbientGlowBackdrop variant="care" />
+
       <View style={styles.header}>
         <View>
           <Text style={styles.brand}>MedCore Care</Text>
-          <Text style={styles.doctor}>{session.name}</Text>
+          <Text style={styles.patientName}>{session.name}</Text>
         </View>
-        <TouchableOpacity onPress={onSignOut} style={styles.headerBtn}>
-          <Text style={styles.headerLink}>Sign out</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <LiveSyncPill state={syncState} onPress={refreshCareSync} />
+          <TouchableOpacity onPress={onSignOut} style={styles.headerBtn}>
+            <MedIcon name="logout" size={14} color="#FDA4AF" badge={false} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {tab === 'home' && renderHome()}
@@ -188,189 +313,106 @@ export function PatientShell({ session, onSignOut }: Props) {
       {tab === 'card' && renderCard()}
       {tab === 'profile' && renderProfile()}
 
-      <View style={styles.tabBar}>
-        {(
-          [
-            { k: 'home' as const, icon: '🏠', label: 'Home' },
-            { k: 'appointments' as const, icon: '📅', label: 'Visits' },
-            { k: 'records' as const, icon: '📋', label: 'Records' },
-            { k: 'card' as const, icon: '🪪', label: 'Card' },
-            { k: 'profile' as const, icon: '👤', label: 'Me' },
-          ] as const
-        ).map((t) => {
-          const active = tab === t.k;
-          return (
-            <TouchableOpacity key={t.k} style={styles.tabItem} onPress={() => setTab(t.k)} activeOpacity={0.7}>
-              <Text style={[styles.tabIcon, active && styles.tabIconOn]}>{t.icon}</Text>
-              <Text style={[styles.tabLabel, active && styles.tabLabelOn]}>{t.label}</Text>
-              {active && <View style={styles.tabDot} />}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      <LiquidTabBar<PatientTab>
+        accentColor={C.glowEmerald}
+        activeKey={tab}
+        onSelect={setTab}
+        items={[
+          { key: 'home', icon: 'heart', label: 'Home' },
+          { key: 'appointments', icon: 'calendar', label: 'Visits' },
+          { key: 'records', icon: 'clipboard', label: 'Records' },
+          { key: 'card', icon: 'card', label: 'Card' },
+          { key: 'profile', icon: 'users', label: 'Profile' },
+        ]}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.deep },
+  safe: { flex: 1, backgroundColor: C.canvas },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: C.deep,
   },
-  brand: { color: '#99F6E4', fontSize: 11, fontWeight: '800', letterSpacing: 0.6 },
-  doctor: { color: '#FFF', fontSize: 16, fontWeight: '700', marginTop: 2 },
+  brand: { color: '#6EE7B7', fontSize: 10.5, fontWeight: '800', letterSpacing: 0.8 },
+  patientName: { color: '#FFFFFF', fontSize: 17, fontWeight: '800', marginTop: 1 },
   headerBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-  headerLink: { color: '#CCFBF1', fontWeight: '700', fontSize: 13 },
-  content: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 16, paddingTop: 16 },
-  heroCard: {
-    backgroundColor: C.primary,
-    borderRadius: 22,
-    padding: 20,
-    marginBottom: 18,
-    shadowColor: C.primary,
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  heroEyebrow: { color: '#99F6E4', fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
-  hello: { color: '#FFF', fontSize: 24, fontWeight: '800', marginTop: 6 },
-  heroSub: { color: '#CCFBF1', marginTop: 6, fontSize: 13, lineHeight: 18 },
-  mrnPill: {
-    alignSelf: 'flex-start',
-    marginTop: 14,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  mrn: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-  section: { fontSize: 14, fontWeight: '800', color: C.text, marginBottom: 12 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
-  gridBtn: {
-    width: '47%',
-    borderRadius: 16,
-    padding: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: 'rgba(244, 63, 94, 0.16)',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.04)',
-  },
-  gridIcon: { fontSize: 24, marginBottom: 8 },
-  gridLabel: { fontSize: 13, fontWeight: '700', color: C.text },
-  emergency: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    marginBottom: 14,
-    gap: 12,
-  },
-  emergencyIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: '#FEE2E2',
+    borderColor: 'rgba(251, 113, 133, 0.35)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emergencyTitle: { fontWeight: '800', color: '#991B1B', fontSize: 15 },
-  emergencySub: { color: '#7F1D1D', marginTop: 2, fontSize: 12 },
-  emergencyChev: { color: '#F87171', fontSize: 24 },
-  card: {
-    backgroundColor: C.card,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: C.border,
-    marginBottom: 12,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  cardTitle: { fontWeight: '800', color: C.text, marginBottom: 6, fontSize: 15 },
-  cardBody: { color: C.muted, fontSize: 13, lineHeight: 19 },
-  cardBodyOk: { color: C.primary, fontSize: 13, lineHeight: 19, fontWeight: '600' },
-  ghostBtn: { marginTop: 12, alignSelf: 'flex-start' },
-  ghostBtnText: { color: C.blue, fontWeight: '800', fontSize: 13 },
-  label: { fontSize: 12, fontWeight: '700', color: C.muted, marginBottom: 6 },
-  input: {
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 15,
-    color: C.text,
-    marginBottom: 12,
-    backgroundColor: '#F8FAFC',
-  },
-  primaryBtn: {
-    backgroundColor: C.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  primaryBtnText: { color: '#FFF', fontWeight: '800', fontSize: 15 },
-  hint: { marginTop: 10, fontSize: 12, color: C.muted, lineHeight: 17 },
-  idCard: {
-    backgroundColor: '#0F766E',
-    borderRadius: 24,
-    padding: 24,
-    minHeight: 220,
-    shadowColor: '#0F766E',
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
-  },
-  idBrand: { color: '#99F6E4', fontWeight: '800', fontSize: 11, letterSpacing: 1.2 },
-  idName: { color: '#FFF', fontSize: 24, fontWeight: '800', marginTop: 20 },
-  idDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.2)', marginVertical: 16 },
-  idMeta: { color: '#CCFBF1', marginTop: 6, fontSize: 13 },
-  idFooter: { marginTop: 24 },
-  idFooterText: { color: '#5EEAD4', fontSize: 11, fontWeight: '700' },
-  rowLabel: { fontSize: 11, fontWeight: '700', color: C.muted, marginTop: 10 },
-  rowValue: { fontSize: 15, fontWeight: '600', color: C.text, marginTop: 2 },
-  signOut: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    backgroundColor: '#FEF2F2',
-    borderRadius: 14,
-    padding: 14,
-    alignItems: 'center',
-  },
-  signOutText: { color: C.danger, fontWeight: '800' },
-  tabBar: {
+  content: { flex: 1, paddingHorizontal: 14 },
+  heroEyebrow: { color: '#6EE7B7', fontSize: 10.5, fontWeight: '800', letterSpacing: 0.9 },
+  hello: { color: '#FFFFFF', fontSize: 24, fontWeight: '800', marginTop: 4 },
+  heroSub: { color: '#CBD5E1', marginTop: 4, fontSize: 13 },
+  mrnPill: {
+    alignSelf: 'flex-start',
+    marginTop: 12,
     flexDirection: 'row',
-    backgroundColor: '#FFF',
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-    paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: -4 },
-    elevation: 12,
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(16, 185, 129, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.45)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
-  tabItem: { flex: 1, alignItems: 'center', paddingVertical: 4 },
-  tabIcon: { fontSize: 18, color: '#94A3B8' },
-  tabIconOn: { color: C.primary },
-  tabLabel: { fontSize: 10, color: '#94A3B8', marginTop: 3, fontWeight: '600' },
-  tabLabelOn: { color: C.primary, fontWeight: '800' },
-  tabDot: { width: 16, height: 3, borderRadius: 2, backgroundColor: C.primary, marginTop: 4 },
+  mrn: { color: '#A7F3D0', fontSize: 12, fontWeight: '800' },
+  section: { fontSize: 14, fontWeight: '800', color: '#E2E8F0', marginBottom: 10, marginTop: 4 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  gridItem: { width: '48%' },
+  gridGlass: { alignItems: 'center', paddingVertical: 16, gap: 8 },
+  gridLabel: { color: '#F8FAFC', fontSize: 13, fontWeight: '800' },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  linkText: { color: '#38BDF8', fontSize: 12, fontWeight: '700' },
+  cardTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', marginBottom: 6 },
+  cardBody: { color: '#94A3B8', fontSize: 12.5, lineHeight: 18 },
+  visitRow: {
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  visitTitle: { color: '#F8FAFC', fontSize: 13, fontWeight: '700' },
+  visitMeta: { color: '#6EE7B7', fontSize: 11.5, marginTop: 2 },
+  label: { color: '#94A3B8', fontSize: 10.5, fontWeight: '800', letterSpacing: 0.5, marginBottom: 6 },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  chipActive: { backgroundColor: 'rgba(16, 185, 129, 0.24)', borderColor: C.glowEmerald },
+  chipText: { color: '#CBD5E1', fontSize: 11.5, fontWeight: '700' },
+  input: {
+    backgroundColor: 'rgba(2, 6, 23, 0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.25)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    color: '#F8FAFC',
+    fontSize: 13.5,
+    marginBottom: 14,
+  },
+  idBrand: { color: '#C4B5FD', fontSize: 11, fontWeight: '800', letterSpacing: 0.9 },
+  idName: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', marginTop: 12 },
+  idDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.16)', marginVertical: 12 },
+  idMeta: { color: '#E2E8F0', fontSize: 13, marginBottom: 4, fontWeight: '600' },
+  rowLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '700', marginTop: 8 },
+  rowValue: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', marginTop: 2 },
 });
+
+export default PatientShell;

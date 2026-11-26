@@ -199,19 +199,28 @@ test('hipaaPrivacy: scrubPhiOnLogout removes all PHI keys from localStorage and 
 
 test('middleware: allows public auth/lookup routes, blocks unauthenticated PHI, enforces RBAC', async () => {
   const ss = loadTsModule('src/lib/serverSession.ts');
+  class NextResponseMock {
+    constructor(_body, init = {}) {
+      this.status = init?.status || 200;
+      this.headers = new Headers(init?.headers || {});
+    }
+    static next(opts) {
+      return { status: 200, nextOpts: opts, headers: new Headers() };
+    }
+    static json(body, init) {
+      return { status: init?.status || 200, body, headers: new Headers(init?.headers || {}) };
+    }
+  }
   const nextServerMock = {
-    NextResponse: {
-      next: (opts) => ({ status: 200, nextOpts: opts }),
-      json: (body, init) => ({ status: init?.status || 200, body }),
-    },
+    NextResponse: NextResponseMock,
   };
   const mw = loadTsModule('src/middleware.ts', {
     'next/server': nextServerMock,
   });
 
-  const makeReq = (pathname, method = 'GET', cookieVal = '', query = '') => ({
+  const makeReq = (pathname, method = 'GET', cookieVal = '', query = '', extraHeaders = {}) => ({
     method,
-    headers: new Headers(),
+    headers: new Headers(extraHeaders),
     cookies: {
       get: (name) => (name === ss.SESSION_COOKIE_NAME && cookieVal ? { value: cookieVal } : undefined),
     },
@@ -258,6 +267,29 @@ test('middleware: allows public auth/lookup routes, blocks unauthenticated PHI, 
   });
   const adminCreateStaff = await mw.middleware(makeReq('/api/staff/create', 'POST', adminCookie));
   assert.equal(adminCreateStaff.status, 200);
+
+  // 5) CORS OPTIONS preflight & Mobile Bearer token auth
+  const preflight = await mw.middleware(
+    makeReq('/api/patients', 'OPTIONS', '', '', { origin: 'http://localhost:8081' })
+  );
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get('Access-Control-Allow-Origin'), 'http://localhost:8081');
+
+  const badBearer = await mw.middleware(
+    makeReq('/api/patients', 'GET', '', 'facilityId=IGH-EKT', { authorization: 'Bearer invalid.jwt.token' })
+  );
+  assert.equal(badBearer.status, 401);
+
+  const docBearerForbidden = await mw.middleware(
+    makeReq('/api/staff/create', 'POST', '', '', { authorization: `Bearer ${docCookie}` })
+  );
+  assert.equal(docBearerForbidden.status, 403);
+
+  const adminBearerAllowed = await mw.middleware(
+    makeReq('/api/staff/create', 'POST', '', '', { authorization: `Bearer ${adminCookie}`, origin: 'http://localhost:8081' })
+  );
+  assert.equal(adminBearerAllowed.status, 200);
+  assert.equal(adminBearerAllowed.headers.get('Access-Control-Allow-Origin'), 'http://localhost:8081');
 });
 
 test('hipaaPrivacy: stripSecretsDeep & sanitizeStorageString remove all PINs, passwords, tokens, and API secrets', () => {
@@ -3056,11 +3088,78 @@ test('mobile-facility-admin-enrolment-and-emr-only-boundaries: validates mobile 
   assert.ok(authSrc.includes("key: 'hospital_admin'") && authSrc.includes('facilityId: hospital.id'));
 
   const hubSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'components/admin/FacilityAdminHub.tsx'), 'utf8');
-  assert.ok(hubSrc.includes('/api/staff/create') && hubSrc.includes('EMR_ONLY_ADMIN_CAPABILITIES'));
+  assert.ok(hubSrc.includes('enrolEmrStaff') && hubSrc.includes('EMR_ONLY_ADMIN_CAPABILITIES'));
   assert.ok(hubSrc.includes('DESKTOP EMR ONLY') && hubSrc.includes('m.facilityId.toUpperCase() === facilityId.toUpperCase()'));
 
   const appSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'App.tsx'), 'utf8');
   assert.ok(appSrc.includes('FacilityAdminHub') && appSrc.includes("selectedTab === 'admin'"));
+  assert.ok(appSrc.includes('UnifiedAuthScreen') && appSrc.includes('AmbientGlowBackdrop'));
+  assert.ok(appSrc.includes('LiquidTabBar') && appSrc.includes('LiveSyncPill'));
+  assert.ok(appSrc.includes('fetchEmrPatients') && appSrc.includes('subscribeEmrFacilityStream'));
+});
+
+test('mobile-unified-auth-liquid-glass-and-care-signup: validates verify-pin sessionToken, care/sync patient signup & Liquid-Glass UI', async () => {
+  const verifyPinSrc = fs.readFileSync(path.join(OS_ROOT, 'src/app/api/auth/verify-pin/route.ts'), 'utf8');
+  assert.ok(verifyPinSrc.includes('signSessionToken') && verifyPinSrc.includes('sessionToken'));
+  assert.ok(verifyPinSrc.includes('SESSION_COOKIE_NAME') && verifyPinSrc.includes('staff: staffProfile'));
+
+  const sseEvents = [];
+  const careSyncMod = loadTsModule('src/app/api/care/sync/route.ts', {
+    'next/server': {
+      NextResponse: {
+        json: (body, init) => ({ status: init?.status || 200, body, headers: new Headers(init?.headers || {}) }),
+      },
+    },
+    '../../../../lib/db/postgres': {
+      ensureSchema: async () => {},
+      isPostgresConfigured: () => false,
+      withTenantClient: async () => null,
+    },
+    '../../../../lib/db/patientRepo': {
+      upsertPatient: async () => ({}),
+    },
+    '../../../../lib/sseBroker': {
+      publishFacilitySseEvent: (ev) => sseEvents.push(ev),
+    },
+  });
+
+  const badReg = await careSyncMod.POST({
+    json: async () => ({ action: 'register_patient', fullName: 'A', phone: '123' }),
+  });
+  assert.equal(badReg.status, 400);
+
+  const goodReg = await careSyncMod.POST({
+    json: async () => ({
+      action: 'register_patient',
+      fullName: 'Ekaette Bassey',
+      phone: '+2348091112233',
+      email: 'ekaette@example.com',
+      facilityId: 'IGH-EKT',
+    }),
+  });
+  assert.equal(goodReg.status, 201);
+  assert.equal(goodReg.body.registered, true);
+  assert.ok(String(goodReg.body.patient?.shid || '').startsWith('SHID-AKS-'));
+  assert.equal(sseEvents.some((e) => e.key === 'care_patient_registered'), true);
+
+  const MOBILE_ROOT = path.resolve(OS_ROOT, '../clinic/src');
+  for (const rel of [
+    'auth/UnifiedAuthScreen.tsx',
+    'components/ui/LiquidGlass.tsx',
+    'components/ui/PremiumIcons.tsx',
+    'services/emrSyncClient.ts',
+    'shells/PatientShell.tsx',
+  ]) {
+    assert.equal(fs.existsSync(path.join(MOBILE_ROOT, rel)), true, `Missing mobile module ${rel}`);
+  }
+
+  const unifiedAuthSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'auth/UnifiedAuthScreen.tsx'), 'utf8');
+  assert.ok(unifiedAuthSrc.includes('verifyEmrStaffLogin') && unifiedAuthSrc.includes('registerPatientWithEmr'));
+  assert.ok(unifiedAuthSrc.includes('Desktop EMR Only') && unifiedAuthSrc.includes('Create Account'));
+
+  const syncClientSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'services/emrSyncClient.ts'), 'utf8');
+  assert.ok(syncClientSrc.includes('/api/auth/verify-pin') && syncClientSrc.includes('/api/care/sync'));
+  assert.ok(syncClientSrc.includes('Authorization: `Bearer ${sessionToken}`') || syncClientSrc.includes('headers.Authorization = `Bearer ${sessionToken}`'));
 });
 
 

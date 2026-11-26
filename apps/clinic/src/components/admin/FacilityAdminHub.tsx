@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -12,7 +12,18 @@ import {
   EMR_ONLY_ADMIN_CAPABILITIES,
   type EmrOnlyCapability,
 } from '../../rbac/permissions';
-import { offlineSyncManager } from '../../services/offlineSync';
+import {
+  GlowButton,
+  LiquidGlassCard,
+  LiveSyncPill,
+} from '../ui/LiquidGlass';
+import { MedIcon } from '../ui/PremiumIcons';
+import { C } from '../../theme';
+import {
+  enrolEmrStaff,
+  fetchEmrStaff,
+  pushEmrFacilityBroadcast,
+} from '../../services/emrSyncClient';
 
 interface FacilityAdminHubProps {
   session: StaffSession;
@@ -53,23 +64,6 @@ const ENROL_ROLES = [
 
 const SCHEMES = ['State Civil Service', 'Contract / Locum', 'NHIA / Visiting'] as const;
 
-function resolveOsApiBaseUrl(): string {
-  try {
-    const procEnv = (
-      globalThis as { process?: { env?: Record<string, string | undefined> } }
-    ).process?.env;
-    const winUrl =
-      typeof window !== 'undefined'
-        ? (window as unknown as { __MEDCORE_OS_URL?: string }).__MEDCORE_OS_URL
-        : undefined;
-    return String(procEnv?.EXPO_PUBLIC_OS_URL || winUrl || '')
-      .trim()
-      .replace(/\/+$/, '');
-  } catch {
-    return '';
-  }
-}
-
 function suggestBadgeId(facilityId: string, roleCode: string, seq: number): string {
   const shortFac = facilityId
     .replace(/^AKS-/i, '')
@@ -80,10 +74,9 @@ function suggestBadgeId(facilityId: string, roleCode: string, seq: number): stri
 }
 
 export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onOpenTool }) => {
-  const facilityId = session.facilityId || 'AKS-ISH-001';
+  const facilityId = session.facilityId || 'IGH-EKT';
   const [subTab, setSubTab] = useState<AdminSubTab>('enrol');
 
-  // Facility-scoped staff directory
   const [directory, setDirectory] = useState<MobileStaffEntry[]>(() => [
     {
       badgeId: session.staffId,
@@ -95,12 +88,40 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
       email: session.email || `admin@${facilityId.toLowerCase()}.medcore.ng`,
       employmentScheme: 'State Civil Service',
       status: 'active',
-      syncState: 'synced',
+      syncState: session.emrSynced ? 'synced' : 'queued',
       createdAt: new Date().toISOString(),
     },
   ]);
 
-  // Enrol form state
+  // Hydrate facility staff directory live from MedCore OS when authenticated via EMR
+  useEffect(() => {
+    let alive = true;
+    if (!session.sessionToken) return;
+    void fetchEmrStaff(facilityId, session.sessionToken).then((res) => {
+      if (!alive || !res.ok || !res.staff.length) return;
+      const mapped: MobileStaffEntry[] = res.staff.map((row: any) => ({
+        badgeId: String(row.badgeId || row.badge_id || row.id || '').toUpperCase(),
+        facilityId: String(row.facilityId || row.facility_id || facilityId).toUpperCase(),
+        fullName: String(row.fullName || row.full_name || row.name || 'Staff'),
+        roleKey: String(row.roleKey || row.role_key || 'staff'),
+        roleLabel: String(row.role || row.title || 'Staff'),
+        department: String(row.department || 'Clinical Operations'),
+        email: String(row.email || ''),
+        employmentScheme: String(row.employmentScheme || 'State Civil Service'),
+        status: row.status === 'suspended' ? 'suspended' : 'active',
+        syncState: 'synced',
+        createdAt: String(row.createdAt || new Date().toISOString()),
+      }));
+      setDirectory((prev) => {
+        const seen = new Set(mapped.map((m) => m.badgeId));
+        return [...mapped, ...prev.filter((p) => !seen.has(p.badgeId))];
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [facilityId, session.sessionToken]);
+
   const [fullName, setFullName] = useState('');
   const [roleIdx, setRoleIdx] = useState(0);
   const [department, setDepartment] = useState<string>(ENROL_ROLES[0].dept);
@@ -114,14 +135,9 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
   const [submitting, setSubmitting] = useState(false);
   const [formBanner, setFormBanner] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
-  // Directory filter
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Quick Ops alert broadcast
   const [alertHeadline, setAlertHeadline] = useState('');
   const [opsBanner, setOpsBanner] = useState<string | null>(null);
-
-  // Selected Desktop-EMR-only explanation
   const [selectedLock, setSelectedLock] = useState<EmrOnlyCapability | null>(null);
 
   const facilityStaff = useMemo(
@@ -204,19 +220,13 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
     setSubmitting(true);
     let syncState: 'synced' | 'queued' = 'queued';
     try {
-      const osBase = resolveOsApiBaseUrl();
-      if (osBase) {
-        const res = await offlineSyncManager.executeWithOfflineQueue<{ success?: boolean; error?: string }>(
-          `${osBase}/api/staff/create`,
-          'POST',
-          payload
-        );
-        if (res.success && !res.queued) {
-          syncState = 'synced';
-        }
-      } else {
-        await offlineSyncManager.executeWithOfflineQueue('/api/staff/create', 'POST', payload);
+      const res = await enrolEmrStaff(payload, session.sessionToken);
+      if (!res.ok) {
+        setFormBanner({ kind: 'err', text: res.error || 'Could not enrol staff member.' });
+        setSubmitting(false);
+        return;
       }
+      syncState = res.synced ? 'synced' : 'queued';
     } catch {
       syncState = 'queued';
     } finally {
@@ -251,8 +261,8 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
       kind: 'ok',
       text:
         syncState === 'synced'
-          ? `${cleanName} (${cleanBadge}) enrolled for ${facilityId} and synced to cloud.`
-          : `${cleanName} (${cleanBadge}) enrolled for ${facilityId} — queued for facility EMR sync.`,
+          ? `${cleanName} (${cleanBadge}) enrolled for ${facilityId} and synced to MedCore EMR.`
+          : `${cleanName} (${cleanBadge}) enrolled locally for ${facilityId} — queued for EMR sync.`,
     });
   };
 
@@ -266,41 +276,52 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
     );
   };
 
-  const handleBroadcastAlert = () => {
+  const handleBroadcastAlert = async () => {
     const msg = alertHeadline.trim();
     if (!msg) return;
     setAlertHeadline('');
-    setOpsBanner(`Facility broadcast queued for ${facilityId}: "${msg}"`);
+    const res = await pushEmrFacilityBroadcast(
+      facilityId,
+      msg,
+      session.name,
+      session.sessionToken
+    );
+    setOpsBanner(
+      res.synced
+        ? `Broadcast synced to MedCore EMR terminals (${facilityId}): "${msg}"`
+        : `Broadcast queued for ${facilityId}: "${msg}"`
+    );
   };
 
   return (
     <ScrollView
       style={styles.container}
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: 32 }}
+      contentContainerStyle={{ paddingBottom: 36 }}
     >
-      {/* Facility-Scoped Admin Banner */}
-      <View style={styles.scopeCard}>
+      {/* Glass Facility Admin Hero */}
+      <LiquidGlassCard glowColor={C.glowCyan} intensity="strong" animateIn style={{ marginBottom: 12 }}>
         <View style={styles.scopeTopRow}>
           <View style={styles.scopePill}>
+            <MedIcon name="shield" size={12} color="#7DD3FC" badge={false} />
             <Text style={styles.scopePillText}>FACILITY ADMIN · {facilityId}</Text>
           </View>
-          <Text style={styles.scopeCount}>{facilityStaff.length} staff</Text>
+          <LiveSyncPill state={session.emrSynced ? 'live' : 'offline'} />
         </View>
         <Text style={styles.scopeTitle}>{session.facility}</Text>
         <Text style={styles.scopeSub}>
-          Staff enrolment and operational actions apply strictly to this facility. Advanced compliance, treasury, and RBAC matrix policies remain locked to Desktop MedCore OS.
+          Enrol staff and run shift ops for this hospital directly on mobile. Destructive resets, RBAC matrix, and AkwaRemit treasury locks remain Desktop EMR Only.
         </Text>
-      </View>
+      </LiquidGlassCard>
 
-      {/* Sub-Navigation Pills */}
+      {/* Glass Sub-Navigation */}
       <View style={styles.subTabRow}>
         {(
           [
-            { k: 'enrol' as const, label: 'Enrol Staff' },
-            { k: 'directory' as const, label: 'Directory' },
+            { k: 'enrol' as const, label: 'Enrol' },
+            { k: 'directory' as const, label: `Staff (${facilityStaff.length})` },
             { k: 'ops' as const, label: 'Quick Ops' },
-            { k: 'emr_only' as const, label: 'EMR Only' },
+            { k: 'emr_only' as const, label: 'EMR Locks' },
           ] as const
         ).map((t) => {
           const active = subTab === t.k;
@@ -309,7 +330,7 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
               key={t.k}
               style={[styles.subTab, active && styles.subTabActive]}
               onPress={() => setSubTab(t.k)}
-              activeOpacity={0.8}
+              activeOpacity={0.85}
             >
               <Text style={[styles.subTabText, active && styles.subTabTextActive]}>{t.label}</Text>
             </TouchableOpacity>
@@ -319,11 +340,16 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
 
       {/* 1. ENROL STAFF */}
       {subTab === 'enrol' && (
-        <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Enrol Facility Personnel</Text>
-          <Text style={styles.panelSub}>
-            Creates a facility-bound credential (`{facilityId}`) with a 6-digit workstation PIN.
-          </Text>
+        <LiquidGlassCard glowColor={C.glowEmerald} animateIn>
+          <View style={styles.cardHeader}>
+            <MedIcon name="user-plus" size={18} color="#6EE7B7" glowColor={C.glowEmerald} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.panelTitle}>Enrol Facility Personnel</Text>
+              <Text style={styles.panelSub}>
+                Creates a MedCore EMR credential scoped strictly to {facilityId}.
+              </Text>
+            </View>
+          </View>
 
           {formBanner && (
             <View
@@ -335,7 +361,7 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
               <Text
                 style={[
                   styles.bannerText,
-                  { color: formBanner.kind === 'ok' ? '#065F46' : '#B91C1C' },
+                  { color: formBanner.kind === 'ok' ? '#A7F3D0' : '#FECDD3' },
                 ]}
               >
                 {formBanner.text}
@@ -349,10 +375,10 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
             value={fullName}
             onChangeText={setFullName}
             placeholder="e.g. Dr. Emem Bassey"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor="#64748B"
           />
 
-          <Text style={styles.fieldLabel}>ROLE *</Text>
+          <Text style={styles.fieldLabel}>CLINICAL / OPERATIONAL ROLE *</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
             {ENROL_ROLES.map((r, idx) => {
               const sel = idx === roleIdx;
@@ -375,7 +401,7 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
             value={department}
             onChangeText={setDepartment}
             placeholder="Department"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor="#64748B"
           />
 
           <Text style={styles.fieldLabel}>OFFICIAL WORK EMAIL *</Text>
@@ -384,7 +410,7 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
             value={email}
             onChangeText={setEmail}
             placeholder="staff@hospital.aks.gov.ng"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor="#64748B"
             autoCapitalize="none"
             keyboardType="email-address"
           />
@@ -398,7 +424,7 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
                 onChangeText={setBadgeId}
                 autoCapitalize="characters"
                 placeholder="ISH-DOC-101"
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor="#64748B"
               />
             </View>
             <View style={{ flex: 1 }}>
@@ -411,7 +437,7 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
                 maxLength={6}
                 secureTextEntry={true}
                 placeholder="123456"
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor="#64748B"
               />
             </View>
           </View>
@@ -435,14 +461,14 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
 
           <View style={styles.twoCol}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.fieldLabel}>COUNCIL (MDCN/NMCN/PCN)</Text>
+              <Text style={styles.fieldLabel}>COUNCIL</Text>
               <TextInput
                 style={styles.input}
                 value={regulatoryBody}
                 onChangeText={setRegulatoryBody}
                 autoCapitalize="characters"
-                placeholder="Optional"
-                placeholderTextColor="#94A3B8"
+                placeholder="MDCN / NMCN"
+                placeholderTextColor="#64748B"
               />
             </View>
             <View style={{ flex: 1 }}>
@@ -453,7 +479,7 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
                 onChangeText={setLicenseNo}
                 autoCapitalize="characters"
                 placeholder="Optional"
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor="#64748B"
               />
             </View>
           </View>
@@ -464,32 +490,32 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
             value={licenseExpiry}
             onChangeText={setLicenseExpiry}
             placeholder="2028-12-31"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor="#64748B"
           />
 
-          <TouchableOpacity
-            style={[styles.primaryBtn, submitting && { opacity: 0.65 }]}
+          <GlowButton
+            label={`Enrol Staff into ${facilityId}`}
+            icon="user-plus"
+            variant="emerald"
+            loading={submitting}
             onPress={handleEnrolSubmit}
-            disabled={submitting}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.primaryBtnText}>
-              {submitting ? 'Enrolling Staff…' : `Enrol Staff into ${facilityId}`}
-            </Text>
-          </TouchableOpacity>
-        </View>
+          />
+        </LiquidGlassCard>
       )}
 
       {/* 2. FACILITY DIRECTORY */}
       {subTab === 'directory' && (
-        <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Facility Staff Directory ({facilityId})</Text>
+        <LiquidGlassCard glowColor={C.glowBlue} animateIn>
+          <Text style={styles.panelTitle}>Facility Directory ({facilityId})</Text>
+          <Text style={styles.panelSub}>
+            Synced live with MedCore OS staff records for this facility.
+          </Text>
           <TextInput
             style={styles.input}
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Search name, badge, or role…"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor="#64748B"
           />
           {facilityStaff.map((member) => (
             <View key={member.badgeId} style={styles.dirCard}>
@@ -504,12 +530,12 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
                   >
                     <Text
                       style={{
-                        fontSize: 10,
+                        fontSize: 9.5,
                         fontWeight: '800',
-                        color: member.syncState === 'synced' ? '#047857' : '#92400E',
+                        color: member.syncState === 'synced' ? '#6EE7B7' : '#FDE68A',
                       }}
                     >
-                      {member.syncState === 'synced' ? 'CLOUD SYNCED' : 'QUEUED'}
+                      {member.syncState === 'synced' ? 'EMR SYNCED' : 'QUEUED'}
                     </Text>
                   </View>
                 </View>
@@ -528,9 +554,9 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
               >
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: 10.5,
                     fontWeight: '800',
-                    color: member.status === 'active' ? '#065F46' : '#991B1B',
+                    color: member.status === 'active' ? '#6EE7B7' : '#FDA4AF',
                   }}
                 >
                   {member.status === 'active' ? 'ACTIVE' : 'SUSPENDED'}
@@ -538,57 +564,59 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
               </TouchableOpacity>
             </View>
           ))}
-        </View>
+        </LiquidGlassCard>
       )}
 
       {/* 3. QUICK OPS */}
       {subTab === 'ops' && (
-        <View style={styles.panel}>
+        <LiquidGlassCard glowColor={C.glowViolet} animateIn>
           <Text style={styles.panelTitle}>Mobile Facility Operations</Text>
           <Text style={styles.panelSub}>
-            Daily operational tasks cleared for mobile admin sessions at {session.facility}.
+            Daily operational tasks synchronized with {session.facility}.
           </Text>
 
           {opsBanner && (
             <View style={[styles.banner, styles.bannerOk]}>
-              <Text style={[styles.bannerText, { color: '#065F46' }]}>{opsBanner}</Text>
+              <Text style={[styles.bannerText, { color: '#A7F3D0' }]}>{opsBanner}</Text>
             </View>
           )}
 
-          <Text style={styles.fieldLabel}>BROADCAST FACILITY NOTICE</Text>
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+          <Text style={styles.fieldLabel}>BROADCAST FACILITY NOTICE TO EMR</Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14, alignItems: 'center' }}>
             <TextInput
               style={[styles.input, { flex: 1, marginBottom: 0 }]}
               value={alertHeadline}
               onChangeText={setAlertHeadline}
-              placeholder="e.g. Shift handover at 19:00 in Main Auditorium"
-              placeholderTextColor="#94A3B8"
+              placeholder="e.g. Shift handover at 19:00"
+              placeholderTextColor="#64748B"
             />
-            <TouchableOpacity style={styles.smallBtn} onPress={handleBroadcastAlert}>
-              <Text style={styles.smallBtnText}>Send</Text>
-            </TouchableOpacity>
+            <GlowButton label="Send" variant="primary" onPress={handleBroadcastAlert} />
           </View>
 
           {[
             {
               key: 'roster',
+              icon: 'calendar' as const,
               title: 'Rostering & Shift Coverage',
               desc: 'Approve on-call rotations & flag fatigue alerts',
             },
             {
               key: 'discharge',
+              icon: 'building' as const,
               title: 'Bed & Discharge ADT Overview',
               desc: 'Monitor ward turnover and pending discharges',
             },
             {
               key: 'alerts',
+              icon: 'bell' as const,
               title: 'Critical Clinical Alerts',
               desc: 'View active STAT / lab escalation notifications',
             },
             {
               key: 'staff-id',
+              icon: 'card' as const,
               title: 'My Administrator ID Card',
-              desc: 'View mobile badge & facility clearance details',
+              desc: 'View digital badge & facility clearance',
             },
           ].map((op) => (
             <TouchableOpacity
@@ -597,27 +625,28 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
               onPress={() => onOpenTool?.(op.key)}
               activeOpacity={0.85}
             >
+              <MedIcon name={op.icon} size={16} color="#C4B5FD" glowColor={C.glowViolet} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.opTitle}>{op.title}</Text>
                 <Text style={styles.opDesc}>{op.desc}</Text>
               </View>
-              <Text style={{ fontSize: 18, color: '#94A3B8' }}>›</Text>
+              <MedIcon name="arrow-right" size={14} color="#94A3B8" badge={false} />
             </TouchableOpacity>
           ))}
-        </View>
+        </LiquidGlassCard>
       )}
 
       {/* 4. DESKTOP EMR ONLY CAPABILITIES */}
       {subTab === 'emr_only' && (
-        <View style={styles.panel}>
+        <LiquidGlassCard glowColor={C.glowRose} animateIn>
           <Text style={styles.panelTitle}>Desktop EMR Exclusive Controls</Text>
           <Text style={styles.panelSub}>
-            High-impact governance, treasury, and audit features only open on an authenticated Desktop MedCore OS workstation.
+            High-impact governance, treasury settlement, and audit exports only open on Desktop MedCore OS.
           </Text>
 
           {selectedLock && (
             <View style={styles.lockDetailBox}>
-              <Text style={styles.lockDetailTitle}>🔒 Requires Desktop EMR Workstation</Text>
+              <Text style={styles.lockDetailTitle}>Desktop EMR Workstation Required</Text>
               <Text style={styles.lockDetailBody}>{selectedLock.reason}</Text>
               <Text style={styles.lockDetailPath}>Open in OS: {selectedLock.emrPath}</Text>
             </View>
@@ -630,6 +659,7 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
               onPress={() => setSelectedLock(cap)}
               activeOpacity={0.85}
             >
+              <MedIcon name="lock" size={15} color="#FDA4AF" glowColor={C.glowRose} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.lockTitle}>{cap.title}</Text>
                 <Text style={styles.lockPath}>{cap.emrPath}</Text>
@@ -639,76 +669,72 @@ export const FacilityAdminHub: React.FC<FacilityAdminHubProps> = ({ session, onO
               </View>
             </TouchableOpacity>
           ))}
-        </View>
+        </LiquidGlassCard>
       )}
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F9FF', paddingHorizontal: 16, paddingTop: 14 },
-  scopeCard: {
-    backgroundColor: '#0F172A',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-  },
+  container: { flex: 1, paddingHorizontal: 14, paddingTop: 12 },
   scopeTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   scopePill: {
-    backgroundColor: 'rgba(14, 165, 233, 0.22)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(14, 165, 233, 0.18)',
     borderWidth: 1,
-    borderColor: '#38BDF8',
+    borderColor: 'rgba(56, 189, 248, 0.45)',
     borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingVertical: 4,
   },
   scopePillText: { color: '#7DD3FC', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
-  scopeCount: { color: '#94A3B8', fontSize: 12, fontWeight: '700' },
-  scopeTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-  scopeSub: { color: '#CBD5E1', fontSize: 11.5, marginTop: 4, lineHeight: 16.5 },
+  scopeTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+  scopeSub: { color: '#94A3B8', fontSize: 12, marginTop: 4, lineHeight: 17 },
   subTabRow: { flexDirection: 'row', gap: 6, marginBottom: 12 },
   subTab: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 12,
     paddingVertical: 9,
     alignItems: 'center',
   },
-  subTabActive: { backgroundColor: '#1E3A8A', borderColor: '#1E3A8A' },
-  subTabText: { fontSize: 11.5, fontWeight: '700', color: '#475569' },
-  subTabTextActive: { color: '#FFFFFF' },
-  panel: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+  subTabActive: {
+    backgroundColor: 'rgba(37, 99, 235, 0.72)',
+    borderColor: C.glowBlue,
+    shadowColor: C.glowBlue,
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
   },
-  panelTitle: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
-  panelSub: { fontSize: 12, color: '#64748B', marginTop: 3, marginBottom: 14, lineHeight: 17 },
+  subTabText: { fontSize: 11, fontWeight: '700', color: '#94A3B8' },
+  subTabTextActive: { color: '#FFFFFF' },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  panelTitle: { fontSize: 15.5, fontWeight: '800', color: '#FFFFFF' },
+  panelSub: { fontSize: 12, color: '#94A3B8', marginTop: 2, marginBottom: 10, lineHeight: 17 },
   fieldLabel: {
     fontSize: 10.5,
     fontWeight: '800',
-    color: '#475569',
+    color: '#94A3B8',
     marginBottom: 5,
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
   },
   input: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: 'rgba(2, 6, 23, 0.65)',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 10,
+    borderColor: 'rgba(148, 163, 184, 0.25)',
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 13.5,
-    color: '#0F172A',
+    color: '#F8FAFC',
     marginBottom: 12,
   },
   twoCol: { flexDirection: 'row', gap: 10 },
@@ -717,92 +743,78 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: 'rgba(255,255,255,0.16)',
     marginRight: 6,
   },
-  chipActive: { backgroundColor: '#EFF6FF', borderColor: '#0284C7' },
-  chipText: { fontSize: 11.5, fontWeight: '700', color: '#334155' },
-  chipTextActive: { color: '#0369A1' },
-  primaryBtn: {
-    backgroundColor: '#0F766E',
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  primaryBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
-  banner: { padding: 11, borderRadius: 10, marginBottom: 12, borderWidth: 1 },
-  bannerOk: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
-  bannerErr: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  chipActive: { backgroundColor: 'rgba(16, 185, 129, 0.22)', borderColor: C.glowEmerald },
+  chipText: { fontSize: 11.5, fontWeight: '700', color: '#CBD5E1' },
+  chipTextActive: { color: '#A7F3D0' },
+  banner: { padding: 11, borderRadius: 12, marginBottom: 12, borderWidth: 1 },
+  bannerOk: { backgroundColor: 'rgba(16, 185, 129, 0.16)', borderColor: 'rgba(52, 211, 153, 0.4)' },
+  bannerErr: { backgroundColor: 'rgba(244, 63, 94, 0.16)', borderColor: 'rgba(251, 113, 133, 0.4)' },
   bannerText: { fontSize: 12, fontWeight: '700', lineHeight: 17 },
   dirCard: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: 'rgba(255,255,255,0.08)',
     gap: 10,
   },
-  dirName: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
-  dirMeta: { fontSize: 11.5, color: '#475569', marginTop: 2 },
-  dirEmail: { fontSize: 11, color: '#64748B', marginTop: 1 },
+  dirName: { fontSize: 14, fontWeight: '800', color: '#FFFFFF' },
+  dirMeta: { fontSize: 11.5, color: '#CBD5E1', marginTop: 2 },
+  dirEmail: { fontSize: 11, color: '#94A3B8', marginTop: 1 },
   syncPill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
-  syncPillOk: { backgroundColor: '#D1FAE5' },
-  syncPillPending: { backgroundColor: '#FEF3C7' },
+  syncPillOk: { backgroundColor: 'rgba(16, 185, 129, 0.2)' },
+  syncPillPending: { backgroundColor: 'rgba(245, 158, 11, 0.2)' },
   statusBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  statusActive: { backgroundColor: '#D1FAE5' },
-  statusSuspended: { backgroundColor: '#FEE2E2' },
-  smallBtn: {
-    backgroundColor: '#1E3A8A',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-  },
-  smallBtnText: { color: '#FFFFFF', fontSize: 12.5, fontWeight: '800' },
+  statusActive: { backgroundColor: 'rgba(16, 185, 129, 0.2)' },
+  statusSuspended: { backgroundColor: 'rgba(244, 63, 94, 0.2)' },
   opCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 13,
-    borderRadius: 12,
-    backgroundColor: '#F8FAFC',
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: 'rgba(255,255,255,0.12)',
     marginBottom: 8,
   },
-  opTitle: { fontSize: 13.5, fontWeight: '800', color: '#0F172A' },
-  opDesc: { fontSize: 11.5, color: '#64748B', marginTop: 2 },
+  opTitle: { fontSize: 13.5, fontWeight: '800', color: '#F8FAFC' },
+  opDesc: { fontSize: 11.5, color: '#94A3B8', marginTop: 2 },
   lockDetailBox: {
     padding: 12,
     borderRadius: 12,
-    backgroundColor: '#FFFBEB',
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: 'rgba(251, 191, 36, 0.4)',
     marginBottom: 12,
   },
-  lockDetailTitle: { fontSize: 13, fontWeight: '800', color: '#92400E', marginBottom: 3 },
-  lockDetailBody: { fontSize: 12, color: '#78350F', lineHeight: 17 },
-  lockDetailPath: { fontSize: 11, fontWeight: '700', color: '#B45309', marginTop: 5 },
+  lockDetailTitle: { fontSize: 13, fontWeight: '800', color: '#FDE68A', marginBottom: 3 },
+  lockDetailBody: { fontSize: 12, color: '#FEF3C7', lineHeight: 17 },
+  lockDetailPath: { fontSize: 11, fontWeight: '700', color: '#FBBF24', marginTop: 5 },
   lockRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
-  lockTitle: { fontSize: 13, fontWeight: '800', color: '#0F172A' },
-  lockPath: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  lockTitle: { fontSize: 13, fontWeight: '800', color: '#F8FAFC' },
+  lockPath: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
   emrOnlyBadge: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: 'rgba(244, 63, 94, 0.18)',
     borderWidth: 1,
-    borderColor: '#FECACA',
+    borderColor: 'rgba(251, 113, 133, 0.45)',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  emrOnlyBadgeText: { fontSize: 9.5, fontWeight: '800', color: '#B91C1C' },
+  emrOnlyBadgeText: { fontSize: 9.5, fontWeight: '800', color: '#FDA4AF' },
 });
 
 export default FacilityAdminHub;

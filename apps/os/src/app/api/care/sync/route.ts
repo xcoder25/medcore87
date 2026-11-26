@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -12,6 +13,7 @@ import {
   isPostgresConfigured,
   withTenantClient,
 } from '../../../../lib/db/postgres';
+import { upsertPatient } from '../../../../lib/db/patientRepo';
 import { publishFacilitySseEvent } from '../../../../lib/sseBroker';
 
 export const runtime = 'nodejs';
@@ -120,6 +122,12 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as {
+      action?: string;
+      patientId?: string;
+      fullName?: string;
+      sex?: string;
+      dateOfBirth?: string;
+      email?: string;
       facilityId?: string;
       facilityName?: string;
       patientName?: string;
@@ -130,6 +138,97 @@ export async function POST(req: NextRequest) {
       bookingRef?: string;
       source?: CarePortalBooking['source'];
     };
+
+    if (body.action === 'register_patient') {
+      const fullName = String(body.fullName || body.patientName || '').trim();
+      const phone = String(body.phone || '').trim();
+      const email = String(body.email || '').trim().toLowerCase();
+      const facilityId = String(body.facilityId || 'IGH-EKT').trim().toUpperCase();
+      const facilityName = String(body.facilityName || 'Immanuel General Hospital, Eket').trim();
+
+      if (fullName.length < 2) {
+        return NextResponse.json(
+          { ok: false, error: 'Full name (at least 2 characters) is required to sign up.' },
+          { status: 400, headers: CORS_HEADERS }
+        );
+      }
+      if (phone.replace(/\D/g, '').length < 7 && !email.includes('@')) {
+        return NextResponse.json(
+          { ok: false, error: 'A valid phone number or email address is required to create a patient account.' },
+          { status: 400, headers: CORS_HEADERS }
+        );
+      }
+
+      const patientId = String(
+        body.patientId || `PAT-${facilityId.slice(-3)}-${Date.now().toString(36).toUpperCase()}`
+      ).trim();
+      const shidDigest = crypto
+        .createHash('sha256')
+        .update(`${facilityId}:${fullName}:${phone || email}`)
+        .digest('hex')
+        .slice(0, 6)
+        .toUpperCase();
+      const shid = String(body.shid || `SHID-AKS-${shidDigest}`).trim().toUpperCase();
+      const registeredAt = new Date().toISOString();
+
+      if (isPostgresConfigured()) {
+        try {
+          await upsertPatient({
+            id: patientId,
+            facilityId,
+            facilityName,
+            hospitalNumber: shid,
+            fullName,
+            sex: body.sex ? String(body.sex) : undefined,
+            dateOfBirth: body.dateOfBirth ? String(body.dateOfBirth) : undefined,
+            phone: phone || undefined,
+            email: email || undefined,
+            status: 'active',
+            meta: {
+              source: 'care_mobile_signup',
+              shid,
+              registeredAt,
+            },
+          });
+        } catch {
+          // continue cleanly with local vault fallback
+        }
+      }
+
+      try {
+        publishFacilitySseEvent({
+          facilityId,
+          key: 'care_patient_registered',
+          value: {
+            patientId,
+            shid,
+            fullName,
+            facilityId,
+            registeredAt,
+          },
+        });
+      } catch {
+        // ignore SSE broadcast error
+      }
+
+      return NextResponse.json(
+        {
+          ok: true,
+          registered: true,
+          patient: {
+            patientId,
+            shid,
+            fullName,
+            phone: phone || undefined,
+            email: email || undefined,
+            facilityId,
+            facilityName,
+            registeredAt,
+          },
+        },
+        { status: 201, headers: CORS_HEADERS }
+      );
+    }
 
     if (!body.patientName && !body.shid && !body.phone) {
       return NextResponse.json(

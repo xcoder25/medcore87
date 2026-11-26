@@ -92,9 +92,9 @@ export function UnifiedGate({ onSelect }: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#050C1A' },
-  bg: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  bg: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(5, 12, 26, 0.82)',
   },
   safe: { flex: 1, paddingHorizontal: 20 },

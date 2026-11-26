@@ -31,6 +31,9 @@ export interface StaffSession {
   facility: string;
   department: string;
   email?: string;
+  clearanceLevel?: number;
+  sessionToken?: string;
+  emrSynced?: boolean;
   avatarInitials: string;
   shift: string;
 }
