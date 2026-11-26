@@ -34,14 +34,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'badgeId is required.' }, { status: 400 });
     }
 
-    const rl = checkRateLimit(`liveness-sess:${ip}:${badgeId}`, 20, 10 * 60 * 1000);
-    if (!rl.allowed) {
-      return NextResponse.json(
-        { ok: false, error: `Too many live camera verification sessions. Wait ${rl.retryAfterSeconds}s.` },
-        { status: 429 }
-      );
-    }
-
     if (mode === 'verify') {
       const existing = await getStoredBiometric(facilityId, badgeId);
       if (!existing?.face) {
@@ -50,6 +42,14 @@ export async function POST(req: NextRequest) {
           { status: 404 }
         );
       }
+    }
+
+    const rl = checkRateLimit(`liveness-sess:${ip}:${badgeId}`, 20, 10 * 60 * 1000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { ok: false, error: `Too many live camera verification sessions. Wait ${rl.retryAfterSeconds}s.` },
+        { status: 429 }
+      );
     }
 
     const cfg = getRekognitionConfig();

@@ -1215,13 +1215,21 @@ const handleLockScreen = () => {
           </div>
         </div>
 
-        {userSession?.badgeId && (
+        {faceUnlockModalOpen && userSession?.badgeId && (
           <FaceBiometricCaptureModal
             mode="verify"
             isOpen={faceUnlockModalOpen}
             badgeId={userSession.badgeId}
             facilityId={userSession.hospitalId || 'IGH-EKT'}
             staffName={userSession.name || 'Staff Member'}
+            skipLabel="Enter 6-Digit PIN Instead"
+            onNotEnrolled={(reason) => {
+              setFaceUnlockModalOpen(false);
+              setFaceUnlockAvailable(false);
+              setUnlockError(
+                reason || 'Face ID is not enrolled for this account — please enter your 6-digit PIN to unlock.'
+              );
+            }}
             onClose={() => setFaceUnlockModalOpen(false)}
             onVerified={() => {
               try {

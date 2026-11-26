@@ -2129,8 +2129,9 @@ test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts an
 
   const livenessRouteSrc = fs.readFileSync(path.join(OS_ROOT, 'src/app/api/auth/biometric/liveness/session/route.ts'), 'utf8');
   assert.ok(
-    livenessRouteSrc.includes('notEnrolled: true'),
-    'liveness session verify route must return notEnrolled: true when face biometric is unenrolled'
+    livenessRouteSrc.includes('notEnrolled: true') &&
+      livenessRouteSrc.indexOf("if (mode === 'verify')") < livenessRouteSrc.indexOf('checkRateLimit(`liveness-sess:'),
+    'liveness session verify route must check enrollment and return notEnrolled: true before rate limiting'
   );
 
   const livenessResultsSrc = fs.readFileSync(path.join(OS_ROOT, 'src/app/api/auth/biometric/liveness/results/route.ts'), 'utf8');
@@ -2152,13 +2153,22 @@ test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts an
     faceModalSrc.includes('onNotEnrolled?: (reason?: string) => void') &&
       faceModalSrc.includes('if (ch.notEnrolled)') &&
       faceModalSrc.includes('callbacksRef') &&
-      faceModalSrc.includes('notEnrolledHandledRef'),
-    'FaceBiometricCaptureModal must stabilize callbacks via callbacksRef and guard one-shot notEnrolled fallback'
+      faceModalSrc.includes('notEnrolledHandledRef') &&
+      faceModalSrc.includes('getStaffBiometricStatus(badgeId, facilityId)') &&
+      faceModalSrc.includes('const ok = await loadVerifyChallenge()'),
+    'FaceBiometricCaptureModal must confirm enrollment via preflight before opening camera, stabilize callbacks via callbacksRef, and guard one-shot notEnrolled fallback'
   );
   assert.equal(
     /\},\s*\[[^\]]*(?:onNotEnrolled|onSkipCameraUnavailable)/.test(faceModalSrc),
     false,
     'FaceBiometricCaptureModal hooks must not depend directly on inline parent callback props'
+  );
+
+  const pageSrc = fs.readFileSync(path.join(OS_ROOT, 'src/app/page.tsx'), 'utf8');
+  assert.ok(
+    pageSrc.includes('{faceUnlockModalOpen && userSession?.badgeId && (') &&
+      pageSrc.includes('onNotEnrolled={(reason) =>'),
+    'Lock screen must conditionally mount FaceBiometricCaptureModal and handle onNotEnrolled'
   );
 
   const authSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/AuthScreen.tsx'), 'utf8');

@@ -16,6 +16,7 @@ import {
 import {
   completeLiveLivenessSession,
   enrollStaffFaceBiometric,
+  getStaffBiometricStatus,
   probeStaffFaceFrame,
   requestFaceAuthChallenge,
   startLiveLivenessSession,
@@ -307,6 +308,21 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
     setLivenessMode('checking');
 
     const initSession = async () => {
+      if (mode === 'verify') {
+        const preflight = await Promise.race([
+          getStaffBiometricStatus(badgeId, facilityId),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 6_000)),
+        ]);
+        if (cancelled) return;
+        if (!preflight?.ok || !preflight.faceEnrolled) {
+          triggerNotEnrolled(
+            !preflight || preflight.ok === false
+              ? 'Could not confirm Face ID enrollment for this account — switched to verification code.'
+              : 'Face ID is not enrolled for this account — switched to verification code.'
+          );
+          return;
+        }
+      }
       const live = await startLiveLivenessSession({ badgeId, facilityId, mode });
       if (cancelled) return;
       if (mode === 'verify' && live.notEnrolled) {
@@ -380,10 +396,14 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
       }
     };
 
-    void start();
-    if (mode === 'verify') {
-      void loadVerifyChallenge();
-    }
+    const boot = async () => {
+      if (mode === 'verify') {
+        const ok = await loadVerifyChallenge();
+        if (!ok || cancelled || notEnrolledHandledRef.current) return;
+      }
+      await start();
+    };
+    void boot();
 
     return () => {
       cancelled = true;
@@ -995,7 +1015,11 @@ export const FaceBiometricCaptureModal: React.FC<FaceBiometricCaptureModalProps>
           ) : livenessMode === 'checking' ? (
             <div style={{ textAlign: 'center', padding: '32px 12px', color: '#334155', fontSize: 13, fontWeight: 700, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
               <Loader2 size={26} color="#059669" style={{ animation: 'medcoreFaceSpin 1s linear infinite' }} />
-              <span>Preparing secure live camera check…</span>
+              <span>
+                {mode === 'verify'
+                  ? 'Confirming Face ID enrollment & camera check…'
+                  : 'Preparing secure live camera check…'}
+              </span>
             </div>
           ) : livenessMode === 'streaming' && liveSession ? (
             <>

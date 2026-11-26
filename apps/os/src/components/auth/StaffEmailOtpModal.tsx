@@ -272,7 +272,7 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
           getStaffBiometricStatus(badge, facilityId),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
         ]);
-        ready = Boolean(st?.faceEnrolled);
+        ready = Boolean(st?.ok && st?.faceEnrolled);
       }
       if (!alive) return;
 
@@ -741,7 +741,7 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                   </div>
                 </div>
               )}
-              {tab === 'email_otp' && faceStatusNote === 'not_enrolled' && (
+              {faceStatusNote === 'not_enrolled' && (
                 <div
                   style={{
                     marginBottom: 12,
@@ -760,12 +760,12 @@ export const StaffEmailOtpModal: React.FC<StaffEmailOtpModalProps> = ({
                         Face ID Not Enrolled — Switched Automatically to Email OTP
                       </div>
                       <div>
-                        Your administrator Face ID is not yet enrolled. Sign-in has switched automatically to Email OTP verification until you enroll your Face ID in{' '}
+                        Your administrator Face ID is not yet enrolled. Sign-in has switched automatically to the verification code option (Email OTP / Offline Admin Code) until you enroll your Face ID in{' '}
                         <strong>Admin Settings → Security &amp; 2FA</strong>.
                       </div>
                     </>
                   ) : (
-                    'Face ID is not yet enrolled for this account — continuing automatically with Email OTP until your administrator enrolls your Face ID.'
+                    'Face ID is not yet enrolled for this account — continuing automatically with Email OTP / verification code until your administrator enrolls your Face ID.'
                   )}
                 </div>
               )}
