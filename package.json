@@ -21,7 +21,8 @@
                     "lint":  "npm run lint --workspaces",
                     "typecheck":  "npm run typecheck --workspaces",
                     "start":  "node services/hospital-gateway/server.js",
-                    "start:os":  "node services/hospital-gateway/server.js"
+                    "start:os":  "node services/hospital-gateway/server.js",
+                    "docs:openapi":  "node scripts/generate-openapi.mjs"
                 },
     "keywords":  [
                      "healthcare",

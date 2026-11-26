@@ -2915,6 +2915,62 @@ test('phase5-postgres-rls-and-daily-cron: indexed relational tables with RLS, ve
   assert.equal(JSON.stringify(authJson).includes('"patientName"'), false, 'Daily cron summary must be PII-free');
 });
 
+test('docs-openapi-and-compliance-invariants: OpenAPI 3.1 spec covers all API routes and docs/env templates contain zero live secrets', () => {
+  const REPO_ROOT = path.resolve(OS_ROOT, '../..');
+  const openApiPath = path.join(REPO_ROOT, 'docs/api/openapi.json');
+  assert.ok(fs.existsSync(openApiPath), 'docs/api/openapi.json must exist');
+  const spec = JSON.parse(fs.readFileSync(openApiPath, 'utf8'));
+  assert.equal(spec.openapi, '3.1.0', 'OpenAPI spec must declare version 3.1.0');
+  assert.ok(spec.components?.securitySchemes?.SessionCookieAuth, 'OpenAPI must declare SessionCookieAuth');
+
+  // Verify 100% route coverage for apps/os/src/app/api/**/route.ts
+  const osApiDir = path.join(OS_ROOT, 'src/app/api');
+  const expectedRoutes = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name === 'route.ts') {
+        const rel = path.relative(osApiDir, dir).replace(/\\/g, '/');
+        const apiPath = '/api/' + rel.split('/').map((s) => s.replace(/^\[([^\]]+)\]$/, '{$1}')).filter(Boolean).join('/');
+        expectedRoutes.push(apiPath);
+      }
+    }
+  };
+  walk(osApiDir);
+  assert.ok(expectedRoutes.length >= 50, `Expected >= 50 OS API routes, found ${expectedRoutes.length}`);
+  for (const r of expectedRoutes) {
+    assert.ok(spec.paths?.[r], `docs/api/openapi.json missing route handler path: ${r}`);
+  }
+
+  // Verify required compliance docs and .env.example files exist without accidental live credentials
+  const requiredDocs = [
+    'docs/README.md',
+    'docs/api/API_AND_SERVER_ACTIONS.md',
+    'docs/DATABASE_AND_WORKFLOWS.md',
+    'docs/SECURITY_RBAC_AUDIT.md',
+    'docs/SETUP_AND_RECOVERY.md',
+    '.env.example',
+    'apps/os/.env.example',
+    'apps/admin/.env.example',
+  ];
+  const LIVE_SECRET_PATTERNS = [
+    /sk_live_[A-Za-z0-9]{12,}/,
+    /AIzaSy[A-Za-z0-9_-]{25,}/,
+    /re_[A-Za-z0-9]{20,}/,
+    /-----BEGIN PRIVATE KEY-----/,
+  ];
+  for (const rel of requiredDocs) {
+    const abs = path.join(REPO_ROOT, rel);
+    assert.ok(fs.existsSync(abs), `Missing required documentation/template file: ${rel}`);
+    const content = fs.readFileSync(abs, 'utf8');
+    assert.ok(content.trim().length > 200, `${rel} must contain substantive documentation`);
+    for (const pat of LIVE_SECRET_PATTERNS) {
+      assert.equal(pat.test(content), false, `${rel} must not contain live credential pattern ${pat}`);
+    }
+  }
+});
+
 
 
 
