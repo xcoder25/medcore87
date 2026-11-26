@@ -50,20 +50,44 @@ function writeReferralsVault(items: HieReferralPacket[]): void {
   }
 }
 
-async function mirrorFacilityReferrals(facilityId: string, items: HieReferralPacket[]): Promise<void> {
-  if (!isPostgresConfigured() || !facilityId) return;
+async function upsertRelationalReferral(packet: HieReferralPacket): Promise<void> {
+  if (!isPostgresConfigured()) return;
   try {
     await ensureSchema();
-    const scoped = items.filter(
-      (r) => r.referringFacilityId === facilityId || r.targetFacilityId === facilityId
-    );
-    await withTenantClient(facilityId, async (c) => {
+    await withTenantClient(packet.referringFacilityId, async (c) => {
       await c.query(
-        `INSERT INTO facility_kv (facility_id, key, value, updated_at)
-         VALUES ($1, $2, $3::jsonb, NOW())
-         ON CONFLICT (facility_id, key)
-         DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-        [facilityId, KV_KEY, JSON.stringify(scoped.slice(0, 200))]
+        `INSERT INTO hie_referrals (
+           id, facility_id, referring_facility_name, target_facility_id, target_facility_name,
+           specialty, priority, status, patient_name, hospital_number, patient_shid,
+           patient_consent_token, bed_lock_id, bed_category, bed_ward, payload, created_at, updated_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::timestamptz,$18::timestamptz)
+         ON CONFLICT (id) DO UPDATE SET
+           status = EXCLUDED.status,
+           bed_lock_id = EXCLUDED.bed_lock_id,
+           bed_category = EXCLUDED.bed_category,
+           bed_ward = EXCLUDED.bed_ward,
+           payload = EXCLUDED.payload,
+           updated_at = EXCLUDED.updated_at`,
+        [
+          packet.id,
+          packet.referringFacilityId,
+          packet.referringFacilityName,
+          packet.targetFacilityId,
+          packet.targetFacilityName,
+          packet.specialty,
+          packet.priority,
+          packet.status,
+          packet.patientName,
+          packet.hospitalNumber,
+          packet.patientShid || null,
+          packet.patientConsentToken,
+          packet.bedReservation?.bedLockId || null,
+          packet.bedReservation?.bedCategory || null,
+          packet.bedReservation?.ward || null,
+          JSON.stringify(packet),
+          packet.createdAt,
+          packet.updatedAt,
+        ]
       );
     });
   } catch {
@@ -76,16 +100,16 @@ export async function GET(req: NextRequest) {
   const direction = (req.nextUrl.searchParams.get('direction') || 'all').trim().toLowerCase();
 
   let list = readReferralsVault();
-  if (isPostgresConfigured() && facilityId && list.length === 0) {
+  if (isPostgresConfigured() && facilityId) {
     try {
       await ensureSchema();
       await withTenantClient(facilityId, async (c) => {
-        const res = await c.query<{ value: HieReferralPacket[] }>(
-          `SELECT value FROM facility_kv WHERE facility_id = $1 AND key = $2`,
-          [facilityId, KV_KEY]
+        const res = await c.query<{ payload: HieReferralPacket }>(
+          `SELECT payload FROM hie_referrals WHERE facility_id = $1 OR target_facility_id = $1 ORDER BY updated_at DESC LIMIT 200`,
+          [facilityId]
         );
-        if (Array.isArray(res.rows[0]?.value)) {
-          list = res.rows[0].value;
+        if (res.rows.length > 0) {
+          list = res.rows.map((r) => r.payload);
           writeReferralsVault(list);
         }
       });
@@ -152,10 +176,7 @@ export async function POST(req: NextRequest) {
     const next = [packet, ...current].slice(0, 300);
     writeReferralsVault(next);
 
-    await Promise.all([
-      mirrorFacilityReferrals(packet.referringFacilityId, next),
-      mirrorFacilityReferrals(packet.targetFacilityId, next),
-    ]);
+    await upsertRelationalReferral(packet);
 
     try {
       publishFacilitySseEvent({
@@ -215,10 +236,7 @@ export async function PATCH(req: NextRequest) {
     list[idx] = updated;
     writeReferralsVault(list);
 
-    await Promise.all([
-      mirrorFacilityReferrals(updated.referringFacilityId, list),
-      mirrorFacilityReferrals(updated.targetFacilityId, list),
-    ]);
+    await upsertRelationalReferral(updated);
 
     try {
       publishFacilitySseEvent({

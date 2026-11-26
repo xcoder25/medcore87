@@ -69,7 +69,23 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const allBookings = readBookings();
+  let allBookings = readBookings();
+  if (isPostgresConfigured()) {
+    try {
+      await ensureSchema();
+      await withTenantClient(facilityId, async (c) => {
+        const res = await c.query<{ payload: CarePortalBooking }>(
+          `SELECT payload FROM care_bookings WHERE facility_id = $1 AND ($2 <> '' AND UPPER(shid) = UPPER($2) OR $3 <> '' AND regexp_replace(COALESCE(phone,''), '\\D', '', 'g') = regexp_replace($3, '\\D', '', 'g')) ORDER BY created_at DESC LIMIT 50`,
+          [facilityId, shid, phone]
+        );
+        if (res.rows.length > 0) {
+          allBookings = res.rows.map((r) => r.payload);
+        }
+      });
+    } catch {
+      // keep vault fallback
+    }
+  }
   const patientBookings = allBookings.filter((b) => {
     if (shid && b.shid && b.shid.toUpperCase() === shid.toUpperCase()) return true;
     if (phone && b.phone && b.phone.replace(/\D/g, '') === phone.replace(/\D/g, '')) return true;
@@ -144,11 +160,29 @@ export async function POST(req: NextRequest) {
         await ensureSchema();
         await withTenantClient(facilityId, async (c) => {
           await c.query(
-            `INSERT INTO facility_kv (facility_id, key, value, updated_at)
-             VALUES ($1, 'medcore_care_portal_bookings_v1', $2::jsonb, NOW())
-             ON CONFLICT (facility_id, key)
-             DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-            [facilityId, JSON.stringify(next.filter((x) => x.facilityId === facilityId))]
+            `INSERT INTO care_bookings (
+               id, booking_ref, facility_id, facility_name, patient_name, shid,
+               phone, department, preferred_slot, source, status, payload, created_at
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::timestamptz)
+             ON CONFLICT (facility_id, id) DO UPDATE SET
+               status = EXCLUDED.status,
+               preferred_slot = EXCLUDED.preferred_slot,
+               payload = EXCLUDED.payload`,
+            [
+              booking.id,
+              booking.bookingRef,
+              facilityId,
+              booking.facilityName,
+              booking.patientName,
+              booking.shid || null,
+              booking.phone || null,
+              booking.department,
+              booking.preferredSlot,
+              booking.source,
+              booking.status,
+              JSON.stringify(booking),
+              booking.createdAt,
+            ]
           );
         });
       } catch {

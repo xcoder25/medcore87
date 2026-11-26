@@ -98,7 +98,53 @@ export async function GET(req: NextRequest) {
   const facilityId = (req.nextUrl.searchParams.get('facilityId') || 'IGH-EKT').trim().toUpperCase();
   const targetHash = (req.nextUrl.searchParams.get('hash') || '').trim().toLowerCase();
 
-  const bundles = readAnchors().filter((b) => !facilityId || b.receipt.facilityId === facilityId);
+  let bundles = readAnchors().filter((b) => !facilityId || b.receipt.facilityId === facilityId);
+
+  if (isPostgresConfigured()) {
+    try {
+      await ensureSchema();
+      await withTenantClient(facilityId, async (c) => {
+        const res = await c.query<{
+          anchor_id: string;
+          facility_id: string;
+          leaf_count: number;
+          merkle_root: string;
+          ledger_start_hash: string;
+          ledger_end_hash: string;
+          network: MerkleAnchorReceipt['network'];
+          external_tx_hash: string | null;
+          status: MerkleAnchorReceipt['status'];
+          leaf_hashes: string[];
+          anchored_at: Date;
+        }>(
+          `SELECT anchor_id, facility_id, leaf_count, merkle_root, ledger_start_hash, ledger_end_hash,
+                  network, external_tx_hash, status, leaf_hashes, anchored_at
+           FROM merkle_anchors WHERE facility_id = $1 ORDER BY anchored_at DESC LIMIT 100`,
+          [facilityId]
+        );
+        if (res.rows.length > 0) {
+          bundles = res.rows.map((r) => ({
+            receipt: {
+              anchorId: r.anchor_id,
+              facilityId: r.facility_id,
+              anchoredAt: new Date(r.anchored_at).toISOString(),
+              leafCount: Number(r.leaf_count || 0),
+              merkleRoot: r.merkle_root,
+              ledgerStartHash: r.ledger_start_hash,
+              ledgerEndHash: r.ledger_end_hash,
+              network: r.network,
+              externalTxHash: r.external_tx_hash,
+              status: r.status,
+              zeroPhiCertified: true,
+            },
+            leafHashes: Array.isArray(r.leaf_hashes) ? r.leaf_hashes : [],
+          }));
+        }
+      });
+    } catch {
+      // fall back cleanly to vault
+    }
+  }
 
   if (targetHash) {
     for (const bundle of bundles) {
@@ -216,6 +262,36 @@ export async function POST(req: NextRequest) {
   const current = readAnchors();
   const leafList = hashes.length > 0 ? hashes : [tree.root];
   writeAnchors([{ receipt, leafHashes: leafList }, ...current].slice(0, 200));
+
+  if (isPostgresConfigured()) {
+    try {
+      await ensureSchema();
+      await withTenantClient(facilityId, async (c) => {
+        await c.query(
+          `INSERT INTO merkle_anchors (
+             anchor_id, facility_id, leaf_count, merkle_root, ledger_start_hash,
+             ledger_end_hash, network, external_tx_hash, status, leaf_hashes, anchored_at
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::timestamptz)
+           ON CONFLICT (facility_id, anchor_id) DO NOTHING`,
+          [
+            receipt.anchorId,
+            facilityId,
+            receipt.leafCount,
+            receipt.merkleRoot,
+            receipt.ledgerStartHash,
+            receipt.ledgerEndHash,
+            receipt.network,
+            receipt.externalTxHash,
+            receipt.status,
+            JSON.stringify(leafList),
+            receipt.anchoredAt,
+          ]
+        );
+      });
+    } catch {
+      // fail soft to server vault
+    }
+  }
 
   return NextResponse.json({ ok: true, anchor: receipt }, { status: 201 });
 }

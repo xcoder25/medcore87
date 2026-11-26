@@ -624,6 +624,129 @@ export async function ensureSchema(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS idx_audit_ledger_facility ON clinical_audit_ledger (facility_id, created_at DESC);
 
+        CREATE TABLE IF NOT EXISTS hie_referrals (
+          id TEXT NOT NULL,
+          facility_id TEXT NOT NULL,
+          referring_facility_name TEXT,
+          target_facility_id TEXT NOT NULL,
+          target_facility_name TEXT,
+          specialty TEXT,
+          priority TEXT DEFAULT 'urgent',
+          status TEXT DEFAULT 'pending_acceptance',
+          patient_name TEXT,
+          hospital_number TEXT,
+          patient_shid TEXT,
+          patient_consent_token TEXT,
+          bed_lock_id TEXT,
+          bed_category TEXT,
+          bed_ward TEXT,
+          payload JSONB DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW(),
+          PRIMARY KEY (id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_hie_referrals_referring ON hie_referrals (facility_id, status, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_hie_referrals_target ON hie_referrals (target_facility_id, status, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS akshia_claims (
+          id TEXT NOT NULL,
+          facility_id TEXT NOT NULL,
+          claim_number TEXT NOT NULL,
+          scheme TEXT DEFAULT 'AKSHIA',
+          patient_name TEXT,
+          enrollee_id TEXT,
+          icd11_code TEXT,
+          diagnosis TEXT,
+          authorization_code TEXT,
+          encounter_date DATE,
+          total_amount_ngn NUMERIC(14,2) DEFAULT 0,
+          paid_amount_ngn NUMERIC(14,2),
+          readiness_score INT DEFAULT 0,
+          status TEXT DEFAULT 'draft',
+          batch_id TEXT,
+          payload JSONB DEFAULT '{}'::jsonb,
+          submitted_at TIMESTAMPTZ,
+          paid_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW(),
+          PRIMARY KEY (facility_id, id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_akshia_claims_facility_status ON akshia_claims (facility_id, status, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_akshia_claims_batch ON akshia_claims (facility_id, batch_id);
+
+        CREATE TABLE IF NOT EXISTS akshia_claim_batches (
+          batch_id TEXT NOT NULL,
+          facility_id TEXT NOT NULL,
+          period_month TEXT NOT NULL,
+          scheme TEXT,
+          claim_count INT DEFAULT 0,
+          clean_count INT DEFAULT 0,
+          blocked_count INT DEFAULT 0,
+          total_amount_ngn NUMERIC(14,2) DEFAULT 0,
+          clean_amount_ngn NUMERIC(14,2) DEFAULT 0,
+          status TEXT DEFAULT 'submitted',
+          signature_hash TEXT,
+          payload JSONB DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          PRIMARY KEY (facility_id, batch_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_akshia_batches_facility ON akshia_claim_batches (facility_id, period_month DESC, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS merkle_anchors (
+          anchor_id TEXT NOT NULL,
+          facility_id TEXT NOT NULL,
+          leaf_count INT DEFAULT 0,
+          merkle_root TEXT NOT NULL,
+          ledger_start_hash TEXT,
+          ledger_end_hash TEXT,
+          network TEXT DEFAULT 'local_cryptographic_seal',
+          external_tx_hash TEXT,
+          status TEXT DEFAULT 'sealed_local',
+          leaf_hashes JSONB DEFAULT '[]'::jsonb,
+          anchored_at TIMESTAMPTZ DEFAULT NOW(),
+          PRIMARY KEY (facility_id, anchor_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_merkle_anchors_facility ON merkle_anchors (facility_id, anchored_at DESC);
+
+        CREATE TABLE IF NOT EXISTS care_bookings (
+          id TEXT NOT NULL,
+          booking_ref TEXT NOT NULL,
+          facility_id TEXT NOT NULL,
+          facility_name TEXT,
+          patient_name TEXT,
+          shid TEXT,
+          phone TEXT,
+          department TEXT,
+          preferred_slot TEXT,
+          source TEXT DEFAULT 'care_mobile_app',
+          status TEXT DEFAULT 'scheduled',
+          payload JSONB DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          PRIMARY KEY (facility_id, id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_care_bookings_facility ON care_bookings (facility_id, status, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_care_bookings_shid ON care_bookings (shid);
+
+        CREATE TABLE IF NOT EXISTS care_reminders (
+          id TEXT NOT NULL,
+          facility_id TEXT NOT NULL,
+          patient_id TEXT,
+          patient_name TEXT,
+          phone TEXT,
+          shid TEXT,
+          track TEXT NOT NULL,
+          due_date DATE,
+          channel TEXT DEFAULT 'whatsapp_text',
+          language TEXT DEFAULT 'english',
+          message_body TEXT,
+          status TEXT DEFAULT 'due',
+          dispatched_at TIMESTAMPTZ,
+          payload JSONB DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          PRIMARY KEY (facility_id, id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_care_reminders_due ON care_reminders (facility_id, status, due_date ASC);
+
         -- Multi-Tenant Security Layer: PostgreSQL Row-Level Security (RLS)
         -- Guarantees that users at Facility A can never see patient or staff data from Facility B
         ALTER TABLE patients ENABLE ROW LEVEL SECURITY;
@@ -642,6 +765,12 @@ export async function ensureSchema(): Promise<void> {
         ALTER TABLE staff_biometrics ENABLE ROW LEVEL SECURITY;
         ALTER TABLE staff_otp_challenges ENABLE ROW LEVEL SECURITY;
         ALTER TABLE clinical_audit_ledger ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE hie_referrals ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE akshia_claims ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE akshia_claim_batches ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE merkle_anchors ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE care_bookings ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE care_reminders ENABLE ROW LEVEL SECURITY;
 
         DO $$
         DECLARE
@@ -652,7 +781,9 @@ export async function ensureSchema(): Promise<void> {
             'facility_kv', 'form_drafts', 'vital_signs', 'prescriptions',
             'lab_results', 'invoices_receipts', 'inpatient_beds',
             'reception_visits', 'accounts_requests', 'staff_biometrics',
-            'staff_otp_challenges', 'clinical_audit_ledger'
+            'staff_otp_challenges', 'clinical_audit_ledger',
+            'akshia_claims', 'akshia_claim_batches', 'merkle_anchors',
+            'care_bookings', 'care_reminders'
           ]
           LOOP
             IF NOT EXISTS (
@@ -664,6 +795,12 @@ export async function ensureSchema(): Promise<void> {
               );
             END IF;
           END LOOP;
+
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_policies WHERE tablename = 'hie_referrals' AND policyname = 'hie_shared_facility_policy'
+          ) THEN
+            EXECUTE 'CREATE POLICY hie_shared_facility_policy ON hie_referrals USING (facility_id = COALESCE(NULLIF(current_setting(''app.current_facility_id'', true), ''''), facility_id) OR target_facility_id = COALESCE(NULLIF(current_setting(''app.current_facility_id'', true), ''''), target_facility_id))';
+          END IF;
         END $$;
       `);
       console.info('[postgres] schema ready');

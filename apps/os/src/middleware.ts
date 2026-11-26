@@ -12,6 +12,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/whatsapp/triage',
   '/api/care/',
   '/api/audit/anchor',
+  '/api/cron/daily-ops',
 ];
 
 const ADMIN_ONLY_API_PREFIXES = [

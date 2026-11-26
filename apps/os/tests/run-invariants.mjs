@@ -2819,6 +2819,68 @@ test('phase4-hie-offline-care-claims-merkle-nafdac: end-to-end verification of f
   }
 });
 
+test('phase5-postgres-rls-and-daily-cron: indexed relational tables with RLS, vercel.json cron & daily-ops route auth', async () => {
+  // 1. Verify all 6 indexed relational tables + RLS policies in postgres.ts
+  const pgSrc = fs.readFileSync(path.join(OS_ROOT, 'src/lib/db/postgres.ts'), 'utf8');
+  for (const tbl of [
+    'hie_referrals',
+    'akshia_claims',
+    'akshia_claim_batches',
+    'merkle_anchors',
+    'care_bookings',
+    'care_reminders',
+  ]) {
+    assert.ok(pgSrc.includes(`CREATE TABLE IF NOT EXISTS ${tbl}`), `Missing relational table ${tbl}`);
+    assert.ok(pgSrc.includes(`ALTER TABLE ${tbl} ENABLE ROW LEVEL SECURITY`), `Missing RLS enable on ${tbl}`);
+  }
+  assert.ok(pgSrc.includes('hie_shared_facility_policy'), 'hie_referrals must support referring & target facility RLS');
+
+  // 2. Verify vercel.json cron registration
+  const vercelCfg = JSON.parse(fs.readFileSync(path.join(OS_ROOT, 'vercel.json'), 'utf8'));
+  assert.ok(Array.isArray(vercelCfg.crons) && vercelCfg.crons.some((c) => c.path === '/api/cron/daily-ops'));
+
+  // 3. Verify /api/cron/daily-ops exports ONLY valid Next.js 15 Route exports & enforces CRON_SECRET
+  const cronSrc = fs.readFileSync(path.join(OS_ROOT, 'src/app/api/cron/daily-ops/route.ts'), 'utf8');
+  const ALLOWED_EXPORTS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'runtime', 'dynamic', 'revalidate', 'maxDuration']);
+  for (const m of cronSrc.matchAll(/^export\s+(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z0-9_$]+)/gm)) {
+    assert.ok(ALLOWED_EXPORTS.has(m[1]), `Invalid Route export "${m[1]}" in daily-ops/route.ts`);
+  }
+
+  const cronRoute = loadTsModule('src/app/api/cron/daily-ops/route.ts', {
+    'next/server': {
+      NextRequest: class {},
+      NextResponse: {
+        json: (data, init) => ({ status: init?.status || 200, json: async () => data }),
+      },
+    },
+  });
+
+  const prevSecret = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'test-cron-secret-2026';
+
+  const unauthRes = await cronRoute.GET({
+    headers: new Headers(),
+    cookies: { get: () => undefined },
+    nextUrl: { searchParams: new URLSearchParams() },
+  });
+  assert.equal(unauthRes.status, 401);
+
+  const authRes = await cronRoute.GET({
+    headers: new Headers({ authorization: 'Bearer test-cron-secret-2026' }),
+    cookies: { get: () => undefined },
+    nextUrl: { searchParams: new URLSearchParams('facilityId=IGH-EKT') },
+  });
+  if (prevSecret) process.env.CRON_SECRET = prevSecret;
+  else delete process.env.CRON_SECRET;
+
+  assert.equal(authRes.status, 200);
+  const authJson = await authRes.json();
+  assert.equal(authJson.ok, true);
+  assert.ok(authJson.anchorsSealed >= 1);
+  assert.equal(JSON.stringify(authJson).includes('"patientName"'), false, 'Daily cron summary must be PII-free');
+});
+
+
 
 
 

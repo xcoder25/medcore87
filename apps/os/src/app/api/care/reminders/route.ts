@@ -67,7 +67,24 @@ function writeRemindersVault(items: ScheduledCareReminder[]): void {
 
 export async function GET(req: NextRequest) {
   const facilityId = (req.nextUrl.searchParams.get('facilityId') || 'IGH-EKT').trim().toUpperCase();
-  const list = readRemindersVault().filter((r) => !facilityId || r.facilityId === facilityId);
+  let list = readRemindersVault().filter((r) => !facilityId || r.facilityId === facilityId);
+
+  if (isPostgresConfigured() && facilityId) {
+    try {
+      await ensureSchema();
+      await withTenantClient(facilityId, async (c) => {
+        const res = await c.query<{ payload: ScheduledCareReminder }>(
+          `SELECT payload FROM care_reminders WHERE facility_id = $1 ORDER BY due_date ASC, created_at DESC LIMIT 200`,
+          [facilityId]
+        );
+        if (res.rows.length > 0) {
+          list = res.rows.map((r) => r.payload);
+        }
+      });
+    } catch {
+      // keep vault fallback
+    }
+  }
 
   return NextResponse.json({
     ok: true,
@@ -153,13 +170,34 @@ export async function POST(req: NextRequest) {
       try {
         await ensureSchema();
         await withTenantClient(facilityId, async (c) => {
-          await c.query(
-            `INSERT INTO facility_kv (facility_id, key, value, updated_at)
-             VALUES ($1, 'medcore_care_reminders_v1', $2::jsonb, NOW())
-             ON CONFLICT (facility_id, key)
-             DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-            [facilityId, JSON.stringify(list.filter((r) => r.facilityId === facilityId))]
-          );
+          for (const rem of list.filter((r) => r.facilityId === facilityId)) {
+            await c.query(
+              `INSERT INTO care_reminders (
+                 id, facility_id, patient_id, patient_name, phone, shid,
+                 track, due_date, channel, language, message_body, status, dispatched_at, payload
+               ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::date,$9,$10,$11,$12,$13::timestamptz,$14::jsonb)
+               ON CONFLICT (facility_id, id) DO UPDATE SET
+                 status = EXCLUDED.status,
+                 dispatched_at = EXCLUDED.dispatched_at,
+                 payload = EXCLUDED.payload`,
+              [
+                rem.id,
+                facilityId,
+                rem.patientId,
+                rem.patientName,
+                rem.phone,
+                rem.shid || null,
+                rem.track,
+                rem.dueDate || null,
+                rem.channel,
+                rem.language,
+                rem.messageBody,
+                rem.status,
+                rem.dispatchedAt || null,
+                JSON.stringify(rem),
+              ]
+            );
+          }
         });
       } catch {
         // non-fatal
