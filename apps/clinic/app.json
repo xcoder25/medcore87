@@ -37,6 +37,12 @@
     },
     "web": {
       "favicon": "./assets/icon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5ee69247-7845-4db7-98e2-e2e7538fe921"
+      }
+    },
+    "owner": "m87-celestial-tech"
   }
 }

@@ -1,0 +1,28 @@
+# Exclude local dependencies, build caches, git history, and large non-mobile archives from EAS upload
+node_modules/
+*/node_modules/
+*/*/node_modules/
+.git/
+.next/
+**/.next/
+out/
+dist/
+build/
+.cache/
+*.zip
+*.log
+*.tsbuildinfo
+.env
+.env.local
+.env*.local
+**/serviceAccount*.json
+**/firebase-adminsdk*.json
+docs/
+scratch/
+**/scratch/
+adminsplash.png
+auth screen.png
+authos.png
+dash.png
+hosos.png
+ibmlogo.png
