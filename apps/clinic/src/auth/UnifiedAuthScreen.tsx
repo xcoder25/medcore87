@@ -30,8 +30,13 @@ import { C } from '../theme';
 import {
   getEmrBaseUrl,
   registerPatientWithEmr,
+  requestAdminEmailOtp,
+  requestPatientOtp,
   setEmrBaseUrl,
+  verifyAdminEmailOtp,
+  verifyAdminOfflineCode,
   verifyEmrStaffLogin,
+  verifyPatientOtp,
 } from '../services/emrSyncClient';
 
 const clinicLogo = require('../assets/logo.png');
@@ -68,6 +73,16 @@ export const UnifiedAuthScreen: React.FC<UnifiedAuthScreenProps> = ({
   const [patName, setPatName] = useState('');
   const [patCardOrPhone, setPatCardOrPhone] = useState('');
   const [patEmail, setPatEmail] = useState('');
+  const [patOtpSent, setPatOtpSent] = useState(false);
+  const [patOtpCode, setPatOtpCode] = useState('');
+  const [patOtpPreview, setPatOtpPreview] = useState<string | null>(null);
+
+  // Admin 2FA state
+  const [pendingAdminSession, setPendingAdminSession] = useState<StaffSession | null>(null);
+  const [adminMfaTab, setAdminMfaTab] = useState<'email_otp' | 'offline_code'>('email_otp');
+  const [adminOtpInput, setAdminOtpInput] = useState('');
+  const [adminOtpMasked, setAdminOtpMasked] = useState<string | null>(null);
+  const [adminOtpPreview, setAdminOtpPreview] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -124,7 +139,7 @@ export const UnifiedAuthScreen: React.FC<UnifiedAuthScreenProps> = ({
 
       if (res.verified && res.staff) {
         const s = res.staff;
-        onStaffLogin({
+        const staffSession: StaffSession = {
           staffId: s.badgeId,
           name: s.name,
           role: s.role,
@@ -140,7 +155,35 @@ export const UnifiedAuthScreen: React.FC<UnifiedAuthScreenProps> = ({
           emrSynced: true,
           avatarInitials: s.name.slice(0, 2).toUpperCase(),
           shift: 'Active EMR Shift',
-        });
+        };
+        const needsAdmin2fa =
+          s.roleKey === 'hospital_admin' ||
+          s.roleKey === 'sysadmin' ||
+          s.roleKey === 'medical_director' ||
+          (s.clearanceLevel || 0) >= 4;
+
+        if (needsAdmin2fa) {
+          setPendingAdminSession(staffSession);
+          setAdminOtpInput('');
+          setAdminMfaTab('email_otp');
+          const otpRes = await requestAdminEmailOtp({
+            facilityId: staffSession.facilityId,
+            badgeId: staffSession.staffId,
+            staffName: staffSession.name,
+            email: staffSession.email,
+          });
+          setAdminOtpMasked(otpRes.maskedEmail || staffSession.email || 'staff email');
+          setAdminOtpPreview(otpRes.devPreviewCode || null);
+          setInfoMsg(
+            otpRes.ok
+              ? `Admin 2FA: Verification code sent to ${otpRes.maskedEmail || 'your staff email'}.`
+              : `${otpRes.error || 'Email delivery unavailable'} — use Offline Admin Code tab.`
+          );
+          if (!otpRes.ok) setAdminMfaTab('offline_code');
+          return;
+        }
+
+        onStaffLogin(staffSession);
         return;
       }
 
@@ -176,6 +219,37 @@ export const UnifiedAuthScreen: React.FC<UnifiedAuthScreenProps> = ({
       avatarInitials: cleanId.slice(0, 2).toUpperCase(),
       shift: 'Offline Field Shift',
     });
+  };
+
+  const handleVerifyAdmin2fa = async () => {
+    if (!pendingAdminSession) return;
+    setErrorMsg(null);
+    const clean = adminOtpInput.replace(/\D/g, '').trim();
+    if (clean.length !== 6) {
+      setErrorMsg('Enter the 6-digit verification code.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const verifier =
+        adminMfaTab === 'email_otp' ? verifyAdminEmailOtp : verifyAdminOfflineCode;
+      const res = await verifier({
+        facilityId: pendingAdminSession.facilityId,
+        badgeId: pendingAdminSession.staffId,
+        code: clean,
+      });
+      if (!res.verified) {
+        setErrorMsg(res.error || 'Invalid 2FA verification code.');
+        return;
+      }
+      const verifiedSession = pendingAdminSession;
+      setPendingAdminSession(null);
+      setAdminOtpInput('');
+      setAdminOtpPreview(null);
+      onStaffLogin(verifiedSession);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handlePatientSubmit = async () => {
@@ -224,11 +298,67 @@ export const UnifiedAuthScreen: React.FC<UnifiedAuthScreenProps> = ({
       }
     }
 
-    // Patient Sign In
+    // Patient Sign In with EMR OTP Verification
     if (!cleanCardOrPhone && cleanName.length < 2) {
-      setErrorMsg('Enter your Patient ID / SHID, phone number, or full name to sign in.');
+      setErrorMsg('Enter your Patient ID / SHID or phone number to sign in.');
       return;
     }
+
+    const base = getEmrBaseUrl();
+    if (base && !patOtpSent) {
+      setLoading(true);
+      try {
+        const otpRes = await requestPatientOtp({
+          identifier: cleanCardOrPhone || cleanName,
+          facilityId: hospital.id,
+        });
+        if (otpRes.ok) {
+          setPatOtpSent(true);
+          setPatOtpCode('');
+          setPatOtpPreview(otpRes.devPreviewCode || null);
+          setInfoMsg(`6-digit Care OTP sent to ${otpRes.maskedTarget || cleanCardOrPhone}.`);
+          return;
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (base && patOtpSent) {
+      if (patOtpCode.replace(/\D/g, '').length !== 6) {
+        setErrorMsg('Enter the 6-digit Care verification code.');
+        return;
+      }
+      setLoading(true);
+      try {
+        const verifyRes = await verifyPatientOtp({
+          identifier: cleanCardOrPhone || cleanName,
+          code: patOtpCode.trim(),
+          facilityId: hospital.id,
+          facilityName: hospital.name,
+        });
+        if (!verifyRes.verified || !verifyRes.patient) {
+          setErrorMsg(verifyRes.error || 'Invalid Patient Care OTP.');
+          return;
+        }
+        const p = verifyRes.patient;
+        onPatientAuth({
+          persona: 'patient',
+          patientId: p.patientId,
+          shid: p.shid,
+          name: cleanName || p.fullName,
+          facilityId: p.facilityId || hospital.id,
+          facility: p.facilityName || hospital.name,
+          phone: p.phone,
+          email: p.email,
+          emrSynced: true,
+        });
+        return;
+      } finally {
+        setLoading(false);
+      }
+    }
+
     const isPhone = /^\+?[0-9\s-]{7,}$/.test(cleanCardOrPhone);
     onPatientAuth({
       persona: 'patient',
@@ -240,7 +370,7 @@ export const UnifiedAuthScreen: React.FC<UnifiedAuthScreenProps> = ({
       facilityId: hospital.id,
       facility: hospital.name,
       phone: isPhone ? cleanCardOrPhone : undefined,
-      emrSynced: Boolean(getEmrBaseUrl()),
+      emrSynced: Boolean(base),
     });
   };
 
@@ -458,6 +588,53 @@ export const UnifiedAuthScreen: React.FC<UnifiedAuthScreenProps> = ({
                     onPress={handleStaffSignIn}
                   />
 
+                  {pendingAdminSession && (
+                    <View style={[styles.offlineCard, { borderColor: C.glowBlue, backgroundColor: 'rgba(56, 189, 248, 0.12)' }]}>
+                      <Text style={[styles.offlineTitle, { color: '#BAE6FD' }]}>
+                        Admin 2FA Verification Required · {pendingAdminSession.staffId}
+                      </Text>
+                      <View style={[styles.subSegment, { marginTop: 8 }]}>
+                        <Pressable
+                          onPress={() => setAdminMfaTab('email_otp')}
+                          style={[styles.subSegBtn, adminMfaTab === 'email_otp' && styles.subSegBtnActive]}
+                        >
+                          <Text style={[styles.subSegText, adminMfaTab === 'email_otp' && { color: '#FFFFFF' }]}>
+                            Email OTP ({adminOtpMasked || 'EMR'})
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => setAdminMfaTab('offline_code')}
+                          style={[styles.subSegBtn, adminMfaTab === 'offline_code' && styles.subSegBtnActive]}
+                        >
+                          <Text style={[styles.subSegText, adminMfaTab === 'offline_code' && { color: '#FFFFFF' }]}>
+                            Offline Admin Code
+                          </Text>
+                        </Pressable>
+                      </View>
+                      {adminOtpPreview && adminMfaTab === 'email_otp' && (
+                        <Text style={[styles.okText, { marginBottom: 8 }]}>
+                          Preview OTP (SMTP Dev Fallback): {adminOtpPreview}
+                        </Text>
+                      )}
+                      <TextInput
+                        style={styles.glassInput}
+                        value={adminOtpInput}
+                        onChangeText={setAdminOtpInput}
+                        placeholder="Enter 6-digit 2FA code"
+                        placeholderTextColor="#64748B"
+                        keyboardType="numeric"
+                        maxLength={6}
+                      />
+                      <GlowButton
+                        label={loading ? 'Verifying 2FA…' : 'Verify Admin 2FA & Enter Hub'}
+                        icon="check"
+                        variant="primary"
+                        loading={loading}
+                        onPress={handleVerifyAdmin2fa}
+                      />
+                    </View>
+                  )}
+
                   {offerOfflineFallback && (
                     <View style={styles.offlineCard}>
                       <Text style={styles.offlineTitle}>Offline Field Shift Fallback</Text>
@@ -597,6 +774,25 @@ export const UnifiedAuthScreen: React.FC<UnifiedAuthScreenProps> = ({
                         placeholder="Display name"
                         placeholderTextColor="#64748B"
                       />
+                      {patOtpSent && (
+                        <>
+                          {patOtpPreview && (
+                            <Text style={[styles.okText, { marginBottom: 8 }]}>
+                              Verification Code (SMS/Email Dev Fallback): {patOtpPreview}
+                            </Text>
+                          )}
+                          <Text style={styles.label}>6-DIGIT CARE VERIFICATION CODE *</Text>
+                          <TextInput
+                            style={styles.glassInput}
+                            value={patOtpCode}
+                            onChangeText={setPatOtpCode}
+                            placeholder="123456"
+                            placeholderTextColor="#64748B"
+                            keyboardType="numeric"
+                            maxLength={6}
+                          />
+                        </>
+                      )}
                     </>
                   )}
 
@@ -604,6 +800,10 @@ export const UnifiedAuthScreen: React.FC<UnifiedAuthScreenProps> = ({
                     label={
                       patientMode === 'signup'
                         ? 'Create Account & Sync to EMR'
+                        : patOtpSent
+                        ? 'Verify Code & Open Portal'
+                        : getEmrBaseUrl()
+                        ? 'Send Verification Code'
                         : 'Open Patient Portal'
                     }
                     icon={patientMode === 'signup' ? 'user-plus' : 'arrow-right'}

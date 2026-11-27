@@ -7798,13 +7798,9 @@
                     "type": "string",
                     "description": "Extracted from route body.action"
                   },
-                  "fullName": {
+                  "identifier": {
                     "type": "string",
-                    "description": "Extracted from route body.fullName"
-                  },
-                  "patientName": {
-                    "type": "string",
-                    "description": "Extracted from route body.patientName"
+                    "description": "Extracted from route body.identifier"
                   },
                   "phone": {
                     "type": "string",
@@ -7814,6 +7810,10 @@
                     "type": "string",
                     "description": "Extracted from route body.email"
                   },
+                  "shid": {
+                    "type": "string",
+                    "description": "Extracted from route body.shid"
+                  },
                   "facilityId": {
                     "type": "string",
                     "description": "Extracted from route body.facilityId"
@@ -7822,13 +7822,37 @@
                     "type": "string",
                     "description": "Extracted from route body.facilityName"
                   },
+                  "code": {
+                    "type": "string",
+                    "description": "Extracted from route body.code"
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "Extracted from route body.message"
+                  },
+                  "patientName": {
+                    "type": "string",
+                    "description": "Extracted from route body.patientName"
+                  },
+                  "amountNgn": {
+                    "type": "string",
+                    "description": "Extracted from route body.amountNgn"
+                  },
+                  "invoiceRef": {
+                    "type": "string",
+                    "description": "Extracted from route body.invoiceRef"
+                  },
+                  "data": {
+                    "type": "string",
+                    "description": "Extracted from route body.data"
+                  },
+                  "fullName": {
+                    "type": "string",
+                    "description": "Extracted from route body.fullName"
+                  },
                   "patientId": {
                     "type": "string",
                     "description": "Extracted from route body.patientId"
-                  },
-                  "shid": {
-                    "type": "string",
-                    "description": "Extracted from route body.shid"
                   },
                   "sex": {
                     "type": "string",
@@ -7841,18 +7865,6 @@
                   "bookingRef": {
                     "type": "string",
                     "description": "Extracted from route body.bookingRef"
-                  },
-                  "department": {
-                    "type": "string",
-                    "description": "Extracted from route body.department"
-                  },
-                  "preferredSlot": {
-                    "type": "string",
-                    "description": "Extracted from route body.preferredSlot"
-                  },
-                  "source": {
-                    "type": "string",
-                    "description": "Extracted from route body.source"
                   }
                 }
               }

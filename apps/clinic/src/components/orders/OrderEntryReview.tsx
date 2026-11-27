@@ -3,7 +3,8 @@ import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert,
 } from 'react-native';
 import { PATIENTS } from '../../services/clinicData';
-import { offlineSyncManager } from '../../services/offlineSync';
+import { submitClinicalOrder } from '../../services/emrSyncClient';
+import type { StaffSession } from '../auth/StaffAuthScreen';
 
 interface OrderItem {
   id: string;
@@ -83,7 +84,8 @@ const IBOM_PATHWAYS = [
   },
 ];
 
-export const OrderEntryReview: React.FC = () => {
+export const OrderEntryReview: React.FC<{ session?: StaffSession }> = ({ session }) => {
+  const facilityId = session?.facilityId || 'IGH-EKT';
   const [selectedPatient, setSelectedPatient] = useState(PATIENTS[0]);
   const [activeTab, setActiveTab] = useState<'pathways' | 'custom' | 'tracker'>('pathways');
   const [expandedPathway, setExpandedPathway] = useState<string | null>('SEVERE_MALARIA_PROTOCOL');
@@ -138,78 +140,11 @@ export const OrderEntryReview: React.FC = () => {
     setIsSubmitting(true);
     setSuccessBanner(null);
 
-    const payload = {
-      pathwayId: pathway.id,
-      patientId: selectedPatient.id,
-      patientName: selectedPatient.name,
-      encounterId: 'ENC-WARD-4W',
-      facilityId: 'FAC-001',
-      orderedByDoctorId: 'DOC-THORNE',
-      orderedByDoctorName: 'Dr. Julian Thorne, MD',
-    };
-
     try {
-      const res = await offlineSyncManager.executeWithOfflineQueue(
-        'http://localhost:4000/api/v1/cpoe/order-sets/apply',
-        'POST',
-        payload
-      );
-
-function broadcastToMedCoreEventBus(order: {
-  id: string;
-  patientId: string;
-  patientName: string;
-  title: string;
-  category: string;
-  priority: string;
-  details?: string;
-}) {
-  if (typeof window === 'undefined' || !window.localStorage) return;
-  try {
-    const KEY = 'medcore_os_clinical_orders_v1';
-    const raw = localStorage.getItem(KEY);
-    const list = raw ? JSON.parse(raw) : [];
-    const newBusOrder = {
-      id: order.id,
-      facilityId: 'IGH-EKT',
-      patientId: order.patientId,
-      patientName: order.patientName,
-      hospitalNumber: order.patientId,
-      type: order.category === 'LAB' ? 'lab' : order.category === 'MED' ? 'rx' : 'imaging',
-      code: order.title.slice(0, 8).toUpperCase().replace(/\s/g, '_'),
-      name: order.title,
-      orderedBy: 'Dr. Julian Thorne (Clinic CPOE)',
-      status: 'ordered',
-      priority: order.priority.toLowerCase(),
-      notes: order.details || 'Clinic Order Entry Review',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    const updated = [newBusOrder, ...list];
-    localStorage.setItem(KEY, JSON.stringify(updated.slice(0, 8000)));
-    window.dispatchEvent(new CustomEvent('medcore-clinical-orders', { detail: updated }));
-    try {
-      const bc = new BroadcastChannel('medcore_clinical');
-      bc.postMessage({ type: 'orders', list: updated });
-      bc.close();
-    } catch { /* ignore */ }
-  } catch { /* ignore */ }
-}
-
-      // Append local order items to tracker
       const newItems: OrderItem[] = pathway.items.map((item, idx) => {
         const cat = item.includes('IV') || item.includes('Infusion') || item.includes('Injection') ? 'MED' : 'LAB';
         const urg = item.includes('STAT') ? 'STAT' : item.includes('URGENT') ? 'URGENT' : 'ROUTINE';
         const orderId = `ORD-PW-${Date.now().toString(36)}-${idx}`;
-        broadcastToMedCoreEventBus({
-          id: orderId,
-          patientId: selectedPatient.id,
-          patientName: selectedPatient.name,
-          title: item,
-          category: cat,
-          priority: urg,
-          details: `From ${pathway.title}`,
-        });
         return {
           id: orderId,
           category: cat,
@@ -223,15 +158,37 @@ function broadcastToMedCoreEventBus(order: {
         };
       });
 
+      let allSynced = true;
+      for (const ord of newItems) {
+        const r = await submitClinicalOrder(
+          facilityId,
+          {
+            id: ord.id,
+            facilityId,
+            patientId: selectedPatient.id,
+            patientName: selectedPatient.name,
+            type: ord.category === 'MED' ? 'rx' : 'lab',
+            name: ord.title,
+            priority: ord.urgency.toLowerCase(),
+            status: 'ordered',
+            notes: ord.details,
+            orderedBy: session?.name || 'MedCore Mobile Clinician',
+            createdAt: new Date().toISOString(),
+          },
+          session?.sessionToken
+        );
+        if (!r.synced) allSynced = false;
+      }
+
       setActiveOrders((prev) => [...newItems, ...prev]);
       setSuccessBanner(
-        res.queued
+        !allSynced
           ? `Offline Mode: "${pathway.title}" queued locally. Will auto-sync when online.`
-          : `✅ Authorized & Dispatched "${pathway.title}" (${pathway.items.length} orders routed to Pharmacy & Lab).`
+          : `Authorized & Synced "${pathway.title}" (${pathway.items.length} orders routed to ${facilityId} EMR).`
       );
       setActiveTab('tracker');
     } catch {
-      setSuccessBanner(`✅ Pathway dispatched locally for ${selectedPatient.name}.`);
+      setSuccessBanner(`Pathway queued locally for ${selectedPatient.name}.`);
       setActiveTab('tracker');
     } finally {
       setIsSubmitting(false);
@@ -240,7 +197,7 @@ function broadcastToMedCoreEventBus(order: {
 
   const submitCustomOrder = async () => {
     if (!orderTitle.trim()) {
-      alert('Please enter an order title or test name.');
+      Alert.alert('Missing Order', 'Please enter an order title or test name.');
       return;
     }
 
@@ -257,34 +214,33 @@ function broadcastToMedCoreEventBus(order: {
       details: orderInstructions || 'Routine order',
     };
 
-    broadcastToMedCoreEventBus({
-      id: newOrder.id,
-      patientId: selectedPatient.id,
-      patientName: selectedPatient.name,
-      title: newOrder.title,
-      category: orderCategory,
-      priority: orderUrgency,
-      details: newOrder.details,
-    });
-
     try {
-      await offlineSyncManager.executeWithOfflineQueue(
-        'http://localhost:4000/api/v1/clinical/orders',
-        'POST',
+      const r = await submitClinicalOrder(
+        facilityId,
         {
+          id: newOrder.id,
+          facilityId,
           patientId: selectedPatient.id,
           patientName: selectedPatient.name,
-          type: orderCategory === 'LAB' ? 'LABORATORY' : orderCategory === 'MED' ? 'PHARMACY' : 'RADIOLOGY',
-          title: newOrder.title,
-          details: newOrder.details,
-          priority: orderUrgency,
-        }
+          type: orderCategory === 'LAB' ? 'lab' : orderCategory === 'MED' ? 'rx' : 'imaging',
+          name: newOrder.title,
+          priority: orderUrgency.toLowerCase(),
+          status: 'ordered',
+          notes: newOrder.details,
+          orderedBy: session?.name || 'MedCore Mobile Clinician',
+          createdAt: new Date().toISOString(),
+        },
+        session?.sessionToken
       );
       setActiveOrders((prev) => [newOrder, ...prev]);
       setOrderTitle('');
       setOrderDose('');
       setOrderInstructions('');
-      setSuccessBanner(`✅ Order "${newOrder.title}" placed for Bed ${selectedPatient.bed}.`);
+      setSuccessBanner(
+        r.synced
+          ? `Order "${newOrder.title}" synced live to ${facilityId} EMR.`
+          : `Order "${newOrder.title}" queued offline for ${facilityId} EMR.`
+      );
       setActiveTab('tracker');
     } catch {
       setActiveOrders((prev) => [newOrder, ...prev]);

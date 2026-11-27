@@ -1,8 +1,10 @@
 /**
- * Patient experience — Liquid-Glass MedCore Care Portal synced with hospital EMR
+ * Patient experience — Liquid-Glass MedCore Care Portal synced live with MedCore OS
+ * Includes: Home Summary, Visits Booking, Live Records (Labs/Rx/Vitals/Summaries) & Bills Payment, Scannable QR Health Card, and AI Symptom Triage.
  */
 import React, { useEffect, useState } from 'react';
 import {
+  Linking,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -22,20 +24,24 @@ import {
   type SyncState,
 } from '../components/ui/LiquidGlass';
 import { MedIcon } from '../components/ui/PremiumIcons';
+import { QrMatrix } from '../components/ui/QrMatrix';
 import { C } from '../theme';
 import {
   bookPatientAppointmentWithEmr,
   fetchPatientCareSync,
+  initPatientPayment,
+  sendPatientTriage,
 } from '../services/emrSyncClient';
 
-type PatientTab = 'home' | 'appointments' | 'records' | 'card' | 'profile';
+type PatientTab = 'home' | 'appointments' | 'records' | 'triage' | 'card' | 'profile';
 
 interface Props {
   session: PatientSession;
   onSignOut: () => void;
+  onLock?: () => void;
 }
 
-export function PatientShell({ session, onSignOut }: Props) {
+export function PatientShell({ session, onSignOut, onLock }: Props) {
   const [tab, setTab] = useState<PatientTab>('home');
   const [department, setDepartment] = useState('General Outpatient (GOPD)');
   const [preferredSlot, setPreferredSlot] = useState('Tomorrow · 09:00 AM');
@@ -47,14 +53,50 @@ export function PatientShell({ session, onSignOut }: Props) {
   const [appointments, setAppointments] = useState<any[]>([]);
   const [reminders, setReminders] = useState<any[]>([]);
   const [akshiaStatus, setAkshiaStatus] = useState<any>(null);
+  const [records, setRecords] = useState<{
+    labs: any[];
+    prescriptions: any[];
+    vitals: any[];
+    summaries: any[];
+  }>({ labs: [], prescriptions: [], vitals: [], summaries: [] });
+  const [bills, setBills] = useState<any[]>([]);
   const [bookedToast, setBookedToast] = useState<string | null>(null);
 
+  // Payment state
+  const [payAmountInput, setPayAmountInput] = useState('2500');
+  const [payBusy, setPayBusy] = useState(false);
+  const [paymentResult, setPaymentResult] = useState<{
+    mode?: string;
+    reference?: string;
+    authorizationUrl?: string;
+    instructions?: string;
+  } | null>(null);
+
+  // AI Triage state
+  const [triageInput, setTriageInput] = useState('');
+  const [triageBusy, setTriageBusy] = useState(false);
+  const [triageHistory, setTriageHistory] = useState<
+    Array<{
+      sender: 'patient' | 'bot';
+      text: string;
+      urgency?: string;
+      department?: string;
+      redFlags?: string[];
+    }>
+  >([
+    {
+      sender: 'bot',
+      text: `Hello ${session.name.split(' ')[0] || 'there'}, describe any symptoms (in English or Pidgin) and I will triage urgency and guide your care at ${session.facility}.`,
+    },
+  ]);
+
   const first = session.name.split(' ')[0] || 'there';
+  const patientKey = session.shid || session.patientId;
 
   const refreshCareSync = async () => {
     setSyncState('syncing');
     const res = await fetchPatientCareSync({
-      shid: session.shid || session.patientId,
+      shid: patientKey,
       phone: session.phone,
       facilityId: session.facilityId || 'IGH-EKT',
     });
@@ -63,6 +105,8 @@ export function PatientShell({ session, onSignOut }: Props) {
       setAppointments(res.appointments);
       setReminders(res.reminders);
       setAkshiaStatus(res.akshiaCoverage);
+      if (res.records) setRecords(res.records);
+      if (Array.isArray(res.bills)) setBills(res.bills);
     } else {
       setSyncState(session.emrSynced ? 'syncing' : 'offline');
     }
@@ -80,7 +124,7 @@ export function PatientShell({ session, onSignOut }: Props) {
         facilityId: session.facilityId || 'IGH-EKT',
         facilityName: session.facility,
         patientName: session.name,
-        shid: session.shid || session.patientId,
+        shid: patientKey,
         phone: session.phone,
         department: bookNote.trim() ? `${department} (${bookNote.trim()})` : department,
         preferredSlot,
@@ -110,17 +154,70 @@ export function PatientShell({ session, onSignOut }: Props) {
     }
   };
 
+  const handlePayHospitalBill = async (invoiceRef?: string, overrideAmount?: number) => {
+    const amt = overrideAmount ?? Number(payAmountInput.replace(/[^\d.]/g, '') || 0);
+    if (!amt || amt < 1) return;
+    setPayBusy(true);
+    setPaymentResult(null);
+    try {
+      const res = await initPatientPayment({
+        facilityId: session.facilityId || 'IGH-EKT',
+        amountNgn: amt,
+        invoiceRef,
+        email: session.email,
+        shid: patientKey,
+        patientName: session.name,
+      });
+      if (res.ok) {
+        setPaymentResult(res);
+      }
+    } finally {
+      setPayBusy(false);
+    }
+  };
+
+  const handleSendTriage = async () => {
+    const msg = triageInput.trim();
+    if (!msg) return;
+    setTriageInput('');
+    setTriageHistory((prev) => [...prev, { sender: 'patient', text: msg }]);
+    setTriageBusy(true);
+    try {
+      const res = await sendPatientTriage({
+        facilityId: session.facilityId || 'IGH-EKT',
+        message: msg,
+        patientName: session.name,
+        shid: patientKey,
+        phone: session.phone,
+      });
+      setTriageHistory((prev) => [
+        ...prev,
+        {
+          sender: 'bot',
+          text: res.reply || res.error || 'Triage guidance temporarily unavailable.',
+          urgency: res.urgency,
+          department: res.recommendedDepartment,
+          redFlags: res.redFlags,
+        },
+      ]);
+    } finally {
+      setTriageBusy(false);
+    }
+  };
+
   const renderHome = () => (
-    <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.content}
+      contentContainerStyle={{ paddingBottom: 112 }}
+      showsVerticalScrollIndicator={false}
+    >
       <LiquidGlassCard glowColor={C.glowEmerald} intensity="strong" animateIn style={{ marginBottom: 14 }}>
         <Text style={styles.heroEyebrow}>MEDCORE CARE PORTAL</Text>
         <Text style={styles.hello}>Hello, {first}</Text>
         <Text style={styles.heroSub}>{session.facility}</Text>
         <View style={styles.mrnPill}>
           <MedIcon name="card" size={13} color="#6EE7B7" badge={false} />
-          <Text style={styles.mrn}>
-            {session.shid || session.patientId}
-          </Text>
+          <Text style={styles.mrn}>{patientKey}</Text>
         </View>
       </LiquidGlassCard>
 
@@ -128,9 +225,9 @@ export function PatientShell({ session, onSignOut }: Props) {
       <View style={styles.grid}>
         {[
           { k: 'appointments' as const, icon: 'calendar' as const, label: 'Book Visit', glow: C.glowEmerald },
-          { k: 'records' as const, icon: 'clipboard' as const, label: 'My Records', glow: C.glowBlue },
-          { k: 'card' as const, icon: 'card' as const, label: 'Health Card', glow: C.glowViolet },
-          { k: 'profile' as const, icon: 'users' as const, label: 'Profile', glow: C.glowAmber },
+          { k: 'records' as const, icon: 'clipboard' as const, label: 'Records & Bills', glow: C.glowBlue },
+          { k: 'triage' as const, icon: 'sparkles' as const, label: 'Symptom Triage', glow: C.glowCyan },
+          { k: 'card' as const, icon: 'card' as const, label: 'Health Card QR', glow: C.glowViolet },
         ].map((a) => (
           <TouchableOpacity
             key={a.k}
@@ -174,7 +271,12 @@ export function PatientShell({ session, onSignOut }: Props) {
           </Text>
         )}
         <View style={{ marginTop: 12 }}>
-          <GlowButton label="Book a Hospital Visit" icon="calendar" variant="emerald" onPress={() => setTab('appointments')} />
+          <GlowButton
+            label="Book a Hospital Visit"
+            icon="calendar"
+            variant="emerald"
+            onPress={() => setTab('appointments')}
+          />
         </View>
       </LiquidGlassCard>
 
@@ -192,7 +294,7 @@ export function PatientShell({ session, onSignOut }: Props) {
   );
 
   const renderAppointments = () => (
-    <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 32 }}>
+    <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 112 }}>
       <Text style={styles.section}>Book a Visit (EMR Live Sync)</Text>
       <LiquidGlassCard glowColor={C.glowEmerald}>
         <Text style={styles.label}>DEPARTMENT</Text>
@@ -242,27 +344,166 @@ export function PatientShell({ session, onSignOut }: Props) {
   );
 
   const renderRecords = () => (
-    <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 32 }}>
-      <Text style={styles.section}>My Health Records</Text>
-      <LiquidGlassCard glowColor={C.glowBlue}>
-        <Text style={styles.cardTitle}>EMR Clinical Summary</Text>
-        <Text style={styles.cardBody}>
-          Verified lab results, prescriptions, and clinician summaries released by {session.facility} appear here automatically once resulted in MedCore OS.
+    <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 112 }}>
+      <View style={styles.rowBetween}>
+        <Text style={styles.section}>Records &amp; Hospital Bills</Text>
+        <TouchableOpacity onPress={refreshCareSync}>
+          <Text style={styles.linkText}>Sync Now</Text>
+        </TouchableOpacity>
+      </View>
+
+      <LiquidGlassCard glowColor={C.glowBlue} style={{ marginBottom: 12 }}>
+        <Text style={styles.cardTitle}>
+          Prescriptions ({records.prescriptions.length}) &amp; Lab Results ({records.labs.length})
         </Text>
+        {records.prescriptions.length === 0 && records.labs.length === 0 && records.summaries.length === 0 ? (
+          <Text style={styles.cardBody}>
+            Verified prescriptions, vitals, and clinician summaries from {session.facility} appear here automatically once signed off in MedCore OS.
+          </Text>
+        ) : (
+          <>
+            {records.summaries.map((s, i) => (
+              <View key={`s-${i}`} style={styles.visitRow}>
+                <Text style={styles.visitTitle}>Clinical Summary: {s.title}</Text>
+                <Text style={styles.visitMeta}>{s.updatedAt?.slice(0, 10) || 'EMR Record'}</Text>
+              </View>
+            ))}
+            {records.prescriptions.map((rx, i) => (
+              <View key={`rx-${i}`} style={styles.visitRow}>
+                <Text style={styles.visitTitle}>Rx: {rx.name || rx.medication || rx.drug || 'Prescription'}</Text>
+                <Text style={styles.visitMeta}>{rx.dosage || rx.notes || rx.status || 'Dispensed'}</Text>
+              </View>
+            ))}
+            {records.labs.map((lab, i) => (
+              <View key={`lab-${i}`} style={styles.visitRow}>
+                <Text style={styles.visitTitle}>Lab/Order: {lab.name || lab.title || 'Diagnostic Order'}</Text>
+                <Text style={styles.visitMeta}>{lab.status || 'Synced with LIS'}</Text>
+              </View>
+            ))}
+          </>
+        )}
+      </LiquidGlassCard>
+
+      <LiquidGlassCard glowColor={C.glowAmber} style={{ marginBottom: 12 }}>
+        <Text style={styles.cardTitle}>Bills &amp; Copay Checkout</Text>
+        {bills.length > 0 &&
+          bills.map((b, i) => (
+            <View key={`b-${i}`} style={styles.visitRow}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.visitTitle}>{b.description || b.title || b.reference || 'Hospital Invoice'}</Text>
+                <Text style={[styles.visitMeta, { fontWeight: '800' }]}>
+                  NGN {Number(b.amountNgn || b.amount || 0).toLocaleString()}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => void handlePayHospitalBill(b.reference, Number(b.amountNgn || b.amount || 2500))}
+                style={{ marginTop: 4 }}
+              >
+                <Text style={styles.linkText}>Pay This Invoice →</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+
+        <Text style={[styles.label, { marginTop: 10 }]}>PAY COPAY / DEPOSIT AMOUNT (NGN)</Text>
+        <TextInput
+          style={styles.input}
+          value={payAmountInput}
+          onChangeText={setPayAmountInput}
+          keyboardType="numeric"
+          placeholder="2500"
+          placeholderTextColor="#64748B"
+        />
+        <GlowButton
+          label={payBusy ? 'Generating Mandate…' : 'Pay via Paystack / AkwaRemit'}
+          icon="card"
+          variant="primary"
+          loading={payBusy}
+          onPress={() => void handlePayHospitalBill()}
+        />
+
+        {paymentResult && (
+          <View style={styles.payBox}>
+            <Text style={styles.payRef}>Ref: {paymentResult.reference}</Text>
+            <Text style={styles.payDesc}>{paymentResult.instructions}</Text>
+            {paymentResult.authorizationUrl && (
+              <TouchableOpacity
+                onPress={() => void Linking.openURL(paymentResult.authorizationUrl!)}
+                style={{ marginTop: 6 }}
+              >
+                <Text style={[styles.linkText, { fontWeight: '800' }]}>Open Paystack Checkout →</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </LiquidGlassCard>
+    </ScrollView>
+  );
+
+  const renderTriage = () => (
+    <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 112 }}>
+      <Text style={styles.section}>AI Symptom Triage &amp; Care Guide</Text>
+      <LiquidGlassCard glowColor={C.glowCyan} style={{ marginBottom: 12 }}>
+        {triageHistory.map((m, idx) => (
+          <View
+            key={idx}
+            style={[styles.msgBubble, m.sender === 'patient' ? styles.msgUser : styles.msgBot]}
+          >
+            {m.urgency && (
+              <Text style={styles.urgencyTag}>URGENCY: {m.urgency.toUpperCase()}</Text>
+            )}
+            <Text style={styles.msgText}>{m.text}</Text>
+            {m.department && (
+              <TouchableOpacity
+                onPress={() => {
+                  setDepartment(m.department!);
+                  setTab('appointments');
+                }}
+                style={{ marginTop: 6 }}
+              >
+                <Text style={styles.linkText}>Book {m.department} →</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ))}
+
+        <Text style={[styles.label, { marginTop: 10 }]}>DESCRIBE SYMPTOMS (ENGLISH / PIDGIN)</Text>
+        <TextInput
+          style={styles.input}
+          value={triageInput}
+          onChangeText={setTriageInput}
+          placeholder="e.g. High fever since yesterday, headache, body weak"
+          placeholderTextColor="#64748B"
+        />
+        <GlowButton
+          label={triageBusy ? 'Analyzing…' : 'Check Urgency & Department'}
+          icon="sparkles"
+          variant="primary"
+          loading={triageBusy}
+          onPress={handleSendTriage}
+        />
       </LiquidGlassCard>
     </ScrollView>
   );
 
   const renderCard = () => (
-    <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 32 }}>
+    <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 112 }}>
       <LiquidGlassCard glowColor={C.glowViolet} intensity="strong" animateIn>
         <View style={styles.rowBetween}>
           <Text style={styles.idBrand}>MEDCORE DIGITAL HEALTH CARD</Text>
           <MedIcon name="sparkles" size={16} color="#C4B5FD" badge={false} />
         </View>
         <Text style={styles.idName}>{session.name}</Text>
+
+        <View style={{ alignItems: 'center', marginVertical: 14 }}>
+          <QrMatrix
+            value={`MEDCORE:SHID:${patientKey}:${session.facilityId || 'IGH-EKT'}`}
+            size={126}
+            label={`SHID · ${patientKey}`}
+          />
+        </View>
+
         <View style={styles.idDivider} />
-        <Text style={styles.idMeta}>SHID / ID: {session.shid || session.patientId}</Text>
+        <Text style={styles.idMeta}>SHID / ID: {patientKey}</Text>
         <Text style={styles.idMeta}>Primary Facility: {session.facility}</Text>
         <Text style={styles.idMeta}>Phone: {session.phone || 'On file'}</Text>
         {akshiaStatus && (
@@ -275,13 +516,13 @@ export function PatientShell({ session, onSignOut }: Props) {
   );
 
   const renderProfile = () => (
-    <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 32 }}>
+    <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 112 }}>
       <Text style={styles.section}>Patient Profile</Text>
       <LiquidGlassCard glowColor={C.glowCyan} style={{ marginBottom: 16 }}>
         <Text style={styles.rowLabel}>Full Name</Text>
         <Text style={styles.rowValue}>{session.name}</Text>
         <Text style={styles.rowLabel}>Patient / SHID</Text>
-        <Text style={styles.rowValue}>{session.shid || session.patientId}</Text>
+        <Text style={styles.rowValue}>{patientKey}</Text>
         <Text style={styles.rowLabel}>Registered Facility</Text>
         <Text style={styles.rowValue}>{session.facility} ({session.facilityId})</Text>
       </LiquidGlassCard>
@@ -301,6 +542,11 @@ export function PatientShell({ session, onSignOut }: Props) {
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <LiveSyncPill state={syncState} onPress={refreshCareSync} />
+          {onLock && (
+            <TouchableOpacity onPress={onLock} style={styles.lockBtn}>
+              <MedIcon name="lock" size={14} color="#7DD3FC" badge={false} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={onSignOut} style={styles.headerBtn}>
             <MedIcon name="logout" size={14} color="#FDA4AF" badge={false} />
           </TouchableOpacity>
@@ -310,6 +556,7 @@ export function PatientShell({ session, onSignOut }: Props) {
       {tab === 'home' && renderHome()}
       {tab === 'appointments' && renderAppointments()}
       {tab === 'records' && renderRecords()}
+      {tab === 'triage' && renderTriage()}
       {tab === 'card' && renderCard()}
       {tab === 'profile' && renderProfile()}
 
@@ -321,6 +568,7 @@ export function PatientShell({ session, onSignOut }: Props) {
           { key: 'home', icon: 'heart', label: 'Home' },
           { key: 'appointments', icon: 'calendar', label: 'Visits' },
           { key: 'records', icon: 'clipboard', label: 'Records' },
+          { key: 'triage', icon: 'sparkles', label: 'Triage' },
           { key: 'card', icon: 'card', label: 'Card' },
           { key: 'profile', icon: 'users', label: 'Profile' },
         ]}
@@ -340,6 +588,16 @@ const styles = StyleSheet.create({
   },
   brand: { color: '#6EE7B7', fontSize: 10.5, fontWeight: '800', letterSpacing: 0.8 },
   patientName: { color: '#FFFFFF', fontSize: 17, fontWeight: '800', marginTop: 1 },
+  lockBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: 'rgba(56, 189, 248, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerBtn: {
     width: 34,
     height: 34,
@@ -407,8 +665,35 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     marginBottom: 14,
   },
+  payBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(16, 185, 129, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.35)',
+  },
+  payRef: { color: '#6EE7B7', fontSize: 12, fontWeight: '900' },
+  payDesc: { color: '#E2E8F0', fontSize: 12, marginTop: 3, lineHeight: 17 },
+  msgBubble: { padding: 11, borderRadius: 12, marginBottom: 8 },
+  msgUser: {
+    backgroundColor: 'rgba(56, 189, 248, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.4)',
+    alignSelf: 'flex-end',
+    maxWidth: '88%',
+  },
+  msgBot: {
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    alignSelf: 'flex-start',
+    maxWidth: '94%',
+  },
+  urgencyTag: { color: '#FBBF24', fontSize: 10, fontWeight: '900', marginBottom: 3 },
+  msgText: { color: '#F8FAFC', fontSize: 13, lineHeight: 18 },
   idBrand: { color: '#C4B5FD', fontSize: 11, fontWeight: '800', letterSpacing: 0.9 },
-  idName: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', marginTop: 12 },
+  idName: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', marginTop: 10 },
   idDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.16)', marginVertical: 12 },
   idMeta: { color: '#E2E8F0', fontSize: 13, marginBottom: 4, fontWeight: '600' },
   rowLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '700', marginTop: 8 },

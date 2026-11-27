@@ -12,6 +12,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import type { StaffSession } from '../auth/StaffAuthScreen';
+import { QrMatrix } from '../ui/QrMatrix';
 
 type CardStatus = 'ACTIVE' | 'SUSPENDED' | 'EXPIRED' | 'REVOKED';
 
@@ -121,6 +122,14 @@ export function StaffIdCardScreen({ session, onBack }: Props) {
 
             <View style={styles.badgeBox}>
               <Text style={styles.badgeId}>{card.badgeId}</Text>
+            </View>
+
+            <View style={{ alignItems: 'center', marginBottom: 14 }}>
+              <QrMatrix
+                value={`MEDCORE:BADGE:${card.badgeId}:${session.facilityId || 'IGH-EKT'}`}
+                size={105}
+                label={`VERIFIED BADGE · ${card.badgeId}`}
+              />
             </View>
 
             <View style={styles.grid}>

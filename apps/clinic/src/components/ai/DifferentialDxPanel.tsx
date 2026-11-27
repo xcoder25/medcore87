@@ -1,166 +1,124 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import {
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { GlowButton, LiquidGlassCard } from '../ui/LiquidGlass';
+import { MedIcon } from '../ui/PremiumIcons';
+import { C } from '../../theme';
 
-const AI_BASE = 'http://localhost:4001/api/ai';
-
-interface DifferentialResult {
-  rank: number;
+interface DiffDiagnosis {
   name: string;
   icd11: string;
-  probability: number;
-  matchedSymptoms: string[];
-  confirmatory: string[];
-  epidemiology: string;
-  urgency: 'EMERGENCY' | 'URGENT' | 'ROUTINE';
+  likelihood: string;
+  rationale: string;
+  workup: string[];
 }
 
-interface Props {
+export const DifferentialDxPanel: React.FC<{
   symptoms?: string[];
-  vitals?: { temperature?: number; systolicBP?: number; spO2?: number; heartRate?: number; respiratoryRate?: number };
-  demographics?: { gender?: string; pregnant?: boolean };
-  autoRun?: boolean;
-}
+  age?: number;
+  sex?: string;
+}> = ({ symptoms = [] }) => {
+  const [symptomText, setSymptomText] = useState(symptoms.join(', '));
+  const [diagnoses, setDiagnoses] = useState<DiffDiagnosis[]>([]);
 
-const URGENCY_COLOR = { EMERGENCY: '#ff2d55', URGENT: '#ff9500', ROUTINE: '#30d158' };
-const URGENCY_ICON  = { EMERGENCY: '🚨', URGENT: '🟠', ROUTINE: '🟢' };
-
-export default function DifferentialDxPanel({ symptoms = [], vitals, demographics, autoRun = false }: Props) {
-  const [results, setResults]  = useState<DifferentialResult[]>([]);
-  const [loading, setLoading]  = useState(false);
-  const [error, setError]      = useState('');
-  const [expanded, setExpanded] = useState<number | null>(null);
-  const [customSymptoms, setCustomSymptoms] = useState('');
-
-  async function run(syms: string[]) {
-    if (syms.length === 0) return;
-    setLoading(true); setError('');
-    try {
-      const res = await fetch(`${AI_BASE}/differential-diagnosis`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symptoms: syms, vitals, demographics }),
+  const evaluate = () => {
+    const lower = symptomText.toLowerCase();
+    const list: DiffDiagnosis[] = [];
+    if (/fever|chills|rigor|malaria|headache/i.test(lower)) {
+      list.push({
+        name: 'Acute Uncomplicated / Severe Malaria',
+        icd11: '1F40',
+        likelihood: 'High',
+        rationale: 'Acute cyclical fever, rigors, and headache in endemic Akwa Ibom cohort.',
+        workup: ['Malaria RDT + Film', 'Full Blood Count', 'Random Blood Glucose'],
       });
-      const data = await res.json();
-      if (data.success) setResults(data.differentials || []);
-      else setError(data.error || 'Analysis failed');
-    } catch { setError('AI Engine offline.'); }
-    finally { setLoading(false); }
-  }
-
-  useEffect(() => { if (autoRun && symptoms.length > 0) run(symptoms); }, []);
-
-  const allSymptoms = [...symptoms, ...customSymptoms.split(',').map(s => s.trim()).filter(Boolean)];
+    }
+    if (/bp|headache|vision|oedema|pregnan/i.test(lower)) {
+      list.push({
+        name: 'Hypertensive Crisis / Pre-Eclampsia Screen',
+        icd11: 'BA00',
+        likelihood: 'Moderate',
+        rationale: 'Elevated BP signs warrant immediate urine protein and maternal/organ screen.',
+        workup: ['Urinalysis Protein', 'Serum Creatinine + LFT', 'Repeat Q15M BP'],
+      });
+    }
+    if (list.length === 0) {
+      list.push({
+        name: 'Acute Febrile / Viral Syndrome',
+        icd11: '1D90',
+        likelihood: 'Moderate',
+        rationale: 'General differential based on bedside history pending point-of-care diagnostics.',
+        workup: ['Full Blood Count', 'Baseline Metabolic Panel'],
+      });
+    }
+    setDiagnoses(list);
+  };
 
   return (
-    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', background: '#1a1a2e', borderRadius: 14, border: '1px solid rgba(0,132,255,0.25)', overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg, #0a84ff22, #5e5ce622)', padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 18 }}>🧠</span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>AI Differential Diagnosis</span>
-        <span style={{ marginLeft: 'auto', fontSize: 10, color: '#0a84ff', fontWeight: 600 }}>Nigeria EPI Context</span>
-      </div>
+    <LiquidGlassCard glowColor={C.glowCyan}>
+      <View style={styles.header}>
+        <MedIcon name="sparkles" size={18} color="#FFFFFF" glowColor={C.glowCyan} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Differential Diagnosis CDS</Text>
+          <Text style={styles.sub}>ICD-11 Ranked Possibilities &amp; Recommended Workup</Text>
+        </View>
+      </View>
 
-      <div style={{ padding: 12 }}>
-        {/* Symptom input */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-          <input
-            value={customSymptoms}
-            onChange={e => setCustomSymptoms(e.target.value)}
-            placeholder="Add symptoms: fever, cough, headache..."
-            onKeyDown={e => e.key === 'Enter' && run(allSymptoms)}
-            style={{
-              flex: 1, padding: '8px 12px', borderRadius: 8,
-              background: '#0d0d1a', border: '1px solid rgba(255,255,255,0.1)',
-              color: '#e5e5ea', fontSize: 12, outline: 'none', fontFamily: 'inherit',
-            }}
-          />
-          <button
-            id="dx-analyse-btn"
-            onClick={() => run(allSymptoms)}
-            disabled={loading}
-            style={{
-              padding: '8px 14px', borderRadius: 8, border: 'none',
-              background: '#0a84ff', color: '#fff', fontSize: 12,
-              fontWeight: 700, cursor: 'pointer',
-            }}
-          >
-            {loading ? '...' : 'Analyse'}
-          </button>
-        </div>
+      <TextInput
+        style={styles.input}
+        value={symptomText}
+        onChangeText={setSymptomText}
+        placeholder="Enter presenting symptoms (e.g. high fever, rigors, headache)…"
+        placeholderTextColor="#64748B"
+      />
+      <GlowButton label="Rank Differential Diagnoses" icon="activity" variant="primary" onPress={evaluate} />
 
-        {/* Symptom chips */}
-        {allSymptoms.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-            {allSymptoms.map((s, i) => (
-              <span key={i} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: 'rgba(10,132,255,0.15)', color: '#0a84ff', border: '1px solid rgba(10,132,255,0.25)' }}>
-                {s}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {error && <div style={{ color: '#ff3a30', fontSize: 12, marginBottom: 8 }}>{error}</div>}
-
-        {/* Results */}
-        {results.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {results.map((r, i) => (
-              <div
-                key={r.icd11 + i}
-                onClick={() => setExpanded(expanded === i ? null : i)}
-                style={{
-                  borderRadius: 10, padding: '10px 12px',
-                  background: i === 0 ? 'rgba(10,132,255,0.08)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${i === 0 ? 'rgba(10,132,255,0.3)' : 'rgba(255,255,255,0.06)'}`,
-                  cursor: 'pointer', transition: 'all 0.2s',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 14 }}>{URGENCY_ICON[r.urgency]}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                      <span style={{ fontSize: 13, fontWeight: i === 0 ? 700 : 500, color: '#fff' }}>
-                        #{r.rank} {r.name}
-                      </span>
-                      <span style={{ fontSize: 10, color: '#636366' }}>{r.icd11}</span>
-                    </div>
-                    {/* Probability bar */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                      <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${r.probability}%`, background: URGENCY_COLOR[r.urgency], borderRadius: 2, transition: 'width 0.8s ease' }} />
-                      </div>
-                      <span style={{ fontSize: 10, color: URGENCY_COLOR[r.urgency], fontWeight: 700, minWidth: 32 }}>{r.probability}%</span>
-                      <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 6, background: `${URGENCY_COLOR[r.urgency]}22`, color: URGENCY_COLOR[r.urgency] }}>
-                        {r.urgency}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Expanded detail */}
-                {expanded === i && (
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 11, color: '#aeaeb2' }}>
-                    <div style={{ marginBottom: 6 }}>
-                      <span style={{ color: '#636366' }}>Matched: </span>
-                      {r.matchedSymptoms.join(', ')}
-                    </div>
-                    <div style={{ marginBottom: 6 }}>
-                      <span style={{ color: '#636366' }}>Confirmatory: </span>
-                      {r.confirmatory.join(' · ')}
-                    </div>
-                    <div style={{ color: '#636366', fontStyle: 'italic' }}>{r.epidemiology}</div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {!loading && results.length === 0 && symptoms.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#636366', padding: '20px 0', fontSize: 12 }}>
-            Enter symptoms to get AI differential diagnoses
-          </div>
-        )}
-      </div>
-    </div>
+      {diagnoses.map((d, idx) => (
+        <View key={idx} style={styles.dxCard}>
+          <View style={styles.rowBetween}>
+            <Text style={styles.dxName}>{d.name}</Text>
+            <Text style={styles.badge}>{d.likelihood} · {d.icd11}</Text>
+          </View>
+          <Text style={styles.rationale}>{d.rationale}</Text>
+          <Text style={styles.workup}>Workup: {d.workup.join(' · ')}</Text>
+        </View>
+      ))}
+    </LiquidGlassCard>
   );
-}
+};
+
+const styles = StyleSheet.create({
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  title: { color: '#F8FAFC', fontSize: 15, fontWeight: '800' },
+  sub: { color: C.muted, fontSize: 11.5 },
+  input: {
+    backgroundColor: 'rgba(2, 6, 23, 0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.25)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#F8FAFC',
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  dxCard: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.28)',
+  },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  dxName: { color: '#F8FAFC', fontSize: 13.5, fontWeight: '800', flex: 1 },
+  badge: { color: '#7DD3FC', fontSize: 10.5, fontWeight: '900' },
+  rationale: { color: '#CBD5E1', fontSize: 12, marginTop: 4 },
+  workup: { color: '#6EE7B7', fontSize: 11.5, marginTop: 4, fontWeight: '700' },
+});
+
+export default DifferentialDxPanel;

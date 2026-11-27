@@ -2203,7 +2203,7 @@ test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts an
   const livenessRouteSrc = fs.readFileSync(path.join(OS_ROOT, 'src/app/api/auth/biometric/liveness/session/route.ts'), 'utf8');
   assert.ok(
     livenessRouteSrc.includes('notEnrolled: true') &&
-      livenessRouteSrc.indexOf("if (mode === 'verify')") < livenessRouteSrc.indexOf('checkRateLimit(`liveness-sess:'),
+    livenessRouteSrc.indexOf("if (mode === 'verify')") < livenessRouteSrc.indexOf('checkRateLimit(`liveness-sess:'),
     'liveness session verify route must check enrollment and return notEnrolled: true before rate limiting'
   );
 
@@ -2224,11 +2224,11 @@ test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts an
   const faceModalSrc = fs.readFileSync(path.join(OS_ROOT, 'src/components/auth/FaceBiometricCaptureModal.tsx'), 'utf8');
   assert.ok(
     faceModalSrc.includes('onNotEnrolled?: (reason?: string) => void') &&
-      faceModalSrc.includes('if (ch.notEnrolled)') &&
-      faceModalSrc.includes('callbacksRef') &&
-      faceModalSrc.includes('notEnrolledHandledRef') &&
-      faceModalSrc.includes('getStaffBiometricStatus(badgeId, facilityId)') &&
-      faceModalSrc.includes('const ok = await loadVerifyChallenge()'),
+    faceModalSrc.includes('if (ch.notEnrolled)') &&
+    faceModalSrc.includes('callbacksRef') &&
+    faceModalSrc.includes('notEnrolledHandledRef') &&
+    faceModalSrc.includes('getStaffBiometricStatus(badgeId, facilityId)') &&
+    faceModalSrc.includes('const ok = await loadVerifyChallenge()'),
     'FaceBiometricCaptureModal must confirm enrollment via preflight before opening camera, stabilize callbacks via callbacksRef, and guard one-shot notEnrolled fallback'
   );
   assert.equal(
@@ -2240,7 +2240,7 @@ test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts an
   const pageSrc = fs.readFileSync(path.join(OS_ROOT, 'src/app/page.tsx'), 'utf8');
   assert.ok(
     pageSrc.includes('{faceUnlockModalOpen && userSession?.badgeId && (') &&
-      pageSrc.includes('onNotEnrolled={(reason) =>'),
+    pageSrc.includes('onNotEnrolled={(reason) =>'),
     'Lock screen must conditionally mount FaceBiometricCaptureModal and handle onNotEnrolled'
   );
 
@@ -2249,7 +2249,7 @@ test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts an
   assert.ok(authSrc.includes('apiLookupStaff(effectiveHospital.id, badgeQuery), 25_000'));
   assert.ok(
     authSrc.includes("enrichedSession.badgeId || enrichedSession.id || (isAdminAccount ? 'ADMIN' : '')") &&
-      authSrc.includes('getStaffBiometricStatus(effectiveBadge'),
+    authSrc.includes('getStaffBiometricStatus(effectiveBadge'),
     'AuthScreen must align admin badge fallback with AdminSettings enrollment lookup'
   );
   assert.ok(authSrc.includes('10_000'));
@@ -2261,10 +2261,10 @@ test('emr-auth-timeouts-and-per-account-2fa: extends auth connection timeouts an
   assert.ok(otpSrc.includes('25_000'), 'StaffEmailOtpModal OTP send/verify fetch timeout should be >= 25_000ms');
   assert.ok(
     otpSrc.includes('Face ID Not Enrolled — Switched Automatically to Email OTP') &&
-      otpSrc.includes('Face ID is not yet enrolled for this account') &&
-      otpSrc.includes('{faceModalOpen && (') &&
-      otpSrc.includes('onNotEnrolled={handleFaceNotEnrolled}') &&
-      otpSrc.includes('ensureOtpSent()'),
+    otpSrc.includes('Face ID is not yet enrolled for this account') &&
+    otpSrc.includes('{faceModalOpen && (') &&
+    otpSrc.includes('onNotEnrolled={handleFaceNotEnrolled}') &&
+    otpSrc.includes('ensureOtpSent()'),
     'StaffEmailOtpModal must indicate unenrolled admin/staff Face ID, conditionally mount FaceBiometricCaptureModal, and auto-switch to Email OTP'
   );
   const otpStripped = otpSrc.replace(/^\s*(?:\/\/.*|\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\/)/gm, '');
@@ -2397,15 +2397,15 @@ test('ai-routes-and-hygiene: verifies current Gemini Interactions models, API ro
   // 2. Verify clinical-safety & scribe route handlers in deterministic offline mode
   const ssePublished = [];
   const mockNextServer = {
-    NextRequest: class {},
+    NextRequest: class { },
     NextResponse: {
       json: (data, init) => ({ status: init?.status || 200, json: async () => data }),
     },
   };
   const mockPg = {
     isPostgresConfigured: () => false,
-    ensureSchema: async () => {},
-    withTenantClient: async () => {},
+    ensureSchema: async () => { },
+    withTenantClient: async () => { },
   };
 
   const safetyRoute = loadTsModule('src/app/api/ai/clinical-safety/route.ts', {
@@ -2516,7 +2516,7 @@ test('phase2-vision-brief-predictive-ops: verifies Vision AI, 30-Second Patient 
   }
 
   const mockNextServer = {
-    NextRequest: class {},
+    NextRequest: class { },
     NextResponse: {
       json: (data, init) => ({ status: init?.status || 200, json: async () => data }),
     },
@@ -2634,7 +2634,7 @@ test('phase3-fhir-digitization-expiry-triage: paper-to-FHIR bundle, seasonal sto
   // 2. Test /api/ai/digitize-fhir + fhirStub.ts FHIR R4 Bundle generation for paper folder, lab & ultrasound
   const fhirMod = loadTsModule('src/lib/fhirStub.ts');
   const mockNextServer = {
-    NextRequest: class {},
+    NextRequest: class { },
     NextResponse: {
       json: (data, init) => ({ status: init?.status || 200, json: async () => data }),
     },
@@ -2982,7 +2982,7 @@ test('phase5-postgres-rls-and-daily-cron: indexed relational tables with RLS, ve
 
   const cronRoute = loadTsModule('src/app/api/cron/daily-ops/route.ts', {
     'next/server': {
-      NextRequest: class {},
+      NextRequest: class { },
       NextResponse: {
         json: (data, init) => ({ status: init?.status || 200, json: async () => data }),
       },
@@ -3111,7 +3111,7 @@ test('mobile-unified-auth-liquid-glass-and-care-signup: validates verify-pin ses
       },
     },
     '../../../../lib/db/postgres': {
-      ensureSchema: async () => {},
+      ensureSchema: async () => { },
       isPostgresConfigured: () => false,
       withTenantClient: async () => null,
     },
@@ -3160,6 +3160,110 @@ test('mobile-unified-auth-liquid-glass-and-care-signup: validates verify-pin ses
   const syncClientSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'services/emrSyncClient.ts'), 'utf8');
   assert.ok(syncClientSrc.includes('/api/auth/verify-pin') && syncClientSrc.includes('/api/care/sync'));
   assert.ok(syncClientSrc.includes('Authorization: `Bearer ${sessionToken}`') || syncClientSrc.includes('headers.Authorization = `Bearer ${sessionToken}`'));
+});
+
+test('mobile-completeness-parity: Care OTP/triage/payment/records, native storage, Bearer queue, RN clinical tools & manifests', async () => {
+  const sseEvents = [];
+  const careSyncMod = loadTsModule('src/app/api/care/sync/route.ts', {
+    'next/server': {
+      NextResponse: {
+        json: (body, init) => ({ status: init?.status || 200, body, headers: new Headers(init?.headers || {}) }),
+      },
+    },
+    '../../../../lib/db/postgres': {
+      ensureSchema: async () => {},
+      isPostgresConfigured: () => false,
+      withTenantClient: async () => null,
+    },
+    '../../../../lib/db/patientRepo': { upsertPatient: async () => ({}) },
+    '../../../../lib/sseBroker': { publishFacilitySseEvent: (ev) => sseEvents.push(ev) },
+    '../../../../lib/paystackServer': {
+      resolvePaystackSecretKey: async () => '',
+      paystackFetch: async () => ({ ok: false, status: 503, data: {} }),
+    },
+  });
+
+  const getRes = await careSyncMod.GET({
+    nextUrl: { searchParams: new URLSearchParams('shid=SHID-AKS-123456&facilityId=IGH-EKT') },
+  });
+  assert.equal(getRes.status, 200);
+  assert.ok(getRes.body.records && Array.isArray(getRes.body.records.labs) && Array.isArray(getRes.body.bills));
+
+  const otpReq = await careSyncMod.POST({
+    json: async () => ({ action: 'request_patient_otp', identifier: '08091234567', facilityId: 'IGH-EKT' }),
+  });
+  assert.equal(otpReq.status, 200);
+  assert.equal(otpReq.body.sent, true);
+  assert.ok(/^\d{6}$/.test(String(otpReq.body.devPreviewCode || '')));
+
+  const otpVerify = await careSyncMod.POST({
+    json: async () => ({
+      action: 'verify_patient_otp',
+      identifier: '08091234567',
+      code: otpReq.body.devPreviewCode,
+      facilityId: 'IGH-EKT',
+    }),
+  });
+  assert.equal(otpVerify.status, 200);
+  assert.equal(otpVerify.body.verified, true);
+  assert.ok(otpVerify.body.patient?.shid);
+
+  const triageRes = await careSyncMod.POST({
+    json: async () => ({ action: 'patient_triage', message: 'High fever and severe chills since morning', facilityId: 'IGH-EKT' }),
+  });
+  assert.equal(triageRes.status, 200);
+  assert.ok(triageRes.body.reply && triageRes.body.recommendedDepartment);
+
+  const payRes = await careSyncMod.POST({
+    json: async () => ({ action: 'init_patient_payment', amountNgn: 3500, facilityId: 'IGH-EKT', shid: 'SHID-AKS-123456' }),
+  });
+  assert.equal(payRes.status, 201);
+  assert.equal(payRes.body.mode, 'bank_transfer_mandate');
+  assert.equal(sseEvents.some((e) => e.key === 'care_payment_initiated'), true);
+
+  const CLINIC_DIR = path.resolve(OS_ROOT, '../clinic');
+  const MOBILE_ROOT = path.join(CLINIC_DIR, 'src');
+  for (const rel of [
+    'services/nativeStorage.ts',
+    'services/deviceCapabilities.ts',
+    'components/ui/QrMatrix.tsx',
+    'components/ui/SessionLockOverlay.tsx',
+  ]) {
+    assert.equal(fs.existsSync(path.join(MOBILE_ROOT, rel)), true, `Missing ${rel}`);
+  }
+
+  const offlineSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'services/offlineSync.ts'), 'utf8');
+  assert.ok(offlineSrc.includes('Bearer ${this.authToken}') && offlineSrc.includes('AppState'));
+
+  const rtSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'hooks/useRealtimeEvents.ts'), 'utf8');
+  assert.equal(rtSrc.includes('localhost:4000'), false);
+
+  const ordersSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'components/orders/OrderEntryReview.tsx'), 'utf8');
+  assert.equal(ordersSrc.includes('localhost:4000'), false);
+  assert.equal(ordersSrc.includes('broadcastToMedCoreEventBus'), false);
+  assert.ok(ordersSrc.includes('submitClinicalOrder'));
+
+  for (const rel of [
+    'components/workbench/ClinicalWorkbench.tsx',
+    'components/tasks/TaskTracker.tsx',
+    'components/ai/AIScribePanel.tsx',
+    'components/ai/DifferentialDxPanel.tsx',
+    'components/ai/NEWS2Widget.tsx',
+  ]) {
+    const src = fs.readFileSync(path.join(MOBILE_ROOT, rel), 'utf8');
+    assert.equal(/<(div|section|button)\b/.test(src), false, `${rel} must be pure React Native (no HTML tags)`);
+  }
+
+  const unifiedSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'auth/UnifiedAuthScreen.tsx'), 'utf8');
+  assert.ok(unifiedSrc.includes('requestAdminEmailOtp') && unifiedSrc.includes('requestPatientOtp'));
+
+  const patientSrc = fs.readFileSync(path.join(MOBILE_ROOT, 'shells/PatientShell.tsx'), 'utf8');
+  assert.ok(patientSrc.includes('QrMatrix') && patientSrc.includes('sendPatientTriage') && patientSrc.includes('initPatientPayment'));
+
+  const appJson = JSON.parse(fs.readFileSync(path.join(CLINIC_DIR, 'app.json'), 'utf8'));
+  assert.equal(appJson.expo?.userInterfaceStyle, 'dark');
+  assert.ok(appJson.expo?.ios?.infoPlist?.NSCameraUsageDescription);
+  assert.equal(fs.existsSync(path.join(CLINIC_DIR, 'eas.json')), true);
 });
 
 
