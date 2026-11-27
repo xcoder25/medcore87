@@ -7,23 +7,35 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_OS_URL": "https://medcore87-os.vercel.app"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_OS_URL": "https://medcore87-os.vercel.app"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "production-apk": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_OS_URL": "https://medcore87-os.vercel.app"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "env": {
+        "EXPO_PUBLIC_OS_URL": "https://medcore87-os.vercel.app"
+      },
       "android": {
         "buildType": "app-bundle"
       }

@@ -8,6 +8,8 @@ import {
   setStoredItem,
 } from './nativeStorage';
 
+export const DEFAULT_EMR_API_URL = 'https://medcore87-os.vercel.app';
+
 let cachedEmrUrl = '';
 
 export async function hydrateEmrBaseUrl(): Promise<string> {
@@ -42,7 +44,7 @@ export function getEmrBaseUrl(): string {
   } catch {
     /* ignore */
   }
-  return '';
+  return DEFAULT_EMR_API_URL;
 }
 
 export function setEmrBaseUrl(url: string): void {

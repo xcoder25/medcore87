@@ -393,13 +393,15 @@ export const UnifiedAuthScreen: React.FC<UnifiedAuthScreenProps> = ({
             <View style={styles.topBar}>
               <Image source={ariseLogo} style={styles.ariseLogo} resizeMode="contain" />
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Pressable
-                  onPress={() => setShowServerCfg((v) => !v)}
-                  style={styles.iconPill}
-                >
-                  <MedIcon name="settings" size={14} color="#7DD3FC" badge={false} />
-                  <Text style={styles.iconPillText}>EMR Sync</Text>
-                </Pressable>
+                {persona === 'staff' && (
+                  <Pressable
+                    onPress={() => setShowServerCfg((v) => !v)}
+                    style={styles.iconPill}
+                  >
+                    <MedIcon name="settings" size={14} color="#7DD3FC" badge={false} />
+                    <Text style={styles.iconPillText}>EMR Sync</Text>
+                  </Pressable>
+                )}
                 <View style={styles.stateBadge}>
                   <Text style={styles.stateBadgeText}>AKS RBAC</Text>
                 </View>
@@ -407,7 +409,7 @@ export const UnifiedAuthScreen: React.FC<UnifiedAuthScreenProps> = ({
             </View>
 
             {/* Server URL Configuration Drawer */}
-            {showServerCfg && (
+            {persona === 'staff' && showServerCfg && (
               <LiquidGlassCard glowColor={C.glowCyan} style={{ marginBottom: 14 }}>
                 <Text style={styles.cardHeading}>MedCore OS EMR Endpoint</Text>
                 <Text style={styles.cardHint}>
